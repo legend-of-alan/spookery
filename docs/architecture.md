@@ -20,7 +20,7 @@ This spec lives in `docs/`. Implementation commits keep that directory name.
 6. `Now` is a typed struct. `state/now.yaml` is its pinned YAML projection. JSONL is an evidence tape. Kernel-only replay re-executes recorded moves and must byte-match `now.yaml`.
 7. `perceive` always takes `as=player:<id>` or `as=npc:<id>`. Host `spook status` is an omniscient idle digest. Player resume is a filter over that tape. Off-screen stock is not a login banner.
 8. v0 is the pack schema and lint, the one binary, three MCP stdio profiles, the tick loop, JSONL, the named CLI, `packs/oneshot-docks`, and conformance tests 1–10.
-9. The first 45 days are CLI plus MCP stdio. This architecture does not schedule `--serve`, billing, Discord, a database, or a second writer.
+9. Gates A and B are CLI plus MCP stdio. This architecture does not schedule `--serve`, billing, Discord, a database, or a second writer. §14 is the order.
 10. Smallest commit: the three JSON Schemas, the workspace skeleton, the license split, and ignored conformance test 1 with its closed-secret fixture. No tick behavior in that commit.
 
 A reviewer who needs a database, an idle LLM, or a second writer should reject this document rather than extend it.
@@ -38,7 +38,7 @@ The rows below are decisions the earlier drafts stated in more than one way. Imp
 | C5 | Tick §5.2 prints `ceil(D * 60 / tick_every_real_seconds)` while `D` is real hours and `tick_every_real_seconds` is seconds. | Implement the printed formula. Do not silently substitute `D * 3600`. Also apply the §3.1 world-hour cap. The burst stops at the tighter bound. Flagged in §7. |
 | C6 | `state_rev` is specified as +1 per successful `tick_commit`. `commit_turn` is also a `state/` writer. | Both successful commits increment `state_rev`. `tick_index` increments only when the tick loop runs. See §16. |
 | C7 | Product §9 shows `spook ./pack`. Stack names the subcommand `run`. | The only load invocation is `spook run <pack>`. See §11 and §16. |
-| C8 | Product §15 allows an optional ugly `--serve` after a week-idle fixture, inside days 71–90. The planning brief says not to schedule `--serve`. | Days 71–90 do not include `--serve`. A later edge would be the same binary and the same kernel. This document specifies no HTTP route. |
+| C8 | Product §15 allows an optional ugly `--serve` after a week-idle fixture, inside days 71–90. The planning brief says not to schedule `--serve`. | Gate C does not include `--serve`. A later edge would be the same binary and the same kernel. This document specifies no HTTP route. Day numbers in `product_spec.md` are a pace sketch and lose to §14. |
 | C9 | The `Now` example rumor `r_184` carries hidden `fact_ledger_short` and lists Aldric in `known_by`. Tick test 1 says Aldric does not know Mira's hidden fact. | The example is a shape, not fixture start state. The fixture rumor cites a public fact. Aldric's `known_facts` omit `fact_ledger_short`. |
 | C10 | Product §10's opening sentence says "two servers or two tool profiles". The same section and the stack name three profiles. | One process, three profiles, one profile bound for the life of the process. |
 
@@ -81,7 +81,7 @@ There is no GM perceive on the tick process. Host omniscience is the read-only C
 |---|---|---|---|
 | Player on the laptop | Play door, CLI | `spook run <pack>` with `--as player:<id>` | Only by reaching `commit_turn` |
 | GM / author agent | Agent door, MCP stdio | `pack-table` | Only by reaching `commit_turn` |
-| Tick scheduler | In-process, later days 46–70 | Calls `tick::run_tick` | Only by reaching `tick_commit` |
+| Tick scheduler | In-process, gate C | Calls `tick::run_tick` | Only by reaching `tick_commit` |
 | Studio / host | Agent door or CLI | `pack-studio`, plus `lint` / `status` / `migrate` | Studio `patch_entity` writes canon. `migrate` is a host commit. Models are not given this profile by the tick |
 
 One process. One shard directory. Zero humans is a valid shard. A session is a presence window inside that process, not a second process.
@@ -148,7 +148,7 @@ Dependency arrows, and the only legal ones:
 | `spookery-mcp` | `spookery-kernel`, `spookery-tick`, `rmcp`, `rmcp-macros`, `tokio` | A second kernel, a model SDK |
 | root bin `spookery` | `spookery-kernel`, `spookery-tick`, `spookery-mcp` | Business logic. Parsing argv and printing are the whole crate |
 
-Tokio exists only inside `spookery-mcp` (stdio runtime) and, from days 46–70, inside `src/cli` for the scheduler sleep. The tick function and the kernel stay on the calling thread. No `tokio::spawn` of a tick. No cargo feature named `llm`.
+Tokio exists only inside `spookery-mcp` (stdio runtime) and, from gate C, inside `src/cli` for the scheduler sleep. The tick function and the kernel stay on the calling thread. No `tokio::spawn` of a tick. No cargo feature named `llm`.
 
 `rulesets/` is the authoring template copied into a pack. The loader reads `pack/rules/` only. v0 loads one ruleset, the one in the pack directory.
 
@@ -298,7 +298,48 @@ Emitter policy, pinned in `codec::NOW_EMIT_OPTIONS`:
 - `last_tick_at` is an already formatted `String` (`YYYY-MM-DDTHH:MM:SSZ`), never a `DateTime` type that picks its own format.
 - Integers only on `Now`. No floats, so float formatting cannot drift.
 
-If `serde-saphyr` 1.3.0 cannot hold this policy, stop. Do not add `now.canonical.json` unless that failure is written down. One snapshot until the emitter is shown to be unpinnable.
+`serde-saphyr` 1.3.0 holds this policy under `codec::NOW_EMIT_OPTIONS` (pin P1). Verified on 2026-09-22 with rustc 1.89.0. One snapshot. Do not add `now.canonical.json`.
+
+```rust
+serde_saphyr::ser_options! {
+    empty_as_braces: true,
+    indent_step: 2,
+    compact_list_indent: false,
+    anchor_generator: None,
+    min_fold_chars: usize::MAX,
+    folded_wrap_chars: usize::MAX,
+    tagged_enums: false,
+    prefer_block_scalars: false,
+    quote_all: false,
+    yaml_12: false,
+}
+```
+
+What those options do, and what the crate will not do:
+
+- Non-empty maps and lists are block style, indent 2, with the dash indented under its key (`compact_list_indent: false`).
+- Empty maps emit `{}`. Empty lists emit `[]`.
+- Plain scalars when 1.3.0 considers them YAML-1.1-safe. Unsafe scalars use double quotes. The timestamp `2026-01-01T00:00:00Z` and the strings `yes` and `1842` are quoted. `quote_all` stays off because it emits single quotes.
+- A newline inside a string is a double-quoted escape, not a block scalar.
+- Integers are decimal, including negatives. Bools are `true` and `false`. No floats. No `null`. An absent PC field is omitted with `skip_serializing_if`. A present empty map is `{}`.
+- Exactly one trailing LF. Round-trip through `from_str` then `to_string_with_options` is byte-equal.
+- Top-level field order is struct order, the §5 table. Map key order is `BTreeMap` order.
+- `quote_all`, a document-start marker, anchors, tags, comments, and a second snapshot are all failures of this policy.
+
+Gate A checks this sample (166 bytes, fence body plus one LF) and nothing larger. The docks `now.yaml` golden is gate B, because its `pack_rev` covers the full canon.
+
+```yaml
+schema: now/v0
+last_tick_at: "2026-01-01T00:00:00Z"
+flag: false
+empty_map: {}
+names:
+  - aldric
+  - mira
+plain: Oil is on the shelf.
+yes_word: "yes"
+num_word: "1842"
+```
 
 ### `pack_rev`
 
@@ -316,6 +357,82 @@ Hash algorithm everywhere in this document is BLAKE2s-256. The `blake2` crate ty
 ### Hand edit
 
 A mid-shard edit of `now.yaml` is a migration. `spook tick` and `spook run` refuse it with `HAND_EDIT`. `spook migrate` parses, schema-validates, re-emits, bumps `state_rev`, writes through `commit_turn`'s commit path, and records a studio evidence line. Migrate is a host command. It is not an MCP tool on `pack-tick` or `pack-table`.
+
+### Canon documents
+
+Every canon object rejects unknown keys (`SCHEMA`). JSON Schema draft 2020-12 for these objects lands at gate A (`schema/place.schema.json`, `schema/cast.schema.json`, `schema/moves.schema.json`, `schema/checks.schema.json`, `schema/tick.schema.json`, `schema/sheet.schema.json`, `schema/proposal.schema.json`), each with `additionalProperties: false`. Runtime load enforces the same refusal through the Rust types. Commit 1 still ships only the three schemas named at the bottom of this document.
+
+A fact is one object. There is no parallel `hidden:` array (pin P25).
+
+| Field | Type | Required |
+|---|---|---|
+| `id` | string | yes |
+| `text` | string | yes |
+| `hidden` | bool | yes |
+
+`schema: place/v0`
+
+| Field | Type | Required |
+|---|---|---|
+| `schema` | const `place/v0` | yes |
+| `id` | string | yes |
+| `facts` | fact array | yes |
+
+`schema: cast/v0`
+
+| Field | Type | Required |
+|---|---|---|
+| `schema` | const `cast/v0` | yes |
+| `id` | string | yes |
+| `kind` | `npc` or `pc_template` | yes |
+| `facts` | fact array | yes |
+| `tick` | tick profile | no. Missing `tick` means not eligible |
+
+Tick profile, when present:
+
+| Field | Type | Required |
+|---|---|---|
+| `eligible` | bool | yes |
+| `tier` | `named`, `major`, or `minor` | no. Default `minor` |
+| `plot_relevant` | bool | no. Default false |
+| `range` | string array | no. Default `[]` |
+| `schedule` | schedule row array | no. Default `[]` |
+| `stock_rate` | map of place to map of sku to i64 | no |
+| `needs` | map of key to `{ min?: i64, max?: i64 }` | no. `floor` is an unknown key |
+| `resources` | map of key to `{ min?: i64, max?: i64 }` | no. Listed keys are the only resource keys |
+| `flags` | string array | no. Listed keys are the only flag keys besides `busy` |
+| `work` | `{ needs?: [{ key, delta }], resources?: [{ key, delta }] }` | no |
+| `notes` | note array | no. Default `[]` |
+
+Schedule row (pin P26):
+
+| Field | Type | Required |
+|---|---|---|
+| `start` | i64 in `0..=24` | yes |
+| `end` | i64 in `0..=24` | yes |
+| `place` | string | yes |
+| `activity` | `work` or `rest` | no |
+| `rest_delta` | i64 | required when `activity` is `rest` |
+
+`end: 24` with `start: 0` covers every `world_hour`, because the half-open test is `start <= h < end` and `h` is in `0..=23`. The schedule graph is the set of `place` values on the rows. A `location.to` is on the graph when it is in that set, and it must also be in `range`. Derivation's destination is the current hour's schedule place, so it satisfies both when that place is in `range`.
+
+Step 4 matches only when the winning row has `activity: work` or `activity: rest`. `work` expands the `work` block. A missing block yields zero effects and the intent still applied. `rest` expands one `need` on key `rest` with delta `rest_delta`. A missing `activity` does not match.
+
+`stock_rate` is keyed by place, then sku (pin P28). Step 2 matches when the actor's current place has an entry, the sku has not been restocked this tick, and `stock + stock_rate[place][sku]` stays `≥ 0`. `delta` is that integer. Several skus: lowest sku key.
+
+A note object is pin P8. Required fields, in this order: `id`, `due_clock`, `due_value`, `to`, `place`, `fact_ids`, `text`. `leave_note` matches when `clocks[due_clock].value >= due_value` and `id` is not already in `now.messages`.
+
+`schema: moves/v0` is `{ schema, moves: [{ name, check? }] }`. `name` is required. `check` is optional. The docks file sets no `check`.
+
+`schema: checks/v0` is the `grit` / 2d6 object in §6, plus `schema`.
+
+`schema: tick/v0` is the budget keys in §6 plus the pause map. Unknown keys and negative values are `SCHEMA`.
+
+`schema: sheet/v0`, same emitter as `Now`. Field order: `schema`, `id`, `template`, `stats`, `resources`, `inventory`, `flags`.
+
+`schema: proposal/v0`, same emitter. Field order: `schema`, `id`, `kind`, `target`, `summary`, `actor_id`, `source`, `tick_index`. `kind` is `delete_place`, `patch_entity`, or `other`. `target` may be `""`.
+
+`schema: pack/v0` remains `id`, `title`, `system`, `start.place`, `start.pc`. Unknown top-level keys are refused.
 
 ---
 
@@ -361,12 +478,12 @@ A mid-shard edit of `now.yaml` is a migration. `spook tick` and `spook run` refu
 | `actors` | `BTreeMap<ActorId, ActorLive>` | |
 | `clocks` | `BTreeMap<ClockId, Clock>` | |
 | `rumors` | `Vec<Rumor>` | `id`, `fact_ids`, `origin`, `heat` in `1..=3`, `known_by`. A rumor is this object, not free text |
-| `messages` | `Vec<Message>` | |
+| `messages` | `Vec<Message>` | Field order in the record-shapes subsection |
 | `proposals` | `Vec<ProposalId>` | |
 
 `places.<id>.actors` is a derived index rebuilt from `actors.<id>.place` at canonicalization. `actors.<id>.place` is authoritative. On load, if the index disagrees, fail `SCHEMA`. Do not tick with two occupancy maps.
 
-`places.<id>.hours` stays at its stored value. No v0 effect writes it. Do not derive shop hours from the schedule inside the kernel.
+`places.<id>.hours` is a map of string to i64. It stays at its stored value. No v0 effect writes it. The kernel does not read the keys. Do not derive shop hours from the schedule. The docks fixture stores `{}`.
 
 ### Actor live fields
 
@@ -394,21 +511,56 @@ A mid-shard edit of `now.yaml` is a migration. `spook tick` and `spook run` refu
 
 Stored `busy` is the encounter flag. Co-location with a present player is an extra eligibility term. Co-location is computed per tick and is not written back as `busy: true`, so a player leaving does not leave a sticky flag.
 
-`PcSheet` (`state/actors/<pc-id>.yaml`): `id`, `template`, `stats` (`BTreeMap<String, i64>`), `resources`, `inventory` (`Vec<ItemId>`), `flags`. Sheet `flags` are sheet data. The idle predicate does not read them. It reads `Now.actors.<id>.busy` and `Now.actors.<id>.flags`. The two `flags` lists are not synced. Pin P4.
+`PcSheet` (`state/actors/<pc-id>.yaml`): `schema` const `sheet/v0`, `id`, `template`, `stats` (`BTreeMap<String, i64>`), `resources`, `inventory` (`Vec<ItemId>`), `flags`. Field order is that list. Sheet `flags` are sheet data. The idle predicate does not read them. It reads `Now.actors.<id>.busy` and `Now.actors.<id>.flags`. The two `flags` lists are not synced. Pin P4.
 
 Players do not write `cast/` during play. A sheet field that should become canon is a proposal.
+
+### Record shapes
+
+`Message` field order: `id`, `to`, `place`, `fact_ids`, `text`. `to` and `fact_ids` are sorted. Omit `place` when the effect did not set one. When `place` is set, also append `id` to `places.<place>.notes` (sorted, unique). A duplicate `id` is `UNKNOWN_KEY`.
+
+`Rumor` field order: `id`, `fact_ids`, `origin`, `heat`, `known_by`. `spread_rumor` adds the recipient to `known_by` and sorts it. It does not change `heat`, `fact_ids`, or `origin`.
+
+A Now path is dot-separated field and map-key segments (pin P30). A list element that has an `id` is addressed by that id, not by index. `actors.mira.needs.rest` is one path. The same path twice counts once. A path counts only when the staged value differs from the value at txn start. Derived `places.<id>.actors` is rebuilt at emit and does not count. Commit headers do not count: `schema`, `shard_id`, `pack_rev`, `state_rev`, `tick_index`, `world_time`, `last_tick_at`, `presence`, `pause`.
+
+| Class | Paths that count when they change |
+|---|---|
+| `clock` | `clocks.<id>.value` |
+| `need` | `actors.<id>.needs.<key>` |
+| `stock` | `places.<place>.stock.<sku>` |
+| `location` | `actors.<id>.place` |
+| `relationship` | `actors.<a>.relationships.<b>.stance`, `actors.<a>.relationships.<b>.last_interaction_world_time` |
+| `reputation` | `actors.<id>.reputation.<faction>.value`, `actors.<id>.reputation.<faction>.last_world_time` |
+| `memory` | none on `Now`. One memory write |
+| `rumor` | `rumors.<id>.known_by` |
+| `resource` on an NPC | `actors.<id>.resources.<key>` |
+| `resource` on a PC | none on `Now`. The sheet path does not count toward 24 |
+| `flag` key `busy` | `actors.<id>.busy` |
+| `flag` any other key | `actors.<id>.flags.<key>` |
+| `proposal` | `proposals` |
+| `message` | `messages.<id>`, plus `places.<place>.notes` when `place` is set |
+
+After an NPC intent's effects all succeed, stage `actors.<id>.tick.last_act_tick` and, when `presence.humans == 0`, `actors.<id>.tick.idle_acts_today`, otherwise `actors.<id>.tick.live_acts_this_hour`. Those paths count. Player intents do not stage them. If the next path, effect or counter, would push the distinct count past 24, do not stage it, reject that intent with JSONL reason `budget`, and drop every later candidate without perceiving them (pin P23).
+
+`state/memories/<actor_id>.jsonl` is a full-file rewrite. Compact JSON, one object per line, one LF per line, key order `tick_index`, `actor_id`, `intent_id`, `fact_ids`, `tags`, `text`. `text` is JSON `null` when the effect omitted it. `fact_ids` is sorted.
+
+`state/proposals/<id>.yaml` uses `NOW_EMIT_OPTIONS` and the proposal field order above.
+
+Tick JSONL is one compact JSON object, key order of the §7 table, one trailing LF. No pretty-printing. `intents[]` use key order `id`, `tick_index`, `actor_id`, `actor_kind`, `source`, `move`, `target`, `args`, `rationale_code`, `llm_say`. `target` is an object of only the one set key, or `{}`. `llm_say` is `null`. `effects[]` use key order `class`, `as`, `intent_id`, `payload`. `as` is `player:<id>` or `npc:<id>`. `rejected[]` use `id` then `reason` when the intent has an id. JSONL reasons `budget`, `empty_perceive`, and `skipped` are those lowercase words. Every other reason is the pinned code spelling.
+
+`tool_trace` strings, in call order: `session_status`, `perceive:<actor_id>`, `resolve_check`, `apply_effect` once per accepted effect, `tick_commit` only when this `run_tick` owns the commit. A flush trace omits `tick_commit`.
 
 ### Closed effect enum
 
 `Effect` is a Rust enum. The YAML/JSON boundary parses `class` plus `payload` into that enum. Unknown `class` or an extra payload key returns `ILLEGAL_CLASS` and never becomes an `Effect`.
 
-Envelope, every variant: `as_viewer: ViewerId`, `intent_id: IntentId`.
+Envelope, every variant: `as_viewer: ViewerId`, `intent_id: IntentId`. JSONL and MCP write `as_viewer` under the key `as`.
 
 | `class` | Payload | Failures |
 |---|---|---|
 | `clock` | `clock_id`, `delta: i64` | `PAUSED_CLOCK` if `paused` or (`requires_presence` and `presence.humans == 0`). `UNKNOWN_KEY` if the clock is absent. `OUT_OF_RANGE` if `value + delta` is outside `[0, max]`. Needs clamp; clocks do not |
 | `need` | `actor_id`, `key`, `delta` | `UNKNOWN_KEY` if `key` is not in the profile needs list. Clamp to the profile range when a range is present. No range in canon → leave the value, still require the key to be listed |
-| `stock` | `place`, `sku`, `delta` | `NOT_OWNER` if the actor's `range` and schedule places omit `place`. `OUT_OF_RANGE` if `abs(delta)` exceeds that actor's `stock_rate[sku]` or the result would be `< 0` |
+| `stock` | `place`, `sku`, `delta` | `NOT_OWNER` unless `place` is in `range`, appears on a schedule row, and is a key of `stock_rate`. `OUT_OF_RANGE` if `abs(delta)` exceeds `stock_rate[place][sku]` or the result would be `< 0` |
 | `location` | `actor_id`, `from`, `to` | `from` must equal live place. `to` must be in profile `range` and on the schedule graph. Otherwise `OUT_OF_RANGE`. Idle `location` whose `actor_id` is a PC → `NOT_OWNER` |
 | `relationship` | `a`, `b`, `delta` in `-1, 0, +1` | At most one apply per pair per world-day. If either stored-busy or `last_interaction_world_time` is within 1 world-day → `SKIPPED` (no-op, remainder of this intent continues) |
 | `reputation` | `actor_id`, `faction`, `delta` in `-1, 0, +1` | At most one per faction per world-day, tracked by `reputation.<faction>.last_world_time`. Second apply → `SKIPPED` |
@@ -459,6 +611,8 @@ Live-only names, rejected with `LIVE_ONLY` when `presence.humans == 0`: `talk`, 
 | `advance_clock` | one `clock` | `target.clock`, `delta` default 1 |
 
 Truncate to `max_effects_per_intent` (default 4). Do not invent a further effect from `rationale_code`, `llm_say`, or a Markdown body.
+
+Derivation stores the target and args `expand` reads. Replay uses those stored intents. It does not derive a second time. `restock` stores args `sku` and `delta` (`stock_rate[place][sku]`) and no target; the effect's `place` is the live place. `travel` stores `target.place`. `leave_note` copies `message_id`, `to`, `place`, `fact_ids`, and `text` from the canon note into args. `spread_rumor` stores `target.rumor` and args `to`; expand copies `fact_ids` and `heat` off the rumor and sets `from` to the actor. `work` stores `{}` and expand walks the canon `needs` list, then `resources`, in list order. `advance_clock` stores `target.clock` and `delta: 1`. `drift_relationship` stores `target.actor` and the clamped `delta`. `rest` stores `rest_delta`.
 
 ---
 
@@ -535,7 +689,7 @@ Dice, pin P6: `rng = BLAKE2s-256(seed_preimage)` once per tick. Die `n` (from 0)
 
 `allows(viewer, fact_id)` is true when `fact_id` is in `now.actors[viewer].known_facts`, or the fact is not hidden and is attached to the viewer's current place or to a visible actor's public fact list.
 
-Hidden means `fact.hidden: true` or the fact id is listed in the entity's `hidden:` array. There is no `gm_secret` field in v0. The blocklist sentence that mentions `gm_secret` is satisfied by the hidden flag.
+Hidden means `facts[].hidden: true` (pin P25). A top-level `hidden:` array is an unknown key (`SCHEMA`). There is no `gm_secret` field in v0. The blocklist sentence that mentions `gm_secret` is satisfied by the hidden flag.
 
 A viewer who fails `allows` does not receive the fact id, the text, or the body. `unknown_mentioned` carries public names whose bodies were stripped. It does not carry hidden fact ids.
 
@@ -569,10 +723,10 @@ Pure function of canon frontmatter plus staging `Now`. At most one intent per NP
 
 | Step | Move | Match |
 |---|---|---|
-| 1 | `pay_upkeep` | A listed needs key is at or below its floor and the move is legal. **No floor field is specified.** No key matches. The step falls through. Do not invent floor 0 |
-| 2 | `restock` | Actor's place is one they have `stock_rate` for, the sku is due, result would stay `≥ 0`. "Due" in v0 means the actor has not already restocked this tick. Several skus → lowest sku key (pin P7). `delta` is the declared `stock_rate[sku]` |
-| 3 | `travel` | Only if pause travel is `running` (`run_if_schedule` and a schedule applies, or `always_run`). Current `world_hour` schedule place ≠ live place, destination in `range` |
-| 4 | schedule `work` or `rest` | Already in the scheduled place. `work` uses the canon work block if any |
+| 1 | `pay_upkeep` | A listed needs key has a `floor` and the live value is at or below it. The canon schema rejects `floor` (pin P27). No key matches. The step falls through. Do not invent floor 0 |
+| 2 | `restock` | The actor's place is a `stock_rate` key (pin P28), the sku is due, and `stock + rate` stays `≥ 0`. "Due" means not already restocked this tick. Several skus → lowest sku key (pin P7). `delta` is `stock_rate[place][sku]` |
+| 3 | `travel` | Only if pause travel is `running` (`run_if_schedule` and a schedule applies, or `always_run`). The current `world_hour` schedule place ≠ live place. Destination is that schedule place, so it is on the graph, and it is in `range` |
+| 4 | schedule `work` or `rest` | Already in the scheduled place, and that row's `activity` is `work` or `rest` (pin P26). Missing `activity` does not match. `work` expands the canon `work` block. `rest` expands one `need` on key `rest` with `rest_delta` |
 | 5 | `drift_relationship` | Only if relationship drift is `running`. A declared pair has `stance != target`, last interaction ≥ 1 world-day ago, neither stored-busy. Several pairs → lexicographically smallest `(a, b)` (pin P7) |
 | 6 | `spread_rumor` | A rumor with `heat >= 1` is known by this actor (`known_by` contains them), an adjacent recipient is firewall-allowed, hop budget remains. Adjacent means same place or a declared relationship key. Several rumors → lowest rumor id. Several recipients → lowest actor id (pin P7) |
 | 7 | `leave_note` | A canon note trigger is due (pin P8) |
@@ -641,16 +795,18 @@ Pinned tokens. The spec requires the failure and does not name the token. Use th
 
 ### Functions and lock scope
 
-`tick::run_tick(shard, reason, now_wall, catchup: Catchup)` runs the loop below. `reason` is `scheduler`, `catchup`, `flush` (`include_tick`), or `manual`. `manual` is host `spook tick` and tests.
+`tick::run_tick(shard, reason, now_wall, catchup: Catchup)` runs the loop below. `now_wall` is the `last_tick_at` string the caller supplies. It is not a clock read. `reason` is `scheduler`, `catchup`, `flush` (`include_tick`), or `manual`. `manual` is host `spook tick` and tests.
 
 Outermost callers (`scheduler`, `catchup`, `manual`, and replay) take the shard lock and hold it until `tick_commit` or a clean abort. `commit_turn` holds that same lock. When it calls `run_tick` with `reason=flush`, the tick does not lock, does not `tick_commit`, and does not unlock (pin P20). The turn writes once after the tick returns.
 
 No concurrent ticks. A second outermost call while the lock is held returns `COMMIT_CONFLICT`. The lock is an exclusive `flock(2)` on `state/.tick.lock` (pin P9). The lock file is under `state/` and is outside `pack_rev`. Nested `run_tick` is not a second caller.
 
 ```text
+tick_index += 1                                      before seed_preimage
 lock shard, unless reason=flush                    store::lock_shard
 status = session_status()                           kernel::session_status
 world_minutes = pick_advance(status, catchup)       tick::pick_advance
+reset act counters if the day or hour changed
 apply_pause_policy                                   kernel::apply_pause_policy
 candidates = collect_player_queued_intents()        in-memory queue
            + kernel_intents_for_eligible_npcs()     kernel::derive
@@ -660,17 +816,31 @@ candidates = prioritize(candidates)[:max_intents]   tick::prioritize
 applied = []
 for intent in candidates:
     view = perceive(as = intent.actor)              kernel::perceive
+    if view.known_facts is empty: reject empty_perceive; continue
     if not legal(intent, view): reject; continue    kernel::legal
     if needs_roll(intent): resolve_check(seeded)    kernel::resolve_check
+    accepted = 0
     for effect in expand(intent)[:max_effects]:
         apply_effect(effect) or reject remainder    kernel::apply_effect
-    applied.append(intent)
+        accepted += 1 on success
+        on BUDGET: drop later candidates; break
+    if accepted > 0 or (expand was empty and the intent was not rejected):
+        stage npc tick counters                      pin P30
+        applied.append(intent)
+if catch-up skipped ticks and this is the last tick run:
+    apply the season proposal, no perceive           pin P10
 if run_tick owns the commit:                        pin P20
     tick_commit(...)                                 kernel::store::tick_commit
     unlock
 else:
     return the staged txn to commit_turn
 ```
+
+An intent is listed in JSONL `intents` when at least one effect was accepted, or when expand produced nothing and the intent was not rejected. `wait`, and a `work` block that expands to nothing, qualify. A rejection before any accepted effect leaves the id only in `rejected`. Effects already accepted stay if a later effect in that intent hits `BUDGET`, and that intent stays in `intents`. The season proposal is not a candidate, so the loop does not perceive it.
+
+### Counter timing
+
+`tick_index` increments at the start of `run_tick`, before `seed_preimage`. The JSONL `tick_index` and `seed` use that new value. `state_rev` increments once, inside the commit that owns the write. `pick_advance` updates `world_time` before derivation, pause policy, and the day and hour counter resets. Schedule hours read the advanced value. `last_tick_at` is the caller-supplied string. `spook tick` passes the string already stored on `Now` and does not read the wall clock.
 
 `maybe_one_llm_intent` returns an empty list. It does not call `npc_act`. It exists so the loop shape stays fixed when the budget is 0.
 
@@ -692,7 +862,7 @@ else:
 
 `needs_roll` is true only when that move's `moves.yaml` entry names a `check`. Fixture idle moves do not.
 
-On `perceive` yielding a view with no usable facts, the actor's intent is rejected and the loop continues. The row is on `rejected`. The kernel does not emit `wait`. That actor does not count toward `max_npcs_acting` (pin P21). The loop keeps walking the priority list, so a later NPC can still act inside the cap of 8.
+On `perceive` yielding a view whose `known_facts` array is empty, the actor's intent is rejected with JSONL reason `empty_perceive` and the loop continues (pins P21, P29). Stocks, actors, clocks, and flavor do not make the view non-empty. The kernel does not emit `wait`. That actor does not count toward `max_npcs_acting`. The loop keeps walking the priority list, so a later NPC can still act inside the cap of 8.
 
 Budget exceeded mid-loop: stop applying. The commit owner writes what passed. Outermost `run_tick` calls `tick_commit`. A flush returns, and `commit_turn` writes once.
 
@@ -722,7 +892,7 @@ ticks_to_run = min(
 
 Also cap world minutes in that burst by `idle_max_world_hours_per_real_hour * D * 60`. If the printed tick count would exceed that minute cap, run fewer ticks.
 
-Ticks that the cap does not run collapse into one `proposal`, `kind: other`, summary `season_advance` (pin P10). `source: system`. `actor_id` and effect `as` are the same id: the lexicographically first PC, or, when the pack has no PC, the lexicographically first NPC who owns any clock. `actor_kind` is `player` or `npc` to match that id. `ViewerId` stays closed. There is no `season_advance` effect class. If the pack has neither a PC nor a clock-owning NPC, do not file the proposal. This path does not call `perceive`. Plot clocks stay on `Now`, paused. They are not deleted.
+Ticks that the cap does not run collapse into one `proposal`, `kind: other`, summary `season_advance` (pin P10). `source: system`. `actor_id` and effect `as` are the same id: the lexicographically first PC, or, when the pack has no PC, the lexicographically first NPC who owns any clock. `actor_kind` is `player` or `npc` to match that id. `ViewerId` stays closed. There is no `season_advance` effect class. If the pack has neither a PC nor a clock-owning NPC, do not file the proposal. Apply it after the candidate loop on the last tick of the burst, through `expand` and `apply_effect`, with no `perceive`. Plot clocks stay on `Now`, paused. They are not deleted.
 
 A tick with zero applied intents still has one commit: `tick_index` and `state_rev` increment, and `world_time` advances. Outermost `run_tick` writes it. A flush leaves that write to `commit_turn`.
 
@@ -793,7 +963,99 @@ Fields from tick §12, plus one pinned field required for byte-equal replay:
 | `effects` | accepted effects |
 | `tool_trace` | kernel call names actually made, e.g. `session_status`, `perceive:mira`, `apply_effect`, `tick_commit` |
 
+An accepted rumor effect counts one toward `max_rumor_hops` (pin P35). The third accepted rumor effect in a tick is `BUDGET`.
+
+JSONL is compact. Key order is the table above, then the record-shapes subsection. One object, one trailing LF.
+
 `public_say` is absent in v0 because `npc_act` is never called.
+
+---
+
+### Worked traces
+
+Four traces. Each one is input, outcome, and the JSONL object. `tick_index` increments at the start of `run_tick`, before `seed_preimage`. `world_time` advances in `pick_advance`, before derivation and before the day and hour resets. `state_rev` increments once, in the commit that owns the write. `spook tick` passes the `last_tick_at` already stored on `Now` and does not read the wall clock.
+
+#### Trace A — empty tick
+
+Start from the §12 pack on a temp copy. Set `tick.eligible` to false on `mira` and `bram`, recompute `pack_rev`, and write that hash into `now.pack_rev` with `NOW_EMIT_OPTIONS`. The §12 golden hash is then wrong for this copy, and `PACK_REV_MISMATCH` would refuse the tick. Derivation emits nothing. `presence.humans` is 0.
+
+One outermost `run_tick`, `reason=manual`. `world_time` goes from 1080 to 1140. `tick_index` and `state_rev` go from 0 to 1. No actor field changes. `assassination_debt` stays `value: 2`, `paused: true`.
+
+`state/log/tick-0001.jsonl` is this object plus one LF:
+
+```json
+{"tick_index":1,"state_rev_before":0,"state_rev_after":1,"world_time_before":1080,"world_time_after":1140,"presence_humans":0,"seed":"docks-001|1","last_tick_at":"2026-01-01T00:00:00Z","intents":[],"rejected":[],"effects":[],"tool_trace":["session_status","tick_commit"]}
+```
+
+#### Trace B — flush
+
+Shard `ex`. One PC `pc_rowan` at place `gate`. No NPC. Canon place `gate` has one public fact, so the view's `known_facts` is non-empty. `presence.humans` is 1, `actors_present` is `[pc_rowan]`, and `pause.named_plot_clocks` is `running`. `world_time`, `tick_index`, and `state_rev` start at 0. `commit_turn` is called with `include_tick: true` and one queued intent, move `wait`, id `00000000-0000-4000-8000-000000000001`, `source: player`.
+
+`run_tick` uses `reason=flush`. It does not lock, does not call `tick_commit`, and does not unlock. `commit_turn` writes once. `state_rev` goes 0 to 1, not 0 to 2. `tick_index` goes 0 to 1. `world_time` goes 0 to 5 (`live_minutes_per_tick`). One file `state/log/tick-0001.jsonl`. `tool_trace` has no `tick_commit`.
+
+```json
+{"tick_index":1,"state_rev_before":0,"state_rev_after":1,"world_time_before":0,"world_time_after":5,"presence_humans":1,"seed":"ex|1","last_tick_at":"2026-01-01T00:00:00Z","intents":[{"id":"00000000-0000-4000-8000-000000000001","tick_index":1,"actor_id":"pc_rowan","actor_kind":"player","source":"player","move":"wait","target":{},"args":{},"rationale_code":"","llm_say":null}],"rejected":[],"effects":[],"tool_trace":["session_status","perceive:pc_rowan"]}
+```
+
+#### Trace C — 24 paths
+
+Shard `cap`, `presence.humans` 0, `world_time` 0. Place `yard` has one public fact. NPCs `n1` through `n5` stand there. Each is eligible, `tier: minor`, `plot_relevant: false`, `range: [yard]`, and has one schedule row `{ start: 0, end: 24, place: yard, activity: work }`. Needs are `k1` through `k4`, each 0, with `min` and `max` and no `floor`. The `work` block lists those four keys at `delta: 1`. No `stock_rate`. Derivation stops at step 4 for every one of them.
+
+Priority keys 0–4 tie. Shuffle order of `BLAKE2s-256("cap|1|{npc}")` is `n2`, `n3`, `n5`, `n4`, `n1`.
+
+Each applied NPC adds four need paths and then two counter paths (`last_act_tick`, `idle_acts_today`).
+
+| Actor | Need paths | Counter paths | Total after |
+|---|---|---|---|
+| `n2` | 4 | 2 | 6 |
+| `n3` | 4 | 2 | 12 |
+| `n5` | 4 | 2 | 18 |
+| `n4` | 4 | 2 | 24 |
+| `n1` | the next need would be 25 | not staged | stop |
+
+`n2`, `n3`, `n5`, and `n4` apply. `n1` is perceived, then rejected with reason `budget`, and is not queued. `n1`'s needs stay 0. Applied needs become 1. `state_rev` 1, `tick_index` 1, `world_time` 60.
+
+```json
+{"tick_index":1,"state_rev_before":0,"state_rev_after":1,"world_time_before":0,"world_time_after":60,"presence_humans":0,"seed":"cap|1","last_tick_at":"2026-01-01T00:00:00Z","intents":[{"id":"00000000-0000-4000-8000-000000000002","tick_index":1,"actor_id":"n2","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"00000000-0000-4000-8000-000000000003","tick_index":1,"actor_id":"n3","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"00000000-0000-4000-8000-000000000005","tick_index":1,"actor_id":"n5","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"00000000-0000-4000-8000-000000000004","tick_index":1,"actor_id":"n4","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null}],"rejected":[{"id":"00000000-0000-4000-8000-000000000001","reason":"budget"}],"effects":[{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k1","delta":1}},{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k2","delta":1}},{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k3","delta":1}},{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k4","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k1","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k2","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k3","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k4","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k1","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k2","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k3","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k4","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k1","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k2","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k3","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k4","delta":1}}],"tool_trace":["session_status","perceive:n2","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n3","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n5","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n4","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n1","tick_commit"]}
+```
+
+#### Trace D — 72-hour catch-up
+
+Shard `ex`, `presence.humans` 0, one PC `pc_rowan`, no eligible NPC, `world_time` 0. `D` is 72 real hours. `tick_every_real_seconds` is 300. `idle_minutes_per_tick` is 60. `idle_catchup_max_ticks` is 12. `idle_max_world_hours_per_real_hour` is 8.
+
+```text
+printed = ceil(72 * 60 / 300) = ceil(14.4) = 15
+minute_cap = 8 * 72 * 60 = 34560 world minutes
+15 * 60 = 900, which is under the minute cap
+ticks_to_run = min(15, 12) = 12
+```
+
+The three ticks that do not run collapse into one proposal, not three. It is applied after the candidate loop on tick 12, and that loop does not perceive it. `source: system`. `actor_id` and `as` are `pc_rowan` (the only PC). `actor_kind` is `player`. `kind` is `other`. `summary` is `season_advance`. `proposal_id` is `season_advance`. `target` is `""`. This path does not call `perceive`.
+
+Twelve outermost commits. `state_rev` ends at 12. `tick_index` ends at 12. `world_time` ends at 720. Ticks 1–11 write an empty tick file. Tick `n` uses `seed` `ex|{n}`, `state_rev_before` `n-1`, `world_time_before` `(n-1)*60`.
+
+Tick 1:
+
+```json
+{"tick_index":1,"state_rev_before":0,"state_rev_after":1,"world_time_before":0,"world_time_after":60,"presence_humans":0,"seed":"ex|1","last_tick_at":"2026-01-01T00:00:00Z","intents":[],"rejected":[],"effects":[],"tool_trace":["session_status","tick_commit"]}
+```
+
+Tick 12 also writes `state/proposals/season_advance.yaml` through the commit, and does not edit canon:
+
+```yaml
+schema: proposal/v0
+id: season_advance
+kind: other
+target: ""
+summary: season_advance
+actor_id: pc_rowan
+source: system
+tick_index: 12
+```
+
+```json
+{"tick_index":12,"state_rev_before":11,"state_rev_after":12,"world_time_before":660,"world_time_after":720,"presence_humans":0,"seed":"ex|12","last_tick_at":"2026-01-01T00:00:00Z","intents":[{"id":"00000000-0000-4000-8000-000000000012","tick_index":12,"actor_id":"pc_rowan","actor_kind":"player","source":"system","move":"file_proposal","target":{},"args":{"proposal_id":"season_advance","kind":"other","target":"","summary":"season_advance"},"rationale_code":"","llm_say":null}],"rejected":[],"effects":[{"class":"proposal","as":"player:pc_rowan","intent_id":"00000000-0000-4000-8000-000000000012","payload":{"proposal_id":"season_advance","kind":"other","target":"","summary":"season_advance"}}],"tool_trace":["session_status","apply_effect","tick_commit"]}
+```
 
 ---
 
@@ -1020,11 +1282,34 @@ Argv is parsed with `std::env::args` (pin P14). Closed subcommands:
 
 There is no bare `spook <pack>` in v0. Agents and docs use `spook run <pack>` only.
 
-First 45 days: these commands and MCP stdio. The `--serve` flag is not implemented. A later `--serve` would be the same binary, calling the same `commit_turn` / `tick_commit`, and would not be a second authority. This document does not define that flag's routes.
+Gates A and B: these commands and MCP stdio. The `--serve` flag is not implemented. A later `--serve` would be the same binary, calling the same `commit_turn` / `tick_commit`, and would not be a second authority. This document does not define that flag's routes.
 
-The scheduler (days 46–70) lives in `src/cli/schedule.rs`. It may use Tokio's timer. Each wake computes downtime from the last recorded `last_tick_at` and calls `run_tick` on the calling thread, one at a time. Live play does not depend on the scheduler. If the scheduler crash-loops, `spook run` still accepts intents and `commit_turn`.
+The scheduler (gate C) lives in `src/cli/schedule.rs`. It may use Tokio's timer. Each wake computes downtime from the last recorded `last_tick_at` and calls `run_tick` on the calling thread, one at a time. Live play does not depend on the scheduler. If the scheduler crash-loops, `spook run` still accepts intents and `commit_turn`.
 
-Terminal play reads a line and calls `commit_turn` (pin P22). A line may begin with `player:<id>`; that id is the intent actor. A line with no actor uses `--as`. Players do not see YAML. v0 may print the filtered resume rows and the `perceive` rows. That is the whole UI.
+Terminal play reads a line and calls `commit_turn` (pins P12, P22). Players do not see YAML. v0 prints the filtered resume rows and the `perceive` rows. That is the whole UI.
+
+Play-line grammar (pin P33). Tokens split on a single space. The actor prefix is optional and only at the start. Otherwise the actor is `--as`, and omitted `--as` is `start.pc`. The CLI mints a UUID v4 for the intent id. Library tests set the id themselves.
+
+| Line | Intent |
+|---|---|
+| `wait` | move `wait`, empty args |
+| `travel <place>` | `target.place` |
+| `work` | move `work`, empty args. Effects come from the canon block |
+| `restock <sku> <delta>` | args `sku`, `delta` |
+| `rest <delta>` | args `delta` |
+| `pay_upkeep <key> <delta>` | args `key`, `delta` |
+| `drift_relationship <actor>` | `target.actor` |
+| `spread_rumor <rumor> <actor>` | `target.rumor`, args `to` |
+| `leave_note <id> <clock> <due> <actor> <place> <text...>` | args `message_id`, `due_clock`, `due_value`, `to` (one id), `place`, `text`. `text` is the remainder of the line |
+| `file_proposal <id> <kind> <target> <summary...>` | args `proposal_id`, `kind`, `target`, `summary`. `summary` is the remainder of the line |
+| `advance_clock <clock>` | `target.clock`, delta 1 |
+| `advance_clock <clock> <delta>` | delta from the token |
+| `talk <actor>`, `attack <actor>` | `target.actor`. Expand returns `NOT_IN_SPEC` |
+| `attempt <check>` | args `check`. Expand returns `NOT_IN_SPEC` |
+| `give <item> <actor>`, `take <item> <actor>` | args `item`, `target.actor`. Expand returns `NOT_IN_SPEC` |
+
+An integer token is an optional `-` and then digits. An unknown verb is `UNKNOWN_MOVE`. A missing token is `SCHEMA`.
+
 
 ---
 
@@ -1034,7 +1319,7 @@ Terminal play reads a line and calls `commit_turn` (pin P22). A line may begin w
 
 Land on commit 1, `additionalProperties: false`, JSON Schema draft 2020-12 (pin P15). Field tables in §5 are the normative shape. Required highlights:
 
-**`schema/now.schema.json`** — `schema` const `now/v0`, required `shard_id`, `pack_rev`, `state_rev`, `tick_index`, `world_time`, `last_tick_at`, `presence`, `pause`, `places`, `actors`, `clocks`, `rumors`, `messages`, `proposals`. Actor `reputation` is an object of `{ value, last_world_time }`, default `{}`.
+**`schema/now.schema.json`** — `schema` const `now/v0`, required `shard_id`, `pack_rev`, `state_rev`, `tick_index`, `world_time`, `last_tick_at`, `presence`, `pause`, `places`, `actors`, `clocks`, `rumors`, `messages`, `proposals`. An actor is `oneOf` an NPC object and a PC object. The NPC object requires `needs`, `resources`, `relationships`, `reputation`, and `tick`, and forbids `sheet`. The PC object requires `sheet` and forbids those five. `reputation` values are `{ value, last_world_time }`. Place `hours` is an object of string to integer.
 
 **`schema/intent.schema.json`** — fields in §5. `move` is a string (the allowlist is pack data, not a schema enum of one game), `actor_kind` and `source` are the closed string sets. `llm_say` is null.
 
@@ -1042,7 +1327,7 @@ Land on commit 1, `additionalProperties: false`, JSON Schema draft 2020-12 (pin 
 
 ### `rulesets/`
 
-A copy of the fixture's `rules/*.yaml` for authors to copy. Runtime does not load this directory.
+Byte-copies of the fixture's `rules/*.yaml` in §12. Runtime does not load this directory.
 
 `rules/moves.yaml` names exactly:
 
@@ -1058,55 +1343,409 @@ talk attempt attack give take
 
 ### `packs/oneshot-docks` contract
 
-Ids licensed by the specs, and the ones this architecture pins so the fixture can tick:
+The bytes in this section are the pack. `rulesets/*.yaml` are copies of `rules/*.yaml` here. `pack_rev` over the ten canon files (`cast/`, `world/`, `rules/`), and not over `pack.yaml` or `state/`, is `blake2s:311fba8fa0b3678adfe606ba8113246ffcee6886a640138bf2adb015ee753ef4`.
 
-| Id | Role | When it must exist |
-|---|---|---|
-| `mira` | NPC, knows `fact_ledger_short`, shop schedule | Commit 1 |
-| `aldric` | NPC, does not know `fact_ledger_short` | Commit 1 |
-| `pc_rowan` | PC, sheet `state/actors/pc_rowan.yaml`, template `cast/pc-harbormouse.md` | Day 45 fixture |
-| `docks_shop`, `docks_street`, `mira_rooms` | Places | `docks_shop` on commit 1; all three by day 45 |
-| `lamp_oil` | Sku, `stock_rate` 4 | Day 45 |
-| `assassination_debt` | `requires_presence: true`, owner `pc_rowan`, stays paused while empty | Day 45. Test 2 may use a smaller pack under `tests/conformance/fixtures/` |
-| `shop_day` | Subsistence clock, owner `mira` | Day 45 |
-| `note_mira_door` | Message to `[pc_rowan]` at `docks_shop` | Day 45, and it must fire as a `message` effect during idle, not only exist at start |
-| `r_184` | Rumor. Fixture fact is public `fact_oil_on_shelf`, text `Oil is on the shelf.` The rumor does not cite `fact_ledger_short` | Day 45 |
-| third NPC | `cast/<id>.md`, `tick.eligible: true`, a non-empty schedule | Day 45 authorship. This document does not name them or write their voice |
+`state/now.yaml` and the PC sheet were emitted by `serde-saphyr` 1.3.0 with `NOW_EMIT_OPTIONS` and round-tripped byte-equal on 2026-09-22, rustc 1.89.0. Gate B checks these files. Gate A's emitter check is the smaller sample in §4.
 
-Commit 1 fixture files, enough for ignored test 1:
+Commit 1 may omit `bram`, `docks_street`, `mira_rooms`, and the PC sheet. Its `now.yaml` is schema-valid and is not this golden, because `pack_rev` covers only the canon that exists. The change that lands the emitter re-emits that file with `NOW_EMIT_OPTIONS`. It stays a different file from the golden below until the rest of the canon is present. Every other commit-1 file that shares a path with this section is these bytes.
 
-```text
-packs/oneshot-docks/pack.yaml
-packs/oneshot-docks/cast/mira.md
-packs/oneshot-docks/cast/aldric.md
-packs/oneshot-docks/world/places/docks_shop.md
-packs/oneshot-docks/rules/moves.yaml
-packs/oneshot-docks/rules/checks.yaml
-packs/oneshot-docks/rules/tick.yaml
-packs/oneshot-docks/state/now.yaml
-```
+| Id | Role |
+|---|---|
+| `mira` | NPC. Knows `fact_ledger_short`. Shop hours 6–18, rooms 18–6. `stock_rate` 4 for `lamp_oil` at `docks_shop` |
+| `bram` | Third NPC. Night watch, street 18–6 and shop 6–18. Spreads `r_184` |
+| `aldric` | NPC. `tick.eligible: false`. `known_facts` empty. Does not know the ledger |
+| `pc_rowan` | PC. Sheet below. Template `cast/pc-harbormouse.md`. Starts at `docks_shop` |
+| `docks_shop`, `docks_street`, `mira_rooms` | Places. Each has one public fact so a perceive there is non-empty |
+| `lamp_oil` | Sku. Start stock 4. Rate 4 |
+| `assassination_debt` | `requires_presence: true`, owner `pc_rowan`, `value: 2`, `max: 6`, `paused: true` while the shard is empty |
+| `shop_day` | Owner `mira`, `requires_presence: false`, `value: 1`, `max: 1`, `paused: false` |
+| `note_mira_door` | Mira's note. Due at `shop_day >= 1`. Text `Back at dusk. Oil on the shelf.` |
+| `r_184` | Rumor. Public fact `fact_oil_on_shelf`, text `Oil is on the shelf.` `known_by` starts as `[bram]` |
+| `fact_ledger_short` | Hidden on Mira. Text `The lamp-oil ledger is short.` Absent from every Markdown body |
 
-`mira.md` frontmatter includes the hidden fact and a `tick` block with `eligible: true`, `range: [docks_shop, docks_street, mira_rooms]`, and a schedule. The body is the encoding-law sentence that does not contain the secret. `now.yaml` has `presence.humans: 0`, Mira's `known_facts: [fact_ledger_short]`, Aldric's `known_facts: []`, `state_rev: 0`, `tick_index: 0`. It is schema-valid. It is not yet under the byte-equality gate; the emitter pin rewrites it in the same change that golden-files the emitter.
+`shop_day` starts at its max so derivation step 8 does not match. The note is already due. Mira's night row and both of Bram's rows omit `activity`, so step 4 does not match there. At the shop, step 2 restock matches before step 4, so the `work` block does not fire in the scripted window. Needs have `min` and `max` and no `floor`, so step 1 does not match. Those choices are load-bearing. A start value of 0 on `shop_day` makes Mira spend her idle acts on the clock and she never restocks.
 
-By day 45 the pack also has the shop stock, the note trigger (pin P8), the public rumor, the paused plot clock, the PC sheet, and the third NPC. Host status shows `stock`, `message`, `rumor`, and the paused clock. Strip-bodies still passes tests 1–8.
+#### Scripted idle
 
-Pin P8, the note trigger, because "profile or clock says a note is due" has no shape. Canon on the NPC:
+Start at `world_time` 1080, which is hour 18. Each idle tick adds 60 minutes before derivation. `idle_acts_per_world_day` is 3. The day index changes when `world_time` crosses 1440, on tick 6, and the counters reset. Mira used one act on tick 1, then the reset clears it. She has a full budget again before hour 6.
+
+Shuffle keys are `BLAKE2s-256("docks-001|{tick}|{npc}")`. On tick 12, `bram` sorts before `mira`. On tick 13, `mira` sorts before `bram`.
+
+| Tick | `world_time` after | Hour | Applied intents | What changed |
+|---|---|---|---|---|
+| 1 | 1140 | 19 | Mira `leave_note` | `messages` gains `note_mira_door`. `places.docks_shop.notes` gains that id. Mira `idle_acts_today` is 1 |
+| 2–5 | 1200–1380 | 20–23 | none | Commit only. `tick_index` and `state_rev` still advance |
+| 6 | 1440 | 0 | none | Day index changes. `idle_acts_today` resets to 0 |
+| 7–11 | 1500–1740 | 1–5 | none | Commit only |
+| 12 | 1800 | 6 | Bram `travel`, then Mira `travel`, both to `docks_shop` | Both places update. No restock yet |
+| 13 | 1860 | 7 | Mira `restock`, then Bram `spread_rumor` to `aldric` | `lamp_oil` goes 4 to 8. `r_184.known_by` becomes `[aldric, bram]` |
+
+Ticks 2–11 emit no NPC intent because the note already exists, `shop_day` is at max, the night rows have no `activity`, and Bram has no adjacent recipient who is allowed `fact_oil_on_shelf` until he is in the shop. Aldric never acts.
+
+Product check 9 is thirteen `spook tick` calls from this golden, not a catch-up burst. A burst stops at 12 commits and ends on the travel tick, before the stock and rumor effects. After tick 13, `spook status` shows a `stock` effect, a `message` effect, a `rumor` effect, and clock `assassination_debt` still paused at 2. Rowan in `mira_rooms` does not see `lamp_oil` on resume. Resume may show `note_mira_door` because `to` contains `pc_rowan`.
+
+`last_tick_at` stays `2026-01-01T00:00:00Z` across these thirteen ticks.
+
+#### Normative bytes
+
+Fence body plus one LF is the file. Lengths count that LF. No extra blank line.
+
+#### `packs/oneshot-docks/pack.yaml` (115 bytes)
 
 ```yaml
+schema: pack/v0
+id: docks-001
+title: Oneshot Docks
+system: oneshot-docks
+start:
+  place: docks_shop
+  pc: pc_rowan
+```
+
+#### `packs/oneshot-docks/cast/aldric.md` (131 bytes)
+
+```markdown
+---
+schema: cast/v0
+id: aldric
+kind: npc
+facts: []
 tick:
+  eligible: false
+---
+Aldric sweeps the shop and does not keep the books.
+```
+
+#### `packs/oneshot-docks/cast/bram.md` (383 bytes)
+
+```markdown
+---
+schema: cast/v0
+id: bram
+kind: npc
+facts: []
+tick:
+  eligible: true
+  tier: named
+  plot_relevant: false
+  range:
+    - docks_street
+    - docks_shop
+  schedule:
+    - start: 6
+      end: 18
+      place: docks_shop
+    - start: 18
+      end: 6
+      place: docks_street
+  needs:
+    rest:
+      min: 0
+      max: 5
+---
+Bram walks the night watch between the street and the shop.
+```
+
+#### `packs/oneshot-docks/cast/mira.md` (805 bytes)
+
+```markdown
+---
+schema: cast/v0
+id: mira
+kind: npc
+facts:
+  - id: fact_ledger_short
+    text: The lamp-oil ledger is short.
+    hidden: true
+tick:
+  eligible: true
+  tier: named
+  plot_relevant: false
+  range:
+    - docks_shop
+    - docks_street
+    - mira_rooms
+  schedule:
+    - start: 6
+      end: 18
+      place: docks_shop
+      activity: work
+    - start: 18
+      end: 6
+      place: mira_rooms
+  stock_rate:
+    docks_shop:
+      lamp_oil: 4
+  needs:
+    rest:
+      min: 0
+      max: 5
+  work:
+    needs:
+      - key: rest
+        delta: 1
+    resources: []
   notes:
     - id: note_mira_door
       due_clock: shop_day
       due_value: 1
-      to: [pc_rowan]
+      to:
+        - pc_rowan
       place: docks_shop
       fact_ids: []
-      text: "Back at dusk. Oil on the shelf."
+      text: Back at dusk. Oil on the shelf.
+---
+Mira keeps the shop neat and the tin out of sight.
 ```
 
-`leave_note` matches when that clock's `value >= due_value` and `note_mira_door` is not already in `now.messages`. The text is the spec's own sample sentence. It must not include the hidden ledger sentence.
+#### `packs/oneshot-docks/cast/pc-harbormouse.md` (130 bytes)
 
+```markdown
 ---
+schema: cast/v0
+id: pc_harbormouse
+kind: pc_template
+facts: []
+---
+Rowan keeps a room above the shop and a knife in the belt.
+```
+
+#### `packs/oneshot-docks/rules/checks.yaml` (94 bytes)
+
+```yaml
+schema: checks/v0
+checks:
+  - id: grit
+    dice:
+      count: 2
+      sides: 6
+    stat: grit
+```
+
+#### `packs/oneshot-docks/rules/moves.yaml` (326 bytes)
+
+```yaml
+schema: moves/v0
+moves:
+  - name: wait
+  - name: travel
+  - name: work
+  - name: restock
+  - name: rest
+  - name: pay_upkeep
+  - name: drift_relationship
+  - name: spread_rumor
+  - name: leave_note
+  - name: file_proposal
+  - name: advance_clock
+  - name: talk
+  - name: attempt
+  - name: attack
+  - name: give
+  - name: take
+```
+
+#### `packs/oneshot-docks/rules/tick.yaml` (549 bytes)
+
+```yaml
+schema: tick/v0
+max_intents_applied: 12
+max_npcs_acting: 8
+llm_npc_intents_per_tick: 0
+max_effects_per_intent: 4
+max_state_keys_mutated: 24
+max_memory_writes: 8
+max_rumor_hops: 2
+idle_acts_per_world_day: 3
+live_acts_per_world_hour: 6
+tick_every_real_seconds: 300
+live_tick_every_real_seconds: 60
+idle_minutes_per_tick: 60
+live_minutes_per_tick: 5
+idle_catchup_max_ticks: 12
+idle_max_world_hours_per_real_hour: 8
+pause:
+  named_plot_clocks: pause_when_empty
+  subsistence_clocks: always_run
+  relationship_drift: always_run
+  travel: run_if_schedule
+```
+
+#### `packs/oneshot-docks/world/places/docks_shop.md` (167 bytes)
+
+```markdown
+---
+schema: place/v0
+id: docks_shop
+facts:
+  - id: fact_oil_on_shelf
+    text: Oil is on the shelf.
+    hidden: false
+---
+The shop faces the water. Tins sit in a row.
+```
+
+#### `packs/oneshot-docks/world/places/docks_street.md` (172 bytes)
+
+```markdown
+---
+schema: place/v0
+id: docks_street
+facts:
+  - id: fact_street_quiet
+    text: The street is quiet.
+    hidden: false
+---
+The street runs between the shop and the rooms.
+```
+
+#### `packs/oneshot-docks/world/places/mira_rooms.md` (165 bytes)
+
+```markdown
+---
+schema: place/v0
+id: mira_rooms
+facts:
+  - id: fact_room_lamp
+    text: A lamp burns in the room.
+    hidden: false
+---
+A lamp burns past the shop's back stair.
+```
+
+#### `packs/oneshot-docks/state/now.yaml` (2006 bytes)
+
+```yaml
+schema: now/v0
+shard_id: docks-001
+pack_rev: blake2s:311fba8fa0b3678adfe606ba8113246ffcee6886a640138bf2adb015ee753ef4
+state_rev: 0
+tick_index: 0
+world_time: 1080
+last_tick_at: "2026-01-01T00:00:00Z"
+presence:
+  humans: 0
+  session_ids: []
+  actors_present: []
+pause:
+  named_plot_clocks: paused
+  relationship_drift: running
+  subsistence_clocks: running
+  travel: running
+places:
+  docks_shop:
+    stock:
+      lamp_oil: 4
+    hours: {}
+    notes: []
+    actors:
+      - aldric
+      - pc_rowan
+  docks_street:
+    stock: {}
+    hours: {}
+    notes: []
+    actors:
+      - bram
+  mira_rooms:
+    stock: {}
+    hours: {}
+    notes: []
+    actors:
+      - mira
+actors:
+  aldric:
+    kind: npc
+    place: docks_shop
+    flags: []
+    busy: false
+    needs:
+      rest: 3
+    resources: {}
+    relationships: {}
+    reputation: {}
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  bram:
+    kind: npc
+    place: docks_street
+    flags: []
+    busy: false
+    needs:
+      rest: 3
+    resources: {}
+    relationships: {}
+    reputation: {}
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  mira:
+    kind: npc
+    place: mira_rooms
+    flags: []
+    busy: false
+    needs:
+      rest: 3
+    resources: {}
+    relationships: {}
+    reputation: {}
+    known_facts:
+      - fact_ledger_short
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  pc_rowan:
+    kind: pc
+    place: docks_shop
+    flags: []
+    busy: false
+    known_facts: []
+    sheet: state/actors/pc_rowan.yaml
+clocks:
+  assassination_debt:
+    value: 2
+    max: 6
+    requires_presence: true
+    owners:
+      - pc_rowan
+    paused: true
+  shop_day:
+    value: 1
+    max: 1
+    requires_presence: false
+    owners:
+      - mira
+    paused: false
+rumors:
+  - id: r_184
+    fact_ids:
+      - fact_oil_on_shelf
+    origin: bram
+    heat: 1
+    known_by:
+      - bram
+messages: []
+proposals: []
+```
+
+#### `packs/oneshot-docks/state/actors/pc_rowan.yaml` (118 bytes)
+
+```yaml
+schema: sheet/v0
+id: pc_rowan
+template: cast/pc-harbormouse.md
+stats:
+  grit: 1
+resources: {}
+inventory: []
+flags: []
+```
 
 ## 13. Conformance architecture
 
@@ -1146,45 +1785,43 @@ Synthetic packs (50 NPCs, kill-mid-commit) live under `tests/conformance/fixture
 | 11 | Strip bodies, tests 1–8 still pass | `product_11_strip_bodies.rs` copies the fixture, deletes bodies, reruns |
 | 12 | Hidden-string lint on bodies | `product_12_hidden_string_lint.rs` → `kernel::lint` |
 
-First implementation task after commit 1: make test 1 fail for real (remove `ignore`), then implement `perceive` and the firewall until it passes. Do not start at the scheduler, the studio, or `npc_act`.
+After commit 1, make test 1 fail for real (remove `ignore`), then land the firewall, `perceive`, and the tick path that test runs, until it passes. That is gate A. Do not start at MCP tool bodies, the scheduler, or `npc_act`.
 
 ---
 
-## 14. 90-day build slices
+## 14. Gates
 
-### Days 1–21
+The order is three gates. Commit 1 stays the behavior-free file list at the end of this document. Later commits are not file lists. A commit is wide enough to make the next proof true, and no wider. `product_spec.md` still mentions day numbers. Those are a pace sketch. These gates win.
 
-Crates: `spookery-kernel`, `spookery-tick`, root bin with `lint`, `tick`, `replay` (replay may return `NOT_IN_SPEC` until the emitter golden exists). `spookery-mcp` is an empty package that compiles and registers no tools, so the dependency ban is already true.
+### Gate A — kernel proof
 
-Green by day 21: tests 1, 2, 6, import-boundaries, schema load. Emitter golden checked in. `pack_rev` refusal works.
+Green: tests 1, 2, and 6, `import_boundaries`, schema load, `pack_rev` refusal, and the emitter sample in §4.
 
-Forbidden to start: MCP tool bodies, `--serve`, a web framework, the scheduler, `npc_act` beyond the disabled stub, a second snapshot format, inventory transfers for `give`/`take`.
+Test 1 is 100 idle ticks. This gate includes `perceive`, the firewall, pause, apply, and enough of `run_tick` to run that assertion. It is not a perceive-only change.
 
-### Days 22–45
+`spookery-mcp` compiles and registers no tools. `replay` may return `NOT_IN_SPEC` until the emitter sample matches. Canon JSON Schemas from §4 land here.
 
-MCP stdio with the three profiles and the tool lists in §8. Handlers that v0 cannot honor return the pinned error (`LLM_DISABLED`, `NOT_IN_SPEC`) and stay on `tools/list`.
+Still absent: MCP tool bodies, the scheduler, `npc_act` beyond the `LLM_DISABLED` stub, `--serve`, a second snapshot, inventory transfers for `give` / `take`.
 
-CLI: `run`, `status`, `migrate`. Player resume and host digest.
+### Gate B — doors and the docks fixture
 
-Fixture authorship: third NPC, shop, note, rumor, paused plot clock. Tests 9 and 10 green. Product criterion 9 green for one scripted idle (catch-up or a test-driven clock). Seven real days of leaving it running is the days 46–70 measurement plus the day 71–90 check.
+Green: tests 9 and 10, product checks 1, 9, 11, and 12, CLI `run`, `status`, and `migrate`, and the three MCP profiles with the §8 tool order.
 
-BYOK is unused. No model crate. No website.
+`packs/oneshot-docks` matches the §12 bytes, including `state/now.yaml`. Product check 9 is the thirteen-tick script in §12.
 
-### Days 46–70
+Handlers v0 cannot honor stay on `tools/list` and return the pinned error (`LLM_DISABLED`, `NOT_IN_SPEC`).
 
-Scheduler in `src/cli`, Tokio timer only. `rules/tick.yaml` already loaded; the scheduler now sleeps `tick_every_real_seconds`. Tests 3, 4, 5, 7, 8 green. JSONL audit is the §7 shape including `last_tick_at`.
+Still absent: the scheduler, any model crate, a website.
 
-Measure idle shard-day cost on a laptop process: RSS and ticks per real day, printed by `spook status` as numbers from the process and the log. That measurement is not a billing UI.
+### Gate C — clock
 
-Forbidden to start: Discord, accounts, Postgres or SQLite, an embedder, multi-ruleset load.
+Green: tests 3, 4, 5, 7, and 8. JSONL matches §7, including `last_tick_at`. The scheduler in `src/cli/schedule.rs` sleeps `tick_every_real_seconds` on a Tokio timer and calls `run_tick` on the calling thread.
 
-### Days 71–90
+`spook status` may print RSS and ticks per real day as numbers. That line is not a conformance test and not a billing UI.
 
-No new writer and no new crate. Success condition from the product: someone runs a pack they wrote, without a schema rewrite and without a pairing session. The code work is bugfix on the existing crates plus the conformance tests those bugs gain.
+Still absent: a new writer, a new crate, `--serve`, Discord, accounts, Postgres, SQLite, an embedder, multi-ruleset load.
 
-`--serve` stays unscheduled (conflict C8). Billing, marketplace, and Discord stay unscheduled.
-
-Company gates in product §13.2 (ten external packs, three lived-in shards, a paid renewal) are not engineering tasks in this architecture.
+After gate C the work is bugfix on these crates. Each bug lands with the conformance test that failed. Company gates in the product notes are not tasks in this document.
 
 ---
 
@@ -1221,7 +1858,7 @@ Earlier drafts left these unspecified. Each pin is closed. Do not reopen brand, 
 
 | Id | Gap | Pin | Reason |
 |---|---|---|---|
-| P1 | Which YAML crate | `serde-saphyr` exactly `1.3.0` (released 2026-09-16, MSRV 1.89) | It is a 1.x line with explicit serializer options. `noyalib` is still 0.0.x (`0.0.48` on 2026-09-22). Golden-file `emit_now` in the same week. If 1.3.0 cannot honor §4's emitter policy, stop and report that; do not add a second snapshot in that same change |
+| P1 | Which YAML crate | `serde-saphyr` exactly `1.3.0` and the `NOW_EMIT_OPTIONS` in §4 | Verified 2026-09-22, rustc 1.89.0. The crate holds the policy under those options. A different version, or a failure to match the §4 sample, stops the work. Do not add a second snapshot |
 | P2 | CLI load form | `spook run <pack>` only | Stack names `run`. Product's `spook ./pack` is a sketch. One grammar, so `--mcp` and later flags have a place to sit |
 | P3 | Where reputation lives | `now.actors.<id>.reputation.<faction>.{value, last_world_time}` | The effect and the per-day cap need a home. The `Now` example omitted it. Empty when unused |
 | P4 | Flags on both `Now` and the PC sheet | Idle predicate reads `Now` only. Sheet flags are not synced | Both files contain `flags` and the spec does not say they mirror |
@@ -1241,15 +1878,27 @@ Earlier drafts left these unspecified. Each pin is closed. Do not reopen brand, 
 | P18 | Catch-up arithmetic | Printed `D * 60 / tick_every_real_seconds`, and the world-hour cap, tighter bound wins | Conflict C5 |
 | P19 | Schedule endpoints | Half-open `[start, end)`, wrap allowed. Docks hour 6 is the shop; hour 18 is the rooms. Two matches: first listed row | Closed. The modulus is P5. The ends are not in both rows |
 | P20 | Tick nested in `commit_turn` | `reason=flush` stages and returns. `commit_turn` is the only write: one `state_rev`, one tick file. Outermost `run_tick` still `tick_commit`s | Closed. A player line must not commit twice |
-| P21 | Empty `perceive` | Reject. Do not emit `wait`. Do not spend a `max_npcs_acting` slot. Keep walking the priority list | Closed. Tick §4.3 does not emit `wait` and does not charge the cap. Tick §13's "`wait`" is this rejection |
+| P21 | Empty `perceive` | Reject when `known_facts` is empty (pin P29). Reason `empty_perceive`. Do not emit `wait`. Do not spend a slot | Closed. Stocks and actors do not fill the view. Tick §13's "`wait`" is this rejection |
 | P22 | Two humans, one CLI | A line may begin with `player:<id>`. Otherwise the actor is `--as`, default `start.pc` | Closed. One process, two actor ids. No second socket and no player MCP profile |
 | P23 | One state key | One distinct `Now` path staged in the txn, such as `actors.mira.needs.rest`. Same path twice counts once. Stop at 24 with `BUDGET` | Closed. The cap is a field diff, not one tick of `actors` |
 | P24 | Live GM `recall` | Table profile `as=gm` returns every fact id and its text. Tick profile and every `perceive` reject `as=gm` | Closed. Tick §11 allows the live call. It is not a `ViewerId` and not a tick-process read |
+| P25 | Two hidden representations | A fact object `{ id, text, hidden }`. A top-level `hidden:` array is `SCHEMA` | §6 named both a flag and an array. One shape |
+| P26 | Schedule row and graph | `{ start, end, place, activity?, rest_delta? }`. Graph = the set of row places. Missing `activity` skips step 4 | P19 closed the hours. The row had no fields |
+| P27 | Work block and needs | `work` lists `{ key, delta }` under `needs` and `resources`. Needs allow `min` and `max` only | Step 1 stays a fall-through because `floor` is not a field |
+| P28 | `stock_rate` shape | Map of place to map of sku to i64. `delta` is that integer | "Place they have stock_rate for" had no keys |
+| P29 | Empty perceive | The view's `known_facts` array is empty | "Usable facts" had no test |
+| P30 | Now path spelling | Dot path, id not index. Per-class table in §5. Counters count. Derived occupancy does not | P23 named one example |
+| P31 | Memory line | Compact JSON, key order `tick_index`, `actor_id`, `intent_id`, `fact_ids`, `tags`, `text` | The file rewrite had no fields |
+| P32 | Proposal file | `proposal/v0` field order in §4, same emitter | The effect wrote a file with no shape |
+| P33 | Play line | The verb table in §11. Remainder-of-line for note text and proposal summary | P22 closed the actor prefix and not the rest |
+| P34 | Third NPC and the idle script | `bram`, and the thirteen-tick table in §12 | The fixture had no name and no schedule that reaches stock, message, and rumor under the act cap |
+| P35 | Rumor hops | One accepted rumor effect is one hop. Third in a tick is `BUDGET` | "Counts against max_rumor_hops" did not say when |
+| P36 | Counter timing | `tick_index` at loop start. `world_time` before derivation. `spook tick` copies stored `last_tick_at` | Replay drifts if either clock is reread |
 | Other crate versions | `rmcp`, `rmcp-macros`, `blake2`, `jsonschema`, `tokio`, `serde` | Exact versions are whatever commit 1's `Cargo.lock` resolves. No caret bumps without a new golden | Stack: pick versions in the first implementation commit. Do not tour alternatives |
 
 Pins that stay closed, so they are not reopened as small features:
 
-- Need floors are unspecified. `pay_upkeep` falls through until a spec names a floor field.
+- Need floors stay out of the canon schema. `pay_upkeep` falls through until a later spec names a `floor` field.
 - Live-only moves do not expand in v0.
 - `hours` is not recomputed from the schedule.
 - No `now.canonical.json`.
@@ -1259,11 +1908,11 @@ Pins that stay closed, so they are not reopened as small features:
 
 ## 17. Non-goals checklist
 
-Will not appear in this architecture, in the crate graph, or in the 90-day slices:
+Will not appear in this architecture, in the crate graph, or in gates A–C:
 
 - Web framework, PWA, public website
 - Discord bot
-- `--serve` and any HTTP or WebSocket route (unscheduled, including days 71–90)
+- `--serve` and any HTTP or WebSocket route (unscheduled, including gate C)
 - Marketplace, accounts, billing UI
 - Postgres, SQLite, Redis, an ORM
 - Embedder, vector database, recall beyond keyword and fact-id
@@ -1308,6 +1957,6 @@ tests/conformance/import_boundaries.rs
 tests/conformance/tick_01_closed_secret.rs
 ```
 
-`tick_01_closed_secret.rs` contains the real assertion (100 idle ticks, ledger sentence absent from Aldric's perceive, memories, and rumors) and is `#[ignore = "empty fixture; firewall not landed"]`. The ignore is removed in the change that makes the assertion pass. That next change is the first implementation task: the firewall and `perceive`, nothing else.
+`tick_01_closed_secret.rs` contains the real assertion (100 idle ticks, ledger sentence absent from Aldric's perceive, memories, and rumors) and is `#[ignore = "empty fixture; firewall not landed"]`. The ignore comes off in the change that makes gate A green: the firewall, `perceive`, and the tick path the assertion runs.
 
-Commit 1 does not contain a green tick, a golden `now.yaml` byte claim, an MCP tool, or a scheduler.
+Commit 1 does not contain a green tick, a golden `now.yaml` byte claim, an MCP tool, or a scheduler. The §4 emitter sample is the gate A golden. The §12 docks bytes are the gate B golden.
