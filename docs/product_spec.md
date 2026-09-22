@@ -1,4 +1,6 @@
-# Spookery — Product Spec v0.5
+# Spookery — Product spec
+
+**Non-normative.** Engineering law is `architecture.md`. This file is business notes from early brainstorming. Where this file disagrees with `architecture.md`, the architecture wins.
 
 **Working name:** Spookery (company) + `spook` (CLI / runtime) + pack (world format)
 **One-line pitch:** A runtime for private worlds you describe in text: agents may intend, only the tick may write, and the world keeps moving after everyone logs off.
@@ -11,13 +13,13 @@
 
 **Status:** Design freeze for v0 implementation. Tick spec v0.2 is frozen (no longer draft). Implementation not started. Idle UX locked.
 
-**Companion docs:** `BRANDING.md` (name decisions), `SHARD_TICK_SPEC_v0.3.md` (tick contract), `STACK_v0.3.md` (language and crates), `PACK_ENCODING_v0.3.md` (encoding law), `NOW_AND_EFFECTS.md` (`Now` + effect payloads), `BUSINESS_CASE.md` (year-0 commercial decisions).
+**Companion docs:** none. Engineering law is `architecture.md`.
 
-**Who this document is for:** Founders, reviewers, and coding agents. If a sentence is not in here, the tick spec, the stack note, the encoding law, or the Now/effect schema, it is not in v0.
+**Who this document is for:** Founders reading the business case. Coding agents implement from `architecture.md` only.
 
 **v0.5 delta:** Brand freeze. Packetry → Spookery, `packetd` → `spook` (alias `spookery`), packet → pack. Schema field `pack_rev` (was `packet_rev`). Layout file `pack.yaml` (was `packet.yaml`). Mechanics unchanged. See `BRANDING.md`.
 
-**v0.4 delta:** Tick spec promoted from draft to freeze. Idle LLM default is 0 everywhere. Kernel intent derivation and eligible-NPC predicate specified. `Now` + effect payloads extracted to `NOW_AND_EFFECTS.md`. Year-0 business questions answered in `BUSINESS_CASE.md` (price $9 to learn, AGPL stays, first-10-pack channel named, docks fixture authorship is days 22–45). Companion filenames no longer drift.
+**v0.4 delta:** Idle LLM default is 0 everywhere. Kernel intent derivation and the eligible-NPC predicate were specified. Year-0 business questions were answered then (price $9 to learn, AGPL stays, first-10-pack channel named, docks fixture authorship is days 22–45). Those engineering rules now live in `architecture.md`.
 
 **v0.3 delta:** Freeze implementation stack (Rust), pack encoding law (YAML data / Markdown flavor / JSONL logs), `now.yaml` runtime-owned, PC sheets in `state/`, hidden-string lint on bodies, official fixture uses a tiny original ruleset, and idle legibility is split: host `status` is omniscient; player resume is viewer-scoped. Kernel refusals and tick budgets did not move.
 
@@ -159,10 +161,10 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - Runtime CLI: load pack, MCP stdio, write `state/`
 - Kernel: checks, inventory/resources, knowledge firewall
 - Table / tick MCP tool profiles (see §10)
-- Shard tick loop per `SHARD_TICK_SPEC.md`
+- Shard tick loop, as specified in `architecture.md`
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
 - Terminal play loop (single human or two on one machine is enough)
-- Conformance tests in tick spec §15
+- Conformance tests, as listed in `architecture.md`
 
 ### Out of v0
 
@@ -190,7 +192,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 ## 8. Pack format (v0)
 
-A pack is a directory. Encoding law (authoritative detail): `PACK_ENCODING_v0.3.md`.
+A pack is a directory. The layout and encoding rules are in `architecture.md`.
 
 ```text
 pack/
@@ -345,7 +347,7 @@ Tool design rules:
 - Destructive ops audited
 - Target ~10–17 tools per profile; do not grow to 50 without traces showing missed calls
 
-Full tick tool contracts: `SHARD_TICK_SPEC.md` §8.
+Full tick tool contracts are in `architecture.md`.
 
 ---
 
@@ -360,7 +362,7 @@ Full tick tool contracts: `SHARD_TICK_SPEC.md` §8.
 
 Players never see MCP, keys, or YAML in the intended UX. v0 may be terminal-only and still count.
 
-Idle / overnight: see `SHARD_TICK_SPEC.md`. Summary: subsistence clocks run; named plot clocks pause when no humans are present; max 12 catch-up ticks; relationship drift ±1/day; rumors hop by fact id only.
+Idle / overnight is specified in `architecture.md`. Summary: subsistence clocks run; named plot clocks pause when no humans are present; max 12 catch-up ticks; relationship drift ±1/day; rumors hop by fact id only.
 
 Idle life must be **legible**, not only buried in `now.yaml`. Legible does **not** mean a player wakes up omniscient.
 
@@ -542,7 +544,7 @@ Rebuild a category when you **refuse** something incumbents allow. We refuse mod
 Assumes a laptop is available. Phone week is notes only.
 
 **Days 1–21**
-Pin YAML crate. Freeze pack schema against `PACK_ENCODING_v0.3.md`. Implement knowledge firewall + atomic `state/` writeback. Port tick spec tests 1, 2, 6 as empty fixtures. No UI. No `--serve`.
+Pin YAML crate. Freeze the pack schema against `architecture.md`. Implement knowledge firewall + atomic `state/` writeback. Port tests 1, 2, and 6 as empty fixtures. No UI. No `--serve`.
 
 **Days 22–45**
 MCP stdio: `perceive`, `apply_effect`, `tick_commit`. CLI play. Bundled one-shot that is fun to idle, not only a secret-leak test — authorship pass required (3 named NPCs, shop, note, rumor, paused plot clock). BYOK unused if kernel-only. Still no website.
@@ -584,12 +586,8 @@ The core does not grow a second writer. Extensions are shells and packs.
 
 ```text
 /docs
-  PRODUCT_SPEC.md          # this file
-  SHARD_TICK_SPEC.md
-  STACK.md
-  PACK_ENCODING_v0.3.md
-  NOW_AND_EFFECTS.md
-  BUSINESS_CASE.md
+  architecture.md          # the only normative spec
+  product_spec.md          # this file; business notes, not law
 /schema                    # now.schema.json, effect.schema.json, intent.schema.json
 /rulesets                  # default original moves, checks, tick.yaml
 /packs
@@ -603,7 +601,7 @@ The core does not grow a second writer. Extensions are shells and packs.
   conformance/
 ```
 
-Language: Rust. See `STACK.md`.
+Language: Rust, as pinned in `architecture.md`.
 
 Agents implement; a human reviews. Agents implementing features MUST add or update a conformance test in the same change.
 

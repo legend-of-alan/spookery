@@ -1,11 +1,12 @@
 # Spookery v0 architecture
 
-**Status:** Record of truth before any implementation commit. No production behavior is implied by the existence of this file.
+**Status:** Normative spec for v0. Implementation has not started.
 **License:** CC BY 4.0 (spec). Runtime code that lands under `/src` is AGPL-3.0-or-later.
 **Audience:** Founders, a reviewing programmer, and coding agents implementing crate by crate.
-**Precedence:** `SHARD_TICK_SPEC_v0.3.md` → `NOW_AND_EFFECTS.md` → `PACK_ENCODING_v0.3.md` → `STACK_v0.3.md` → `PRODUCT_SPEC_v0.5.md`. This file does not outrank them. A sentence with no license in those five is out of v0.
 
-The spec sketch says `/docs`. This repository keeps the specs in `Docs/`. This file lives beside them. Do not rename the spec directory in the implementation commits.
+This file is the only normative spec. A rule that is not written here is out of v0. `product_spec.md` is non-normative business notes.
+
+This spec lives in `docs/`. Implementation commits keep that directory name.
 
 ---
 
@@ -24,16 +25,16 @@ The spec sketch says `/docs`. This repository keeps the specs in `Docs/`. This f
 
 A reviewer who needs a database, an idle LLM, or a second writer should reject this document rather than extend it.
 
-### Residual conflicts
+### Decided rules
 
-Do not smooth these over in code review. The implemented rule is the one in the "Rule" column.
+The rows below are decisions the earlier drafts stated in more than one way. Implement the Rule column.
 
 | # | Conflict | Rule |
 |---|---|---|
-| C1 | Tick §8.1: tick `perceive` requires `as=npc:<id>` and forbids `as=gm`. Product §10.2 adds "or system actor". Product principle 3 and the planning invariants allow only `player:<id>` and `npc:<id>`. | Tick profile accepts only `as=npc:<id>`. Table and CLI play accept `as=player:<id>` or `as=npc:<id>`. `as=gm` and a bare call are `UNSCOPED_PERCEIVE`. There is no system viewer on `perceive`. |
+| C1 | Tick §8.1: tick `perceive` requires `as=npc:<id>` and forbids `as=gm`. Tick §11 lets a live GM call `recall` as a player or as GM. Product §10.2 adds "or system actor". Product principle 3 allows only `player:<id>` and `npc:<id>` on `perceive`. | Tick profile `perceive` and `recall` accept only `as=npc:<id>`. Table and CLI `perceive` accept `as=player:<id>` or `as=npc:<id>`. `as=gm` on `perceive`, and on every tick-profile tool, is `UNSCOPED_PERCEIVE`. There is no system viewer on `perceive`. Table `recall` accepts `as=gm` and returns every fact id and its text (pin P24). `ViewerId` has no `Gm` variant. |
 | C2 | Product criterion 2 says `perceive(as=npc:mira)` never contains Mira's hidden strings. Tick test 1 forbids that string in Aldric's memories, rumors, and `perceive(as=npc:aldric)`. The `Now` example gives Mira `known_facts: [fact_ledger_short]`, and tick §8.3 returns `known_facts` as ids plus short text. | Test 1 is the suite. A viewer receives a fact's text only when that fact id is in their `known_facts`, or the fact is public and at their place. Mira can perceive a hidden fact she knows. Criterion 2's literal reading is not implemented. |
 | C3 | Tick §8.1 says `recall` is "keyword/semantic". Stack says keyword plus fact-id index, and lists an embedder as out of v0. | `recall` is keyword match plus fact-id lookup inside the viewer's allowed facts. No vector index. |
-| C4 | Tick §12 sample JSON uses `"seed": "shard:abc\|tick:1842"`. Stack and the planning invariant use `blake2s("shard_id\|tick_index")`. | Preimage is `{shard_id}\|{tick_index}`. The §12 sample string is non-normative. One function, `seed_preimage`, is the only formatter. See §16. |
+| C4 | Tick §12 once illustrated `seed` as `shard:abc\|tick:1842`. The stack formula is `shard_id\|tick_index`. | Closed. `seed` stores `{shard_id}\|{tick_index}`. Tick §12's example is `abc\|1842`. One function, `seed_preimage`, is the only formatter. `rng` is one BLAKE2s-256 of that string. |
 | C5 | Tick §5.2 prints `ceil(D * 60 / tick_every_real_seconds)` while `D` is real hours and `tick_every_real_seconds` is seconds. | Implement the printed formula. Do not silently substitute `D * 3600`. Also apply the §3.1 world-hour cap. The burst stops at the tighter bound. Flagged in §7. |
 | C6 | `state_rev` is specified as +1 per successful `tick_commit`. `commit_turn` is also a `state/` writer. | Both successful commits increment `state_rev`. `tick_index` increments only when the tick loop runs. See §16. |
 | C7 | Product §9 shows `spook ./pack`. Stack names the subcommand `run`. | The only load invocation is `spook run <pack>`. See §11 and §16. |
@@ -68,7 +69,7 @@ Models never patch `state/`, `world/`, or `cast/`. `llm_say` is discarded on int
 
 Markdown bodies are flavor. Every number the tick uses is a YAML field or a Rust constant. A pack with every Markdown body deleted must still tick.
 
-There is no GM perceive on the tick process. Host omniscience is the read-only CLI `spook status`, which filters the evidence tape with `viewer = host`. It is not a tick tool.
+There is no GM perceive on the tick process. Host omniscience is the read-only CLI `spook status`, which filters the evidence tape with `viewer = host`. It is not a tick tool. The one `as=gm` read is table-profile `recall` during a live session (pin P24). It is not `perceive`, and the tick profile rejects it.
 
 ---
 
@@ -85,7 +86,7 @@ There is no GM perceive on the tick process. Host omniscience is the read-only C
 
 One process. One shard directory. Zero humans is a valid shard. A session is a presence window inside that process, not a second process.
 
-v0 laptop play is one invocation. Two humans on one machine share that invocation by submitting intents under their own `player:<id>`. There is no local multiplayer socket in v0.
+v0 laptop play is one invocation. Two humans on one machine share that invocation. A play line may name `player:<id>`; `--as` is the default when it does not (pin P22). There is no local multiplayer socket in v0.
 
 ```mermaid
 flowchart LR
@@ -169,11 +170,11 @@ All paths under `src/kernel/`.
 | `lint` | Schema, frontmatter, hidden-string, strip-bodies helper | `lint_pack` |
 | `perceive` | Scoped view | `perceive` |
 | `recall` | Keyword and fact-id index over a view | `recall` |
-| `eligibility` | §4.3 predicate | `is_eligible` |
+| `eligibility` | Eligibility predicate | `is_eligible` |
 | `derive` | `kernel_intents_for_eligible_npcs` | That function |
 | `expand` | Move → effect table | `expand` |
 | `apply` | Effect validators, staging into `Txn` | `apply_effect` |
-| `pause` | §6.3 policy applied to staging clocks | `apply_pause_policy` |
+| `pause` | Pause policy applied to staging clocks | `apply_pause_policy` |
 | `digest` | Host vs player filter over JSONL | `idle_digest` |
 | `limits` | Default budget constants | `Budget` |
 
@@ -183,7 +184,7 @@ All paths under `src/kernel/`.
 
 | Module | Function |
 |---|---|
-| `loop_` | `run_tick` — §9 of the tick spec |
+| `loop_` | `run_tick` — §7 |
 | `advance` | `pick_advance` |
 | `budget` | `prioritize`, caps, catch-up count |
 | `seed` | `seed_preimage`, `shuffle_key`, `die_face` |
@@ -211,6 +212,41 @@ The test is a string scan of source, present from commit 1.
 ---
 
 ## 4. Pack load and identity
+
+### Encodings
+
+| Encoding | Where | Authority |
+|---|---|---|
+| YAML | `pack.yaml`, `rules/*.yaml`, YAML frontmatter, `state/now.yaml`, `state/rumors.yaml` | Kernel-true data |
+| Markdown body | After frontmatter in `world/**/*.md` and `cast/*.md` | Flavor only. Never mechanical |
+| JSONL | `state/log/*.jsonl`, `state/memories/*.jsonl` | Evidence of what a commit did. Not a second `Now` |
+
+JSON Schema validates the data model, not the file extension. MCP on the wire is JSON-RPC. That is the protocol, not a pack format. Do not add TOML, a JSON file per place, or a database for canon or `Now`.
+
+### Layout
+
+```text
+<pack>/
+  pack.yaml
+  world/places/<id>.md
+  world/factions/<id>.md
+  cast/<npc>.md
+  cast/<pc-template>.md
+  rules/checks.yaml
+  rules/moves.yaml
+  rules/tick.yaml
+  state/now.yaml
+  state/actors/<pc-id>.yaml
+  state/log/tick-NNNN.jsonl
+  state/memories/<id>.jsonl
+  state/rumors.yaml
+  state/proposals/
+  saves/
+```
+
+Canon (`world/`, `cast/`, `rules/`) is read-only at runtime. `state/` is the only live write surface. v0 loads one ruleset, the `rules/` directory of the pack it was pointed at. The official fixture uses the tiny original move list in §5. It is not an SRD.
+
+Frontmatter is YAML between a leading `---` line and the next `---` line. The body starts after the closing delimiter. If deleting the body would change a tick, the field belongs in YAML. Bodies may be shown by `perceive` only as flavor attached to fact ids the viewer may already know. Bodies do not introduce places, items, flags, or facts.
 
 ### Load order
 
@@ -262,7 +298,7 @@ Emitter policy, pinned in `codec::NOW_EMIT_OPTIONS`:
 - `last_tick_at` is an already formatted `String` (`YYYY-MM-DDTHH:MM:SSZ`), never a `DateTime` type that picks its own format.
 - Integers only on `Now`. No floats, so float formatting cannot drift.
 
-If `serde-saphyr` 1.3.0 cannot hold this policy, stop. Do not add `now.canonical.json` unless that failure is written down. The stack forbids a parallel snapshot until the emitter is shown to be unpinnable.
+If `serde-saphyr` 1.3.0 cannot hold this policy, stop. Do not add `now.canonical.json` unless that failure is written down. One snapshot until the emitter is shown to be unpinnable.
 
 ### `pack_rev`
 
@@ -324,7 +360,7 @@ A mid-shard edit of `now.yaml` is a migration. `spook tick` and `spook run` refu
 | `places` | `BTreeMap<PlaceId, PlaceLive>` | `stock`, `hours`, `notes`, `actors` |
 | `actors` | `BTreeMap<ActorId, ActorLive>` | |
 | `clocks` | `BTreeMap<ClockId, Clock>` | |
-| `rumors` | `Vec<Rumor>` | |
+| `rumors` | `Vec<Rumor>` | `id`, `fact_ids`, `origin`, `heat` in `1..=3`, `known_by`. A rumor is this object, not free text |
 | `messages` | `Vec<Message>` | |
 | `proposals` | `Vec<ProposalId>` | |
 
@@ -356,7 +392,7 @@ A mid-shard edit of `now.yaml` is a migration. `spook tick` and `spook run` refu
 
 `Clock`: `value: i64`, `max: i64`, `requires_presence: bool`, `owners: Vec<ActorId>`, `paused: bool`.
 
-Stored `busy` is the encounter flag (tick spec §5.3). Co-location with a present player is an extra eligibility term (tick spec §10). Co-location is computed per tick and is not written back as `busy: true`, so a player leaving does not leave a sticky flag.
+Stored `busy` is the encounter flag. Co-location with a present player is an extra eligibility term. Co-location is computed per tick and is not written back as `busy: true`, so a player leaving does not leave a sticky flag.
 
 `PcSheet` (`state/actors/<pc-id>.yaml`): `id`, `template`, `stats` (`BTreeMap<String, i64>`), `resources`, `inventory` (`Vec<ItemId>`), `flags`. Sheet `flags` are sheet data. The idle predicate does not read them. It reads `Now.actors.<id>.busy` and `Now.actors.<id>.flags`. The two `flags` lists are not synced. Pin P4.
 
@@ -404,7 +440,7 @@ Idle moves: `wait`, `travel`, `work`, `restock`, `rest`, `pay_upkeep`, `drift_re
 
 Live-only names, rejected with `LIVE_ONLY` when `presence.humans == 0`: `talk`, `attempt`, `attack`, `give`, `take`.
 
-Their expansion when humans are present is not in `NOW_AND_EFFECTS` §4. `expand` returns `NOT_IN_SPEC` for those five even during a session. They may be declared in `moves.yaml` so the fixture matches the product list. They do not mutate inventory. Do not add an effect class to make `give` work.
+`expand` returns `NOT_IN_SPEC` for those five even during a session. They may be declared in `moves.yaml` so the fixture matches the move list. They do not mutate inventory. Do not add an effect class to make `give` work.
 
 ### Move → effect
 
@@ -416,7 +452,7 @@ Their expansion when humans are present is not in `NOW_AND_EFFECTS` §4. `expand
 | `restock` | one `stock` | `sku`, `delta` |
 | `rest` | one `need` on key `rest` | `delta` |
 | `pay_upkeep` | `resource` and/or `need` | `key`, `delta` |
-| `drift_relationship` | one `relationship` | `target.actor` is `b`. `delta` from the §6.4 formula |
+| `drift_relationship` | one `relationship` | `target.actor` is `b`. `delta` from the drift formula below |
 | `spread_rumor` | one `rumor` | `target.rumor` or args `rumor_id`, `to` |
 | `leave_note` | one `message` | message fields |
 | `file_proposal` | one `proposal` | proposal fields |
@@ -447,7 +483,7 @@ Defaults from tick §5 and §3. Absent keys use these. Unknown `tick.yaml` keys 
 | `max_npcs_acting` | 8 |
 | `llm_npc_intents_per_tick` | 0 |
 | `max_effects_per_intent` | 4 |
-| `max_state_keys_mutated` | 24 |
+| `max_state_keys_mutated` | 24 distinct `Now` paths (pin P23) |
 | `max_memory_writes` | 8 |
 | `max_rumor_hops` | 2 |
 | `idle_acts_per_world_day` | 3 |
@@ -461,7 +497,9 @@ Defaults from tick §5 and §3. Absent keys use these. Unknown `tick.yaml` keys 
 
 v0 accepts only these pause values: `named_plot_clocks: pause_when_empty`, `subsistence_clocks: always_run`, `relationship_drift: always_run`, `travel: run_if_schedule`. Any other value → `SCHEMA`.
 
-World-minute modulus, pin P5: one world-hour is 60 minutes, one world-day is 1440. `world_hour = (world_time / 60) % 24`. Schedule ranges may wrap (`[18, 6]`).
+World-minute modulus, pin P5: one world-hour is 60 minutes, one world-day is 1440. `world_hour = (world_time / 60) % 24`. Schedule ranges are half-open `[start, end)` and may wrap (pin P19). Hour `h` is inside `[start, end)` when `start < end` and `start <= h < end`, or when `start > end` and (`h >= start` or `h < end`). The docks rows `[6, 18]` and `[18, 6]` put hour 6 in the shop and hour 18 in the rooms. If two rows still both contain the hour, the first listed row wins.
+
+`max_state_keys_mutated` counts distinct `Now` paths staged in the txn (pin P23). `actors.mira.needs.rest` is one key. A second write to that same path does not count again. One effect that stages three new paths counts three. An effect is not one key, and a top-level field such as `actors` is not one key. The loop stops with `BUDGET` when the next effect would push the distinct-path count past 24. Later intents are dropped, not queued.
 
 ### `resolve_check`
 
@@ -483,7 +521,7 @@ checks:
 
 Unknown `check_id` → `UNKNOWN_KEY`. Stat is read from the PC sheet. Missing stat → `UNKNOWN_KEY`. No XP, no spell list, no ability-score block.
 
-Dice, pin P6: for each die, `face = (u32le(BLAKE2s-256("{shard_id}|{tick_index}|{roll_i}")[0..4]) % sides) + 1`. `roll_i` starts at 0 for the tick and increments per die. `total = sum(faces) + stat`. `success = total >= target`. Replay calls the same function. It does not read a stored face. No RNG crate.
+Dice, pin P6: `rng = BLAKE2s-256(seed_preimage)` once per tick. Die `n` (from 0) is `face = (u32le(rng[4n .. 4n+4]) % sides) + 1`. The die index is not part of the preimage. Two d6s fit in the 32-byte digest. A check that would read past byte 32 is outside v0. `total = sum(faces) + stat`. `success = total >= target`. Replay calls the same function. It does not read a stored face. No RNG crate.
 
 ### Inventory and resources
 
@@ -511,7 +549,7 @@ Collect every hidden fact `text`. Scan every Markdown body in the pack. Substrin
 
 The fixture secret, taken from the encoding law's own example, is the text `The lamp-oil ledger is short.` on fact `fact_ledger_short`. Mira's body must not contain that sentence. The encoding-law sample body ("Mira keeps the shop neat and the tin out of sight.") does not contain it. Use that body.
 
-### Eligibility (tick spec §4.3)
+### Eligibility
 
 `is_eligible(npc, now, presence, budget)` is true when all of these hold:
 
@@ -543,13 +581,21 @@ Pure function of canon frontmatter plus staging `Now`. At most one intent per NP
 
 `file_proposal` is a legal move and is not in this table. The kernel does not add a tenth step. The catch-up path files the season proposal itself (§7).
 
+Drift delta, for a declared pair whose `stance != target`:
+
+```text
+delta = clamp(target - stance, -1, +1)
+```
+
+`target` and `stance` are the fields on `now.actors.<id>.relationships.<other>`. Apply at most once per world-day. This step does not match when either actor is stored-busy or `last_interaction_world_time` is within 1 world-day. There is no allies list and no memory-tag stance.
+
 ### `apply_effect` validators
 
 Order for every effect: class already parsed → viewer matches the intent actor → budget counters (`BUDGET` stops the remainder of this intent and, on global caps, stops the loop) → class validator from the table in §5 → stage into `Txn`.
 
 `SKIPPED` (relationship or reputation day-cap) does not consume `max_effects_per_intent`, does not reject the remainder, and is recorded on the tick line's `rejected` list with reason `skipped`.
 
-A failed effect rejects the remainder of that intent (tick spec §9 "or reject remainder") for every code except `SKIPPED`.
+A failed effect rejects the remainder of that intent for every code except `SKIPPED`.
 
 Pause policy runs at the start of the tick, inside the txn, before derivation:
 
@@ -559,7 +605,7 @@ Pause policy runs at the start of the tick, inside the txn, before derivation:
 
 ### Failure codes
 
-Named by the tick spec on `apply_effect`:
+Codes from `apply_effect`:
 
 | Code | Meaning |
 |---|---|
@@ -571,7 +617,7 @@ Named by the tick spec on `apply_effect`:
 | `UNKNOWN_KEY` | Clock, need, flag, resource, sku, check, or args key that canon did not list |
 | `NOT_OWNER` | Stock place outside range, memory of another actor, idle move of a PC |
 
-The JSONL `rejected` reason for a budget drop is the lowercase word `budget`, matching tick §5 prose. The tool `code` field is `BUDGET`.
+The JSONL `rejected` reason for a budget drop is the lowercase word `budget`. The tool `code` field is `BUDGET`.
 
 Pinned tokens. The spec requires the failure and does not name the token. Use these spellings and no others:
 
@@ -580,7 +626,7 @@ Pinned tokens. The spec requires the failure and does not name the token. Use th
 | `PACK_REV_MISMATCH` | Canon hash ≠ `now.pack_rev`. Refuse the tick |
 | `UNKNOWN_MOVE` | Not in `rules/moves.yaml` |
 | `LIVE_ONLY` | Live-only move while `presence.humans == 0` |
-| `UNSCOPED_PERCEIVE` | Missing `as`, `as=gm`, empty id, or any prefix other than `player` or `npc` |
+| `UNSCOPED_PERCEIVE` | Missing `as`, empty id, or any prefix other than `player` or `npc`. Also `as=gm`, except table-profile `recall` (pin P24) |
 | `DENIED_TOOL` | Tool not on this process's profile, or tick calling a denylisted tool |
 | `COMMIT_CONFLICT` | Lock held, or `state_rev` changed under this process |
 | `HAND_EDIT` | `now.yaml` bytes are not the pinned emitter's bytes |
@@ -595,12 +641,14 @@ Pinned tokens. The spec requires the failure and does not name the token. Use th
 
 ### Functions and lock scope
 
-`tick::run_tick(shard, reason, now_wall, catchup: Catchup)` takes the shard lock and holds it until commit or a clean abort. `reason` is `scheduler`, `catchup`, `flush` (`include_tick`), or `manual`. `manual` is host `spook tick` and tests.
+`tick::run_tick(shard, reason, now_wall, catchup: Catchup)` runs the loop below. `reason` is `scheduler`, `catchup`, `flush` (`include_tick`), or `manual`. `manual` is host `spook tick` and tests.
 
-No concurrent ticks. A second call while the lock is held returns `COMMIT_CONFLICT`. The lock is an exclusive `flock(2)` on `state/.tick.lock` (pin P9). The lock file is under `state/` and is outside `pack_rev`.
+Outermost callers (`scheduler`, `catchup`, `manual`, and replay) take the shard lock and hold it until `tick_commit` or a clean abort. `commit_turn` holds that same lock. When it calls `run_tick` with `reason=flush`, the tick does not lock, does not `tick_commit`, and does not unlock (pin P20). The turn writes once after the tick returns.
+
+No concurrent ticks. A second outermost call while the lock is held returns `COMMIT_CONFLICT`. The lock is an exclusive `flock(2)` on `state/.tick.lock` (pin P9). The lock file is under `state/` and is outside `pack_rev`. Nested `run_tick` is not a second caller.
 
 ```text
-lock shard                                          store::lock_shard
+lock shard, unless reason=flush                    store::lock_shard
 status = session_status()                           kernel::session_status
 world_minutes = pick_advance(status, catchup)       tick::pick_advance
 apply_pause_policy                                   kernel::apply_pause_policy
@@ -617,23 +665,38 @@ for intent in candidates:
     for effect in expand(intent)[:max_effects]:
         apply_effect(effect) or reject remainder    kernel::apply_effect
     applied.append(intent)
-tick_commit(...)                                     kernel::store::tick_commit
-unlock
+if run_tick owns the commit:                        pin P20
+    tick_commit(...)                                 kernel::store::tick_commit
+    unlock
+else:
+    return the staged txn to commit_turn
 ```
 
-`maybe_one_llm_intent` returns an empty list. It does not call `npc_act`. It exists so the loop shape matches tick spec §9.
+`maybe_one_llm_intent` returns an empty list. It does not call `npc_act`. It exists so the loop shape stays fixed when the budget is 0.
 
-`filter_blocklist` when `presence.humans == 0` rejects `LIVE_ONLY` moves and any intent whose expanded class would kill or move a PC, start combat, or edit canon in place. `proposal` / `delete_place` is allowed through to `apply_effect`, which writes `state/proposals/` and leaves the markdown file in place (test 10).
+`filter_blocklist`, when `presence.humans == 0`, rejects an intent that would:
+
+- use a `LIVE_ONLY` move
+- kill, maim, or remove a PC, move a PC, or teleport a player
+- start or resolve combat, or grant XP
+- edit `world/` or `cast/`
+- rewrite another actor's memory
+- reveal a hidden fact on a public channel
+- invent a place, NPC, item, faction, flag key, or resource key
+- travel outside `range`
+- advance a clock with `requires_presence` (pause policy already pauses those)
+
+`proposal` / `delete_place` is allowed through to `apply_effect`, which writes `state/proposals/` and leaves the markdown file in place (test 10). There is no clock exception that destroys a player item. `give` and `take` do not move inventory.
 
 `legal(intent, view)` checks the move allowlist, that target ids exist, that every fact id in args is allowed for `intent.actor`, and that a `kernel` intent's actor is eligible. It does not require off-screen stock to appear in the view.
 
 `needs_roll` is true only when that move's `moves.yaml` entry names a `check`. Fixture idle moves do not.
 
-On `perceive` yielding a view with no usable facts, the actor's intent is rejected and the loop continues. The spec's "actor cannot act; `wait`" is this rejection. The kernel still does not emit a `wait` intent.
+On `perceive` yielding a view with no usable facts, the actor's intent is rejected and the loop continues. The row is on `rejected`. The kernel does not emit `wait`. That actor does not count toward `max_npcs_acting` (pin P21). The loop keeps walking the priority list, so a later NPC can still act inside the cap of 8.
 
-Budget exceeded mid-loop: stop applying, `tick_commit` what passed (tick spec §13).
+Budget exceeded mid-loop: stop applying. The commit owner writes what passed. Outermost `run_tick` calls `tick_commit`. A flush returns, and `commit_turn` writes once.
 
-`tick_commit` conflict or I/O error: drop the txn, keep the previous `state_rev`, unlock, return `COMMIT_CONFLICT`.
+`tick_commit` conflict or I/O error: drop the txn, keep the previous `state_rev`, unlock if this call took the lock, return `COMMIT_CONFLICT`. A flush reports the error to `commit_turn` and does not unlock.
 
 LLM timeout does not exist in v0 because the model is not called. The §13 row is satisfied by `maybe_one_llm_intent` returning empty.
 
@@ -659,17 +722,17 @@ ticks_to_run = min(
 
 Also cap world minutes in that burst by `idle_max_world_hours_per_real_hour * D * 60`. If the printed tick count would exceed that minute cap, run fewer ticks.
 
-Ticks that the cap does not run collapse into one `proposal`, `kind: other`, summary `season_advance`. Intent `actor_kind: system`, `source: system`. Effect `as` is `player:<first PC id>` when a PC exists (pin P10), so `ViewerId` stays closed. If no PC exists, do not file the proposal (`NOT_IN_SPEC`) rather than invent a system viewer. This path does not call `perceive`. Plot clocks stay on `Now`, paused. They are not deleted.
+Ticks that the cap does not run collapse into one `proposal`, `kind: other`, summary `season_advance` (pin P10). `source: system`. `actor_id` and effect `as` are the same id: the lexicographically first PC, or, when the pack has no PC, the lexicographically first NPC who owns any clock. `actor_kind` is `player` or `npc` to match that id. `ViewerId` stays closed. There is no `season_advance` effect class. If the pack has neither a PC nor a clock-owning NPC, do not file the proposal. This path does not call `perceive`. Plot clocks stay on `Now`, paused. They are not deleted.
 
-A tick with zero applied intents still commits: `tick_index` and `state_rev` increment, `world_time` advances.
+A tick with zero applied intents still has one commit: `tick_index` and `state_rev` increment, and `world_time` advances. Outermost `run_tick` writes it. A flush leaves that write to `commit_turn`.
 
-### Priority (tick spec §5.4)
+### Priority
 
-Sort ascending by this tuple. Keep a prefix until `max_intents_applied`. While adding, distinct NPC actors may not exceed `max_npcs_acting`. Further NPC intents die with reason `budget`. They are not queued. Player intents do not consume the NPC slot. `wait` does not consume it.
+Sort ascending by this tuple. Keep a prefix until `max_intents_applied`. While adding, distinct NPC actors may not exceed `max_npcs_acting`, except an NPC rejected for an empty `perceive`, who does not take a slot (pin P21). Further NPC intents die with reason `budget`. They are not queued. When an empty-`perceive` rejection leaves a free slot, continue to the next NPC in this order instead of stopping at eight candidates. Player intents do not consume the NPC slot. `wait` does not consume it. The kernel does not emit `wait`.
 
 | Key | Order |
 |---|---|
-| 0 | `actor_kind == player` before `npc` before `system` (tick spec §10: player intents outrank NPC idle intents) |
+| 0 | `actor_kind == player` before `npc` before `system`. Player intents outrank NPC idle intents |
 | 1 | Intent targets a clock whose `owners` contain a PC |
 | 2 | `target.actor` is in `actors_present`, or `target.place` is that player's place, or a `message.to` contains them |
 | 3 | Canon `tier` in `{named, major}` or `plot_relevant` |
@@ -688,12 +751,12 @@ Opening a session does not stop `world_time`. It pauses `requires_presence` cloc
 
 ```text
 seed_preimage(shard_id, tick_index) = shard_id || "|" || decimal(tick_index)
-rng material = BLAKE2s-256(seed_preimage)
+rng = BLAKE2s-256(seed_preimage)
 ```
 
-The JSONL field `seed` stores the preimage, not the digest, and not the sample string `shard:abc|tick:1842`.
+The JSONL field `seed` stores that preimage. Shard `abc` at tick `1842` logs `abc|1842`, which is the tick §12 example. It is not a digest, and it is not `shard:abc|tick:1842`.
 
-`resolve_check` mixes `roll_i` as in §6. Shuffle uses `shuffle_key` above. Neither reads `/dev/urandom`. Neither reads the wall clock.
+`resolve_check` reads this one digest as a stream (§6). Shuffle uses `shuffle_key` above. Neither reads `/dev/urandom`. Neither reads the wall clock.
 
 ### Replay
 
@@ -797,7 +860,7 @@ The tool stays on `tools/list` because the profile names it. The handler does no
 | in | `{ as: "npc:<id>", intent_id, check_id, target }` |
 | out | `{ faces, stat, total, target, success }` |
 | authz | Tick or table profile. Seed from the open txn's `tick_index` |
-| writes | none, other than consuming `roll_i` inside the txn |
+| writes | none, other than advancing the per-tick die cursor |
 | denylist | Unseeded randomness |
 
 `apply_effect`
@@ -842,16 +905,18 @@ Players are not given this profile. The CLI play door calls kernel functions wit
 | `session_status` | `{}` | same as tick | none | |
 | `perceive` | `{ as: "player:<id>" or "npc:<id>", focus? }` | same view shape | none | Missing `as`, `as=gm` |
 | `intent` | one Intent with `source: player` | `{ queued: id }` | Process memory queue only | `apply_effect` smuggled in args. Keeping `llm_say` |
-| `resolve_check` | as table viewer | check result | `roll_i` only | |
+| `resolve_check` | as table viewer | check result | per-tick die cursor only | |
 | `apply_effect` | effect envelope | accepted, code, diff | `Txn` only | Unknown class. Called by the player CLI |
 | `npc_act` | same as tick | `LLM_DISABLED` in v0 | none | Model SDK |
-| `commit_turn` | `{ include_tick: bool, session_id }` | `{ state_rev, diff_summary, log_path }` | One commit. If `include_tick`, run exactly one `run_tick` under the same lock, which consumes the queue, then commit once. If false, apply queued player intents only, no NPC derivation, no `world_time` advance | A second writer. Catch-up burst |
-| `recall` | `{ as, query?, fact_id? }` | allowed facts | none | Facts outside `allows` |
+| `commit_turn` | `{ include_tick: bool, session_id }` | `{ state_rev, diff_summary, log_path }` | One commit (pin P20). If `include_tick`, call `run_tick` with `reason=flush` under this lock. The tick stages, consumes the queue, and returns without `tick_commit`. Then write once: one `state_rev` step and one `tick-NNNN` file. If false, apply queued player intents only, no NPC derivation, no `world_time` advance, and still one write | A second writer. A nested `tick_commit`. Catch-up burst |
+| `recall` | `{ as, query?, fact_id? }` | `as=player:<id>` or `as=npc:<id>`: facts that pass `allows`. `as=gm`: every fact id and its text (pin P24) | none | `as=gm` on the tick profile. Vector search. Using the GM result as a `perceive` view |
 | `session_save` | `{ name }` | `{ path }` | `saves/<name>.yaml` emitted copy. `state_rev` unchanged | Tick profile. Restore-as-live-patch. Restoring a save is `spook migrate` on a host-chosen file, a new commit, not a tick tool |
 
 CLI play sends `include_tick: true` (pin P12) so subsistence clocks do not stall during a sitting. That is one tick, then yield. It is not a catch-up burst.
 
 `commit_turn` with no open txn and an empty queue is a no-op that does not bump `state_rev`.
+
+Table `recall` with `as=gm` is the live-session call from tick §11. Match is still exact `fact_id` or a case-sensitive substring, over every fact rather than `allows`. It does not construct a `ViewerId`. `perceive` on this profile still rejects `as=gm`. The tick profile's `recall` does too.
 
 ### Studio profile
 
@@ -943,7 +1008,7 @@ Argv is parsed with `std::env::args` (pin P14). Closed subcommands:
 |---|---|---|
 | `spook run <pack>` | `open_shard`, player queue, `commit_turn` with `include_tick: true` | `state/` only through `commit_turn` |
 | `spook run <pack> --mcp <profile>` | MCP stdio on that profile | Whatever that profile's commit tools write |
-| `spook run <pack> --as player:<id>` | Sets the CLI viewer. Default viewer is `start.pc` from `pack.yaml` | |
+| `spook run <pack> --as player:<id>` | Default play-line actor (pin P22). Omitted `--as` uses `start.pc` from `pack.yaml` | |
 | `spook lint <pack>` | `kernel::lint` | Nothing |
 | `spook tick <pack>` | `run_tick` once, `reason=manual` | One `tick_commit` |
 | `spook replay <pack>` | `replay_recorded` on a temp copy | The temp copy only. v0 replay refuses to write the source pack |
@@ -959,7 +1024,7 @@ First 45 days: these commands and MCP stdio. The `--serve` flag is not implement
 
 The scheduler (days 46–70) lives in `src/cli/schedule.rs`. It may use Tokio's timer. Each wake computes downtime from the last recorded `last_tick_at` and calls `run_tick` on the calling thread, one at a time. Live play does not depend on the scheduler. If the scheduler crash-loops, `spook run` still accepts intents and `commit_turn`.
 
-Terminal play reads a line, queues it as `intent` for `--as`, and calls `commit_turn`. Players do not see YAML. v0 may print the filtered resume rows and the `perceive` rows. That is the whole UI.
+Terminal play reads a line and calls `commit_turn` (pin P22). A line may begin with `player:<id>`; that id is the intent actor. A line with no actor uses `--as`. Players do not see YAML. v0 may print the filtered resume rows and the `perceive` rows. That is the whole UI.
 
 ---
 
@@ -1049,7 +1114,7 @@ Agents add or update a conformance test in the same change as the feature. Tests
 
 Synthetic packs (50 NPCs, kill-mid-commit) live under `tests/conformance/fixtures/`. They are not extra official worlds. The official world is `packs/oneshot-docks`.
 
-### Tick spec §15
+### Engine tests
 
 | Test | File | Module that makes it pass | Assert |
 |---|---|---|---|
@@ -1064,7 +1129,7 @@ Synthetic packs (50 NPCs, kill-mid-commit) live under `tests/conformance/fixture
 | 9 Tool scope | `tick_09_tool_scope.rs` | `mcp::tick_tools` | `perceive` with no `as` on the tick profile → `UNSCOPED_PERCEIVE` |
 | 10 Proposal only | `tick_10_proposal_only.rs` | `kernel::apply` proposal | Idle delete-place → `state/proposals/<id>.yaml` exists and the place markdown still exists |
 
-### Product §13.1
+### Acceptance criteria
 
 | # | Criterion | Where it passes |
 |---|---|---|
@@ -1150,9 +1215,9 @@ Company gates in product §13.2 (ten external packs, three lived-in shards, a pa
 
 ---
 
-## 16. Open decisions to pin in commit 1
+## 16. Pins
 
-Specs left these unresolved. Recommendations below are the pins. Do not reopen brand, license, language, idle LLM, price, or path B.
+Earlier drafts left these unspecified. Each pin is closed. Do not reopen brand, license, language, idle LLM, price, or path B.
 
 | Id | Gap | Pin | Reason |
 |---|---|---|---|
@@ -1161,19 +1226,25 @@ Specs left these unresolved. Recommendations below are the pins. Do not reopen b
 | P3 | Where reputation lives | `now.actors.<id>.reputation.<faction>.{value, last_world_time}` | The effect and the per-day cap need a home. The `Now` example omitted it. Empty when unused |
 | P4 | Flags on both `Now` and the PC sheet | Idle predicate reads `Now` only. Sheet flags are not synced | Both files contain `flags` and the spec does not say they mirror |
 | P5 | World-day length | 60 minutes per world-hour, 1440 per world-day | Spec uses both units and does not define the modulus |
-| P6 | Dice from BLAKE2s | §6 `die_face` | Spec says `rng = blake2s(seed)` and "the same resolved RNG stream", and does not say how bytes become faces |
+| P6 | Dice from BLAKE2s | One `BLAKE2s-256(seed)` per tick. Die `n` is `u32le(rng[4n .. 4n+4]) % sides + 1`. No per-die preimage | Closed. `rng = blake2s(seed)` is that one stream. Past byte 32 is outside v0 |
 | P7 | Tie-breaks inside derivation | Lowest sku, lowest `(a, b)`, lowest rumor id, lowest recipient id, lowest clock id | First-match does not say which candidate wins when several match. Sorting keys keeps the pure function pure |
 | P8 | Note-due shape | `tick.notes[]` as in §12 | "Profile or clock says a note is due" has no fields. Criterion 9 needs a `message` effect to fire. The sample sentence is the spec's |
 | P9 | Lock path | `flock(2)` on `state/.tick.lock` | Spec requires a shard dir lock and does not name the file |
-| P10 | `as` on the season proposal | Intent `source: system`, `actor_kind: system`. Effect `as` is `player:<first PC id>` when a PC exists. No PC → do not file it | Envelope examples and `ViewerId` are `player` or `npc` only |
+| P10 | `as` on the season proposal | `source: system`. `actor_id` and `as` are the lexicographically first PC, else the lexicographically first NPC who owns a clock. `actor_kind` matches that id. Neither exists → do not file | Closed. `ViewerId` stays `player` or `npc`. A pack with no PC still files the proposal tick §13 requires |
 | P11 | `last_tick_at` on the tape | Recorded on the tick JSONL line and copied on replay | Byte-equal `now.yaml` loses if replay stamps the replay machine's clock. The §12 sample omitted the field |
 | P12 | CLI `include_tick` | `true` | Spec says commit may request it so clocks do not stall, and does not set the CLI default |
 | P13 | `compile_preview` | Read-only `{ perceive, lint }` | The tool is named and has no contract |
 | P14 | CLI parser | `std::env::args` | The subcommand set is closed. No CLI framework crate |
 | P15 | Schema dialect | JSON Schema draft 2020-12 | Spec requires `/schema` and does not name a dialect |
-| P16 | Seed preimage | `{shard_id}\|{tick_index}` stored in JSONL `seed` | Conflict C4. Change only `seed_preimage` if a reviewer rules the §12 sample normative, and do it before any golden log is committed |
+| P16 | Seed preimage | `{shard_id}\|{tick_index}` stored in JSONL `seed`. Shard `abc`, tick `1842` logs `abc\|1842` | Closed. Tick §12 matches this string. Do not restore `shard:` / `tick:` prefixes, and do not store the digest |
 | P17 | `state_rev` and `commit_turn` | Both commit functions increment `state_rev`. `tick_index` increments only inside `run_tick` | Conflict C6. One monotonic commit counter keeps crash recovery unambiguous |
 | P18 | Catch-up arithmetic | Printed `D * 60 / tick_every_real_seconds`, and the world-hour cap, tighter bound wins | Conflict C5 |
+| P19 | Schedule endpoints | Half-open `[start, end)`, wrap allowed. Docks hour 6 is the shop; hour 18 is the rooms. Two matches: first listed row | Closed. The modulus is P5. The ends are not in both rows |
+| P20 | Tick nested in `commit_turn` | `reason=flush` stages and returns. `commit_turn` is the only write: one `state_rev`, one tick file. Outermost `run_tick` still `tick_commit`s | Closed. A player line must not commit twice |
+| P21 | Empty `perceive` | Reject. Do not emit `wait`. Do not spend a `max_npcs_acting` slot. Keep walking the priority list | Closed. Tick §4.3 does not emit `wait` and does not charge the cap. Tick §13's "`wait`" is this rejection |
+| P22 | Two humans, one CLI | A line may begin with `player:<id>`. Otherwise the actor is `--as`, default `start.pc` | Closed. One process, two actor ids. No second socket and no player MCP profile |
+| P23 | One state key | One distinct `Now` path staged in the txn, such as `actors.mira.needs.rest`. Same path twice counts once. Stop at 24 with `BUDGET` | Closed. The cap is a field diff, not one tick of `actors` |
+| P24 | Live GM `recall` | Table profile `as=gm` returns every fact id and its text. Tick profile and every `perceive` reject `as=gm` | Closed. Tick §11 allows the live call. It is not a `ViewerId` and not a tick-process read |
 | Other crate versions | `rmcp`, `rmcp-macros`, `blake2`, `jsonschema`, `tokio`, `serde` | Exact versions are whatever commit 1's `Cargo.lock` resolves. No caret bumps without a new golden | Stack: pick versions in the first implementation commit. Do not tour alternatives |
 
 Pins that stay closed, so they are not reopened as small features:
@@ -1216,7 +1287,7 @@ Do not implement the tick loop in the first commit. Land the contract the loop w
 
 ```text
 LICENSE                          # AGPL-3.0-or-later, covers /src
-Docs/ARCHITECTURE.md             # this file, CC BY 4.0
+docs/architecture.md             # this file, CC BY 4.0
 schema/now.schema.json           # CC BY 4.0, draft 2020-12, §5
 schema/effect.schema.json
 schema/intent.schema.json
