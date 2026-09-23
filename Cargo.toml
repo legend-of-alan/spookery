@@ -43,3 +43,7 @@ path = "tests/conformance/tick_01_closed_secret.rs"
 [[test]]
 name = "tick_02_no_self_win"
 path = "tests/conformance/tick_02_no_self_win.rs"
+
+[[test]]
+name = "tick_06_atomic_commit"
+path = "tests/conformance/tick_06_atomic_commit.rs"

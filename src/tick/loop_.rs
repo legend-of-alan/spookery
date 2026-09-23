@@ -204,6 +204,7 @@ fn stage_tick(
                     counted += 1;
                     trace.push("apply_effect".to_string());
                     effects_out.push(effect);
+                    crash_after_apply_effect();
                 }
                 Err(Code::Skipped) => rejected.push(Rejected {
                     id: intent.id.clone(),
@@ -322,6 +323,12 @@ fn stage_tick(
         &effects_out,
         &trace,
     ))
+}
+
+fn crash_after_apply_effect() {
+    if std::env::var_os("SPOOK_CRASH_AFTER").is_some_and(|value| value == "apply_effect") {
+        std::process::abort();
+    }
 }
 
 fn viewer_token(intent: &Intent) -> Result<String, Code> {
