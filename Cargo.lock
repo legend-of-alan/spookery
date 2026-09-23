@@ -1284,6 +1284,8 @@ name = "spookery"
 version = "0.1.0"
 dependencies = [
  "jsonschema",
+ "serde",
+ "serde-saphyr",
  "serde_json",
  "spookery-kernel",
  "spookery-mcp",
