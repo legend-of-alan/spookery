@@ -287,7 +287,7 @@ start:
 | Markdown body | `String` on the canon entity | Flavor attachment only |
 | JSONL | `TickRecord`, `MemoryRecord` | Evidence written at commit. Never loaded as `Now` |
 
-Maps inside `Now` are `BTreeMap` so key order is sorted. Id lists that are sets (`known_facts`, `flags`, `fact_ids`, `known_by`, `owners`) are sorted before emit. `rumors`, `messages`, and `proposals` are sorted by id before emit. The canonicalizer runs inside `emit_now`. No other function serializes `Now`.
+Maps inside `Now` are `BTreeMap` so key order is sorted. Id lists that are sets (`known_facts`, `flags`, `fact_ids`, `known_by`, `owners`, `session_ids`, `actors_present`) are sorted before emit. `rumors`, `messages`, and `proposals` are sorted by id before emit. The canonicalizer runs inside `emit_now`. No other function serializes `Now`.
 
 Emitter policy, pinned in `codec::NOW_EMIT_OPTIONS`:
 
@@ -323,7 +323,7 @@ What those options do, and what the crate will not do:
 - A newline inside a string is a double-quoted escape, not a block scalar.
 - Integers are decimal, including negatives. Bools are `true` and `false`. No floats. No `null`. An absent PC field is omitted with `skip_serializing_if`. A present empty map is `{}`.
 - Exactly one trailing LF. Round-trip through `from_str` then `to_string_with_options` is byte-equal.
-- Top-level field order is struct order, the §5 table. Map key order is `BTreeMap` order.
+- Top-level field order is struct order, the §5 table, which starts with `schema`. Map key order is `BTreeMap` order.
 - `quote_all`, a document-start marker, anchors, tags, comments, and a second snapshot are all failures of this policy.
 
 Gate A checks this sample (166 bytes, fence body plus one LF) and nothing larger. The docks `now.yaml` golden is gate B, because its `pack_rev` covers the full canon.
@@ -466,6 +466,7 @@ A note object is pin P8. Required fields, in this order: `id`, `due_clock`, `due
 
 | Field | Rust | Notes |
 |---|---|---|
+| `schema` | `String` | Const `now/v0`. First field. The emitter sample and the docks `now.yaml` both start with this key |
 | `shard_id` | `String` | Durable |
 | `pack_rev` | `String` | `blake2s:` hex |
 | `state_rev` | `u64` | +1 per successful `tick_commit` or `commit_turn` |
@@ -500,6 +501,8 @@ A note object is pin P8. Required fields, in this order: `id`, `due_clock`, `due
 | `known_facts` | `Vec<FactId>` sorted | `Vec<FactId>` sorted |
 | `tick` | `TickCounters` | absent |
 | `sheet` | absent | relative path `state/actors/<pc-id>.yaml` |
+
+Emit an actor as one mapping, with `kind` as a field of that mapping. An externally tagged enum is a different file and fails the docks bytes. NPC field order: `kind`, `place`, `flags`, `busy`, `needs`, `resources`, `relationships`, `reputation`, `known_facts`, `tick`. PC field order: `kind`, `place`, `flags`, `busy`, `known_facts`, `sheet`. `tick` order: `last_act_tick`, `idle_acts_today`, `live_acts_this_hour`. Place order: `stock`, `hours`, `notes`, `actors`. Clock order: `value`, `max`, `requires_presence`, `owners`, `paused`. Presence order: `humans`, `session_ids`, `actors_present`.
 
 `Relation`: `stance: i64`, `target: i64`, `last_interaction_world_time: u64`.
 
@@ -577,7 +580,7 @@ There is no `inventory` class, no `xp` class, and no `season_advance` class. Cat
 
 | Field | Values |
 |---|---|
-| `id` | UUID string, caller-supplied. Kernel checks uniqueness inside the txn |
+| `id` | Caller-supplied for a player intent and for a library test. Kernel-minted for derivation and the season proposal (pin P37). Unique inside the txn |
 | `tick_index` | The tick that will consider it |
 | `actor_id` | |
 | `actor_kind` | `npc`, `player`, `system` |
@@ -591,6 +594,8 @@ There is no `inventory` class, no `xp` class, and no `season_advance` class. Cat
 Idle moves: `wait`, `travel`, `work`, `restock`, `rest`, `pay_upkeep`, `drift_relationship`, `spread_rumor`, `leave_note`, `file_proposal`, `advance_clock`.
 
 Live-only names, rejected with `LIVE_ONLY` when `presence.humans == 0`: `talk`, `attempt`, `attack`, `give`, `take`.
+
+Pin P37. A kernel-minted id is the lowercase hex of `BLAKE2s-256("{shard_id}|{tick_index}|{actor_id}|{move}")`, 64 characters. It is minted when the intent object is built, before `filter_blocklist` and before `prioritize`, so a later rejection keeps that id. `kernel_intent_id("cap", 1, "n2", "work")` is `daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819`. The CLI mints a UUID v4 for a play line. Library tests and trace B set the id themselves. Replay copies the stored id and does not mint again. A duplicate id inside the txn is `SCHEMA`.
 
 `expand` returns `NOT_IN_SPEC` for those five even during a session. They may be declared in `moves.yaml` so the fixture matches the move list. They do not mutate inventory. Do not add an effect class to make `give` work.
 
@@ -673,7 +678,7 @@ checks:
     stat: grit
 ```
 
-Unknown `check_id` → `UNKNOWN_KEY`. Stat is read from the PC sheet. Missing stat → `UNKNOWN_KEY`. No XP, no spell list, no ability-score block.
+Unknown `check_id` → `UNKNOWN_KEY`. The `stat` named by the check is an i64 on the PC sheet of a `player:<id>` viewer, at `stats.<stat>`. A missing stat is `UNKNOWN_KEY`. An `as=npc:<id>` viewer has no sheet, so `resolve_check` returns `UNKNOWN_KEY` and does not roll (pin P42). The die cursor does not advance on `UNKNOWN_KEY`. Output key order is `faces`, `stat`, `total`, `target`, `success`. No XP, no spell list, no ability-score block.
 
 Dice, pin P6: `rng = BLAKE2s-256(seed_preimage)` once per tick. Die `n` (from 0) is `face = (u32le(rng[4n .. 4n+4]) % sides) + 1`. The die index is not part of the preimage. Two d6s fit in the 32-byte digest. A check that would read past byte 32 is outside v0. `total = sum(faces) + stat`. `success = total >= target`. Replay calls the same function. It does not read a stored face. No RNG crate.
 
@@ -691,7 +696,7 @@ Dice, pin P6: `rng = BLAKE2s-256(seed_preimage)` once per tick. Die `n` (from 0)
 
 Hidden means `facts[].hidden: true` (pin P25). A top-level `hidden:` array is an unknown key (`SCHEMA`). There is no `gm_secret` field in v0. The blocklist sentence that mentions `gm_secret` is satisfied by the hidden flag.
 
-A viewer who fails `allows` does not receive the fact id, the text, or the body. `unknown_mentioned` carries public names whose bodies were stripped. It does not carry hidden fact ids.
+A viewer who fails `allows` does not receive the fact id, the text, or the body. `unknown_mentioned` is the §9 list of public fact ids whose bodies were stripped. It does not carry hidden fact ids, and it does not carry actor names.
 
 Rumor hop and memory text call `allows`. Failure is `ILLEGAL_KNOWLEDGE`.
 
@@ -844,19 +849,9 @@ An intent is listed in JSONL `intents` when at least one effect was accepted, or
 
 `maybe_one_llm_intent` returns an empty list. It does not call `npc_act`. It exists so the loop shape stays fixed when the budget is 0.
 
-`filter_blocklist`, when `presence.humans == 0`, rejects an intent that would:
+`filter_blocklist`, when `presence.humans == 0`, rejects an intent whose move is `talk`, `attempt`, `attack`, `give`, or `take` (pin P39). The JSONL reason is `LIVE_ONLY`. That intent is not perceived and does not spend a `max_npcs_acting` slot. The function does not read `rationale_code`, `llm_say`, or Markdown. v0 has no effect class for a kill, a maim, combat, XP, a teleport, or a canon edit, so those words are not a second scan.
 
-- use a `LIVE_ONLY` move
-- kill, maim, or remove a PC, move a PC, or teleport a player
-- start or resolve combat, or grant XP
-- edit `world/` or `cast/`
-- rewrite another actor's memory
-- reveal a hidden fact on a public channel
-- invent a place, NPC, item, faction, flag key, or resource key
-- travel outside `range`
-- advance a clock with `requires_presence` (pause policy already pauses those)
-
-`proposal` / `delete_place` is allowed through to `apply_effect`, which writes `state/proposals/` and leaves the markdown file in place (test 10). There is no clock exception that destroys a player item. `give` and `take` do not move inventory.
+Idle `location` whose actor is a PC, travel outside `range`, a paused clock, another actor's memory, and a fact that fails `allows` are the §5 validators. They run only after `filter_blocklist` has let the intent through. `proposal` / `delete_place` is allowed through to `apply_effect`, which writes `state/proposals/` and leaves the markdown file in place (test 10). There is no clock exception that destroys a player item. `give` and `take` do not move inventory.
 
 `legal(intent, view)` checks the move allowlist, that target ids exist, that every fact id in args is allowed for `intent.actor`, and that a `kernel` intent's actor is eligible. It does not require off-screen stock to appear in the view.
 
@@ -1001,7 +996,7 @@ Shard `ex`. One PC `pc_rowan` at place `gate`. No NPC. Canon place `gate` has on
 
 Shard `cap`, `presence.humans` 0, `world_time` 0. Place `yard` has one public fact. NPCs `n1` through `n5` stand there. Each is eligible, `tier: minor`, `plot_relevant: false`, `range: [yard]`, and has one schedule row `{ start: 0, end: 24, place: yard, activity: work }`. Needs are `k1` through `k4`, each 0, with `min` and `max` and no `floor`. The `work` block lists those four keys at `delta: 1`. No `stock_rate`. Derivation stops at step 4 for every one of them.
 
-Priority keys 0–4 tie. Shuffle order of `BLAKE2s-256("cap|1|{npc}")` is `n2`, `n3`, `n5`, `n4`, `n1`.
+Priority keys 0–4 tie. Shuffle order of `BLAKE2s-256("cap|1|{npc}")` is `n2`, `n3`, `n5`, `n4`, `n1`. Intent ids in the JSONL are `kernel_intent_id("cap", 1, <actor>, "work")` (pin P37).
 
 Each applied NPC adds four need paths and then two counter paths (`last_act_tick`, `idle_acts_today`).
 
@@ -1016,7 +1011,7 @@ Each applied NPC adds four need paths and then two counter paths (`last_act_tick
 `n2`, `n3`, `n5`, and `n4` apply. `n1` is perceived, then rejected with reason `budget`, and is not queued. `n1`'s needs stay 0. Applied needs become 1. `state_rev` 1, `tick_index` 1, `world_time` 60.
 
 ```json
-{"tick_index":1,"state_rev_before":0,"state_rev_after":1,"world_time_before":0,"world_time_after":60,"presence_humans":0,"seed":"cap|1","last_tick_at":"2026-01-01T00:00:00Z","intents":[{"id":"00000000-0000-4000-8000-000000000002","tick_index":1,"actor_id":"n2","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"00000000-0000-4000-8000-000000000003","tick_index":1,"actor_id":"n3","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"00000000-0000-4000-8000-000000000005","tick_index":1,"actor_id":"n5","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"00000000-0000-4000-8000-000000000004","tick_index":1,"actor_id":"n4","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null}],"rejected":[{"id":"00000000-0000-4000-8000-000000000001","reason":"budget"}],"effects":[{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k1","delta":1}},{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k2","delta":1}},{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k3","delta":1}},{"class":"need","as":"npc:n2","intent_id":"00000000-0000-4000-8000-000000000002","payload":{"actor_id":"n2","key":"k4","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k1","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k2","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k3","delta":1}},{"class":"need","as":"npc:n3","intent_id":"00000000-0000-4000-8000-000000000003","payload":{"actor_id":"n3","key":"k4","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k1","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k2","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k3","delta":1}},{"class":"need","as":"npc:n5","intent_id":"00000000-0000-4000-8000-000000000005","payload":{"actor_id":"n5","key":"k4","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k1","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k2","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k3","delta":1}},{"class":"need","as":"npc:n4","intent_id":"00000000-0000-4000-8000-000000000004","payload":{"actor_id":"n4","key":"k4","delta":1}}],"tool_trace":["session_status","perceive:n2","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n3","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n5","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n4","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n1","tick_commit"]}
+{"tick_index":1,"state_rev_before":0,"state_rev_after":1,"world_time_before":0,"world_time_after":60,"presence_humans":0,"seed":"cap|1","last_tick_at":"2026-01-01T00:00:00Z","intents":[{"id":"daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819","tick_index":1,"actor_id":"n2","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"0fe4c5c426ba070578c0f3b2db69a66a5b23fd1118b1403bb107c641c42156ee","tick_index":1,"actor_id":"n3","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"f8ffe70dfa42ab6fad611f54168246a7107403ac64f7f89298c6eae0b5253456","tick_index":1,"actor_id":"n5","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null},{"id":"6cdc1ede0d70121d3b48897b79fc3f91d2dcce0c00ed5f550e4963ae2e4430fa","tick_index":1,"actor_id":"n4","actor_kind":"npc","source":"kernel","move":"work","target":{},"args":{},"rationale_code":"","llm_say":null}],"rejected":[{"id":"7219eb49746a25b404200f3b6f070d3059ba154afd79f63dab2c847188b7130b","reason":"budget"}],"effects":[{"class":"need","as":"npc:n2","intent_id":"daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819","payload":{"actor_id":"n2","key":"k1","delta":1}},{"class":"need","as":"npc:n2","intent_id":"daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819","payload":{"actor_id":"n2","key":"k2","delta":1}},{"class":"need","as":"npc:n2","intent_id":"daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819","payload":{"actor_id":"n2","key":"k3","delta":1}},{"class":"need","as":"npc:n2","intent_id":"daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819","payload":{"actor_id":"n2","key":"k4","delta":1}},{"class":"need","as":"npc:n3","intent_id":"0fe4c5c426ba070578c0f3b2db69a66a5b23fd1118b1403bb107c641c42156ee","payload":{"actor_id":"n3","key":"k1","delta":1}},{"class":"need","as":"npc:n3","intent_id":"0fe4c5c426ba070578c0f3b2db69a66a5b23fd1118b1403bb107c641c42156ee","payload":{"actor_id":"n3","key":"k2","delta":1}},{"class":"need","as":"npc:n3","intent_id":"0fe4c5c426ba070578c0f3b2db69a66a5b23fd1118b1403bb107c641c42156ee","payload":{"actor_id":"n3","key":"k3","delta":1}},{"class":"need","as":"npc:n3","intent_id":"0fe4c5c426ba070578c0f3b2db69a66a5b23fd1118b1403bb107c641c42156ee","payload":{"actor_id":"n3","key":"k4","delta":1}},{"class":"need","as":"npc:n5","intent_id":"f8ffe70dfa42ab6fad611f54168246a7107403ac64f7f89298c6eae0b5253456","payload":{"actor_id":"n5","key":"k1","delta":1}},{"class":"need","as":"npc:n5","intent_id":"f8ffe70dfa42ab6fad611f54168246a7107403ac64f7f89298c6eae0b5253456","payload":{"actor_id":"n5","key":"k2","delta":1}},{"class":"need","as":"npc:n5","intent_id":"f8ffe70dfa42ab6fad611f54168246a7107403ac64f7f89298c6eae0b5253456","payload":{"actor_id":"n5","key":"k3","delta":1}},{"class":"need","as":"npc:n5","intent_id":"f8ffe70dfa42ab6fad611f54168246a7107403ac64f7f89298c6eae0b5253456","payload":{"actor_id":"n5","key":"k4","delta":1}},{"class":"need","as":"npc:n4","intent_id":"6cdc1ede0d70121d3b48897b79fc3f91d2dcce0c00ed5f550e4963ae2e4430fa","payload":{"actor_id":"n4","key":"k1","delta":1}},{"class":"need","as":"npc:n4","intent_id":"6cdc1ede0d70121d3b48897b79fc3f91d2dcce0c00ed5f550e4963ae2e4430fa","payload":{"actor_id":"n4","key":"k2","delta":1}},{"class":"need","as":"npc:n4","intent_id":"6cdc1ede0d70121d3b48897b79fc3f91d2dcce0c00ed5f550e4963ae2e4430fa","payload":{"actor_id":"n4","key":"k3","delta":1}},{"class":"need","as":"npc:n4","intent_id":"6cdc1ede0d70121d3b48897b79fc3f91d2dcce0c00ed5f550e4963ae2e4430fa","payload":{"actor_id":"n4","key":"k4","delta":1}}],"tool_trace":["session_status","perceive:n2","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n3","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n5","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n4","apply_effect","apply_effect","apply_effect","apply_effect","perceive:n1","tick_commit"]}
 ```
 
 #### Trace D — 72-hour catch-up
@@ -1030,7 +1025,7 @@ minute_cap = 8 * 72 * 60 = 34560 world minutes
 ticks_to_run = min(15, 12) = 12
 ```
 
-The three ticks that do not run collapse into one proposal, not three. It is applied after the candidate loop on tick 12, and that loop does not perceive it. `source: system`. `actor_id` and `as` are `pc_rowan` (the only PC). `actor_kind` is `player`. `kind` is `other`. `summary` is `season_advance`. `proposal_id` is `season_advance`. `target` is `""`. This path does not call `perceive`.
+The three ticks that do not run collapse into one proposal, not three. It is applied after the candidate loop on tick 12, and that loop does not perceive it. `source: system`. `actor_id` and `as` are `pc_rowan` (the only PC). `actor_kind` is `player`. `kind` is `other`. `summary` is `season_advance`. `proposal_id` is `season_advance`. `target` is `""`. The intent id is `kernel_intent_id("ex", 12, "pc_rowan", "file_proposal")` (pin P37). This path does not call `perceive`.
 
 Twelve outermost commits. `state_rev` ends at 12. `tick_index` ends at 12. `world_time` ends at 720. Ticks 1–11 write an empty tick file. Tick `n` uses `seed` `ex|{n}`, `state_rev_before` `n-1`, `world_time_before` `(n-1)*60`.
 
@@ -1054,7 +1049,7 @@ tick_index: 12
 ```
 
 ```json
-{"tick_index":12,"state_rev_before":11,"state_rev_after":12,"world_time_before":660,"world_time_after":720,"presence_humans":0,"seed":"ex|12","last_tick_at":"2026-01-01T00:00:00Z","intents":[{"id":"00000000-0000-4000-8000-000000000012","tick_index":12,"actor_id":"pc_rowan","actor_kind":"player","source":"system","move":"file_proposal","target":{},"args":{"proposal_id":"season_advance","kind":"other","target":"","summary":"season_advance"},"rationale_code":"","llm_say":null}],"rejected":[],"effects":[{"class":"proposal","as":"player:pc_rowan","intent_id":"00000000-0000-4000-8000-000000000012","payload":{"proposal_id":"season_advance","kind":"other","target":"","summary":"season_advance"}}],"tool_trace":["session_status","apply_effect","tick_commit"]}
+{"tick_index":12,"state_rev_before":11,"state_rev_after":12,"world_time_before":660,"world_time_after":720,"presence_humans":0,"seed":"ex|12","last_tick_at":"2026-01-01T00:00:00Z","intents":[{"id":"793b67bc1f8a5ded18c1375e2c371758b0c9063500e69195df66ad001fff669a","tick_index":12,"actor_id":"pc_rowan","actor_kind":"player","source":"system","move":"file_proposal","target":{},"args":{"proposal_id":"season_advance","kind":"other","target":"","summary":"season_advance"},"rationale_code":"","llm_say":null}],"rejected":[],"effects":[{"class":"proposal","as":"player:pc_rowan","intent_id":"793b67bc1f8a5ded18c1375e2c371758b0c9063500e69195df66ad001fff669a","payload":{"proposal_id":"season_advance","kind":"other","target":"","summary":"season_advance"}}],"tool_trace":["session_status","apply_effect","tick_commit"]}
 ```
 
 ---
@@ -1082,14 +1077,12 @@ Do not add tools. Do not reorder them.
 | | |
 |---|---|
 | in | `{ as: "npc:<id>", focus?: "place" or "actor", budget_tokens?: 800 }` |
-| out | `{ viewer, place, visible_actors[], known_facts[{id, text}], unknown_mentioned[], clocks[], stocks[], schedule_hint }` |
+| out | The §9 perceive object |
 | authz | `as` must be `npc:<id>`. Missing, `gm`, `player:`, or `system` → `UNSCOPED_PERCEIVE` |
 | writes | none |
 | denylist | Unscoped call. Reading another NPC's hidden fact into this view. Returning Markdown that failed `allows` |
 
-`budget_tokens` caps the size of attached flavor strings. It does not change which fact ids are visible. Default 800. Truncate flavor first. Do not drop a `known_facts` id to satisfy the cap.
-
-Stocks in a tick `perceive` are the viewer's current place only.
+`budget_tokens`, `unknown_mentioned`, and the stocks rule are §9. `focus` is accepted and ignored. A value other than `place`, `actor`, or absent is `SCHEMA`.
 
 `recall`
 
@@ -1163,20 +1156,24 @@ Players are not given this profile. The CLI play door calls kernel functions wit
 
 | Tool | in | out | writes | denylist |
 |---|---|---|---|---|
-| `session_open` | `{ session_id, as: "player:<id>" }` | presence after the queued change | Stages presence on the txn and persists via `commit_turn` (presence only, no world-minute advance unless `include_tick`) | Opening as GM. Tick profile |
+| `session_open` | `{ session_id, as: "player:<id>" }` | presence after the commit | Adds the session and the player to `presence`, then `commit_turn` with `include_tick` false (pin P41) | Opening as GM. Tick profile |
 | `session_status` | `{}` | same as tick | none | |
-| `perceive` | `{ as: "player:<id>" or "npc:<id>", focus? }` | same view shape | none | Missing `as`, `as=gm` |
+| `perceive` | `{ as: "player:<id>" or "npc:<id>", focus?, budget_tokens? }` | the §9 object | none | Missing `as`, `as=gm` |
 | `intent` | one Intent with `source: player` | `{ queued: id }` | Process memory queue only | `apply_effect` smuggled in args. Keeping `llm_say` |
 | `resolve_check` | as table viewer | check result | per-tick die cursor only | |
 | `apply_effect` | effect envelope | accepted, code, diff | `Txn` only | Unknown class. Called by the player CLI |
 | `npc_act` | same as tick | `LLM_DISABLED` in v0 | none | Model SDK |
-| `commit_turn` | `{ include_tick: bool, session_id }` | `{ state_rev, diff_summary, log_path }` | One commit (pin P20). If `include_tick`, call `run_tick` with `reason=flush` under this lock. The tick stages, consumes the queue, and returns without `tick_commit`. Then write once: one `state_rev` step and one `tick-NNNN` file. If false, apply queued player intents only, no NPC derivation, no `world_time` advance, and still one write | A second writer. A nested `tick_commit`. Catch-up burst |
+| `commit_turn` | `{ include_tick: bool, session_id }` | `{ state_rev, diff_summary, log_path }` | `include_tick` true is pin P20: one `state_rev` step and one tick file. `include_tick` false is pin P41: player intents only, no tick file. A no-op does not bump `state_rev` | A second writer. A nested `tick_commit`. Catch-up burst |
 | `recall` | `{ as, query?, fact_id? }` | `as=player:<id>` or `as=npc:<id>`: facts that pass `allows`. `as=gm`: every fact id and its text (pin P24) | none | `as=gm` on the tick profile. Vector search. Using the GM result as a `perceive` view |
 | `session_save` | `{ name }` | `{ path }` | `saves/<name>.yaml` emitted copy. `state_rev` unchanged | Tick profile. Restore-as-live-patch. Restoring a save is `spook migrate` on a host-chosen file, a new commit, not a tick tool |
 
 CLI play sends `include_tick: true` (pin P12) so subsistence clocks do not stall during a sitting. That is one tick, then yield. It is not a catch-up burst.
 
-`commit_turn` with no open txn and an empty queue is a no-op that does not bump `state_rev`.
+`commit_turn` with `include_tick: true` calls `run_tick` with `reason=flush` under the lock already held. The tick stages, consumes the queue, and returns without `tick_commit`. The turn then writes once (pin P20). `log_path` is the tick file. `diff_summary` is the sorted list of Now paths that commit staged.
+
+`commit_turn` with `include_tick: false` does not call `run_tick` (pin P41). `tick_index`, `world_time`, and `last_tick_at` stay as they are. Queued player intents are applied in queue order through `perceive`, `legal`, `expand`, and `apply_effect`. There is no NPC derivation and no `maybe_one_llm_intent`. The call writes no `state/log/tick-NNNN.jsonl`, and rejections are not put on the tape. If no effect was accepted and `presence` is unchanged, `state_rev` stays and the tool returns `{ state_rev, diff_summary: [], log_path: null }`. If an effect was accepted or `presence` changed, one commit bumps `state_rev` by 1 and writes the §10 set without a tick file. `log_path` is null. `diff_summary` is the sorted list of Now paths that commit staged. `replay_recorded` does not apply this commit. It replays tick files only. CLI play uses `include_tick: true`, so a played intent is on that tape.
+
+`session_open` appends `session_id` to `presence.session_ids` and the player id to `presence.actors_present`, then sorts both unique, and sets `presence.humans` to the number of session ids. The player id must already be an actor, or the tool returns `SCHEMA` and changes nothing. It then commits with `include_tick` false. Opening as GM returns `UNSCOPED_PERCEIVE` and changes nothing. A session id that is already present changes nothing and does not bump `state_rev`.
 
 Table `recall` with `as=gm` is the live-session call from tick §11. Match is still exact `fact_id` or a case-sensitive substring, over every fact rather than `allows`. It does not construct a `ViewerId`. `perceive` on this profile still rejects `as=gm`. The tick profile's `recall` does too.
 
@@ -1205,16 +1202,51 @@ Three pure functions. None of them calls a model. None of them writes a digest f
 | Surface | Function | Viewer | Rows |
 |---|---|---|---|
 | `spook status` | `idle_digest(Host)` | host | Every effect class on the tape, plus clock rows from `Now` (`paused` included) |
-| Session resume | `idle_digest(Player(id))` | that player | `message` whose `to` contains the player; `rumor` that adds the player to `known_by`; `clock` whose `owners` contain the player |
+| Session resume | `idle_digest(Player(id))` | that player | `message` whose `to` contains the player; `rumor` whose `known_by` contains the player; `clock` whose `owners` contain the player |
 | In place | `perceive(as)` | `player:<id>` or `npc:<id>` | Current place only: stock, messages whose `place` is here, present actors, public facts, known facts |
 
-Resume reads tick JSONL. It does not read `places.*.stock` and does not print other places' inventories. A rumor the player does not know is absent.
+The player digest reads `now.messages`, `now.rumors`, and `now.clocks`. It does not read the tape and it does not read `places.*.stock`. A rumor the player does not know is absent. The host digest reads the tape for effect rows and reads `Now` for clock rows.
 
 The product sentence that also shows a message "left at their last place" on resume loses to tick §11 and the encoding table. A message with an empty `to` is a place fact and appears only in `perceive`. A message with `to: [pc_rowan]` appears on that player's resume and in `perceive` at `place`.
 
 The door note `note_mira_door` is addressed to `pc_rowan`, so resume may show its text. Resume still must not show `lamp_oil` stock deltas. Criterion 9 is that test: Rowan in `mira_rooms` does not see `docks_shop` stock; Rowan who travels to `docks_shop` and perceives does.
 
-`spook status` after a week idle on the fixture shows at least one effect of each class `stock`, `message`, `rumor`, and a `clock` row that stayed paused (`assassination_debt`). That output is structured rows. It is not a paragraph.
+`spook status` after the thirteen-tick script shows a `stock` effect, a `message` effect, a `rumor` effect, and clock `assassination_debt` still paused at 2. The digest rows in this section are that output. It is not a paragraph.
+
+### Perceive object
+
+Every `perceive` returns one object. Field order is the table. Tests compare parsed fields. They do not byte-compare MCP framing.
+
+| Field | Value |
+|---|---|
+| `viewer` | `npc:<id>` or `player:<id>` |
+| `place` | The viewer's current `actors.<id>.place` |
+| `visible_actors` | Sorted actor ids whose place equals that place, including the viewer. Ids only |
+| `known_facts` | Sorted by id. One object per fact that passes `allows`, key order `id`, `text`, `body`. `text` is the fact text. `body` is the markdown body of the canon file that declares the fact, or `""` when that body is empty |
+| `messages` | Sorted by id. Include a message when its `place` is the viewer's place or its `to` contains the viewer. Field order is the `Message` order. `fact_ids` are those that pass `allows`. If any original fact id fails `allows`, omit the message |
+| `unknown_mentioned` | Sorted public fact ids (`hidden: false`) whose `body` was cleared or truncated by the cap. Hidden fact ids are absent |
+| `clocks` | Sorted by id. Clocks whose `owners` contain the viewer. Key order `id`, `value`, `max`, `paused` |
+| `stocks` | The viewer's place only, sorted by sku. Key order `sku`, `qty` |
+| `schedule_hint` | JSON `null` for a player, and for an NPC with no winning row. Otherwise key order `place`, `activity`. `activity` is JSON `null` when the row omits it. The winning row is pin P19 |
+
+`budget_tokens` defaults to 800. One token is one Unicode scalar of `body`. The cap is the sum of those scalars. It does not change which fact ids are visible. When the sum exceeds the cap, set `body` to `""` from the highest fact id downward until the sum fits. When one remaining body still exceeds the cap, truncate it to the scalars that still fit. A public fact whose body was cleared or truncated is listed in `unknown_mentioned`. A hidden fact the viewer knows keeps its `id` and `text` and stays out of that list. Do not drop a `known_facts` entry to meet the cap.
+
+### Digest rows
+
+`idle_digest` returns UTF-8. One row per line, an LF after every row, including the last. No rows is an empty string.
+
+Host order:
+
+1. Tick files in ascending `tick_index`. Each accepted effect, in file order, is `effect <class> <tick_index> <payload>`. `<payload>` is compact JSON whose keys follow the §5 payload column.
+2. Clocks on `Now`, sorted by id. `clock <id> <value> <max> paused` when `paused` is true, and `clock <id> <value> <max> running` when it is false.
+
+Player order, for `Player(id)`:
+
+1. Messages whose `to` contains that id, sorted by message id: `message <id> <text>`. `<text>` is the rest of the line. An empty `to` produces no row.
+2. Rumors whose `known_by` contains that id, sorted by rumor id. For each fact id on that rumor that passes `allows`, sorted: `rumor <rumor_id> <fact_id>`.
+3. Clocks whose `owners` contain that id, using the same `clock` line as the host.
+
+The player digest has no `effect` row and no stock quantity. After the thirteen ticks the host digest contains a line that begins `effect stock`, a line that begins `effect message`, a line that begins `effect rumor`, and the line `clock assassination_debt 2 6 paused`. Rowan's digest may contain `message note_mira_door Back at dusk. Oil on the shelf.` and does not contain `lamp_oil`.
 
 If the only way for a host to see that the world moved is to diff `now.yaml`, criterion 9 fails. If a player learns off-screen stock from resume, the firewall failed.
 
@@ -1226,15 +1258,17 @@ If the only way for a host to see that the world moved is to diff `now.yaml`, cr
 
 Held under the shard lock, inside `tick_commit` or `commit_turn`:
 
-1. Write the next bytes to temp files beside their targets: `now.yaml`, each touched `state/actors/<pc>.yaml`, `state/rumors.yaml` (derived), `state/log/tick-NNNN.jsonl`, each touched `state/memories/<actor>.jsonl` (complete file, not a short append), each new `state/proposals/<id>.yaml`.
-2. `fsync` each temp file and `fsync` the directory.
-3. Rename non-`now` files into place. Keep the previous bytes under `state/.txn/prev/` until step 5.
-4. Rename `now.yaml` into place last. Its `state_rev` is the commit marker. `fsync` the directory.
+1. Copy each live file this commit will replace into `state/.txn/prev/`, keeping the path relative to `state/`. `state/now.yaml` lands at `state/.txn/prev/now.yaml`. A file this commit only creates, such as a new tick JSONL or a new proposal, is not copied. `fsync` each copy and the directory. Write an empty `state/.txn/COMPLETE` last, `fsync` that file, and `fsync` the directory again. No other name is written under `.txn`.
+2. Write the new bytes to `<target>.tmp` beside each target: `now.yaml`, each touched `state/actors/<pc>.yaml`, `state/rumors.yaml` (derived), `state/log/tick-NNNN.jsonl` when a tick ran, each touched `state/memories/<actor>.jsonl` (the whole file), and each new `state/proposals/<id>.yaml`. `fsync` each temp and the directory.
+3. Rename the non-`now` temps onto their targets.
+4. Rename `now.yaml.tmp` onto `now.yaml` last. Its `state_rev` is the commit marker. `fsync` the directory.
 5. Delete `state/.txn/`.
 
-`session_save` uses the same temp + fsync + rename for `saves/<name>.yaml` and does not touch `state_rev`.
+The intended new rev is the `state_rev` inside `state/.txn/prev/now.yaml` plus 1. There is no second file that stores it (pin P43).
 
-Scratch under `state/.txn/` is not a snapshot format. Lint and open both delete or roll it back before serving tools. No code reads `.txn` as `Now`.
+`session_save` uses the same temp + fsync + rename for `saves/<name>.yaml` and does not touch `state_rev` or `.txn`.
+
+`state/.txn/` is commit scratch. It is not a second `Now`. `spook lint` does not touch it. No tick reads it as the live world. Open resolves it with the table below before serving tools, then deletes every file under `state/` whose name ends in `.tmp`.
 
 ### Recovery
 
@@ -1242,17 +1276,21 @@ On `open_shard`, before tools:
 
 | Disk condition | Action |
 |---|---|
-| No `.txn/prev`, `now.yaml` parses, emitter bytes match | Normal load. `state_rev` on that file wins |
-| `.txn/prev` exists and `now.state_rev` equals the txn's intended new rev | Commit finished; cleanup did not. Delete `.txn` |
-| `.txn/prev` exists and `now.state_rev` is still the previous rev | Commit did not finish. Move `prev` files back, delete `.txn` |
+| No `.txn` directory. `now.yaml` parses and the emitter bytes match | Normal load. `state_rev` on that file wins |
+| `.txn` exists and `COMPLETE` is absent | Delete `.txn`. Live files were not replaced |
+| `COMPLETE` exists and live `now.state_rev` equals `prev/now.yaml`'s `state_rev` plus 1 | Commit finished. Delete `.txn` |
+| `COMPLETE` exists and live `now.state_rev` equals `prev/now.yaml`'s `state_rev` | Commit did not finish. Move each `prev` file back onto its live path, `fsync` the directory, delete `.txn` |
+| `COMPLETE` exists and the two revisions match neither of those rows, or `prev/now.yaml` is missing | `SCHEMA`. Do not guess |
 | A tick JSONL object whose `state_rev_after` is greater than `now.state_rev`, or whose line does not parse | Delete that file |
 | A memory line whose `tick_index` has no surviving tick record | Drop the line and rewrite the memory file through the same rename path once, as recovery, before serving |
 | A proposal file whose id is not in `now.proposals` | Delete the file |
 | `rumors.yaml` differs from `now.rumors` | Regenerate from `Now` |
 
+Apply the `.txn` rows first. Then apply the tick, memory, proposal, and rumor rows to the `Now` that resolution left.
+
 Test 6 kills the process after `apply_effect` and before `tick_commit`. `apply_effect` has not created `.txn`. Restart loads the previous `state_rev`. The test asserts that, and asserts no new proposal, memory, or stock value.
 
-A kill during `tick_commit` is the `.txn/prev` table above. Both paths leave one `Now`.
+A kill during `tick_commit` is the table above. Both paths leave one `Now`. A tick file or proposal created in step 3, then abandoned by a restore, is removed by the orphan rows because its `state_rev_after` or proposal id is ahead of the restored `Now`.
 
 ### Replay proof
 
@@ -1288,7 +1326,7 @@ The scheduler (gate C) lives in `src/cli/schedule.rs`. It may use Tokio's timer.
 
 Terminal play reads a line and calls `commit_turn` (pins P12, P22). Players do not see YAML. v0 prints the filtered resume rows and the `perceive` rows. That is the whole UI.
 
-Play-line grammar (pin P33). Tokens split on a single space. The actor prefix is optional and only at the start. Otherwise the actor is `--as`, and omitted `--as` is `start.pc`. The CLI mints a UUID v4 for the intent id. Library tests set the id themselves.
+Play-line grammar (pin P33). Tokens split on a single space. The actor prefix is optional and only at the start. Otherwise the actor is `--as`, and omitted `--as` is `start.pc`. The CLI mints a UUID v4 for the intent id. Library tests set the id themselves. Kernel derivation and the season proposal use pin P37 instead.
 
 | Line | Intent |
 |---|---|
@@ -1760,7 +1798,7 @@ Synthetic packs (50 NPCs, kill-mid-commit) live under `tests/conformance/fixture
 | 1 Closed secret | `tests/conformance/tick_01_closed_secret.rs` | `kernel::firewall`, `kernel::perceive` | 100 idle ticks. The ledger sentence is absent from Aldric's perceive, memories, and rumors |
 | 2 No self-win | `tick_02_no_self_win.rs` | `kernel::pause`, `kernel::apply` | `assassination_debt` unchanged across 12 empty ticks |
 | 3 Shop lives | `tick_03_shop_lives.rs` | `kernel::inventory`, `apply` stock | `lamp_oil` changes by at most `stock_rate` per tick and stays `≥ 0` |
-| 4 Catch-up cap | `tick_04_catchup_cap.rs` | `tick::advance` | 72h downtime → `≤ idle_catchup_max_ticks` commits, plus at most one `season_advance` proposal |
+| 4 Catch-up cap | `tick_04_catchup_cap.rs` | `tick::advance` | Trace D: 72h downtime → exactly 12 commits, exactly one `season_advance` proposal, `tick_index` 12, `world_time` 720 |
 | 5 Busy skip | `tick_05_busy_skip.rs` | `kernel::eligibility` | A present player in `docks_shop` → Mira has no idle move. Another place may still act |
 | 6 Atomic commit | `tick_06_atomic_commit.rs` | `kernel::store` | Kill after `apply_effect` and before `tick_commit`. Restart `state_rev` unchanged |
 | 7 Replay | `tick_07_replay.rs` | `tick::replay`, `kernel::codec` | 20 kernel-only ticks, replay, byte-equal `now.yaml` |
@@ -1894,6 +1932,14 @@ Earlier drafts left these unspecified. Each pin is closed. Do not reopen brand, 
 | P34 | Third NPC and the idle script | `bram`, and the thirteen-tick table in §12 | The fixture had no name and no schedule that reaches stock, message, and rumor under the act cap |
 | P35 | Rumor hops | One accepted rumor effect is one hop. Third in a tick is `BUDGET` | "Counts against max_rumor_hops" did not say when |
 | P36 | Counter timing | `tick_index` at loop start. `world_time` before derivation. `spook tick` copies stored `last_tick_at` | Replay drifts if either clock is reread |
+| P37 | Kernel intent id | Lowercase hex of `BLAKE2s-256("{shard_id}\|{tick_index}\|{actor_id}\|{move}")`, minted when the intent is built. Caller ids stay caller ids. Replay copies the stored id | Trace C's suffixes followed actor order and trace D's suffix was the tick index. One digest covers both. The worked example is `kernel_intent_id("cap", 1, "n2", "work")` |
+| P38 | `schema` field order | `schema` is the first field of `Now`. Actor, place, clock, and presence field order is the docks `now.yaml` order in §5 | The §5 table used to start at `shard_id` while every sample starts with `schema` |
+| P39 | `filter_blocklist` | When `humans == 0`, reject the five live-only move names with `LIVE_ONLY`, before `perceive`, with no slot spent. No text scan | The old list named kills, XP, and teleports, and v0 has no effect class for them |
+| P40 | Perceive object and digest rows | The §9 object and the `effect` / `message` / `rumor` / `clock` lines | The view named fields and did not define them. Status was "structured rows" with no row grammar |
+| P41 | `include_tick: false` | No `run_tick`, no tick file, no clock advance. A commit happens only when an effect was accepted or `presence` changed. `session_open` is this path | The old sentence said "still one write", including the case where nothing changed |
+| P42 | NPC `resolve_check` | Stat comes from the viewed PC's sheet. `as=npc:<id>` returns `UNKNOWN_KEY` and does not roll or advance the die cursor | Tick profile allows `as=npc`, and an NPC has no sheet |
+| P43 | Intended `state_rev` | `state/.txn/prev/now.yaml`'s `state_rev` plus 1. Empty `COMPLETE` marks a finished copy. No sidecar | Recovery named "the txn's intended new rev" and did not say where it was stored |
+| P44 | Catch-up test | Test 4 is trace D exactly: 12 commits, one `season_advance`, `tick_index` 12, `world_time` 720 | The old assert was `≤ 12`, so a short burst still passed |
 | Other crate versions | `rmcp`, `rmcp-macros`, `blake2`, `jsonschema`, `tokio`, `serde` | Exact versions are whatever commit 1's `Cargo.lock` resolves. No caret bumps without a new golden | Stack: pick versions in the first implementation commit. Do not tour alternatives |
 
 Pins that stay closed, so they are not reopened as small features:
