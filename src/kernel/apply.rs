@@ -1,0 +1,622 @@
+use crate::error::Code;
+use crate::firewall::allows;
+use crate::inventory::{clamp_need, resource_next, stock_next};
+use crate::limits::MINUTES_PER_DAY;
+use crate::model::{
+    ActorKind, Effect, Intent, MemoryLine, Message, ProposalDoc, Reputation, ViewerId,
+};
+use crate::store::Txn;
+
+pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Code> {
+    if !viewer_matches(intent, &effect) {
+        return Err(Code::NotOwner);
+    }
+    match effect {
+        Effect::Clock {
+            clock_id, delta, ..
+        } => apply_clock(txn, &clock_id, delta),
+        Effect::Need {
+            actor_id, key, delta, ..
+        } => apply_need(txn, &actor_id, &key, delta),
+        Effect::Stock {
+            place, sku, delta, ..
+        } => apply_stock(txn, intent, &place, &sku, delta),
+        Effect::Location {
+            actor_id, from, to, ..
+        } => apply_location(txn, intent, &actor_id, &from, &to),
+        Effect::Relationship { a, b, delta, .. } => apply_relationship(txn, &a, &b, delta),
+        Effect::Reputation {
+            actor_id,
+            faction,
+            delta,
+            ..
+        } => apply_reputation(txn, &actor_id, &faction, delta),
+        Effect::Memory {
+            actor_id,
+            fact_ids,
+            tags,
+            text,
+            ..
+        } => apply_memory(txn, intent, &actor_id, fact_ids, tags, text),
+        Effect::Rumor {
+            rumor_id,
+            fact_ids,
+            to,
+            heat,
+            ..
+        } => apply_rumor(txn, &rumor_id, &fact_ids, &to, heat),
+        Effect::Resource {
+            actor_id, key, delta, ..
+        } => apply_resource(txn, &actor_id, &key, delta),
+        Effect::Flag {
+            actor_id,
+            key,
+            value,
+            ..
+        } => apply_flag(txn, &actor_id, &key, value),
+        Effect::Proposal {
+            proposal_id,
+            kind,
+            target,
+            summary,
+            ..
+        } => apply_proposal(txn, intent, &proposal_id, &kind, &target, &summary),
+        Effect::Message {
+            message_id,
+            to,
+            place,
+            fact_ids,
+            text,
+            ..
+        } => apply_message(txn, message_id, to, place, fact_ids, text),
+    }
+}
+
+fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
+    match (intent.actor_kind, effect.as_viewer()) {
+        (ActorKind::Npc, ViewerId::Npc(id)) => id == &intent.actor_id,
+        (ActorKind::Player, ViewerId::Player(id)) => id == &intent.actor_id,
+        _ => false,
+    }
+}
+
+fn apply_clock(txn: &mut Txn, clock_id: &str, delta: i64) -> Result<(), Code> {
+    let humans = txn.now().presence.humans;
+    let clock = txn.now().clocks.get(clock_id).ok_or(Code::UnknownKey)?;
+    if clock.paused || (clock.requires_presence && humans == 0) {
+        return Err(Code::PausedClock);
+    }
+    let next = clock.value.checked_add(delta).ok_or(Code::OutOfRange)?;
+    if next < 0 || next > clock.max {
+        return Err(Code::OutOfRange);
+    }
+    let base = txn
+        .baseline()
+        .clocks
+        .get(clock_id)
+        .map(|clock| clock.value);
+    if base != Some(next) {
+        txn.track(format!("clocks.{clock_id}.value"))?;
+    }
+    txn.now_mut()
+        .clocks
+        .get_mut(clock_id)
+        .ok_or(Code::UnknownKey)?
+        .value = next;
+    Ok(())
+}
+
+fn apply_need(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Code> {
+    let bound = txn
+        .canon()
+        .profile(actor_id)
+        .and_then(|profile| profile.needs.get(key))
+        .ok_or(Code::UnknownKey)?;
+    let min = bound.min;
+    let max = bound.max;
+    let current = txn
+        .now()
+        .actors
+        .get(actor_id)
+        .and_then(|actor| actor.needs())
+        .and_then(|needs| needs.get(key))
+        .copied()
+        .unwrap_or(0);
+    let next = clamp_need(current, delta, min, max)?;
+    let base = txn
+        .baseline()
+        .actors
+        .get(actor_id)
+        .and_then(|actor| actor.needs())
+        .and_then(|needs| needs.get(key))
+        .copied()
+        .unwrap_or(0);
+    if next != base {
+        txn.track(format!("actors.{actor_id}.needs.{key}"))?;
+    }
+    txn.now_mut()
+        .actors
+        .get_mut(actor_id)
+        .and_then(|actor| actor.needs_mut())
+        .ok_or(Code::UnknownKey)?
+        .insert(key.to_string(), next);
+    Ok(())
+}
+
+fn apply_stock(
+    txn: &mut Txn,
+    intent: &Intent,
+    place: &str,
+    sku: &str,
+    delta: i64,
+) -> Result<(), Code> {
+    let profile = txn.canon().profile(&intent.actor_id).ok_or(Code::NotOwner)?;
+    if !profile.range.iter().any(|item| item == place) || !profile.on_graph(place) {
+        return Err(Code::NotOwner);
+    }
+    let rate = profile
+        .stock_rate
+        .get(place)
+        .and_then(|rates| rates.get(sku))
+        .copied()
+        .ok_or(Code::NotOwner)?;
+    if delta.abs() > rate.abs() {
+        return Err(Code::OutOfRange);
+    }
+    let current = txn
+        .now()
+        .places
+        .get(place)
+        .and_then(|place_live| place_live.stock.get(sku))
+        .copied()
+        .unwrap_or(0);
+    let next = stock_next(current, delta)?;
+    let base = txn
+        .baseline()
+        .places
+        .get(place)
+        .and_then(|place_live| place_live.stock.get(sku))
+        .copied()
+        .unwrap_or(0);
+    if next != base {
+        txn.track(format!("places.{place}.stock.{sku}"))?;
+    }
+    let place_live = txn
+        .now_mut()
+        .places
+        .get_mut(place)
+        .ok_or(Code::OutOfRange)?;
+    place_live.stock.insert(sku.to_string(), next);
+    Ok(())
+}
+
+fn apply_location(
+    txn: &mut Txn,
+    intent: &Intent,
+    actor_id: &str,
+    from: &str,
+    to: &str,
+) -> Result<(), Code> {
+    if actor_id != intent.actor_id {
+        return Err(Code::NotOwner);
+    }
+    let actor = txn.now().actors.get(actor_id).ok_or(Code::UnknownKey)?;
+    if txn.now().presence.humans == 0 && actor.is_pc() {
+        return Err(Code::NotOwner);
+    }
+    if actor.place() != from {
+        return Err(Code::OutOfRange);
+    }
+    let profile = txn.canon().profile(actor_id).ok_or(Code::NotOwner)?;
+    if !profile.range.iter().any(|item| item == to) || !profile.on_graph(to) {
+        return Err(Code::OutOfRange);
+    }
+    let base = txn
+        .baseline()
+        .actors
+        .get(actor_id)
+        .map(|actor| actor.place().to_string());
+    if base.as_deref() != Some(to) {
+        txn.track(format!("actors.{actor_id}.place"))?;
+    }
+    *txn.now_mut()
+        .actors
+        .get_mut(actor_id)
+        .ok_or(Code::UnknownKey)?
+        .place_mut() = to.to_string();
+    Ok(())
+}
+
+fn apply_relationship(txn: &mut Txn, a: &str, b: &str, delta: i64) -> Result<(), Code> {
+    if !(-1..=1).contains(&delta) {
+        return Err(Code::OutOfRange);
+    }
+    let world = txn.now().world_time;
+    let a_busy = txn
+        .now()
+        .actors
+        .get(a)
+        .ok_or(Code::UnknownKey)?
+        .busy();
+    let b_busy = txn
+        .now()
+        .actors
+        .get(b)
+        .ok_or(Code::UnknownKey)?
+        .busy();
+    let relation = txn
+        .now()
+        .actors
+        .get(a)
+        .and_then(|actor| actor.relationships())
+        .and_then(|relations| relations.get(b))
+        .ok_or(Code::UnknownKey)?;
+    if a_busy || b_busy || world.saturating_sub(relation.last_interaction_world_time) < MINUTES_PER_DAY
+    {
+        return Err(Code::Skipped);
+    }
+    let next_stance = relation.stance.checked_add(delta).ok_or(Code::OutOfRange)?;
+    let base = txn
+        .baseline()
+        .actors
+        .get(a)
+        .and_then(|actor| actor.relationships())
+        .and_then(|relations| relations.get(b));
+    let mut paths = Vec::new();
+    if base.map(|relation| relation.stance) != Some(next_stance) {
+        paths.push(format!("actors.{a}.relationships.{b}.stance"));
+    }
+    if base.map(|relation| relation.last_interaction_world_time) != Some(world) {
+        paths.push(format!(
+            "actors.{a}.relationships.{b}.last_interaction_world_time"
+        ));
+    }
+    txn.track_many(&paths)?;
+    let relation = txn
+        .now_mut()
+        .actors
+        .get_mut(a)
+        .and_then(|actor| actor.relationships_mut())
+        .and_then(|relations| relations.get_mut(b))
+        .ok_or(Code::UnknownKey)?;
+    relation.stance = next_stance;
+    relation.last_interaction_world_time = world;
+    Ok(())
+}
+
+fn apply_reputation(txn: &mut Txn, actor_id: &str, faction: &str, delta: i64) -> Result<(), Code> {
+    if !(-1..=1).contains(&delta) {
+        return Err(Code::OutOfRange);
+    }
+    let world = txn.now().world_time;
+    let current = txn
+        .now()
+        .actors
+        .get(actor_id)
+        .and_then(|actor| match actor {
+            crate::model::ActorLive::Npc { reputation, .. } => reputation.get(faction),
+            crate::model::ActorLive::Pc { .. } => None,
+        });
+    if let Some(rep) = current {
+        if world.saturating_sub(rep.last_world_time) < MINUTES_PER_DAY {
+            return Err(Code::Skipped);
+        }
+    }
+    let next = current.map(|rep| rep.value).unwrap_or(0).checked_add(delta).ok_or(Code::OutOfRange)?;
+    let base = txn.baseline().actors.get(actor_id).and_then(|actor| match actor {
+        crate::model::ActorLive::Npc { reputation, .. } => reputation.get(faction),
+        crate::model::ActorLive::Pc { .. } => None,
+    });
+    let mut paths = Vec::new();
+    if base.map(|rep| rep.value) != Some(next) {
+        paths.push(format!("actors.{actor_id}.reputation.{faction}.value"));
+    }
+    if base.map(|rep| rep.last_world_time) != Some(world) {
+        paths.push(format!(
+            "actors.{actor_id}.reputation.{faction}.last_world_time"
+        ));
+    }
+    txn.track_many(&paths)?;
+    let reputation = txn
+        .now_mut()
+        .actors
+        .get_mut(actor_id)
+        .and_then(|actor| actor.reputation_mut())
+        .ok_or(Code::UnknownKey)?;
+    reputation.insert(
+        faction.to_string(),
+        Reputation {
+            value: next,
+            last_world_time: world,
+        },
+    );
+    Ok(())
+}
+
+fn apply_memory(
+    txn: &mut Txn,
+    intent: &Intent,
+    actor_id: &str,
+    fact_ids: Vec<String>,
+    tags: Vec<String>,
+    text: Option<String>,
+) -> Result<(), Code> {
+    if actor_id != intent.actor_id {
+        return Err(Code::NotOwner);
+    }
+    if text.as_ref().is_some_and(|text| text.chars().count() > 240) {
+        return Err(Code::Schema);
+    }
+    let viewer = match intent.actor_kind {
+        ActorKind::Npc => ViewerId::Npc(actor_id.to_string()),
+        ActorKind::Player => ViewerId::Player(actor_id.to_string()),
+        ActorKind::System => return Err(Code::NotOwner),
+    };
+    for fact in &fact_ids {
+        if !allows(txn.canon(), txn.now(), &viewer, fact) {
+            return Err(Code::IllegalKnowledge);
+        }
+    }
+    if let Some(text) = &text {
+        let leaked = txn.canon().facts.iter().any(|(id, fact)| {
+            !fact.text.is_empty() && text.contains(&fact.text) && !allows(txn.canon(), txn.now(), &viewer, id)
+        });
+        if leaked {
+            return Err(Code::IllegalKnowledge);
+        }
+    }
+    txn.bump_memory()?;
+    let mut fact_ids = fact_ids;
+    fact_ids.sort();
+    fact_ids.dedup();
+    let mut tags = tags;
+    tags.sort();
+    tags.dedup();
+    txn.stage_memory(MemoryLine {
+        tick_index: txn.now().tick_index,
+        actor_id: actor_id.to_string(),
+        intent_id: intent.id.clone(),
+        fact_ids,
+        tags,
+        text,
+    });
+    Ok(())
+}
+
+fn apply_rumor(
+    txn: &mut Txn,
+    rumor_id: &str,
+    fact_ids: &[String],
+    to: &str,
+    heat: i64,
+) -> Result<(), Code> {
+    if !(1..=3).contains(&heat) {
+        return Err(Code::OutOfRange);
+    }
+    let kind = match txn.now().actors.get(to) {
+        Some(actor) if actor.is_npc() => ActorKind::Npc,
+        Some(actor) if actor.is_pc() => ActorKind::Player,
+        _ => return Err(Code::UnknownKey),
+    };
+    let viewer = ViewerId::from_kind(kind, to)?;
+    for fact in fact_ids {
+        if !allows(txn.canon(), txn.now(), &viewer, fact) {
+            return Err(Code::IllegalKnowledge);
+        }
+    }
+    let known = txn
+        .now()
+        .rumors
+        .iter()
+        .find(|rumor| rumor.id == rumor_id)
+        .ok_or(Code::UnknownKey)?
+        .known_by
+        .clone();
+    if known.iter().any(|id| id == to) {
+        return Ok(());
+    }
+    txn.bump_rumor()?;
+    let base = txn
+        .baseline()
+        .rumors
+        .iter()
+        .find(|rumor| rumor.id == rumor_id)
+        .map(|rumor| rumor.known_by.clone())
+        .unwrap_or_default();
+    let mut next = known;
+    next.push(to.to_string());
+    next.sort();
+    next.dedup();
+    if next != base {
+        txn.track(format!("rumors.{rumor_id}.known_by"))?;
+    }
+    let rumor = txn
+        .now_mut()
+        .rumors
+        .iter_mut()
+        .find(|rumor| rumor.id == rumor_id)
+        .ok_or(Code::UnknownKey)?;
+    rumor.known_by = next;
+    Ok(())
+}
+
+fn apply_resource(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Code> {
+    let actor = txn.now().actors.get(actor_id).ok_or(Code::UnknownKey)?;
+    let current = match actor {
+        crate::model::ActorLive::Npc { resources, .. } => {
+            if !txn
+                .canon()
+                .profile(actor_id)
+                .is_some_and(|profile| profile.resources.contains_key(key))
+            {
+                return Err(Code::UnknownKey);
+            }
+            resources.get(key).copied().unwrap_or(0)
+        }
+        crate::model::ActorLive::Pc { .. } => return Err(Code::NotInSpec),
+    };
+    let next = resource_next(current, delta)?;
+    let base = match txn.baseline().actors.get(actor_id) {
+        Some(crate::model::ActorLive::Npc { resources, .. }) => resources.get(key).copied().unwrap_or(0),
+        _ => 0,
+    };
+    if next != base {
+        txn.track(format!("actors.{actor_id}.resources.{key}"))?;
+    }
+    match txn.now_mut().actors.get_mut(actor_id) {
+        Some(crate::model::ActorLive::Npc { resources, .. }) => {
+            resources.insert(key.to_string(), next);
+        }
+        _ => return Err(Code::UnknownKey),
+    }
+    Ok(())
+}
+
+fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(), Code> {
+    if key != "busy" {
+        let listed = txn
+            .canon()
+            .profile(actor_id)
+            .is_some_and(|profile| profile.flags.iter().any(|flag| flag == key));
+        if !listed {
+            return Err(Code::UnknownKey);
+        }
+    }
+    if key == "busy" {
+        let base = txn
+            .baseline()
+            .actors
+            .get(actor_id)
+            .map(|actor| actor.busy());
+        if base != Some(value) {
+            txn.track(format!("actors.{actor_id}.busy"))?;
+        }
+        *txn.now_mut()
+            .actors
+            .get_mut(actor_id)
+            .ok_or(Code::UnknownKey)?
+            .busy_mut() = value;
+        return Ok(());
+    }
+    let base_has = txn
+        .baseline()
+        .actors
+        .get(actor_id)
+        .is_some_and(|actor| match actor {
+            crate::model::ActorLive::Npc { flags, .. } | crate::model::ActorLive::Pc { flags, .. } => {
+                flags.iter().any(|flag| flag == key)
+            }
+        });
+    if base_has != value {
+        txn.track(format!("actors.{actor_id}.flags.{key}"))?;
+    }
+    let flags = txn
+        .now_mut()
+        .actors
+        .get_mut(actor_id)
+        .ok_or(Code::UnknownKey)?
+        .flags_mut();
+    if value {
+        if !flags.iter().any(|flag| flag == key) {
+            flags.push(key.to_string());
+        }
+    } else {
+        flags.retain(|flag| flag != key);
+    }
+    Ok(())
+}
+
+fn apply_proposal(
+    txn: &mut Txn,
+    intent: &Intent,
+    proposal_id: &str,
+    kind: &str,
+    target: &str,
+    summary: &str,
+) -> Result<(), Code> {
+    if !matches!(kind, "delete_place" | "patch_entity" | "other") {
+        return Err(Code::Schema);
+    }
+    if proposal_id.is_empty() || proposal_id.contains('/') || proposal_id.contains('\\') {
+        return Err(Code::Schema);
+    }
+    if txn.now().proposals.iter().any(|id| id == proposal_id) {
+        return Err(Code::UnknownKey);
+    }
+    let base = &txn.baseline().proposals;
+    let mut next = txn.now().proposals.clone();
+    next.push(proposal_id.to_string());
+    next.sort();
+    next.dedup();
+    if next != *base {
+        txn.track("proposals".to_string())?;
+    }
+    txn.now_mut().proposals = next;
+    txn.stage_proposal(ProposalDoc {
+        schema: "proposal/v0".to_string(),
+        id: proposal_id.to_string(),
+        kind: kind.to_string(),
+        target: target.to_string(),
+        summary: summary.to_string(),
+        actor_id: intent.actor_id.clone(),
+        source: intent.source.token().to_string(),
+        tick_index: intent.tick_index,
+    });
+    Ok(())
+}
+
+fn apply_message(
+    txn: &mut Txn,
+    message_id: String,
+    to: Vec<String>,
+    place: Option<String>,
+    fact_ids: Vec<String>,
+    text: String,
+) -> Result<(), Code> {
+    if txn.now().messages.iter().any(|message| message.id == message_id) {
+        return Err(Code::UnknownKey);
+    }
+    if let Some(place_id) = &place {
+        if !txn.now().places.contains_key(place_id) {
+            return Err(Code::UnknownKey);
+        }
+    }
+    txn.track(format!("messages.{message_id}"))?;
+    if let Some(place_id) = &place {
+        let base_notes = txn
+            .baseline()
+            .places
+            .get(place_id)
+            .map(|place_live| place_live.notes.clone())
+            .unwrap_or_default();
+        let mut notes = txn
+            .now()
+            .places
+            .get(place_id)
+            .map(|place_live| place_live.notes.clone())
+            .unwrap_or_default();
+        notes.push(message_id.clone());
+        notes.sort();
+        notes.dedup();
+        if notes != base_notes {
+            txn.track(format!("places.{place_id}.notes"))?;
+        }
+        if let Some(place_live) = txn.now_mut().places.get_mut(place_id) {
+            place_live.notes = notes;
+        }
+    }
+    let mut to = to;
+    to.sort();
+    to.dedup();
+    let mut fact_ids = fact_ids;
+    fact_ids.sort();
+    fact_ids.dedup();
+    txn.now_mut().messages.push(Message {
+        id: message_id,
+        to,
+        place,
+        fact_ids,
+        text,
+    });
+    Ok(())
+}

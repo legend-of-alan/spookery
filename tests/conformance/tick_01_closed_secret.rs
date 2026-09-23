@@ -31,14 +31,14 @@ fn read_optional(path: &Path) -> String {
 }
 
 fn aldric_perceive(pack: &Path) -> String {
-    // Firewall and perceive are not in this commit. Fail closed.
-    // Do not filter facts in the test.
-    let _ = pack;
-    panic!("kernel::perceive is not landed");
+    let shard = spookery_kernel::open_shard(pack)
+        .unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let view = spookery_kernel::perceive(&shard, "npc:aldric")
+        .unwrap_or_else(|err| panic!("perceive: {err}"));
+    format!("{view:?}")
 }
 
 #[test]
-#[ignore = "empty fixture; firewall not landed"]
 fn tick_01_closed_secret() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");

@@ -29,6 +29,9 @@ spookery-kernel = { path = "src/kernel" }
 spookery-mcp = { path = "src/mcp" }
 spookery-tick = { path = "src/tick" }
 
+[dev-dependencies]
+spookery-kernel = { path = "src/kernel" }
+
 [[test]]
 name = "import_boundaries"
 path = "tests/conformance/import_boundaries.rs"
