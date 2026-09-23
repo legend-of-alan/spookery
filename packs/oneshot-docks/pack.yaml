@@ -1,0 +1,7 @@
+schema: pack/v0
+id: docks-001
+title: Oneshot Docks
+system: oneshot-docks
+start:
+  place: docks_shop
+  pc: pc_rowan

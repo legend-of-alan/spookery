@@ -1,0 +1,218 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "CC BY 4.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "shard_id",
+    "pack_rev",
+    "state_rev",
+    "tick_index",
+    "world_time",
+    "last_tick_at",
+    "presence",
+    "pause",
+    "places",
+    "actors",
+    "clocks",
+    "rumors",
+    "messages",
+    "proposals"
+  ],
+  "properties": {
+    "schema": { "const": "now/v0" },
+    "shard_id": { "type": "string" },
+    "pack_rev": { "type": "string", "pattern": "^blake2s:[0-9a-f]{64}$" },
+    "state_rev": { "type": "integer", "minimum": 0 },
+    "tick_index": { "type": "integer", "minimum": 0 },
+    "world_time": { "type": "integer", "minimum": 0 },
+    "last_tick_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "presence": { "$ref": "#/$defs/presence" },
+    "pause": { "$ref": "#/$defs/pause" },
+    "places": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/place" }
+    },
+    "actors": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/actor" }
+    },
+    "clocks": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/clock" }
+    },
+    "rumors": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rumor" }
+    },
+    "messages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/message" }
+    },
+    "proposals": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "$defs": {
+    "presence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["humans", "session_ids", "actors_present"],
+      "properties": {
+        "humans": { "type": "integer", "minimum": 0 },
+        "session_ids": { "type": "array", "items": { "type": "string" } },
+        "actors_present": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "pause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "named_plot_clocks",
+        "subsistence_clocks",
+        "relationship_drift",
+        "travel"
+      ],
+      "properties": {
+        "named_plot_clocks": { "enum": ["paused", "running"] },
+        "subsistence_clocks": { "enum": ["paused", "running"] },
+        "relationship_drift": { "enum": ["paused", "running"] },
+        "travel": { "enum": ["paused", "running"] }
+      }
+    },
+    "place": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stock", "hours", "notes", "actors"],
+      "properties": {
+        "stock": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "hours": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "notes": { "type": "array", "items": { "type": "string" } },
+        "actors": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "actor": {
+      "oneOf": [
+        { "$ref": "#/$defs/npc" },
+        { "$ref": "#/$defs/pc" }
+      ]
+    },
+    "npc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "place",
+        "flags",
+        "busy",
+        "needs",
+        "resources",
+        "relationships",
+        "reputation",
+        "known_facts",
+        "tick"
+      ],
+      "properties": {
+        "kind": { "const": "npc" },
+        "place": { "type": "string" },
+        "flags": { "type": "array", "items": { "type": "string" } },
+        "busy": { "type": "boolean" },
+        "needs": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "resources": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "relationships": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/relation" }
+        },
+        "reputation": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/reputation" }
+        },
+        "known_facts": { "type": "array", "items": { "type": "string" } },
+        "tick": { "$ref": "#/$defs/tick" }
+      }
+    },
+    "pc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "place", "flags", "busy", "known_facts", "sheet"],
+      "properties": {
+        "kind": { "const": "pc" },
+        "place": { "type": "string" },
+        "flags": { "type": "array", "items": { "type": "string" } },
+        "busy": { "type": "boolean" },
+        "known_facts": { "type": "array", "items": { "type": "string" } },
+        "sheet": { "type": "string" }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stance", "target", "last_interaction_world_time"],
+      "properties": {
+        "stance": { "type": "integer" },
+        "target": { "type": "integer" },
+        "last_interaction_world_time": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "reputation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "last_world_time"],
+      "properties": {
+        "value": { "type": "integer" },
+        "last_world_time": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "tick": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["last_act_tick", "idle_acts_today", "live_acts_this_hour"],
+      "properties": {
+        "last_act_tick": { "type": "integer", "minimum": 0 },
+        "idle_acts_today": { "type": "integer", "minimum": 0 },
+        "live_acts_this_hour": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "clock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "max", "requires_presence", "owners", "paused"],
+      "properties": {
+        "value": { "type": "integer" },
+        "max": { "type": "integer" },
+        "requires_presence": { "type": "boolean" },
+        "owners": { "type": "array", "items": { "type": "string" } },
+        "paused": { "type": "boolean" }
+      }
+    },
+    "rumor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "fact_ids", "origin", "heat", "known_by"],
+      "properties": {
+        "id": { "type": "string" },
+        "fact_ids": { "type": "array", "items": { "type": "string" } },
+        "origin": { "type": "string" },
+        "heat": { "type": "integer", "minimum": 1, "maximum": 3 },
+        "known_by": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "message": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "to", "fact_ids", "text"],
+      "properties": {
+        "id": { "type": "string" },
+        "to": { "type": "array", "items": { "type": "string" } },
+        "place": { "type": "string" },
+        "fact_ids": { "type": "array", "items": { "type": "string" } },
+        "text": { "type": "string" }
+      }
+    }
+  }
+}

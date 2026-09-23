@@ -1,0 +1,38 @@
+[workspace]
+resolver = "2"
+members = [".", "src/kernel", "src/tick", "src/mcp"]
+
+[workspace.package]
+edition = "2021"
+rust-version = "1.89"
+publish = false
+license = "AGPL-3.0-or-later"
+
+[package]
+name = "spookery"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "spook"
+path = "src/cli/main.rs"
+
+[[bin]]
+name = "spookery"
+path = "src/cli/main.rs"
+
+[dependencies]
+spookery-kernel = { path = "src/kernel" }
+spookery-mcp = { path = "src/mcp" }
+spookery-tick = { path = "src/tick" }
+
+[[test]]
+name = "import_boundaries"
+path = "tests/conformance/import_boundaries.rs"
+
+[[test]]
+name = "tick_01_closed_secret"
+path = "tests/conformance/tick_01_closed_secret.rs"

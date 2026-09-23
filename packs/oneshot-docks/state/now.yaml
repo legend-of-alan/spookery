@@ -1,0 +1,74 @@
+schema: now/v0
+shard_id: docks-001
+pack_rev: blake2s:263ebfd44a2116e5c8c4394b3155726e70d4f211756491ec617333b1716c4e21
+state_rev: 0
+tick_index: 0
+world_time: 1080
+last_tick_at: "2026-01-01T00:00:00Z"
+presence:
+  humans: 0
+  session_ids: []
+  actors_present: []
+pause:
+  named_plot_clocks: paused
+  subsistence_clocks: running
+  relationship_drift: running
+  travel: running
+places:
+  docks_shop:
+    stock:
+      lamp_oil: 4
+    hours: {}
+    notes: []
+    actors:
+      - aldric
+      - mira
+actors:
+  aldric:
+    kind: npc
+    place: docks_shop
+    flags: []
+    busy: false
+    needs: {}
+    resources: {}
+    relationships: {}
+    reputation: {}
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  mira:
+    kind: npc
+    place: docks_shop
+    flags: []
+    busy: false
+    needs:
+      rest: 0
+    resources: {}
+    relationships: {}
+    reputation: {}
+    known_facts:
+      - fact_ledger_short
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+clocks:
+  assassination_debt:
+    value: 2
+    max: 6
+    requires_presence: true
+    owners:
+      - pc_rowan
+    paused: true
+  shop_day:
+    value: 1
+    max: 1
+    requires_presence: false
+    owners:
+      - mira
+    paused: false
+rumors: []
+messages: []
+proposals: []
