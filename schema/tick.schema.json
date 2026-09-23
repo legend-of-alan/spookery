@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "CC BY 4.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "pause"],
+  "properties": {
+    "schema": { "const": "tick/v0" },
+    "max_intents_applied": { "type": "integer", "minimum": 0 },
+    "max_npcs_acting": { "type": "integer", "minimum": 0 },
+    "llm_npc_intents_per_tick": { "type": "integer", "minimum": 0 },
+    "max_effects_per_intent": { "type": "integer", "minimum": 0 },
+    "max_state_keys_mutated": { "type": "integer", "minimum": 0 },
+    "max_memory_writes": { "type": "integer", "minimum": 0 },
+    "max_rumor_hops": { "type": "integer", "minimum": 0 },
+    "idle_acts_per_world_day": { "type": "integer", "minimum": 0 },
+    "live_acts_per_world_hour": { "type": "integer", "minimum": 0 },
+    "tick_every_real_seconds": { "type": "integer", "minimum": 0 },
+    "live_tick_every_real_seconds": { "type": "integer", "minimum": 0 },
+    "idle_minutes_per_tick": { "type": "integer", "minimum": 0 },
+    "live_minutes_per_tick": { "type": "integer", "minimum": 0 },
+    "idle_catchup_max_ticks": { "type": "integer", "minimum": 0 },
+    "idle_max_world_hours_per_real_hour": { "type": "integer", "minimum": 0 },
+    "pause": { "$ref": "#/$defs/pause" }
+  },
+  "$defs": {
+    "pause": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "named_plot_clocks",
+        "subsistence_clocks",
+        "relationship_drift",
+        "travel"
+      ],
+      "properties": {
+        "named_plot_clocks": { "const": "pause_when_empty" },
+        "subsistence_clocks": { "const": "always_run" },
+        "relationship_drift": { "const": "always_run" },
+        "travel": { "const": "run_if_schedule" }
+      }
+    }
+  }
+}

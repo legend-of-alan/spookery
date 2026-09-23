@@ -31,6 +31,8 @@ spookery-tick = { path = "src/tick" }
 
 [dev-dependencies]
 spookery-kernel = { path = "src/kernel" }
+jsonschema = "0.30"
+serde_json = "1"
 
 [[test]]
 name = "import_boundaries"
@@ -47,3 +49,7 @@ path = "tests/conformance/tick_02_no_self_win.rs"
 [[test]]
 name = "tick_06_atomic_commit"
 path = "tests/conformance/tick_06_atomic_commit.rs"
+
+[[test]]
+name = "canon_schemas"
+path = "tests/conformance/canon_schemas.rs"

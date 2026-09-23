@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "CC BY 4.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "moves"],
+  "properties": {
+    "schema": { "const": "moves/v0" },
+    "moves": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/move" }
+    }
+  },
+  "$defs": {
+    "move": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "check": { "type": "string" }
+      }
+    }
+  }
+}
