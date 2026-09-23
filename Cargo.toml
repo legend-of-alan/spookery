@@ -53,3 +53,7 @@ path = "tests/conformance/tick_06_atomic_commit.rs"
 [[test]]
 name = "canon_schemas"
 path = "tests/conformance/canon_schemas.rs"
+
+[[test]]
+name = "pack_rev_refusal"
+path = "tests/conformance/pack_rev_refusal.rs"
