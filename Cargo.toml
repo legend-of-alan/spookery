@@ -57,6 +57,10 @@ name = "tick_09_tool_scope"
 path = "tests/conformance/tick_09_tool_scope.rs"
 
 [[test]]
+name = "tick_10_proposal_only"
+path = "tests/conformance/tick_10_proposal_only.rs"
+
+[[test]]
 name = "canon_schemas"
 path = "tests/conformance/canon_schemas.rs"
 
