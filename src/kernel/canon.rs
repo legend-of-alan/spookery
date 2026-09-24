@@ -603,12 +603,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn commit1_pack_rev_matches_now() {
+    fn docks_pack_rev_matches_section12() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let rev = pack_rev(&root).unwrap();
         assert_eq!(
             rev,
-            "blake2s:263ebfd44a2116e5c8c4394b3155726e70d4f211756491ec617333b1716c4e21"
+            "blake2s:311fba8fa0b3678adfe606ba8113246ffcee6886a640138bf2adb015ee753ef4"
         );
     }
 }

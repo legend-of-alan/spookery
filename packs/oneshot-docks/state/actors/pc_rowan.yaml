@@ -1,0 +1,8 @@
+schema: sheet/v0
+id: pc_rowan
+template: cast/pc-harbormouse.md
+stats:
+  grit: 1
+resources: {}
+inventory: []
+flags: []

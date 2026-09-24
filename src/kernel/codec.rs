@@ -138,7 +138,7 @@ mod tests {
     use std::fs;
 
     #[test]
-    fn commit1_now_round_trips() {
+    fn docks_now_round_trips_through_emitter() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/state/now.yaml");
         let original = fs::read_to_string(&path).unwrap();

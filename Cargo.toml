@@ -77,3 +77,7 @@ path = "tests/conformance/pack_rev_refusal.rs"
 [[test]]
 name = "emitter_sample"
 path = "tests/conformance/emitter_sample.rs"
+
+[[test]]
+name = "docks_bytes"
+path = "tests/conformance/docks_bytes.rs"

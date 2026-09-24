@@ -1,6 +1,6 @@
 schema: now/v0
 shard_id: docks-001
-pack_rev: blake2s:263ebfd44a2116e5c8c4394b3155726e70d4f211756491ec617333b1716c4e21
+pack_rev: blake2s:311fba8fa0b3678adfe606ba8113246ffcee6886a640138bf2adb015ee753ef4
 state_rev: 0
 tick_index: 0
 world_time: 1080
@@ -11,8 +11,8 @@ presence:
   actors_present: []
 pause:
   named_plot_clocks: paused
-  subsistence_clocks: running
   relationship_drift: running
+  subsistence_clocks: running
   travel: running
 places:
   docks_shop:
@@ -22,6 +22,18 @@ places:
     notes: []
     actors:
       - aldric
+      - pc_rowan
+  docks_street:
+    stock: {}
+    hours: {}
+    notes: []
+    actors:
+      - bram
+  mira_rooms:
+    stock: {}
+    hours: {}
+    notes: []
+    actors:
       - mira
 actors:
   aldric:
@@ -29,7 +41,23 @@ actors:
     place: docks_shop
     flags: []
     busy: false
-    needs: {}
+    needs:
+      rest: 3
+    resources: {}
+    relationships: {}
+    reputation: {}
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  bram:
+    kind: npc
+    place: docks_street
+    flags: []
+    busy: false
+    needs:
+      rest: 3
     resources: {}
     relationships: {}
     reputation: {}
@@ -40,11 +68,11 @@ actors:
       live_acts_this_hour: 0
   mira:
     kind: npc
-    place: docks_shop
+    place: mira_rooms
     flags: []
     busy: false
     needs:
-      rest: 0
+      rest: 3
     resources: {}
     relationships: {}
     reputation: {}
@@ -54,6 +82,13 @@ actors:
       last_act_tick: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
+  pc_rowan:
+    kind: pc
+    place: docks_shop
+    flags: []
+    busy: false
+    known_facts: []
+    sheet: state/actors/pc_rowan.yaml
 clocks:
   assassination_debt:
     value: 2
@@ -69,6 +104,13 @@ clocks:
     owners:
       - mira
     paused: false
-rumors: []
+rumors:
+  - id: r_184
+    fact_ids:
+      - fact_oil_on_shelf
+    origin: bram
+    heat: 1
+    known_by:
+      - bram
 messages: []
 proposals: []

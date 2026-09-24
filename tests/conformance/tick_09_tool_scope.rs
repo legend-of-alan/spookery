@@ -103,7 +103,7 @@ fn tick_09_tool_scope() {
         .unwrap_or_else(|| panic!("mira keeps fact_ledger_short"));
     assert_eq!(ledger.text, "The lamp-oil ledger is short.");
     assert!(!capped.unknown_mentioned.iter().any(|id| id == "fact_ledger_short"));
-    assert!(capped.unknown_mentioned.iter().any(|id| id == "fact_oil_on_shelf"));
+    assert!(capped.unknown_mentioned.iter().any(|id| id == "fact_room_lamp"));
 
     assert_eq!(files(&pack), before);
     let _ = fs::remove_dir_all(&pack);
