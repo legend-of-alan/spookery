@@ -6,4 +6,4 @@ use tokio as _;
 pub mod profile {}
 pub mod studio {}
 pub mod table {}
-pub mod tick_tools {}
+pub mod tick_tools;

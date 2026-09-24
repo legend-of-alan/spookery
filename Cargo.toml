@@ -53,6 +53,10 @@ name = "tick_06_atomic_commit"
 path = "tests/conformance/tick_06_atomic_commit.rs"
 
 [[test]]
+name = "tick_09_tool_scope"
+path = "tests/conformance/tick_09_tool_scope.rs"
+
+[[test]]
 name = "canon_schemas"
 path = "tests/conformance/canon_schemas.rs"
 

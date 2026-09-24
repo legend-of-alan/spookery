@@ -50,10 +50,23 @@ pub struct ScheduleHint {
 }
 
 pub fn perceive(shard: &Shard, as_arg: &str) -> Result<Perceive, Code> {
-    perceive_at(shard.canon(), shard.now(), as_arg)
+    perceive_budget(shard, as_arg, BUDGET_TOKENS)
+}
+
+pub fn perceive_budget(shard: &Shard, as_arg: &str, budget_tokens: usize) -> Result<Perceive, Code> {
+    perceive_at_budget(shard.canon(), shard.now(), as_arg, budget_tokens)
 }
 
 pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<Perceive, Code> {
+    perceive_at_budget(canon, now, as_arg, BUDGET_TOKENS)
+}
+
+fn perceive_at_budget(
+    canon: &Canon,
+    now: &Now,
+    as_arg: &str,
+    budget_tokens: usize,
+) -> Result<Perceive, Code> {
     let viewer = ViewerId::parse(as_arg)?;
     let actor = now
         .actors
@@ -96,7 +109,12 @@ pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<Perceive, C
     }
 
     let mut unknown_mentioned = Vec::new();
-    cap_bodies(&mut known_facts, &public_flags, &mut unknown_mentioned);
+    cap_bodies(
+        &mut known_facts,
+        &public_flags,
+        &mut unknown_mentioned,
+        budget_tokens,
+    );
     unknown_mentioned.sort();
 
     let mut messages = Vec::new();
@@ -173,18 +191,23 @@ pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<Perceive, C
     })
 }
 
-fn cap_bodies(facts: &mut [KnownFact], public_flags: &[bool], unknown: &mut Vec<String>) {
+fn cap_bodies(
+    facts: &mut [KnownFact],
+    public_flags: &[bool],
+    unknown: &mut Vec<String>,
+    budget_tokens: usize,
+) {
     let mut sum = facts
         .iter()
         .map(|fact| fact.body.chars().count())
         .sum::<usize>();
-    if sum <= BUDGET_TOKENS {
+    if sum <= budget_tokens {
         return;
     }
     let mut order: Vec<usize> = (0..facts.len()).collect();
     order.sort_by(|&left, &right| facts[right].id.cmp(&facts[left].id));
     for index in order {
-        if sum <= BUDGET_TOKENS {
+        if sum <= budget_tokens {
             break;
         }
         let len = facts[index].body.chars().count();
@@ -192,10 +215,10 @@ fn cap_bodies(facts: &mut [KnownFact], public_flags: &[bool], unknown: &mut Vec<
             continue;
         }
         let rest = sum - len;
-        if len > BUDGET_TOKENS && rest <= BUDGET_TOKENS {
-            let keep = BUDGET_TOKENS - rest;
+        if len > budget_tokens && rest <= budget_tokens {
+            let keep = budget_tokens - rest;
             facts[index].body = facts[index].body.chars().take(keep).collect();
-            sum = BUDGET_TOKENS;
+            sum = budget_tokens;
         } else {
             facts[index].body.clear();
             sum = rest;
