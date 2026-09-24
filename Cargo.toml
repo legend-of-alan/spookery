@@ -93,3 +93,7 @@ path = "tests/conformance/product_11_strip_bodies.rs"
 [[test]]
 name = "product_12_hidden_string_lint"
 path = "tests/conformance/product_12_hidden_string_lint.rs"
+
+[[test]]
+name = "cli_status"
+path = "tests/conformance/cli_status.rs"
