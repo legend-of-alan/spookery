@@ -19,5 +19,8 @@ fn dispatch() -> Result<(), Code> {
     if args.len() == 2 && args[0] == "tick" {
         return spookery_tick::tick_pack(Path::new(&args[1]));
     }
+    if args.len() == 4 && args[0] == "run" && args[2] == "--mcp" && args[3] == "pack-table" {
+        return spookery_mcp::serve_table(Path::new(&args[1]));
+    }
     Err(Code::NotInSpec)
 }
