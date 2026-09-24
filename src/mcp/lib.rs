@@ -8,4 +8,4 @@ pub mod studio {}
 pub mod table {}
 pub mod tick_tools;
 
-pub use profile::serve_table;
+pub use profile::{parse_profile, serve, Profile};

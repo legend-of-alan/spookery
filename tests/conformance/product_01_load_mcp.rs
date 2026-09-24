@@ -68,3 +68,81 @@ async fn product_01_load_mcp() {
 
     let _ = fs::remove_dir_all(&pack);
 }
+
+const TICK_TOOLS: &[&str] = &[
+    "session_status",
+    "perceive",
+    "recall",
+    "npc_act",
+    "resolve_check",
+    "apply_effect",
+    "tick_commit",
+];
+
+const STUDIO_TOOLS: &[&str] = &[
+    "pack_info",
+    "read_entity",
+    "patch_entity",
+    "lint_pack",
+    "simulate_knowledge",
+    "run_conformance",
+    "compile_preview",
+];
+
+fn owned(names: &[&str]) -> Vec<String> {
+    names.iter().map(|name| (*name).to_string()).collect()
+}
+
+async fn listed_names(pack: &Path, profile: &str) -> Vec<String> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command.args(["run", pack.to_str().unwrap(), "--mcp", profile]);
+    let running = ().serve(
+        TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn spook: {err}")),
+    );
+    let running = tokio::time::timeout(Duration::from_secs(15), running)
+        .await
+        .unwrap_or_else(|_| panic!("{profile} initialize timed out"))
+        .unwrap_or_else(|err| panic!("{profile} initialize: {err}"));
+    let listed = tokio::time::timeout(Duration::from_secs(15), running.list_tools(None))
+        .await
+        .unwrap_or_else(|_| panic!("{profile} tools/list timed out"))
+        .unwrap_or_else(|err| panic!("{profile} tools/list: {err}"));
+    listed
+        .tools
+        .iter()
+        .map(|tool| tool.name.to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn pack_tick_and_studio_tools_follow_section_8() {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let fixture = manifest.join("packs/oneshot-docks");
+    let pack = std::env::temp_dir().join(format!(
+        "spook-profiles-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&pack);
+    copy_dir(&fixture, &pack);
+
+    let tick = listed_names(&pack, "pack-tick").await;
+    assert_eq!(tick, owned(TICK_TOOLS));
+    let studio = listed_names(&pack, "pack-studio").await;
+    assert_eq!(studio, owned(STUDIO_TOOLS));
+
+    let refused = std::process::Command::new(env!("CARGO_BIN_EXE_spook"))
+        .args(["run", pack.to_str().unwrap(), "--mcp", "pack-gm"])
+        .output()
+        .unwrap_or_else(|err| panic!("spawn spook: {err}"));
+    assert!(!refused.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&refused.stderr).trim(),
+        "NOT_IN_SPEC"
+    );
+
+    let _ = fs::remove_dir_all(&pack);
+}

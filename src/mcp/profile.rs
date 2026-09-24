@@ -19,14 +19,58 @@ const TABLE_TOOLS: &[&str] = &[
     "session_save",
 ];
 
-pub fn serve_table(pack: &Path) -> Result<(), Code> {
+const TICK_TOOLS: &[&str] = &[
+    "session_status",
+    "perceive",
+    "recall",
+    "npc_act",
+    "resolve_check",
+    "apply_effect",
+    "tick_commit",
+];
+
+const STUDIO_TOOLS: &[&str] = &[
+    "pack_info",
+    "read_entity",
+    "patch_entity",
+    "lint_pack",
+    "simulate_knowledge",
+    "run_conformance",
+    "compile_preview",
+];
+
+#[derive(Clone, Copy)]
+pub enum Profile {
+    Table,
+    Tick,
+    Studio,
+}
+
+pub fn parse_profile(name: &str) -> Option<Profile> {
+    match name {
+        "pack-table" => Some(Profile::Table),
+        "pack-tick" => Some(Profile::Tick),
+        "pack-studio" => Some(Profile::Studio),
+        _ => None,
+    }
+}
+
+fn tool_names(profile: Profile) -> &'static [&'static str] {
+    match profile {
+        Profile::Table => TABLE_TOOLS,
+        Profile::Tick => TICK_TOOLS,
+        Profile::Studio => STUDIO_TOOLS,
+    }
+}
+
+pub fn serve(pack: &Path, profile: Profile) -> Result<(), Code> {
     let _shard = spookery_kernel::open_shard(pack)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|_| Code::NotInSpec)?;
     runtime.block_on(async {
-        let running = TableServer
+        let running = ToolServer { profile }
             .serve((tokio::io::stdin(), tokio::io::stdout()))
             .await
             .map_err(|_| Code::NotInSpec)?;
@@ -35,9 +79,11 @@ pub fn serve_table(pack: &Path) -> Result<(), Code> {
     })
 }
 
-struct TableServer;
+struct ToolServer {
+    profile: Profile,
+}
 
-impl ServerHandler for TableServer {
+impl ServerHandler for ToolServer {
     fn get_info(&self) -> ServerInfo {
         let mut info = ServerInfo::default();
         info.capabilities.tools = Some(ToolsCapability { list_changed: None });
@@ -50,7 +96,7 @@ impl ServerHandler for TableServer {
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
         let schema = Arc::new(object_schema());
-        let tools = TABLE_TOOLS
+        let tools = tool_names(self.profile)
             .iter()
             .map(|name| Tool::new(*name, *name, Arc::clone(&schema)))
             .collect();
