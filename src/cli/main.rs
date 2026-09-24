@@ -19,6 +19,12 @@ fn dispatch() -> Result<(), Code> {
     if args.len() == 2 && args[0] == "tick" {
         return spookery_tick::tick_pack(Path::new(&args[1]));
     }
+    if args.len() == 2 && args[0] == "status" {
+        let shard = spookery_kernel::open_shard(Path::new(&args[1]))?;
+        let text = spookery_kernel::idle_digest(&shard, spookery_kernel::DigestViewer::Host)?;
+        print!("{text}");
+        return Ok(());
+    }
     if args.len() == 4 && args[0] == "run" && args[2] == "--mcp" {
         if let Some(profile) = spookery_mcp::parse_profile(&args[3]) {
             return spookery_mcp::serve(Path::new(&args[1]), profile);

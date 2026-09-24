@@ -81,3 +81,7 @@ path = "tests/conformance/emitter_sample.rs"
 [[test]]
 name = "docks_bytes"
 path = "tests/conformance/docks_bytes.rs"
+
+[[test]]
+name = "product_09_idle_ux"
+path = "tests/conformance/product_09_idle_ux.rs"
