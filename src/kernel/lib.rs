@@ -10,7 +10,7 @@ pub mod expand;
 pub mod firewall;
 pub mod inventory;
 pub mod limits;
-pub mod lint {}
+pub mod lint;
 pub mod model;
 pub mod moves;
 pub mod pause;

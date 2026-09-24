@@ -85,3 +85,7 @@ path = "tests/conformance/docks_bytes.rs"
 [[test]]
 name = "product_09_idle_ux"
 path = "tests/conformance/product_09_idle_ux.rs"
+
+[[test]]
+name = "product_11_strip_bodies"
+path = "tests/conformance/product_11_strip_bodies.rs"
