@@ -356,7 +356,9 @@ Hash algorithm everywhere in this document is BLAKE2s-256. The `blake2` crate ty
 
 ### Hand edit
 
-A mid-shard edit of `now.yaml` is a migration. `spook tick` and `spook run` refuse it with `HAND_EDIT`. `spook migrate` parses, schema-validates, re-emits, bumps `state_rev`, writes through `commit_turn`'s commit path, and records a studio evidence line. Migrate is a host command. It is not an MCP tool on `pack-tick` or `pack-table`.
+A mid-shard edit of `now.yaml` is a migration. `spook tick` and `spook run` refuse it with `HAND_EDIT`. `spook migrate` parses and schema-validates that file, including a hand edit that still loads. It keeps every other field. It sets `pack_rev` to the live canon hash, adds 1 to `state_rev`, and re-emits with the pinned emitter. It does not rebuild `Now` from canon and it does not run a tick, so `tick_index`, `world_time`, and `last_tick_at` stay. The write is one trip through `commit_turn`'s commit path, so `state/rumors.yaml` is rewritten as the derived copy and no tick file is added. A file that is already canonical, and whose `pack_rev` already matches, still gets that one commit and one `state_rev` bump. A load that fails schema returns `SCHEMA`, writes nothing, and leaves no evidence line. Success prints nothing.
+
+After `now.yaml` is renamed, `kernel::store` appends one compact JSON object to `state/log/studio.jsonl` and fsyncs that file. The first append creates `state/log/` when it is absent. Key order is `op`, `pack_rev_before`, `pack_rev_after`, `state_rev_before`, `state_rev_after`. `op` is `migrate`. One trailing LF. The line is evidence, not `Now`, and it is not copied into `state/.txn/prev/` (pin P46). Migrate is a host command. It is not an MCP tool on `pack-tick` or `pack-table`.
 
 ### Canon documents
 
@@ -452,7 +454,7 @@ A note object is pin P8. Required fields, in this order: `id`, `due_clock`, `due
 | Proposal id | `kernel::model` | `now.proposals` plus `state/proposals/<id>.yaml` | Effect `proposal` inside a commit. Never `world/` or `cast/` |
 | Memory record | `kernel::apply` | `state/memories/<actor_id>.jsonl` | Commit, one file per actor, full-file temp rewrite |
 | Tick record | `tick::log` | `state/log/tick-NNNN.jsonl` | `tick_commit` only. `NNNN` is `tick_index` zero-padded to 4 |
-| Studio evidence | `kernel::store` | `state/log/studio.jsonl` | `patch_entity` and `migrate`, append of one object, fsynced. Evidence, not `Now` |
+| Studio evidence | `kernel::store` | `state/log/studio.jsonl` | `patch_entity` and `migrate`, append of one object, fsynced. Evidence, not `Now`. Migrate's object is pin P46 |
 | Explicit snapshot | `kernel::store` | `saves/<name>.yaml` | Table tool `session_save` only. A copy of emitted `Now`. Does not change `state_rev` |
 | Canon entity | `kernel::canon` | `world/**/*.md`, `cast/*.md` | `patch_entity` |
 | Rules | `kernel::moves`, `limits`, `check` | `rules/*.yaml` | Authors between runs. Immutable during a tick |
@@ -1248,6 +1250,8 @@ Player order, for `Player(id)`:
 
 The player digest has no `effect` row and no stock quantity. After the thirteen ticks the host digest contains a line that begins `effect stock`, a line that begins `effect message`, a line that begins `effect rumor`, and the line `clock assassination_debt 2 6 paused`. Rowan's digest may contain `message note_mira_door Back at dusk. Oil on the shelf.` and does not contain `lamp_oil`.
 
+The play door prints that resume, then the perceive object as one compact JSON line (pin P45). Field order is the table above. Tests parse the line and compare fields. They do not byte-compare it.
+
 If the only way for a host to see that the world moved is to diff `now.yaml`, criterion 9 fails. If a player learns off-screen stock from resume, the firewall failed.
 
 ---
@@ -1324,7 +1328,9 @@ Gates A and B: these commands and MCP stdio. The `--serve` flag is not implement
 
 The scheduler (gate C) lives in `src/cli/schedule.rs`. It may use Tokio's timer. Each wake computes downtime from the last recorded `last_tick_at` and calls `run_tick` on the calling thread, one at a time. Live play does not depend on the scheduler. If the scheduler crash-loops, `spook run` still accepts intents and `commit_turn`.
 
-Terminal play reads a line and calls `commit_turn` (pins P12, P22). Players do not see YAML. v0 prints the filtered resume rows and the `perceive` rows. That is the whole UI.
+Terminal play reads lines until EOF (pin P45). Each accepted line calls `commit_turn` with `include_tick: true` (pins P12, P22). The door does not call `session_open` and does not change `presence`. Players do not see YAML. After each accepted line, stdout is the exact bytes of `idle_digest(Player(id))`, then one compact JSON object for `perceive(as=player:<id>)` on the following line, with one trailing LF. An empty resume is an empty prefix, so stdout is only that JSON line. That is the whole UI. EOF exits 0.
+
+A grammar failure (`UNKNOWN_MOVE` or `SCHEMA`) prints that code on stderr, commits nothing, and reads the next line. A startup failure (`NOT_IN_SPEC`, `PACK_REV_MISMATCH`, `HAND_EDIT`, or `SCHEMA` on load) prints that code on stderr and exits 1.
 
 Play-line grammar (pin P33). Tokens split on a single space. The actor prefix is optional and only at the start. Otherwise the actor is `--as`, and omitted `--as` is `start.pc`. The CLI mints a UUID v4 for the intent id. Library tests set the id themselves. Kernel derivation and the season proposal use pin P37 instead.
 
@@ -1940,6 +1946,8 @@ Earlier drafts left these unspecified. Each pin is closed. Do not reopen brand, 
 | P42 | NPC `resolve_check` | Stat comes from the viewed PC's sheet. `as=npc:<id>` returns `UNKNOWN_KEY` and does not roll or advance the die cursor | Tick profile allows `as=npc`, and an NPC has no sheet |
 | P43 | Intended `state_rev` | `state/.txn/prev/now.yaml`'s `state_rev` plus 1. Empty `COMPLETE` marks a finished copy. No sidecar | Recovery named "the txn's intended new rev" and did not say where it was stored |
 | P44 | Catch-up test | Test 4 is trace D exactly: 12 commits, one `season_advance`, `tick_index` 12, `world_time` 720 | The old assert was `≤ 12`, so a short burst still passed |
+| P45 | Play-door lines | Read until EOF. Resume is the `idle_digest(Player)` bytes. The next line is the §9 perceive object as compact JSON. Grammar errors commit nothing | §11 named perceive rows and did not name the lines. P40 closed the view as an object |
+| P46 | Migrate evidence | Key order `op`, `pack_rev_before`, `pack_rev_after`, `state_rev_before`, `state_rev_after`. `op` is `migrate`. One `state_rev` bump. No canon rebuild. No tick file | §4 named a studio line and did not name its keys. The `patch_entity` object records a canon edit |
 | Other crate versions | `rmcp`, `rmcp-macros`, `blake2`, `jsonschema`, `tokio`, `serde` | Exact versions are whatever commit 1's `Cargo.lock` resolves. No caret bumps without a new golden | Stack: pick versions in the first implementation commit. Do not tour alternatives |
 
 Pins that stay closed, so they are not reopened as small features:
