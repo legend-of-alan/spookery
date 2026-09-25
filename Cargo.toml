@@ -63,6 +63,10 @@ name = "tick_05_busy_skip"
 path = "tests/conformance/tick_05_busy_skip.rs"
 
 [[test]]
+name = "tick_07_replay"
+path = "tests/conformance/tick_07_replay.rs"
+
+[[test]]
 name = "tick_06_atomic_commit"
 path = "tests/conformance/tick_06_atomic_commit.rs"
 

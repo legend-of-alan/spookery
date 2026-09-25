@@ -28,6 +28,12 @@ pub enum Reason {
     Catchup,
     Flush,
     Manual,
+    Replay,
+}
+
+pub struct RecordedTick {
+    pub intents: Vec<Intent>,
+    pub presence_humans: u32,
 }
 
 pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOutcome, Code> {
@@ -69,6 +75,30 @@ pub fn run_tick(
     now_wall: &str,
     catchup: Catchup,
 ) -> Result<(), Code> {
+    run_tick_with(shard, reason, now_wall, catchup, None)
+}
+
+pub(crate) fn run_recorded_tick(
+    shard: &mut Shard,
+    now_wall: &str,
+    recorded: RecordedTick,
+) -> Result<(), Code> {
+    run_tick_with(
+        shard,
+        Reason::Replay,
+        now_wall,
+        Catchup::none(),
+        Some(recorded),
+    )
+}
+
+fn run_tick_with(
+    shard: &mut Shard,
+    reason: Reason,
+    now_wall: &str,
+    catchup: Catchup,
+    recorded: Option<RecordedTick>,
+) -> Result<(), Code> {
     let _lock = if reason == Reason::Flush {
         None
     } else {
@@ -77,7 +107,15 @@ pub fn run_tick(
     let mut txn = Txn::begin(shard);
     let queued = shard.queued_intents().to_vec();
     let owns_commit = reason != Reason::Flush;
-    let record = stage_tick(shard, &mut txn, queued, now_wall, &catchup, owns_commit)?;
+    let record = stage_tick(
+        shard,
+        &mut txn,
+        queued,
+        now_wall,
+        &catchup,
+        owns_commit,
+        recorded.as_ref(),
+    )?;
     if reason == Reason::Flush {
         shard.set_pending(PendingCommit {
             now: txn.now().clone(),
@@ -99,10 +137,13 @@ fn stage_tick(
     now_wall: &str,
     catchup: &Catchup,
     owns_commit: bool,
+    recorded: Option<&RecordedTick>,
 ) -> Result<String, Code> {
     let rev_before = txn.now().state_rev;
     let world_before = txn.now().world_time;
-    let humans = session_status(txn.now()).humans;
+    let humans = recorded
+        .map(|recorded| recorded.presence_humans)
+        .unwrap_or_else(|| session_status(txn.now()).humans);
     let tick_index = txn.now().tick_index + 1;
     let shard_id = txn.now().shard_id.clone();
     txn.pin_loop(tick_index, world_before, now_wall);
@@ -121,20 +162,25 @@ fn stage_tick(
 
     let mut trace = vec!["session_status".to_string()];
     let mut rejected = Vec::new();
-    let mut candidates = queued;
-    candidates.extend(kernel_intents_for_eligible_npcs(txn.canon(), txn.now()));
-    let (candidates, blocked) = filter_blocklist(candidates, humans);
-    for (intent, code) in blocked {
-        rejected.push(Rejected {
-            id: intent.id,
-            reason: code.jsonl_reason().to_string(),
-        });
-    }
-    let mut candidates = prioritize(txn.canon(), txn.now(), candidates, tick_index, &shard_id);
-    let max_intents = txn.budget().max_intents_applied as usize;
-    if candidates.len() > max_intents {
-        candidates.truncate(max_intents);
-    }
+    let candidates = if let Some(recorded) = recorded {
+        recorded.intents.clone()
+    } else {
+        let mut candidates = queued;
+        candidates.extend(kernel_intents_for_eligible_npcs(txn.canon(), txn.now()));
+        let (candidates, blocked) = filter_blocklist(candidates, humans);
+        for (intent, code) in blocked {
+            rejected.push(Rejected {
+                id: intent.id,
+                reason: code.jsonl_reason().to_string(),
+            });
+        }
+        let mut candidates = prioritize(txn.canon(), txn.now(), candidates, tick_index, &shard_id);
+        let max_intents = txn.budget().max_intents_applied as usize;
+        if candidates.len() > max_intents {
+            candidates.truncate(max_intents);
+        }
+        candidates
+    };
     let mut seen = BTreeSet::new();
     for intent in &candidates {
         if !seen.insert(intent.id.clone()) {
