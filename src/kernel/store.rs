@@ -36,6 +36,13 @@ pub struct PendingCommit {
     pub tick_index: u64,
     pub proposals: Vec<ProposalDoc>,
     pub memories: Vec<MemoryLine>,
+    pub paths: Vec<String>,
+}
+
+pub struct CommitOutcome {
+    pub state_rev: u64,
+    pub diff_summary: Vec<String>,
+    pub log_path: String,
 }
 
 pub struct SessionStatus {
@@ -301,6 +308,10 @@ impl Txn {
     pub fn proposals(&self) -> &[ProposalDoc] {
         &self.proposals
     }
+
+    pub fn staged_paths(&self) -> Vec<String> {
+        self.paths.iter().cloned().collect()
+    }
 }
 
 pub fn session_status(now: &Now) -> SessionStatus {
@@ -374,8 +385,60 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
         .ok_or(Code::CommitConflict)?;
     canonicalize(&mut txn.staging);
     let now_bytes = emit_now(&txn.staging)?.into_bytes();
-    let rumor_bytes = emit_rumors(&txn.staging)?.into_bytes();
+    let tick_index = txn.staging.tick_index;
     let state = shard.root.join("state");
+    let planned = plan_commit(
+        &state,
+        &txn.staging,
+        now_bytes,
+        tick_index,
+        tick_jsonl.as_bytes(),
+        &txn.memories,
+        &txn.proposals,
+    )?;
+    write_commit(&state, &planned)?;
+    shard.now = txn.staging;
+    Ok(())
+}
+
+pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Code> {
+    let pending = shard.pending.take().ok_or(Code::CommitConflict)?;
+    let mut now = pending.now;
+    now.state_rev = now.state_rev.checked_add(1).ok_or(Code::CommitConflict)?;
+    canonicalize(&mut now);
+    let now_bytes = emit_now(&now)?.into_bytes();
+    let tick_index = pending.tick_index;
+    let log_path = format!("state/log/tick-{tick_index:04}.jsonl");
+    let state = shard.root.join("state");
+    let planned = plan_commit(
+        &state,
+        &now,
+        now_bytes,
+        tick_index,
+        pending.tick_jsonl.as_bytes(),
+        &pending.memories,
+        &pending.proposals,
+    )?;
+    write_commit(&state, &planned)?;
+    shard.now = now;
+    shard.queue.clear();
+    Ok(CommitOutcome {
+        state_rev: shard.now.state_rev,
+        diff_summary: pending.paths,
+        log_path,
+    })
+}
+
+fn plan_commit(
+    state: &Path,
+    now: &Now,
+    now_bytes: Vec<u8>,
+    tick_index: u64,
+    tick_jsonl: &[u8],
+    memories: &[MemoryLine],
+    proposals: &[ProposalDoc],
+) -> Result<Vec<Planned>, Code> {
+    let rumor_bytes = emit_rumors(now)?.into_bytes();
     let mut planned = Vec::new();
     planned.push(Planned {
         target: state.join("now.yaml"),
@@ -388,27 +451,25 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
         is_now: false,
     });
     planned.push(Planned {
-        target: state.join(format!("log/tick-{:04}.jsonl", txn.staging.tick_index)),
-        bytes: tick_jsonl.as_bytes().to_vec(),
+        target: state.join(format!("log/tick-{tick_index:04}.jsonl")),
+        bytes: tick_jsonl.to_vec(),
         is_now: false,
     });
-    for (actor_id, body) in memory_bodies(&state, &txn.memories)? {
+    for (actor_id, body) in memory_bodies(state, memories)? {
         planned.push(Planned {
             target: state.join("memories").join(format!("{actor_id}.jsonl")),
             bytes: body.into_bytes(),
             is_now: false,
         });
     }
-    for doc in &txn.proposals {
+    for doc in proposals {
         planned.push(Planned {
             target: state.join("proposals").join(format!("{}.yaml", doc.id)),
             bytes: emit_proposal(doc)?.into_bytes(),
             is_now: false,
         });
     }
-    write_commit(&state, &planned)?;
-    shard.now = txn.staging;
-    Ok(())
+    Ok(planned)
 }
 
 struct Planned {

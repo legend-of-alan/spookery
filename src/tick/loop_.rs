@@ -30,6 +30,13 @@ pub enum Reason {
     Manual,
 }
 
+pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOutcome, Code> {
+    let _lock = lock_shard(shard)?;
+    let wall = shard.now().last_tick_at.clone();
+    run_tick(shard, Reason::Flush, &wall, Catchup::none())?;
+    spookery_kernel::store::commit_pending(shard)
+}
+
 pub fn tick_pack(path: &Path) -> Result<(), Code> {
     let mut shard = open_shard(path)?;
     let wall = shard.now().last_tick_at.clone();
@@ -58,6 +65,7 @@ pub fn run_tick(
             tick_index: txn.now().tick_index,
             proposals: txn.proposals().to_vec(),
             memories: txn.memories().to_vec(),
+            paths: txn.staged_paths(),
         });
         return Ok(());
     }

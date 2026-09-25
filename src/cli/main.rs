@@ -1,3 +1,5 @@
+mod play;
+
 use std::path::Path;
 
 use spookery_kernel::Code;
@@ -25,10 +27,14 @@ fn dispatch() -> Result<(), Code> {
         print!("{text}");
         return Ok(());
     }
-    if args.len() == 4 && args[0] == "run" && args[2] == "--mcp" {
-        if let Some(profile) = spookery_mcp::parse_profile(&args[3]) {
-            return spookery_mcp::serve(Path::new(&args[1]), profile);
+    if args.first().is_some_and(|arg| arg == "run") {
+        if args.len() == 4 && args[2] == "--mcp" {
+            if let Some(profile) = spookery_mcp::parse_profile(&args[3]) {
+                return spookery_mcp::serve(Path::new(&args[1]), profile);
+            }
+            return Err(Code::NotInSpec);
         }
+        return play::play(&args[1..]);
     }
     Err(Code::NotInSpec)
 }
