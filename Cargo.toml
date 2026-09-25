@@ -71,6 +71,10 @@ name = "tick_08_budget"
 path = "tests/conformance/tick_08_budget.rs"
 
 [[test]]
+name = "tick_jsonl"
+path = "tests/conformance/tick_jsonl.rs"
+
+[[test]]
 name = "tick_06_atomic_commit"
 path = "tests/conformance/tick_06_atomic_commit.rs"
 
