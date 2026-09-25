@@ -101,3 +101,7 @@ path = "tests/conformance/cli_status.rs"
 [[test]]
 name = "cli_run"
 path = "tests/conformance/cli_run.rs"
+
+[[test]]
+name = "cli_migrate"
+path = "tests/conformance/cli_migrate.rs"

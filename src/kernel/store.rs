@@ -362,7 +362,11 @@ pub fn open_shard(root: &Path) -> Result<Shard, Code> {
 }
 
 pub fn lock_shard(shard: &Shard) -> Result<LockGuard, Code> {
-    let path = shard.root.join("state/.tick.lock");
+    lock_pack(&shard.root)
+}
+
+fn lock_pack(root: &Path) -> Result<LockGuard, Code> {
+    let path = root.join("state/.tick.lock");
     let file = OpenOptions::new()
         .read(true)
         .write(true)
@@ -391,8 +395,7 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
         &state,
         &txn.staging,
         now_bytes,
-        tick_index,
-        tick_jsonl.as_bytes(),
+        Some((tick_index, tick_jsonl.as_bytes())),
         &txn.memories,
         &txn.proposals,
     )?;
@@ -414,8 +417,7 @@ pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Code> {
         &state,
         &now,
         now_bytes,
-        tick_index,
-        pending.tick_jsonl.as_bytes(),
+        Some((tick_index, pending.tick_jsonl.as_bytes())),
         &pending.memories,
         &pending.proposals,
     )?;
@@ -429,12 +431,59 @@ pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Code> {
     })
 }
 
+pub fn migrate_pack(root: &Path) -> Result<(), Code> {
+    if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
+        return Err(Code::NotInSpec);
+    }
+    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Code::NotInSpec)?;
+    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Code::Schema)?;
+    let mut now = load_now(now_text)?;
+    let pack_rev_after = pack_rev(root)?;
+    let pack_rev_before = now.pack_rev.clone();
+    let state_rev_before = now.state_rev;
+    let _lock = lock_pack(root)?;
+    now.pack_rev = pack_rev_after;
+    now.state_rev = now.state_rev.checked_add(1).ok_or(Code::CommitConflict)?;
+    canonicalize(&mut now);
+    let emitted = emit_now(&now)?.into_bytes();
+    let state = root.join("state");
+    let planned = plan_commit(&state, &now, emitted, None, &[], &[])?;
+    write_commit(&state, &planned)?;
+    let mut line = String::from("{\"op\":");
+    push_json_string(&mut line, "migrate");
+    line.push_str(",\"pack_rev_before\":");
+    push_json_string(&mut line, &pack_rev_before);
+    line.push_str(",\"pack_rev_after\":");
+    push_json_string(&mut line, &now.pack_rev);
+    line.push_str(",\"state_rev_before\":");
+    line.push_str(&state_rev_before.to_string());
+    line.push_str(",\"state_rev_after\":");
+    line.push_str(&now.state_rev.to_string());
+    line.push_str("}\n");
+    append_studio(&state, &line)?;
+    Ok(())
+}
+
+fn append_studio(state: &Path, line: &str) -> Result<(), Code> {
+    let log_dir = state.join("log");
+    fs::create_dir_all(&log_dir).map_err(|_| Code::CommitConflict)?;
+    let path = log_dir.join("studio.jsonl");
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .map_err(|_| Code::CommitConflict)?;
+    file.write_all(line.as_bytes()).map_err(|_| Code::CommitConflict)?;
+    file.sync_all().map_err(|_| Code::CommitConflict)?;
+    fsync_dir(&log_dir)?;
+    Ok(())
+}
+
 fn plan_commit(
     state: &Path,
     now: &Now,
     now_bytes: Vec<u8>,
-    tick_index: u64,
-    tick_jsonl: &[u8],
+    tick: Option<(u64, &[u8])>,
     memories: &[MemoryLine],
     proposals: &[ProposalDoc],
 ) -> Result<Vec<Planned>, Code> {
@@ -450,11 +499,13 @@ fn plan_commit(
         bytes: rumor_bytes,
         is_now: false,
     });
-    planned.push(Planned {
-        target: state.join(format!("log/tick-{tick_index:04}.jsonl")),
-        bytes: tick_jsonl.to_vec(),
-        is_now: false,
-    });
+    if let Some((tick_index, tick_jsonl)) = tick {
+        planned.push(Planned {
+            target: state.join(format!("log/tick-{tick_index:04}.jsonl")),
+            bytes: tick_jsonl.to_vec(),
+            is_now: false,
+        });
+    }
     for (actor_id, body) in memory_bodies(state, memories)? {
         planned.push(Planned {
             target: state.join("memories").join(format!("{actor_id}.jsonl")),
