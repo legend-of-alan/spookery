@@ -28,6 +28,7 @@ path = "src/cli/main.rs"
 spookery-kernel = { path = "src/kernel" }
 spookery-mcp = { path = "src/mcp" }
 spookery-tick = { path = "src/tick" }
+tokio = { version = "1", features = ["macros", "rt", "time"] }
 
 [dev-dependencies]
 spookery-kernel = { path = "src/kernel" }
@@ -73,6 +74,10 @@ path = "tests/conformance/tick_08_budget.rs"
 [[test]]
 name = "tick_jsonl"
 path = "tests/conformance/tick_jsonl.rs"
+
+[[test]]
+name = "scheduler"
+path = "tests/conformance/scheduler.rs"
 
 [[test]]
 name = "tick_06_atomic_commit"
