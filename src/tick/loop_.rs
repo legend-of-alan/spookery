@@ -17,7 +17,7 @@ use spookery_kernel::store::{
 };
 use spookery_kernel::Code;
 
-use crate::advance::{pick_advance, Catchup};
+use crate::advance::{pick_advance, plan_catchup, Catchup};
 use crate::budget::prioritize;
 use crate::log::{render_tick, Rejected};
 use crate::seed::seed_preimage;
@@ -41,6 +41,26 @@ pub fn tick_pack(path: &Path) -> Result<(), Code> {
     let mut shard = open_shard(path)?;
     let wall = shard.now().last_tick_at.clone();
     run_tick(&mut shard, Reason::Manual, &wall, Catchup::none())
+}
+
+pub fn run_catchup(shard: &mut Shard, now_wall: &str, downtime_hours: u64) -> Result<(), Code> {
+    let humans = session_status(shard.now()).humans;
+    let plan = plan_catchup(humans, shard.budget(), downtime_hours)?;
+    let ticks = plan.ticks_to_run;
+    for index in 1..=ticks {
+        let last = index == ticks;
+        run_tick(
+            shard,
+            Reason::Catchup,
+            now_wall,
+            Catchup {
+                downtime_hours: Some(downtime_hours),
+                skipped: if last { plan.skipped } else { 0 },
+                last,
+            },
+        )?;
+    }
+    Ok(())
 }
 
 pub fn run_tick(

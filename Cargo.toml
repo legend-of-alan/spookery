@@ -55,6 +55,10 @@ name = "tick_03_shop_lives"
 path = "tests/conformance/tick_03_shop_lives.rs"
 
 [[test]]
+name = "tick_04_catchup_cap"
+path = "tests/conformance/tick_04_catchup_cap.rs"
+
+[[test]]
 name = "tick_06_atomic_commit"
 path = "tests/conformance/tick_06_atomic_commit.rs"
 
