@@ -3,6 +3,8 @@ use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use spookery_tick::{replay_recorded, run_tick, tick_pack, Catchup, Reason};
+
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
 fn spook(args: &[&str]) -> std::process::Output {
@@ -186,4 +188,86 @@ fn product_11_strip_bodies() {
     assert!(!crashed.join("state/proposals").exists(), "a proposal file appeared");
     assert!(!crashed.join("state/memories").exists(), "a memory file appeared");
     let _ = fs::remove_dir_all(&crashed);
+
+    let shop = stripped_pack("shop");
+    let rate = {
+        let shard = spookery_kernel::open_shard(&shop).unwrap_or_else(|err| panic!("open: {err}"));
+        shard
+            .canon()
+            .profile("mira")
+            .and_then(|profile| profile.stock_rate.get("docks_shop"))
+            .and_then(|rates| rates.get("lamp_oil"))
+            .copied()
+            .unwrap_or_else(|| panic!("stock_rate missing"))
+    };
+    assert_eq!(rate, 4);
+    let mut previous = lamp_oil_of(&shop);
+    assert!(previous >= 0);
+    for tick in 1..=13 {
+        tick_ok(&shop, tick);
+        let qty = lamp_oil_of(&shop);
+        let delta = qty - previous;
+        assert!(delta.abs() <= rate, "tick {tick}: lamp_oil {previous} -> {qty}");
+        assert!(qty >= 0, "tick {tick}: lamp_oil {qty}");
+        previous = qty;
+    }
+    let _ = fs::remove_dir_all(&shop);
+
+    let busy = stripped_pack("busy");
+    {
+        let shard = spookery_kernel::open_shard(&busy).unwrap_or_else(|err| panic!("open: {err}"));
+        let mut now = shard.now().clone();
+        drop(shard);
+        now.presence.humans = 1;
+        now.presence.actors_present = vec!["pc_rowan".to_string()];
+        now.world_time = 360;
+        *now.actors
+            .get_mut("mira")
+            .unwrap_or_else(|| panic!("mira missing"))
+            .place_mut() = "docks_shop".to_string();
+        let text = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}"));
+        fs::write(busy.join("state/now.yaml"), text).unwrap();
+    }
+    {
+        let mut shard = spookery_kernel::open_shard(&busy).unwrap_or_else(|err| panic!("open: {err}"));
+        let wall = shard.now().last_tick_at.clone();
+        run_tick(&mut shard, Reason::Manual, &wall, Catchup::none()).unwrap_or_else(|err| panic!("tick: {err}"));
+        assert_eq!(shard.now().actors.get("mira").unwrap().place(), "docks_shop");
+        assert_eq!(shard.now().actors.get("mira").unwrap().tick().unwrap().last_act_tick, 0);
+        assert_eq!(shard.now().actors.get("bram").unwrap().place(), "docks_shop");
+        assert_eq!(shard.now().actors.get("bram").unwrap().tick().unwrap().last_act_tick, 1);
+    }
+    let _ = fs::remove_dir_all(&busy);
+
+    let replay_start = stripped_pack("replay");
+    let replay_played = std::env::temp_dir().join(format!(
+        "spook-strip-replay-played-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&replay_played);
+    copy_dir(&replay_start, &replay_played);
+    for tick in 1..=20 {
+        tick_pack(&replay_played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+    }
+    let golden = fs::read(replay_played.join("state/now.yaml")).unwrap();
+    let temp = replay_recorded(&replay_played, &replay_start).unwrap_or_else(|err| panic!("replay: {err}"));
+    assert_eq!(fs::read(temp.join("state/now.yaml")).unwrap(), golden);
+    let _ = fs::remove_dir_all(&replay_start);
+    let _ = fs::remove_dir_all(&replay_played);
+    let _ = fs::remove_dir_all(&temp);
+}
+
+fn lamp_oil_of(pack: &Path) -> i64 {
+    let shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    shard
+        .now()
+        .places
+        .get("docks_shop")
+        .and_then(|place| place.stock.get("lamp_oil"))
+        .copied()
+        .unwrap_or_else(|| panic!("lamp_oil missing"))
 }
