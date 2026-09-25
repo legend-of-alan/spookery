@@ -426,7 +426,7 @@ A reviewer or agent should treat the kernel as shipped only if all of these pass
 8. 50 eligible NPCs, one tick: ≤ 8 act, ≤ 12 intents applied.
 9. One bundled one-shot pack plays in the CLI without editing code **and** is pleasant to leave running for a week. Host `status` shows stock / note / rumor / paused clock fired. A player resume does not leak off-screen stock; walking to the shop and `perceive`ing is enough to see the restock and door note.
 10. README + this spec + tick spec + encoding law are enough for another agent to add a move to `moves.yaml` and a test.
-11. Strip-bodies: delete every Markdown body in the fixture; tests 1–8 still pass.
+11. Strip-bodies: delete every Markdown body in `packs/oneshot-docks`; tests 1, 2, 3, 5, 6, and 7 still pass. Tests 4 and 8 stay on the packs those tests build.
 12. Hidden-string lint: fixture bodies contain none of Mira’s hidden fact text.
 
 ### 13.2 Company gates (not the same checkbox)

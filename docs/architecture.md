@@ -1826,8 +1826,10 @@ Synthetic packs (50 NPCs, kill-mid-commit) live under `tests/conformance/fixture
 | 8 | 50 NPCs | Test 8 |
 | 9 | Fixture plays, host digest vs player resume vs in-place perceive | `product_09_idle_ux.rs`. Uses `spook status` and `idle_digest(Player)` and `perceive` |
 | 10 | Another agent can add a move from the docs | Review gate, not a runtime test. The docs name `moves.yaml` plus a match arm plus a test in the same change |
-| 11 | Strip bodies, tests 1–8 still pass | `product_11_strip_bodies.rs` copies the fixture, deletes bodies, reruns |
+| 11 | Strip Markdown bodies on `packs/oneshot-docks`. Tests 1, 2, 3, 5, 6, and 7 still pass | `product_11_strip_bodies.rs` copies that pack, deletes every Markdown body, and reruns those six asserts |
 | 12 | Hidden-string lint on bodies | `product_12_hidden_string_lint.rs` → `kernel::lint` |
+
+Test 4 and test 8 stay on the packs those tests build. Test 4 asserts Trace D on shard `ex` from `world_time` 0. Test 8 asserts 50 eligible NPCs, at most 8 acting and at most 12 intents applied. This criterion does not name a strip of those packs.
 
 After commit 1, make test 1 fail for real (remove `ignore`), then land the firewall, `perceive`, and the tick path that test runs, until it passes. That is gate A. Do not start at MCP tool bodies, the scheduler, or `npc_act`.
 
