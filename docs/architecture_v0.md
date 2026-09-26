@@ -4,7 +4,7 @@
 **License:** CC BY 4.0 (spec). Runtime code that lands under `/src` is AGPL-3.0-or-later.
 **Audience:** Founders, a reviewing programmer, and coding agents implementing crate by crate.
 
-This file is the only normative spec for the implementation that exists. A rule that is not written here is out of v0. `docs/architecture_v0.1.md` is a draft target and does not override this file, and does not license a code change, until that draft is adopted. `product_spec.md` is non-normative business notes.
+This file is the only normative spec for the implementation that exists. A rule that is not written here is out of v0. `docs/architecture_v0.1.md` is a draft. An unstarted gate in that draft does not override this file and does not license a code change. A gate that has been started wins where it names a change. `product_spec.md` is non-normative business notes.
 
 This file was `docs/architecture.md` through v0. It lives in `docs/`. The commit-1 tree below still names `docs/architecture.md` because that was the path at that commit.
 

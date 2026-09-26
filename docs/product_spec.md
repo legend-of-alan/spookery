@@ -1,6 +1,6 @@
 # Spookery — Product spec
 
-**Non-normative.** Engineering law is `architecture_v0.md`. `architecture_v0.1.md` is a draft and is not law until it is adopted. This file is business notes from early brainstorming. Where this file disagrees with `architecture_v0.md`, the v0 architecture wins.
+**Non-normative.** Engineering law is `architecture_v0.md`. `architecture_v0.1.md` is a draft. A gate in it is law only once that gate is started. This file is business notes from early brainstorming. Where this file disagrees with `architecture_v0.md`, the v0 architecture wins.
 
 **Working name:** Spookery (company) + `spook` (CLI / runtime) + pack (world format)
 **One-line pitch:** A runtime for private worlds you describe in text: agents may intend, only the tick may write, and the world keeps moving after everyone logs off.
@@ -587,7 +587,7 @@ The core does not grow a second writer. Extensions are shells and packs.
 ```text
 /docs
   architecture_v0.md          # frozen normative spec for the code that exists
-  architecture_v0.1.md        # draft target; not law until adopted
+  architecture_v0.1.md        # draft target; a gate is law only once started
   architecture.md             # index of the two files above
   product_spec.md          # this file; business notes, not law
 /schema                    # now.schema.json, effect.schema.json, intent.schema.json

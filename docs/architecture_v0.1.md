@@ -55,6 +55,18 @@ Speech and mechanical results are different event kinds on the wire. A spoken se
 
 Fact grant is out of scope. A whispered sentence does not append to `known_facts`. Nothing in v0 can do that either, and v0.1 does not add it.
 
+### Laptop sitting
+
+This is the session the draft is for. One machine. The pack is `packs/oneshot-docks`.
+
+| Terminal | Command | Role |
+|---|---|---|
+| Table | `spook run packs/oneshot-docks` | The shard. Operator stdout. |
+| GM, optional | Grok, with MCP command `spook gm packs/oneshot-docks --stdio` | The GM. Omit the terminal and the player commits on send. |
+| Player | `spook play packs/oneshot-docks` | Rowan, `start.pc`. |
+
+Docks play is the v0 idle lines plus `say`, `talk`, and `attempt grit <target>`. `attack`, `give`, and `take` stay refused. The player sees §6 JSON lines, not a written scene. Grok does not open the TCP socket. The `--stdio` process does.
+
 ---
 
 ## 2. What stays v0
@@ -77,7 +89,7 @@ v0 §1 through §17 still hold where this file does not name a change. Load-bear
 Intentional conflicts with v0. Do not "fix" these back.
 
 - v0 binds one MCP profile for the life of the process, and the play door is a different way to start a process. v0.1 starts one shard and attaches seats. `spook run <pack> --mcp <profile>` stays that v0 stdio process: one profile, the v0 §8 `tools/list` order, no `say` inserted. It is not the sitting. After the shard accepts the line `gm`, the GM seat uses that same rmcp 0.8 codec: one compact JSON-RPC message, then one LF, no header. `gm` is not a JSON-RPC message. It is not a second grammar.
-- v0 `spook run <pack>` reads play lines from stdin and does not call `session_open`, so a person at the keyboard leaves `presence.humans` at 0 (pin P22, pin P45). v0.1 stdin is not a play door. Any stdin line other than `stop` prints `NOT_IN_SPEC` on stderr, does not exit, and writes nothing. `stop` and EOF drop a held player seat the way a disconnect does, drop a held GM seat with no presence write, do not flush the intent queue, do not call `run_tick`, and exit 0. The listener keeps the process up until then. EOF is a clean shutdown, not a play script. `spook run <pack> --as ...` is `NOT_IN_SPEC`, exit 1, before `open_shard`. `--as` belongs to `spook play`. A player client calls `session_open`, which sets presence. One stdin is not two actor ids. v0 player stdout is raw `idle_digest(Player)` bytes plus one perceive line. v0.1 player stdout is the §6 events. At adoption, `tests/conformance/cli_run.rs` is rewritten because it asserts the stdin door this draft removes. Until adoption, this draft does not license that rewrite.
+- v0 `spook run <pack>` reads play lines from stdin and does not call `session_open`, so a person at the keyboard leaves `presence.humans` at 0 (pin P22, pin P45). v0.1 stdin is not a play door. Any stdin line other than `stop` prints `NOT_IN_SPEC` on stderr, does not exit, and writes nothing. `stop` and EOF drop a held player seat the way a disconnect does, drop a held GM seat with no presence write, do not flush the intent queue, do not call `run_tick`, and exit 0. The listener keeps the process up until then. EOF is a clean shutdown, not a play script. `spook run <pack> --as ...` is `NOT_IN_SPEC`, exit 1, before `open_shard`. `--as` belongs to `spook play`. A player client calls `session_open`, which sets presence. One stdin is not two actor ids. v0 player stdout is raw `idle_digest(Player)` bytes plus one perceive line. v0.1 player stdout is the §6 events. Gate A rewrites `tests/conformance/cli_run.rs` because it asserts the stdin door this draft removes. Until Gate A starts, that file stays.
 - v0 says do not add tools and do not reorder `tools/list`. v0.1 adds `say` to the GM seat only. The stdio `pack-table` list does not gain it. `session_open` stays on the GM list, in that order, and a GM `tools/call` of it returns `NOT_IN_SPEC`.
 - v0 `expand` returns `NOT_IN_SPEC` for `talk` even during a session. v0.1 `talk` is speech, not an expand arm that mutates `Now`. `attempt` is the one live-only name that gains a kernel behavior (the existing check) and still mutates nothing. The v0 line `attempt <check>` gains a `<target>` integer. Do not pass `0`. Do not put that integer in `checks.yaml`.
 - v0 `tools/call` falls through to the library's method-not-found. The stdio server still has no `tools/call` body. v0.1 GM `tools/call` on the shard reaches the handlers. A tool the seat does not have still returns the pinned refusal (`NOT_IN_SPEC` or `LLM_DISABLED`), not a transport error invented by the library.
@@ -99,9 +111,10 @@ A v0 rule this file does not conflict with stays. `filter_blocklist` still rejec
 | `spook run <pack> --bind <addr>` | Same listener. `<addr>` must be the string `127.0.0.1` | Same. Any other `<addr>` is `NOT_IN_SPEC` on stderr, exit 1, and `open_shard` is not called. The listener is not left open |
 | `spook run <pack> --as ...` | Nothing | `NOT_IN_SPEC` on stderr, exit 1, before `open_shard`. `--as` belongs to `spook play` |
 | `spook run <pack> --mcp <profile>` | v0 stdio MCP. Does not bind `9737` | Whatever that v0 profile already writes |
-| `spook play <pack>` | Connects as the player seat | Nothing under the pack. Optional `--as player:<id>`. Omitted `--as` reads `pack.yaml` `start.pc` (pin P22) and does not call `open_shard` |
+| `spook play <pack>` | Connects to `127.0.0.1:9737` as the player seat | Nothing under the pack. Optional `--as player:<id>`. Omitted `--as` reads `pack.yaml` `start.pc` (pin P22) and does not call `open_shard` |
 | `spook play <pack> --as player:mira` | Does not take a seat | `SCHEMA` on stderr, exit 1, writes nothing. This replaces `cli_run_as_rejects_a_non_pc` |
-| `spook gm <pack>` | Connects as the GM seat. Same bytes as a model | Nothing under the pack. Maps operator lines to `tools/call` |
+| `spook gm <pack>` | Connects to `127.0.0.1:9737` as the GM seat | Nothing under the pack. Maps operator lines to `tools/call` |
+| `spook gm <pack> --stdio` | Connects to `127.0.0.1:9737`, sends `gm`, then copies bytes | Nothing under the pack. The process a model host spawns. Not a typed-line client |
 | `lint`, `tick`, `replay`, `conformance`, `status`, `migrate` | v0 §11 | Unchanged. Not seats |
 
 `--mcp` together with `--bind` is `NOT_IN_SPEC` before `open_shard`. There is no port flag. There is no `--serve`.
@@ -156,7 +169,9 @@ EOF on a connection, a read error, a write error, a keepalive failure, or a play
 | `check <as> <intent_id> <check_id> <target>` | `resolve_check` |
 | `close` | Drop the connection and free the GM seat. No presence write |
 
-A model sends the same JSON-RPC bytes after `gm`. It does not use the typed-line table. That table is the client.
+A model does not open the TCP socket and does not send `gm`. `spook gm <pack> --stdio` does. The model host spawns that command and speaks MCP on its stdin and stdout. The bridge connects to `127.0.0.1:9737`, writes the line `gm`, and then copies bytes in both directions. It does not call `open_shard`, does not write `state/`, and does not interpret a tool call. A refused hello is written to the bridge's stderr, not its stdout, and the bridge exits 1. EOF on the host stdin closes the socket. EOF or an error on the socket makes the bridge exit 1. Human `spook gm` without `--stdio` stays the typed-line client. Both take the one GM seat.
+
+If `spook play`, `spook gm`, or `spook gm --stdio` cannot connect, the process exits 1. Stderr is the operating-system error text. Stdout is empty. Nothing under the pack is written.
 
 Reconnect after the slot is free is a new hello and, for a player, a new `session_open`. The shard mints a new `session_id`. This draft does not pin that id's spelling.
 
@@ -279,7 +294,7 @@ Presence and the clock stay v0 §7 and §8, with these seat rules.
 | GM seated | Player line other than `say` / `talk` | `say` / `talk` |
 |---|---|---|
 | No | Queue, then `commit_turn` with `include_tick` true. One tick, then yield. Not a catch-up burst | Append a tape line. Do not queue. Do not commit |
-| Yes | Queue only, the v0 `intent` tool. The player cannot `commit_turn` | Same. Do not wait for the GM |
+| Yes | Queue only, the v0 `intent` tool. The player cannot `commit_turn`. The shard sends `queued` and the player client reads the next line | Same. Do not wait for the GM |
 
 The GM's `commit_turn` with `include_tick` true closes the round once (pin P20): one `state_rev` step and one tick file when the tick runs. `session_id` may be omitted. Do not invent one. That tick stamps `last_tick_at` and restarts the `spook run` sleep from that moment. It does not arm a second tick. A GM commit with no queued intents follows the v0 no-op: if nothing was accepted and presence is unchanged, `state_rev` stays, `run_tick` is not entered, `world_time` stays, and the sleep is not restarted. Narration alone does not move `world_time`. Do not turn that commit into the v0 empty tick that advances `world_time`.
 
@@ -287,7 +302,7 @@ A wake that then arrives, including one whose sleep started before the commit, r
 
 Zero players and a GM: the GM may queue NPC intents and commit. That tick is an idle tick because `humans` is 0. `pick_advance` uses `idle_minutes_per_tick`. The scheduler does not run that tick while the GM connection is held. `say` still does not tick.
 
-The in-memory intent queue still dies on crash (v0 §5). The tape file does not. There is no outbound queue and no stored cursor. `stop` and stdin EOF do not flush that intent queue and do not call `run_tick`. They do drop a held player seat and commit `include_tick` false when presence changed. A crash that skips them leaves presence on disk. The next `spook run` clears it before accept and before the first wake, then idles. `spook tick` on that same file, without a `spook run` in between, still sees the leftover `humans` and ticks live.
+Dropping the GM seat does not flush the intent queue and does not call `run_tick`. Queued intents stay queued. The next player mechanical line while no GM is seated commits on send, and that tick consumes the queue, including the new line. The in-memory intent queue still dies on crash (v0 §5). The tape file does not. There is no outbound queue and no stored cursor. `stop` and stdin EOF do not flush that intent queue and do not call `run_tick`. They do drop a held player seat and commit `include_tick` false when presence changed. A crash that skips them leaves presence on disk. The next `spook run` clears it before accept and before the first wake, then idles. `spook tick` on that same file, without a `spook run` in between, still sees the leftover `humans` and ticks live.
 
 `attempt`. The line is `attempt <check> <target>`. `<target>` is the v0 integer token: an optional `-`, then digits. A missing target is `SCHEMA` and queues nothing. The intent stores move `attempt`, args `check`, and args `target`. It does not roll when the line is typed. `expand` of `attempt` returns zero effects and does not return `NOT_IN_SPEC`. The check id is `args.check`, not the optional `moves.yaml` check name. The docks `moves.yaml` entry stays without a check. Do not edit that file, `checks.yaml`, `schema/checks.schema.json`, or `packs/oneshot-docks`.
 
@@ -314,22 +329,28 @@ The player connection is the line protocol. One compact JSON object per line, on
 | `kind` | Keys after `kind` |
 |---|---|
 | `say` | `from`, `address`, `text` |
+| `queued` | `id` |
 | `check` | `success` |
 | `perceive` | The v0 §9 perceive fields, in that order |
 | `resume` | `text`. `text` is the v0 `idle_digest(Player)` string |
 | `refused` | `code` |
 
-After the hello's `session_open`, the seated player is sent scrollback, then `resume`, then `perceive`. After each later `commit_turn` that runs a tick while that player is seated, the player is sent `resume`, then `perceive`, and not the older tape lines again. A line that only queues does not send them. `say` and `talk` do not send them. `say` does not enter resume.
+After the hello's `session_open`, the seated player is sent scrollback, then `resume`, then `perceive`. After each later `commit_turn` that runs a tick while that player is seated, the player is sent `resume`, then `perceive`, and not the older tape lines again. A mechanical line that only queues sends `queued` and does not send `resume` or `perceive`. The player client prints that line and reads the next stdin line. It does not wait for the GM before accepting `say`. `say` and `talk` are `say` events, not `queued`. `say` does not enter resume.
 
 The GM connection, after the accepted line `gm`, is the rmcp 0.8 codec: one compact JSON-RPC message, then one LF, no header. `gm` is not parsed as JSON-RPC. There is no HTTP route on `9737`. The player socket never uses this codec.
 
 A `tools/call` result is the handler object below. Do not give it an extra `kind` except where this table already prepends `kind`. The `tools/call` response is not also sent as a notification.
 
-A server event that is not a tool result is an MCP notification. The method is `spook/event`. The params are the object below. A player `say` and a check push are that notification. `spook gm` prints result objects and notification params as JSON lines.
+A server event that is not a tool result is an MCP notification. The method is `spook/event`. The params are the object below. A player `say`, a `queued` intent, and a check push are that notification. `spook gm` prints result objects and notification params as JSON lines. A model host may drop notifications. The sitting `session_status` is the pull that still works.
+
+Sitting `session_status` accepts `{}` or `{ since: <u64> }`. Any other key is `SCHEMA` and reads nothing. The output is the v0 object, then `queued`, then `last_seq`. `queued` is the in-memory intents in queue order, each `{ id, actor_id, move }`. `last_seq` is the last complete tape `seq`, or `0` when there is none. When `since` is present, the output also ends with `events`: stored tape objects whose `seq` is greater than `since`, in order, in the GM `say` shape. Stdio `--mcp` `session_status` stays the v0 input `{}` and the v0 output. It does not gain these fields.
+
+Each sitting GM tool description tells the model these facts, in its own words: a player mechanical line queues until `commit_turn`; `say` does not tick; `perceive` requires `as` of `player:<id>` or `npc:<id>`; this seat does not call `session_open` or `patch_entity`; `session_status` with `since` returns player speech and the queue when a notification did not arrive. The description text is not pinned. Those facts are.
 
 | `kind` or result | Keys | When `kind` is present |
 |---|---|---|
 | `say` | `seq`, `from`, `address`, `place`, `actor`, `recipients`, `text` | Yes. First key |
+| `queued` | `id`, `actor_id`, `move` | Yes. First key. One notification per queued intent |
 | `check` | `faces`, `stat`, `total`, `target`, `success` | Yes. The v0 `resolve_check` output, `kind` prepended |
 | `perceive` | The v0 §9 fields, in that order | Yes. First key |
 | `resume` | `text` | Yes |
@@ -365,6 +386,7 @@ Will not appear in this architecture:
 - No per-client cursor, no ack, and no outbound queue. The tape is the scrollback log.
 - Silence is not a disconnect. A live socket that sends nothing stays seated.
 - `kernel::open_shard` does not clear `presence`. Only `spook run` without `--mcp` does, and only at startup.
+- `spook gm --stdio` is not a writer and not a second grammar. It copies bytes. Grok does not open the TCP socket.
 
 ---
 
@@ -396,6 +418,9 @@ New scenarios. Each line is the assertion. These do not edit `packs/oneshot-dock
 16. A pack whose `now.yaml` has `humans` 1 and a session id, as a crash would leave it: `spook run` commits `include_tick` false before accept, `humans` is 0, `session_ids` is empty, and there is no tick file. The following wake is idle catch-up. The next player hello sets `humans` to 1, not 2. `spook tick` on a copy of that same file, with no `spook run`, leaves `humans` 1 and ticks live.
 17. A simulated read error on a held player socket drops the seat the way `close` does: `humans` returns to 0, one `state_rev` bump, no tick file. A held socket that has sent no player line, and has not errored, is still seated. The test does not sleep for `tick_every_real_seconds`.
 18. A `commit_turn` that advances `world_time` restarts the sleep. The seats then drop. A wake that was already due, fired before `tick_every_real_seconds` have elapsed since `last_tick_at`, does not call `run_tick`. `world_time` stays at the value the commit wrote. `schedule::wake` is not the function under test. The wrapper is.
+19. `spook play` when nothing is listening exits 1. Stderr is the operating-system error. Stdout is empty. The pack is unchanged. The same holds for `spook gm` and for `spook gm --stdio`.
+20. With a GM seated, a player `wait` sends `{"kind":"queued","id":...}` and does not send `resume`. The player client can send `say` before `commit_turn`. Dropping the GM seat does not commit that `wait` and does not advance `world_time`. The next player `wait`, with no GM seated, commits one tick that applies both queued intents.
+21. `spook gm <pack> --stdio` copies a `tools/call` for `perceive` to the shard and the handler runs. The bridge does not write `now.yaml`. After a player `say`, `session_status` with `{ since: 0 }` returns that tape object in `events` and `last_seq` at least 1. A refused hello is on the bridge's stderr, and its stdout has no JSON-RPC.
 
 ---
 
@@ -409,7 +434,7 @@ The gates are linear. Gate B and Gate C both edit the player read loop and the s
 
 ### Gate A — seats
 
-Proofs 1, 2, 3, 4, 5, 13, 14, 15, 16, and 17.
+Proofs 1, 2, 3, 4, 5, 13, 14, 15, 16, 17, and 19.
 
 `spook run` listens. Hellos and refusals work. Startup clears a crashed session. Disconnect, a socket error, and keepalive drop a held seat. One shard thread owns `Now`. `cli_run.rs` is rewritten here.
 
@@ -425,7 +450,7 @@ Still absent. No round close. `attempt` and `wait` stay `NOT_IN_SPEC`. No GM too
 
 ### Gate C — round and clock
 
-Proofs 10, 11, and 18. Gate B is green.
+Proofs 10, 11, 18, and 20. Gate B is green.
 
 With no GM, `wait` commits one live tick. With a GM seated, `wait` queues, and `commit_turn` closes the round. A wake while a seat is held does not tick. A commit that advances `world_time` restarts the sleep. A wake earlier than `tick_every_real_seconds` after `last_tick_at` does not tick after the seats drop. `schedule::wake` stays the v0 function. The seat check and the interval check wrap the call.
 
@@ -441,8 +466,8 @@ Still absent. No new effect class. The GM tools Gate C left refused stay refused
 
 ### Gate E — GM tools
 
-Proof 12. Gates B and D are green.
+Proofs 12 and 21. Gates B and D are green.
 
-`perceive` reaches the handler. `npc_act` returns `LLM_DISABLED`. `patch_entity` and GM `session_open` return `NOT_IN_SPEC`. The GM `say` tool is the same append as the player line.
+`perceive` reaches the handler. `npc_act` returns `LLM_DISABLED`. `patch_entity` and GM `session_open` return `NOT_IN_SPEC`. The GM `say` tool is the same append as the player line. `spook gm --stdio` is the process a model host spawns. `session_status` with `since` is how that model reads the tape when a notification does not arrive.
 
 Still absent. No fact grant. No non-loopback bind. No second GM grammar. No ack cursor.
