@@ -67,6 +67,20 @@ This is the session the draft is for. One machine. The pack is `packs/oneshot-do
 
 Docks play is the v0 idle lines plus `say`, `talk`, and `attempt grit <target>`. `attack`, `give`, and `take` stay refused. The player sees §6 JSON lines, not a written scene. Grok does not open the TCP socket. The `--stdio` process does.
 
+### Demo goal
+
+When all five gates are green, a person can show a partner this sitting on one laptop. Earlier gates do not meet it. Gate B can store the compliment. Grok cannot answer until Gate E.
+
+The operator opens the table with `spook run packs/oneshot-docks`. A second terminal runs Grok, whose MCP command is `spook gm packs/oneshot-docks --stdio`. The operator tells that model, in the chat, that it is the GM, that it answers NPC speech in character with `say`, and that it calls `session_status` when no notification arrived. The kernel does not ship that persona. A third terminal runs `spook play packs/oneshot-docks`.
+
+Rowan starts in `docks_shop`. World time `1080` is 18:00. Mira is in `mira_rooms`. Aldric is in the shop. The player types `talk mira you have nice hair`. The id is lowercase. The shard does not require her to be in the room. The line is speech. It does not tick. The player's own line is printed as JSON. Grok sees it as a `spook/event` notification or by `session_status` with `since`. Grok calls `say`. The player client prints that reply when it arrives, while still waiting for the next typed line. The reply's `from` is `gm`. The text may say that Mira is not there, or, after a later tick has moved Rowan, "thank you very much, stranger." The `from` field is not `mira`.
+
+With Grok seated, `travel mira_rooms` returns `queued` and does not move Rowan yet. The player can still `talk`. Grok's `commit_turn` runs one tick. World time advances once. The sleep restarts. A wake already due does not add a second step. Resume and perceive then show the new place.
+
+Stopping Grok drops the GM seat and does not tick. The next mechanical line commits on its own. A `wait` that was only queued stays queued until that line. Stopping the shard and starting it again clears the leftover session. `spook play` shows the compliment and the reply on the tape when those lines were fsynced. An uncommitted queue is gone. If the shard is not running, `spook play` and `spook gm` exit 1 and the pack is unchanged.
+
+This goal does not include plain-English play, a line whose `from` is `mira`, `attack`, `give`, `take`, or a spoken secret becoming a `known_facts` entry.
+
 ---
 
 ## 2. What stays v0
