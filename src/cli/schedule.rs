@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::store::open_shard;
+use spookery_kernel::store::{open_shard, Shard};
 use spookery_kernel::Code;
 use spookery_tick::advance::plan_catchup;
 use spookery_tick::{run_catchup, run_tick, Catchup, Reason};
@@ -21,21 +21,33 @@ pub async fn run_scheduler(pack: &Path) -> Result<(), Code> {
     }
 }
 
+pub fn seconds_since(last_tick_at: &str) -> Result<u64, Code> {
+    elapsed_secs(last_tick_at, SystemTime::now())
+}
+
+pub fn wall_now() -> Result<String, Code> {
+    format_utc(SystemTime::now())
+}
+
 pub fn wake(pack: &Path) -> Result<(), Code> {
     let mut shard = open_shard(pack)?;
+    wake_shard(&mut shard)
+}
+
+pub fn wake_shard(shard: &mut Shard) -> Result<(), Code> {
     let now = SystemTime::now();
     let elapsed = elapsed_secs(&shard.now().last_tick_at, now)?;
     let wall = format_utc(now)?;
     let hours = elapsed / 3600;
     if hours == 0 {
-        run_tick(&mut shard, Reason::Scheduler, &wall, Catchup::none())
+        run_tick(shard, Reason::Scheduler, &wall, Catchup::none())
     } else {
         let humans = shard.now().presence.humans;
         let plan = plan_catchup(humans, shard.budget(), hours)?;
         if plan.ticks_to_run == 0 {
-            run_tick(&mut shard, Reason::Scheduler, &wall, Catchup::none())
+            run_tick(shard, Reason::Scheduler, &wall, Catchup::none())
         } else {
-            run_catchup(&mut shard, &wall, hours)
+            run_catchup(shard, &wall, hours)
         }
     }
 }

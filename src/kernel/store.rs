@@ -144,6 +144,10 @@ impl Shard {
         self.queue.push(intent);
     }
 
+    pub fn clear_queue(&mut self) {
+        self.queue.clear();
+    }
+
     pub fn set_pending(&mut self, pending: PendingCommit) {
         self.pending = Some(pending);
     }

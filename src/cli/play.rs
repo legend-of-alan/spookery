@@ -44,15 +44,20 @@ pub fn play(args: &[String]) -> Result<(), Exit> {
         let stream = reader.get_mut();
         writeln!(stream, "{input}").map_err(Exit::Os)?;
         stream.flush().map_err(Exit::Os)?;
-        let Some(line) = read_line(&mut reader)? else {
-            return Ok(());
-        };
-        if let Some(code) = refused_code(&line) {
-            eprintln!("{code}");
-            continue;
+        loop {
+            let Some(line) = read_line(&mut reader)? else {
+                return Ok(());
+            };
+            if let Some(code) = refused_code(&line) {
+                eprintln!("{code}");
+                break;
+            }
+            println!("{line}");
+            let _ = io::stdout().flush();
+            if !line.starts_with("{\"kind\":\"resume\"") {
+                break;
+            }
         }
-        println!("{line}");
-        let _ = io::stdout().flush();
     }
     Ok(())
 }
@@ -79,9 +84,17 @@ pub fn gm(args: &[String]) -> Result<(), Exit> {
     std::thread::spawn(move || {
         for line in io::stdin().lines() {
             match line {
-                Ok(line) if line == "close" => break,
+                Ok(line) if line == "close" => {
+                    let _ = watch.shutdown(std::net::Shutdown::Write);
+                    // Dropping this clone resets the socket before the server finishes the seat drop.
+                    std::mem::forget(watch);
+                    return;
+                }
                 Ok(_) => eprintln!("{}", Code::NotInSpec),
-                Err(_) => break,
+                Err(_) => {
+                    let _ = watch.shutdown(std::net::Shutdown::Both);
+                    return;
+                }
             }
         }
         let _ = watch.shutdown(std::net::Shutdown::Both);

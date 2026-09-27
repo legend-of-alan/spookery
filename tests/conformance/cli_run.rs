@@ -594,12 +594,10 @@ fn player_lines_do_not_commit() {
     let mut client = spawn(&["play", &pack_arg(&pack)]);
     wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
-    for (index, line) in ["attempt sneak shadow", "wait"].into_iter().enumerate() {
-        write_stdin(&mut client, line);
-        let stderr = wait_count(&client.stderr, "NOT_IN_SPEC", index + 1, Duration::from_secs(5));
-        assert!(stderr.contains("NOT_IN_SPEC"), "{line}: {stderr}");
-        assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated, "{line}");
-    }
+    write_stdin(&mut client, "attempt sneak shadow");
+    let stderr = wait_has(&client.stderr, "NOT_IN_SPEC", Duration::from_secs(5));
+    assert!(stderr.contains("NOT_IN_SPEC"));
+    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
     assert!(client.child.try_wait().unwrap().is_none());
     assert!(tick_files(&pack).is_empty());
     assert!(!pack.join("state/log/session.jsonl").exists());
@@ -815,7 +813,7 @@ fn gm_tools_call_is_not_in_spec() {
                 "session_save",
             ]
         );
-        for name in ["session_open", "say", "perceive", "npc_act", "patch_entity", "commit_turn"] {
+        for name in ["session_open", "say", "perceive", "npc_act", "patch_entity"] {
             let result = tokio::time::timeout(
                 Duration::from_secs(10),
                 running.call_tool(CallToolRequestParam {
@@ -829,6 +827,41 @@ fn gm_tools_call_is_not_in_spec() {
             let value = result.structured_content.unwrap_or_else(|| panic!("{name} has no object"));
             assert_eq!(value.get("code").and_then(|code| code.as_str()), Some("NOT_IN_SPEC"), "{name}");
         }
+        let commit = tokio::time::timeout(
+            Duration::from_secs(10),
+            running.call_tool(CallToolRequestParam {
+                name: "commit_turn".into(),
+                arguments: None,
+            }),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("commit_turn timed out"))
+        .unwrap_or_else(|err| panic!("commit_turn: {err}"));
+        let value = commit.structured_content.unwrap();
+        assert_eq!(value.get("code").and_then(|code| code.as_str()), Some("SCHEMA"));
+        let intent = tokio::time::timeout(
+            Duration::from_secs(10),
+            running.call_tool(CallToolRequestParam {
+                name: "intent".into(),
+                arguments: Some(
+                    serde_json::json!({
+                        "actor_id": "pc_rowan",
+                        "actor_kind": "player",
+                        "source": "player",
+                        "move": "wait",
+                    })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                ),
+            }),
+        )
+        .await
+        .unwrap_or_else(|_| panic!("intent timed out"))
+        .unwrap_or_else(|err| panic!("intent: {err}"));
+        let value = intent.structured_content.unwrap();
+        assert!(value.get("queued").and_then(|id| id.as_str()).is_some_and(|id| !id.is_empty()));
+        assert!(value.get("code").is_none());
     });
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
     assert!(tick_files(&pack).is_empty());
@@ -967,4 +1000,302 @@ fn torn_tape_tail_is_not_a_record() {
     assert_eq!(now_of(&pack).world_time, shard.now().world_time);
     assert!(tick_files(&pack).is_empty());
     let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn no_gm_wait_commits_one_live_tick() {
+    let _lock = lock_port();
+    let pack = temp_pack("live-wait");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut player = spawn(&["play", &pack_arg(&pack)]);
+    let hello = wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let seated = now_of(&pack);
+    assert_eq!(seated.presence.humans, 1);
+    assert_eq!(seated.world_time, 1080);
+    assert_eq!(seated.tick_index, 0);
+    assert!(tick_files(&pack).is_empty());
+    write_stdin(&mut player, "wait");
+    let stdout = wait_count(&player.stdout, "\"kind\":\"resume\"", hello.matches("\"kind\":\"resume\"").count() + 1, Duration::from_secs(5));
+    let added = &stdout[hello.len()..];
+    assert!(added.contains("\"kind\":\"resume\""), "{added}");
+    assert!(!added.contains("\"kind\":\"queued\""), "{added}");
+    assert!(!text_of(&player.stderr).contains("NOT_IN_SPEC"));
+    let now = now_of(&pack);
+    assert_eq!(now.presence.humans, 1);
+    assert_eq!(now.world_time, 1085);
+    assert_ne!(now.world_time, 1080 + 60);
+    assert_eq!(now.tick_index, 1);
+    assert_eq!(now.state_rev, seated.state_rev + 1);
+    assert_ne!(now.last_tick_at, seated.last_tick_at);
+    assert_eq!(tick_files(&pack), vec!["tick-0001.jsonl".to_string()]);
+    let tick: serde_json::Value = serde_json::from_str(fs::read_to_string(pack.join("state/log/tick-0001.jsonl")).unwrap().trim()).unwrap();
+    assert_eq!(tick["presence_humans"], 1);
+    assert_eq!(tick["world_time_before"], 1080);
+    assert_eq!(tick["world_time_after"], 1085);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn wake_while_a_seat_is_held_does_not_tick_or_drain() {
+    let pack = temp_pack("held-wake");
+    let mut shard = spookery_kernel::open_shard(&pack).unwrap();
+    let session = spookery::seat::seat_player(&mut shard, "pc_rowan").unwrap();
+    assert!(!spookery::seat::on_scheduled_wake(&mut shard, true, false).unwrap());
+    assert_eq!(shard.now().presence.humans, 1);
+    assert_eq!(shard.now().world_time, 1080);
+    assert_eq!(shard.now().tick_index, 0);
+    assert!(tick_files(&pack).is_empty());
+
+    let note = spookery::seat::queue_wait(&mut shard, "pc_rowan").unwrap();
+    assert_eq!(shard.queued_intents().len(), 1);
+    assert!(!spookery::seat::on_scheduled_wake(&mut shard, true, true).unwrap());
+    assert_eq!(shard.queued_intents().len(), 1);
+    assert_eq!(shard.queued_intents()[0].id, note.id);
+    assert_eq!(shard.now().world_time, 1080);
+    assert!(tick_files(&pack).is_empty());
+
+    assert!(spookery::seat::release_player_seat(
+        &mut shard,
+        &session,
+        "pc_rowan",
+        spookery::seat::SocketEnd::Close
+    )
+    .unwrap());
+    assert_eq!(shard.now().presence.humans, 0);
+    assert_eq!(shard.now().world_time, 1080);
+    assert!(!spookery::seat::on_scheduled_wake(&mut shard, false, true).unwrap());
+    assert_eq!(shard.queued_intents().len(), 1);
+    assert_eq!(shard.now().world_time, 1080);
+    assert_eq!(shard.now().tick_index, 0);
+    assert!(tick_files(&pack).is_empty());
+    let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn gm_commit_advances_world_time_and_a_held_wake_does_not() {
+    let _lock = lock_port();
+    let pack = temp_pack("gm-commit");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(async {
+        let mut stream = tokio::net::TcpStream::connect("127.0.0.1:9737").await.unwrap();
+        stream.write_all(b"gm\n").await.unwrap();
+        let running = ().serve(stream).await.unwrap();
+        let mut player = spawn(&["play", &pack_arg(&pack)]);
+        wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+        let seated = now_of(&pack);
+        assert_eq!(seated.presence.humans, 1);
+        assert_eq!(seated.world_time, 1080);
+        let empty = call_commit(&running, true).await;
+        assert!(empty.get("log_path").unwrap().is_null(), "{empty}");
+        assert_eq!(empty["diff_summary"].as_array().unwrap().len(), 0);
+        assert_eq!(now_of(&pack).world_time, 1080);
+        assert_eq!(now_of(&pack).state_rev, seated.state_rev);
+        assert!(tick_files(&pack).is_empty());
+
+        let before = text_of(&player.stdout);
+        write_stdin(&mut player, "wait");
+        let stdout = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+        let added = &stdout[before.len()..];
+        assert!(added.contains("\"kind\":\"queued\""));
+        assert!(!added.contains("\"kind\":\"resume\""), "{added}");
+        let queued = queued_id(&stdout);
+        assert_eq!(now_of(&pack).world_time, 1080);
+        assert!(tick_files(&pack).is_empty());
+
+        let committed = call_commit(&running, true).await;
+        assert!(committed.get("code").is_none(), "{committed}");
+        assert!(committed["log_path"].as_str().unwrap().ends_with("tick-0001.jsonl"));
+        let now = now_of(&pack);
+        assert_eq!(now.world_time, 1085);
+        assert_ne!(now.world_time, 1140);
+        assert_eq!(now.tick_index, 1);
+        assert_eq!(now.presence.humans, 1);
+        assert_eq!(now.state_rev, seated.state_rev + 1);
+        assert_ne!(now.last_tick_at, seated.last_tick_at);
+        let tick = tick_value(&pack);
+        let waits = player_waits(&tick);
+        assert_eq!(waits, vec![queued]);
+        assert_eq!(tick["presence_humans"], 1);
+        assert_eq!(tick["world_time_after"], 1085);
+        let _ = player;
+        let _ = running;
+    });
+    let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn early_wake_after_commit_does_not_tick_and_a_due_wake_does() {
+    let schedule = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs")).unwrap();
+    assert!(schedule.contains("pub fn wake("));
+    assert!(schedule.contains("pub fn wake_shard("));
+    assert!(!schedule.contains("player_held"));
+    assert!(!schedule.contains("gm_held"));
+    let round = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/round.rs")).unwrap();
+    assert!(round.contains("schedule::wake_shard"));
+    assert!(!round.contains("open_shard"));
+
+    let pack = temp_pack("stamp-wake");
+    let mut shard = spookery_kernel::open_shard(&pack).unwrap();
+    let session = spookery::seat::seat_player(&mut shard, "pc_rowan").unwrap();
+    spookery::seat::queue_wait(&mut shard, "pc_rowan").unwrap();
+    assert!(spookery::seat::commit_queued(&mut shard).unwrap());
+    let committed = shard.now().clone();
+    assert_eq!(committed.world_time, 1085);
+    assert_eq!(committed.tick_index, 1);
+    assert_eq!(committed.presence.humans, 1);
+    assert_ne!(committed.last_tick_at, "2026-01-01T00:00:00Z");
+    assert!(spookery::seat::release_player_seat(
+        &mut shard,
+        &session,
+        "pc_rowan",
+        spookery::seat::SocketEnd::Close
+    )
+    .unwrap());
+    assert_eq!(shard.now().presence.humans, 0);
+    assert_eq!(shard.queued_intents().len(), 0);
+    assert!(!spookery::seat::on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert_eq!(shard.now().world_time, committed.world_time);
+    assert_eq!(shard.now().tick_index, committed.tick_index);
+    assert_eq!(shard.now().last_tick_at, committed.last_tick_at);
+    assert_eq!(shard.now().state_rev, committed.state_rev + 1);
+    assert_eq!(tick_files(&pack), vec!["tick-0001.jsonl".to_string()]);
+    let _ = fs::remove_dir_all(&pack);
+
+    let due = temp_pack("due-wake");
+    let mut shard = spookery_kernel::open_shard(&due).unwrap();
+    let note = spookery::seat::queue_wait(&mut shard, "pc_rowan").unwrap();
+    assert_eq!(shard.now().last_tick_at, "2026-01-01T00:00:00Z");
+    assert!(spookery::seat::on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert_eq!(shard.now().presence.humans, 0);
+    assert_eq!(shard.now().tick_index, 12);
+    assert_eq!(shard.now().world_time, 1800);
+    assert!(shard.queued_intents().is_empty());
+    let first: serde_json::Value =
+        serde_json::from_str(fs::read_to_string(due.join("state/log/tick-0001.jsonl")).unwrap().trim()).unwrap();
+    let second: serde_json::Value =
+        serde_json::from_str(fs::read_to_string(due.join("state/log/tick-0002.jsonl")).unwrap().trim()).unwrap();
+    assert_eq!(player_waits(&first), vec![note.id]);
+    assert!(player_waits(&second).is_empty(), "{second}");
+    assert!(!spookery::seat::on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert_eq!(shard.now().tick_index, 12);
+    assert!(shard.queued_intents().is_empty());
+    let _ = fs::remove_dir_all(&due);
+}
+
+#[test]
+fn queued_wait_survives_gm_drop_and_the_next_wait_applies_both() {
+    let _lock = lock_port();
+    let pack = temp_pack("both-waits");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut gm = spawn(&["gm", &pack_arg(&pack)]);
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(gm.child.try_wait().unwrap().is_none());
+    let mut player = spawn(&["play", &pack_arg(&pack)]);
+    let hello = wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let seated = now_of(&pack);
+    assert_eq!(seated.world_time, 1080);
+    assert_eq!(seated.presence.humans, 1);
+    write_stdin(&mut player, "wait");
+    let queued_out = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+    let added = &queued_out[hello.len()..];
+    assert!(added.contains("\"kind\":\"queued\""));
+    assert_eq!(added.matches("\"kind\":\"resume\"").count(), 0, "{added}");
+    let first = queued_id(&queued_out);
+    assert!(!text_of(&player.stderr).contains("NOT_IN_SPEC"));
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(tick_files(&pack).is_empty());
+
+    let said = text_of(&player.stdout);
+    write_stdin(&mut player, "say before the round");
+    let after_say = wait_has(&player.stdout, "before the round", Duration::from_secs(5));
+    let say_added = &after_say[said.len()..];
+    assert!(say_added.contains("\"kind\":\"say\""));
+    assert!(!say_added.contains("\"kind\":\"resume\""), "{say_added}");
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert_eq!(now_of(&pack).tick_index, 0);
+    assert!(tick_files(&pack).is_empty());
+    assert!(pack.join("state/log/session.jsonl").is_file());
+
+    write_stdin(&mut gm, "close");
+    assert_eq!(wait_exit(&mut gm, Duration::from_secs(5)).code(), Some(0));
+    let dropped = now_of(&pack);
+    assert_eq!(dropped.world_time, 1080);
+    assert_eq!(dropped.tick_index, 0);
+    assert_eq!(dropped.presence.humans, 1);
+    assert!(tick_files(&pack).is_empty());
+
+    let before_second = text_of(&player.stdout);
+    write_stdin(&mut player, "wait");
+    let finished = wait_count(
+        &player.stdout,
+        "\"kind\":\"resume\"",
+        before_second.matches("\"kind\":\"resume\"").count() + 1,
+        Duration::from_secs(5),
+    );
+    let second = &finished[before_second.len()..];
+    assert!(second.contains("\"kind\":\"resume\""), "{second}");
+    let now = now_of(&pack);
+    assert_eq!(now.world_time, 1085);
+    assert_eq!(now.tick_index, 1);
+    assert_eq!(now.presence.humans, 1);
+    assert_eq!(tick_files(&pack), vec!["tick-0001.jsonl".to_string()]);
+    let tick = tick_value(&pack);
+    let waits = player_waits(&tick);
+    assert_eq!(waits.len(), 2, "{tick}");
+    assert_eq!(waits[0], first);
+    assert_ne!(waits[0], waits[1]);
+    assert_eq!(tick["world_time_before"], 1080);
+    assert_eq!(tick["world_time_after"], 1085);
+    assert_eq!(tick["presence_humans"], 1);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+async fn call_commit(running: &rmcp::Peer<rmcp::RoleClient>, include_tick: bool) -> serde_json::Value {
+    let result = tokio::time::timeout(
+        Duration::from_secs(10),
+        running.call_tool(CallToolRequestParam {
+            name: "commit_turn".into(),
+            arguments: Some(
+                serde_json::json!({ "include_tick": include_tick })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+            ),
+        }),
+    )
+    .await
+    .unwrap_or_else(|_| panic!("commit_turn timed out"))
+    .unwrap_or_else(|err| panic!("commit_turn: {err}"));
+    result.structured_content.unwrap()
+}
+
+fn queued_id(stdout: &str) -> String {
+    for line in stdout.lines() {
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if value.get("kind").and_then(|kind| kind.as_str()) == Some("queued") {
+            return value.get("id").and_then(|id| id.as_str()).unwrap().to_string();
+        }
+    }
+    panic!("no queued line in {stdout}");
+}
+
+fn tick_value(pack: &Path) -> serde_json::Value {
+    let text = fs::read_to_string(pack.join("state/log/tick-0001.jsonl")).unwrap();
+    serde_json::from_str(text.trim()).unwrap()
+}
+
+fn player_waits(tick: &serde_json::Value) -> Vec<String> {
+    tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
+        .map(|intent| intent["id"].as_str().unwrap().to_string())
+        .collect()
 }

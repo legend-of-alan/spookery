@@ -37,9 +37,17 @@ pub struct RecordedTick {
 }
 
 pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOutcome, Code> {
-    let _lock = lock_shard(shard)?;
     let wall = shard.now().last_tick_at.clone();
-    run_tick(shard, Reason::Flush, &wall, Catchup::none())?;
+    commit_turn_at(shard, &wall)
+}
+
+/// `include_tick: true` with `last_tick_at` set to `wall`. The caller supplies the stamp.
+pub fn commit_turn_at(
+    shard: &mut Shard,
+    wall: &str,
+) -> Result<spookery_kernel::store::CommitOutcome, Code> {
+    let _lock = lock_shard(shard)?;
+    run_tick(shard, Reason::Flush, wall, Catchup::none())?;
     spookery_kernel::store::commit_pending(shard)
 }
 
@@ -133,7 +141,11 @@ fn run_tick_with(
         });
         return Ok(());
     }
-    tick_commit(shard, txn, &record)
+    tick_commit(shard, txn, &record)?;
+    if recorded.is_none() {
+        shard.clear_queue();
+    }
+    Ok(())
 }
 
 fn stage_tick(

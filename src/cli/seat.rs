@@ -20,8 +20,10 @@ use spookery_kernel::store::{open_shard, Shard};
 use spookery_kernel::{idle_digest, Code, DigestViewer};
 use spookery_tick::commit_presence;
 
+mod round;
 mod speech;
 
+pub use round::{commit_queued, on_scheduled_wake, queue_wait};
 pub use speech::{player_scrollback, speak};
 
 const GM_TOOLS: &[&str] = &[
@@ -59,7 +61,6 @@ pub fn listen(pack: &Path) -> Result<(), Fail> {
         print_host(&shard);
     }
     let idle = shard.budget().tick_every_real_seconds;
-    let pack = pack.to_path_buf();
     let (tx, rx) = mpsc::channel();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -95,11 +96,21 @@ pub fn listen(pack: &Path) -> Result<(), Fail> {
         std::thread::yield_now();
     }
     let tx_timer = tx.clone();
+    let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     handle.spawn(async move {
+        let mut restart_rx = restart_rx;
         loop {
-            tokio::time::sleep(Duration::from_secs(idle)).await;
-            if tx_timer.send(Msg::Wake).is_err() {
-                break;
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(idle)) => {
+                    if tx_timer.send(Msg::Wake).is_err() {
+                        break;
+                    }
+                }
+                changed = restart_rx.changed() => {
+                    if changed.is_err() {
+                        break;
+                    }
+                }
             }
         }
     });
@@ -126,7 +137,7 @@ pub fn listen(pack: &Path) -> Result<(), Fail> {
                 std::process::exit(1);
             }
         };
-        if let Err(code) = on_msg(&mut shard, &mut seats, &pack, msg) {
+        if let Err(code) = on_msg(&mut shard, &mut seats, &restart_tx, msg) {
             eprintln!("{code}");
             std::process::exit(1);
         }
@@ -224,6 +235,7 @@ struct HeldPlayer {
     conn: u64,
     actor_id: String,
     session_id: String,
+    out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
 }
 
 struct GmSeat {
@@ -246,9 +258,12 @@ enum Msg {
     Fault {
         conn: u64,
         end: SocketEnd,
+        ack: tokio::sync::oneshot::Sender<()>,
     },
     Tool {
-        reply: tokio::sync::oneshot::Sender<Code>,
+        name: String,
+        arguments: Option<serde_json::Map<String, serde_json::Value>>,
+        reply: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
     Wake,
     Stdin(String),
@@ -257,35 +272,71 @@ enum Msg {
 
 enum HelloReply {
     Refused(String),
-    Player(Vec<u8>),
+    Player,
     Gm,
 }
 
 enum PlayerReply {
-    Events(Vec<u8>),
+    Done,
     Hangup,
 }
 
-fn on_msg(shard: &mut Shard, seats: &mut Seats, pack: &Path, msg: Msg) -> Result<(), Code> {
+fn on_msg(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    restart: &tokio::sync::watch::Sender<u64>,
+    msg: Msg,
+) -> Result<(), Code> {
     match msg {
         Msg::Hello { conn, line, out, reply } => {
             let answer = on_hello(shard, seats, conn, &line, out)?;
             let _ = reply.send(answer);
         }
         Msg::Player { conn, line, reply } => {
-            let answer = on_player(shard, seats, conn, &line)?;
+            let answer = on_player(shard, seats, restart, conn, &line)?;
             let _ = reply.send(answer);
         }
-        Msg::Fault { conn, end } => on_fault(shard, seats, conn, end)?,
-        Msg::Tool { reply } => {
-            let _ = reply.send(Code::NotInSpec);
+        Msg::Fault { conn, end, ack } => on_fault(shard, seats, conn, end, ack)?,
+        Msg::Tool { name, arguments, reply } => {
+            let done = round::gm_tool(shard, &name, arguments);
+            if done.ticked {
+                refresh_player(shard, seats);
+                print_host(shard);
+            }
+            if let Some(frame) = done.gm_event {
+                if let Some(gm) = &seats.gm {
+                    let _ = gm.out.send(frame);
+                }
+            }
+            if done.advanced {
+                bump_sleep(restart);
+            }
+            let _ = reply.send(done.value);
         }
-        Msg::Wake => apply_wake(shard, pack)?,
+        Msg::Wake => {
+            if on_scheduled_wake(shard, seats.player.is_some(), seats.gm.is_some())? {
+                bump_sleep(restart);
+            }
+        }
         Msg::Stdin(line) if line == "stop" => shutdown(shard, seats),
         Msg::Stdin(_) => eprintln!("{}", Code::NotInSpec),
         Msg::StdinEof => shutdown(shard, seats),
     }
     Ok(())
+}
+
+fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
+    let next = restart.borrow().wrapping_add(1);
+    let _ = restart.send(next);
+}
+
+fn refresh_player(shard: &Shard, seats: &Seats) {
+    let Some(player) = &seats.player else {
+        return;
+    };
+    if let Ok(text) = player_refresh(shard, &player.actor_id) {
+        let _ = player.out.send(text.into_bytes());
+    }
 }
 
 fn shutdown(shard: &mut Shard, seats: &mut Seats) -> ! {
@@ -303,16 +354,7 @@ fn shutdown(shard: &mut Shard, seats: &mut Seats) -> ! {
     std::process::exit(0);
 }
 
-fn apply_wake(shard: &mut Shard, pack: &Path) -> Result<(), Code> {
-    let queued = shard.queued_intents().to_vec();
-    crate::schedule::wake(pack)?;
-    let mut fresh = open_shard(pack)?;
-    for intent in queued {
-        fresh.queue_intent(intent);
-    }
-    *shard = fresh;
-    Ok(())
-}
+
 
 fn on_hello(
     shard: &mut Shard,
@@ -348,13 +390,15 @@ fn on_hello(
                 return Ok(HelloReply::Refused(refused_line(code)));
             }
         };
+        let _ = out.send(bytes);
         seats.player = Some(HeldPlayer {
             conn,
             actor_id: id.to_string(),
             session_id,
+            out,
         });
         print_host(shard);
-        return Ok(HelloReply::Player(bytes));
+        return Ok(HelloReply::Player);
     }
     Ok(HelloReply::Refused(refused_line(Code::Schema)))
 }
@@ -372,14 +416,25 @@ fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Code> {
     for line in player_scrollback(shard.root(), actor_id)? {
         out.push_str(&line);
     }
-    let digest = idle_digest(shard, DigestViewer::Player(actor_id.to_string()))?;
-    let view = perceive(shard, &format!("player:{actor_id}"))?;
-    out.push_str(&resume_line(&digest));
-    out.push_str(&perceive_line(&view));
+    out.push_str(&player_refresh(shard, actor_id)?);
     Ok(out.into_bytes())
 }
 
-fn on_player(shard: &mut Shard, seats: &mut Seats, conn: u64, line: &str) -> Result<PlayerReply, Code> {
+fn player_refresh(shard: &Shard, actor_id: &str) -> Result<String, Code> {
+    let digest = idle_digest(shard, DigestViewer::Player(actor_id.to_string()))?;
+    let view = perceive(shard, &format!("player:{actor_id}"))?;
+    let mut out = resume_line(&digest);
+    out.push_str(&perceive_line(&view));
+    Ok(out)
+}
+
+fn on_player(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    restart: &tokio::sync::watch::Sender<u64>,
+    conn: u64,
+    line: &str,
+) -> Result<PlayerReply, Code> {
     if is_close(line) {
         if seats.player.as_ref().is_some_and(|player| player.conn == conn) {
             let player = seats.player.take().expect("player seat");
@@ -395,7 +450,7 @@ fn on_player(shard: &mut Shard, seats: &mut Seats, conn: u64, line: &str) -> Res
         .filter(|player| player.conn == conn)
         .map(|player| player.actor_id.clone())
     else {
-        return Ok(PlayerReply::Events(refused_line(Code::NotInSpec).into_bytes()));
+        return Ok(PlayerReply::Hangup);
     };
     match speak(shard, &actor_id, line) {
         Ok(spoken) => {
@@ -404,9 +459,51 @@ fn on_player(shard: &mut Shard, seats: &mut Seats, conn: u64, line: &str) -> Res
             if let Some(gm) = &seats.gm {
                 let _ = gm.out.send(spoken.gm_event);
             }
-            Ok(PlayerReply::Events(spoken.player_event.into_bytes()))
+            send_player(seats, conn, spoken.player_event.into_bytes());
+            Ok(PlayerReply::Done)
         }
-        Err(code) => Ok(PlayerReply::Events(refused_line(code).into_bytes())),
+        Err(Code::NotInSpec) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
+        Err(code) => {
+            send_player(seats, conn, refused_line(code).into_bytes());
+            Ok(PlayerReply::Done)
+        }
+    }
+}
+
+fn on_mechanical(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    restart: &tokio::sync::watch::Sender<u64>,
+    conn: u64,
+    actor_id: &str,
+    line: &str,
+) -> Result<PlayerReply, Code> {
+    let gm_seated = seats.gm.is_some();
+    match round::mechanical(shard, actor_id, line, gm_seated) {
+        Ok(round::Mechanical::Queued(note)) => {
+            if let Some(gm) = &seats.gm {
+                let _ = gm.out.send(note.gm_frame());
+            }
+            send_player(seats, conn, note.player_line().into_bytes());
+        }
+        Ok(round::Mechanical::Committed { advanced }) => {
+            if advanced {
+                bump_sleep(restart);
+            }
+            print_host(shard);
+            match player_refresh(shard, actor_id) {
+                Ok(bytes) => send_player(seats, conn, bytes.into_bytes()),
+                Err(code) => send_player(seats, conn, refused_line(code).into_bytes()),
+            }
+        }
+        Err(code) => send_player(seats, conn, refused_line(code).into_bytes()),
+    }
+    Ok(PlayerReply::Done)
+}
+
+fn send_player(seats: &Seats, conn: u64, bytes: Vec<u8>) {
+    if let Some(player) = seats.player.as_ref().filter(|player| player.conn == conn) {
+        let _ = player.out.send(bytes);
     }
 }
 
@@ -417,16 +514,31 @@ fn is_close(line: &str) -> bool {
     }
 }
 
-fn on_fault(shard: &mut Shard, seats: &mut Seats, conn: u64, end: SocketEnd) -> Result<(), Code> {
-    if seats.player.as_ref().is_some_and(|player| player.conn == conn) {
+fn on_fault(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    conn: u64,
+    end: SocketEnd,
+    ack: tokio::sync::oneshot::Sender<()>,
+) -> Result<(), Code> {
+    let result = if seats.player.as_ref().is_some_and(|player| player.conn == conn) {
         let player = seats.player.take().expect("player seat");
-        if release_player_seat(shard, &player.session_id, &player.actor_id, end)? {
-            print_host(shard);
+        match release_player_seat(shard, &player.session_id, &player.actor_id, end) {
+            Ok(true) => {
+                print_host(shard);
+                Ok(())
+            }
+            Ok(false) => Ok(()),
+            Err(code) => Err(code),
         }
     } else if seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
         seats.gm = None;
-    }
-    Ok(())
+        Ok(())
+    } else {
+        Ok(())
+    };
+    let _ = ack.send(());
+    result
 }
 
 fn refused_line(code: Code) -> String {
@@ -450,11 +562,11 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
     let line = match read_lf_line(&mut stream).await {
         Ok(Some(line)) => line,
         Ok(None) => {
-            let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Eof });
+            report_fault(&tx, conn, SocketEnd::Eof).await;
             return;
         }
         Err(_) => {
-            let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Read });
+            report_fault(&tx, conn, SocketEnd::Read).await;
             return;
         }
     };
@@ -481,63 +593,56 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             drop(out_rx);
             let _ = write_bytes(&mut stream, line.as_bytes()).await;
         }
-        HelloReply::Player(bytes) => {
-            drop(out_tx);
-            drop(out_rx);
-            if write_bytes(&mut stream, &bytes).await.is_err() {
-                let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Write });
-                return;
-            }
-            loop {
-                let line = match read_lf_line(&mut stream).await {
-                    Ok(Some(line)) => line,
-                    Ok(None) => {
-                        let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Eof });
-                        return;
-                    }
-                    Err(_) => {
-                        let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Read });
-                        return;
-                    }
-                };
-                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                if tx.send(Msg::Player { conn, line, reply: reply_tx }).is_err() {
-                    return;
-                }
-                match reply_rx.await {
-                    Ok(PlayerReply::Events(bytes)) => {
-                        if write_bytes(&mut stream, &bytes).await.is_err() {
-                            let _ = tx.send(Msg::Fault {
-                                conn,
-                                end: SocketEnd::Write,
-                            });
-                            return;
-                        }
-                    }
-                    Ok(PlayerReply::Hangup) => return,
-                    Err(_) => return,
-                }
-            }
-        }
-        HelloReply::Gm => {
-            let (read_half, mut write_half) = stream.into_split();
-            let writer = LineWriter {
-                tx: out_tx,
-                buf: Vec::new(),
-            };
-            let fault_tx = tx.clone();
-            tokio::spawn(async move {
+        HelloReply::Player => {
+            let (mut read_half, write_half) = stream.into_split();
+            let writer = tokio::spawn(async move {
                 let mut out_rx = out_rx;
+                let mut write_half = write_half;
                 while let Some(frame) = out_rx.recv().await {
                     if write_frame(&mut write_half, &frame).await.is_err() {
-                        let _ = fault_tx.send(Msg::Fault {
-                            conn,
-                            end: SocketEnd::Write,
-                        });
                         break;
                     }
                 }
             });
+            drop(out_tx);
+            loop {
+                let line = match read_lf_line(&mut read_half).await {
+                    Ok(Some(line)) => line,
+                    Ok(None) => {
+                        report_fault(&tx, conn, SocketEnd::Eof).await;
+                        break;
+                    }
+                    Err(_) => {
+                        report_fault(&tx, conn, SocketEnd::Read).await;
+                        break;
+                    }
+                };
+                let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
+                if tx.send(Msg::Player { conn, line, reply: reply_tx }).is_err() {
+                    break;
+                }
+                match reply_rx.await {
+                    Ok(PlayerReply::Done) => {}
+                    Ok(PlayerReply::Hangup) | Err(_) => break,
+                }
+            }
+            let _ = writer.await;
+        }
+        HelloReply::Gm => {
+            let (read_half, write_half) = stream.into_split();
+            let writer_task = tokio::spawn(async move {
+                let mut out_rx = out_rx;
+                let mut write_half = write_half;
+                while let Some(frame) = out_rx.recv().await {
+                    if write_frame(&mut write_half, &frame).await.is_err() {
+                        break;
+                    }
+                }
+            });
+            let writer = LineWriter {
+                tx: out_tx,
+                buf: Vec::new(),
+            };
             let host = GmHost { tx: tx.clone() };
             match host.serve((read_half, writer)).await {
                 Ok(running) => {
@@ -545,9 +650,18 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
                 }
                 Err(_) => {}
             }
-            let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Eof });
+            report_fault(&tx, conn, SocketEnd::Eof).await;
+            let _ = writer_task.await;
         }
     }
+}
+
+async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
+    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+    if tx.send(Msg::Fault { conn, end, ack: ack_tx }).is_err() {
+        return;
+    }
+    let _ = ack_rx.await;
 }
 
 async fn write_frame(write: &mut tokio::net::tcp::OwnedWriteHalf, frame: &[u8]) -> io::Result<()> {
@@ -584,7 +698,7 @@ impl tokio::io::AsyncWrite for LineWriter {
     }
 }
 
-async fn read_lf_line(stream: &mut tokio::net::TcpStream) -> io::Result<Option<String>> {
+async fn read_lf_line<R: tokio::io::AsyncRead + Unpin>(stream: &mut R) -> io::Result<Option<String>> {
     use tokio::io::AsyncReadExt;
     let mut buf = Vec::new();
     let mut byte = [0u8; 1];
@@ -645,18 +759,24 @@ impl ServerHandler for GmHost {
 
     fn call_tool(
         &self,
-        _request: CallToolRequestParam,
+        request: CallToolRequestParam,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
         let tx = self.tx.clone();
+        let name = request.name.into_owned();
+        let arguments = request.arguments;
         async move {
             let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-            tx.send(Msg::Tool { reply: reply_tx })
-                .map_err(|_| McpError::internal_error("shard closed", None))?;
-            let code = reply_rx
+            tx.send(Msg::Tool {
+                name,
+                arguments,
+                reply: reply_tx,
+            })
+            .map_err(|_| McpError::internal_error("shard closed", None))?;
+            let value = reply_rx
                 .await
                 .map_err(|_| McpError::internal_error("shard closed", None))?;
-            Ok(CallToolResult::structured(serde_json::json!({ "code": code.token() })))
+            Ok(CallToolResult::structured(value))
         }
     }
 }
