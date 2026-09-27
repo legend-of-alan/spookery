@@ -87,14 +87,19 @@ pub fn gm(args: &[String]) -> Result<(), Exit> {
         let _ = watch.shutdown(std::net::Shutdown::Both);
     });
     let mut reader = BufReader::new(stream);
-    let Some(line) = read_line(&mut reader)? else {
-        return Ok(());
-    };
-    if let Some(code) = refused_code(&line) {
-        eprintln!("{code}");
-        std::process::exit(1);
+    loop {
+        let Some(line) = read_line(&mut reader)? else {
+            return Ok(());
+        };
+        if let Some(code) = refused_code(&line) {
+            eprintln!("{code}");
+            std::process::exit(1);
+        }
+        if let Some(params) = event_params(&line) {
+            println!("{params}");
+            let _ = io::stdout().flush();
+        }
     }
-    Ok(())
 }
 
 fn parse_player_as(token: &str) -> Result<String, Exit> {
@@ -138,6 +143,20 @@ fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Exit> 
         line.pop();
     }
     Ok(Some(line))
+}
+
+fn event_params(line: &str) -> Option<String> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    if value.get("method").and_then(|method| method.as_str()) != Some("spook/event") {
+        return None;
+    }
+    let marker = "\"params\":";
+    let start = line.find(marker)? + marker.len();
+    let params = line[start..].strip_suffix('}')?;
+    if !params.starts_with('{') {
+        return None;
+    }
+    Some(params.to_string())
 }
 
 fn refused_code(line: &str) -> Option<String> {

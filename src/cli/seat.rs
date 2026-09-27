@@ -1,9 +1,11 @@
 use std::io::{self, Write};
 use std::net::TcpListener;
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use rmcp::model::{
@@ -17,6 +19,10 @@ use spookery_kernel::perceive::{perceive, ClockView, KnownFact, Perceive, StockV
 use spookery_kernel::store::{open_shard, Shard};
 use spookery_kernel::{idle_digest, Code, DigestViewer};
 use spookery_tick::commit_presence;
+
+mod speech;
+
+pub use speech::{player_scrollback, speak};
 
 const GM_TOOLS: &[&str] = &[
     "session_open",
@@ -205,7 +211,7 @@ fn print_host(shard: &Shard) {
 
 struct Seats {
     player: Option<HeldPlayer>,
-    gm: Option<u64>,
+    gm: Option<GmSeat>,
 }
 
 impl Default for Seats {
@@ -220,10 +226,16 @@ struct HeldPlayer {
     session_id: String,
 }
 
+struct GmSeat {
+    conn: u64,
+    out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+}
+
 enum Msg {
     Hello {
         conn: u64,
         line: String,
+        out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
         reply: tokio::sync::oneshot::Sender<HelloReply>,
     },
     Player {
@@ -256,8 +268,8 @@ enum PlayerReply {
 
 fn on_msg(shard: &mut Shard, seats: &mut Seats, pack: &Path, msg: Msg) -> Result<(), Code> {
     match msg {
-        Msg::Hello { conn, line, reply } => {
-            let answer = on_hello(shard, seats, conn, &line)?;
+        Msg::Hello { conn, line, out, reply } => {
+            let answer = on_hello(shard, seats, conn, &line, out)?;
             let _ = reply.send(answer);
         }
         Msg::Player { conn, line, reply } => {
@@ -302,12 +314,21 @@ fn apply_wake(shard: &mut Shard, pack: &Path) -> Result<(), Code> {
     Ok(())
 }
 
-fn on_hello(shard: &mut Shard, seats: &mut Seats, conn: u64, line: &str) -> Result<HelloReply, Code> {
+fn on_hello(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    conn: u64,
+    line: &str,
+    out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+) -> Result<HelloReply, Code> {
     if line == "gm" {
         if seats.gm.is_some() {
             return Ok(HelloReply::Refused(refused_line(Code::SessionFull)));
         }
-        seats.gm = Some(conn);
+        for frame in speech::gm_events(shard.root())? {
+            let _ = out.send(frame);
+        }
+        seats.gm = Some(GmSeat { conn, out });
         return Ok(HelloReply::Gm);
     }
     if let Some(id) = player_hello(line) {
@@ -347,16 +368,19 @@ fn player_hello(line: &str) -> Option<&str> {
 }
 
 fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Code> {
+    let mut out = String::new();
+    for line in player_scrollback(shard.root(), actor_id)? {
+        out.push_str(&line);
+    }
     let digest = idle_digest(shard, DigestViewer::Player(actor_id.to_string()))?;
     let view = perceive(shard, &format!("player:{actor_id}"))?;
-    let mut out = resume_line(&digest);
+    out.push_str(&resume_line(&digest));
     out.push_str(&perceive_line(&view));
     Ok(out.into_bytes())
 }
 
 fn on_player(shard: &mut Shard, seats: &mut Seats, conn: u64, line: &str) -> Result<PlayerReply, Code> {
-    let tokens: Vec<&str> = line.split(' ').filter(|token| !token.is_empty()).collect();
-    if tokens.len() == 1 && tokens[0] == "close" {
+    if is_close(line) {
         if seats.player.as_ref().is_some_and(|player| player.conn == conn) {
             let player = seats.player.take().expect("player seat");
             if release_player_seat(shard, &player.session_id, &player.actor_id, SocketEnd::Close)? {
@@ -365,10 +389,32 @@ fn on_player(shard: &mut Shard, seats: &mut Seats, conn: u64, line: &str) -> Res
         }
         return Ok(PlayerReply::Hangup);
     }
-    if tokens.is_empty() {
-        return Ok(PlayerReply::Events(refused_line(Code::Schema).into_bytes()));
+    let Some(actor_id) = seats
+        .player
+        .as_ref()
+        .filter(|player| player.conn == conn)
+        .map(|player| player.actor_id.clone())
+    else {
+        return Ok(PlayerReply::Events(refused_line(Code::NotInSpec).into_bytes()));
+    };
+    match speak(shard, &actor_id, line) {
+        Ok(spoken) => {
+            println!("{}", spoken.tape);
+            let _ = io::stdout().flush();
+            if let Some(gm) = &seats.gm {
+                let _ = gm.out.send(spoken.gm_event);
+            }
+            Ok(PlayerReply::Events(spoken.player_event.into_bytes()))
+        }
+        Err(code) => Ok(PlayerReply::Events(refused_line(code).into_bytes())),
     }
-    Ok(PlayerReply::Events(refused_line(Code::NotInSpec).into_bytes()))
+}
+
+fn is_close(line: &str) -> bool {
+    match line.split_once(' ') {
+        Some((token, rest)) => token == "close" && rest.is_empty(),
+        None => line == "close",
+    }
 }
 
 fn on_fault(shard: &mut Shard, seats: &mut Seats, conn: u64, end: SocketEnd) -> Result<(), Code> {
@@ -377,7 +423,7 @@ fn on_fault(shard: &mut Shard, seats: &mut Seats, conn: u64, end: SocketEnd) -> 
         if release_player_seat(shard, &player.session_id, &player.actor_id, end)? {
             print_host(shard);
         }
-    } else if seats.gm == Some(conn) {
+    } else if seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
         seats.gm = None;
     }
     Ok(())
@@ -412,8 +458,17 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             return;
         }
     };
+    let (out_tx, out_rx) = tokio::sync::mpsc::unbounded_channel();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-    if tx.send(Msg::Hello { conn, line, reply: reply_tx }).is_err() {
+    if tx
+        .send(Msg::Hello {
+            conn,
+            line,
+            out: out_tx.clone(),
+            reply: reply_tx,
+        })
+        .is_err()
+    {
         return;
     }
     let reply = match reply_rx.await {
@@ -422,9 +477,13 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
     };
     match reply {
         HelloReply::Refused(line) => {
+            drop(out_tx);
+            drop(out_rx);
             let _ = write_bytes(&mut stream, line.as_bytes()).await;
         }
         HelloReply::Player(bytes) => {
+            drop(out_tx);
+            drop(out_rx);
             if write_bytes(&mut stream, &bytes).await.is_err() {
                 let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Write });
                 return;
@@ -461,8 +520,26 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             }
         }
         HelloReply::Gm => {
+            let (read_half, mut write_half) = stream.into_split();
+            let writer = LineWriter {
+                tx: out_tx,
+                buf: Vec::new(),
+            };
+            let fault_tx = tx.clone();
+            tokio::spawn(async move {
+                let mut out_rx = out_rx;
+                while let Some(frame) = out_rx.recv().await {
+                    if write_frame(&mut write_half, &frame).await.is_err() {
+                        let _ = fault_tx.send(Msg::Fault {
+                            conn,
+                            end: SocketEnd::Write,
+                        });
+                        break;
+                    }
+                }
+            });
             let host = GmHost { tx: tx.clone() };
-            match host.serve(stream).await {
+            match host.serve((read_half, writer)).await {
                 Ok(running) => {
                     let _ = running.waiting().await;
                 }
@@ -470,6 +547,40 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             }
             let _ = tx.send(Msg::Fault { conn, end: SocketEnd::Eof });
         }
+    }
+}
+
+async fn write_frame(write: &mut tokio::net::tcp::OwnedWriteHalf, frame: &[u8]) -> io::Result<()> {
+    use tokio::io::AsyncWriteExt;
+    write.write_all(frame).await?;
+    write.flush().await?;
+    Ok(())
+}
+
+struct LineWriter {
+    tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    buf: Vec<u8>,
+}
+
+impl tokio::io::AsyncWrite for LineWriter {
+    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context<'_>, data: &[u8]) -> Poll<io::Result<usize>> {
+        let writer = self.get_mut();
+        writer.buf.extend_from_slice(data);
+        while let Some(index) = writer.buf.iter().position(|byte| *byte == b'\n') {
+            let frame: Vec<u8> = writer.buf.drain(..=index).collect();
+            if writer.tx.send(frame).is_err() {
+                return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "gm writer closed")));
+            }
+        }
+        Poll::Ready(Ok(data.len()))
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 }
 

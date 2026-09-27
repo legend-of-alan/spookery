@@ -594,7 +594,7 @@ fn player_lines_do_not_commit() {
     let mut client = spawn(&["play", &pack_arg(&pack)]);
     wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
-    for (index, line) in ["say hello", "talk mira", "attempt sneak shadow", "wait"].into_iter().enumerate() {
+    for (index, line) in ["attempt sneak shadow", "wait"].into_iter().enumerate() {
         write_stdin(&mut client, line);
         let stderr = wait_count(&client.stderr, "NOT_IN_SPEC", index + 1, Duration::from_secs(5));
         assert!(stderr.contains("NOT_IN_SPEC"), "{line}: {stderr}");
@@ -833,5 +833,138 @@ fn gm_tools_call_is_not_in_spec() {
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
     assert!(tick_files(&pack).is_empty());
     assert!(!pack.join("state/log/session.jsonl").exists());
+    let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
+    let _lock = lock_port();
+    let pack = temp_pack("say");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut gm = spawn(&["gm", &pack_arg(&pack)]);
+    std::thread::sleep(Duration::from_millis(200));
+    assert!(gm.child.try_wait().unwrap().is_none(), "gm seat was not held");
+    let mut player = spawn(&["play", &pack_arg(&pack)]);
+    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let seated = fs::read(pack.join("state/now.yaml")).unwrap();
+    let now = now_of(&pack);
+    let tape = format!(
+        "{{\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"hello\",\"tick_index\":{},\"world_time\":{}}}\n",
+        now.tick_index, now.world_time
+    );
+    write_stdin(&mut player, "say hello");
+    let stdout = wait_has(&player.stdout, "\"text\":\"hello\"", Duration::from_secs(5));
+    assert!(
+        stdout.contains("{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"table\",\"text\":\"hello\"}")
+    );
+    assert!(!text_of(&player.stderr).contains("NOT_IN_SPEC"));
+    assert_eq!(fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap(), tape);
+    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
+    let after = now_of(&pack);
+    assert_eq!(after.state_rev, now.state_rev);
+    assert_eq!(after.world_time, now.world_time);
+    assert_eq!(after.tick_index, now.tick_index);
+    assert!(tick_files(&pack).is_empty());
+    assert!(text_of(&server.stdout).contains(tape.trim_end()));
+    assert!(gm.child.try_wait().unwrap().is_none(), "gm seat dropped on say");
+    let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_actor() {
+    let _lock = lock_port();
+    let pack = temp_pack("actor-say");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let gm = spawn(&["gm", &pack_arg(&pack)]);
+    std::thread::sleep(Duration::from_millis(200));
+    let mut player = spawn(&["play", &pack_arg(&pack)]);
+    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let seated = fs::read(pack.join("state/now.yaml")).unwrap();
+    let now = now_of(&pack);
+    write_stdin(&mut player, "talk pc_rowan psst");
+    let player_event = "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"text\":\"psst\"}";
+    let gm_event = "{\"kind\":\"say\",\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"psst\"}";
+    let player_out = wait_has(&player.stdout, player_event, Duration::from_secs(5));
+    assert!(player_out.contains(player_event));
+    let gm_out = wait_has(&gm.stdout, gm_event, Duration::from_secs(5));
+    assert!(gm_out.contains(gm_event));
+    assert!(!text_of(&player.stderr).contains("NOT_IN_SPEC"));
+    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
+    assert_eq!(now_of(&pack).world_time, now.world_time);
+    assert!(tick_files(&pack).is_empty());
+
+    player.stdin.take();
+    assert_eq!(wait_exit(&mut player, Duration::from_secs(5)).code(), Some(0));
+    let freed = wait_humans(&pack, 0, Duration::from_secs(5));
+    assert_eq!(freed.state_rev, now.state_rev + 1);
+    assert_eq!(freed.world_time, now.world_time);
+    assert!(tick_files(&pack).is_empty());
+
+    let speaker = "pc_rowan";
+    let later = "pc_later";
+    assert_ne!(speaker, later);
+    let speaker_cursor = spookery::seat::player_scrollback(&pack, speaker).unwrap();
+    let later_cursor = spookery::seat::player_scrollback(&pack, later).unwrap();
+    assert!(speaker_cursor.iter().any(|line| line.contains(player_event)));
+    assert!(later_cursor.iter().all(|line| !line.contains("psst")));
+    assert!(later_cursor.is_empty());
+    let _ = fs::remove_dir_all(&pack);
+    let _ = server;
+}
+
+#[test]
+fn talk_appends_for_a_seated_player_and_live_only_when_no_human() {
+    let pack = temp_pack("talk-direct");
+    let shard = spookery_kernel::open_shard(&pack).unwrap();
+    assert_eq!(shard.now().presence.humans, 0);
+    assert!(shard.now().presence.session_ids.is_empty());
+    let err = spookery::seat::speak(&shard, "pc_rowan", "talk mira good evening").unwrap_err();
+    assert_eq!(err, spookery_kernel::Code::LiveOnly);
+    assert!(!pack.join("state/log/session.jsonl").exists());
+    drop(shard);
+
+    let _lock = lock_port();
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut player = spawn(&["play", &pack_arg(&pack)]);
+    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let seated = fs::read(pack.join("state/now.yaml")).unwrap();
+    let now = now_of(&pack);
+    assert_eq!(now.presence.humans, 1);
+    write_stdin(&mut player, "talk mira good evening");
+    let event = "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"text\":\"good evening\"}";
+    let stdout = wait_has(&player.stdout, event, Duration::from_secs(5));
+    assert!(stdout.contains(event));
+    assert!(!text_of(&player.stderr).contains("NOT_IN_SPEC"));
+    assert!(!text_of(&player.stderr).contains("LIVE_ONLY"));
+    let tape = format!(
+        "{{\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"place\":null,\"actor\":\"mira\",\"recipients\":[\"pc_rowan\"],\"text\":\"good evening\",\"tick_index\":{},\"world_time\":{}}}\n",
+        now.tick_index, now.world_time
+    );
+    assert_eq!(fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap(), tape);
+    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
+    assert!(tick_files(&pack).is_empty());
+    let _ = fs::remove_dir_all(&pack);
+    let _ = server;
+}
+
+#[test]
+fn torn_tape_tail_is_not_a_record() {
+    let pack = temp_pack("torn");
+    let log = pack.join("state/log");
+    fs::create_dir_all(&log).unwrap();
+    fs::write(log.join("session.jsonl"), b"{\"seq\":9,\"torn").unwrap();
+    let shard = spookery_kernel::open_shard(&pack).unwrap();
+    assert_eq!(shard.now().presence.humans, 0);
+    let spoken = spookery::seat::speak(&shard, "pc_rowan", "say hello").unwrap();
+    assert!(spoken.tape.starts_with("{\"seq\":1,"));
+    let text = fs::read_to_string(log.join("session.jsonl")).unwrap();
+    assert_eq!(text, format!("{}\n", spoken.tape));
+    assert!(!text.contains("torn"));
+    assert_eq!(now_of(&pack).state_rev, 0);
+    assert_eq!(now_of(&pack).world_time, shard.now().world_time);
+    assert!(tick_files(&pack).is_empty());
     let _ = fs::remove_dir_all(&pack);
 }
