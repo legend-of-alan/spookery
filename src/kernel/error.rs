@@ -20,6 +20,7 @@ pub enum Code {
     LlmDisabled,
     Schema,
     NotInSpec,
+    SessionFull,
     Skipped,
 }
 
@@ -43,6 +44,7 @@ impl Code {
             Code::LlmDisabled => "LLM_DISABLED",
             Code::Schema => "SCHEMA",
             Code::NotInSpec => "NOT_IN_SPEC",
+            Code::SessionFull => "SESSION_FULL",
             Code::Skipped => "SKIPPED",
         }
     }

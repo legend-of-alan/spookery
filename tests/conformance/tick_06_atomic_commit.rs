@@ -1,4 +1,5 @@
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -54,9 +55,17 @@ fn tick_06_atomic_commit() {
         .env("SPOOK_CRASH_AFTER", "apply_effect")
         .output()
         .unwrap_or_else(|err| panic!("spawn spook: {err}"));
+    #[cfg(unix)]
     assert_eq!(
         output.status.signal(),
         Some(6),
+        "kill after apply_effect\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    #[cfg(windows)]
+    assert!(
+        !output.status.success(),
         "kill after apply_effect\nstdout:\n{}\nstderr:\n{}",
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)

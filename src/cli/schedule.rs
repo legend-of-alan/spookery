@@ -21,7 +21,7 @@ pub async fn run_scheduler(pack: &Path) -> Result<(), Code> {
     }
 }
 
-fn wake(pack: &Path) -> Result<(), Code> {
+pub fn wake(pack: &Path) -> Result<(), Code> {
     let mut shard = open_shard(pack)?;
     let now = SystemTime::now();
     let elapsed = elapsed_secs(&shard.now().last_tick_at, now)?;

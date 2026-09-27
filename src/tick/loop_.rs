@@ -43,6 +43,12 @@ pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOu
     spookery_kernel::store::commit_pending(shard)
 }
 
+/// `include_tick: false`. No `run_tick`, no tick file, no clock advance.
+/// A write happens only when `presence` changed.
+pub fn commit_presence(shard: &mut Shard, presence: spookery_kernel::model::Presence) -> Result<bool, Code> {
+    spookery_kernel::store::commit_presence(shard, presence)
+}
+
 pub fn tick_pack(path: &Path) -> Result<(), Code> {
     let mut shard = open_shard(path)?;
     let wall = shard.now().last_tick_at.clone();

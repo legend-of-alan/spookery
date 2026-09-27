@@ -28,7 +28,10 @@ path = "src/cli/main.rs"
 spookery-kernel = { path = "src/kernel" }
 spookery-mcp = { path = "src/mcp" }
 spookery-tick = { path = "src/tick" }
-tokio = { version = "1", features = ["macros", "rt", "time"] }
+rmcp = "0.8"
+serde_json = "1"
+socket2 = { version = "0.6", features = ["all"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util", "sync"] }
 
 [dev-dependencies]
 spookery-kernel = { path = "src/kernel" }

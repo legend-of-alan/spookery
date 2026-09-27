@@ -2,7 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::marker::PhantomData;
+#[cfg(unix)]
 use std::os::unix::io::AsRawFd;
+#[cfg(windows)]
+use std::os::windows::io::AsRawHandle;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -11,14 +14,52 @@ use crate::canon::{load_canon, pack_rev, Canon};
 use crate::codec::{canonicalize, emit_now, emit_proposal, emit_rumors, load_now};
 use crate::error::Code;
 use crate::limits::Budget;
-use crate::model::{Intent, MemoryLine, Now, PauseView, PcSheet, ProposalDoc};
+use crate::model::{Intent, MemoryLine, Now, PauseView, PcSheet, Presence, ProposalDoc};
 
+#[cfg(unix)]
 const LOCK_EX: i32 = 2;
+#[cfg(unix)]
 const LOCK_UN: i32 = 8;
+#[cfg(unix)]
 const LOCK_NB: i32 = 4;
 
+#[cfg(unix)]
 unsafe extern "C" {
     fn flock(fd: i32, op: i32) -> i32;
+}
+
+#[cfg(windows)]
+const LOCKFILE_FAIL_IMMEDIATELY: u32 = 0x0000_0001;
+#[cfg(windows)]
+const LOCKFILE_EXCLUSIVE_LOCK: u32 = 0x0000_0002;
+
+#[cfg(windows)]
+#[repr(C)]
+struct Overlapped {
+    internal: usize,
+    internal_high: usize,
+    offset: u32,
+    offset_high: u32,
+    event: *mut core::ffi::c_void,
+}
+
+#[cfg(windows)]
+unsafe extern "system" {
+    fn LockFileEx(
+        file: *mut core::ffi::c_void,
+        flags: u32,
+        reserved: u32,
+        low: u32,
+        high: u32,
+        overlapped: *mut Overlapped,
+    ) -> i32;
+    fn UnlockFileEx(
+        file: *mut core::ffi::c_void,
+        reserved: u32,
+        low: u32,
+        high: u32,
+        overlapped: *mut Overlapped,
+    ) -> i32;
 }
 
 pub struct Shard {
@@ -57,9 +98,7 @@ pub struct LockGuard {
 
 impl Drop for LockGuard {
     fn drop(&mut self) {
-        unsafe {
-            flock(self.file.as_raw_fd(), LOCK_UN);
-        }
+        unlock(&self.file);
     }
 }
 
@@ -374,11 +413,56 @@ fn lock_pack(root: &Path) -> Result<LockGuard, Code> {
         .truncate(false)
         .open(&path)
         .map_err(|_| Code::CommitConflict)?;
-    let rc = unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) };
-    if rc != 0 {
+    if !try_lock_exclusive(&file) {
         return Err(Code::CommitConflict);
     }
     Ok(LockGuard { file })
+}
+
+#[cfg(unix)]
+fn try_lock_exclusive(file: &File) -> bool {
+    unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) == 0 }
+}
+
+#[cfg(unix)]
+fn unlock(file: &File) {
+    unsafe {
+        flock(file.as_raw_fd(), LOCK_UN);
+    }
+}
+
+#[cfg(windows)]
+fn try_lock_exclusive(file: &File) -> bool {
+    let mut overlapped = blank_overlapped();
+    unsafe {
+        LockFileEx(
+            file.as_raw_handle(),
+            LOCKFILE_FAIL_IMMEDIATELY | LOCKFILE_EXCLUSIVE_LOCK,
+            0,
+            1,
+            0,
+            &mut overlapped,
+        ) != 0
+    }
+}
+
+#[cfg(windows)]
+fn unlock(file: &File) {
+    let mut overlapped = blank_overlapped();
+    unsafe {
+        UnlockFileEx(file.as_raw_handle(), 0, 1, 0, &mut overlapped);
+    }
+}
+
+#[cfg(windows)]
+fn blank_overlapped() -> Overlapped {
+    Overlapped {
+        internal: 0,
+        internal_high: 0,
+        offset: 0,
+        offset_high: 0,
+        event: core::ptr::null_mut(),
+    }
 }
 
 pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<(), Code> {
@@ -402,6 +486,29 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
     write_commit(&state, &planned)?;
     shard.now = txn.staging;
     Ok(())
+}
+
+/// `include_tick: false` for a presence change. No tick file and no clock advance.
+/// Identical presence writes nothing and does not bump `state_rev`.
+pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Code> {
+    let mut next = shard.now.clone();
+    next.presence = presence;
+    canonicalize(&mut next);
+    if next.presence == shard.now.presence {
+        return Ok(false);
+    }
+    let _lock = lock_shard(shard)?;
+    next.state_rev = next.state_rev.checked_add(1).ok_or(Code::CommitConflict)?;
+    let now_bytes = emit_now(&next)?.into_bytes();
+    let state = shard.root.join("state");
+    let planned = vec![Planned {
+        target: state.join("now.yaml"),
+        bytes: now_bytes,
+        is_now: true,
+    }];
+    write_commit(&state, &planned)?;
+    shard.now = next;
+    Ok(true)
 }
 
 pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Code> {
@@ -883,13 +990,33 @@ fn tmp_path(target: &Path) -> PathBuf {
 }
 
 fn fsync_file(path: &Path) -> Result<(), Code> {
-    let file = File::open(path).map_err(|_| Code::CommitConflict)?;
+    let file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)
+        .map_err(|_| Code::CommitConflict)?;
     file.sync_all().map_err(|_| Code::CommitConflict)?;
     Ok(())
 }
 
 fn fsync_dir(path: &Path) -> Result<(), Code> {
-    let file = File::open(path).map_err(|_| Code::CommitConflict)?;
-    file.sync_all().map_err(|_| Code::CommitConflict)?;
-    Ok(())
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+        let file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+            .open(path)
+            .map_err(|_| Code::CommitConflict)?;
+        file.sync_all().map_err(|_| Code::CommitConflict)?;
+        return Ok(());
+    }
+    #[cfg(not(windows))]
+    {
+        let file = File::open(path).map_err(|_| Code::CommitConflict)?;
+        file.sync_all().map_err(|_| Code::CommitConflict)?;
+        Ok(())
+    }
 }
