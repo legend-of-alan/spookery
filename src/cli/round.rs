@@ -1,10 +1,12 @@
 use serde_json::{Map, Value};
 use spookery_kernel::check::{CheckNotice, CheckOut};
-use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, Source, Target};
+use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, RunState, Source, Target};
+use spookery_kernel::perceive::perceive_budget;
 use spookery_kernel::store::Shard;
 use spookery_kernel::Code;
 use spookery_tick::commit_turn_at;
 
+use super::speech;
 use crate::schedule::{self, seconds_since, wall_now};
 
 pub struct QueuedNote {
@@ -26,6 +28,24 @@ pub struct ToolDone {
     pub advanced: bool,
     pub ticked: bool,
     pub gm_event: Option<Vec<u8>>,
+    /// Written on the GM socket after this call's response line.
+    pub after: Vec<Vec<u8>>,
+    pub player_line: Option<(Vec<String>, Vec<u8>)>,
+    pub tape: Option<String>,
+}
+
+impl ToolDone {
+    fn new(value: Value) -> Self {
+        Self {
+            value,
+            advanced: false,
+            ticked: false,
+            gm_event: None,
+            after: Vec::new(),
+            player_line: None,
+            tape: None,
+        }
+    }
 }
 
 pub fn mechanical(shard: &mut Shard, actor_id: &str, line: &str, gm_seated: bool) -> Result<Mechanical, Code> {
@@ -61,18 +81,35 @@ pub fn mechanical(shard: &mut Shard, actor_id: &str, line: &str, gm_seated: bool
 pub fn gm_tool(shard: &mut Shard, name: &str, arguments: Option<Map<String, Value>>) -> ToolDone {
     match name {
         "intent" => match queue_tool_intent(shard, arguments) {
-            Ok(note) => ToolDone {
-                value: serde_json::json!({ "queued": note.id }),
-                advanced: false,
-                ticked: false,
-                gm_event: None,
-            },
+            Ok(note) => ToolDone::new(serde_json::json!({ "queued": note.id })),
             Err(code) => refused_tool(code),
         },
         "commit_turn" => match commit_tool(shard, arguments) {
             Ok(done) => done,
             Err(code) => refused_tool(code),
         },
+        "perceive" => match perceive_tool(shard, arguments) {
+            Ok(value) => ToolDone::new(value),
+            Err(code) => refused_tool(code),
+        },
+        "say" => match speech::speak_tool(shard, arguments) {
+            Ok(spoken) => {
+                let value = serde_json::from_str(&spoken.gm_object).unwrap_or(Value::Null);
+                let mut done = ToolDone::new(value);
+                // Same object as the tool result, after that response. Ahead of it, the client stalls.
+                done.after.push(spoken.gm_event);
+                done.player_line = Some((spoken.recipients, spoken.player_event.into_bytes()));
+                done.tape = Some(spoken.tape);
+                done
+            }
+            Err(code) => refused_tool(code),
+        },
+        "session_status" => match session_status_tool(shard, arguments) {
+            Ok(value) => ToolDone::new(value),
+            Err(code) => refused_tool(code),
+        },
+        "npc_act" => refused_tool(Code::LlmDisabled),
+        "session_open" | "patch_entity" => refused_tool(Code::NotInSpec),
         _ => refused_tool(Code::NotInSpec),
     }
 }
@@ -263,38 +300,132 @@ fn commit_tool(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> Resu
     let wall = wall_now()?;
     let outcome = commit_turn_at(shard, &wall)?;
     let advanced = shard.now().world_time != before;
-    Ok(ToolDone {
-        value: serde_json::json!({
-            "state_rev": outcome.state_rev,
-            "diff_summary": outcome.diff_summary,
-            "log_path": outcome.log_path,
-        }),
-        advanced,
-        ticked: true,
-        gm_event: None,
-    })
+    let mut done = ToolDone::new(serde_json::json!({
+        "state_rev": outcome.state_rev,
+        "diff_summary": outcome.diff_summary,
+        "log_path": outcome.log_path,
+    }));
+    done.advanced = advanced;
+    done.ticked = true;
+    Ok(done)
 }
 
 fn noop(shard: &Shard) -> ToolDone {
-    ToolDone {
-        value: serde_json::json!({
-            "state_rev": shard.now().state_rev,
-            "diff_summary": [],
-            "log_path": null,
-        }),
-        advanced: false,
-        ticked: false,
-        gm_event: None,
-    }
+    ToolDone::new(serde_json::json!({
+        "state_rev": shard.now().state_rev,
+        "diff_summary": [],
+        "log_path": null,
+    }))
 }
 
 fn refused_tool(code: Code) -> ToolDone {
-    ToolDone {
-        value: serde_json::json!({ "code": code.token() }),
-        advanced: false,
-        ticked: false,
-        gm_event: None,
+    ToolDone::new(serde_json::json!({ "code": code.token() }))
+}
+
+fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Code> {
+    let arguments = arguments.unwrap_or_default();
+    let mut as_arg = None;
+    let mut budget = None;
+    for (key, value) in &arguments {
+        match key.as_str() {
+            "as" => as_arg = Some(value.as_str().ok_or(Code::Schema)?.to_string()),
+            "focus" => match value.as_str() {
+                Some("place" | "actor") => {}
+                _ => return Err(Code::Schema),
+            },
+            "budget_tokens" => budget = Some(value.as_u64().ok_or(Code::Schema)?),
+            _ => return Err(Code::Schema),
+        }
     }
+    let as_arg = as_arg.ok_or(Code::UnscopedPerceive)?;
+    let budget = usize::try_from(budget.unwrap_or(800)).map_err(|_| Code::Schema)?;
+    let view = perceive_budget(shard, &as_arg, budget)?;
+    let body = super::perceive_object(&view);
+    serde_json::from_str(&body).map_err(|_| Code::Schema)
+}
+
+fn session_status_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Code> {
+    let since = status_since(arguments)?;
+    let body = status_json(shard, since)?;
+    serde_json::from_str(&body).map_err(|_| Code::Schema)
+}
+
+fn status_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Code> {
+    let Some(arguments) = arguments else {
+        return Ok(None);
+    };
+    if arguments.is_empty() {
+        return Ok(None);
+    }
+    if arguments.len() != 1 {
+        return Err(Code::Schema);
+    }
+    let since = arguments.get("since").ok_or(Code::Schema)?;
+    Ok(Some(since.as_u64().ok_or(Code::Schema)?))
+}
+
+fn status_json(shard: &Shard, since: Option<u64>) -> Result<String, Code> {
+    let now = shard.now();
+    let mut out = String::from("{\"presence\":{\"humans\":");
+    out.push_str(&now.presence.humans.to_string());
+    out.push_str(",\"session_ids\":");
+    out.push_str(&serde_json::to_string(&now.presence.session_ids).unwrap_or_else(|_| "[]".to_string()));
+    out.push_str(",\"actors_present\":");
+    out.push_str(&serde_json::to_string(&now.presence.actors_present).unwrap_or_else(|_| "[]".to_string()));
+    out.push_str("},\"pause\":{\"named_plot_clocks\":");
+    push_state(&mut out, now.pause.named_plot_clocks);
+    out.push_str(",\"relationship_drift\":");
+    push_state(&mut out, now.pause.relationship_drift);
+    out.push_str(",\"subsistence_clocks\":");
+    push_state(&mut out, now.pause.subsistence_clocks);
+    out.push_str(",\"travel\":");
+    push_state(&mut out, now.pause.travel);
+    out.push_str("},\"world_time\":");
+    out.push_str(&now.world_time.to_string());
+    out.push_str(",\"tick_index\":");
+    out.push_str(&now.tick_index.to_string());
+    out.push_str(",\"state_rev\":");
+    out.push_str(&now.state_rev.to_string());
+    out.push_str(",\"pack_rev\":");
+    out.push_str(&serde_json::to_string(&now.pack_rev).unwrap_or_else(|_| "\"\"".to_string()));
+    out.push_str(",\"last_tick_at\":");
+    out.push_str(&serde_json::to_string(&now.last_tick_at).unwrap_or_else(|_| "\"\"".to_string()));
+    out.push_str(",\"queued\":[");
+    for (index, intent) in shard.queued_intents().iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"id\":");
+        out.push_str(&serde_json::to_string(&intent.id).unwrap_or_else(|_| "\"\"".to_string()));
+        out.push_str(",\"actor_id\":");
+        out.push_str(&serde_json::to_string(&intent.actor_id).unwrap_or_else(|_| "\"\"".to_string()));
+        out.push_str(",\"move\":");
+        out.push_str(&serde_json::to_string(&intent.move_name).unwrap_or_else(|_| "\"\"".to_string()));
+        out.push('}');
+    }
+    out.push_str("],\"last_seq\":");
+    out.push_str(&speech::last_tape_seq(shard.root())?.to_string());
+    if let Some(since) = since {
+        out.push_str(",\"events\":[");
+        for (index, event) in speech::tape_events_after(shard.root(), since)?.iter().enumerate() {
+            if index > 0 {
+                out.push(',');
+            }
+            out.push_str(event);
+        }
+        out.push(']');
+    }
+    out.push('}');
+    Ok(out)
+}
+
+fn push_state(out: &mut String, state: RunState) {
+    out.push('"');
+    out.push_str(match state {
+        RunState::Paused => "paused",
+        RunState::Running => "running",
+    });
+    out.push('"');
 }
 
 fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Code> {

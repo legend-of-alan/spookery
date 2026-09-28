@@ -829,7 +829,13 @@ fn gm_tools_call_is_not_in_spec() {
                 "session_save",
             ]
         );
-        for name in ["session_open", "say", "perceive", "npc_act", "patch_entity"] {
+        for (name, code) in [
+            ("session_open", "NOT_IN_SPEC"),
+            ("say", "SCHEMA"),
+            ("perceive", "UNSCOPED_PERCEIVE"),
+            ("npc_act", "LLM_DISABLED"),
+            ("patch_entity", "NOT_IN_SPEC"),
+        ] {
             let result = tokio::time::timeout(
                 Duration::from_secs(10),
                 running.call_tool(CallToolRequestParam {
@@ -841,7 +847,7 @@ fn gm_tools_call_is_not_in_spec() {
             .unwrap_or_else(|_| panic!("{name} timed out"))
             .unwrap_or_else(|err| panic!("{name}: {err}"));
             let value = result.structured_content.unwrap_or_else(|| panic!("{name} has no object"));
-            assert_eq!(value.get("code").and_then(|code| code.as_str()), Some("NOT_IN_SPEC"), "{name}");
+            assert_eq!(value.get("code").and_then(|code| code.as_str()), Some(code), "{name}");
         }
         let commit = tokio::time::timeout(
             Duration::from_secs(10),

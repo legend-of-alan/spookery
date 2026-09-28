@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use spookery_kernel::model::ActorLive;
 use spookery_kernel::store::{append_session, read_session, Shard};
 use spookery_kernel::Code;
@@ -10,6 +10,8 @@ pub struct Spoken {
     pub tape: String,
     pub player_event: String,
     pub gm_event: Vec<u8>,
+    pub gm_object: String,
+    pub recipients: Vec<String>,
 }
 
 struct Stored {
@@ -65,14 +67,114 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> 
         Speech::TalkActor { actor, text } => ("actor", None, Some(actor), text),
         Speech::TalkPlace { text } => ("place", Some(speaker_place), None, text),
     };
-    let recipients = recipients(shard, actor_id, address, place.as_deref(), actor.as_deref());
+    let recipients = recipients(shard, Some(actor_id), address, place.as_deref(), actor.as_deref());
+    append_speech(
+        shard,
+        &format!("player:{actor_id}"),
+        address,
+        place,
+        actor,
+        recipients,
+        text,
+    )
+}
+
+/// GM `say`. `from` is the seat. A supplied `from` appends nothing.
+pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Spoken, Code> {
+    let arguments = arguments.ok_or(Code::Schema)?;
+    let mut address = None;
+    let mut place = None;
+    let mut actor = None;
+    let mut text = None;
+    for (key, value) in &arguments {
+        match key.as_str() {
+            "from" => return Err(Code::Schema),
+            "address" => address = Some(value.as_str().ok_or(Code::Schema)?.to_string()),
+            "place" => {
+                place = match value {
+                    Value::Null => None,
+                    Value::String(text) => Some(text.clone()),
+                    _ => return Err(Code::Schema),
+                };
+            }
+            "actor" => {
+                actor = match value {
+                    Value::Null => None,
+                    Value::String(text) => Some(text.clone()),
+                    _ => return Err(Code::Schema),
+                };
+            }
+            "text" => text = Some(value.as_str().ok_or(Code::Schema)?.to_string()),
+            _ => return Err(Code::Schema),
+        }
+    }
+    let address = address.ok_or(Code::Schema)?;
+    let text = one_line(&text.ok_or(Code::Schema)?)?.to_string();
+    let (place, actor) = match address.as_str() {
+        "table" => {
+            if place.is_some() || actor.is_some() {
+                return Err(Code::Schema);
+            }
+            (None, None)
+        }
+        "place" => {
+            let place = place.ok_or(Code::Schema)?;
+            if place.is_empty() || actor.is_some() {
+                return Err(Code::Schema);
+            }
+            (Some(place), None)
+        }
+        "actor" => {
+            let actor = actor.ok_or(Code::Schema)?;
+            if actor.is_empty() || place.is_some() || !shard.now().actors.contains_key(&actor) {
+                return Err(Code::Schema);
+            }
+            (None, Some(actor))
+        }
+        _ => return Err(Code::Schema),
+    };
+    let recipients = recipients(shard, None, &address, place.as_deref(), actor.as_deref());
+    append_speech(shard, "gm", &address, place, actor, recipients, text)
+}
+
+pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Code> {
+    let mut last = 0u64;
+    for tape in read_session(root)? {
+        if let Some(stored) = parse_tape(&tape) {
+            last = stored.seq;
+        }
+    }
+    Ok(last)
+}
+
+/// Stored lines with `seq` greater than `since`, in the GM say shape.
+pub fn tape_events_after(root: &std::path::Path, since: u64) -> Result<Vec<String>, Code> {
+    let mut out = Vec::new();
+    for tape in read_session(root)? {
+        if let Some(stored) = parse_tape(&tape) {
+            if stored.seq > since {
+                out.push(say_params(&stored));
+            }
+        }
+    }
+    Ok(out)
+}
+
+fn append_speech(
+    shard: &Shard,
+    from: &str,
+    address: &str,
+    place: Option<String>,
+    actor: Option<String>,
+    recipients: Vec<String>,
+    text: String,
+) -> Result<Spoken, Code> {
     let tick_index = shard.now().tick_index;
     let world_time = shard.now().world_time;
-    let from = format!("player:{actor_id}");
     let seq = append_session(shard.root(), |seq| {
         tape_json(
             seq,
-            &from,
+            from,
             address,
             place.as_deref(),
             actor.as_deref(),
@@ -82,9 +184,9 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> 
             world_time,
         )
     })?;
-    let stored = Stored {
+    Ok(spoken_from(&Stored {
         seq,
-        from,
+        from: from.to_string(),
         address: address.to_string(),
         place,
         actor,
@@ -92,8 +194,7 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> 
         text,
         tick_index,
         world_time,
-    };
-    Ok(spoken_from(&stored))
+    }))
 }
 
 pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<String>, Code> {
@@ -120,6 +221,7 @@ pub fn gm_events(root: &std::path::Path) -> Result<Vec<Vec<u8>>, Code> {
 }
 
 fn spoken_from(stored: &Stored) -> Spoken {
+    let gm_object = say_params(stored);
     Spoken {
         tape: tape_json(
             stored.seq,
@@ -133,7 +235,9 @@ fn spoken_from(stored: &Stored) -> Spoken {
             stored.world_time,
         ),
         player_event: player_event(stored),
-        gm_event: gm_event(stored),
+        gm_event: gm_frame(&gm_object),
+        gm_object,
+        recipients: stored.recipients.clone(),
     }
 }
 
@@ -200,7 +304,7 @@ fn split_token(line: &str) -> (&str, &str) {
 
 fn recipients(
     shard: &Shard,
-    speaker: &str,
+    speaker: Option<&str>,
     address: &str,
     place: Option<&str>,
     actor: Option<&str>,
@@ -235,7 +339,9 @@ fn recipients(
         }
         _ => {}
     }
-    ids.insert(speaker.to_string());
+    if let Some(speaker) = speaker {
+        ids.insert(speaker.to_string());
+    }
     ids.into_iter().collect()
 }
 
@@ -295,6 +401,10 @@ fn player_event(stored: &Stored) -> String {
 }
 
 fn gm_event(stored: &Stored) -> Vec<u8> {
+    gm_frame(&say_params(stored))
+}
+
+fn say_params(stored: &Stored) -> String {
     let mut params = String::from("{\"kind\":\"say\",\"seq\":");
     params.push_str(&stored.seq.to_string());
     params.push_str(",\"from\":");
@@ -310,8 +420,12 @@ fn gm_event(stored: &Stored) -> Vec<u8> {
     params.push_str(",\"text\":");
     push_string(&mut params, &stored.text);
     params.push('}');
+    params
+}
+
+fn gm_frame(params: &str) -> Vec<u8> {
     let mut out = String::from("{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":");
-    out.push_str(&params);
+    out.push_str(params);
     out.push_str("}\n");
     out.into_bytes()
 }

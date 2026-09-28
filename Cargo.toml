@@ -29,7 +29,7 @@ spookery-kernel = { path = "src/kernel" }
 spookery-mcp = { path = "src/mcp" }
 spookery-tick = { path = "src/tick" }
 rmcp = "0.8"
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
 socket2 = { version = "0.6", features = ["all"] }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util", "sync"] }
 
@@ -137,6 +137,10 @@ path = "tests/conformance/cli_run.rs"
 [[test]]
 name = "gate_d_check"
 path = "tests/conformance/gate_d_check.rs"
+
+[[test]]
+name = "gate_e_gm"
+path = "tests/conformance/gate_e_gm.rs"
 
 [[test]]
 name = "cli_migrate"

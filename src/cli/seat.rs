@@ -26,6 +26,8 @@ mod speech;
 pub use round::{commit_queued, mechanical, on_scheduled_wake, queue_attempt, queue_wait, Mechanical};
 pub use speech::{player_scrollback, speak};
 
+const GM_SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_turn. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
+
 const GM_TOOLS: &[&str] = &[
     "session_open",
     "session_status",
@@ -305,13 +307,25 @@ fn on_msg(
                 refresh_player(shard, seats, &notices);
                 print_host(shard);
             }
+            if let Some(tape) = &done.tape {
+                println!("{tape}");
+                let _ = io::stdout().flush();
+            }
             if let Some(frame) = done.gm_event {
                 if let Some(gm) = &seats.gm {
                     let _ = gm.out.send(frame);
                 }
             }
+            if let Some((recipients, line)) = &done.player_line {
+                if let Some(player) = &seats.player {
+                    if recipients.iter().any(|id| id == &player.actor_id) {
+                        let _ = player.out.send(line.clone());
+                    }
+                }
+            }
             if let Some(gm) = &seats.gm {
                 if let Ok(mut pending) = gm.after_response.lock() {
+                    pending.extend(done.after);
                     pending.extend(round::gm_check_frames(&notices));
                 }
             }
@@ -576,6 +590,14 @@ fn perceive_line(view: &Perceive) -> String {
     body
 }
 
+fn perceive_object(view: &Perceive) -> String {
+    let mut line = perceive_line(view);
+    if line.ends_with('\n') {
+        line.pop();
+    }
+    line
+}
+
 async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u64) {
     let line = match read_lf_line(&mut stream).await {
         Ok(Some(line)) => line,
@@ -779,7 +801,7 @@ impl ServerHandler for GmHost {
         let schema = std::sync::Arc::new(object_schema());
         let tools = GM_TOOLS
             .iter()
-            .map(|name| Tool::new(*name, *name, std::sync::Arc::clone(&schema)))
+            .map(|name| Tool::new(*name, GM_SEAT_FACTS, std::sync::Arc::clone(&schema)))
             .collect();
         std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
     }
@@ -850,7 +872,21 @@ fn render_perceive(view: &Perceive) -> String {
         }
         push_stock(&mut out, stock);
     }
-    out.push_str("],\"schedule_hint\":null}\n");
+    out.push_str("],\"schedule_hint\":");
+    match &view.schedule_hint {
+        None => out.push_str("null"),
+        Some(hint) => {
+            out.push_str("{\"place\":");
+            push_string(&mut out, &hint.place);
+            out.push_str(",\"activity\":");
+            match &hint.activity {
+                Some(activity) => push_string(&mut out, activity),
+                None => out.push_str("null"),
+            }
+            out.push('}');
+        }
+    }
+    out.push_str("}\n");
     out
 }
 
