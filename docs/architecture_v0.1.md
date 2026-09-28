@@ -1,9 +1,9 @@
 # Spookery v0.1 architecture
 
-Status: Draft. Not frozen. Not the authority for the code on this branch. No gate in §9 has been started. Starting a gate licenses only that gate's proofs. A later gate stays specified and unbuilt, and a sentence in it does not license a code change. When a gate is started, a change that gate names wins over `docs/architecture_v0.md`. Every v0 rule the open gate does not name still holds. A rule written in neither file is out of scope.
+Status: Frozen. Normative spec for the v0.1 sitting. Gates A–E in §9 are proved. Where this file names a change, it wins over `docs/architecture_v0.md`. Every v0 rule this file does not name still holds. A rule written in neither file is out of scope. §9 does not open another gate.
 License: CC BY 4.0, same as the v0 spec. Runtime code under /src stays AGPL-3.0-or-later.
 
-This text is the draft at `docs/architecture_v0.1.md`. `docs/architecture_v0.md` is the frozen spec. This file does not copy it. §9 is the order in which the draft becomes authority.
+This file is the frozen spec for the sitting. `docs/architecture_v0.md` remains the frozen spec for the kernel rules this file does not change. This file does not copy it. §9 records the order in which the sitting became authority.
 
 ---
 
@@ -15,7 +15,7 @@ One shard process. Players and the GM connect to the shard. The shard is the sta
 
 The table is the process you launched (`spook run <pack>`). Its stdout is the operator view. There is no third attached public-scene client. Public speech is an address, not a seat.
 
-Loopback only. The listener binds `127.0.0.1` and no other address. Default port `9737`. The listener is created before `open_shard`. Any other bind address is `NOT_IN_SPEC` and the process exits 1 before opening the pack. If the address is `127.0.0.1` and the bind fails, the process exits 1 with the operating-system error text on stderr, opens no pack, and writes nothing. That failure is not `NOT_IN_SPEC`. A later multi-machine version is the same acceptor and a different bind. This draft does not specify that bind, accounts, or a connection secret.
+Loopback only. The listener binds `127.0.0.1` and no other address. Default port `9737`. The listener is created before `open_shard`. Any other bind address is `NOT_IN_SPEC` and the process exits 1 before opening the pack. If the address is `127.0.0.1` and the bind fails, the process exits 1 with the operating-system error text on stderr, opens no pack, and writes nothing. That failure is not `NOT_IN_SPEC`. A later multi-machine version is the same acceptor and a different bind. v0.1 does not specify that bind, accounts, or a connection secret.
 
 Seats: at most one player connection and one GM connection. Caps are constants (`player_slots = 1`, `gm_slots = 1`), not `Now` fields and not pack fields. A second join returns `SESSION_FULL`, writes nothing, and the client exits 1. The shard stays up.
 
@@ -57,7 +57,7 @@ Fact grant is out of scope. A whispered sentence does not append to `known_facts
 
 ### Laptop sitting
 
-This is the session the draft is for. One machine. The pack is `packs/oneshot-docks`.
+This is the session this spec is for. One machine. The pack is `packs/oneshot-docks`.
 
 | Terminal | Command | Role |
 |---|---|---|
@@ -65,7 +65,7 @@ This is the session the draft is for. One machine. The pack is `packs/oneshot-do
 | GM, optional | Grok, with MCP command `spook gm packs/oneshot-docks --stdio` | The GM. Omit the terminal and the player commits on send. |
 | Player | `spook play packs/oneshot-docks` | Rowan, `start.pc`. |
 
-Docks play is the v0 idle lines plus `say`, `talk`, and `attempt grit <target>`. `attack`, `give`, and `take` stay refused. The player sees §6 JSON lines, not a written scene. Grok does not open the TCP socket. The `--stdio` process does.
+Docks play is `say`, `talk`, `wait`, and `attempt <check> <target>`. `attack`, `give`, and `take` stay refused. A player line `travel <place>` is `NOT_IN_SPEC` and queues nothing. `travel` remains the kernel move NPC derivation already uses. The player sees §6 JSON lines, not a written scene. Grok does not open the TCP socket. The `--stdio` process does.
 
 ### Demo goal
 
@@ -75,7 +75,7 @@ The operator opens the table with `spook run packs/oneshot-docks`. A second term
 
 Rowan starts in `docks_shop`. World time `1080` is 18:00. Mira is in `mira_rooms`. Aldric is in the shop. The player types `talk mira you have nice hair`. The id is lowercase. The shard does not require her to be in the room. The line is speech. It does not tick. The player's own line is printed as JSON. Grok sees it as a `spook/event` notification or by `session_status` with `since`. Grok calls `say`. The player client prints that reply when it arrives, while still waiting for the next typed line. The reply's `from` is `gm`. The text may say that Mira is not there, or, after a later tick has moved Rowan, "thank you very much, stranger." The `from` field is not `mira`.
 
-With Grok seated, `travel mira_rooms` returns `queued` and does not move Rowan yet. The player can still `talk`. Grok's `commit_turn` runs one tick. World time advances once. The sleep restarts. A wake already due does not add a second step. Resume and perceive then show the new place.
+With Grok seated, `wait` returns `queued` and does not advance world time. The player can still `talk`. Grok's `commit_turn` runs one tick. World time advances once. The sleep restarts. A wake already due does not add a second step. Resume and perceive show the world after that tick. Rowan stays in `docks_shop`.
 
 Stopping Grok drops the GM seat and does not tick. The next mechanical line commits on its own. A `wait` that was only queued stays queued until that line. Stopping the shard and starting it again clears the leftover session. `spook play` shows the compliment and the reply on the tape when those lines were fsynced. An uncommitted queue is gone. If the shard is not running, `spook play` and `spook gm` exit 1 and the pack is unchanged.
 
@@ -94,7 +94,7 @@ v0 §1 through §17 still hold where this file does not name a change. Load-bear
 - Inbound `llm_say` is dropped. Persisted intents store `llm_say: null`. `public_say` is not written into `Now`.
 - `npc_act` does not call a model. No cargo feature named `llm`.
 - No `--serve`. No accounts. No database. No HTTP route.
-- `pack_rev` and the `packs/oneshot-docks` bytes stay. This draft does not edit them. Do not edit `checks.yaml`, `schema/checks.schema.json`, or `packs/oneshot-docks` to hold a check target.
+- `pack_rev` and the `packs/oneshot-docks` bytes stay. v0.1 does not edit them. Do not edit `checks.yaml`, `schema/checks.schema.json`, or `packs/oneshot-docks` to hold a check target.
 - `replay_recorded` still replays tick files only. It does not read the session tape. v0 §7. An applied `attempt` is re-executed by calling `resolve_check` with the stored `args.check` and `args.target`.
 - `kernel::open_shard` does not drop sessions. `spook tick`, `spook status`, `spook migrate`, `spook replay`, and `spook run --mcp` do not either. A pack left with `humans` 1 still ticks live under `spook tick`. `schedule::wake` is unchanged. `tests/conformance/scheduler.rs` stays.
 - `session_open`'s `include_tick` false behavior is v0 pin P41. Adopted here, not redesigned. The player hello is the only caller.
@@ -103,7 +103,7 @@ v0 §1 through §17 still hold where this file does not name a change. Load-bear
 Intentional conflicts with v0. Do not "fix" these back.
 
 - v0 binds one MCP profile for the life of the process, and the play door is a different way to start a process. v0.1 starts one shard and attaches seats. `spook run <pack> --mcp <profile>` stays that v0 stdio process: one profile, the v0 §8 `tools/list` order, no `say` inserted. It is not the sitting. After the shard accepts the line `gm`, the GM seat uses that same rmcp 0.8 codec: one compact JSON-RPC message, then one LF, no header. `gm` is not a JSON-RPC message. It is not a second grammar.
-- v0 `spook run <pack>` reads play lines from stdin and does not call `session_open`, so a person at the keyboard leaves `presence.humans` at 0 (pin P22, pin P45). v0.1 stdin is not a play door. Any stdin line other than `stop` prints `NOT_IN_SPEC` on stderr, does not exit, and writes nothing. `stop` and EOF drop a held player seat the way a disconnect does, drop a held GM seat with no presence write, do not flush the intent queue, do not call `run_tick`, and exit 0. The listener keeps the process up until then. EOF is a clean shutdown, not a play script. `spook run <pack> --as ...` is `NOT_IN_SPEC`, exit 1, before `open_shard`. `--as` belongs to `spook play`. A player client calls `session_open`, which sets presence. One stdin is not two actor ids. v0 player stdout is raw `idle_digest(Player)` bytes plus one perceive line. v0.1 player stdout is the §6 events. Gate A rewrites `tests/conformance/cli_run.rs` because it asserts the stdin door this draft removes. Until Gate A starts, that file stays.
+- v0 `spook run <pack>` reads play lines from stdin and does not call `session_open`, so a person at the keyboard leaves `presence.humans` at 0 (pin P22, pin P45). v0.1 stdin is not a play door. Any stdin line other than `stop` prints `NOT_IN_SPEC` on stderr, does not exit, and writes nothing. `stop` and EOF drop a held player seat the way a disconnect does, drop a held GM seat with no presence write, do not flush the intent queue, do not call `run_tick`, and exit 0. The listener keeps the process up until then. EOF is a clean shutdown, not a play script. `spook run <pack> --as ...` is `NOT_IN_SPEC`, exit 1, before `open_shard`. `--as` belongs to `spook play`. A player client calls `session_open`, which sets presence. One stdin is not two actor ids. v0 player stdout is raw `idle_digest(Player)` bytes plus one perceive line. v0.1 player stdout is the §6 events. Gate A rewrote `tests/conformance/cli_run.rs` because it asserted the stdin door this sitting removes.
 - v0 says do not add tools and do not reorder `tools/list`. v0.1 adds `say` to the GM seat only. The stdio `pack-table` list does not gain it. `session_open` stays on the GM list, in that order, and a GM `tools/call` of it returns `NOT_IN_SPEC`.
 - v0 `expand` returns `NOT_IN_SPEC` for `talk` even during a session. v0.1 `talk` is speech, not an expand arm that mutates `Now`. `attempt` is the one live-only name that gains a kernel behavior (the existing check) and still mutates nothing. The v0 line `attempt <check>` gains a `<target>` integer. Do not pass `0`. Do not put that integer in `checks.yaml`.
 - v0 `tools/call` falls through to the library's method-not-found. The stdio server still has no `tools/call` body. v0.1 GM `tools/call` on the shard reaches the handlers. A tool the seat does not have still returns the pinned refusal (`NOT_IN_SPEC` or `LLM_DISABLED`), not a transport error invented by the library.
@@ -187,7 +187,7 @@ A model does not open the TCP socket and does not send `gm`. `spook gm <pack> --
 
 If `spook play`, `spook gm`, or `spook gm --stdio` cannot connect, the process exits 1. Stderr is the operating-system error text. Stdout is empty. Nothing under the pack is written.
 
-Reconnect after the slot is free is a new hello and, for a player, a new `session_open`. The shard mints a new `session_id`. This draft does not pin that id's spelling.
+Reconnect after the slot is free is a new hello and, for a player, a new `session_open`. The shard mints a new `session_id`. v0.1 does not pin that id's spelling.
 
 ```mermaid
 flowchart LR
@@ -322,7 +322,7 @@ Dropping the GM seat does not flush the intent queue and does not call `run_tick
 
 On the tick that applies it, call `resolve_check` (v0 §6) with the acting player as the viewer, `args.check` as the check id, and `args.target` as the integer. Do not pass `0`. `success` stays `total >= target`. Seed and the per-tick die cursor stay the v0 rule. An unknown check is `UNKNOWN_KEY`, the die cursor does not advance, and the intent is rejected the way a failed `resolve_check` is already rejected. A known check is stored on the tick JSONL like any other applied intent, so replay can call `resolve_check` again with the same `args.check` and `args.target`. Replay does not read a stored face and does not pass `0`. The tick object keeps the v0 §7 keys. `intents[].args` may contain `check` and `target`. The tick object does not gain `faces`, `stat`, `total`, `target`, or `success`. The integer input lives under `args` only. Do not write the roll into `Now`.
 
-The roll writes no `Now` path. Pause policy and NPC derivation still run as v0 on a tick that runs. This draft does not claim those paths stay unchanged, and it does not claim a docks tick changes only commit headers.
+The roll writes no `Now` path. Pause policy and NPC derivation still run as v0 on a tick that runs. v0.1 does not claim those paths stay unchanged, and it does not claim a docks tick changes only commit headers.
 
 The GM `resolve_check` tool still takes `target` as v0 specifies. A queued `attempt` uses `args.target`. It does not read the tool's argument.
 
@@ -406,11 +406,9 @@ Will not appear in this architecture:
 
 ## 8. Proofs
 
-No gate has been started. The tests on the current code stay green, including `tests/conformance/cli_run.rs`.
+Gates A–E are proved. `tests/conformance/cli_run.rs` was rewritten in Gate A. `spook play <pack> --as player:mira` is `SCHEMA`, exit 1, and writes nothing.
 
-Gate A rewrites `tests/conformance/cli_run.rs`. It asserts the stdin play door this draft removes. `spook play <pack> --as player:mira` is the replacement for `cli_run_as_rejects_a_non_pc`: `SCHEMA`, exit 1, writes nothing. Until Gate A starts, that file stays as it is.
-
-These stay unrewritten: `tests/conformance/tick_07_replay.rs`, `tests/conformance/docks_bytes.rs`, `tests/conformance/emitter_sample.rs`, `tests/conformance/import_boundaries.rs`, `tests/conformance/scheduler.rs`, `tick_01` through `tick_10`, `tick_jsonl`, and `tests/conformance/product_01_load_mcp.rs`. They do not read `session.jsonl` and do not require a listening socket. `replay_recorded` still does not read the tape. `product_01_load_mcp` keeps the v0 stdio `tools/list` order. `scheduler.rs` calls `schedule::wake` on a fixture and does not start `spook run`.
+These stayed unrewritten: `tests/conformance/tick_07_replay.rs`, `tests/conformance/docks_bytes.rs`, `tests/conformance/emitter_sample.rs`, `tests/conformance/import_boundaries.rs`, `tests/conformance/scheduler.rs`, `tick_01` through `tick_10`, `tick_jsonl`, and `tests/conformance/product_01_load_mcp.rs`. They do not read `session.jsonl` and do not require a listening socket. `replay_recorded` still does not read the tape. `product_01_load_mcp` keeps the v0 stdio `tools/list` order. `scheduler.rs` calls `schedule::wake` on a fixture and does not start `spook run`.
 
 New scenarios. Each line is the assertion. These do not edit `packs/oneshot-docks`. With `player_slots = 1` there are never two player sockets.
 
@@ -440,7 +438,7 @@ New scenarios. Each line is the assertion. These do not edit `packs/oneshot-dock
 
 ## 9. Gates
 
-Five gates. A session implements one gate. It reads this section, the proofs that gate names, and the v0 pins those proofs cite. It does not load the rest of `docs/architecture_v0.md`. The proofs stay in §8. This section does not restate them.
+Five gates, all proved. The text below is the record of what each gate made true. It does not open a sixth gate. A session that did the work read this section, the proofs that gate names, and the v0 pins those proofs cite. It did not load the rest of `docs/architecture_v0.md`. The proofs stay in §8. This section does not restate them.
 
 A gate does not prescribe modules or file order. It names what becomes true, and what stays unbuilt so the session does not invent the next gate. The v0 tests §8 lists as unrewritten stay green in every gate. `cli_run.rs` is rewritten in Gate A and only there.
 

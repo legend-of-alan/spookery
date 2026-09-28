@@ -1,6 +1,6 @@
 # Spookery — Product spec
 
-**Non-normative.** Engineering law is `architecture_v0.md`. `architecture_v0.1.md` is a draft. A gate in it is law only once that gate is started. This file is business notes from early brainstorming. Where this file disagrees with `architecture_v0.md`, the v0 architecture wins.
+**Non-normative.** Engineering law for the v0.1 sitting is `architecture_v0.1.md`. `architecture_v0.md` still holds where v0.1 does not name a change. This file is business notes from early brainstorming. Where this file disagrees with either architecture file, the architecture wins.
 
 **Working name:** Spookery (company) + `spook` (CLI / runtime) + pack (world format)
 **One-line pitch:** A runtime for private worlds you describe in text: agents may intend, only the tick may write, and the world keeps moving after everyone logs off.
@@ -11,11 +11,11 @@
 
 **Civilian hook:** Maker-shaped tools for private tick worlds that do not freeze — you write people and places in text, the clock runs subsistence when you leave. This is not “the default AI RPG.” It is the referee those worlds can share.
 
-**Status:** Design freeze for v0 implementation. Tick spec v0.2 is frozen (no longer draft). Implementation not started. Idle UX locked.
+**Status:** Business notes. The v0 kernel and the v0.1 sitting are implemented; this file does not specify them. Idle UX for v0 stays locked here.
 
-**Companion docs:** none. Engineering law is `architecture_v0.md`.
+**Companion docs:** `docs/architecture.md` says which architecture file is law.
 
-**Who this document is for:** Founders reading the business case. Coding agents implement from `architecture_v0.md` only. The v0.1 draft does not license a code change.
+**Who this document is for:** Founders reading the business case. Coding agents implement the sitting from `architecture_v0.1.md`. They read `architecture_v0.md` for every rule that file does not change. This product spec does not license a code change.
 
 **v0.5 delta:** Brand freeze. Packetry → Spookery, `packetd` → `spook` (alias `spookery`), packet → pack. Schema field `pack_rev` (was `packet_rev`). Layout file `pack.yaml` (was `packet.yaml`). Mechanics unchanged. See `BRANDING.md`.
 
@@ -586,8 +586,8 @@ The core does not grow a second writer. Extensions are shells and packs.
 
 ```text
 /docs
-  architecture_v0.md          # frozen normative spec for the code that exists
-  architecture_v0.1.md        # draft target; a gate is law only once started
+  architecture_v0.1.md        # frozen normative spec for the v0.1 sitting
+  architecture_v0.md          # frozen v0 spec; holds where v0.1 does not name a change
   architecture.md             # index of the two files above
   product_spec.md          # this file; business notes, not law
 /schema                    # now.schema.json, effect.schema.json, intent.schema.json

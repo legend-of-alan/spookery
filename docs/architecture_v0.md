@@ -1,10 +1,10 @@
 # Spookery v0 architecture
 
-**Status:** Frozen normative spec for v0. Gates A–C were proved against this file. Do not edit it to describe v0.1.
+**Status:** Frozen normative spec for v0. Do not edit it to describe the sitting. The v0.1 sitting is specified in `docs/architecture_v0.1.md`, and where that file names a change, it wins. Every rule it does not name still holds here.
 **License:** CC BY 4.0 (spec). Runtime code that lands under `/src` is AGPL-3.0-or-later.
 **Audience:** Founders, a reviewing programmer, and coding agents implementing crate by crate.
 
-This file is the only normative spec for the implementation that exists. A rule that is not written here is out of v0. `docs/architecture_v0.1.md` is a draft. An unstarted gate in that draft does not override this file and does not license a code change. A gate that has been started wins where it names a change. `product_spec.md` is non-normative business notes.
+This file is the normative spec for v0. A rule that is not written here is out of v0 unless `docs/architecture_v0.1.md` names the change. `product_spec.md` is non-normative business notes.
 
 This file was `docs/architecture.md` through v0. It lives in `docs/`. The commit-1 tree below still names `docs/architecture.md` because that was the path at that commit.
 
