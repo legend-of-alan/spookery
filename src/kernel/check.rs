@@ -22,6 +22,21 @@ pub struct CheckOut {
     pub success: bool,
 }
 
+/// A check the tick resolved. Not stored in `Now` or the tick JSONL.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CheckNotice {
+    Rolled { actor_id: String, out: CheckOut },
+    Refused { actor_id: String, code: Code },
+}
+
+impl CheckNotice {
+    pub fn actor_id(&self) -> &str {
+        match self {
+            CheckNotice::Rolled { actor_id, .. } | CheckNotice::Refused { actor_id, .. } => actor_id,
+        }
+    }
+}
+
 pub fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Code> {
     let file: ChecksFile = serde_saphyr::from_str(text).map_err(|_| Code::Schema)?;
     if file.schema != "checks/v0" {

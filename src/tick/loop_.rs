@@ -3,7 +3,7 @@ use std::path::Path;
 
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
-use spookery_kernel::check::resolve_check;
+use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::derive::{
     filter_blocklist, kernel_intents_for_eligible_npcs, legal, season_intent,
 };
@@ -121,7 +121,8 @@ fn run_tick_with(
     let mut txn = Txn::begin(shard);
     let queued = shard.queued_intents().to_vec();
     let owns_commit = reason != Reason::Flush;
-    let record = stage_tick(
+    shard.set_rolls(Vec::new());
+    let (record, notices) = stage_tick(
         shard,
         &mut txn,
         queued,
@@ -139,9 +140,11 @@ fn run_tick_with(
             memories: txn.memories().to_vec(),
             paths: txn.staged_paths(),
         });
+        shard.set_rolls(notices);
         return Ok(());
     }
     tick_commit(shard, txn, &record)?;
+    shard.set_rolls(notices);
     if recorded.is_none() {
         shard.clear_queue();
     }
@@ -156,7 +159,7 @@ fn stage_tick(
     catchup: &Catchup,
     owns_commit: bool,
     recorded: Option<&RecordedTick>,
-) -> Result<String, Code> {
+) -> Result<(String, Vec<CheckNotice>), Code> {
     let rev_before = txn.now().state_rev;
     let world_before = txn.now().world_time;
     let humans = recorded
@@ -212,6 +215,8 @@ fn stage_tick(
     let mut applied = Vec::new();
     let mut effects_out = Vec::new();
     let mut budget_stop = false;
+    let mut notices = Vec::new();
+    let mut die_cursor = 0usize;
     for intent in candidates {
         if budget_stop {
             break;
@@ -244,7 +249,42 @@ fn stage_tick(
             });
             continue;
         }
-        if needs_roll(txn.canon(), &intent.move_name) {
+        let mut rolled: Option<CheckOut> = None;
+        if intent.move_name == "attempt" {
+            let Some(check_id) = intent.args.check.clone().filter(|id| !id.is_empty()) else {
+                reject_check(&mut rejected, &mut notices, &intent, Code::Schema);
+                continue;
+            };
+            let Some(target) = intent.args.check_target else {
+                reject_check(&mut rejected, &mut notices, &intent, Code::Schema);
+                continue;
+            };
+            let viewer = match spookery_kernel::model::ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
+                Ok(viewer) => viewer,
+                Err(code) => {
+                    reject_check(&mut rejected, &mut notices, &intent, code);
+                    continue;
+                }
+            };
+            trace.push("resolve_check".to_string());
+            let seed = seed_preimage(&shard_id, tick_index);
+            let rng = blake2s_256(seed.as_bytes());
+            match resolve_check(
+                txn.canon(),
+                shard.sheets(),
+                &viewer,
+                &check_id,
+                target,
+                &rng,
+                &mut die_cursor,
+            ) {
+                Ok(out) => rolled = Some(out),
+                Err(code) => {
+                    reject_check(&mut rejected, &mut notices, &intent, code);
+                    continue;
+                }
+            }
+        } else if needs_roll(txn.canon(), &intent.move_name) {
             trace.push("resolve_check".to_string());
             let check_id = txn
                 .canon()
@@ -323,6 +363,7 @@ fn stage_tick(
             }
         }
         if budget_stop && accepted > 0 {
+            keep_roll(&mut notices, &mut rolled, &intent.actor_id);
             applied.push(intent);
             break;
         }
@@ -343,6 +384,7 @@ fn stage_tick(
                                 reason: Code::Budget.jsonl_reason().to_string(),
                             });
                         } else {
+                            keep_roll(&mut notices, &mut rolled, &intent.actor_id);
                             applied.push(intent);
                         }
                         break;
@@ -359,6 +401,7 @@ fn stage_tick(
             if spends_slot {
                 npc_slots += 1;
             }
+            keep_roll(&mut notices, &mut rolled, &intent.actor_id);
             applied.push(intent);
         }
     }
@@ -401,7 +444,7 @@ fn stage_tick(
     if owns_commit {
         trace.push("tick_commit".to_string());
     }
-    Ok(render_tick(
+    let jsonl = render_tick(
         tick_index,
         rev_before,
         rev_before + 1,
@@ -414,7 +457,28 @@ fn stage_tick(
         &rejected,
         &effects_out,
         &trace,
-    ))
+    );
+    Ok((jsonl, notices))
+}
+
+fn reject_check(rejected: &mut Vec<Rejected>, notices: &mut Vec<CheckNotice>, intent: &Intent, code: Code) {
+    rejected.push(Rejected {
+        id: intent.id.clone(),
+        reason: code.jsonl_reason().to_string(),
+    });
+    notices.push(CheckNotice::Refused {
+        actor_id: intent.actor_id.clone(),
+        code,
+    });
+}
+
+fn keep_roll(notices: &mut Vec<CheckNotice>, rolled: &mut Option<CheckOut>, actor_id: &str) {
+    if let Some(out) = rolled.take() {
+        notices.push(CheckNotice::Rolled {
+            actor_id: actor_id.to_string(),
+            out,
+        });
+    }
 }
 
 fn crash_after_apply_effect() {

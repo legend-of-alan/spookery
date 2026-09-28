@@ -159,7 +159,12 @@ fn parse_args(value: &Value) -> Result<IntentArgs, Code> {
             "text" => args.text = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
             "proposal_id" => args.proposal_id = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
             "kind" => args.kind = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
-            "target" => args.target = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
+            "check" => args.check = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
+            "target" => match item {
+                Value::String(text) => args.target = Some(text.clone()),
+                Value::Number(_) => args.check_target = Some(i64_value(item)?),
+                _ => return Err(Code::Schema),
+            },
             "summary" => args.summary = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
             _ => return Err(Code::Schema),
         }

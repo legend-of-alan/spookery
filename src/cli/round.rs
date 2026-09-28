@@ -1,4 +1,5 @@
 use serde_json::{Map, Value};
+use spookery_kernel::check::{CheckNotice, CheckOut};
 use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, Source, Target};
 use spookery_kernel::store::Shard;
 use spookery_kernel::Code;
@@ -14,7 +15,10 @@ pub struct QueuedNote {
 
 pub enum Mechanical {
     Queued(QueuedNote),
-    Committed { advanced: bool },
+    Committed {
+        advanced: bool,
+        notices: Vec<CheckNotice>,
+    },
 }
 
 pub struct ToolDone {
@@ -27,14 +31,27 @@ pub struct ToolDone {
 pub fn mechanical(shard: &mut Shard, actor_id: &str, line: &str, gm_seated: bool) -> Result<Mechanical, Code> {
     let (verb, rest) = verb_line(line, actor_id)?;
     match verb {
-        "attempt" => Err(Code::NotInSpec),
+        "attempt" => {
+            let note = queue_attempt(shard, actor_id, rest)?;
+            if gm_seated {
+                return Ok(Mechanical::Queued(note));
+            }
+            let advanced = commit_queued(shard)?;
+            Ok(Mechanical::Committed {
+                advanced,
+                notices: shard.take_rolls(),
+            })
+        }
         "wait" if rest.is_empty() => {
             let note = queue_wait(shard, actor_id)?;
             if gm_seated {
                 return Ok(Mechanical::Queued(note));
             }
             let advanced = commit_queued(shard)?;
-            Ok(Mechanical::Committed { advanced })
+            Ok(Mechanical::Committed {
+                advanced,
+                notices: shard.take_rolls(),
+            })
         }
         "wait" => Err(Code::Schema),
         _ => Err(Code::NotInSpec),
@@ -73,6 +90,109 @@ pub fn on_scheduled_wake(shard: &mut Shard, player_held: bool, gm_held: bool) ->
     let before = shard.now().world_time;
     schedule::wake_shard(shard)?;
     Ok(shard.now().world_time != before)
+}
+
+pub fn queue_attempt(shard: &mut Shard, actor_id: &str, rest: &str) -> Result<QueuedNote, Code> {
+    if shard.now().presence.humans == 0 {
+        return Err(Code::LiveOnly);
+    }
+    if !shard.now().actors.get(actor_id).is_some_and(ActorLive::is_pc) {
+        return Err(Code::Schema);
+    }
+    let (check, rest) = split_token(rest);
+    if check.is_empty() || rest.is_empty() {
+        return Err(Code::Schema);
+    }
+    let (target_token, extra) = split_token(rest);
+    if target_token.is_empty() {
+        return Err(Code::Schema);
+    }
+    if !extra.is_empty() {
+        return Err(Code::NotInSpec);
+    }
+    let Some(target) = integer_token(target_token) else {
+        return Err(Code::NotInSpec);
+    };
+    let note = QueuedNote {
+        id: mint_intent_id()?,
+        actor_id: actor_id.to_string(),
+        move_name: "attempt".to_string(),
+    };
+    push_intent(
+        shard,
+        note.id.clone(),
+        actor_id,
+        ActorKind::Player,
+        "attempt",
+        Target::Empty,
+        IntentArgs {
+            check: Some(check.to_string()),
+            check_target: Some(target),
+            ..IntentArgs::default()
+        },
+        String::new(),
+        None,
+    )?;
+    Ok(note)
+}
+
+pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
+    let mut out = String::new();
+    for notice in notices {
+        if notice.actor_id() != actor_id {
+            continue;
+        }
+        match notice {
+            CheckNotice::Rolled { out: rolled, .. } => {
+                out.push_str("{\"kind\":\"check\",\"success\":");
+                out.push_str(if rolled.success { "true" } else { "false" });
+                out.push_str("}\n");
+            }
+            CheckNotice::Refused { code, .. } => {
+                out.push_str("{\"kind\":\"refused\",\"code\":\"");
+                out.push_str(code.token());
+                out.push_str("\"}\n");
+            }
+        }
+    }
+    out
+}
+
+pub fn gm_check_frames(notices: &[CheckNotice]) -> Vec<Vec<u8>> {
+    notices
+        .iter()
+        .filter_map(|notice| match notice {
+            CheckNotice::Rolled { out, .. } => Some(gm_check_frame(out)),
+            CheckNotice::Refused { .. } => None,
+        })
+        .collect()
+}
+
+fn gm_check_frame(out: &CheckOut) -> Vec<u8> {
+    let mut faces = String::from("[");
+    for (index, face) in out.faces.iter().enumerate() {
+        if index > 0 {
+            faces.push(',');
+        }
+        faces.push_str(&face.to_string());
+    }
+    faces.push(']');
+    format!(
+        "{{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{{\"kind\":\"check\",\"faces\":{faces},\"stat\":{},\"total\":{},\"target\":{},\"success\":{}}}}}\n",
+        out.stat,
+        out.total,
+        out.target,
+        if out.success { "true" } else { "false" }
+    )
+    .into_bytes()
+}
+
+fn integer_token(token: &str) -> Option<i64> {
+    let digits = token.strip_prefix('-').unwrap_or(token);
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    token.parse().ok()
 }
 
 pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Code> {
@@ -232,8 +352,8 @@ fn queue_tool_intent(shard: &mut Shard, arguments: Option<Map<String, Value>>) -
     let actor_id = actor_id.ok_or(Code::Schema)?;
     let actor_kind = actor_kind.ok_or(Code::Schema)?;
     let move_name = move_name.ok_or(Code::Schema)?;
-    if move_name == "attempt" {
-        return Err(Code::NotInSpec);
+    if move_name == "attempt" && shard.now().presence.humans == 0 {
+        return Err(Code::LiveOnly);
     }
     if !shard.canon().moves.contains_key(&move_name) {
         return Err(Code::UnknownMove);
@@ -393,7 +513,12 @@ fn parse_args(value: &Value) -> Result<IntentArgs, Code> {
             "text" => args.text = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
             "proposal_id" => args.proposal_id = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
             "kind" => args.kind = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
-            "target" => args.target = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
+            "check" => args.check = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
+            "target" => match item {
+                Value::String(text) => args.target = Some(text.clone()),
+                Value::Number(_) => args.check_target = Some(item.as_i64().ok_or(Code::Schema)?),
+                _ => return Err(Code::Schema),
+            },
             "summary" => args.summary = Some(item.as_str().ok_or(Code::Schema)?.to_string()),
             _ => return Err(Code::Schema),
         }

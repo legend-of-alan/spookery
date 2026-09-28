@@ -375,6 +375,9 @@ pub struct IntentArgs {
     pub proposal_id: Option<String>,
     pub kind: Option<String>,
     pub target: Option<String>,
+    /// Integer target for `attempt`. Serialized as args `target` when set.
+    pub check_target: Option<i64>,
+    pub check: Option<String>,
     pub summary: Option<String>,
 }
 

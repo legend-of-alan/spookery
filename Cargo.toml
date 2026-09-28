@@ -135,5 +135,9 @@ name = "cli_run"
 path = "tests/conformance/cli_run.rs"
 
 [[test]]
+name = "gate_d_check"
+path = "tests/conformance/gate_d_check.rs"
+
+[[test]]
 name = "cli_migrate"
 path = "tests/conformance/cli_migrate.rs"

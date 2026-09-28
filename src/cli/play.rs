@@ -39,25 +39,35 @@ pub fn play(args: &[String]) -> Result<(), Exit> {
             break;
         }
     }
-    for input in io::stdin().lines() {
-        let input = input.map_err(Exit::Os)?;
-        let stream = reader.get_mut();
-        writeln!(stream, "{input}").map_err(Exit::Os)?;
-        stream.flush().map_err(Exit::Os)?;
+    let mut write_stream = reader.get_mut().try_clone().map_err(Exit::Os)?;
+    std::thread::spawn(move || {
         loop {
-            let Some(line) = read_line(&mut reader)? else {
-                return Ok(());
-            };
-            if let Some(code) = refused_code(&line) {
-                eprintln!("{code}");
-                break;
-            }
-            println!("{line}");
-            let _ = io::stdout().flush();
-            if !line.starts_with("{\"kind\":\"resume\"") {
-                break;
+            match read_line(&mut reader) {
+                Ok(Some(line)) => {
+                    if let Some(code) = refused_code(&line) {
+                        eprintln!("{code}");
+                        let _ = io::stderr().flush();
+                        continue;
+                    }
+                    println!("{line}");
+                    let _ = io::stdout().flush();
+                }
+                Ok(None) => std::process::exit(0),
+                Err(Exit::Os(err)) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+                Err(Exit::Code(code)) => {
+                    eprintln!("{code}");
+                    std::process::exit(1);
+                }
             }
         }
+    });
+    for input in io::stdin().lines() {
+        let input = input.map_err(Exit::Os)?;
+        writeln!(write_stream, "{input}").map_err(Exit::Os)?;
+        write_stream.flush().map_err(Exit::Os)?;
     }
     Ok(())
 }

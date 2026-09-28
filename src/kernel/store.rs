@@ -11,6 +11,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::canon::{load_canon, pack_rev, Canon};
+use crate::check::CheckNotice;
 use crate::codec::{canonicalize, emit_now, emit_proposal, emit_rumors, load_now};
 use crate::error::Code;
 use crate::limits::Budget;
@@ -69,6 +70,7 @@ pub struct Shard {
     sheets: BTreeMap<String, PcSheet>,
     queue: Vec<Intent>,
     pending: Option<PendingCommit>,
+    rolls: Vec<CheckNotice>,
 }
 
 pub struct PendingCommit {
@@ -154,6 +156,14 @@ impl Shard {
 
     pub fn take_pending(&mut self) -> Option<PendingCommit> {
         self.pending.take()
+    }
+
+    pub fn set_rolls(&mut self, rolls: Vec<CheckNotice>) {
+        self.rolls = rolls;
+    }
+
+    pub fn take_rolls(&mut self) -> Vec<CheckNotice> {
+        std::mem::take(&mut self.rolls)
     }
 }
 
@@ -401,6 +411,7 @@ pub fn open_shard(root: &Path) -> Result<Shard, Code> {
         sheets,
         queue: Vec::new(),
         pending: None,
+        rolls: Vec::new(),
     })
 }
 

@@ -154,7 +154,12 @@ fn push_args(out: &mut String, args: &IntentArgs) {
     if let Some(value) = &args.kind {
         fields.push(("kind", ArgValue::Str(value)));
     }
-    if let Some(value) = &args.target {
+    if let Some(value) = &args.check {
+        fields.push(("check", ArgValue::Str(value)));
+    }
+    if let Some(value) = args.check_target {
+        fields.push(("target", ArgValue::Int(value)));
+    } else if let Some(value) = &args.target {
         fields.push(("target", ArgValue::Str(value)));
     }
     if let Some(value) = &args.summary {

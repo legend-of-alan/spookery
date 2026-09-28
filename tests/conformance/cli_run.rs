@@ -3,16 +3,32 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rmcp::model::CallToolRequestParam;
 use rmcp::ServiceExt;
 use tokio::io::AsyncWriteExt;
 
-fn lock_port() -> MutexGuard<'static, ()> {
-    static LOCK: Mutex<()> = Mutex::new(());
-    LOCK.lock().unwrap_or_else(|err| err.into_inner())
+struct PortLock(std::fs::File);
+
+impl Drop for PortLock {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
+fn lock_port() -> PortLock {
+    let path = std::env::temp_dir().join("spookery-9737.lock");
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&path)
+        .unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
+    file.lock().unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
+    PortLock(file)
 }
 
 fn copy_dir(from: &Path, to: &Path) {

@@ -4,7 +4,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Sender};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -23,7 +23,7 @@ use spookery_tick::commit_presence;
 mod round;
 mod speech;
 
-pub use round::{commit_queued, on_scheduled_wake, queue_wait};
+pub use round::{commit_queued, mechanical, on_scheduled_wake, queue_attempt, queue_wait, Mechanical};
 pub use speech::{player_scrollback, speak};
 
 const GM_TOOLS: &[&str] = &[
@@ -241,6 +241,7 @@ struct HeldPlayer {
 struct GmSeat {
     conn: u64,
     out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    after_response: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
 enum Msg {
@@ -273,7 +274,7 @@ enum Msg {
 enum HelloReply {
     Refused(String),
     Player,
-    Gm,
+    Gm(Arc<Mutex<Vec<Vec<u8>>>>),
 }
 
 enum PlayerReply {
@@ -299,13 +300,19 @@ fn on_msg(
         Msg::Fault { conn, end, ack } => on_fault(shard, seats, conn, end, ack)?,
         Msg::Tool { name, arguments, reply } => {
             let done = round::gm_tool(shard, &name, arguments);
+            let notices = if done.ticked { shard.take_rolls() } else { Vec::new() };
             if done.ticked {
-                refresh_player(shard, seats);
+                refresh_player(shard, seats, &notices);
                 print_host(shard);
             }
             if let Some(frame) = done.gm_event {
                 if let Some(gm) = &seats.gm {
                     let _ = gm.out.send(frame);
+                }
+            }
+            if let Some(gm) = &seats.gm {
+                if let Ok(mut pending) = gm.after_response.lock() {
+                    pending.extend(round::gm_check_frames(&notices));
                 }
             }
             if done.advanced {
@@ -330,12 +337,14 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
     let _ = restart.send(next);
 }
 
-fn refresh_player(shard: &Shard, seats: &Seats) {
+fn refresh_player(shard: &Shard, seats: &Seats, notices: &[spookery_kernel::check::CheckNotice]) {
     let Some(player) = &seats.player else {
         return;
     };
+    let mut out = round::player_notice_lines(notices, &player.actor_id);
     if let Ok(text) = player_refresh(shard, &player.actor_id) {
-        let _ = player.out.send(text.into_bytes());
+        out.push_str(&text);
+        let _ = player.out.send(out.into_bytes());
     }
 }
 
@@ -370,8 +379,13 @@ fn on_hello(
         for frame in speech::gm_events(shard.root())? {
             let _ = out.send(frame);
         }
-        seats.gm = Some(GmSeat { conn, out });
-        return Ok(HelloReply::Gm);
+        let after_response = Arc::new(Mutex::new(Vec::new()));
+        seats.gm = Some(GmSeat {
+            conn,
+            out,
+            after_response: Arc::clone(&after_response),
+        });
+        return Ok(HelloReply::Gm(after_response));
     }
     if let Some(id) = player_hello(line) {
         if seats.player.is_some() {
@@ -486,13 +500,17 @@ fn on_mechanical(
             }
             send_player(seats, conn, note.player_line().into_bytes());
         }
-        Ok(round::Mechanical::Committed { advanced }) => {
+        Ok(round::Mechanical::Committed { advanced, notices }) => {
             if advanced {
                 bump_sleep(restart);
             }
             print_host(shard);
             match player_refresh(shard, actor_id) {
-                Ok(bytes) => send_player(seats, conn, bytes.into_bytes()),
+                Ok(refresh) => {
+                    let mut bytes = round::player_notice_lines(&notices, actor_id);
+                    bytes.push_str(&refresh);
+                    send_player(seats, conn, bytes.into_bytes());
+                }
                 Err(code) => send_player(seats, conn, refused_line(code).into_bytes()),
             }
         }
@@ -628,7 +646,7 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             }
             let _ = writer.await;
         }
-        HelloReply::Gm => {
+        HelloReply::Gm(after_response) => {
             let (read_half, write_half) = stream.into_split();
             let writer_task = tokio::spawn(async move {
                 let mut out_rx = out_rx;
@@ -642,6 +660,7 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             let writer = LineWriter {
                 tx: out_tx,
                 buf: Vec::new(),
+                after_response,
             };
             let host = GmHost { tx: tx.clone() };
             match host.serve((read_half, writer)).await {
@@ -674,6 +693,7 @@ async fn write_frame(write: &mut tokio::net::tcp::OwnedWriteHalf, frame: &[u8]) 
 struct LineWriter {
     tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
     buf: Vec<u8>,
+    after_response: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
 impl tokio::io::AsyncWrite for LineWriter {
@@ -684,6 +704,13 @@ impl tokio::io::AsyncWrite for LineWriter {
             let frame: Vec<u8> = writer.buf.drain(..=index).collect();
             if writer.tx.send(frame).is_err() {
                 return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "gm writer closed")));
+            }
+            if let Ok(mut pending) = writer.after_response.lock() {
+                for extra in pending.drain(..) {
+                    if writer.tx.send(extra).is_err() {
+                        return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "gm writer closed")));
+                    }
+                }
             }
         }
         Poll::Ready(Ok(data.len()))

@@ -6,8 +6,8 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let intent_id = intent.id.clone();
     match intent.move_name.as_str() {
-        "wait" => Ok(Vec::new()),
-        "talk" | "attempt" | "attack" | "give" | "take" => Err(Code::NotInSpec),
+        "wait" | "attempt" => Ok(Vec::new()),
+        "talk" | "attack" | "give" | "take" => Err(Code::NotInSpec),
         "travel" => {
             let Target::Place(to) = &intent.target else {
                 return Err(Code::Schema);
