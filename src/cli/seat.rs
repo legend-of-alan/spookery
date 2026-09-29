@@ -15,11 +15,12 @@ use rmcp::model::{
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use spookery_kernel::model::{ActorLive, Presence};
-use spookery_kernel::perceive::{perceive, ClockView, KnownFact, Perceive, StockView};
+use spookery_kernel::perceive::perceive;
 use spookery_kernel::store::{open_shard, Shard};
 use spookery_kernel::{idle_digest, Code, DigestViewer};
 use spookery_tick::commit_presence;
 
+mod codec;
 mod round;
 mod speech;
 
@@ -374,9 +375,7 @@ fn on_hello(
         if seats.gm.is_some() {
             return Ok(HelloReply::Refused(refused_line(Code::SessionFull)));
         }
-        for frame in speech::gm_events(shard.root())? {
-            let _ = out.send(frame);
-        }
+        // Stored tape is not written on accept. Scrollback is session_status with since.
         let after_response = Arc::new(Mutex::new(Vec::new()));
         seats.gm = Some(GmSeat {
             conn,
@@ -435,8 +434,8 @@ fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Code> {
 fn player_refresh(shard: &Shard, actor_id: &str) -> Result<String, Code> {
     let digest = idle_digest(shard, DigestViewer::Player(actor_id.to_string()))?;
     let view = perceive(shard, &format!("player:{actor_id}"))?;
-    let mut out = resume_line(&digest);
-    out.push_str(&perceive_line(&view));
+    let mut out = codec::player_resume_line(&digest);
+    out.push_str(&codec::player_perceive_line(&view));
     Ok(out)
 }
 
@@ -564,28 +563,7 @@ fn on_fault(
 }
 
 fn refused_line(code: Code) -> String {
-    format!("{{\"kind\":\"refused\",\"code\":\"{}\"}}\n", code.token())
-}
-
-fn resume_line(text: &str) -> String {
-    let mut out = String::from("{\"kind\":\"resume\",\"text\":");
-    push_string(&mut out, text);
-    out.push_str("}\n");
-    out
-}
-
-fn perceive_line(view: &Perceive) -> String {
-    let mut body = render_perceive(view);
-    body.insert_str(1, "\"kind\":\"perceive\",");
-    body
-}
-
-fn perceive_object(view: &Perceive) -> String {
-    let mut line = perceive_line(view);
-    if line.ends_with('\n') {
-        line.pop();
-    }
-    line
+    codec::player_refused_line(code.token())
 }
 
 async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u64) {
@@ -817,150 +795,4 @@ impl ServerHandler for GmHost {
             Ok(CallToolResult::structured(value))
         }
     }
-}
-
-fn render_perceive(view: &Perceive) -> String {
-    let mut out = String::from("{");
-    field_str(&mut out, "viewer", &view.viewer, true);
-    field_str(&mut out, "place", &view.place, false);
-    out.push_str(",\"visible_actors\":");
-    push_strings(&mut out, &view.visible_actors);
-    out.push_str(",\"known_facts\":[");
-    for (index, fact) in view.known_facts.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_fact(&mut out, fact);
-    }
-    out.push_str("],\"messages\":[");
-    for (index, message) in view.messages.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_message(&mut out, message);
-    }
-    out.push_str("],\"unknown_mentioned\":");
-    push_strings(&mut out, &view.unknown_mentioned);
-    out.push_str(",\"clocks\":[");
-    for (index, clock) in view.clocks.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_clock(&mut out, clock);
-    }
-    out.push_str("],\"stocks\":[");
-    for (index, stock) in view.stocks.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_stock(&mut out, stock);
-    }
-    out.push_str("],\"schedule_hint\":");
-    match &view.schedule_hint {
-        None => out.push_str("null"),
-        Some(hint) => {
-            out.push_str("{\"place\":");
-            push_string(&mut out, &hint.place);
-            out.push_str(",\"activity\":");
-            match &hint.activity {
-                Some(activity) => push_string(&mut out, activity),
-                None => out.push_str("null"),
-            }
-            out.push('}');
-        }
-    }
-    out.push_str("}\n");
-    out
-}
-
-fn push_fact(out: &mut String, fact: &KnownFact) {
-    out.push('{');
-    field_str(out, "id", &fact.id, true);
-    field_str(out, "text", &fact.text, false);
-    field_str(out, "body", &fact.body, false);
-    out.push('}');
-}
-
-fn push_message(out: &mut String, message: &spookery_kernel::model::Message) {
-    out.push('{');
-    field_str(out, "id", &message.id, true);
-    out.push_str(",\"to\":");
-    push_strings(out, &message.to);
-    if let Some(place) = &message.place {
-        field_str(out, "place", place, false);
-    }
-    out.push_str(",\"fact_ids\":");
-    push_strings(out, &message.fact_ids);
-    field_str(out, "text", &message.text, false);
-    out.push('}');
-}
-
-fn push_clock(out: &mut String, clock: &ClockView) {
-    out.push('{');
-    field_str(out, "id", &clock.id, true);
-    field_i64(out, "value", clock.value, false);
-    field_i64(out, "max", clock.max, false);
-    field_bool(out, "paused", clock.paused, false);
-    out.push('}');
-}
-
-fn push_stock(out: &mut String, stock: &StockView) {
-    out.push('{');
-    field_str(out, "sku", &stock.sku, true);
-    field_i64(out, "qty", stock.qty, false);
-    out.push('}');
-}
-
-fn push_strings(out: &mut String, values: &[String]) {
-    out.push('[');
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_string(out, value);
-    }
-    out.push(']');
-}
-
-fn field_str(out: &mut String, key: &str, value: &str, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    push_string(out, key);
-    out.push(':');
-    push_string(out, value);
-}
-
-fn field_i64(out: &mut String, key: &str, value: i64, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    push_string(out, key);
-    out.push(':');
-    out.push_str(&value.to_string());
-}
-
-fn field_bool(out: &mut String, key: &str, value: bool, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    push_string(out, key);
-    out.push(':');
-    out.push_str(if value { "true" } else { "false" });
-}
-
-fn push_string(out: &mut String, value: &str) {
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            other if other.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(other))),
-            other => out.push(other),
-        }
-    }
-    out.push('"');
 }

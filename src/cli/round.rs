@@ -1,11 +1,12 @@
 use serde_json::{Map, Value};
-use spookery_kernel::check::{CheckNotice, CheckOut};
-use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, RunState, Source, Target};
+use spookery_kernel::check::CheckNotice;
+use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, Source, Target};
 use spookery_kernel::perceive::perceive_budget;
 use spookery_kernel::store::Shard;
 use spookery_kernel::Code;
 use spookery_tick::commit_turn_at;
 
+use super::codec;
 use super::speech;
 use crate::schedule::{self, seconds_since, wall_now};
 
@@ -203,7 +204,7 @@ pub fn gm_tool(shard: &mut Shard, name: &str, arguments: Option<Map<String, Valu
 
 fn run_intent(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolDone {
     match queue_tool_intent(shard, arguments) {
-        Ok(note) => ToolDone::new(serde_json::json!({ "queued": note.id })),
+        Ok(note) => ToolDone::new(codec::queued_ack(&note.id)),
         Err(code) => refused_tool(code),
     }
 }
@@ -225,8 +226,7 @@ fn run_perceive(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> Too
 fn run_say(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolDone {
     match speech::speak_tool(shard, arguments) {
         Ok(spoken) => {
-            let value = serde_json::from_str(&spoken.gm_object).unwrap_or(Value::Null);
-            let mut done = ToolDone::new(value);
+            let mut done = ToolDone::new(spoken.tool);
             // Same object as the tool result, after that response. Ahead of it, the client stalls.
             done.after.push(spoken.gm_event);
             done.player_line = Some((spoken.recipients, spoken.player_event.into_bytes()));
@@ -438,16 +438,8 @@ pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
             continue;
         }
         match notice {
-            CheckNotice::Rolled { out: rolled, .. } => {
-                out.push_str("{\"kind\":\"check\",\"success\":");
-                out.push_str(if rolled.success { "true" } else { "false" });
-                out.push_str("}\n");
-            }
-            CheckNotice::Refused { code, .. } => {
-                out.push_str("{\"kind\":\"refused\",\"code\":\"");
-                out.push_str(code.token());
-                out.push_str("\"}\n");
-            }
+            CheckNotice::Rolled { out: rolled, .. } => out.push_str(&codec::player_check_line(rolled.success)),
+            CheckNotice::Refused { code, .. } => out.push_str(&codec::player_refused_line(code.token())),
         }
     }
     out
@@ -457,29 +449,10 @@ pub fn gm_check_frames(notices: &[CheckNotice]) -> Vec<Vec<u8>> {
     notices
         .iter()
         .filter_map(|notice| match notice {
-            CheckNotice::Rolled { out, .. } => Some(gm_check_frame(out)),
+            CheckNotice::Rolled { out, .. } => Some(codec::check_event(out)),
             CheckNotice::Refused { .. } => None,
         })
         .collect()
-}
-
-fn gm_check_frame(out: &CheckOut) -> Vec<u8> {
-    let mut faces = String::from("[");
-    for (index, face) in out.faces.iter().enumerate() {
-        if index > 0 {
-            faces.push(',');
-        }
-        faces.push_str(&face.to_string());
-    }
-    faces.push(']');
-    format!(
-        "{{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{{\"kind\":\"check\",\"faces\":{faces},\"stat\":{},\"total\":{},\"target\":{},\"success\":{}}}}}\n",
-        out.stat,
-        out.total,
-        out.target,
-        if out.success { "true" } else { "false" }
-    )
-    .into_bytes()
 }
 
 fn integer_token(token: &str) -> Option<i64> {
@@ -554,20 +527,11 @@ pub fn commit_queued(shard: &mut Shard) -> Result<bool, Code> {
 
 impl QueuedNote {
     pub fn player_line(&self) -> String {
-        format!(
-            "{{\"kind\":\"queued\",\"id\":{}}}\n",
-            serde_json::to_string(&self.id).unwrap_or_else(|_| "\"\"".to_string())
-        )
+        codec::player_queued_line(&self.id)
     }
 
     pub fn gm_frame(&self) -> Vec<u8> {
-        let id = serde_json::to_string(&self.id).unwrap_or_else(|_| "\"\"".to_string());
-        let actor = serde_json::to_string(&self.actor_id).unwrap_or_else(|_| "\"\"".to_string());
-        let move_name = serde_json::to_string(&self.move_name).unwrap_or_else(|_| "\"\"".to_string());
-        format!(
-            "{{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{{\"kind\":\"queued\",\"id\":{id},\"actor_id\":{actor},\"move\":{move_name}}}}}\n"
-        )
-        .into_bytes()
+        codec::queued_event(&self.id, &self.actor_id, &self.move_name)
     }
 }
 
@@ -586,26 +550,22 @@ fn commit_tool(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> Resu
     let wall = wall_now()?;
     let outcome = commit_turn_at(shard, &wall)?;
     let advanced = shard.now().world_time != before;
-    let mut done = ToolDone::new(serde_json::json!({
-        "state_rev": outcome.state_rev,
-        "diff_summary": outcome.diff_summary,
-        "log_path": outcome.log_path,
-    }));
+    let mut done = ToolDone::new(codec::commit_turn(
+        outcome.state_rev,
+        &outcome.diff_summary,
+        Some(&outcome.log_path),
+    ));
     done.advanced = advanced;
     done.ticked = true;
     Ok(done)
 }
 
 fn noop(shard: &Shard) -> ToolDone {
-    ToolDone::new(serde_json::json!({
-        "state_rev": shard.now().state_rev,
-        "diff_summary": [],
-        "log_path": null,
-    }))
+    ToolDone::new(codec::commit_turn(shard.now().state_rev, &[], None))
 }
 
 fn refused_tool(code: Code) -> ToolDone {
-    ToolDone::new(serde_json::json!({ "code": code.token() }))
+    ToolDone::new(codec::code_result(code.token()))
 }
 
 fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Code> {
@@ -626,14 +586,17 @@ fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result
     let as_arg = as_arg.ok_or(Code::UnscopedPerceive)?;
     let budget = usize::try_from(budget.unwrap_or(800)).map_err(|_| Code::Schema)?;
     let view = perceive_budget(shard, &as_arg, budget)?;
-    let body = super::perceive_object(&view);
-    serde_json::from_str(&body).map_err(|_| Code::Schema)
+    Ok(codec::perceive_value(&view))
 }
 
 fn session_status_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Code> {
     let since = status_since(arguments)?;
-    let body = status_json(shard, since)?;
-    serde_json::from_str(&body).map_err(|_| Code::Schema)
+    let events = match since {
+        Some(since) => Some(speech::tape_after(shard.root(), since)?),
+        None => None,
+    };
+    let last_seq = speech::last_tape_seq(shard.root())?;
+    Ok(codec::session_status(shard.now(), shard.queued_intents(), last_seq, events.as_deref()))
 }
 
 fn status_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Code> {
@@ -648,70 +611,6 @@ fn status_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Co
     }
     let since = arguments.get("since").ok_or(Code::Schema)?;
     Ok(Some(since.as_u64().ok_or(Code::Schema)?))
-}
-
-fn status_json(shard: &Shard, since: Option<u64>) -> Result<String, Code> {
-    let now = shard.now();
-    let mut out = String::from("{\"presence\":{\"humans\":");
-    out.push_str(&now.presence.humans.to_string());
-    out.push_str(",\"session_ids\":");
-    out.push_str(&serde_json::to_string(&now.presence.session_ids).unwrap_or_else(|_| "[]".to_string()));
-    out.push_str(",\"actors_present\":");
-    out.push_str(&serde_json::to_string(&now.presence.actors_present).unwrap_or_else(|_| "[]".to_string()));
-    out.push_str("},\"pause\":{\"named_plot_clocks\":");
-    push_state(&mut out, now.pause.named_plot_clocks);
-    out.push_str(",\"relationship_drift\":");
-    push_state(&mut out, now.pause.relationship_drift);
-    out.push_str(",\"subsistence_clocks\":");
-    push_state(&mut out, now.pause.subsistence_clocks);
-    out.push_str(",\"travel\":");
-    push_state(&mut out, now.pause.travel);
-    out.push_str("},\"world_time\":");
-    out.push_str(&now.world_time.to_string());
-    out.push_str(",\"tick_index\":");
-    out.push_str(&now.tick_index.to_string());
-    out.push_str(",\"state_rev\":");
-    out.push_str(&now.state_rev.to_string());
-    out.push_str(",\"pack_rev\":");
-    out.push_str(&serde_json::to_string(&now.pack_rev).unwrap_or_else(|_| "\"\"".to_string()));
-    out.push_str(",\"last_tick_at\":");
-    out.push_str(&serde_json::to_string(&now.last_tick_at).unwrap_or_else(|_| "\"\"".to_string()));
-    out.push_str(",\"queued\":[");
-    for (index, intent) in shard.queued_intents().iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        out.push_str("{\"id\":");
-        out.push_str(&serde_json::to_string(&intent.id).unwrap_or_else(|_| "\"\"".to_string()));
-        out.push_str(",\"actor_id\":");
-        out.push_str(&serde_json::to_string(&intent.actor_id).unwrap_or_else(|_| "\"\"".to_string()));
-        out.push_str(",\"move\":");
-        out.push_str(&serde_json::to_string(&intent.move_name).unwrap_or_else(|_| "\"\"".to_string()));
-        out.push('}');
-    }
-    out.push_str("],\"last_seq\":");
-    out.push_str(&speech::last_tape_seq(shard.root())?.to_string());
-    if let Some(since) = since {
-        out.push_str(",\"events\":[");
-        for (index, event) in speech::tape_events_after(shard.root(), since)?.iter().enumerate() {
-            if index > 0 {
-                out.push(',');
-            }
-            out.push_str(event);
-        }
-        out.push(']');
-    }
-    out.push('}');
-    Ok(out)
-}
-
-fn push_state(out: &mut String, state: RunState) {
-    out.push('"');
-    out.push_str(match state {
-        RunState::Paused => "paused",
-        RunState::Running => "running",
-    });
-    out.push('"');
 }
 
 fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Code> {

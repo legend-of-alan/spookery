@@ -45,7 +45,7 @@ Three outcomes, one per gate. Not a file list.
 
 ## 2. Proofs
 
-Each item is the assertion. The new proofs live in one new conformance file, created in Gate A and extended by Gates B and C. `tests/conformance/v01.rs` stays unrewritten. `tests/conformance/v01_p09.rs` and `tests/conformance/v01_p12_p21.rs` stay unrewritten. The v0 tests `docs/architecture_v0.1.md` §8 lists as unrewritten stay unrewritten. No shared test harness. No unit-test backfill. Do not split `store.rs`. These proofs do not edit `packs/oneshot-docks`.
+Each item is the assertion. The new proofs live in one new conformance file, created in Gate A and extended by Gates B and C. `tests/conformance/v01.rs` stays unrewritten. `tests/conformance/v01_p09.rs` and `tests/conformance/v01_p12_p21.rs` stay unrewritten. The v0 tests `docs/architecture_v0.1.md` §8 lists as unrewritten stay unrewritten. No shared test harness. No unit-test backfill. Do not split `store.rs`. These proofs do not edit `packs/oneshot-docks`. Gate C withdraws only the proof 21 wait for stored tape on the bridge before `initialize`; the rest of `tests/conformance/v01_p12_p21.rs` stays unrewritten.
 
 1. GM `tools/list` gives distinct descriptions and names the keys §1 lists for `say`, `perceive`, `commit_turn`, `session_status`, and `intent`. A missing required key stays `SCHEMA`, or `UNSCOPED_PERCEIVE` when `perceive` has no `as`. `npc_act` stays `LLM_DISABLED`. `session_open`, `patch_entity`, `resolve_check`, `apply_effect`, `recall`, and `session_save` stay `NOT_IN_SPEC`.
 2. `spook run --mcp pack-table` does not gain `say` or a `tools/call` body. `v0_c01_load_mcp` stays green.
@@ -63,7 +63,7 @@ A gate does not prescribe modules or file order. It names what becomes true, and
 
 The gates are linear. Gates A and B both leave the existing JSON builders in place. Gate C is the one that replaces them. Do not implement two gates in parallel. Do not start a gate whose predecessor is not already green. A session reads that gate, the proofs it names, and the §1 rules those proofs cite.
 
-Every gate keeps the §2 file rules. The v0 tests, `v01.rs`, `v01_p09.rs`, and `v01_p12_p21.rs` stay unrewritten in all three.
+Every gate keeps the §2 file rules. The v0 tests, `v01.rs`, `v01_p09.rs`, and `v01_p12_p21.rs` stay unrewritten in all three, aside from the §2 exception for proof 21.
 
 ### Gate A — schemas
 

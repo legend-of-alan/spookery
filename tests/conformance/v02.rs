@@ -1123,3 +1123,217 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     let _ = again;
     let _ = fs::remove_dir_all(&pack);
 }
+
+fn pack_snapshot(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    fn walk(dir: &Path, root: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else {
+                let rel = path.strip_prefix(root).unwrap().to_path_buf();
+                out.push((rel, fs::read(&path).unwrap()));
+            }
+        }
+    }
+    walk(pack, pack, &mut out);
+    out.sort();
+    out
+}
+
+fn keys_in_order(json: &str) -> Vec<String> {
+    let mut keys = Vec::new();
+    let bytes = json.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' => {
+                let start = index + 1;
+                index += 1;
+                let mut escape = false;
+                while index < bytes.len() {
+                    if escape {
+                        escape = false;
+                    } else if bytes[index] == b'\\' {
+                        escape = true;
+                    } else if bytes[index] == b'"' {
+                        break;
+                    }
+                    index += 1;
+                }
+                let text = json[start..index].to_string();
+                index += 1;
+                let rest = json[index..].trim_start();
+                if rest.starts_with(':') {
+                    keys.push(text);
+                }
+            }
+            _ => index += 1,
+        }
+    }
+    keys
+}
+
+fn assert_keys(json: &str, expected: &[&str]) {
+    let got = keys_in_order(json);
+    assert_eq!(got, expected, "{json}");
+}
+
+fn structured_object(line: &str) -> &str {
+    let marker = "\"structuredContent\":";
+    let start = line.find(marker).unwrap_or_else(|| panic!("no structuredContent in {line}")) + marker.len();
+    let rest = &line[start..];
+    assert!(rest.starts_with('{'), "{line}");
+    let bytes = rest.as_bytes();
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for (index, byte) in bytes.iter().enumerate() {
+        if in_string {
+            if escape {
+                escape = false;
+            } else if *byte == b'\\' {
+                escape = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match *byte {
+            b'"' => in_string = true,
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return &rest[..=index];
+                }
+            }
+            _ => {}
+        }
+    }
+    panic!("unclosed structuredContent in {line}");
+}
+
+#[test]
+fn v02_p05_initialize_writes_no_tape_and_the_four_shapes_keep_key_order() {
+    let _lock = lock_port();
+    let quiet = temp_pack("c-down");
+    let quiet_before = pack_snapshot(&quiet);
+    let refused = TcpStream::connect("127.0.0.1:9737").unwrap_err();
+    let mut bridge = spawn(&["gm", &pack_arg(&quiet), "--stdio"]);
+    let bridge_status = wait_exit(&mut bridge, Duration::from_secs(5));
+    assert_eq!(bridge_status.code(), Some(1));
+    assert!(text_of(&bridge.stdout).is_empty(), "{}", text_of(&bridge.stdout));
+    assert_eq!(text_of(&bridge.stderr).trim(), refused.to_string());
+    assert!(!text_of(&bridge.stderr).contains("NOT_IN_SPEC"));
+    assert_eq!(pack_snapshot(&quiet), quiet_before);
+    let _ = fs::remove_dir_all(&quiet);
+
+    let pack = temp_pack("c-codec");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut player = seat_player(&pack);
+    let clock = now_of(&pack);
+    write_stdin(&mut player, "say before the chair");
+    let player_line = "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"table\",\"text\":\"before the chair\"}";
+    let said = wait_has(&player.stdout, player_line, Duration::from_secs(5));
+    assert_eq!(
+        said.lines().filter(|line| *line == player_line).count(),
+        1,
+        "{said}"
+    );
+    assert_keys(player_line, &["kind", "from", "address", "text"]);
+    let tape_line = format!(
+        "{{\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"before the chair\",\"tick_index\":{},\"world_time\":{}}}",
+        clock.tick_index, clock.world_time
+    );
+    let tape_path = pack.join("state/log/session.jsonl");
+    assert_eq!(fs::read_to_string(&tape_path).unwrap(), format!("{tape_line}\n"));
+    assert_keys(
+        &tape_line,
+        &["seq", "from", "address", "place", "actor", "recipients", "text", "tick_index", "world_time"],
+    );
+    let stored = fs::read(&tape_path).unwrap();
+    assert_eq!(now_of(&pack).world_time, clock.world_time);
+    assert_eq!(now_of(&pack).state_rev, clock.state_rev);
+
+    let mut gm = TcpStream::connect("127.0.0.1:9737").unwrap();
+    gm.set_nodelay(true).unwrap();
+    gm.write_all(b"gm\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"proof\",\"version\":\"0\"}}}\n")
+        .unwrap();
+    gm.flush().unwrap();
+    let init = read_lf(&mut gm, Duration::from_secs(5));
+    assert!(init.contains("\"id\":1"), "{init}");
+    assert!(init.contains("\"result\""), "{init}");
+    assert!(!init.contains("spook/event"), "{init}");
+    assert!(!init.contains("before the chair"), "{init}");
+    assert!(!init.contains("\"seq\""), "{init}");
+    assert_eq!(fs::read(&tape_path).unwrap(), stored);
+    assert_eq!(fs::read_to_string(&tape_path).unwrap().lines().count(), 1);
+
+    gm.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").unwrap();
+    gm.flush().unwrap();
+    let pulled = call(&mut gm, 2, "session_status", r#"{"since":0}"#);
+    let pulled_line = result_line(&pulled, 2);
+    let say_object = "{\"kind\":\"say\",\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"before the chair\"}";
+    let status_object = structured_object(pulled_line);
+    assert!(status_object.contains(&format!("\"events\":[{say_object}]")), "{status_object}");
+    assert_keys(
+        say_object,
+        &["kind", "seq", "from", "address", "place", "actor", "recipients", "text"],
+    );
+    let status = structured(pulled_line);
+    assert_eq!(status["last_seq"], 1);
+    assert_eq!(status["events"].as_array().unwrap().len(), 1);
+    assert_eq!(fs::read(&tape_path).unwrap(), stored);
+
+    write_stdin(&mut player, "say across the lane");
+    let live_player = "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"table\",\"text\":\"across the lane\"}";
+    let live_out = wait_has(&player.stdout, live_player, Duration::from_secs(5));
+    assert_eq!(live_out.lines().filter(|line| *line == live_player).count(), 1, "{live_out}");
+    let live_event = read_lf(&mut gm, Duration::from_secs(5));
+    let live_frame = "{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{\"kind\":\"say\",\"seq\":2,\"from\":\"player:pc_rowan\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"across the lane\"}}";
+    assert_eq!(live_event, live_frame);
+    assert!(!live_event.contains("\"id\""), "{live_event}");
+    assert_keys(
+        &live_event,
+        &[
+            "jsonrpc",
+            "method",
+            "params",
+            "kind",
+            "seq",
+            "from",
+            "address",
+            "place",
+            "actor",
+            "recipients",
+            "text",
+        ],
+    );
+    let live_tape = format!(
+        "{{\"seq\":2,\"from\":\"player:pc_rowan\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"across the lane\",\"tick_index\":{},\"world_time\":{}}}\n",
+        clock.tick_index, clock.world_time
+    );
+    let tape_now = fs::read_to_string(&tape_path).unwrap();
+    assert!(tape_now.ends_with(&live_tape), "{tape_now}");
+    assert_eq!(tape_now.lines().count(), 2, "{tape_now}");
+
+    let said_tool = call(&mut gm, 3, "say", r#"{"address":"table","text":"from the chair"}"#);
+    let said_at = said_tool.iter().position(|line| line.contains("\"id\":3")).unwrap();
+    let event_at = said_tool.iter().position(|line| line.contains("\"method\":\"spook/event\"")).unwrap();
+    assert!(said_at < event_at, "{said_tool:?}");
+    assert!(said_tool.iter().take(event_at).all(|line| !line.contains("\"method\":\"spook/event\"")));
+    let tool_object = "{\"kind\":\"say\",\"seq\":3,\"from\":\"gm\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"from the chair\"}";
+    let tool_raw = structured_object(&said_tool[said_at]);
+    assert_eq!(tool_raw, tool_object);
+    assert_keys(
+        tool_raw,
+        &["kind", "seq", "from", "address", "place", "actor", "recipients", "text"],
+    );
+    let tool_event = "{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{\"kind\":\"say\",\"seq\":3,\"from\":\"gm\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"from the chair\"}}";
+    assert_eq!(said_tool[event_at], tool_event);
+    assert_eq!(fs::read_to_string(&tape_path).unwrap().lines().count(), 3);
+    let _ = fs::remove_dir_all(&pack);
+}

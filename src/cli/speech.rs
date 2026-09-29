@@ -5,25 +5,15 @@ use spookery_kernel::model::ActorLive;
 use spookery_kernel::store::{append_session, read_session, Shard};
 use spookery_kernel::Code;
 
+use super::codec::{self, TapeLine};
+
 #[derive(Debug)]
 pub struct Spoken {
     pub tape: String,
     pub player_event: String,
     pub gm_event: Vec<u8>,
-    pub gm_object: String,
+    pub tool: Value,
     pub recipients: Vec<String>,
-}
-
-struct Stored {
-    seq: u64,
-    from: String,
-    address: String,
-    place: Option<String>,
-    actor: Option<String>,
-    recipients: Vec<String>,
-    text: String,
-    tick_index: u64,
-    world_time: u64,
 }
 
 enum Speech {
@@ -140,20 +130,20 @@ pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Resul
 pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Code> {
     let mut last = 0u64;
     for tape in read_session(root)? {
-        if let Some(stored) = parse_tape(&tape) {
+        if let Some(stored) = codec::parse_tape(&tape) {
             last = stored.seq;
         }
     }
     Ok(last)
 }
 
-/// Stored lines with `seq` greater than `since`, in the GM say shape.
-pub fn tape_events_after(root: &std::path::Path, since: u64) -> Result<Vec<String>, Code> {
+/// Stored lines with `seq` greater than `since`, in file order.
+pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, Code> {
     let mut out = Vec::new();
     for tape in read_session(root)? {
-        if let Some(stored) = parse_tape(&tape) {
+        if let Some(stored) = codec::parse_tape(&tape) {
             if stored.seq > since {
-                out.push(say_params(&stored));
+                out.push(stored);
             }
         }
     }
@@ -171,23 +161,25 @@ fn append_speech(
 ) -> Result<Spoken, Code> {
     let tick_index = shard.now().tick_index;
     let world_time = shard.now().world_time;
+    let from = from.to_string();
+    let address = address.to_string();
     let seq = append_session(shard.root(), |seq| {
-        tape_json(
+        codec::tape_body(&TapeLine {
             seq,
-            from,
-            address,
-            place.as_deref(),
-            actor.as_deref(),
-            &recipients,
-            &text,
+            from: from.clone(),
+            address: address.clone(),
+            place: place.clone(),
+            actor: actor.clone(),
+            recipients: recipients.clone(),
+            text: text.clone(),
             tick_index,
             world_time,
-        )
+        })
     })?;
-    Ok(spoken_from(&Stored {
+    Ok(spoken_from(&TapeLine {
         seq,
-        from: from.to_string(),
-        address: address.to_string(),
+        from,
+        address,
         place,
         actor,
         recipients,
@@ -200,43 +192,22 @@ fn append_speech(
 pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<String>, Code> {
     let mut out = Vec::new();
     for tape in read_session(root)? {
-        let Some(stored) = parse_tape(&tape) else {
+        let Some(stored) = codec::parse_tape(&tape) else {
             continue;
         };
         if stored.recipients.iter().any(|id| id == actor_id) {
-            out.push(player_event(&stored));
+            out.push(codec::player_say_line(&stored));
         }
     }
     Ok(out)
 }
 
-pub fn gm_events(root: &std::path::Path) -> Result<Vec<Vec<u8>>, Code> {
-    let mut out = Vec::new();
-    for tape in read_session(root)? {
-        if let Some(stored) = parse_tape(&tape) {
-            out.push(gm_event(&stored));
-        }
-    }
-    Ok(out)
-}
-
-fn spoken_from(stored: &Stored) -> Spoken {
-    let gm_object = say_params(stored);
+fn spoken_from(stored: &TapeLine) -> Spoken {
     Spoken {
-        tape: tape_json(
-            stored.seq,
-            &stored.from,
-            &stored.address,
-            stored.place.as_deref(),
-            stored.actor.as_deref(),
-            &stored.recipients,
-            &stored.text,
-            stored.tick_index,
-            stored.world_time,
-        ),
-        player_event: player_event(stored),
-        gm_event: gm_frame(&gm_object),
-        gm_object,
+        tape: codec::tape_body(stored),
+        player_event: codec::player_say_line(stored),
+        gm_event: codec::say_event(stored),
+        tool: codec::say_value(stored),
         recipients: stored.recipients.clone(),
     }
 }
@@ -354,140 +325,4 @@ fn seated_players(shard: &Shard) -> Vec<String> {
         .filter(|id| shard.now().actors.get(*id).is_some_and(ActorLive::is_pc))
         .cloned()
         .collect()
-}
-
-fn tape_json(
-    seq: u64,
-    from: &str,
-    address: &str,
-    place: Option<&str>,
-    actor: Option<&str>,
-    recipients: &[String],
-    text: &str,
-    tick_index: u64,
-    world_time: u64,
-) -> String {
-    let mut out = String::from("{\"seq\":");
-    out.push_str(&seq.to_string());
-    out.push_str(",\"from\":");
-    push_string(&mut out, from);
-    out.push_str(",\"address\":");
-    push_string(&mut out, address);
-    out.push_str(",\"place\":");
-    push_optional(&mut out, place);
-    out.push_str(",\"actor\":");
-    push_optional(&mut out, actor);
-    out.push_str(",\"recipients\":");
-    push_strings(&mut out, recipients);
-    out.push_str(",\"text\":");
-    push_string(&mut out, text);
-    out.push_str(",\"tick_index\":");
-    out.push_str(&tick_index.to_string());
-    out.push_str(",\"world_time\":");
-    out.push_str(&world_time.to_string());
-    out.push('}');
-    out
-}
-
-fn player_event(stored: &Stored) -> String {
-    let mut out = String::from("{\"kind\":\"say\",\"from\":");
-    push_string(&mut out, &stored.from);
-    out.push_str(",\"address\":");
-    push_string(&mut out, &stored.address);
-    out.push_str(",\"text\":");
-    push_string(&mut out, &stored.text);
-    out.push_str("}\n");
-    out
-}
-
-fn gm_event(stored: &Stored) -> Vec<u8> {
-    gm_frame(&say_params(stored))
-}
-
-fn say_params(stored: &Stored) -> String {
-    let mut params = String::from("{\"kind\":\"say\",\"seq\":");
-    params.push_str(&stored.seq.to_string());
-    params.push_str(",\"from\":");
-    push_string(&mut params, &stored.from);
-    params.push_str(",\"address\":");
-    push_string(&mut params, &stored.address);
-    params.push_str(",\"place\":");
-    push_optional(&mut params, stored.place.as_deref());
-    params.push_str(",\"actor\":");
-    push_optional(&mut params, stored.actor.as_deref());
-    params.push_str(",\"recipients\":");
-    push_strings(&mut params, &stored.recipients);
-    params.push_str(",\"text\":");
-    push_string(&mut params, &stored.text);
-    params.push('}');
-    params
-}
-
-fn gm_frame(params: &str) -> Vec<u8> {
-    let mut out = String::from("{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":");
-    out.push_str(params);
-    out.push_str("}\n");
-    out.into_bytes()
-}
-
-fn parse_tape(tape: &str) -> Option<Stored> {
-    let value: Value = serde_json::from_str(tape).ok()?;
-    let recipients = value.get("recipients")?.as_array()?;
-    let mut ids = Vec::new();
-    for id in recipients {
-        ids.push(id.as_str()?.to_string());
-    }
-    Some(Stored {
-        seq: value.get("seq")?.as_u64()?,
-        from: value.get("from")?.as_str()?.to_string(),
-        address: value.get("address")?.as_str()?.to_string(),
-        place: optional_string(value.get("place")?)?,
-        actor: optional_string(value.get("actor")?)?,
-        recipients: ids,
-        text: value.get("text")?.as_str()?.to_string(),
-        tick_index: value.get("tick_index")?.as_u64()?,
-        world_time: value.get("world_time")?.as_u64()?,
-    })
-}
-
-fn optional_string(value: &Value) -> Option<Option<String>> {
-    if value.is_null() {
-        Some(None)
-    } else {
-        Some(Some(value.as_str()?.to_string()))
-    }
-}
-
-fn push_optional(out: &mut String, value: Option<&str>) {
-    match value {
-        Some(value) => push_string(out, value),
-        None => out.push_str("null"),
-    }
-}
-
-fn push_strings(out: &mut String, values: &[String]) {
-    out.push('[');
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_string(out, value);
-    }
-    out.push(']');
-}
-
-fn push_string(out: &mut String, value: &str) {
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            other if other.is_control() => out.push_str(&format!("\\u{:04x}", u32::from(other))),
-            other => out.push(other),
-        }
-    }
-    out.push('"');
 }
