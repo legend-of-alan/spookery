@@ -1,4 +1,4 @@
-use crate::error::Code;
+use crate::error::Reason;
 use crate::firewall::allows;
 use crate::inventory::{clamp_need, resource_next, stock_next};
 use crate::limits::MINUTES_PER_DAY;
@@ -7,9 +7,9 @@ use crate::model::{
 };
 use crate::store::Txn;
 
-pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Code> {
+pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {
     if !viewer_matches(intent, &effect) {
-        return Err(Code::NotOwner);
+        return Err(Reason::NotOwner);
     }
     match effect {
         Effect::Clock {
@@ -80,15 +80,15 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     }
 }
 
-fn apply_clock(txn: &mut Txn, clock_id: &str, delta: i64) -> Result<(), Code> {
+fn apply_clock(txn: &mut Txn, clock_id: &str, delta: i64) -> Result<(), Reason> {
     let humans = txn.now().presence.humans;
-    let clock = txn.now().clocks.get(clock_id).ok_or(Code::UnknownKey)?;
+    let clock = txn.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
     if clock.paused || (clock.requires_presence && humans == 0) {
-        return Err(Code::PausedClock);
+        return Err(Reason::PausedClock);
     }
-    let next = clock.value.checked_add(delta).ok_or(Code::OutOfRange)?;
+    let next = clock.value.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if next < 0 || next > clock.max {
-        return Err(Code::OutOfRange);
+        return Err(Reason::OutOfRange);
     }
     let base = txn
         .baseline()
@@ -101,17 +101,17 @@ fn apply_clock(txn: &mut Txn, clock_id: &str, delta: i64) -> Result<(), Code> {
     txn.now_mut()
         .clocks
         .get_mut(clock_id)
-        .ok_or(Code::UnknownKey)?
+        .ok_or(Reason::UnknownKey)?
         .value = next;
     Ok(())
 }
 
-fn apply_need(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Code> {
+fn apply_need(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Reason> {
     let bound = txn
         .canon()
         .profile(actor_id)
         .and_then(|profile| profile.needs.get(key))
-        .ok_or(Code::UnknownKey)?;
+        .ok_or(Reason::UnknownKey)?;
     let min = bound.min;
     let max = bound.max;
     let current = txn
@@ -138,7 +138,7 @@ fn apply_need(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<()
         .actors
         .get_mut(actor_id)
         .and_then(|actor| actor.needs_mut())
-        .ok_or(Code::UnknownKey)?
+        .ok_or(Reason::UnknownKey)?
         .insert(key.to_string(), next);
     Ok(())
 }
@@ -149,19 +149,19 @@ fn apply_stock(
     place: &str,
     sku: &str,
     delta: i64,
-) -> Result<(), Code> {
-    let profile = txn.canon().profile(&intent.actor_id).ok_or(Code::NotOwner)?;
+) -> Result<(), Reason> {
+    let profile = txn.canon().profile(&intent.actor_id).ok_or(Reason::NotOwner)?;
     if !profile.range.iter().any(|item| item == place) || !profile.on_graph(place) {
-        return Err(Code::NotOwner);
+        return Err(Reason::NotOwner);
     }
     let rate = profile
         .stock_rate
         .get(place)
         .and_then(|rates| rates.get(sku))
         .copied()
-        .ok_or(Code::NotOwner)?;
+        .ok_or(Reason::NotOwner)?;
     if delta.abs() > rate.abs() {
-        return Err(Code::OutOfRange);
+        return Err(Reason::OutOfRange);
     }
     let current = txn
         .now()
@@ -185,7 +185,7 @@ fn apply_stock(
         .now_mut()
         .places
         .get_mut(place)
-        .ok_or(Code::OutOfRange)?;
+        .ok_or(Reason::OutOfRange)?;
     place_live.stock.insert(sku.to_string(), next);
     Ok(())
 }
@@ -196,20 +196,20 @@ fn apply_location(
     actor_id: &str,
     from: &str,
     to: &str,
-) -> Result<(), Code> {
+) -> Result<(), Reason> {
     if actor_id != intent.actor_id {
-        return Err(Code::NotOwner);
+        return Err(Reason::NotOwner);
     }
-    let actor = txn.now().actors.get(actor_id).ok_or(Code::UnknownKey)?;
+    let actor = txn.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     if txn.now().presence.humans == 0 && actor.is_pc() {
-        return Err(Code::NotOwner);
+        return Err(Reason::NotOwner);
     }
     if actor.place() != from {
-        return Err(Code::OutOfRange);
+        return Err(Reason::OutOfRange);
     }
-    let profile = txn.canon().profile(actor_id).ok_or(Code::NotOwner)?;
+    let profile = txn.canon().profile(actor_id).ok_or(Reason::NotOwner)?;
     if !profile.range.iter().any(|item| item == to) || !profile.on_graph(to) {
-        return Err(Code::OutOfRange);
+        return Err(Reason::OutOfRange);
     }
     let base = txn
         .baseline()
@@ -222,27 +222,27 @@ fn apply_location(
     *txn.now_mut()
         .actors
         .get_mut(actor_id)
-        .ok_or(Code::UnknownKey)?
+        .ok_or(Reason::UnknownKey)?
         .place_mut() = to.to_string();
     Ok(())
 }
 
-fn apply_relationship(txn: &mut Txn, a: &str, b: &str, delta: i64) -> Result<(), Code> {
+fn apply_relationship(txn: &mut Txn, a: &str, b: &str, delta: i64) -> Result<(), Reason> {
     if !(-1..=1).contains(&delta) {
-        return Err(Code::OutOfRange);
+        return Err(Reason::OutOfRange);
     }
     let world = txn.now().world_time;
     let a_busy = txn
         .now()
         .actors
         .get(a)
-        .ok_or(Code::UnknownKey)?
+        .ok_or(Reason::UnknownKey)?
         .busy();
     let b_busy = txn
         .now()
         .actors
         .get(b)
-        .ok_or(Code::UnknownKey)?
+        .ok_or(Reason::UnknownKey)?
         .busy();
     let relation = txn
         .now()
@@ -250,12 +250,12 @@ fn apply_relationship(txn: &mut Txn, a: &str, b: &str, delta: i64) -> Result<(),
         .get(a)
         .and_then(|actor| actor.relationships())
         .and_then(|relations| relations.get(b))
-        .ok_or(Code::UnknownKey)?;
+        .ok_or(Reason::UnknownKey)?;
     if a_busy || b_busy || world.saturating_sub(relation.last_interaction_world_time) < MINUTES_PER_DAY
     {
-        return Err(Code::Skipped);
+        return Err(Reason::Skipped);
     }
-    let next_stance = relation.stance.checked_add(delta).ok_or(Code::OutOfRange)?;
+    let next_stance = relation.stance.checked_add(delta).ok_or(Reason::OutOfRange)?;
     let base = txn
         .baseline()
         .actors
@@ -278,15 +278,15 @@ fn apply_relationship(txn: &mut Txn, a: &str, b: &str, delta: i64) -> Result<(),
         .get_mut(a)
         .and_then(|actor| actor.relationships_mut())
         .and_then(|relations| relations.get_mut(b))
-        .ok_or(Code::UnknownKey)?;
+        .ok_or(Reason::UnknownKey)?;
     relation.stance = next_stance;
     relation.last_interaction_world_time = world;
     Ok(())
 }
 
-fn apply_reputation(txn: &mut Txn, actor_id: &str, faction: &str, delta: i64) -> Result<(), Code> {
+fn apply_reputation(txn: &mut Txn, actor_id: &str, faction: &str, delta: i64) -> Result<(), Reason> {
     if !(-1..=1).contains(&delta) {
-        return Err(Code::OutOfRange);
+        return Err(Reason::OutOfRange);
     }
     let world = txn.now().world_time;
     let current = txn
@@ -299,10 +299,10 @@ fn apply_reputation(txn: &mut Txn, actor_id: &str, faction: &str, delta: i64) ->
         });
     if let Some(rep) = current {
         if world.saturating_sub(rep.last_world_time) < MINUTES_PER_DAY {
-            return Err(Code::Skipped);
+            return Err(Reason::Skipped);
         }
     }
-    let next = current.map(|rep| rep.value).unwrap_or(0).checked_add(delta).ok_or(Code::OutOfRange)?;
+    let next = current.map(|rep| rep.value).unwrap_or(0).checked_add(delta).ok_or(Reason::OutOfRange)?;
     let base = txn.baseline().actors.get(actor_id).and_then(|actor| match actor {
         crate::model::ActorLive::Npc { reputation, .. } => reputation.get(faction),
         crate::model::ActorLive::Pc { .. } => None,
@@ -322,7 +322,7 @@ fn apply_reputation(txn: &mut Txn, actor_id: &str, faction: &str, delta: i64) ->
         .actors
         .get_mut(actor_id)
         .and_then(|actor| actor.reputation_mut())
-        .ok_or(Code::UnknownKey)?;
+        .ok_or(Reason::UnknownKey)?;
     reputation.insert(
         faction.to_string(),
         Reputation {
@@ -340,21 +340,21 @@ fn apply_memory(
     fact_ids: Vec<String>,
     tags: Vec<String>,
     text: Option<String>,
-) -> Result<(), Code> {
+) -> Result<(), Reason> {
     if actor_id != intent.actor_id {
-        return Err(Code::NotOwner);
+        return Err(Reason::NotOwner);
     }
     if text.as_ref().is_some_and(|text| text.chars().count() > 240) {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let viewer = match intent.actor_kind {
         ActorKind::Npc => ViewerId::Npc(actor_id.to_string()),
         ActorKind::Player => ViewerId::Player(actor_id.to_string()),
-        ActorKind::System => return Err(Code::NotOwner),
+        ActorKind::System => return Err(Reason::NotOwner),
     };
     for fact in &fact_ids {
         if !allows(txn.canon(), txn.now(), &viewer, fact) {
-            return Err(Code::IllegalKnowledge);
+            return Err(Reason::IllegalKnowledge);
         }
     }
     if let Some(text) = &text {
@@ -362,7 +362,7 @@ fn apply_memory(
             !fact.text.is_empty() && text.contains(&fact.text) && !allows(txn.canon(), txn.now(), &viewer, id)
         });
         if leaked {
-            return Err(Code::IllegalKnowledge);
+            return Err(Reason::IllegalKnowledge);
         }
     }
     txn.bump_memory()?;
@@ -389,19 +389,19 @@ fn apply_rumor(
     fact_ids: &[String],
     to: &str,
     heat: i64,
-) -> Result<(), Code> {
+) -> Result<(), Reason> {
     if !(1..=3).contains(&heat) {
-        return Err(Code::OutOfRange);
+        return Err(Reason::OutOfRange);
     }
     let kind = match txn.now().actors.get(to) {
         Some(actor) if actor.is_npc() => ActorKind::Npc,
         Some(actor) if actor.is_pc() => ActorKind::Player,
-        _ => return Err(Code::UnknownKey),
+        _ => return Err(Reason::UnknownKey),
     };
     let viewer = ViewerId::from_kind(kind, to)?;
     for fact in fact_ids {
         if !allows(txn.canon(), txn.now(), &viewer, fact) {
-            return Err(Code::IllegalKnowledge);
+            return Err(Reason::IllegalKnowledge);
         }
     }
     let known = txn
@@ -409,7 +409,7 @@ fn apply_rumor(
         .rumors
         .iter()
         .find(|rumor| rumor.id == rumor_id)
-        .ok_or(Code::UnknownKey)?
+        .ok_or(Reason::UnknownKey)?
         .known_by
         .clone();
     if known.iter().any(|id| id == to) {
@@ -435,13 +435,13 @@ fn apply_rumor(
         .rumors
         .iter_mut()
         .find(|rumor| rumor.id == rumor_id)
-        .ok_or(Code::UnknownKey)?;
+        .ok_or(Reason::UnknownKey)?;
     rumor.known_by = next;
     Ok(())
 }
 
-fn apply_resource(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Code> {
-    let actor = txn.now().actors.get(actor_id).ok_or(Code::UnknownKey)?;
+fn apply_resource(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Reason> {
+    let actor = txn.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     let current = match actor {
         crate::model::ActorLive::Npc { resources, .. } => {
             if !txn
@@ -449,11 +449,11 @@ fn apply_resource(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Resul
                 .profile(actor_id)
                 .is_some_and(|profile| profile.resources.contains_key(key))
             {
-                return Err(Code::UnknownKey);
+                return Err(Reason::UnknownKey);
             }
             resources.get(key).copied().unwrap_or(0)
         }
-        crate::model::ActorLive::Pc { .. } => return Err(Code::NotInSpec),
+        crate::model::ActorLive::Pc { .. } => return Err(Reason::NotInSpec),
     };
     let next = resource_next(current, delta)?;
     let base = match txn.baseline().actors.get(actor_id) {
@@ -467,19 +467,19 @@ fn apply_resource(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Resul
         Some(crate::model::ActorLive::Npc { resources, .. }) => {
             resources.insert(key.to_string(), next);
         }
-        _ => return Err(Code::UnknownKey),
+        _ => return Err(Reason::UnknownKey),
     }
     Ok(())
 }
 
-fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(), Code> {
+fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
     if key != "busy" {
         let listed = txn
             .canon()
             .profile(actor_id)
             .is_some_and(|profile| profile.flags.iter().any(|flag| flag == key));
         if !listed {
-            return Err(Code::UnknownKey);
+            return Err(Reason::UnknownKey);
         }
     }
     if key == "busy" {
@@ -494,7 +494,7 @@ fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(
         *txn.now_mut()
             .actors
             .get_mut(actor_id)
-            .ok_or(Code::UnknownKey)?
+            .ok_or(Reason::UnknownKey)?
             .busy_mut() = value;
         return Ok(());
     }
@@ -514,7 +514,7 @@ fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(
         .now_mut()
         .actors
         .get_mut(actor_id)
-        .ok_or(Code::UnknownKey)?
+        .ok_or(Reason::UnknownKey)?
         .flags_mut();
     if value {
         if !flags.iter().any(|flag| flag == key) {
@@ -533,15 +533,15 @@ fn apply_proposal(
     kind: &str,
     target: &str,
     summary: &str,
-) -> Result<(), Code> {
+) -> Result<(), Reason> {
     if !matches!(kind, "delete_place" | "patch_entity" | "other") {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     if proposal_id.is_empty() || proposal_id.contains('/') || proposal_id.contains('\\') {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     if txn.now().proposals.iter().any(|id| id == proposal_id) {
-        return Err(Code::UnknownKey);
+        return Err(Reason::UnknownKey);
     }
     let base = &txn.baseline().proposals;
     let mut next = txn.now().proposals.clone();
@@ -572,13 +572,13 @@ fn apply_message(
     place: Option<String>,
     fact_ids: Vec<String>,
     text: String,
-) -> Result<(), Code> {
+) -> Result<(), Reason> {
     if txn.now().messages.iter().any(|message| message.id == message_id) {
-        return Err(Code::UnknownKey);
+        return Err(Reason::UnknownKey);
     }
     if let Some(place_id) = &place {
         if !txn.now().places.contains_key(place_id) {
-            return Err(Code::UnknownKey);
+            return Err(Reason::UnknownKey);
         }
     }
     txn.track(format!("messages.{message_id}"))?;

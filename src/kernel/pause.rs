@@ -1,9 +1,9 @@
-use crate::error::Code;
+use crate::error::Reason;
 use crate::limits::PausePolicy;
 use crate::model::RunState;
 use crate::store::Txn;
 
-pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Code> {
+pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Reason> {
     let humans = txn.now().presence.humans;
     let policies = txn.budget().pause;
     let clock_ids: Vec<String> = txn.now().clocks.keys().cloned().collect();
@@ -30,7 +30,7 @@ pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Code> {
     Ok(())
 }
 
-fn set_paused(txn: &mut Txn, clock_id: &str, paused: bool) -> Result<(), Code> {
+fn set_paused(txn: &mut Txn, clock_id: &str, paused: bool) -> Result<(), Reason> {
     let base = txn
         .baseline()
         .clocks

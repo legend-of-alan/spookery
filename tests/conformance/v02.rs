@@ -3,8 +3,6 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rmcp::model::{CallToolRequestParam, ErrorCode};
@@ -12,6 +10,11 @@ use rmcp::transport::TokioChildProcess;
 use rmcp::{ServiceError, ServiceExt};
 use serde_json::Value;
 use tokio::process::Command as TokioCommand;
+
+use super::support::{
+    lock_port, pack_arg, spawn, temp_pack, text_of, wait_count, wait_exit, wait_has, wait_listen,
+    write_stdin, Proc,
+};
 
 const GM_TOOLS: &[&str] = &[
     "session_open",
@@ -39,129 +42,6 @@ const TABLE_TOOLS: &[&str] = &[
     "recall",
     "session_save",
 ];
-
-struct PortLock(std::fs::File);
-
-impl Drop for PortLock {
-    fn drop(&mut self) {
-        let _ = self.0.unlock();
-    }
-}
-
-fn lock_port() -> PortLock {
-    let path = std::env::temp_dir().join("spookery-9737.lock");
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&path)
-        .unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
-    file.lock().unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
-    PortLock(file)
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest).unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
-
-fn temp_pack(label: &str) -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = std::env::temp_dir().join(format!(
-        "spook-v02-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&manifest.join("packs/oneshot-docks"), &pack);
-    pack
-}
-
-struct Proc {
-    child: Child,
-    // Held open so the shard does not read EOF on stdin.
-    #[allow(dead_code)]
-    stdin: Option<ChildStdin>,
-    #[allow(dead_code)]
-    stdout: Arc<Mutex<String>>,
-    stderr: Arc<Mutex<String>>,
-}
-
-impl Drop for Proc {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-fn spawn(args: &[&str]) -> Proc {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(args);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command.spawn().unwrap_or_else(|err| panic!("spawn spook: {err}"));
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let stdout_buf = Arc::new(Mutex::new(String::new()));
-    let stderr_buf = Arc::new(Mutex::new(String::new()));
-    drain(stdout, Arc::clone(&stdout_buf));
-    drain(stderr, Arc::clone(&stderr_buf));
-    Proc {
-        child,
-        stdin,
-        stdout: stdout_buf,
-        stderr: stderr_buf,
-    }
-}
-
-fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
-    std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 256];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => slot.lock().unwrap().push_str(&String::from_utf8_lossy(&buf[..n])),
-            }
-        }
-    });
-}
-
-fn text_of(slot: &Arc<Mutex<String>>) -> String {
-    slot.lock().unwrap().clone()
-}
-
-fn wait_listen(proc: &mut Proc) {
-    let start = Instant::now();
-    loop {
-        if TcpStream::connect("127.0.0.1:9737").is_ok() {
-            return;
-        }
-        if let Some(status) = proc.child.try_wait().unwrap() {
-            panic!("spook run exited {:?}\n{}", status.code(), text_of(&proc.stderr));
-        }
-        if start.elapsed() > Duration::from_secs(10) {
-            panic!("listener did not open\n{}", text_of(&proc.stderr));
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn pack_arg(pack: &Path) -> String {
-    pack.to_str().unwrap().to_string()
-}
 
 fn gm_session() -> TcpStream {
     let mut stream = TcpStream::connect("127.0.0.1:9737").unwrap();
@@ -221,7 +101,9 @@ fn call(stream: &mut TcpStream, id: u64, name: &str, arguments: &str) -> Vec<Str
 }
 
 fn drain_ready(stream: &mut TcpStream) -> Vec<String> {
-    stream.set_read_timeout(Some(Duration::from_millis(200))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_millis(200)))
+        .unwrap();
     let mut lines = Vec::new();
     let mut buf = Vec::new();
     let mut byte = [0u8; 1];
@@ -260,7 +142,9 @@ fn result_line<'a>(lines: &'a [String], id: u64) -> &'a str {
 fn refusal(stream: &mut TcpStream, id: u64, name: &str, arguments: &str) -> Value {
     let lines = call(stream, id, name, arguments);
     assert!(
-        lines.iter().all(|line| !line.contains("\"method\":\"spook/event\"")),
+        lines
+            .iter()
+            .all(|line| !line.contains("\"method\":\"spook/event\"")),
         "{name}: {lines:?}"
     );
     let line = result_line(&lines, id);
@@ -300,12 +184,22 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
     wait_listen(&mut server);
     let before = fs::read(pack.join("state/now.yaml")).unwrap();
     let mut gm = gm_session();
-    write!(gm, "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}}\n").unwrap();
+    write!(
+        gm,
+        "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}}\n"
+    )
+    .unwrap();
     gm.flush().unwrap();
     let listed = read_lf(&mut gm, Duration::from_secs(5));
-    let listed_value: Value = serde_json::from_str(&listed).unwrap_or_else(|err| panic!("{err}: {listed}"));
-    let tools = listed_value["result"]["tools"].as_array().unwrap_or_else(|| panic!("{listed}"));
-    let names: Vec<&str> = tools.iter().map(|tool| tool["name"].as_str().unwrap()).collect();
+    let listed_value: Value =
+        serde_json::from_str(&listed).unwrap_or_else(|err| panic!("{err}: {listed}"));
+    let tools = listed_value["result"]["tools"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{listed}"));
+    let names: Vec<&str> = tools
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap())
+        .collect();
     assert_eq!(names, GM_TOOLS);
     assert!(!names.contains(&"patch_entity"));
 
@@ -316,17 +210,29 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
         ("perceive", "A missing as is UNSCOPED_PERCEIVE"),
         ("intent", "source stays player"),
         ("say", "A supplied from is SCHEMA"),
-        ("resolve_check", "Calling resolve_check on this seat returns NOT_IN_SPEC"),
-        ("apply_effect", "Calling apply_effect on this seat returns NOT_IN_SPEC"),
+        (
+            "resolve_check",
+            "Calling resolve_check on this seat returns NOT_IN_SPEC",
+        ),
+        (
+            "apply_effect",
+            "Calling apply_effect on this seat returns NOT_IN_SPEC",
+        ),
         ("npc_act", "calls no model"),
         ("commit_turn", "requires include_tick"),
         ("recall", "Calling recall on this seat returns NOT_IN_SPEC"),
-        ("session_save", "Calling session_save on this seat returns NOT_IN_SPEC"),
+        (
+            "session_save",
+            "Calling session_save on this seat returns NOT_IN_SPEC",
+        ),
     ] {
         let tool = tools.iter().find(|tool| tool["name"] == name).unwrap();
         let description = tool["description"].as_str().unwrap();
         assert!(description.contains(phrase), "{name}: {description}");
-        assert!(descriptions.insert(description), "duplicate description for {name}");
+        assert!(
+            descriptions.insert(description),
+            "duplicate description for {name}"
+        );
     }
     assert_eq!(descriptions.len(), GM_TOOLS.len());
 
@@ -337,7 +243,10 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
     );
     assert_eq!(required_list(say), ["address", "text"]);
     assert_eq!(say["additionalProperties"], false);
-    assert_eq!(say["properties"]["address"]["enum"], serde_json::json!(["table", "place", "actor"]));
+    assert_eq!(
+        say["properties"]["address"]["enum"],
+        serde_json::json!(["table", "place", "actor"])
+    );
     let place = address_branch(say, "place");
     assert_eq!(place["then"]["required"], serde_json::json!(["place"]));
     assert_eq!(place["then"]["properties"]["place"]["type"], "string");
@@ -351,22 +260,40 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
     assert_eq!(table["then"]["properties"]["place"]["type"], "null");
     assert_eq!(table["then"]["properties"]["actor"]["type"], "null");
 
-    let perceive = &tools.iter().find(|tool| tool["name"] == "perceive").unwrap()["inputSchema"];
-    assert_eq!(property_names(perceive), BTreeSet::from(["as", "focus", "budget_tokens"]));
+    let perceive = &tools
+        .iter()
+        .find(|tool| tool["name"] == "perceive")
+        .unwrap()["inputSchema"];
+    assert_eq!(
+        property_names(perceive),
+        BTreeSet::from(["as", "focus", "budget_tokens"])
+    );
     assert_eq!(required_list(perceive), ["as"]);
     assert_eq!(perceive["additionalProperties"], false);
     assert_eq!(perceive["properties"]["as"]["type"], "string");
-    assert_eq!(perceive["properties"]["focus"]["enum"], serde_json::json!(["place", "actor"]));
+    assert_eq!(
+        perceive["properties"]["focus"]["enum"],
+        serde_json::json!(["place", "actor"])
+    );
     assert_eq!(perceive["properties"]["budget_tokens"]["type"], "integer");
 
-    let commit = &tools.iter().find(|tool| tool["name"] == "commit_turn").unwrap()["inputSchema"];
-    assert_eq!(property_names(commit), BTreeSet::from(["include_tick", "session_id"]));
+    let commit = &tools
+        .iter()
+        .find(|tool| tool["name"] == "commit_turn")
+        .unwrap()["inputSchema"];
+    assert_eq!(
+        property_names(commit),
+        BTreeSet::from(["include_tick", "session_id"])
+    );
     assert_eq!(required_list(commit), ["include_tick"]);
     assert_eq!(commit["additionalProperties"], false);
     assert_eq!(commit["properties"]["include_tick"]["type"], "boolean");
     assert_eq!(commit["properties"]["session_id"]["type"], "string");
 
-    let status = &tools.iter().find(|tool| tool["name"] == "session_status").unwrap()["inputSchema"];
+    let status = &tools
+        .iter()
+        .find(|tool| tool["name"] == "session_status")
+        .unwrap()["inputSchema"];
     assert_eq!(property_names(status), BTreeSet::from(["since"]));
     assert!(status.get("required").is_none(), "{status}");
     assert_eq!(status["additionalProperties"], false);
@@ -388,20 +315,43 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
             "llm_say",
         ])
     );
-    assert_eq!(required_list(intent), ["actor_id", "actor_kind", "source", "move"]);
+    assert_eq!(
+        required_list(intent),
+        ["actor_id", "actor_kind", "source", "move"]
+    );
     assert_eq!(intent["additionalProperties"], false);
     assert_eq!(intent["properties"]["source"]["const"], "player");
-    assert_eq!(intent["properties"]["actor_kind"]["enum"], serde_json::json!(["npc", "player"]));
+    assert_eq!(
+        intent["properties"]["actor_kind"]["enum"],
+        serde_json::json!(["npc", "player"])
+    );
 
     let live = ["say", "perceive", "commit_turn", "session_status", "intent"];
     for left in 0..live.len() {
         for right in (left + 1)..live.len() {
-            let left_schema = &tools.iter().find(|tool| tool["name"] == live[left]).unwrap()["inputSchema"];
-            let right_schema = &tools.iter().find(|tool| tool["name"] == live[right]).unwrap()["inputSchema"];
-            assert_ne!(left_schema, right_schema, "{} and {}", live[left], live[right]);
+            let left_schema = &tools
+                .iter()
+                .find(|tool| tool["name"] == live[left])
+                .unwrap()["inputSchema"];
+            let right_schema = &tools
+                .iter()
+                .find(|tool| tool["name"] == live[right])
+                .unwrap()["inputSchema"];
+            assert_ne!(
+                left_schema, right_schema,
+                "{} and {}",
+                live[left], live[right]
+            );
         }
     }
-    for name in ["session_open", "resolve_check", "apply_effect", "npc_act", "recall", "session_save"] {
+    for name in [
+        "session_open",
+        "resolve_check",
+        "apply_effect",
+        "npc_act",
+        "recall",
+        "session_save",
+    ] {
         let schema = &tools.iter().find(|tool| tool["name"] == name).unwrap()["inputSchema"];
         assert_eq!(schema, &serde_json::json!({ "type": "object" }), "{name}");
     }
@@ -413,8 +363,14 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
         current
     };
     assert_eq!(refusal(&mut gm, next(), "say", "{}")["code"], "SCHEMA");
-    assert_eq!(refusal(&mut gm, next(), "say", r#"{"text":"hi"}"#)["code"], "SCHEMA");
-    assert_eq!(refusal(&mut gm, next(), "say", r#"{"address":"table"}"#)["code"], "SCHEMA");
+    assert_eq!(
+        refusal(&mut gm, next(), "say", r#"{"text":"hi"}"#)["code"],
+        "SCHEMA"
+    );
+    assert_eq!(
+        refusal(&mut gm, next(), "say", r#"{"address":"table"}"#)["code"],
+        "SCHEMA"
+    );
     assert_eq!(
         refusal(&mut gm, next(), "say", r#"{"address":"place","text":"hi"}"#)["code"],
         "SCHEMA"
@@ -424,15 +380,26 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
         "SCHEMA"
     );
     assert_eq!(
-        refusal(&mut gm, next(), "say", r#"{"address":"table","text":"hi","from":"gm"}"#)["code"],
+        refusal(
+            &mut gm,
+            next(),
+            "say",
+            r#"{"address":"table","text":"hi","from":"gm"}"#
+        )["code"],
         "SCHEMA"
     );
-    assert_eq!(refusal(&mut gm, next(), "perceive", "{}")["code"], "UNSCOPED_PERCEIVE");
+    assert_eq!(
+        refusal(&mut gm, next(), "perceive", "{}")["code"],
+        "UNSCOPED_PERCEIVE"
+    );
     assert_eq!(
         refusal(&mut gm, next(), "perceive", r#"{"focus":"place"}"#)["code"],
         "UNSCOPED_PERCEIVE"
     );
-    assert_eq!(refusal(&mut gm, next(), "commit_turn", "{}")["code"], "SCHEMA");
+    assert_eq!(
+        refusal(&mut gm, next(), "commit_turn", "{}")["code"],
+        "SCHEMA"
+    );
     assert_eq!(
         refusal(&mut gm, next(), "commit_turn", r#"{"session_id":"s"}"#)["code"],
         "SCHEMA"
@@ -445,7 +412,11 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
             "move": "wait",
         });
         args.as_object_mut().unwrap().remove(missing);
-        assert_eq!(refusal(&mut gm, next(), "intent", &args.to_string())["code"], "SCHEMA", "{missing}");
+        assert_eq!(
+            refusal(&mut gm, next(), "intent", &args.to_string())["code"],
+            "SCHEMA",
+            "{missing}"
+        );
     }
     let status = refusal(&mut gm, next(), "session_status", "{}");
     assert!(status.get("code").is_none(), "{status}");
@@ -453,10 +424,18 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
     assert!(status.get("last_seq").is_some(), "{status}");
     assert!(status.get("events").is_none(), "{status}");
     assert_eq!(
-        refusal(&mut gm, next(), "session_status", r#"{"since":0,"extra":true}"#)["code"],
+        refusal(
+            &mut gm,
+            next(),
+            "session_status",
+            r#"{"since":0,"extra":true}"#
+        )["code"],
         "SCHEMA"
     );
-    assert_eq!(refusal(&mut gm, next(), "npc_act", "{}")["code"], "LLM_DISABLED");
+    assert_eq!(
+        refusal(&mut gm, next(), "npc_act", "{}")["code"],
+        "LLM_DISABLED"
+    );
     for name in [
         "session_open",
         "patch_entity",
@@ -466,7 +445,11 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
         "session_save",
         "not_a_tool",
     ] {
-        assert_eq!(refusal(&mut gm, next(), name, "{}")["code"], "NOT_IN_SPEC", "{name}");
+        assert_eq!(
+            refusal(&mut gm, next(), name, "{}")["code"],
+            "NOT_IN_SPEC",
+            "{name}"
+        );
     }
 
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
@@ -480,7 +463,8 @@ async fn v02_p02_pack_table_stdio_does_not_gain_say_or_a_tools_call_body() {
     let before = fs::read(pack.join("state/now.yaml")).unwrap();
     let mut command = TokioCommand::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["run", pack.to_str().unwrap(), "--mcp", "pack-table"]);
-    let running = ().serve(TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn spook: {err}")));
+    let running = ()
+        .serve(TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn spook: {err}")));
     let running = tokio::time::timeout(Duration::from_secs(15), running)
         .await
         .unwrap_or_else(|_| panic!("initialize timed out"))
@@ -544,51 +528,6 @@ struct Derived {
     npc_places: Vec<(String, String)>,
 }
 
-fn wait_count(slot: &Arc<Mutex<String>>, needle: &str, count: usize, timeout: Duration) -> String {
-    let start = Instant::now();
-    loop {
-        let text = text_of(slot);
-        if text.matches(needle).count() >= count {
-            return text;
-        }
-        if start.elapsed() > timeout {
-            panic!("saw {} of {needle}, wanted {count}\n{text}", text.matches(needle).count());
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn wait_has(slot: &Arc<Mutex<String>>, needle: &str, timeout: Duration) -> String {
-    let start = Instant::now();
-    loop {
-        let text = text_of(slot);
-        if text.contains(needle) {
-            return text;
-        }
-        if start.elapsed() > timeout {
-            panic!("missing {needle} after {timeout:?}\n{text}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn wait_exit(proc: &mut Proc, timeout: Duration) -> std::process::ExitStatus {
-    let start = Instant::now();
-    loop {
-        if let Some(status) = proc.child.try_wait().unwrap() {
-            return status;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "process still running\nstdout:\n{}\nstderr:\n{}",
-                text_of(&proc.stdout),
-                text_of(&proc.stderr)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
 fn wait_humans(pack: &Path, humans: u32, timeout: Duration) -> spookery_kernel::model::Now {
     let start = Instant::now();
     loop {
@@ -602,12 +541,6 @@ fn wait_humans(pack: &Path, humans: u32, timeout: Duration) -> spookery_kernel::
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-}
-
-fn write_stdin(proc: &mut Proc, line: &str) {
-    let stdin = proc.stdin.as_mut().unwrap();
-    writeln!(stdin, "{line}").unwrap();
-    stdin.flush().unwrap();
 }
 
 fn now_of(pack: &Path) -> spookery_kernel::model::Now {
@@ -673,7 +606,12 @@ fn kernel_intents(tick: &Value) -> Vec<Value> {
         .filter(|intent| intent["source"] == "kernel")
         .cloned()
         .collect();
-    rows.sort_by(|left, right| left["id"].as_str().unwrap().cmp(right["id"].as_str().unwrap()));
+    rows.sort_by(|left, right| {
+        left["id"]
+            .as_str()
+            .unwrap()
+            .cmp(right["id"].as_str().unwrap())
+    });
     rows
 }
 
@@ -711,11 +649,19 @@ fn assert_closed_effects(tick: &Value, travel_id: &str) {
         .collect();
     assert_eq!(rejected.len(), 1, "{tick}");
     assert!(
-        tick["intents"].as_array().unwrap().iter().all(|intent| intent["id"] != travel_id),
+        tick["intents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|intent| intent["id"] != travel_id),
         "{tick}"
     );
     assert!(
-        tick["effects"].as_array().unwrap().iter().all(|effect| effect["intent_id"] != travel_id),
+        tick["effects"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|effect| effect["intent_id"] != travel_id),
         "{tick}"
     );
     for effect in tick["effects"].as_array().unwrap() {
@@ -765,8 +711,16 @@ fn refuse_player(player: &mut Proc, line: &str, code: &str, seen: &mut usize) {
 
 fn seat_player(pack: &Path) -> Proc {
     let player = spawn(&["play", &pack_arg(pack)]);
-    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
-    assert!(text_of(&player.stderr).is_empty(), "{}", text_of(&player.stderr));
+    wait_has(
+        &player.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
+    assert!(
+        text_of(&player.stderr).is_empty(),
+        "{}",
+        text_of(&player.stderr)
+    );
     player
 }
 
@@ -786,7 +740,10 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
         wait_count(
             &player.stdout,
             "\"kind\":\"resume\"",
-            text_of(&player.stdout).matches("\"kind\":\"resume\"").count() + 1,
+            text_of(&player.stdout)
+                .matches("\"kind\":\"resume\"")
+                .count()
+                + 1,
             Duration::from_secs(5),
         );
         let now = now_of(&pack);
@@ -820,7 +777,12 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
 
         let mut schema = 0usize;
         let mut spec = 0usize;
-        for line in ["travel", "travel mira_rooms extra", "travel  mira_rooms", " wait"] {
+        for line in [
+            "travel",
+            "travel mira_rooms extra",
+            "travel  mira_rooms",
+            " wait",
+        ] {
             refuse_player(&mut player, line, "SCHEMA", &mut schema);
         }
         for line in ["attack", "attack mira", "give", "take", "dance"] {
@@ -837,7 +799,11 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
 
         let before = text_of(&player.stdout);
         write_stdin(&mut player, "travel mira_rooms");
-        let stdout = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+        let stdout = wait_has(
+            &player.stdout,
+            "\"kind\":\"queued\"",
+            Duration::from_secs(5),
+        );
         let added = &stdout[before.len()..];
         assert!(added.contains("\"kind\":\"queued\""), "{added}");
         assert!(!added.contains("\"kind\":\"resume\""), "{added}");
@@ -856,12 +822,21 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
             queued_rows(&status),
             vec![(travel_id.clone(), "travel".to_string())]
         );
-        assert!(!fs::read(pack.join("state/now.yaml")).unwrap().windows(travel_id.len()).any(|window| window == travel_id.as_bytes()));
+        assert!(!fs::read(pack.join("state/now.yaml"))
+            .unwrap()
+            .windows(travel_id.len())
+            .any(|window| window == travel_id.as_bytes()));
 
         let committed = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
         next += 1;
         assert!(committed.get("code").is_none(), "{committed}");
-        assert!(committed["log_path"].as_str().unwrap().ends_with("tick-0001.jsonl"), "{committed}");
+        assert!(
+            committed["log_path"]
+                .as_str()
+                .unwrap()
+                .ends_with("tick-0001.jsonl"),
+            "{committed}"
+        );
         let now = now_of(&pack);
         assert_eq!(now.world_time, 1085);
         assert_ne!(now.world_time, 1140);
@@ -874,15 +849,31 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
         assert_eq!(tick["presence_humans"], 1);
         assert_eq!(tick["world_time_before"], 1080);
         assert_eq!(tick["world_time_after"], 1085);
-        assert_eq!(tick["rejected"].as_array().unwrap().iter().find(|item| item["id"] == travel_id).unwrap()["reason"], "NOT_OWNER");
+        assert_eq!(
+            tick["rejected"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == travel_id)
+                .unwrap()["reason"],
+            "NOT_OWNER"
+        );
         assert_closed_effects(&tick, &travel_id);
         let derived = derived(&tick, &now, &[&travel_id]);
-        assert!(tool_body(&mut gm, next, "session_status", "{}")["queued"].as_array().unwrap().is_empty());
+        assert!(tool_body(&mut gm, next, "session_status", "{}")["queued"]
+            .as_array()
+            .unwrap()
+            .is_empty());
         next += 1;
 
         let before_missing = text_of(&player.stdout);
         write_stdin(&mut player, "travel not_a_place");
-        let missing_out = wait_count(&player.stdout, "\"kind\":\"queued\"", 2, Duration::from_secs(5));
+        let missing_out = wait_count(
+            &player.stdout,
+            "\"kind\":\"queued\"",
+            2,
+            Duration::from_secs(5),
+        );
         let missing_added = &missing_out[before_missing.len()..];
         let missing_ids = queued_ids(missing_added);
         assert_eq!(missing_ids.len(), 1, "{missing_added}");
@@ -893,7 +884,10 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
         assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
         let missing_status = tool_body(&mut gm, next, "session_status", "{}");
         next += 1;
-        assert_eq!(queued_rows(&missing_status), vec![(missing_id.clone(), "travel".to_string())]);
+        assert_eq!(
+            queued_rows(&missing_status),
+            vec![(missing_id.clone(), "travel".to_string())]
+        );
 
         let second = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
         assert!(second.get("code").is_none(), "{second}");
@@ -910,12 +904,25 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
         assert_eq!(second_tick["world_time_before"], 1085);
         assert_eq!(second_tick["world_time_after"], 1090);
         assert_eq!(
-            second_tick["rejected"].as_array().unwrap().iter().find(|item| item["id"] == missing_id).unwrap()["reason"],
+            second_tick["rejected"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == missing_id)
+                .unwrap()["reason"],
             "UNKNOWN_KEY"
         );
         assert_closed_effects(&second_tick, &missing_id);
-        assert!(second_tick["rejected"].as_array().unwrap().iter().all(|item| item["id"] != travel_id));
-        assert!(second_tick["intents"].as_array().unwrap().iter().all(|intent| intent["id"] != travel_id));
+        assert!(second_tick["rejected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["id"] != travel_id));
+        assert!(second_tick["intents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|intent| intent["id"] != travel_id));
         let _ = fs::remove_dir_all(&pack);
         derived
     };
@@ -931,7 +938,12 @@ fn v02_p03_travel_queues_until_commit_or_commits_one_live_tick() {
         let mut schema = 0usize;
         let mut spec = 0usize;
         refuse_player(&mut player, "travel", "SCHEMA", &mut schema);
-        refuse_player(&mut player, "travel mira_rooms extra", "SCHEMA", &mut schema);
+        refuse_player(
+            &mut player,
+            "travel mira_rooms extra",
+            "SCHEMA",
+            &mut schema,
+        );
         refuse_player(&mut player, "attack", "NOT_IN_SPEC", &mut spec);
         let held = now_of(&pack);
         assert_eq!(held.world_time, 1080);
@@ -1006,9 +1018,19 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     assert!(tick_names(&pack).is_empty());
 
     write_stdin(&mut player, "wait");
-    let waited = wait_count(&player.stdout, "\"kind\":\"queued\"", 1, Duration::from_secs(5));
+    let waited = wait_count(
+        &player.stdout,
+        "\"kind\":\"queued\"",
+        1,
+        Duration::from_secs(5),
+    );
     write_stdin(&mut player, "travel mira_rooms");
-    let queued_out = wait_count(&player.stdout, "\"kind\":\"queued\"", 2, Duration::from_secs(5));
+    let queued_out = wait_count(
+        &player.stdout,
+        "\"kind\":\"queued\"",
+        2,
+        Duration::from_secs(5),
+    );
     let ids = queued_ids(&queued_out);
     assert_eq!(ids.len(), 2, "{queued_out}");
     assert_eq!(queued_ids(&waited), vec![ids[0].clone()]);
@@ -1025,14 +1047,24 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     assert_eq!(status["presence"]["humans"], 1);
     assert_eq!(
         queued_rows(&status),
-        vec![(wait_id.clone(), "wait".to_string()), (travel_id.clone(), "travel".to_string())]
+        vec![
+            (wait_id.clone(), "wait".to_string()),
+            (travel_id.clone(), "travel".to_string())
+        ]
     );
     let stored = fs::read(pack.join("state/now.yaml")).unwrap();
-    assert!(!stored.windows(wait_id.len()).any(|window| window == wait_id.as_bytes()));
-    assert!(!stored.windows(travel_id.len()).any(|window| window == travel_id.as_bytes()));
+    assert!(!stored
+        .windows(wait_id.len())
+        .any(|window| window == wait_id.as_bytes()));
+    assert!(!stored
+        .windows(travel_id.len())
+        .any(|window| window == travel_id.as_bytes()));
 
     write_stdin(&mut player, "close");
-    assert_eq!(wait_exit(&mut player, Duration::from_secs(5)).code(), Some(0));
+    assert_eq!(
+        wait_exit(&mut player, Duration::from_secs(5)).code(),
+        Some(0)
+    );
     let dropped = wait_humans(&pack, 0, Duration::from_secs(5));
     assert_eq!(dropped.world_time, 1080);
     assert_eq!(dropped.tick_index, 0);
@@ -1044,7 +1076,10 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     assert_eq!(while_down["presence"]["humans"], 0);
     assert_eq!(
         queued_rows(&while_down),
-        vec![(wait_id.clone(), "wait".to_string()), (travel_id.clone(), "travel".to_string())]
+        vec![
+            (wait_id.clone(), "wait".to_string()),
+            (travel_id.clone(), "travel".to_string())
+        ]
     );
 
     let again = seat_player(&pack);
@@ -1056,7 +1091,10 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     assert_eq!(say_lines, 1, "{back}");
     let reseated = now_of(&pack);
     assert_eq!(reseated.presence.humans, 1);
-    assert_eq!(reseated.presence.actors_present, vec!["pc_rowan".to_string()]);
+    assert_eq!(
+        reseated.presence.actors_present,
+        vec!["pc_rowan".to_string()]
+    );
     assert_eq!(reseated.presence.session_ids.len(), 1);
     assert_ne!(reseated.presence.session_ids[0], first_session);
     assert_eq!(reseated.world_time, 1080);
@@ -1070,13 +1108,22 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     assert_eq!(after_hello["presence"]["humans"], 1);
     assert_eq!(
         queued_rows(&after_hello),
-        vec![(wait_id.clone(), "wait".to_string()), (travel_id.clone(), "travel".to_string())]
+        vec![
+            (wait_id.clone(), "wait".to_string()),
+            (travel_id.clone(), "travel".to_string())
+        ]
     );
 
     let committed = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
     next += 1;
     assert!(committed.get("code").is_none(), "{committed}");
-    assert!(committed["log_path"].as_str().unwrap().ends_with("tick-0001.jsonl"), "{committed}");
+    assert!(
+        committed["log_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("tick-0001.jsonl"),
+        "{committed}"
+    );
     let now = now_of(&pack);
     assert_eq!(now.world_time, 1085);
     assert_ne!(now.world_time, 1140);
@@ -1097,14 +1144,28 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     assert_eq!(waits.len(), 1, "{tick}");
     assert_eq!(waits[0]["move"], "wait");
     assert_eq!(
-        tick["rejected"].as_array().unwrap().iter().filter(|item| item["id"] == travel_id).count(),
+        tick["rejected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|item| item["id"] == travel_id)
+            .count(),
         1
     );
     assert_eq!(
-        tick["rejected"].as_array().unwrap().iter().find(|item| item["id"] == travel_id).unwrap()["reason"],
+        tick["rejected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == travel_id)
+            .unwrap()["reason"],
         "NOT_OWNER"
     );
-    assert!(tick["intents"].as_array().unwrap().iter().all(|intent| intent["id"] != travel_id));
+    assert!(tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|intent| intent["id"] != travel_id));
     assert_closed_effects(&tick, &travel_id);
     let drained = tool_body(&mut gm, next, "session_status", "{}");
     next += 1;
@@ -1182,7 +1243,10 @@ fn assert_keys(json: &str, expected: &[&str]) {
 
 fn structured_object(line: &str) -> &str {
     let marker = "\"structuredContent\":";
-    let start = line.find(marker).unwrap_or_else(|| panic!("no structuredContent in {line}")) + marker.len();
+    let start = line
+        .find(marker)
+        .unwrap_or_else(|| panic!("no structuredContent in {line}"))
+        + marker.len();
     let rest = &line[start..];
     assert!(rest.starts_with('{'), "{line}");
     let bytes = rest.as_bytes();
@@ -1224,7 +1288,11 @@ fn v02_p05_initialize_writes_no_tape_and_the_four_shapes_keep_key_order() {
     let mut bridge = spawn(&["gm", &pack_arg(&quiet), "--stdio"]);
     let bridge_status = wait_exit(&mut bridge, Duration::from_secs(5));
     assert_eq!(bridge_status.code(), Some(1));
-    assert!(text_of(&bridge.stdout).is_empty(), "{}", text_of(&bridge.stdout));
+    assert!(
+        text_of(&bridge.stdout).is_empty(),
+        "{}",
+        text_of(&bridge.stdout)
+    );
     assert_eq!(text_of(&bridge.stderr).trim(), refused.to_string());
     assert!(!text_of(&bridge.stderr).contains("NOT_IN_SPEC"));
     assert_eq!(pack_snapshot(&quiet), quiet_before);
@@ -1249,10 +1317,23 @@ fn v02_p05_initialize_writes_no_tape_and_the_four_shapes_keep_key_order() {
         clock.tick_index, clock.world_time
     );
     let tape_path = pack.join("state/log/session.jsonl");
-    assert_eq!(fs::read_to_string(&tape_path).unwrap(), format!("{tape_line}\n"));
+    assert_eq!(
+        fs::read_to_string(&tape_path).unwrap(),
+        format!("{tape_line}\n")
+    );
     assert_keys(
         &tape_line,
-        &["seq", "from", "address", "place", "actor", "recipients", "text", "tick_index", "world_time"],
+        &[
+            "seq",
+            "from",
+            "address",
+            "place",
+            "actor",
+            "recipients",
+            "text",
+            "tick_index",
+            "world_time",
+        ],
     );
     let stored = fs::read(&tape_path).unwrap();
     assert_eq!(now_of(&pack).world_time, clock.world_time);
@@ -1272,16 +1353,29 @@ fn v02_p05_initialize_writes_no_tape_and_the_four_shapes_keep_key_order() {
     assert_eq!(fs::read(&tape_path).unwrap(), stored);
     assert_eq!(fs::read_to_string(&tape_path).unwrap().lines().count(), 1);
 
-    gm.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n").unwrap();
+    gm.write_all(b"{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
+        .unwrap();
     gm.flush().unwrap();
     let pulled = call(&mut gm, 2, "session_status", r#"{"since":0}"#);
     let pulled_line = result_line(&pulled, 2);
     let say_object = "{\"kind\":\"say\",\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"before the chair\"}";
     let status_object = structured_object(pulled_line);
-    assert!(status_object.contains(&format!("\"events\":[{say_object}]")), "{status_object}");
+    assert!(
+        status_object.contains(&format!("\"events\":[{say_object}]")),
+        "{status_object}"
+    );
     assert_keys(
         say_object,
-        &["kind", "seq", "from", "address", "place", "actor", "recipients", "text"],
+        &[
+            "kind",
+            "seq",
+            "from",
+            "address",
+            "place",
+            "actor",
+            "recipients",
+            "text",
+        ],
     );
     let status = structured(pulled_line);
     assert_eq!(status["last_seq"], 1);
@@ -1291,7 +1385,11 @@ fn v02_p05_initialize_writes_no_tape_and_the_four_shapes_keep_key_order() {
     write_stdin(&mut player, "say across the lane");
     let live_player = "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"table\",\"text\":\"across the lane\"}";
     let live_out = wait_has(&player.stdout, live_player, Duration::from_secs(5));
-    assert_eq!(live_out.lines().filter(|line| *line == live_player).count(), 1, "{live_out}");
+    assert_eq!(
+        live_out.lines().filter(|line| *line == live_player).count(),
+        1,
+        "{live_out}"
+    );
     let live_event = read_lf(&mut gm, Duration::from_secs(5));
     let live_frame = "{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{\"kind\":\"say\",\"seq\":2,\"from\":\"player:pc_rowan\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"across the lane\"}}";
     assert_eq!(live_event, live_frame);
@@ -1320,17 +1418,40 @@ fn v02_p05_initialize_writes_no_tape_and_the_four_shapes_keep_key_order() {
     assert!(tape_now.ends_with(&live_tape), "{tape_now}");
     assert_eq!(tape_now.lines().count(), 2, "{tape_now}");
 
-    let said_tool = call(&mut gm, 3, "say", r#"{"address":"table","text":"from the chair"}"#);
-    let said_at = said_tool.iter().position(|line| line.contains("\"id\":3")).unwrap();
-    let event_at = said_tool.iter().position(|line| line.contains("\"method\":\"spook/event\"")).unwrap();
+    let said_tool = call(
+        &mut gm,
+        3,
+        "say",
+        r#"{"address":"table","text":"from the chair"}"#,
+    );
+    let said_at = said_tool
+        .iter()
+        .position(|line| line.contains("\"id\":3"))
+        .unwrap();
+    let event_at = said_tool
+        .iter()
+        .position(|line| line.contains("\"method\":\"spook/event\""))
+        .unwrap();
     assert!(said_at < event_at, "{said_tool:?}");
-    assert!(said_tool.iter().take(event_at).all(|line| !line.contains("\"method\":\"spook/event\"")));
+    assert!(said_tool
+        .iter()
+        .take(event_at)
+        .all(|line| !line.contains("\"method\":\"spook/event\"")));
     let tool_object = "{\"kind\":\"say\",\"seq\":3,\"from\":\"gm\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"from the chair\"}";
     let tool_raw = structured_object(&said_tool[said_at]);
     assert_eq!(tool_raw, tool_object);
     assert_keys(
         tool_raw,
-        &["kind", "seq", "from", "address", "place", "actor", "recipients", "text"],
+        &[
+            "kind",
+            "seq",
+            "from",
+            "address",
+            "place",
+            "actor",
+            "recipients",
+            "text",
+        ],
     );
     let tool_event = "{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{\"kind\":\"say\",\"seq\":3,\"from\":\"gm\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"from the chair\"}}";
     assert_eq!(said_tool[event_at], tool_event);

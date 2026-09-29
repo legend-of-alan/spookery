@@ -1,6 +1,6 @@
 use crate::canon::{blake2s_hex, Canon};
 use crate::eligibility::is_eligible;
-use crate::error::Code;
+use crate::error::Reason;
 use crate::firewall::allows;
 use crate::limits::{world_hour, MINUTES_PER_DAY};
 use crate::model::{
@@ -43,7 +43,7 @@ pub fn season_intent(now: &Now) -> Option<Intent> {
     ))
 }
 
-pub fn filter_blocklist(intents: Vec<Intent>, humans: u32) -> (Vec<Intent>, Vec<(Intent, Code)>) {
+pub fn filter_blocklist(intents: Vec<Intent>, humans: u32) -> (Vec<Intent>, Vec<(Intent, Reason)>) {
     if humans > 0 {
         return (intents, Vec::new());
     }
@@ -54,7 +54,7 @@ pub fn filter_blocklist(intents: Vec<Intent>, humans: u32) -> (Vec<Intent>, Vec<
             intent.move_name.as_str(),
             "talk" | "attempt" | "attack" | "give" | "take"
         ) {
-            rejected.push((intent, Code::LiveOnly));
+            rejected.push((intent, Reason::LiveOnly));
         } else {
             kept.push(intent);
         }
@@ -62,30 +62,30 @@ pub fn filter_blocklist(intents: Vec<Intent>, humans: u32) -> (Vec<Intent>, Vec<
     (kept, rejected)
 }
 
-pub fn legal(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Code> {
+pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> {
     if !canon.moves.contains_key(&intent.move_name) {
-        return Err(Code::UnknownMove);
+        return Err(Reason::UnknownMove);
     }
     match &intent.target {
         Target::Empty => {}
         Target::Place(id) => {
             if !canon.places.contains_key(id) && !now.places.contains_key(id) {
-                return Err(Code::UnknownKey);
+                return Err(Reason::UnknownKey);
             }
         }
         Target::Actor(id) => {
             if !now.actors.contains_key(id) {
-                return Err(Code::UnknownKey);
+                return Err(Reason::UnknownKey);
             }
         }
         Target::Clock(id) => {
             if !now.clocks.contains_key(id) {
-                return Err(Code::UnknownKey);
+                return Err(Reason::UnknownKey);
             }
         }
         Target::Rumor(id) => {
             if !now.rumors.iter().any(|rumor| rumor.id == *id) {
-                return Err(Code::UnknownKey);
+                return Err(Reason::UnknownKey);
             }
         }
     }
@@ -93,18 +93,18 @@ pub fn legal(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Code> {
         let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
         for fact in facts {
             if !allows(canon, now, &viewer, fact) {
-                return Err(Code::IllegalKnowledge);
+                return Err(Reason::IllegalKnowledge);
             }
         }
     }
     if intent.source == Source::Kernel && intent.actor_kind == ActorKind::Player {
-        return Err(Code::NotOwner);
+        return Err(Reason::NotOwner);
     }
     if intent.source == Source::Kernel
         && intent.actor_kind == ActorKind::Npc
         && !is_eligible(canon, now, &intent.actor_id)
     {
-        return Err(Code::NotOwner);
+        return Err(Reason::NotOwner);
     }
     Ok(())
 }

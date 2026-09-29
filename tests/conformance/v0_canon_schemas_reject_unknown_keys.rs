@@ -9,7 +9,8 @@ fn schema_dir() -> PathBuf {
 
 fn load_schema(name: &str) -> Value {
     let path = schema_dir().join(format!("{name}.schema.json"));
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+    let text =
+        fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name} is not JSON: {err}"))
 }
 

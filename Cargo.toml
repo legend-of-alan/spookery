@@ -11,6 +11,7 @@ license = "AGPL-3.0-or-later"
 [package]
 name = "spookery"
 version = "0.1.0"
+autotests = false
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
@@ -43,109 +44,9 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time"] }
 
 [[test]]
-name = "v0_import_boundaries"
-path = "tests/conformance/v0_import_boundaries.rs"
+name = "v0"
+path = "tests/v0.rs"
 
 [[test]]
-name = "v0_t01_closed_secret"
-path = "tests/conformance/v0_t01_closed_secret.rs"
-
-[[test]]
-name = "v0_t02_no_self_win"
-path = "tests/conformance/v0_t02_no_self_win.rs"
-
-[[test]]
-name = "v0_t03_shop_lives"
-path = "tests/conformance/v0_t03_shop_lives.rs"
-
-[[test]]
-name = "v0_t04_catchup_cap"
-path = "tests/conformance/v0_t04_catchup_cap.rs"
-
-[[test]]
-name = "v0_t05_busy_skip"
-path = "tests/conformance/v0_t05_busy_skip.rs"
-
-[[test]]
-name = "v0_t07_replay"
-path = "tests/conformance/v0_t07_replay.rs"
-
-[[test]]
-name = "v0_t08_budget"
-path = "tests/conformance/v0_t08_budget.rs"
-
-[[test]]
-name = "v0_trace"
-path = "tests/conformance/v0_trace.rs"
-
-[[test]]
-name = "v0_scheduler_sleeps_then_catches_up_on_this_thread"
-path = "tests/conformance/v0_scheduler_sleeps_then_catches_up_on_this_thread.rs"
-
-[[test]]
-name = "v0_t06_atomic_commit"
-path = "tests/conformance/v0_t06_atomic_commit.rs"
-
-[[test]]
-name = "v0_t09_tool_scope"
-path = "tests/conformance/v0_t09_tool_scope.rs"
-
-[[test]]
-name = "v0_t10_proposal_only"
-path = "tests/conformance/v0_t10_proposal_only.rs"
-
-[[test]]
-name = "v0_c01_load_mcp"
-path = "tests/conformance/v0_c01_load_mcp.rs"
-
-[[test]]
-name = "v0_canon_schemas_reject_unknown_keys"
-path = "tests/conformance/v0_canon_schemas_reject_unknown_keys.rs"
-
-[[test]]
-name = "v0_pack_rev_mismatch_does_not_commit"
-path = "tests/conformance/v0_pack_rev_mismatch_does_not_commit.rs"
-
-[[test]]
-name = "v0_emitter_sample_is_166_bytes"
-path = "tests/conformance/v0_emitter_sample_is_166_bytes.rs"
-
-[[test]]
-name = "v0_oneshot_docks_matches_section12"
-path = "tests/conformance/v0_oneshot_docks_matches_section12.rs"
-
-[[test]]
-name = "v0_c09_idle_ux"
-path = "tests/conformance/v0_c09_idle_ux.rs"
-
-[[test]]
-name = "v0_c11_strip_bodies"
-path = "tests/conformance/v0_c11_strip_bodies.rs"
-
-[[test]]
-name = "v0_c12_hidden_string_lint"
-path = "tests/conformance/v0_c12_hidden_string_lint.rs"
-
-[[test]]
-name = "v0_cli_status_prints_host_clocks_and_writes_nothing"
-path = "tests/conformance/v0_cli_status_prints_host_clocks_and_writes_nothing.rs"
-
-[[test]]
-name = "v01"
-path = "tests/conformance/v01.rs"
-
-[[test]]
-name = "v01_p09"
-path = "tests/conformance/v01_p09.rs"
-
-[[test]]
-name = "v01_p12_p21"
-path = "tests/conformance/v01_p12_p21.rs"
-
-[[test]]
-name = "v02"
-path = "tests/conformance/v02.rs"
-
-[[test]]
-name = "v0_cli_migrate"
-path = "tests/conformance/v0_cli_migrate.rs"
+name = "sitting"
+path = "tests/sitting.rs"

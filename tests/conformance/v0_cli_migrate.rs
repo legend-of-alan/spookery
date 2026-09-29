@@ -2,51 +2,24 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use super::support::temp_pack;
+
 const PACK_REV: &str = "blake2s:311fba8fa0b3678adfe606ba8113246ffcee6886a640138bf2adb015ee753ef4";
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
-
-fn temp_pack(label: &str) -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = manifest.join("packs/oneshot-docks");
-    let pack = std::env::temp_dir().join(format!(
-        "spook-migrate-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&fixture, &pack);
-    pack
-}
 
 fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
+        let entries =
+            fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
         for entry in entries {
             let entry = entry.unwrap_or_else(|err| panic!("dirent {}: {err}", dir.display()));
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
             } else {
-                let bytes = fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+                let bytes =
+                    fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
                 out.push((path, bytes));
             }
         }
@@ -81,7 +54,11 @@ fn v0_cli_migrate_bumps_state_rev_and_appends_evidence() {
     assert!(first.stdout.is_empty());
     assert!(first.stderr.is_empty());
     let second = migrate(&pack);
-    assert!(second.status.success(), "stderr:\n{}", String::from_utf8_lossy(&second.stderr));
+    assert!(
+        second.status.success(),
+        "stderr:\n{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
     assert!(second.stdout.is_empty());
 
     let shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open: {err}"));
@@ -93,7 +70,12 @@ fn v0_cli_migrate_bumps_state_rev_and_appends_evidence() {
     assert_eq!(now.pack_rev, PACK_REV);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(
-        now.places.get("docks_shop").unwrap().stock.get("lamp_oil").copied(),
+        now.places
+            .get("docks_shop")
+            .unwrap()
+            .stock
+            .get("lamp_oil")
+            .copied(),
         Some(4)
     );
     assert!(!pack.join("state/log/tick-0001.jsonl").exists());
@@ -116,7 +98,10 @@ fn v0_cli_migrate_keeps_a_hand_edit_and_rewrites_pack_rev() {
     let now_path = pack.join("state/now.yaml");
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
-    text = text.replace("place: docks_shop\n    flags: []\n    busy: false\n    known_facts: []\n    sheet:", "place: mira_rooms\n    flags: []\n    busy: false\n    known_facts: []\n    sheet:");
+    text = text.replace(
+        "place: docks_shop\n    flags: []\n    busy: false\n    known_facts: []\n    sheet:",
+        "place: mira_rooms\n    flags: []\n    busy: false\n    known_facts: []\n    sheet:",
+    );
     text = text.replace(
         "    actors:\n      - aldric\n      - pc_rowan\n",
         "    actors:\n      - aldric\n",

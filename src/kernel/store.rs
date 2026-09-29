@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::canon::{load_canon, pack_rev, Canon};
 use crate::check::CheckNotice;
 use crate::codec::{canonicalize, emit_now, emit_proposal, emit_rumors, load_now};
-use crate::error::Code;
+use crate::error::Reason;
 use crate::limits::Budget;
 use crate::model::{Intent, MemoryLine, Now, PauseView, PcSheet, Presence, ProposalDoc};
 
@@ -213,7 +213,7 @@ impl Txn {
         self.staging.pause = pause;
     }
 
-    pub fn reset_idle_acts(&mut self) -> Result<(), Code> {
+    pub fn reset_idle_acts(&mut self) -> Result<(), Reason> {
         let ids: Vec<String> = self.staging.actors.keys().cloned().collect();
         for id in ids {
             let Some(base) = self
@@ -236,7 +236,7 @@ impl Txn {
         Ok(())
     }
 
-    pub fn reset_live_acts(&mut self) -> Result<(), Code> {
+    pub fn reset_live_acts(&mut self) -> Result<(), Reason> {
         let ids: Vec<String> = self.staging.actors.keys().cloned().collect();
         for id in ids {
             let Some(base) = self
@@ -259,7 +259,7 @@ impl Txn {
         Ok(())
     }
 
-    pub fn stage_npc_counters(&mut self, actor_id: &str, humans: u32) -> Result<(), Code> {
+    pub fn stage_npc_counters(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
         let tick_index = self.staging.tick_index;
         let (current_idle, current_live) = {
             let tick = self
@@ -267,7 +267,7 @@ impl Txn {
                 .actors
                 .get(actor_id)
                 .and_then(|actor| actor.tick())
-                .ok_or(Code::NotOwner)?;
+                .ok_or(Reason::NotOwner)?;
             (tick.idle_acts_today, tick.live_acts_this_hour)
         };
         let base = self
@@ -275,7 +275,7 @@ impl Txn {
             .actors
             .get(actor_id)
             .and_then(|actor| actor.tick())
-            .ok_or(Code::NotOwner)?;
+            .ok_or(Reason::NotOwner)?;
         let base_last = base.last_act_tick;
         let base_idle = base.idle_acts_today;
         let base_live = base.live_acts_this_hour;
@@ -297,7 +297,7 @@ impl Txn {
             .actors
             .get_mut(actor_id)
             .and_then(|actor| actor.tick_mut())
-            .ok_or(Code::NotOwner)?;
+            .ok_or(Reason::NotOwner)?;
         tick.last_act_tick = tick_index;
         if humans == 0 {
             tick.idle_acts_today = new_idle;
@@ -307,11 +307,11 @@ impl Txn {
         Ok(())
     }
 
-    pub fn track(&mut self, path: String) -> Result<(), Code> {
+    pub fn track(&mut self, path: String) -> Result<(), Reason> {
         self.track_many(std::slice::from_ref(&path))
     }
 
-    pub fn track_many(&mut self, paths: &[String]) -> Result<(), Code> {
+    pub fn track_many(&mut self, paths: &[String]) -> Result<(), Reason> {
         let max = self.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         for path in paths {
@@ -322,7 +322,7 @@ impl Txn {
                 for path in &added {
                     self.paths.remove(path);
                 }
-                return Err(Code::Budget);
+                return Err(Reason::Budget);
             }
             self.paths.insert(path.clone());
             added.push(path.clone());
@@ -330,17 +330,17 @@ impl Txn {
         Ok(())
     }
 
-    pub(crate) fn bump_memory(&mut self) -> Result<(), Code> {
+    pub(crate) fn bump_memory(&mut self) -> Result<(), Reason> {
         if u64::from(self.memory_writes) >= self.budget.max_memory_writes {
-            return Err(Code::Budget);
+            return Err(Reason::Budget);
         }
         self.memory_writes += 1;
         Ok(())
     }
 
-    pub(crate) fn bump_rumor(&mut self) -> Result<(), Code> {
+    pub(crate) fn bump_rumor(&mut self) -> Result<(), Reason> {
         if u64::from(self.rumor_hops) >= self.budget.max_rumor_hops {
-            return Err(Code::Budget);
+            return Err(Reason::Budget);
         }
         self.rumor_hops += 1;
         Ok(())
@@ -375,31 +375,31 @@ pub fn session_status(now: &Now) -> SessionStatus {
     }
 }
 
-pub fn open_shard(root: &Path) -> Result<Shard, Code> {
+pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
     if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
-        return Err(Code::NotInSpec);
+        return Err(Reason::NotInSpec);
     }
     recover(root)?;
     let canon = Arc::new(load_canon(root)?);
-    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Code::NotInSpec)?;
-    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Code::Schema)?;
+    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
     let now = load_now(now_text)?;
     let rev = pack_rev(root)?;
     if now.pack_rev != rev {
-        return Err(Code::PackRevMismatch);
+        return Err(Reason::PackRevMismatch);
     }
     let emitted = emit_now(&now)?;
     if emitted.as_bytes() != now_bytes {
-        return Err(Code::HandEdit);
+        return Err(Reason::HandEdit);
     }
     let mut sheets = BTreeMap::new();
     for (id, actor) in &now.actors {
         if let crate::model::ActorLive::Pc { sheet, .. } = actor {
             let path = root.join(sheet);
-            let text = fs::read_to_string(&path).map_err(|_| Code::Schema)?;
-            let loaded: PcSheet = serde_saphyr::from_str(&text).map_err(|_| Code::Schema)?;
+            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
+            let loaded: PcSheet = serde_saphyr::from_str(&text).map_err(|_| Reason::Schema)?;
             if loaded.schema != "sheet/v0" {
-                return Err(Code::Schema);
+                return Err(Reason::Schema);
             }
             sheets.insert(id.clone(), loaded);
         }
@@ -415,11 +415,11 @@ pub fn open_shard(root: &Path) -> Result<Shard, Code> {
     })
 }
 
-pub fn lock_shard(shard: &Shard) -> Result<LockGuard, Code> {
+pub fn lock_shard(shard: &Shard) -> Result<LockGuard, Reason> {
     lock_pack(&shard.root)
 }
 
-fn lock_pack(root: &Path) -> Result<LockGuard, Code> {
+fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
     let path = root.join("state/.tick.lock");
     let file = OpenOptions::new()
         .read(true)
@@ -427,14 +427,14 @@ fn lock_pack(root: &Path) -> Result<LockGuard, Code> {
         .create(true)
         .truncate(false)
         .open(&path)
-        .map_err(|_| Code::CommitConflict)?;
+        .map_err(|_| Reason::CommitConflict)?;
     if !try_lock_exclusive(&file) {
-        return Err(Code::CommitConflict);
+        return Err(Reason::CommitConflict);
     }
     Ok(LockGuard { file })
 }
 
-fn lock_session(root: &Path) -> Result<LockGuard, Code> {
+fn lock_session(root: &Path) -> Result<LockGuard, Reason> {
     let path = root.join("state/.session.lock");
     let file = OpenOptions::new()
         .read(true)
@@ -442,9 +442,9 @@ fn lock_session(root: &Path) -> Result<LockGuard, Code> {
         .create(true)
         .truncate(false)
         .open(&path)
-        .map_err(|_| Code::CommitConflict)?;
+        .map_err(|_| Reason::CommitConflict)?;
     if !lock_exclusive(&file) {
-        return Err(Code::CommitConflict);
+        return Err(Reason::CommitConflict);
     }
     Ok(LockGuard { file })
 }
@@ -515,12 +515,12 @@ fn blank_overlapped() -> Overlapped {
     }
 }
 
-pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<(), Code> {
+pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<(), Reason> {
     txn.staging.state_rev = txn
         .staging
         .state_rev
         .checked_add(1)
-        .ok_or(Code::CommitConflict)?;
+        .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut txn.staging);
     let now_bytes = emit_now(&txn.staging)?.into_bytes();
     let tick_index = txn.staging.tick_index;
@@ -540,7 +540,7 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
 
 /// `include_tick: false` for a presence change. No tick file and no clock advance.
 /// Identical presence writes nothing and does not bump `state_rev`.
-pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Code> {
+pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Reason> {
     let mut next = shard.now.clone();
     next.presence = presence;
     canonicalize(&mut next);
@@ -548,7 +548,7 @@ pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Co
         return Ok(false);
     }
     let _lock = lock_shard(shard)?;
-    next.state_rev = next.state_rev.checked_add(1).ok_or(Code::CommitConflict)?;
+    next.state_rev = next.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     let now_bytes = emit_now(&next)?.into_bytes();
     let state = shard.root.join("state");
     let planned = vec![Planned {
@@ -561,10 +561,10 @@ pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Co
     Ok(true)
 }
 
-pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Code> {
-    let pending = shard.pending.take().ok_or(Code::CommitConflict)?;
+pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Reason> {
+    let pending = shard.pending.take().ok_or(Reason::CommitConflict)?;
     let mut now = pending.now;
-    now.state_rev = now.state_rev.checked_add(1).ok_or(Code::CommitConflict)?;
+    now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
     let now_bytes = emit_now(&now)?.into_bytes();
     let tick_index = pending.tick_index;
@@ -588,19 +588,19 @@ pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Code> {
     })
 }
 
-pub fn migrate_pack(root: &Path) -> Result<(), Code> {
+pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
-        return Err(Code::NotInSpec);
+        return Err(Reason::NotInSpec);
     }
-    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Code::NotInSpec)?;
-    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Code::Schema)?;
+    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
     let mut now = load_now(now_text)?;
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
     let _lock = lock_pack(root)?;
     now.pack_rev = pack_rev_after;
-    now.state_rev = now.state_rev.checked_add(1).ok_or(Code::CommitConflict)?;
+    now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
     let emitted = emit_now(&now)?.into_bytes();
     let state = root.join("state");
@@ -623,10 +623,10 @@ pub fn migrate_pack(root: &Path) -> Result<(), Code> {
 
 /// Append one session tape line under `state/.session.lock`.
 /// Assigns `seq`, drops a trailing partial line, and does not open a `Txn`.
-pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u64, Code> {
+pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u64, Reason> {
     let _lock = lock_session(root)?;
     let log_dir = root.join("state/log");
-    fs::create_dir_all(&log_dir).map_err(|_| Code::CommitConflict)?;
+    fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
     let path = log_dir.join("session.jsonl");
     let mut file = OpenOptions::new()
         .read(true)
@@ -634,38 +634,38 @@ pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u
         .create(true)
         .truncate(false)
         .open(&path)
-        .map_err(|_| Code::CommitConflict)?;
+        .map_err(|_| Reason::CommitConflict)?;
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|_| Code::CommitConflict)?;
+    file.read_to_end(&mut bytes).map_err(|_| Reason::CommitConflict)?;
     let end = session_kept(&bytes);
     let seq = last_session_seq(&bytes[..end])
         .checked_add(1)
-        .ok_or(Code::CommitConflict)?;
+        .ok_or(Reason::CommitConflict)?;
     let mut line = body(seq);
     if line.is_empty() || line.bytes().any(|byte| byte == b'\n' || byte == b'\r') {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     line.push('\n');
     if end != bytes.len() {
-        file.set_len(end as u64).map_err(|_| Code::CommitConflict)?;
+        file.set_len(end as u64).map_err(|_| Reason::CommitConflict)?;
     }
-    file.seek(SeekFrom::End(0)).map_err(|_| Code::CommitConflict)?;
-    file.write_all(line.as_bytes()).map_err(|_| Code::CommitConflict)?;
-    file.sync_all().map_err(|_| Code::CommitConflict)?;
+    file.seek(SeekFrom::End(0)).map_err(|_| Reason::CommitConflict)?;
+    file.write_all(line.as_bytes()).map_err(|_| Reason::CommitConflict)?;
+    file.sync_all().map_err(|_| Reason::CommitConflict)?;
     fsync_dir(&log_dir)?;
     Ok(seq)
 }
 
 /// Complete tape lines. A missing file is empty. A trailing partial line is not a record.
-pub fn read_session(root: &Path) -> Result<Vec<String>, Code> {
+pub fn read_session(root: &Path) -> Result<Vec<String>, Reason> {
     let path = root.join("state/log/session.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
     }
     let _lock = lock_session(root)?;
-    let bytes = fs::read(&path).map_err(|_| Code::CommitConflict)?;
+    let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
     let end = session_kept(&bytes);
-    let text = std::str::from_utf8(&bytes[..end]).map_err(|_| Code::Schema)?;
+    let text = std::str::from_utf8(&bytes[..end]).map_err(|_| Reason::Schema)?;
     let mut lines = Vec::new();
     for line in text.lines() {
         if session_seq(line.as_bytes()).is_some() {
@@ -730,17 +730,17 @@ fn session_seq(line: &[u8]) -> Option<u64> {
     Some(value)
 }
 
-fn append_studio(state: &Path, line: &str) -> Result<(), Code> {
+fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
     let log_dir = state.join("log");
-    fs::create_dir_all(&log_dir).map_err(|_| Code::CommitConflict)?;
+    fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
     let path = log_dir.join("studio.jsonl");
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(&path)
-        .map_err(|_| Code::CommitConflict)?;
-    file.write_all(line.as_bytes()).map_err(|_| Code::CommitConflict)?;
-    file.sync_all().map_err(|_| Code::CommitConflict)?;
+        .map_err(|_| Reason::CommitConflict)?;
+    file.write_all(line.as_bytes()).map_err(|_| Reason::CommitConflict)?;
+    file.sync_all().map_err(|_| Reason::CommitConflict)?;
     fsync_dir(&log_dir)?;
     Ok(())
 }
@@ -752,7 +752,7 @@ fn plan_commit(
     tick: Option<(u64, &[u8])>,
     memories: &[MemoryLine],
     proposals: &[ProposalDoc],
-) -> Result<Vec<Planned>, Code> {
+) -> Result<Vec<Planned>, Reason> {
     let rumor_bytes = emit_rumors(now)?.into_bytes();
     let mut planned = Vec::new();
     planned.push(Planned {
@@ -795,21 +795,21 @@ struct Planned {
     is_now: bool,
 }
 
-fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Code> {
+fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Reason> {
     let txn_dir = state.join(".txn");
     let prev = txn_dir.join("prev");
-    fs::create_dir_all(&prev).map_err(|_| Code::CommitConflict)?;
+    fs::create_dir_all(&prev).map_err(|_| Reason::CommitConflict)?;
     for item in planned {
         if item.target.is_file() {
             let rel = item
                 .target
                 .strip_prefix(state)
-                .map_err(|_| Code::CommitConflict)?;
+                .map_err(|_| Reason::CommitConflict)?;
             let dest = prev.join(rel);
             if let Some(parent) = dest.parent() {
-                fs::create_dir_all(parent).map_err(|_| Code::CommitConflict)?;
+                fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
             }
-            fs::copy(&item.target, &dest).map_err(|_| Code::CommitConflict)?;
+            fs::copy(&item.target, &dest).map_err(|_| Reason::CommitConflict)?;
             fsync_file(&dest)?;
         }
     }
@@ -817,8 +817,8 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Code> {
     fsync_dir(&txn_dir)?;
     let complete = txn_dir.join("COMPLETE");
     {
-        let file = File::create(&complete).map_err(|_| Code::CommitConflict)?;
-        file.sync_all().map_err(|_| Code::CommitConflict)?;
+        let file = File::create(&complete).map_err(|_| Reason::CommitConflict)?;
+        file.sync_all().map_err(|_| Reason::CommitConflict)?;
     }
     fsync_dir(&txn_dir)?;
 
@@ -826,12 +826,12 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Code> {
     for item in planned {
         let tmp = tmp_path(&item.target);
         if let Some(parent) = tmp.parent() {
-            fs::create_dir_all(parent).map_err(|_| Code::CommitConflict)?;
+            fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
         }
         {
-            let mut file = File::create(&tmp).map_err(|_| Code::CommitConflict)?;
-            file.write_all(&item.bytes).map_err(|_| Code::CommitConflict)?;
-            file.sync_all().map_err(|_| Code::CommitConflict)?;
+            let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
+            file.write_all(&item.bytes).map_err(|_| Reason::CommitConflict)?;
+            file.sync_all().map_err(|_| Reason::CommitConflict)?;
         }
         if let Some(parent) = item.target.parent() {
             fsync_dir(parent)?;
@@ -840,12 +840,12 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Code> {
     }
     for (tmp, item) in &temps {
         if !item.is_now {
-            fs::rename(tmp, &item.target).map_err(|_| Code::CommitConflict)?;
+            fs::rename(tmp, &item.target).map_err(|_| Reason::CommitConflict)?;
         }
     }
     for (tmp, item) in &temps {
         if item.is_now {
-            fs::rename(tmp, &item.target).map_err(|_| Code::CommitConflict)?;
+            fs::rename(tmp, &item.target).map_err(|_| Reason::CommitConflict)?;
         }
     }
     fsync_dir(state)?;
@@ -853,7 +853,7 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Code> {
     Ok(())
 }
 
-fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, String>, Code> {
+fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, String>, Reason> {
     let mut by_actor: BTreeMap<String, Vec<&MemoryLine>> = BTreeMap::new();
     for line in lines {
         by_actor.entry(line.actor_id.clone()).or_default().push(line);
@@ -862,7 +862,7 @@ fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, 
     for (actor, fresh) in by_actor {
         let path = state.join("memories").join(format!("{actor}.jsonl"));
         let mut body = if path.is_file() {
-            fs::read_to_string(&path).map_err(|_| Code::CommitConflict)?
+            fs::read_to_string(&path).map_err(|_| Reason::CommitConflict)?
         } else {
             String::new()
         };
@@ -927,41 +927,41 @@ fn push_json_string(out: &mut String, value: &str) {
     out.push('"');
 }
 
-fn recover(root: &Path) -> Result<(), Code> {
+fn recover(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
     let txn = state.join(".txn");
     if txn.is_dir() {
         if !txn.join("COMPLETE").is_file() {
-            fs::remove_dir_all(&txn).map_err(|_| Code::CommitConflict)?;
+            fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
         } else {
             let prev_now = txn.join("prev/now.yaml");
             if !prev_now.is_file() {
-                return Err(Code::Schema);
+                return Err(Reason::Schema);
             }
-            let prev = load_now(&fs::read_to_string(&prev_now).map_err(|_| Code::Schema)?)?;
+            let prev = load_now(&fs::read_to_string(&prev_now).map_err(|_| Reason::Schema)?)?;
             let live = load_now(
-                &fs::read_to_string(state.join("now.yaml")).map_err(|_| Code::NotInSpec)?,
+                &fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?,
             )?;
             if live.state_rev == prev.state_rev.saturating_add(1) && live.state_rev != prev.state_rev
             {
-                fs::remove_dir_all(&txn).map_err(|_| Code::CommitConflict)?;
+                fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
             } else if live.state_rev == prev.state_rev {
                 restore_prev(&txn.join("prev"), &state)?;
-                fs::remove_dir_all(&txn).map_err(|_| Code::CommitConflict)?;
+                fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
             } else {
-                return Err(Code::Schema);
+                return Err(Reason::Schema);
             }
         }
     }
 
-    let now = load_now(&fs::read_to_string(state.join("now.yaml")).map_err(|_| Code::NotInSpec)?)?;
+    let now = load_now(&fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?)?;
     let log_dir = state.join("log");
     let mut live_ticks = BTreeSet::new();
     if log_dir.is_dir() {
         let mut entries = fs::read_dir(&log_dir)
-            .map_err(|_| Code::Schema)?
+            .map_err(|_| Reason::Schema)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Code::Schema)?;
+            .map_err(|_| Reason::Schema)?;
         entries.sort_by_key(|entry| entry.file_name());
         for entry in entries {
             let path = entry.path();
@@ -970,13 +970,13 @@ fn recover(root: &Path) -> Result<(), Code> {
             if !name.starts_with("tick-") || !name.ends_with(".jsonl") {
                 continue;
             }
-            let text = fs::read_to_string(&path).map_err(|_| Code::Schema)?;
+            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
             match (json_u64(&text, "tick_index"), json_u64(&text, "state_rev_after")) {
                 (Some(tick_index), Some(rev)) if rev <= now.state_rev => {
                     live_ticks.insert(tick_index);
                 }
                 _ => {
-                    fs::remove_file(&path).map_err(|_| Code::CommitConflict)?;
+                    fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
                 }
             }
         }
@@ -985,15 +985,15 @@ fn recover(root: &Path) -> Result<(), Code> {
     let memories = state.join("memories");
     if memories.is_dir() {
         let entries = fs::read_dir(&memories)
-            .map_err(|_| Code::Schema)?
+            .map_err(|_| Reason::Schema)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Code::Schema)?;
+            .map_err(|_| Reason::Schema)?;
         for entry in entries {
             let path = entry.path();
             if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
                 continue;
             }
-            let text = fs::read_to_string(&path).map_err(|_| Code::Schema)?;
+            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
             let mut kept = String::new();
             let mut changed = false;
             for line in text.lines() {
@@ -1017,9 +1017,9 @@ fn recover(root: &Path) -> Result<(), Code> {
     let proposals = state.join("proposals");
     if proposals.is_dir() {
         let entries = fs::read_dir(&proposals)
-            .map_err(|_| Code::Schema)?
+            .map_err(|_| Reason::Schema)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Code::Schema)?;
+            .map_err(|_| Reason::Schema)?;
         for entry in entries {
             let path = entry.path();
             let stem = path
@@ -1027,14 +1027,14 @@ fn recover(root: &Path) -> Result<(), Code> {
                 .and_then(|stem| stem.to_str())
                 .unwrap_or_default();
             if !now.proposals.iter().any(|id| id == stem) {
-                fs::remove_file(&path).map_err(|_| Code::CommitConflict)?;
+                fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
             }
         }
     }
 
     let rumors_path = state.join("rumors.yaml");
     if rumors_path.is_file() {
-        let text = fs::read_to_string(&rumors_path).map_err(|_| Code::Schema)?;
+        let text = fs::read_to_string(&rumors_path).map_err(|_| Reason::Schema)?;
         let parsed: Result<Vec<crate::model::Rumor>, _> = serde_saphyr::from_str(&text);
         let differs = match parsed {
             Ok(mut loaded) => {
@@ -1054,36 +1054,36 @@ fn recover(root: &Path) -> Result<(), Code> {
     Ok(())
 }
 
-fn restore_prev(prev: &Path, state: &Path) -> Result<(), Code> {
+fn restore_prev(prev: &Path, state: &Path) -> Result<(), Reason> {
     let mut files = Vec::new();
     collect_rel_files(prev, prev, &mut files)?;
     for rel in files {
         let from = prev.join(&rel);
         let to = state.join(&rel);
         if let Some(parent) = to.parent() {
-            fs::create_dir_all(parent).map_err(|_| Code::CommitConflict)?;
+            fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
         }
-        fs::copy(&from, &to).map_err(|_| Code::CommitConflict)?;
+        fs::copy(&from, &to).map_err(|_| Reason::CommitConflict)?;
         fsync_file(&to)?;
     }
     fsync_dir(state)?;
     Ok(())
 }
 
-fn collect_rel_files(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) -> Result<(), Code> {
+fn collect_rel_files(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) -> Result<(), Reason> {
     if !dir.is_dir() {
         return Ok(());
     }
     let entries = fs::read_dir(dir)
-        .map_err(|_| Code::Schema)?
+        .map_err(|_| Reason::Schema)?
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| Code::Schema)?;
+        .map_err(|_| Reason::Schema)?;
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
             collect_rel_files(&path, root, out)?;
         } else {
-            out.push(path.strip_prefix(root).map_err(|_| Code::Schema)?.to_path_buf());
+            out.push(path.strip_prefix(root).map_err(|_| Reason::Schema)?.to_path_buf());
         }
     }
     Ok(())
@@ -1101,17 +1101,17 @@ fn json_u64(text: &str, key: &str) -> Option<u64> {
     }
 }
 
-fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), Code> {
+fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     let tmp = tmp_path(target);
     if let Some(parent) = tmp.parent() {
-        fs::create_dir_all(parent).map_err(|_| Code::CommitConflict)?;
+        fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
     }
     {
-        let mut file = File::create(&tmp).map_err(|_| Code::CommitConflict)?;
-        file.write_all(bytes).map_err(|_| Code::CommitConflict)?;
-        file.sync_all().map_err(|_| Code::CommitConflict)?;
+        let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
+        file.write_all(bytes).map_err(|_| Reason::CommitConflict)?;
+        file.sync_all().map_err(|_| Reason::CommitConflict)?;
     }
-    fs::rename(&tmp, target).map_err(|_| Code::CommitConflict)?;
+    fs::rename(&tmp, target).map_err(|_| Reason::CommitConflict)?;
     if let Some(parent) = target.parent() {
         fsync_dir(parent)?;
     }
@@ -1148,17 +1148,17 @@ fn tmp_path(target: &Path) -> PathBuf {
     target.with_file_name(name)
 }
 
-fn fsync_file(path: &Path) -> Result<(), Code> {
+fn fsync_file(path: &Path) -> Result<(), Reason> {
     let file = OpenOptions::new()
         .read(true)
         .write(true)
         .open(path)
-        .map_err(|_| Code::CommitConflict)?;
-    file.sync_all().map_err(|_| Code::CommitConflict)?;
+        .map_err(|_| Reason::CommitConflict)?;
+    file.sync_all().map_err(|_| Reason::CommitConflict)?;
     Ok(())
 }
 
-fn fsync_dir(path: &Path) -> Result<(), Code> {
+fn fsync_dir(path: &Path) -> Result<(), Reason> {
     #[cfg(windows)]
     {
         use std::os::windows::fs::OpenOptionsExt;
@@ -1168,14 +1168,14 @@ fn fsync_dir(path: &Path) -> Result<(), Code> {
             .write(true)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
             .open(path)
-            .map_err(|_| Code::CommitConflict)?;
-        file.sync_all().map_err(|_| Code::CommitConflict)?;
+            .map_err(|_| Reason::CommitConflict)?;
+        file.sync_all().map_err(|_| Reason::CommitConflict)?;
         return Ok(());
     }
     #[cfg(not(windows))]
     {
-        let file = File::open(path).map_err(|_| Code::CommitConflict)?;
-        file.sync_all().map_err(|_| Code::CommitConflict)?;
+        let file = File::open(path).map_err(|_| Reason::CommitConflict)?;
+        file.sync_all().map_err(|_| Reason::CommitConflict)?;
         Ok(())
     }
 }

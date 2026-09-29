@@ -3,10 +3,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use spookery_kernel::model::{
-    ActorKind, ActorLive, Intent, IntentArgs, Now, PauseView, PlaceLive, Presence, RunState, Source,
-    Target, TickCounters,
+    ActorKind, ActorLive, Intent, IntentArgs, Now, PauseView, PlaceLive, Presence, RunState,
+    Source, Target, TickCounters,
 };
 use spookery_tick::{commit_turn, run_catchup, tick_pack};
+
+use super::support::copy_dir;
 
 const TRACE_A: &str = "\
 {\"tick_index\":1,\"state_rev_before\":0,\"state_rev_after\":1,\"world_time_before\":1080,\"world_time_after\":1140,\"presence_humans\":0,\"seed\":\"docks-001|1\",\"last_tick_at\":\"2026-01-01T00:00:00Z\",\"intents\":[],\"rejected\":[],\"effects\":[],\"tool_trace\":[\"session_status\",\"tick_commit\"]}\n";
@@ -35,7 +37,8 @@ fn temp_dir(label: &str) -> PathBuf {
 
 fn write(path: &Path, text: &str) {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
+        fs::create_dir_all(parent)
+            .unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
     }
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
@@ -47,20 +50,6 @@ fn copy_file(from: &Path, to: &Path) {
     );
 }
 
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
-
 fn copy_rules(root: &Path) {
     let rules = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks/rules");
     for name in ["moves.yaml", "checks.yaml", "tick.yaml"] {
@@ -69,10 +58,12 @@ fn copy_rules(root: &Path) {
 }
 
 fn rewrite_rev(root: &Path, now: Now) {
-    let rev = spookery_kernel::canon::pack_rev(root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
+    let rev =
+        spookery_kernel::canon::pack_rev(root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
     let mut now = now;
     now.pack_rev = rev;
-    let text = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit_now: {err}"));
+    let text =
+        spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit_now: {err}"));
     write(&root.join("state/now.yaml"), &text);
 }
 
@@ -169,11 +160,14 @@ fn v0_trace_a_empty_tick_jsonl() {
     );
     for id in ["mira", "bram"] {
         let path = pack.join(format!("cast/{id}.md"));
-        let text = fs::read_to_string(&path).unwrap().replace("eligible: true", "eligible: false");
+        let text = fs::read_to_string(&path)
+            .unwrap()
+            .replace("eligible: true", "eligible: false");
         write(&path, &text);
     }
     let now_path = pack.join("state/now.yaml");
-    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let mut now =
+        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
     write(&now_path, &spookery_kernel::codec::emit_now(&now).unwrap());
     tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
@@ -237,7 +231,8 @@ flags: []
     );
     copy_rules(&pack);
     let mut now = base_now("ex", 0, 1, vec!["pc_rowan".to_string()]);
-    now.places.insert("gate".to_string(), place(vec!["pc_rowan".to_string()]));
+    now.places
+        .insert("gate".to_string(), place(vec!["pc_rowan".to_string()]));
     now.actors.insert(
         "pc_rowan".to_string(),
         pc("gate", "state/actors/pc_rowan.yaml"),
@@ -421,7 +416,8 @@ flags: []
     );
     copy_rules(&pack);
     let mut now = base_now("ex", 0, 0, Vec::new());
-    now.places.insert("gate".to_string(), place(vec!["pc_rowan".to_string()]));
+    now.places
+        .insert("gate".to_string(), place(vec!["pc_rowan".to_string()]));
     now.actors.insert(
         "pc_rowan".to_string(),
         pc("gate", "state/actors/pc_rowan.yaml"),

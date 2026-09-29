@@ -6,7 +6,8 @@ use spookery_kernel::model::{ActorLive, Now, PauseView, PlaceLive, Presence, Run
 
 fn write(path: &Path, text: &str) {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
+        fs::create_dir_all(parent)
+            .unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
     }
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
@@ -137,9 +138,13 @@ flags: []
 
 #[tokio::test]
 async fn v0_scheduler_sleeps_then_catches_up_on_this_thread() {
-    let source = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
-        .unwrap();
-    assert!(source.contains("tokio::time::sleep"), "scheduler does not sleep on a Tokio timer");
+    let source =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
+            .unwrap();
+    assert!(
+        source.contains("tokio::time::sleep"),
+        "scheduler does not sleep on a Tokio timer"
+    );
     assert!(
         !source.contains("tokio::spawn"),
         "scheduler spawns a tick instead of calling run_tick on the calling thread"

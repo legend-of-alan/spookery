@@ -1,9 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use spookery_kernel::perceive::StockView;
 use spookery_kernel::DigestViewer;
+
+use super::support::{copy_dir, spook};
 
 const HOST: &str = "\
 effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
@@ -20,40 +21,20 @@ message note_mira_door Back at dusk. Oil on the shelf.
 clock assassination_debt 2 6 paused
 ";
 
-fn spook(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(args)
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"))
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
-
 fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
+        let entries =
+            fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
         for entry in entries {
             let entry = entry.unwrap_or_else(|err| panic!("dirent {}: {err}", dir.display()));
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
             } else {
-                let bytes = fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+                let bytes =
+                    fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
                 out.push((path, bytes));
             }
         }
@@ -99,7 +80,8 @@ fn v0_c09_idle_ux() {
     assert_eq!(String::from_utf8_lossy(&status.stdout), HOST);
     assert_eq!(files(&pack), before, "status wrote the pack");
 
-    let shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let shard =
+        spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
     let now = shard.now();
     assert_eq!(now.tick_index, 13);
     assert_eq!(now.world_time, 1860);

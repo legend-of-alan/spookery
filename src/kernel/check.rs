@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::canon::Canon;
-use crate::error::Code;
+use crate::error::Reason;
 use crate::model::{PcSheet, ViewerId};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,7 +26,7 @@ pub struct CheckOut {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CheckNotice {
     Rolled { actor_id: String, out: CheckOut },
-    Refused { actor_id: String, code: Code },
+    Refused { actor_id: String, code: Reason },
 }
 
 impl CheckNotice {
@@ -37,10 +37,10 @@ impl CheckNotice {
     }
 }
 
-pub fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Code> {
-    let file: ChecksFile = serde_saphyr::from_str(text).map_err(|_| Code::Schema)?;
+pub fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Reason> {
+    let file: ChecksFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
     if file.schema != "checks/v0" {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let mut checks = BTreeMap::new();
     for entry in file.checks {
@@ -58,22 +58,22 @@ pub fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Code> {
                 )
                 .is_some()
         {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
     }
     Ok(checks)
 }
 
-pub fn die_face(rng: &[u8], n: usize, sides: u32) -> Result<u32, Code> {
+pub fn die_face(rng: &[u8], n: usize, sides: u32) -> Result<u32, Reason> {
     if sides == 0 {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
-    let start = n.checked_mul(4).ok_or(Code::NotInSpec)?;
-    let end = start.checked_add(4).ok_or(Code::NotInSpec)?;
+    let start = n.checked_mul(4).ok_or(Reason::NotInSpec)?;
+    let end = start.checked_add(4).ok_or(Reason::NotInSpec)?;
     if end > rng.len() || end > 32 {
-        return Err(Code::NotInSpec);
+        return Err(Reason::NotInSpec);
     }
-    let word = u32::from_le_bytes(rng[start..end].try_into().map_err(|_| Code::NotInSpec)?);
+    let word = u32::from_le_bytes(rng[start..end].try_into().map_err(|_| Reason::NotInSpec)?);
     Ok((word % sides) + 1)
 }
 
@@ -86,13 +86,13 @@ pub fn resolve_check(
     target: i64,
     rng: &[u8],
     die_cursor: &mut usize,
-) -> Result<CheckOut, Code> {
-    let check = canon.checks.get(check_id).ok_or(Code::UnknownKey)?;
+) -> Result<CheckOut, Reason> {
+    let check = canon.checks.get(check_id).ok_or(Reason::UnknownKey)?;
     let ViewerId::Player(id) = viewer else {
-        return Err(Code::UnknownKey);
+        return Err(Reason::UnknownKey);
     };
-    let sheet = sheets.get(id).ok_or(Code::UnknownKey)?;
-    let stat = sheet.stats.get(&check.stat).copied().ok_or(Code::UnknownKey)?;
+    let sheet = sheets.get(id).ok_or(Reason::UnknownKey)?;
+    let stat = sheet.stats.get(&check.stat).copied().ok_or(Reason::UnknownKey)?;
     let mut faces = Vec::with_capacity(check.dice_count as usize);
     for _ in 0..check.dice_count {
         let face = die_face(rng, *die_cursor, check.dice_sides)?;

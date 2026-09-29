@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::Code;
+use crate::error::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -277,17 +277,17 @@ pub enum ViewerId {
 }
 
 impl ViewerId {
-    pub fn parse(raw: &str) -> Result<Self, Code> {
+    pub fn parse(raw: &str) -> Result<Self, Reason> {
         let Some((kind, id)) = raw.split_once(':') else {
-            return Err(Code::UnscopedPerceive);
+            return Err(Reason::UnscopedPerceive);
         };
         if id.is_empty() {
-            return Err(Code::UnscopedPerceive);
+            return Err(Reason::UnscopedPerceive);
         }
         match kind {
             "player" => Ok(ViewerId::Player(id.to_string())),
             "npc" => Ok(ViewerId::Npc(id.to_string())),
-            _ => Err(Code::UnscopedPerceive),
+            _ => Err(Reason::UnscopedPerceive),
         }
     }
 
@@ -304,11 +304,11 @@ impl ViewerId {
         }
     }
 
-    pub fn from_kind(kind: ActorKind, id: &str) -> Result<Self, Code> {
+    pub fn from_kind(kind: ActorKind, id: &str) -> Result<Self, Reason> {
         match kind {
             ActorKind::Npc => Ok(ViewerId::Npc(id.to_string())),
             ActorKind::Player => Ok(ViewerId::Player(id.to_string())),
-            ActorKind::System => Err(Code::UnscopedPerceive),
+            ActorKind::System => Err(Reason::UnscopedPerceive),
         }
     }
 }

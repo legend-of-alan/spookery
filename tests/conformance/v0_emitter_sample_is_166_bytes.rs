@@ -39,11 +39,14 @@ fn v0_emitter_sample_is_166_bytes() {
         yes_word: "yes",
         num_word: "1842",
     };
-    let text = serde_saphyr::to_string_with_options(
-        &sample,
-        spookery_kernel::codec::NOW_EMIT_OPTIONS(),
-    )
-    .unwrap_or_else(|err| panic!("emit sample: {err}"));
-    assert_eq!(text.len(), 166, "emitter sample is {} bytes:\n{text:?}", text.len());
+    let text =
+        serde_saphyr::to_string_with_options(&sample, spookery_kernel::codec::NOW_EMIT_OPTIONS())
+            .unwrap_or_else(|err| panic!("emit sample: {err}"));
+    assert_eq!(
+        text.len(),
+        166,
+        "emitter sample is {} bytes:\n{text:?}",
+        text.len()
+    );
     assert_eq!(text, SAMPLE);
 }

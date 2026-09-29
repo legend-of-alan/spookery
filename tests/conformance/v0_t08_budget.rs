@@ -2,18 +2,24 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_kernel::model::{ActorLive, Now, PauseView, PlaceLive, Presence, RunState, TickCounters};
+use spookery_kernel::model::{
+    ActorLive, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
+};
 use spookery_tick::tick_pack;
 
 fn write(path: &Path, text: &str) {
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
+        fs::create_dir_all(parent)
+            .unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
     }
     fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
 }
 
 fn copy_file(from: &Path, to: &Path) {
-    write(to, &fs::read_to_string(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())));
+    write(
+        to,
+        &fs::read_to_string(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())),
+    );
 }
 
 fn crowd(root: &Path, rules: &Path) {
@@ -93,7 +99,8 @@ tick:
     for name in ["moves.yaml", "checks.yaml", "tick.yaml"] {
         copy_file(&rules.join(name), &root.join("rules").join(name));
     }
-    let rev = spookery_kernel::canon::pack_rev(root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
+    let rev =
+        spookery_kernel::canon::pack_rev(root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
     let mut places = BTreeMap::new();
     places.insert(
         "yard".to_string(),
@@ -130,7 +137,8 @@ tick:
         messages: Vec::new(),
         proposals: Vec::new(),
     };
-    let text = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit_now: {err}"));
+    let text =
+        spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit_now: {err}"));
     write(&root.join("state/now.yaml"), &text);
 }
 
@@ -150,7 +158,8 @@ fn v0_t08_budget() {
 
     tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
 
-    let shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let shard =
+        spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
     let now = shard.now();
     assert_eq!(now.tick_index, 1);
     let npc_count = now.actors.values().filter(|actor| actor.is_npc()).count();
@@ -162,7 +171,8 @@ fn v0_t08_budget() {
         .count();
     let tape = fs::read_to_string(pack.join("state/log/tick-0001.jsonl"))
         .unwrap_or_else(|err| panic!("read tape: {err}"));
-    let record: serde_json::Value = serde_json::from_str(tape.trim_end()).unwrap_or_else(|err| panic!("parse tape: {err}"));
+    let record: serde_json::Value =
+        serde_json::from_str(tape.trim_end()).unwrap_or_else(|err| panic!("parse tape: {err}"));
     let applied = record
         .get("intents")
         .and_then(|intents| intents.as_array())

@@ -1,28 +1,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-fn spook(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(args)
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"))
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
+use super::support::{copy_dir, spook};
 
 fn lamp_oil(pack: &Path) -> i64 {
     let shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"));

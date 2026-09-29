@@ -79,7 +79,10 @@ pub fn say_event(tape: &TapeLine) -> Vec<u8> {
 }
 
 pub fn player_queued_line(id: &str) -> String {
-    ended(&obj([("kind", json_str("queued")), ("id", Value::String(id.to_string()))]))
+    ended(&obj([
+        ("kind", json_str("queued")),
+        ("id", Value::String(id.to_string())),
+    ]))
 }
 
 pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
@@ -92,7 +95,10 @@ pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
 }
 
 pub fn player_check_line(success: bool) -> String {
-    ended(&obj([("kind", json_str("check")), ("success", Value::Bool(success))]))
+    ended(&obj([
+        ("kind", json_str("check")),
+        ("success", Value::Bool(success)),
+    ]))
 }
 
 pub fn check_event(out: &CheckOut) -> Vec<u8> {
@@ -108,11 +114,17 @@ pub fn check_event(out: &CheckOut) -> Vec<u8> {
 }
 
 pub fn player_resume_line(text: &str) -> String {
-    ended(&obj([("kind", json_str("resume")), ("text", Value::String(text.to_string()))]))
+    ended(&obj([
+        ("kind", json_str("resume")),
+        ("text", Value::String(text.to_string())),
+    ]))
 }
 
 pub fn player_refused_line(code: &str) -> String {
-    ended(&obj([("kind", json_str("refused")), ("code", Value::String(code.to_string()))]))
+    ended(&obj([
+        ("kind", json_str("refused")),
+        ("code", Value::String(code.to_string())),
+    ]))
 }
 
 pub fn player_perceive_line(view: &Perceive) -> String {
@@ -124,7 +136,10 @@ pub fn perceive_value(view: &Perceive) -> Value {
     map.insert("kind".to_string(), json_str("perceive"));
     map.insert("viewer".to_string(), Value::String(view.viewer.clone()));
     map.insert("place".to_string(), Value::String(view.place.clone()));
-    map.insert("visible_actors".to_string(), string_list(&view.visible_actors));
+    map.insert(
+        "visible_actors".to_string(),
+        string_list(&view.visible_actors),
+    );
     map.insert(
         "known_facts".to_string(),
         Value::Array(view.known_facts.iter().map(fact_value).collect()),
@@ -133,9 +148,18 @@ pub fn perceive_value(view: &Perceive) -> Value {
         "messages".to_string(),
         Value::Array(view.messages.iter().map(message_value).collect()),
     );
-    map.insert("unknown_mentioned".to_string(), string_list(&view.unknown_mentioned));
-    map.insert("clocks".to_string(), Value::Array(view.clocks.iter().map(clock_value).collect()));
-    map.insert("stocks".to_string(), Value::Array(view.stocks.iter().map(stock_value).collect()));
+    map.insert(
+        "unknown_mentioned".to_string(),
+        string_list(&view.unknown_mentioned),
+    );
+    map.insert(
+        "clocks".to_string(),
+        Value::Array(view.clocks.iter().map(clock_value).collect()),
+    );
+    map.insert(
+        "stocks".to_string(),
+        Value::Array(view.stocks.iter().map(stock_value).collect()),
+    );
     map.insert(
         "schedule_hint".to_string(),
         match &view.schedule_hint {
@@ -168,7 +192,12 @@ pub fn code_result(code: &str) -> Value {
     obj([("code", Value::String(code.to_string()))])
 }
 
-pub fn session_status(now: &Now, queued: &[Intent], last_seq: u64, events: Option<&[TapeLine]>) -> Value {
+pub fn session_status(
+    now: &Now,
+    queued: &[Intent],
+    last_seq: u64,
+    events: Option<&[TapeLine]>,
+) -> Value {
     let mut map = Map::new();
     map.insert(
         "presence".to_string(),
@@ -182,8 +211,14 @@ pub fn session_status(now: &Now, queued: &[Intent], last_seq: u64, events: Optio
         "pause".to_string(),
         obj([
             ("named_plot_clocks", run_state(now.pause.named_plot_clocks)),
-            ("relationship_drift", run_state(now.pause.relationship_drift)),
-            ("subsistence_clocks", run_state(now.pause.subsistence_clocks)),
+            (
+                "relationship_drift",
+                run_state(now.pause.relationship_drift),
+            ),
+            (
+                "subsistence_clocks",
+                run_state(now.pause.subsistence_clocks),
+            ),
             ("travel", run_state(now.pause.travel)),
         ]),
     );
@@ -191,7 +226,10 @@ pub fn session_status(now: &Now, queued: &[Intent], last_seq: u64, events: Optio
     map.insert("tick_index".to_string(), Value::from(now.tick_index));
     map.insert("state_rev".to_string(), Value::from(now.state_rev));
     map.insert("pack_rev".to_string(), Value::String(now.pack_rev.clone()));
-    map.insert("last_tick_at".to_string(), Value::String(now.last_tick_at.clone()));
+    map.insert(
+        "last_tick_at".to_string(),
+        Value::String(now.last_tick_at.clone()),
+    );
     map.insert(
         "queued".to_string(),
         Value::Array(
@@ -209,7 +247,10 @@ pub fn session_status(now: &Now, queued: &[Intent], last_seq: u64, events: Optio
     );
     map.insert("last_seq".to_string(), Value::from(last_seq));
     if let Some(events) = events {
-        map.insert("events".to_string(), Value::Array(events.iter().map(say_value).collect()));
+        map.insert(
+            "events".to_string(),
+            Value::Array(events.iter().map(say_value).collect()),
+        );
     }
     Value::Object(map)
 }
@@ -244,7 +285,10 @@ fn clock_value(clock: &ClockView) -> Value {
 }
 
 fn stock_value(stock: &StockView) -> Value {
-    obj([("sku", Value::String(stock.sku.clone())), ("qty", Value::from(stock.qty))])
+    obj([
+        ("sku", Value::String(stock.sku.clone())),
+        ("qty", Value::from(stock.qty)),
+    ])
 }
 
 fn hint_value(hint: &ScheduleHint) -> Value {

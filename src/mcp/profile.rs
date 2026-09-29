@@ -4,7 +4,7 @@ use std::sync::Arc;
 use rmcp::model::{JsonObject, ListToolsResult, PaginatedRequestParam, ServerInfo, Tool, ToolsCapability};
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
-use spookery_kernel::Code;
+use spookery_kernel::Reason;
 
 const TABLE_TOOLS: &[&str] = &[
     "session_open",
@@ -63,18 +63,18 @@ fn tool_names(profile: Profile) -> &'static [&'static str] {
     }
 }
 
-pub fn serve(pack: &Path, profile: Profile) -> Result<(), Code> {
+pub fn serve(pack: &Path, profile: Profile) -> Result<(), Reason> {
     let _shard = spookery_kernel::open_shard(pack)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
-        .map_err(|_| Code::NotInSpec)?;
+        .map_err(|_| Reason::NotInSpec)?;
     runtime.block_on(async {
         let running = ToolServer { profile }
             .serve((tokio::io::stdin(), tokio::io::stdout()))
             .await
-            .map_err(|_| Code::NotInSpec)?;
-        running.waiting().await.map_err(|_| Code::NotInSpec)?;
+            .map_err(|_| Reason::NotInSpec)?;
+        running.waiting().await.map_err(|_| Reason::NotInSpec)?;
         Ok(())
     })
 }

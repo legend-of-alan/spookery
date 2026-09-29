@@ -17,18 +17,19 @@ use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use spookery_kernel::model::{ActorLive, Presence};
 use spookery_kernel::perceive::perceive;
 use spookery_kernel::store::{open_shard, Shard};
-use spookery_kernel::{idle_digest, Code, DigestViewer};
+use spookery_kernel::{idle_digest, DigestViewer, Reason};
 use spookery_tick::commit_presence;
 
-mod codec;
-mod round;
+mod protocol;
 mod speech;
+mod tools;
+mod turn;
 
-pub use round::{commit_queued, mechanical, on_scheduled_wake, queue_attempt, queue_wait, Mechanical};
 pub use speech::{player_scrollback, speak};
+pub use turn::{commit_queued, on_scheduled_wake, queue_attempt, queue_wait, turn, Turn};
 
-pub enum Fail {
-    Code(Code),
+pub enum Error {
+    Reason(Reason),
     Io(io::Error),
 }
 
@@ -41,10 +42,10 @@ pub enum SocketEnd {
     Close,
 }
 
-pub fn listen(pack: &Path) -> Result<(), Fail> {
-    let listener = TcpListener::bind("127.0.0.1:9737").map_err(Fail::Io)?;
-    let mut shard = open_shard(pack).map_err(Fail::Code)?;
-    if clear_crashed(&mut shard).map_err(Fail::Code)? {
+pub fn listen(pack: &Path) -> Result<(), Error> {
+    let listener = TcpListener::bind("127.0.0.1:9737").map_err(Error::Io)?;
+    let mut shard = open_shard(pack).map_err(Error::Reason)?;
+    if clear_crashed(&mut shard).map_err(Error::Reason)? {
         print_host(&shard);
     }
     let idle = shard.budget().tick_every_real_seconds;
@@ -53,7 +54,7 @@ pub fn listen(pack: &Path) -> Result<(), Fail> {
         .worker_threads(2)
         .enable_all()
         .build()
-        .map_err(Fail::Io)?;
+        .map_err(Error::Io)?;
     let handle = runtime.handle().clone();
     let started = Arc::new(AtomicBool::new(false));
     let flag = Arc::clone(&started);
@@ -120,7 +121,7 @@ pub fn listen(pack: &Path) -> Result<(), Fail> {
         let msg = match rx.recv() {
             Ok(msg) => msg,
             Err(_) => {
-                eprintln!("{}", Code::NotInSpec);
+                eprintln!("{}", Reason::NotInSpec);
                 std::process::exit(1);
             }
         };
@@ -131,9 +132,14 @@ pub fn listen(pack: &Path) -> Result<(), Fail> {
     }
 }
 
-pub fn seat_player(shard: &mut Shard, actor_id: &str) -> Result<String, Code> {
-    if !shard.now().actors.get(actor_id).is_some_and(ActorLive::is_pc) {
-        return Err(Code::Schema);
+pub fn seat_player(shard: &mut Shard, actor_id: &str) -> Result<String, Reason> {
+    if !shard
+        .now()
+        .actors
+        .get(actor_id)
+        .is_some_and(ActorLive::is_pc)
+    {
+        return Err(Reason::Schema);
     }
     let session_id = mint_session_id();
     let mut presence = shard.now().presence.clone();
@@ -141,7 +147,7 @@ pub fn seat_player(shard: &mut Shard, actor_id: &str) -> Result<String, Code> {
     if !presence.actors_present.iter().any(|id| id == actor_id) {
         presence.actors_present.push(actor_id.to_string());
     }
-    presence.humans = u32::try_from(presence.session_ids.len()).map_err(|_| Code::Schema)?;
+    presence.humans = u32::try_from(presence.session_ids.len()).map_err(|_| Reason::Schema)?;
     commit_presence(shard, presence)?;
     Ok(session_id)
 }
@@ -151,20 +157,25 @@ pub fn release_player_seat(
     session_id: &str,
     actor_id: &str,
     end: SocketEnd,
-) -> Result<bool, Code> {
+) -> Result<bool, Reason> {
     match end {
-        SocketEnd::Eof | SocketEnd::Read | SocketEnd::Write | SocketEnd::Keepalive | SocketEnd::Close => {}
+        SocketEnd::Eof
+        | SocketEnd::Read
+        | SocketEnd::Write
+        | SocketEnd::Keepalive
+        | SocketEnd::Close => {}
     }
     let mut presence = shard.now().presence.clone();
     presence.session_ids.retain(|id| id != session_id);
     presence.actors_present.retain(|id| id != actor_id);
-    presence.humans = u32::try_from(presence.session_ids.len()).map_err(|_| Code::Schema)?;
+    presence.humans = u32::try_from(presence.session_ids.len()).map_err(|_| Reason::Schema)?;
     commit_presence(shard, presence)
 }
 
-fn clear_crashed(shard: &mut Shard) -> Result<bool, Code> {
+fn clear_crashed(shard: &mut Shard) -> Result<bool, Reason> {
     let presence = &shard.now().presence;
-    if presence.session_ids.is_empty() && presence.actors_present.is_empty() && presence.humans == 0 {
+    if presence.session_ids.is_empty() && presence.actors_present.is_empty() && presence.humans == 0
+    {
         return Ok(false);
     }
     commit_presence(
@@ -214,7 +225,10 @@ struct Seats {
 
 impl Default for Seats {
     fn default() -> Self {
-        Self { player: None, gm: None }
+        Self {
+            player: None,
+            gm: None,
+        }
     }
 }
 
@@ -274,9 +288,14 @@ fn on_msg(
     seats: &mut Seats,
     restart: &tokio::sync::watch::Sender<u64>,
     msg: Msg,
-) -> Result<(), Code> {
+) -> Result<(), Reason> {
     match msg {
-        Msg::Hello { conn, line, out, reply } => {
+        Msg::Hello {
+            conn,
+            line,
+            out,
+            reply,
+        } => {
             let answer = on_hello(shard, seats, conn, &line, out)?;
             let _ = reply.send(answer);
         }
@@ -285,9 +304,17 @@ fn on_msg(
             let _ = reply.send(answer);
         }
         Msg::Fault { conn, end, ack } => on_fault(shard, seats, conn, end, ack)?,
-        Msg::Tool { name, arguments, reply } => {
-            let done = round::gm_tool(shard, &name, arguments);
-            let notices = if done.ticked { shard.take_rolls() } else { Vec::new() };
+        Msg::Tool {
+            name,
+            arguments,
+            reply,
+        } => {
+            let done = tools::gm_tool(shard, &name, arguments);
+            let notices = if done.ticked {
+                shard.take_rolls()
+            } else {
+                Vec::new()
+            };
             if done.ticked {
                 refresh_player(shard, seats, &notices);
                 print_host(shard);
@@ -311,7 +338,7 @@ fn on_msg(
             if let Some(gm) = &seats.gm {
                 if let Ok(mut pending) = gm.after_response.lock() {
                     pending.extend(done.after);
-                    pending.extend(round::gm_check_frames(&notices));
+                    pending.extend(turn::gm_check_frames(&notices));
                 }
             }
             if done.advanced {
@@ -325,7 +352,7 @@ fn on_msg(
             }
         }
         Msg::Stdin(line) if line == "stop" => shutdown(shard, seats),
-        Msg::Stdin(_) => eprintln!("{}", Code::NotInSpec),
+        Msg::Stdin(_) => eprintln!("{}", Reason::NotInSpec),
         Msg::StdinEof => shutdown(shard, seats),
     }
     Ok(())
@@ -340,7 +367,7 @@ fn refresh_player(shard: &Shard, seats: &Seats, notices: &[spookery_kernel::chec
     let Some(player) = &seats.player else {
         return;
     };
-    let mut out = round::player_notice_lines(notices, &player.actor_id);
+    let mut out = turn::player_notice_lines(notices, &player.actor_id);
     if let Ok(text) = player_refresh(shard, &player.actor_id) {
         out.push_str(&text);
         let _ = player.out.send(out.into_bytes());
@@ -362,18 +389,16 @@ fn shutdown(shard: &mut Shard, seats: &mut Seats) -> ! {
     std::process::exit(0);
 }
 
-
-
 fn on_hello(
     shard: &mut Shard,
     seats: &mut Seats,
     conn: u64,
     line: &str,
     out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
-) -> Result<HelloReply, Code> {
+) -> Result<HelloReply, Reason> {
     if line == "gm" {
         if seats.gm.is_some() {
-            return Ok(HelloReply::Refused(refused_line(Code::SessionFull)));
+            return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
         // Stored tape is not written on accept. Scrollback is session_status with since.
         let after_response = Arc::new(Mutex::new(Vec::new()));
@@ -386,7 +411,7 @@ fn on_hello(
     }
     if let Some(id) = player_hello(line) {
         if seats.player.is_some() {
-            return Ok(HelloReply::Refused(refused_line(Code::SessionFull)));
+            return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
         let session_id = match seat_player(shard, id) {
             Ok(session_id) => session_id,
@@ -411,7 +436,7 @@ fn on_hello(
         print_host(shard);
         return Ok(HelloReply::Player);
     }
-    Ok(HelloReply::Refused(refused_line(Code::Schema)))
+    Ok(HelloReply::Refused(refused_line(Reason::Schema)))
 }
 
 fn player_hello(line: &str) -> Option<&str> {
@@ -422,7 +447,7 @@ fn player_hello(line: &str) -> Option<&str> {
     Some(id)
 }
 
-fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Code> {
+fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Reason> {
     let mut out = String::new();
     for line in player_scrollback(shard.root(), actor_id)? {
         out.push_str(&line);
@@ -431,11 +456,11 @@ fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Code> {
     Ok(out.into_bytes())
 }
 
-fn player_refresh(shard: &Shard, actor_id: &str) -> Result<String, Code> {
+fn player_refresh(shard: &Shard, actor_id: &str) -> Result<String, Reason> {
     let digest = idle_digest(shard, DigestViewer::Player(actor_id.to_string()))?;
     let view = perceive(shard, &format!("player:{actor_id}"))?;
-    let mut out = codec::player_resume_line(&digest);
-    out.push_str(&codec::player_perceive_line(&view));
+    let mut out = protocol::player_resume_line(&digest);
+    out.push_str(&protocol::player_perceive_line(&view));
     Ok(out)
 }
 
@@ -445,11 +470,20 @@ fn on_player(
     restart: &tokio::sync::watch::Sender<u64>,
     conn: u64,
     line: &str,
-) -> Result<PlayerReply, Code> {
+) -> Result<PlayerReply, Reason> {
     if is_close(line) {
-        if seats.player.as_ref().is_some_and(|player| player.conn == conn) {
+        if seats
+            .player
+            .as_ref()
+            .is_some_and(|player| player.conn == conn)
+        {
             let player = seats.player.take().expect("player seat");
-            if release_player_seat(shard, &player.session_id, &player.actor_id, SocketEnd::Close)? {
+            if release_player_seat(
+                shard,
+                &player.session_id,
+                &player.actor_id,
+                SocketEnd::Close,
+            )? {
                 print_host(shard);
             }
         }
@@ -463,8 +497,8 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match round::classify_player_line(line, &actor_id) {
-        Ok(round::PlayerLine::Speech) => match speak(shard, &actor_id, line) {
+    match turn::classify_player_line(line, &actor_id) {
+        Ok(turn::PlayerLine::Speech) => match speak(shard, &actor_id, line) {
             Ok(spoken) => {
                 println!("{}", spoken.tape);
                 let _ = io::stdout().flush();
@@ -479,7 +513,7 @@ fn on_player(
                 Ok(PlayerReply::Done)
             }
         },
-        Ok(round::PlayerLine::Mechanical) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
+        Ok(turn::PlayerLine::Turn) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
         Err(code) => {
             send_player(seats, conn, refused_line(code).into_bytes());
             Ok(PlayerReply::Done)
@@ -494,23 +528,23 @@ fn on_mechanical(
     conn: u64,
     actor_id: &str,
     line: &str,
-) -> Result<PlayerReply, Code> {
+) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match round::mechanical(shard, actor_id, line, gm_seated) {
-        Ok(round::Mechanical::Queued(note)) => {
+    match turn::turn(shard, actor_id, line, gm_seated) {
+        Ok(turn::Turn::Queued(note)) => {
             if let Some(gm) = &seats.gm {
                 let _ = gm.out.send(note.gm_frame());
             }
             send_player(seats, conn, note.player_line().into_bytes());
         }
-        Ok(round::Mechanical::Committed { advanced, notices }) => {
+        Ok(turn::Turn::Committed { advanced, notices }) => {
             if advanced {
                 bump_sleep(restart);
             }
             print_host(shard);
             match player_refresh(shard, actor_id) {
                 Ok(refresh) => {
-                    let mut bytes = round::player_notice_lines(&notices, actor_id);
+                    let mut bytes = turn::player_notice_lines(&notices, actor_id);
                     bytes.push_str(&refresh);
                     send_player(seats, conn, bytes.into_bytes());
                 }
@@ -541,8 +575,12 @@ fn on_fault(
     conn: u64,
     end: SocketEnd,
     ack: tokio::sync::oneshot::Sender<()>,
-) -> Result<(), Code> {
-    let result = if seats.player.as_ref().is_some_and(|player| player.conn == conn) {
+) -> Result<(), Reason> {
+    let result = if seats
+        .player
+        .as_ref()
+        .is_some_and(|player| player.conn == conn)
+    {
         let player = seats.player.take().expect("player seat");
         match release_player_seat(shard, &player.session_id, &player.actor_id, end) {
             Ok(true) => {
@@ -562,8 +600,8 @@ fn on_fault(
     result
 }
 
-fn refused_line(code: Code) -> String {
-    codec::player_refused_line(code.token())
+fn refused_line(code: Reason) -> String {
+    protocol::player_refused_line(code.token())
 }
 
 async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u64) {
@@ -626,7 +664,14 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
                     }
                 };
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-                if tx.send(Msg::Player { conn, line, reply: reply_tx }).is_err() {
+                if tx
+                    .send(Msg::Player {
+                        conn,
+                        line,
+                        reply: reply_tx,
+                    })
+                    .is_err()
+                {
                     break;
                 }
                 match reply_rx.await {
@@ -667,7 +712,14 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
 
 async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-    if tx.send(Msg::Fault { conn, end, ack: ack_tx }).is_err() {
+    if tx
+        .send(Msg::Fault {
+            conn,
+            end,
+            ack: ack_tx,
+        })
+        .is_err()
+    {
         return;
     }
     let _ = ack_rx.await;
@@ -687,18 +739,28 @@ struct LineWriter {
 }
 
 impl tokio::io::AsyncWrite for LineWriter {
-    fn poll_write(self: Pin<&mut Self>, _cx: &mut Context<'_>, data: &[u8]) -> Poll<io::Result<usize>> {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        _cx: &mut Context<'_>,
+        data: &[u8],
+    ) -> Poll<io::Result<usize>> {
         let writer = self.get_mut();
         writer.buf.extend_from_slice(data);
         while let Some(index) = writer.buf.iter().position(|byte| *byte == b'\n') {
             let frame: Vec<u8> = writer.buf.drain(..=index).collect();
             if writer.tx.send(frame).is_err() {
-                return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "gm writer closed")));
+                return Poll::Ready(Err(io::Error::new(
+                    io::ErrorKind::BrokenPipe,
+                    "gm writer closed",
+                )));
             }
             if let Ok(mut pending) = writer.after_response.lock() {
                 for extra in pending.drain(..) {
                     if writer.tx.send(extra).is_err() {
-                        return Poll::Ready(Err(io::Error::new(io::ErrorKind::BrokenPipe, "gm writer closed")));
+                        return Poll::Ready(Err(io::Error::new(
+                            io::ErrorKind::BrokenPipe,
+                            "gm writer closed",
+                        )));
                     }
                 }
             }
@@ -715,7 +777,9 @@ impl tokio::io::AsyncWrite for LineWriter {
     }
 }
 
-async fn read_lf_line<R: tokio::io::AsyncRead + Unpin>(stream: &mut R) -> io::Result<Option<String>> {
+async fn read_lf_line<R: tokio::io::AsyncRead + Unpin>(
+    stream: &mut R,
+) -> io::Result<Option<String>> {
     use tokio::io::AsyncReadExt;
     let mut buf = Vec::new();
     let mut byte = [0u8; 1];
@@ -766,9 +830,15 @@ impl ServerHandler for GmHost {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        let tools = round::GM_LIST
+        let tools = tools::GM_LIST
             .iter()
-            .map(|tool| Tool::new(tool.name, tool.description(), std::sync::Arc::new((tool.schema)())))
+            .map(|tool| {
+                Tool::new(
+                    tool.name,
+                    tool.description(),
+                    std::sync::Arc::new((tool.schema)()),
+                )
+            })
             .collect();
         std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
     }

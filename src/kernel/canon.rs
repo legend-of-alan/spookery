@@ -6,7 +6,7 @@ use blake2::{Blake2s256, Digest};
 use serde::Deserialize;
 
 use crate::check::{load_checks, CheckDef};
-use crate::error::Code;
+use crate::error::Reason;
 use crate::limits::{load_tick_rules, Budget};
 use crate::moves::load_moves;
 
@@ -164,7 +164,7 @@ pub fn blake2s_hex(bytes: &[u8]) -> String {
     hex_encode(&blake2s_256(bytes))
 }
 
-pub fn pack_rev(root: &Path) -> Result<String, Code> {
+pub fn pack_rev(root: &Path) -> Result<String, Reason> {
     let mut files = Vec::new();
     for dir in ["world", "cast", "rules"] {
         collect_files(&root.join(dir), root, &mut files)?;
@@ -180,7 +180,7 @@ pub fn pack_rev(root: &Path) -> Result<String, Code> {
     Ok(format!("blake2s:{}", blake2s_hex(&preimage)))
 }
 
-pub fn load_canon(root: &Path) -> Result<Canon, Code> {
+pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
     let pack = read_pack(&root.join("pack.yaml"))?;
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();
@@ -191,11 +191,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Code> {
         if !rel.ends_with(".md") {
             continue;
         }
-        let text = std::str::from_utf8(&bytes).map_err(|_| Code::Schema)?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
         let (yaml, body) = split_frontmatter(text)?;
-        let file: PlaceFile = serde_saphyr::from_str(yaml).map_err(|_| Code::Schema)?;
+        let file: PlaceFile = serde_saphyr::from_str(yaml).map_err(|_| Reason::Schema)?;
         if file.schema != "place/v0" || file.id.is_empty() {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
         for fact in file.facts {
             insert_fact(&mut facts, fact, &file.id)?;
@@ -211,7 +211,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Code> {
             )
             .is_some()
         {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
     }
     let mut cast_files = Vec::new();
@@ -220,11 +220,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Code> {
         if !rel.ends_with(".md") {
             continue;
         }
-        let text = std::str::from_utf8(&bytes).map_err(|_| Code::Schema)?;
+        let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
         let (yaml, body) = split_frontmatter(text)?;
-        let file: CastFile = serde_saphyr::from_str(yaml).map_err(|_| Code::Schema)?;
+        let file: CastFile = serde_saphyr::from_str(yaml).map_err(|_| Reason::Schema)?;
         if file.schema != "cast/v0" || file.id.is_empty() {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
         for fact in &file.facts {
             insert_fact(
@@ -244,7 +244,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Code> {
         let kind = match file.kind.as_str() {
             "npc" => CastKind::Npc,
             "pc_template" => CastKind::PcTemplate,
-            _ => return Err(Code::Schema),
+            _ => return Err(Reason::Schema),
         };
         if cast
             .insert(
@@ -258,7 +258,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Code> {
             )
             .is_some()
         {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
     }
     let moves = load_moves(&read_string(&root.join("rules/moves.yaml"))?)?;
@@ -287,9 +287,9 @@ fn fact_ids_of(facts: &BTreeMap<String, FactCanon>, owner: &str) -> Vec<String> 
         .collect()
 }
 
-fn insert_fact(facts: &mut BTreeMap<String, FactCanon>, fact: FactFile, owner: &str) -> Result<(), Code> {
+fn insert_fact(facts: &mut BTreeMap<String, FactCanon>, fact: FactFile, owner: &str) -> Result<(), Reason> {
     if fact.id.is_empty() {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     if facts
         .insert(
@@ -302,31 +302,31 @@ fn insert_fact(facts: &mut BTreeMap<String, FactCanon>, fact: FactFile, owner: &
         )
         .is_some()
     {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     Ok(())
 }
 
-fn validate_tick(file: TickFile) -> Result<TickProfile, Code> {
+fn validate_tick(file: TickFile) -> Result<TickProfile, Reason> {
     for row in &file.schedule {
         if !(0..=24).contains(&row.start) || !(0..=24).contains(&row.end) {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
         match row.activity.as_deref() {
             None => {}
             Some("work") => {}
             Some("rest") => {
                 if row.rest_delta.is_none() {
-                    return Err(Code::Schema);
+                    return Err(Reason::Schema);
                 }
             }
-            Some(_) => return Err(Code::Schema),
+            Some(_) => return Err(Reason::Schema),
         }
     }
     let mut seen_notes = BTreeSet::new();
     for note in &file.notes {
         if note.id.is_empty() || !seen_notes.insert(note.id.clone()) {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
     }
     Ok(TickProfile {
@@ -407,32 +407,32 @@ fn validate_tick(file: TickFile) -> Result<TickProfile, Code> {
     })
 }
 
-fn read_pack(path: &Path) -> Result<PackFile, Code> {
+fn read_pack(path: &Path) -> Result<PackFile, Reason> {
     if !path.is_file() {
-        return Err(Code::NotInSpec);
+        return Err(Reason::NotInSpec);
     }
-    let file: PackFile = serde_saphyr::from_str(&read_string(path)?).map_err(|_| Code::Schema)?;
+    let file: PackFile = serde_saphyr::from_str(&read_string(path)?).map_err(|_| Reason::Schema)?;
     if file.schema != "pack/v0" || file.id.is_empty() {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     Ok(file)
 }
 
-fn read_string(path: &Path) -> Result<String, Code> {
+fn read_string(path: &Path) -> Result<String, Reason> {
     fs::read_to_string(path).map_err(|_| {
         if path.is_file() {
-            Code::Schema
+            Reason::Schema
         } else {
-            Code::NotInSpec
+            Reason::NotInSpec
         }
     })
 }
 
-fn collect_files(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) -> Result<(), Code> {
+fn collect_files(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) -> Result<(), Reason> {
     if !dir.exists() {
         return Ok(());
     }
-    let mut entries = fs::read_dir(dir).map_err(|_| Code::Schema)?.collect::<Result<Vec<_>, _>>().map_err(|_| Code::Schema)?;
+    let mut entries = fs::read_dir(dir).map_err(|_| Reason::Schema)?.collect::<Result<Vec<_>, _>>().map_err(|_| Reason::Schema)?;
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         let path = entry.path();
@@ -440,23 +440,23 @@ fn collect_files(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) -> R
             collect_files(&path, root, out)?;
             continue;
         }
-        let rel = path.strip_prefix(root).map_err(|_| Code::Schema)?;
+        let rel = path.strip_prefix(root).map_err(|_| Reason::Schema)?;
         let rel = rel
             .components()
             .map(|component| component.as_os_str().to_string_lossy())
             .collect::<Vec<_>>()
             .join("/");
-        let bytes = fs::read(&path).map_err(|_| Code::Schema)?;
+        let bytes = fs::read(&path).map_err(|_| Reason::Schema)?;
         out.push((rel, bytes));
     }
     Ok(())
 }
 
-fn split_frontmatter(text: &str) -> Result<(&str, &str), Code> {
+fn split_frontmatter(text: &str) -> Result<(&str, &str), Reason> {
     let rest = text
         .strip_prefix("---\n")
         .or_else(|| text.strip_prefix("---\r\n"))
-        .ok_or(Code::Schema)?;
+        .ok_or(Reason::Schema)?;
     if let Some(index) = rest.find("\n---\n") {
         return Ok((&rest[..index], &rest[index + 5..]));
     }
@@ -466,7 +466,7 @@ fn split_frontmatter(text: &str) -> Result<(&str, &str), Code> {
     if let Some(yaml) = rest.strip_suffix("\n---") {
         return Ok((yaml, ""));
     }
-    Err(Code::Schema)
+    Err(Reason::Schema)
 }
 
 fn hex_encode(bytes: &[u8]) -> String {

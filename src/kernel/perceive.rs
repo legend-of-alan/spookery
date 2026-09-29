@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
-use crate::error::Code;
+use crate::error::Reason;
 use crate::firewall::allows;
 use crate::limits::world_hour;
 use crate::model::{Message, Now, ViewerId};
@@ -49,15 +49,15 @@ pub struct ScheduleHint {
     pub activity: Option<String>,
 }
 
-pub fn perceive(shard: &Shard, as_arg: &str) -> Result<Perceive, Code> {
+pub fn perceive(shard: &Shard, as_arg: &str) -> Result<Perceive, Reason> {
     perceive_budget(shard, as_arg, BUDGET_TOKENS)
 }
 
-pub fn perceive_budget(shard: &Shard, as_arg: &str, budget_tokens: usize) -> Result<Perceive, Code> {
+pub fn perceive_budget(shard: &Shard, as_arg: &str, budget_tokens: usize) -> Result<Perceive, Reason> {
     perceive_at_budget(shard.canon(), shard.now(), as_arg, budget_tokens)
 }
 
-pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<Perceive, Code> {
+pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<Perceive, Reason> {
     perceive_at_budget(canon, now, as_arg, BUDGET_TOKENS)
 }
 
@@ -66,12 +66,12 @@ fn perceive_at_budget(
     now: &Now,
     as_arg: &str,
     budget_tokens: usize,
-) -> Result<Perceive, Code> {
+) -> Result<Perceive, Reason> {
     let viewer = ViewerId::parse(as_arg)?;
     let actor = now
         .actors
         .get(viewer.actor_id())
-        .ok_or(Code::UnknownKey)?;
+        .ok_or(Reason::UnknownKey)?;
     let place = actor.place().to_string();
     let mut visible_actors: Vec<String> = now
         .actors

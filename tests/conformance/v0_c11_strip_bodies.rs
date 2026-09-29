@@ -6,29 +6,9 @@ use std::process::Command;
 
 use spookery_tick::{replay_recorded, run_tick, tick_pack, Catchup, Reason};
 
+use super::support::{copy_dir, spook};
+
 const LEDGER: &str = "The lamp-oil ledger is short.";
-
-fn spook(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(args)
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"))
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
 
 fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     if !dir.exists() {
@@ -68,7 +48,8 @@ fn stripped_pack(label: &str) -> PathBuf {
     markdown_files(&pack.join("world"), &mut files);
     assert!(!files.is_empty(), "no markdown to strip");
     for path in &files {
-        let text = fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let text =
+            fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         let stripped = spookery_kernel::lint::strip_body(&text)
             .unwrap_or_else(|err| panic!("strip {}: {err}", path.display()));
         assert!(
@@ -79,19 +60,23 @@ fn stripped_pack(label: &str) -> PathBuf {
         fs::write(path, stripped).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
-    let mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap_or_else(|err| panic!("mira: {err}"));
+    let mira =
+        fs::read_to_string(pack.join("cast/mira.md")).unwrap_or_else(|err| panic!("mira: {err}"));
     assert!(mira.contains(LEDGER), "frontmatter secret removed");
-    let aldric = fs::read_to_string(pack.join("cast/aldric.md")).unwrap_or_else(|err| panic!("aldric: {err}"));
+    let aldric = fs::read_to_string(pack.join("cast/aldric.md"))
+        .unwrap_or_else(|err| panic!("aldric: {err}"));
     assert!(!aldric.contains(LEDGER), "secret appeared on aldric");
 
-    let rev = spookery_kernel::canon::pack_rev(&pack).unwrap_or_else(|err| panic!("pack_rev: {err}"));
+    let rev =
+        spookery_kernel::canon::pack_rev(&pack).unwrap_or_else(|err| panic!("pack_rev: {err}"));
     let now_path = pack.join("state/now.yaml");
     let mut now = spookery_kernel::codec::load_now(
         &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
     )
     .unwrap_or_else(|err| panic!("load now: {err}"));
     now.pack_rev = rev;
-    let emitted = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit now: {err}"));
+    let emitted =
+        spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit now: {err}"));
     fs::write(&now_path, emitted).unwrap_or_else(|err| panic!("write now: {err}"));
     spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("stripped pack refused: {err}"));
     pack
@@ -114,18 +99,27 @@ fn v0_c11_strip_bodies() {
         tick_ok(&closed, tick);
     }
     let perceive = {
-        let shard = spookery_kernel::open_shard(&closed).unwrap_or_else(|err| panic!("open: {err}"));
-        let view = spookery_kernel::perceive(&shard, "npc:aldric").unwrap_or_else(|err| panic!("{err}"));
+        let shard =
+            spookery_kernel::open_shard(&closed).unwrap_or_else(|err| panic!("open: {err}"));
+        let view =
+            spookery_kernel::perceive(&shard, "npc:aldric").unwrap_or_else(|err| panic!("{err}"));
         format!("{view:?}")
     };
-    let memories = fs::read_to_string(closed.join("state/memories/aldric.jsonl")).unwrap_or_default();
+    let memories =
+        fs::read_to_string(closed.join("state/memories/aldric.jsonl")).unwrap_or_default();
     let rumors = format!(
         "{}\n{}",
         fs::read_to_string(closed.join("state/rumors.yaml")).unwrap_or_default(),
         fs::read_to_string(closed.join("state/now.yaml")).unwrap_or_default()
     );
-    assert!(!perceive.contains(LEDGER), "ledger sentence in Aldric's perceive");
-    assert!(!memories.contains(LEDGER), "ledger sentence in Aldric's memories");
+    assert!(
+        !perceive.contains(LEDGER),
+        "ledger sentence in Aldric's perceive"
+    );
+    assert!(
+        !memories.contains(LEDGER),
+        "ledger sentence in Aldric's memories"
+    );
     assert!(!rumors.contains(LEDGER), "ledger sentence in rumors");
     let _ = fs::remove_dir_all(&closed);
 
@@ -180,8 +174,12 @@ fn v0_c11_strip_bodies() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert!(!crashed.join("state/.txn").exists(), "apply_effect created state/.txn");
-    let restarted = spookery_kernel::open_shard(&crashed).unwrap_or_else(|err| panic!("restart: {err}"));
+    assert!(
+        !crashed.join("state/.txn").exists(),
+        "apply_effect created state/.txn"
+    );
+    let restarted =
+        spookery_kernel::open_shard(&crashed).unwrap_or_else(|err| panic!("restart: {err}"));
     assert_eq!(restarted.now().state_rev, state_rev, "state_rev changed");
     assert_eq!(
         restarted
@@ -193,9 +191,19 @@ fn v0_c11_strip_bodies() {
         Some(lamp_oil),
         "stock value changed"
     );
-    assert_eq!(restarted.now().proposals, proposals, "proposal list changed");
-    assert!(!crashed.join("state/proposals").exists(), "a proposal file appeared");
-    assert!(!crashed.join("state/memories").exists(), "a memory file appeared");
+    assert_eq!(
+        restarted.now().proposals,
+        proposals,
+        "proposal list changed"
+    );
+    assert!(
+        !crashed.join("state/proposals").exists(),
+        "a proposal file appeared"
+    );
+    assert!(
+        !crashed.join("state/memories").exists(),
+        "a memory file appeared"
+    );
     let _ = fs::remove_dir_all(&crashed);
 
     let shop = stripped_pack("shop");
@@ -216,7 +224,10 @@ fn v0_c11_strip_bodies() {
         tick_ok(&shop, tick);
         let qty = lamp_oil_of(&shop);
         let delta = qty - previous;
-        assert!(delta.abs() <= rate, "tick {tick}: lamp_oil {previous} -> {qty}");
+        assert!(
+            delta.abs() <= rate,
+            "tick {tick}: lamp_oil {previous} -> {qty}"
+        );
         assert!(qty >= 0, "tick {tick}: lamp_oil {qty}");
         previous = qty;
     }
@@ -234,17 +245,46 @@ fn v0_c11_strip_bodies() {
             .get_mut("mira")
             .unwrap_or_else(|| panic!("mira missing"))
             .place_mut() = "docks_shop".to_string();
-        let text = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}"));
+        let text =
+            spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}"));
         fs::write(busy.join("state/now.yaml"), text).unwrap();
     }
     {
-        let mut shard = spookery_kernel::open_shard(&busy).unwrap_or_else(|err| panic!("open: {err}"));
+        let mut shard =
+            spookery_kernel::open_shard(&busy).unwrap_or_else(|err| panic!("open: {err}"));
         let wall = shard.now().last_tick_at.clone();
-        run_tick(&mut shard, Reason::Manual, &wall, Catchup::none()).unwrap_or_else(|err| panic!("tick: {err}"));
-        assert_eq!(shard.now().actors.get("mira").unwrap().place(), "docks_shop");
-        assert_eq!(shard.now().actors.get("mira").unwrap().tick().unwrap().last_act_tick, 0);
-        assert_eq!(shard.now().actors.get("bram").unwrap().place(), "docks_shop");
-        assert_eq!(shard.now().actors.get("bram").unwrap().tick().unwrap().last_act_tick, 1);
+        run_tick(&mut shard, Reason::Manual, &wall, Catchup::none())
+            .unwrap_or_else(|err| panic!("tick: {err}"));
+        assert_eq!(
+            shard.now().actors.get("mira").unwrap().place(),
+            "docks_shop"
+        );
+        assert_eq!(
+            shard
+                .now()
+                .actors
+                .get("mira")
+                .unwrap()
+                .tick()
+                .unwrap()
+                .last_act_tick,
+            0
+        );
+        assert_eq!(
+            shard.now().actors.get("bram").unwrap().place(),
+            "docks_shop"
+        );
+        assert_eq!(
+            shard
+                .now()
+                .actors
+                .get("bram")
+                .unwrap()
+                .tick()
+                .unwrap()
+                .last_act_tick,
+            1
+        );
     }
     let _ = fs::remove_dir_all(&busy);
 
@@ -263,7 +303,8 @@ fn v0_c11_strip_bodies() {
         tick_pack(&replay_played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let golden = fs::read(replay_played.join("state/now.yaml")).unwrap();
-    let temp = replay_recorded(&replay_played, &replay_start).unwrap_or_else(|err| panic!("replay: {err}"));
+    let temp = replay_recorded(&replay_played, &replay_start)
+        .unwrap_or_else(|err| panic!("replay: {err}"));
     assert_eq!(fs::read(temp.join("state/now.yaml")).unwrap(), golden);
     let _ = fs::remove_dir_all(&replay_start);
     let _ = fs::remove_dir_all(&replay_played);

@@ -5,7 +5,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
 use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::derive::{
-    filter_blocklist, kernel_intents_for_eligible_npcs, legal, season_intent,
+    filter_blocklist, kernel_intents_for_eligible_npcs, allowed, season_intent,
 };
 use spookery_kernel::expand::expand;
 use spookery_kernel::model::{ActorKind, Intent};
@@ -15,7 +15,7 @@ use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::store::{
     lock_shard, open_shard, session_status, tick_commit, PendingCommit, Shard, Txn,
 };
-use spookery_kernel::Code;
+use spookery_kernel::Reason as KernelReason;
 
 use crate::advance::{pick_advance, plan_catchup, Catchup};
 use crate::budget::prioritize;
@@ -36,7 +36,7 @@ pub struct RecordedTick {
     pub presence_humans: u32,
 }
 
-pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOutcome, Code> {
+pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOutcome, KernelReason> {
     let wall = shard.now().last_tick_at.clone();
     commit_turn_at(shard, &wall)
 }
@@ -45,7 +45,7 @@ pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOu
 pub fn commit_turn_at(
     shard: &mut Shard,
     wall: &str,
-) -> Result<spookery_kernel::store::CommitOutcome, Code> {
+) -> Result<spookery_kernel::store::CommitOutcome, KernelReason> {
     let _lock = lock_shard(shard)?;
     run_tick(shard, Reason::Flush, wall, Catchup::none())?;
     spookery_kernel::store::commit_pending(shard)
@@ -53,17 +53,17 @@ pub fn commit_turn_at(
 
 /// `include_tick: false`. No `run_tick`, no tick file, no clock advance.
 /// A write happens only when `presence` changed.
-pub fn commit_presence(shard: &mut Shard, presence: spookery_kernel::model::Presence) -> Result<bool, Code> {
+pub fn commit_presence(shard: &mut Shard, presence: spookery_kernel::model::Presence) -> Result<bool, KernelReason> {
     spookery_kernel::store::commit_presence(shard, presence)
 }
 
-pub fn tick_pack(path: &Path) -> Result<(), Code> {
+pub fn tick_pack(path: &Path) -> Result<(), KernelReason> {
     let mut shard = open_shard(path)?;
     let wall = shard.now().last_tick_at.clone();
     run_tick(&mut shard, Reason::Manual, &wall, Catchup::none())
 }
 
-pub fn run_catchup(shard: &mut Shard, now_wall: &str, downtime_hours: u64) -> Result<(), Code> {
+pub fn run_catchup(shard: &mut Shard, now_wall: &str, downtime_hours: u64) -> Result<(), KernelReason> {
     let humans = session_status(shard.now()).humans;
     let plan = plan_catchup(humans, shard.budget(), downtime_hours)?;
     let ticks = plan.ticks_to_run;
@@ -88,7 +88,7 @@ pub fn run_tick(
     reason: Reason,
     now_wall: &str,
     catchup: Catchup,
-) -> Result<(), Code> {
+) -> Result<(), KernelReason> {
     run_tick_with(shard, reason, now_wall, catchup, None)
 }
 
@@ -96,7 +96,7 @@ pub(crate) fn run_recorded_tick(
     shard: &mut Shard,
     now_wall: &str,
     recorded: RecordedTick,
-) -> Result<(), Code> {
+) -> Result<(), KernelReason> {
     run_tick_with(
         shard,
         Reason::Replay,
@@ -112,7 +112,7 @@ fn run_tick_with(
     now_wall: &str,
     catchup: Catchup,
     recorded: Option<RecordedTick>,
-) -> Result<(), Code> {
+) -> Result<(), KernelReason> {
     let _lock = if reason == Reason::Flush {
         None
     } else {
@@ -159,7 +159,7 @@ fn stage_tick(
     catchup: &Catchup,
     owns_commit: bool,
     recorded: Option<&RecordedTick>,
-) -> Result<(String, Vec<CheckNotice>), Code> {
+) -> Result<(String, Vec<CheckNotice>), KernelReason> {
     let rev_before = txn.now().state_rev;
     let world_before = txn.now().world_time;
     let humans = recorded
@@ -205,7 +205,7 @@ fn stage_tick(
     let mut seen = BTreeSet::new();
     for intent in &candidates {
         if !seen.insert(intent.id.clone()) {
-            return Err(Code::Schema);
+            return Err(KernelReason::Schema);
         }
     }
 
@@ -225,7 +225,7 @@ fn stage_tick(
         if spends_slot && npc_slots >= max_npcs {
             rejected.push(Rejected {
                 id: intent.id,
-                reason: Code::Budget.jsonl_reason().to_string(),
+                reason: KernelReason::Budget.jsonl_reason().to_string(),
             });
             continue;
         }
@@ -242,7 +242,7 @@ fn stage_tick(
             });
             continue;
         }
-        if let Err(code) = legal(txn.canon(), txn.now(), &intent) {
+        if let Err(code) = allowed(txn.canon(), txn.now(), &intent) {
             rejected.push(Rejected {
                 id: intent.id,
                 reason: code.jsonl_reason().to_string(),
@@ -252,11 +252,11 @@ fn stage_tick(
         let mut rolled: Option<CheckOut> = None;
         if intent.move_name == "attempt" {
             let Some(check_id) = intent.args.check.clone().filter(|id| !id.is_empty()) else {
-                reject_check(&mut rejected, &mut notices, &intent, Code::Schema);
+                reject_check(&mut rejected, &mut notices, &intent, KernelReason::Schema);
                 continue;
             };
             let Some(target) = intent.args.check_target else {
-                reject_check(&mut rejected, &mut notices, &intent, Code::Schema);
+                reject_check(&mut rejected, &mut notices, &intent, KernelReason::Schema);
                 continue;
             };
             let viewer = match spookery_kernel::model::ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
@@ -291,7 +291,7 @@ fn stage_tick(
                 .moves
                 .get(&intent.move_name)
                 .and_then(|check| check.clone())
-                .ok_or(Code::UnknownKey)?;
+                .ok_or(KernelReason::UnknownKey)?;
             let viewer = spookery_kernel::model::ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
             let seed = seed_preimage(&shard_id, tick_index);
             let rng = blake2s_256(seed.as_bytes());
@@ -338,16 +338,16 @@ fn stage_tick(
                     effects_out.push(effect);
                     crash_after_apply_effect();
                 }
-                Err(Code::Skipped) => rejected.push(Rejected {
+                Err(KernelReason::Skipped) => rejected.push(Rejected {
                     id: intent.id.clone(),
-                    reason: Code::Skipped.jsonl_reason().to_string(),
+                    reason: KernelReason::Skipped.jsonl_reason().to_string(),
                 }),
-                Err(Code::Budget) => {
+                Err(KernelReason::Budget) => {
                     budget_stop = true;
                     if accepted == 0 {
                         rejected.push(Rejected {
                             id: intent.id.clone(),
-                            reason: Code::Budget.jsonl_reason().to_string(),
+                            reason: KernelReason::Budget.jsonl_reason().to_string(),
                         });
                     }
                     break;
@@ -377,11 +377,11 @@ fn stage_tick(
             if intent.actor_kind == ActorKind::Npc {
                 match txn.stage_npc_counters(&intent.actor_id, humans) {
                     Ok(()) => {}
-                    Err(Code::Budget) => {
+                    Err(KernelReason::Budget) => {
                         if accepted == 0 {
                             rejected.push(Rejected {
                                 id: intent.id,
-                                reason: Code::Budget.jsonl_reason().to_string(),
+                                reason: KernelReason::Budget.jsonl_reason().to_string(),
                             });
                         } else {
                             keep_roll(&mut notices, &mut rolled, &intent.actor_id);
@@ -461,7 +461,7 @@ fn stage_tick(
     Ok((jsonl, notices))
 }
 
-fn reject_check(rejected: &mut Vec<Rejected>, notices: &mut Vec<CheckNotice>, intent: &Intent, code: Code) {
+fn reject_check(rejected: &mut Vec<Rejected>, notices: &mut Vec<CheckNotice>, intent: &Intent, code: KernelReason) {
     rejected.push(Rejected {
         id: intent.id.clone(),
         reason: code.jsonl_reason().to_string(),
@@ -487,11 +487,11 @@ fn crash_after_apply_effect() {
     }
 }
 
-fn viewer_token(intent: &Intent) -> Result<String, Code> {
+fn viewer_token(intent: &Intent) -> Result<String, KernelReason> {
     match intent.actor_kind {
         ActorKind::Npc => Ok(format!("npc:{}", intent.actor_id)),
         ActorKind::Player => Ok(format!("player:{}", intent.actor_id)),
-        ActorKind::System => Err(Code::UnscopedPerceive),
+        ActorKind::System => Err(KernelReason::UnscopedPerceive),
     }
 }
 

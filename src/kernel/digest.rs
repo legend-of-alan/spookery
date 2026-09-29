@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::error::Code;
+use crate::error::Reason;
 use crate::firewall::allows;
 use crate::model::{Clock, ViewerId};
 use crate::store::Shard;
@@ -11,7 +11,7 @@ pub enum DigestViewer {
     Player(String),
 }
 
-pub fn idle_digest(shard: &Shard, viewer: DigestViewer) -> Result<String, Code> {
+pub fn idle_digest(shard: &Shard, viewer: DigestViewer) -> Result<String, Reason> {
     let mut rows = Vec::new();
     match viewer {
         DigestViewer::Host => {
@@ -71,14 +71,14 @@ fn clock_line(id: &str, clock: &Clock) -> String {
     format!("clock {id} {} {} {state}", clock.value, clock.max)
 }
 
-fn effect_rows(root: &Path) -> Result<Vec<String>, Code> {
+fn effect_rows(root: &Path) -> Result<Vec<String>, Reason> {
     let log_dir = root.join("state/log");
     if !log_dir.is_dir() {
         return Ok(Vec::new());
     }
     let mut paths = Vec::new();
-    for entry in fs::read_dir(&log_dir).map_err(|_| Code::Schema)? {
-        let entry = entry.map_err(|_| Code::Schema)?;
+    for entry in fs::read_dir(&log_dir).map_err(|_| Reason::Schema)? {
+        let entry = entry.map_err(|_| Reason::Schema)?;
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if name.starts_with("tick-") && name.ends_with(".jsonl") {
@@ -88,7 +88,7 @@ fn effect_rows(root: &Path) -> Result<Vec<String>, Code> {
     paths.sort();
     let mut rows = Vec::new();
     for path in paths {
-        let text = fs::read_to_string(&path).map_err(|_| Code::Schema)?;
+        let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
         let (tick_index, effects) = parse_effects(&text)?;
         for (class, payload) in effects {
             rows.push((tick_index, format!("effect {class} {tick_index} {payload}")));
@@ -98,7 +98,7 @@ fn effect_rows(root: &Path) -> Result<Vec<String>, Code> {
     Ok(rows.into_iter().map(|(_, row)| row).collect())
 }
 
-fn parse_effects(text: &str) -> Result<(u64, Vec<(String, String)>), Code> {
+fn parse_effects(text: &str) -> Result<(u64, Vec<(String, String)>), Reason> {
     let bytes = text.as_bytes();
     let mut index = 0;
     skip_ws(bytes, &mut index);
@@ -127,12 +127,12 @@ fn parse_effects(text: &str) -> Result<(u64, Vec<(String, String)>), Code> {
         }
     }
     Ok((
-        tick_index.ok_or(Code::Schema)?,
-        effects.ok_or(Code::Schema)?,
+        tick_index.ok_or(Reason::Schema)?,
+        effects.ok_or(Reason::Schema)?,
     ))
 }
 
-fn parse_effect_array(bytes: &[u8], index: &mut usize) -> Result<Vec<(String, String)>, Code> {
+fn parse_effect_array(bytes: &[u8], index: &mut usize) -> Result<Vec<(String, String)>, Reason> {
     expect(bytes, index, b'[')?;
     let mut effects = Vec::new();
     loop {
@@ -170,24 +170,24 @@ fn parse_effect_array(bytes: &[u8], index: &mut usize) -> Result<Vec<(String, St
                 skip_value(bytes, index)?;
             }
         }
-        effects.push((class.ok_or(Code::Schema)?, payload.ok_or(Code::Schema)?));
+        effects.push((class.ok_or(Reason::Schema)?, payload.ok_or(Reason::Schema)?));
     }
     Ok(effects)
 }
 
-fn raw_value(bytes: &[u8], index: &mut usize) -> Result<String, Code> {
+fn raw_value(bytes: &[u8], index: &mut usize) -> Result<String, Reason> {
     let start = *index;
     skip_value(bytes, index)?;
-    let slice = bytes.get(start..*index).ok_or(Code::Schema)?;
+    let slice = bytes.get(start..*index).ok_or(Reason::Schema)?;
     std::str::from_utf8(slice)
         .map(|text| text.to_string())
-        .map_err(|_| Code::Schema)
+        .map_err(|_| Reason::Schema)
 }
 
-fn skip_value(bytes: &[u8], index: &mut usize) -> Result<(), Code> {
+fn skip_value(bytes: &[u8], index: &mut usize) -> Result<(), Reason> {
     skip_ws(bytes, index);
     if *index >= bytes.len() {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     match bytes[*index] {
         b'{' => skip_container(bytes, index, b'{', b'}'),
@@ -200,11 +200,11 @@ fn skip_value(bytes: &[u8], index: &mut usize) -> Result<(), Code> {
         b'f' => skip_literal(bytes, index, b"false"),
         b'n' => skip_literal(bytes, index, b"null"),
         b'-' | b'0'..=b'9' => skip_number(bytes, index),
-        _ => Err(Code::Schema),
+        _ => Err(Reason::Schema),
     }
 }
 
-fn skip_container(bytes: &[u8], index: &mut usize, open: u8, close: u8) -> Result<(), Code> {
+fn skip_container(bytes: &[u8], index: &mut usize, open: u8, close: u8) -> Result<(), Reason> {
     expect(bytes, index, open)?;
     let mut depth = 1usize;
     while *index < bytes.len() && depth > 0 {
@@ -226,20 +226,20 @@ fn skip_container(bytes: &[u8], index: &mut usize, open: u8, close: u8) -> Resul
     if depth == 0 {
         Ok(())
     } else {
-        Err(Code::Schema)
+        Err(Reason::Schema)
     }
 }
 
-fn skip_literal(bytes: &[u8], index: &mut usize, literal: &[u8]) -> Result<(), Code> {
+fn skip_literal(bytes: &[u8], index: &mut usize, literal: &[u8]) -> Result<(), Reason> {
     if bytes.get(*index..).is_some_and(|rest| rest.starts_with(literal)) {
         *index += literal.len();
         Ok(())
     } else {
-        Err(Code::Schema)
+        Err(Reason::Schema)
     }
 }
 
-fn skip_number(bytes: &[u8], index: &mut usize) -> Result<(), Code> {
+fn skip_number(bytes: &[u8], index: &mut usize) -> Result<(), Reason> {
     if *index < bytes.len() && bytes[*index] == b'-' {
         *index += 1;
     }
@@ -248,30 +248,30 @@ fn skip_number(bytes: &[u8], index: &mut usize) -> Result<(), Code> {
         *index += 1;
     }
     if start == *index {
-        Err(Code::Schema)
+        Err(Reason::Schema)
     } else {
         Ok(())
     }
 }
 
-fn parse_u64(bytes: &[u8], index: &mut usize) -> Result<u64, Code> {
+fn parse_u64(bytes: &[u8], index: &mut usize) -> Result<u64, Reason> {
     if *index < bytes.len() && bytes[*index] == b'-' {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let start = *index;
     while *index < bytes.len() && bytes[*index].is_ascii_digit() {
         *index += 1;
     }
     if start == *index {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     std::str::from_utf8(&bytes[start..*index])
         .ok()
         .and_then(|text| text.parse().ok())
-        .ok_or(Code::Schema)
+        .ok_or(Reason::Schema)
 }
 
-fn parse_string(bytes: &[u8], index: &mut usize) -> Result<String, Code> {
+fn parse_string(bytes: &[u8], index: &mut usize) -> Result<String, Reason> {
     expect(bytes, index, b'"')?;
     let mut out = String::new();
     while *index < bytes.len() {
@@ -281,7 +281,7 @@ fn parse_string(bytes: &[u8], index: &mut usize) -> Result<String, Code> {
             b'"' => return Ok(out),
             b'\\' => {
                 if *index >= bytes.len() {
-                    return Err(Code::Schema);
+                    return Err(Reason::Schema);
                 }
                 let escaped = bytes[*index];
                 *index += 1;
@@ -292,27 +292,27 @@ fn parse_string(bytes: &[u8], index: &mut usize) -> Result<String, Code> {
                     b'r' => out.push('\r'),
                     b't' => out.push('\t'),
                     b'u' => {
-                        let hex = bytes.get(*index..*index + 4).ok_or(Code::Schema)?;
-                        let text = std::str::from_utf8(hex).map_err(|_| Code::Schema)?;
-                        let code = u32::from_str_radix(text, 16).map_err(|_| Code::Schema)?;
-                        out.push(char::from_u32(code).ok_or(Code::Schema)?);
+                        let hex = bytes.get(*index..*index + 4).ok_or(Reason::Schema)?;
+                        let text = std::str::from_utf8(hex).map_err(|_| Reason::Schema)?;
+                        let code = u32::from_str_radix(text, 16).map_err(|_| Reason::Schema)?;
+                        out.push(char::from_u32(code).ok_or(Reason::Schema)?);
                         *index += 4;
                     }
-                    _ => return Err(Code::Schema),
+                    _ => return Err(Reason::Schema),
                 }
             }
             _ => out.push(byte as char),
         }
     }
-    Err(Code::Schema)
+    Err(Reason::Schema)
 }
 
-fn expect(bytes: &[u8], index: &mut usize, byte: u8) -> Result<(), Code> {
+fn expect(bytes: &[u8], index: &mut usize, byte: u8) -> Result<(), Reason> {
     if *index < bytes.len() && bytes[*index] == byte {
         *index += 1;
         Ok(())
     } else {
-        Err(Code::Schema)
+        Err(Reason::Schema)
     }
 }
 

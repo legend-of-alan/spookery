@@ -2,77 +2,31 @@ use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use rmcp::model::CallToolRequestParam;
 use rmcp::ServiceExt;
 use tokio::io::AsyncWriteExt;
 
-struct PortLock(std::fs::File);
-
-impl Drop for PortLock {
-    fn drop(&mut self) {
-        let _ = self.0.unlock();
-    }
-}
-
-fn lock_port() -> PortLock {
-    let path = std::env::temp_dir().join("spookery-9737.lock");
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&path)
-        .unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
-    file.lock().unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
-    PortLock(file)
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest).unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
-
-fn temp_pack(label: &str) -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let fixture = manifest.join("packs/oneshot-docks");
-    let pack = std::env::temp_dir().join(format!(
-        "spook-run-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&fixture, &pack);
-    pack
-}
+use super::support::{
+    copy_dir, lock_port, pack_arg, spawn, temp_pack, text_of, wait_count, wait_exit, wait_has,
+    wait_listen, write_stdin, Proc,
+};
 
 fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        let entries = fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
+        let entries =
+            fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
         for entry in entries {
             let entry = entry.unwrap_or_else(|err| panic!("dirent {}: {err}", dir.display()));
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
             } else {
-                let bytes = fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+                let bytes =
+                    fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
                 out.push((path, bytes));
             }
         }
@@ -98,133 +52,6 @@ fn tick_files(pack: &Path) -> Vec<String> {
     names
 }
 
-fn pack_arg(pack: &Path) -> String {
-    pack.to_str().unwrap_or_else(|| panic!("pack path is not utf-8")).to_string()
-}
-
-struct Proc {
-    child: Child,
-    stdin: Option<ChildStdin>,
-    stdout: Arc<Mutex<String>>,
-    stderr: Arc<Mutex<String>>,
-}
-
-impl Drop for Proc {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-fn spawn(args: &[&str]) -> Proc {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(args);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    let mut child = command.spawn().unwrap_or_else(|err| panic!("spawn spook: {err}"));
-    let stdin = child.stdin.take();
-    let stdout = child.stdout.take().unwrap();
-    let stderr = child.stderr.take().unwrap();
-    let stdout_buf = Arc::new(Mutex::new(String::new()));
-    let stderr_buf = Arc::new(Mutex::new(String::new()));
-    drain(stdout, Arc::clone(&stdout_buf));
-    drain(stderr, Arc::clone(&stderr_buf));
-    Proc {
-        child,
-        stdin,
-        stdout: stdout_buf,
-        stderr: stderr_buf,
-    }
-}
-
-fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
-    std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 256];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => slot.lock().unwrap().push_str(&String::from_utf8_lossy(&buf[..n])),
-            }
-        }
-    });
-}
-
-fn text_of(slot: &Arc<Mutex<String>>) -> String {
-    slot.lock().unwrap().clone()
-}
-
-fn wait_count(slot: &Arc<Mutex<String>>, needle: &str, count: usize, timeout: Duration) -> String {
-    let start = Instant::now();
-    loop {
-        let text = text_of(slot);
-        if text.matches(needle).count() >= count {
-            return text;
-        }
-        if start.elapsed() > timeout {
-            panic!("saw {} of {needle}, wanted {count}\n{text}", text.matches(needle).count());
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn wait_has(slot: &Arc<Mutex<String>>, needle: &str, timeout: Duration) -> String {
-    let start = Instant::now();
-    loop {
-        let text = text_of(slot);
-        if text.contains(needle) {
-            return text;
-        }
-        if start.elapsed() > timeout {
-            panic!("missing {needle} after {timeout:?}\n{text}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn wait_exit(proc: &mut Proc, timeout: Duration) -> std::process::ExitStatus {
-    let start = Instant::now();
-    loop {
-        if let Some(status) = proc.child.try_wait().unwrap() {
-            return status;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "process still running\nstdout:\n{}\nstderr:\n{}",
-                text_of(&proc.stdout),
-                text_of(&proc.stderr)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn wait_listen(proc: &mut Proc) {
-    let start = Instant::now();
-    loop {
-        if TcpStream::connect("127.0.0.1:9737").is_ok() {
-            return;
-        }
-        if let Some(status) = proc.child.try_wait().unwrap() {
-            panic!(
-                "spook run exited {:?}\nstdout:\n{}\nstderr:\n{}",
-                status.code(),
-                text_of(&proc.stdout),
-                text_of(&proc.stderr)
-            );
-        }
-        if start.elapsed() > Duration::from_secs(10) {
-            panic!("listener did not open\nstderr:\n{}", text_of(&proc.stderr));
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn write_stdin(proc: &mut Proc, line: &str) {
-    let stdin = proc.stdin.as_mut().unwrap();
-    writeln!(stdin, "{line}").unwrap();
-    stdin.flush().unwrap();
-}
-
 fn now_of(pack: &Path) -> spookery_kernel::model::Now {
     spookery_kernel::open_shard(pack)
         .unwrap_or_else(|err| panic!("open: {err}"))
@@ -242,9 +69,12 @@ fn wait_for_session_full(holder: &mut Proc) -> String {
             text_of(&holder.stderr)
         );
     }
-    let mut stream = TcpStream::connect("127.0.0.1:9737").unwrap_or_else(|err| panic!("connect: {err}"));
+    let mut stream =
+        TcpStream::connect("127.0.0.1:9737").unwrap_or_else(|err| panic!("connect: {err}"));
     stream.set_nodelay(true).unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap();
     stream.write_all(b"gm\n").unwrap();
     let mut line = String::new();
     BufReader::new(stream)
@@ -266,7 +96,11 @@ fn refuse_line(stream: &mut TcpStream) -> String {
     let n = reader.read_line(&mut line).unwrap();
     assert!(n > 0, "connection closed before the refused line");
     let mut extra = [0u8; 1];
-    assert_eq!(reader.read(&mut extra).unwrap(), 0, "shard left the connection open");
+    assert_eq!(
+        reader.read(&mut extra).unwrap(),
+        0,
+        "shard left the connection open"
+    );
     line
 }
 
@@ -281,7 +115,10 @@ fn v01_p14_stdin_is_not_a_play_door() {
     let stderr = wait_has(&server.stderr, "NOT_IN_SPEC", Duration::from_secs(5));
     assert_eq!(stderr.trim(), "NOT_IN_SPEC");
     assert!(text_of(&server.stdout).is_empty());
-    assert!(server.child.try_wait().unwrap().is_none(), "wait exited the process");
+    assert!(
+        server.child.try_wait().unwrap().is_none(),
+        "wait exited the process"
+    );
     assert_eq!(files(&pack), before, "stdin wait wrote the pack");
     assert!(tick_files(&pack).is_empty());
     write_stdin(&mut server, "stop");
@@ -374,15 +211,28 @@ fn v01_p19_clients_without_a_listener_use_the_operating_system_error() {
         vec!["play".to_string(), pack_arg(&pack)],
         vec!["play".to_string(), pack_arg(&only_yaml)],
         vec!["gm".to_string(), pack_arg(&pack)],
-        vec!["gm".to_string(), pack_arg(&only_yaml), "--stdio".to_string()],
-        vec!["play".to_string(), pack_arg(&pack), "--as".to_string(), "player:pc_rowan".to_string()],
+        vec![
+            "gm".to_string(),
+            pack_arg(&only_yaml),
+            "--stdio".to_string(),
+        ],
+        vec![
+            "play".to_string(),
+            pack_arg(&pack),
+            "--as".to_string(),
+            "player:pc_rowan".to_string(),
+        ],
     ] {
         let owned: Vec<&str> = args.iter().map(String::as_str).collect();
         let mut proc = spawn(&owned);
         let status = wait_exit(&mut proc, Duration::from_secs(5));
         assert_eq!(status.code(), Some(1), "{args:?}");
         assert!(text_of(&proc.stdout).is_empty(), "{args:?}");
-        assert_eq!(text_of(&proc.stderr).trim(), expected.to_string(), "{args:?}");
+        assert_eq!(
+            text_of(&proc.stderr).trim(),
+            expected.to_string(),
+            "{args:?}"
+        );
         assert!(!text_of(&proc.stderr).contains("NOT_IN_SPEC"), "{args:?}");
     }
     assert_eq!(files(&pack), before);
@@ -414,9 +264,17 @@ fn v01_p03_player_hello_opens_one_session() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let client = spawn(&["play", &pack_arg(&pack)]);
-    let stdout = wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let stdout = wait_has(
+        &client.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     assert!(stdout.contains("{\"kind\":\"resume\""));
-    assert!(client.stderr.lock().unwrap().is_empty(), "{}", text_of(&client.stderr));
+    assert!(
+        client.stderr.lock().unwrap().is_empty(),
+        "{}",
+        text_of(&client.stderr)
+    );
     let now = now_of(&pack);
     assert_eq!(now.presence.humans, 1);
     assert_eq!(now.presence.actors_present, vec!["pc_rowan".to_string()]);
@@ -436,7 +294,11 @@ fn v01_p01_second_player_is_session_full() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let _first = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&_first.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &_first.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
     assert_eq!(now_of(&pack).presence.humans, 1);
 
@@ -490,7 +352,11 @@ fn v01_p05_disconnect_and_close_drop_the_player_seat_without_a_tick() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let mut client = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &client.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     assert_eq!(now_of(&pack).presence.humans, 1);
     client.stdin.take();
     let status = wait_exit(&mut client, Duration::from_secs(5));
@@ -503,7 +369,11 @@ fn v01_p05_disconnect_and_close_drop_the_player_seat_without_a_tick() {
     assert!(tick_files(&pack).is_empty());
 
     let mut again = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&again.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &again.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     write_stdin(&mut again, "close");
     let status = wait_exit(&mut again, Duration::from_secs(5));
     assert_eq!(status.code(), Some(0));
@@ -536,7 +406,11 @@ fn v01_p14_stop_and_eof_drop_a_held_seat_and_do_not_tick() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let client = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &client.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     assert_eq!(now_of(&pack).state_rev, 1);
     write_stdin(&mut server, "stop");
     let status = wait_exit(&mut server, Duration::from_secs(5));
@@ -553,7 +427,11 @@ fn v01_p14_stop_and_eof_drop_a_held_seat_and_do_not_tick() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let client = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &client.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     server.stdin.take();
     let status = wait_exit(&mut server, Duration::from_secs(5));
     assert_eq!(status.code(), Some(0));
@@ -595,7 +473,11 @@ fn v01_p15_bad_hellos_are_schema() {
             "{\"kind\":\"refused\",\"code\":\"SCHEMA\"}\n",
             "{hello:?}"
         );
-        assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before, "{hello:?}");
+        assert_eq!(
+            fs::read(pack.join("state/now.yaml")).unwrap(),
+            before,
+            "{hello:?}"
+        );
     }
     assert_eq!(now_of(&pack).presence.humans, 0);
     let _ = fs::remove_dir_all(&pack);
@@ -608,7 +490,11 @@ fn v01_player_lines_do_not_commit() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let mut client = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &client.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
     write_stdin(&mut client, "attempt sneak shadow");
     let stderr = wait_has(&client.stderr, "NOT_IN_SPEC", Duration::from_secs(5));
@@ -627,7 +513,11 @@ fn v01_p17_quiet_socket_stays_seated() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let mut client = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&client.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &client.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let started = Instant::now();
     std::thread::sleep(Duration::from_secs(1));
     assert!(started.elapsed() < Duration::from_secs(30));
@@ -707,7 +597,10 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
 
     let opened = spookery_kernel::open_shard(&untouched).unwrap();
     assert_eq!(opened.now().presence.humans, 1);
-    assert_eq!(opened.now().presence.session_ids, vec!["crash-session".to_string()]);
+    assert_eq!(
+        opened.now().presence.session_ids,
+        vec!["crash-session".to_string()]
+    );
     drop(opened);
 
     let mut ticked = spawn(&["tick", &pack_arg(&untouched)]);
@@ -726,13 +619,24 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
 
     let mut mcp = spawn(&["run", &pack_arg(&mcp_pack), "--mcp", "pack-table"]);
     std::thread::sleep(Duration::from_millis(400));
-    assert!(mcp.child.try_wait().unwrap().is_none(), "{}", text_of(&mcp.stderr));
+    assert!(
+        mcp.child.try_wait().unwrap().is_none(),
+        "{}",
+        text_of(&mcp.stderr)
+    );
     assert_eq!(now_of(&mcp_pack).presence.humans, 1);
-    assert_eq!(now_of(&mcp_pack).presence.session_ids, vec!["crash-session".to_string()]);
+    assert_eq!(
+        now_of(&mcp_pack).presence.session_ids,
+        vec!["crash-session".to_string()]
+    );
     drop(mcp);
 
     let mut migrated = spawn(&["migrate", &pack_arg(&migrate_pack)]);
-    assert!(wait_exit(&mut migrated, Duration::from_secs(10)).success(), "{}", text_of(&migrated.stderr));
+    assert!(
+        wait_exit(&mut migrated, Duration::from_secs(10)).success(),
+        "{}",
+        text_of(&migrated.stderr)
+    );
     let now = now_of(&migrate_pack);
     assert_eq!(now.presence.humans, 1);
     assert_eq!(now.presence.session_ids, vec!["crash-session".to_string()]);
@@ -746,21 +650,35 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
     assert_eq!(cleared.state_rev, 1);
     assert_eq!(cleared.tick_index, 0);
     assert_eq!(cleared.world_time, 1080);
-    assert!(tick_files(&pack).is_empty(), "startup clear wrote a tick file");
+    assert!(
+        tick_files(&pack).is_empty(),
+        "startup clear wrote a tick file"
+    );
     assert_eq!(cleared.last_tick_at, "2026-01-01T00:00:00Z");
 
     let mut player = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &player.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     assert_eq!(now_of(&pack).presence.humans, 1);
     player.stdin.take();
-    assert_eq!(wait_exit(&mut player, Duration::from_secs(5)).code(), Some(0));
+    assert_eq!(
+        wait_exit(&mut player, Duration::from_secs(5)).code(),
+        Some(0)
+    );
     let after_player = wait_humans(&pack, 0, Duration::from_secs(5));
     assert_eq!(after_player.tick_index, 0);
     assert!(tick_files(&pack).is_empty());
 
     write_stdin(&mut server, "stop");
-    assert_eq!(wait_exit(&mut server, Duration::from_secs(5)).code(), Some(0));
-    spookery::schedule::wake(Path::new(&pack_arg(&pack))).unwrap_or_else(|err| panic!("wake: {err}"));
+    assert_eq!(
+        wait_exit(&mut server, Duration::from_secs(5)).code(),
+        Some(0)
+    );
+    spookery::schedule::wake(Path::new(&pack_arg(&pack)))
+        .unwrap_or_else(|err| panic!("wake: {err}"));
     let caught = now_of(&pack);
     assert_eq!(caught.presence.humans, 0);
     assert_eq!(caught.tick_index, 12);
@@ -778,7 +696,10 @@ fn write_crashed(pack: &Path, every: Option<&str>) {
         let text = fs::read_to_string(&path).unwrap();
         fs::write(
             &path,
-            text.replace("tick_every_real_seconds: 300", &format!("tick_every_real_seconds: {seconds}")),
+            text.replace(
+                "tick_every_real_seconds: 300",
+                &format!("tick_every_real_seconds: {seconds}"),
+            ),
         )
         .unwrap();
     }
@@ -788,7 +709,11 @@ fn write_crashed(pack: &Path, every: Option<&str>) {
     now.presence.humans = 1;
     now.presence.session_ids = vec!["crash-session".to_string()];
     now.presence.actors_present = vec!["pc_rowan".to_string()];
-    fs::write(pack.join("state/now.yaml"), spookery_kernel::codec::emit_now(&now).unwrap()).unwrap();
+    fs::write(
+        pack.join("state/now.yaml"),
+        spookery_kernel::codec::emit_now(&now).unwrap(),
+    )
+    .unwrap();
 }
 
 #[test]
@@ -804,10 +729,7 @@ fn v01_gm_tools_call_is_not_in_spec() {
             .await
             .unwrap_or_else(|err| panic!("connect: {err}"));
         stream.write_all(b"gm\n").await.unwrap();
-        let running = ()
-            .serve(stream)
-            .await
-            .unwrap_or_else(|err| panic!("mcp: {err}"));
+        let running = ().serve(stream).await.unwrap_or_else(|err| panic!("mcp: {err}"));
         let listed = tokio::time::timeout(Duration::from_secs(10), running.list_tools(None))
             .await
             .unwrap_or_else(|_| panic!("tools/list timed out"))
@@ -846,8 +768,14 @@ fn v01_gm_tools_call_is_not_in_spec() {
             .await
             .unwrap_or_else(|_| panic!("{name} timed out"))
             .unwrap_or_else(|err| panic!("{name}: {err}"));
-            let value = result.structured_content.unwrap_or_else(|| panic!("{name} has no object"));
-            assert_eq!(value.get("code").and_then(|code| code.as_str()), Some(code), "{name}");
+            let value = result
+                .structured_content
+                .unwrap_or_else(|| panic!("{name} has no object"));
+            assert_eq!(
+                value.get("code").and_then(|code| code.as_str()),
+                Some(code),
+                "{name}"
+            );
         }
         let commit = tokio::time::timeout(
             Duration::from_secs(10),
@@ -860,7 +788,10 @@ fn v01_gm_tools_call_is_not_in_spec() {
         .unwrap_or_else(|_| panic!("commit_turn timed out"))
         .unwrap_or_else(|err| panic!("commit_turn: {err}"));
         let value = commit.structured_content.unwrap();
-        assert_eq!(value.get("code").and_then(|code| code.as_str()), Some("SCHEMA"));
+        assert_eq!(
+            value.get("code").and_then(|code| code.as_str()),
+            Some("SCHEMA")
+        );
         let intent = tokio::time::timeout(
             Duration::from_secs(10),
             running.call_tool(CallToolRequestParam {
@@ -882,7 +813,10 @@ fn v01_gm_tools_call_is_not_in_spec() {
         .unwrap_or_else(|_| panic!("intent timed out"))
         .unwrap_or_else(|err| panic!("intent: {err}"));
         let value = intent.structured_content.unwrap();
-        assert!(value.get("queued").and_then(|id| id.as_str()).is_some_and(|id| !id.is_empty()));
+        assert!(value
+            .get("queued")
+            .and_then(|id| id.as_str())
+            .is_some_and(|id| !id.is_empty()));
         assert!(value.get("code").is_none());
     });
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
@@ -899,9 +833,16 @@ fn v01_p06_say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
     wait_listen(&mut server);
     let mut gm = spawn(&["gm", &pack_arg(&pack)]);
     std::thread::sleep(Duration::from_millis(200));
-    assert!(gm.child.try_wait().unwrap().is_none(), "gm seat was not held");
+    assert!(
+        gm.child.try_wait().unwrap().is_none(),
+        "gm seat was not held"
+    );
     let mut player = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &player.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
     let now = now_of(&pack);
     let tape = format!(
@@ -910,11 +851,14 @@ fn v01_p06_say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
     );
     write_stdin(&mut player, "say hello");
     let stdout = wait_has(&player.stdout, "\"text\":\"hello\"", Duration::from_secs(5));
-    assert!(
-        stdout.contains("{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"table\",\"text\":\"hello\"}")
-    );
+    assert!(stdout.contains(
+        "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"table\",\"text\":\"hello\"}"
+    ));
     assert!(!text_of(&player.stderr).contains("NOT_IN_SPEC"));
-    assert_eq!(fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap(), tape);
+    assert_eq!(
+        fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap(),
+        tape
+    );
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
     let after = now_of(&pack);
     assert_eq!(after.state_rev, now.state_rev);
@@ -922,7 +866,10 @@ fn v01_p06_say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
     assert_eq!(after.tick_index, now.tick_index);
     assert!(tick_files(&pack).is_empty());
     assert!(text_of(&server.stdout).contains(tape.trim_end()));
-    assert!(gm.child.try_wait().unwrap().is_none(), "gm seat dropped on say");
+    assert!(
+        gm.child.try_wait().unwrap().is_none(),
+        "gm seat dropped on say"
+    );
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -935,11 +882,16 @@ fn v01_p07_actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_act
     let gm = spawn(&["gm", &pack_arg(&pack)]);
     std::thread::sleep(Duration::from_millis(200));
     let mut player = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &player.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
     let now = now_of(&pack);
     write_stdin(&mut player, "talk pc_rowan psst");
-    let player_event = "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"text\":\"psst\"}";
+    let player_event =
+        "{\"kind\":\"say\",\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"text\":\"psst\"}";
     let gm_event = "{\"kind\":\"say\",\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"psst\"}";
     let player_out = wait_has(&player.stdout, player_event, Duration::from_secs(5));
     assert!(player_out.contains(player_event));
@@ -951,7 +903,10 @@ fn v01_p07_actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_act
     assert!(tick_files(&pack).is_empty());
 
     player.stdin.take();
-    assert_eq!(wait_exit(&mut player, Duration::from_secs(5)).code(), Some(0));
+    assert_eq!(
+        wait_exit(&mut player, Duration::from_secs(5)).code(),
+        Some(0)
+    );
     let freed = wait_humans(&pack, 0, Duration::from_secs(5));
     assert_eq!(freed.state_rev, now.state_rev + 1);
     assert_eq!(freed.world_time, now.world_time);
@@ -962,7 +917,9 @@ fn v01_p07_actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_act
     assert_ne!(speaker, later);
     let speaker_cursor = spookery::seat::player_scrollback(&pack, speaker).unwrap();
     let later_cursor = spookery::seat::player_scrollback(&pack, later).unwrap();
-    assert!(speaker_cursor.iter().any(|line| line.contains(player_event)));
+    assert!(speaker_cursor
+        .iter()
+        .any(|line| line.contains(player_event)));
     assert!(later_cursor.iter().all(|line| !line.contains("psst")));
     assert!(later_cursor.is_empty());
     let _ = fs::remove_dir_all(&pack);
@@ -976,7 +933,7 @@ fn v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human() {
     assert_eq!(shard.now().presence.humans, 0);
     assert!(shard.now().presence.session_ids.is_empty());
     let err = spookery::seat::speak(&shard, "pc_rowan", "talk mira good evening").unwrap_err();
-    assert_eq!(err, spookery_kernel::Code::LiveOnly);
+    assert_eq!(err, spookery_kernel::Reason::LiveOnly);
     assert!(!pack.join("state/log/session.jsonl").exists());
     drop(shard);
 
@@ -984,7 +941,11 @@ fn v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let mut player = spawn(&["play", &pack_arg(&pack)]);
-    wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    wait_has(
+        &player.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
     let now = now_of(&pack);
     assert_eq!(now.presence.humans, 1);
@@ -998,7 +959,10 @@ fn v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human() {
         "{{\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"place\":null,\"actor\":\"mira\",\"recipients\":[\"pc_rowan\"],\"text\":\"good evening\",\"tick_index\":{},\"world_time\":{}}}\n",
         now.tick_index, now.world_time
     );
-    assert_eq!(fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap(), tape);
+    assert_eq!(
+        fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap(),
+        tape
+    );
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
     assert!(tick_files(&pack).is_empty());
     let _ = fs::remove_dir_all(&pack);
@@ -1031,14 +995,23 @@ fn v01_p10_no_gm_wait_commits_one_live_tick() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let mut player = spawn(&["play", &pack_arg(&pack)]);
-    let hello = wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let hello = wait_has(
+        &player.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let seated = now_of(&pack);
     assert_eq!(seated.presence.humans, 1);
     assert_eq!(seated.world_time, 1080);
     assert_eq!(seated.tick_index, 0);
     assert!(tick_files(&pack).is_empty());
     write_stdin(&mut player, "wait");
-    let stdout = wait_count(&player.stdout, "\"kind\":\"resume\"", hello.matches("\"kind\":\"resume\"").count() + 1, Duration::from_secs(5));
+    let stdout = wait_count(
+        &player.stdout,
+        "\"kind\":\"resume\"",
+        hello.matches("\"kind\":\"resume\"").count() + 1,
+        Duration::from_secs(5),
+    );
     let added = &stdout[hello.len()..];
     assert!(added.contains("\"kind\":\"resume\""), "{added}");
     assert!(!added.contains("\"kind\":\"queued\""), "{added}");
@@ -1051,7 +1024,12 @@ fn v01_p10_no_gm_wait_commits_one_live_tick() {
     assert_eq!(now.state_rev, seated.state_rev + 1);
     assert_ne!(now.last_tick_at, seated.last_tick_at);
     assert_eq!(tick_files(&pack), vec!["tick-0001.jsonl".to_string()]);
-    let tick: serde_json::Value = serde_json::from_str(fs::read_to_string(pack.join("state/log/tick-0001.jsonl")).unwrap().trim()).unwrap();
+    let tick: serde_json::Value = serde_json::from_str(
+        fs::read_to_string(pack.join("state/log/tick-0001.jsonl"))
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
     assert_eq!(tick["presence_humans"], 1);
     assert_eq!(tick["world_time_before"], 1080);
     assert_eq!(tick["world_time_after"], 1085);
@@ -1102,11 +1080,17 @@ fn v01_p11_gm_commit_advances_world_time_and_a_held_wake_does_not() {
     wait_listen(&mut server);
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
-        let mut stream = tokio::net::TcpStream::connect("127.0.0.1:9737").await.unwrap();
+        let mut stream = tokio::net::TcpStream::connect("127.0.0.1:9737")
+            .await
+            .unwrap();
         stream.write_all(b"gm\n").await.unwrap();
         let running = ().serve(stream).await.unwrap();
         let mut player = spawn(&["play", &pack_arg(&pack)]);
-        wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+        wait_has(
+            &player.stdout,
+            "\"kind\":\"perceive\"",
+            Duration::from_secs(5),
+        );
         let seated = now_of(&pack);
         assert_eq!(seated.presence.humans, 1);
         assert_eq!(seated.world_time, 1080);
@@ -1119,7 +1103,11 @@ fn v01_p11_gm_commit_advances_world_time_and_a_held_wake_does_not() {
 
         let before = text_of(&player.stdout);
         write_stdin(&mut player, "wait");
-        let stdout = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+        let stdout = wait_has(
+            &player.stdout,
+            "\"kind\":\"queued\"",
+            Duration::from_secs(5),
+        );
         let added = &stdout[before.len()..];
         assert!(added.contains("\"kind\":\"queued\""));
         assert!(!added.contains("\"kind\":\"resume\""), "{added}");
@@ -1129,7 +1117,10 @@ fn v01_p11_gm_commit_advances_world_time_and_a_held_wake_does_not() {
 
         let committed = call_commit(&running, true).await;
         assert!(committed.get("code").is_none(), "{committed}");
-        assert!(committed["log_path"].as_str().unwrap().ends_with("tick-0001.jsonl"));
+        assert!(committed["log_path"]
+            .as_str()
+            .unwrap()
+            .ends_with("tick-0001.jsonl"));
         let now = now_of(&pack);
         assert_eq!(now.world_time, 1085);
         assert_ne!(now.world_time, 1140);
@@ -1150,14 +1141,18 @@ fn v01_p11_gm_commit_advances_world_time_and_a_held_wake_does_not() {
 
 #[test]
 fn v01_p18_early_wake_after_commit_does_not_tick_and_a_due_wake_does() {
-    let schedule = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs")).unwrap();
+    let schedule =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
+            .unwrap();
     assert!(schedule.contains("pub fn wake("));
     assert!(schedule.contains("pub fn wake_shard("));
     assert!(!schedule.contains("player_held"));
     assert!(!schedule.contains("gm_held"));
-    let round = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/round.rs")).unwrap();
-    assert!(round.contains("schedule::wake_shard"));
-    assert!(!round.contains("open_shard"));
+    let turn =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/turn.rs"))
+            .unwrap();
+    assert!(turn.contains("schedule::wake_shard"));
+    assert!(!turn.contains("open_shard"));
 
     let pack = temp_pack("stamp-wake");
     let mut shard = spookery_kernel::open_shard(&pack).unwrap();
@@ -1195,10 +1190,18 @@ fn v01_p18_early_wake_after_commit_does_not_tick_and_a_due_wake_does() {
     assert_eq!(shard.now().tick_index, 12);
     assert_eq!(shard.now().world_time, 1800);
     assert!(shard.queued_intents().is_empty());
-    let first: serde_json::Value =
-        serde_json::from_str(fs::read_to_string(due.join("state/log/tick-0001.jsonl")).unwrap().trim()).unwrap();
-    let second: serde_json::Value =
-        serde_json::from_str(fs::read_to_string(due.join("state/log/tick-0002.jsonl")).unwrap().trim()).unwrap();
+    let first: serde_json::Value = serde_json::from_str(
+        fs::read_to_string(due.join("state/log/tick-0001.jsonl"))
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
+    let second: serde_json::Value = serde_json::from_str(
+        fs::read_to_string(due.join("state/log/tick-0002.jsonl"))
+            .unwrap()
+            .trim(),
+    )
+    .unwrap();
     assert_eq!(player_waits(&first), vec![note.id]);
     assert!(player_waits(&second).is_empty(), "{second}");
     assert!(!spookery::seat::on_scheduled_wake(&mut shard, false, false).unwrap());
@@ -1217,12 +1220,20 @@ fn v01_p20_queued_wait_survives_gm_drop_and_the_next_wait_applies_both() {
     std::thread::sleep(Duration::from_millis(200));
     assert!(gm.child.try_wait().unwrap().is_none());
     let mut player = spawn(&["play", &pack_arg(&pack)]);
-    let hello = wait_has(&player.stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
+    let hello = wait_has(
+        &player.stdout,
+        "\"kind\":\"perceive\"",
+        Duration::from_secs(5),
+    );
     let seated = now_of(&pack);
     assert_eq!(seated.world_time, 1080);
     assert_eq!(seated.presence.humans, 1);
     write_stdin(&mut player, "wait");
-    let queued_out = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+    let queued_out = wait_has(
+        &player.stdout,
+        "\"kind\":\"queued\"",
+        Duration::from_secs(5),
+    );
     let added = &queued_out[hello.len()..];
     assert!(added.contains("\"kind\":\"queued\""));
     assert_eq!(added.matches("\"kind\":\"resume\"").count(), 0, "{added}");
@@ -1276,7 +1287,10 @@ fn v01_p20_queued_wait_survives_gm_drop_and_the_next_wait_applies_both() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-async fn call_commit(running: &rmcp::Peer<rmcp::RoleClient>, include_tick: bool) -> serde_json::Value {
+async fn call_commit(
+    running: &rmcp::Peer<rmcp::RoleClient>,
+    include_tick: bool,
+) -> serde_json::Value {
     let result = tokio::time::timeout(
         Duration::from_secs(10),
         running.call_tool(CallToolRequestParam {
@@ -1301,7 +1315,11 @@ fn queued_id(stdout: &str) -> String {
             continue;
         };
         if value.get("kind").and_then(|kind| kind.as_str()) == Some("queued") {
-            return value.get("id").and_then(|id| id.as_str()).unwrap().to_string();
+            return value
+                .get("id")
+                .and_then(|id| id.as_str())
+                .unwrap()
+                .to_string();
         }
     }
     panic!("no queued line in {stdout}");

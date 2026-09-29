@@ -6,6 +6,8 @@ use rmcp::service::ServiceExt;
 use rmcp::transport::TokioChildProcess;
 use tokio::process::Command;
 
+use super::support::copy_dir;
+
 const TABLE_TOOLS: &[&str] = &[
     "session_open",
     "session_status",
@@ -18,21 +20,6 @@ const TABLE_TOOLS: &[&str] = &[
     "recall",
     "session_save",
 ];
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
 
 #[tokio::test]
 async fn v0_c01_load_mcp() {
@@ -51,9 +38,8 @@ async fn v0_c01_load_mcp() {
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["run", pack.to_str().unwrap(), "--mcp", "pack-table"]);
-    let running = ().serve(
-        TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn spook: {err}")),
-    );
+    let running = ()
+        .serve(TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn spook: {err}")));
     let running = tokio::time::timeout(Duration::from_secs(15), running)
         .await
         .unwrap_or_else(|_| panic!("initialize timed out"))
@@ -96,9 +82,8 @@ fn owned(names: &[&str]) -> Vec<String> {
 async fn listed_names(pack: &Path, profile: &str) -> Vec<String> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["run", pack.to_str().unwrap(), "--mcp", profile]);
-    let running = ().serve(
-        TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn spook: {err}")),
-    );
+    let running = ()
+        .serve(TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn spook: {err}")));
     let running = tokio::time::timeout(Duration::from_secs(15), running)
         .await
         .unwrap_or_else(|_| panic!("{profile} initialize timed out"))

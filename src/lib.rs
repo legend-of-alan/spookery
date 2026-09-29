@@ -3,3 +3,5 @@ pub mod schedule;
 
 #[path = "cli/seat.rs"]
 pub mod seat;
+
+pub use seat::Error;

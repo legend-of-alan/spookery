@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use serde_json::{Map, Value};
 use spookery_kernel::model::ActorLive;
 use spookery_kernel::store::{append_session, read_session, Shard};
-use spookery_kernel::Code;
+use spookery_kernel::Reason;
 
-use super::codec::{self, TapeLine};
+use super::protocol::{self, TapeLine};
 
 #[derive(Debug)]
 pub struct Spoken {
@@ -22,7 +22,7 @@ enum Speech {
     TalkPlace { text: String },
 }
 
-pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> {
+pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
     let speech = parse_line(line, actor_id)?;
     if !shard
         .now()
@@ -30,12 +30,12 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> 
         .get(actor_id)
         .is_some_and(ActorLive::is_pc)
     {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     match &speech {
         Speech::TalkActor { actor, .. } => {
             if !shard.now().actors.contains_key(actor) {
-                return Err(Code::Schema);
+                return Err(Reason::Schema);
             }
         }
         Speech::Say { .. } | Speech::TalkPlace { .. } => {}
@@ -43,13 +43,13 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> 
     if matches!(speech, Speech::TalkActor { .. } | Speech::TalkPlace { .. })
         && shard.now().presence.humans == 0
     {
-        return Err(Code::LiveOnly);
+        return Err(Reason::LiveOnly);
     }
     let speaker_place = shard
         .now()
         .actors
         .get(actor_id)
-        .ok_or(Code::Schema)?
+        .ok_or(Reason::Schema)?
         .place()
         .to_string();
     let (address, place, actor, text) = match speech {
@@ -57,7 +57,13 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> 
         Speech::TalkActor { actor, text } => ("actor", None, Some(actor), text),
         Speech::TalkPlace { text } => ("place", Some(speaker_place), None, text),
     };
-    let recipients = recipients(shard, Some(actor_id), address, place.as_deref(), actor.as_deref());
+    let recipients = recipients(
+        shard,
+        Some(actor_id),
+        address,
+        place.as_deref(),
+        actor.as_deref(),
+    );
     append_speech(
         shard,
         &format!("player:{actor_id}"),
@@ -70,67 +76,67 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Code> 
 }
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
-pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Spoken, Code> {
-    let arguments = arguments.ok_or(Code::Schema)?;
+pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
+    let arguments = arguments.ok_or(Reason::Schema)?;
     let mut address = None;
     let mut place = None;
     let mut actor = None;
     let mut text = None;
     for (key, value) in &arguments {
         match key.as_str() {
-            "from" => return Err(Code::Schema),
-            "address" => address = Some(value.as_str().ok_or(Code::Schema)?.to_string()),
+            "from" => return Err(Reason::Schema),
+            "address" => address = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
             "place" => {
                 place = match value {
                     Value::Null => None,
                     Value::String(text) => Some(text.clone()),
-                    _ => return Err(Code::Schema),
+                    _ => return Err(Reason::Schema),
                 };
             }
             "actor" => {
                 actor = match value {
                     Value::Null => None,
                     Value::String(text) => Some(text.clone()),
-                    _ => return Err(Code::Schema),
+                    _ => return Err(Reason::Schema),
                 };
             }
-            "text" => text = Some(value.as_str().ok_or(Code::Schema)?.to_string()),
-            _ => return Err(Code::Schema),
+            "text" => text = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
+            _ => return Err(Reason::Schema),
         }
     }
-    let address = address.ok_or(Code::Schema)?;
-    let text = one_line(&text.ok_or(Code::Schema)?)?.to_string();
+    let address = address.ok_or(Reason::Schema)?;
+    let text = one_line(&text.ok_or(Reason::Schema)?)?.to_string();
     let (place, actor) = match address.as_str() {
         "table" => {
             if place.is_some() || actor.is_some() {
-                return Err(Code::Schema);
+                return Err(Reason::Schema);
             }
             (None, None)
         }
         "place" => {
-            let place = place.ok_or(Code::Schema)?;
+            let place = place.ok_or(Reason::Schema)?;
             if place.is_empty() || actor.is_some() {
-                return Err(Code::Schema);
+                return Err(Reason::Schema);
             }
             (Some(place), None)
         }
         "actor" => {
-            let actor = actor.ok_or(Code::Schema)?;
+            let actor = actor.ok_or(Reason::Schema)?;
             if actor.is_empty() || place.is_some() || !shard.now().actors.contains_key(&actor) {
-                return Err(Code::Schema);
+                return Err(Reason::Schema);
             }
             (None, Some(actor))
         }
-        _ => return Err(Code::Schema),
+        _ => return Err(Reason::Schema),
     };
     let recipients = recipients(shard, None, &address, place.as_deref(), actor.as_deref());
     append_speech(shard, "gm", &address, place, actor, recipients, text)
 }
 
-pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Code> {
+pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Reason> {
     let mut last = 0u64;
     for tape in read_session(root)? {
-        if let Some(stored) = codec::parse_tape(&tape) {
+        if let Some(stored) = protocol::parse_tape(&tape) {
             last = stored.seq;
         }
     }
@@ -138,10 +144,10 @@ pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Code> {
 }
 
 /// Stored lines with `seq` greater than `since`, in file order.
-pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, Code> {
+pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, Reason> {
     let mut out = Vec::new();
     for tape in read_session(root)? {
-        if let Some(stored) = codec::parse_tape(&tape) {
+        if let Some(stored) = protocol::parse_tape(&tape) {
             if stored.seq > since {
                 out.push(stored);
             }
@@ -158,13 +164,13 @@ fn append_speech(
     actor: Option<String>,
     recipients: Vec<String>,
     text: String,
-) -> Result<Spoken, Code> {
+) -> Result<Spoken, Reason> {
     let tick_index = shard.now().tick_index;
     let world_time = shard.now().world_time;
     let from = from.to_string();
     let address = address.to_string();
     let seq = append_session(shard.root(), |seq| {
-        codec::tape_body(&TapeLine {
+        protocol::tape_body(&TapeLine {
             seq,
             from: from.clone(),
             address: address.clone(),
@@ -189,14 +195,14 @@ fn append_speech(
     }))
 }
 
-pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<String>, Code> {
+pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<String>, Reason> {
     let mut out = Vec::new();
     for tape in read_session(root)? {
-        let Some(stored) = codec::parse_tape(&tape) else {
+        let Some(stored) = protocol::parse_tape(&tape) else {
             continue;
         };
         if stored.recipients.iter().any(|id| id == actor_id) {
-            out.push(codec::player_say_line(&stored));
+            out.push(protocol::player_say_line(&stored));
         }
     }
     Ok(out)
@@ -204,49 +210,49 @@ pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<S
 
 fn spoken_from(stored: &TapeLine) -> Spoken {
     Spoken {
-        tape: codec::tape_body(stored),
-        player_event: codec::player_say_line(stored),
-        gm_event: codec::say_event(stored),
-        tool: codec::say_value(stored),
+        tape: protocol::tape_body(stored),
+        player_event: protocol::player_say_line(stored),
+        gm_event: protocol::say_event(stored),
+        tool: protocol::say_value(stored),
         recipients: stored.recipients.clone(),
     }
 }
 
-fn parse_line(line: &str, seated: &str) -> Result<Speech, Code> {
+fn parse_line(line: &str, seated: &str) -> Result<Speech, Reason> {
     if line.is_empty() {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let (first, rest) = split_token(line);
     let (verb, rest) = if let Some(id) = first.strip_prefix("player:") {
         if id.is_empty() || id != seated {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
         if rest.is_empty() {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
         split_token(rest)
     } else {
         (first, rest)
     };
     if verb.is_empty() {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     match verb {
         "say" => Ok(Speech::Say {
             text: one_line(rest)?.to_string(),
         }),
         "talk" => parse_talk(rest),
-        _ => Err(Code::NotInSpec),
+        _ => Err(Reason::NotInSpec),
     }
 }
 
-fn parse_talk(rest: &str) -> Result<Speech, Code> {
+fn parse_talk(rest: &str) -> Result<Speech, Reason> {
     if rest.is_empty() {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let (target, text) = split_token(rest);
     if target.is_empty() {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let text = one_line(text)?.to_string();
     if target == "place" {
@@ -259,9 +265,9 @@ fn parse_talk(rest: &str) -> Result<Speech, Code> {
     }
 }
 
-fn one_line(text: &str) -> Result<&str, Code> {
+fn one_line(text: &str) -> Result<&str, Reason> {
     if text.is_empty() || text.contains('\n') || text.chars().count() > 2000 {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     Ok(text)
 }

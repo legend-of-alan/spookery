@@ -24,7 +24,10 @@ fn hits(paths: &[PathBuf], needles: &[&str]) -> Vec<String> {
         let bytes = fs::read(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         for needle in needles {
             let needle_bytes = needle.as_bytes();
-            if bytes.windows(needle_bytes.len()).any(|window| window == needle_bytes) {
+            if bytes
+                .windows(needle_bytes.len())
+                .any(|window| window == needle_bytes)
+            {
                 found.push(format!("{} contains {needle}", path.display()));
             }
         }

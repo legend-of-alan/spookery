@@ -1,23 +1,10 @@
 use std::fs;
 #[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
+use super::support::copy_dir;
 
 fn stock(shard: &spookery_kernel::store::Shard) -> i64 {
     shard
@@ -44,7 +31,8 @@ fn v0_t06_atomic_commit() {
     let _ = fs::remove_dir_all(&pack);
     copy_dir(&fixture, &pack);
 
-    let before = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let before =
+        spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
     let state_rev = before.now().state_rev;
     let lamp_oil = stock(&before);
     let proposals = before.now().proposals.clone();
@@ -80,7 +68,11 @@ fn v0_t06_atomic_commit() {
         spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("restart: {err}"));
     assert_eq!(restarted.now().state_rev, state_rev, "state_rev changed");
     assert_eq!(stock(&restarted), lamp_oil, "stock value changed");
-    assert_eq!(restarted.now().proposals, proposals, "proposal list changed");
+    assert_eq!(
+        restarted.now().proposals,
+        proposals,
+        "proposal list changed"
+    );
     assert!(
         !pack.join("state/proposals").exists(),
         "a proposal file appeared"

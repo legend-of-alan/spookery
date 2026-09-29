@@ -1,21 +1,8 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
+use super::support::copy_dir;
 
 #[test]
 fn v0_pack_rev_mismatch_does_not_commit() {
@@ -55,10 +42,13 @@ fn v0_pack_rev_mismatch_does_not_commit() {
         before,
         "tick committed after PACK_REV_MISMATCH"
     );
-    assert!(!pack.join("state/.txn").exists(), "commit scratch was created");
+    assert!(
+        !pack.join("state/.txn").exists(),
+        "commit scratch was created"
+    );
     assert!(!pack.join("state/log").exists(), "a tick file was written");
     match spookery_kernel::open_shard(&pack) {
-        Err(spookery_kernel::Code::PackRevMismatch) => {}
+        Err(spookery_kernel::Reason::PackRevMismatch) => {}
         Err(code) => panic!("expected PACK_REV_MISMATCH, got {code}"),
         Ok(_) => panic!("open_shard accepted a mismatched pack_rev"),
     }

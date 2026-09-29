@@ -1,38 +1,16 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+
+use super::support::{copy_dir, spook};
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
-
-fn spook(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(args)
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"))
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().unwrap();
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
-}
 
 fn read_optional(path: &Path) -> String {
     fs::read_to_string(path).unwrap_or_default()
 }
 
 fn aldric_perceive(pack: &Path) -> String {
-    let shard = spookery_kernel::open_shard(pack)
-        .unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
     let view = spookery_kernel::perceive(&shard, "npc:aldric")
         .unwrap_or_else(|err| panic!("perceive: {err}"));
     format!("{view:?}")
@@ -56,7 +34,10 @@ fn v0_t01_closed_secret() {
     let mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
     let aldric = fs::read_to_string(pack.join("cast/aldric.md")).unwrap();
     assert!(mira.contains(LEDGER), "fixture secret is on mira");
-    assert!(!aldric.contains(LEDGER), "fixture secret is absent on aldric");
+    assert!(
+        !aldric.contains(LEDGER),
+        "fixture secret is absent on aldric"
+    );
 
     for tick in 1..=100 {
         let output = spook(&["tick", pack.to_str().unwrap()]);
@@ -76,8 +57,14 @@ fn v0_t01_closed_secret() {
         read_optional(&pack.join("state/now.yaml"))
     );
 
-    assert!(!perceive.contains(LEDGER), "ledger sentence in Aldric's perceive");
-    assert!(!memories.contains(LEDGER), "ledger sentence in Aldric's memories");
+    assert!(
+        !perceive.contains(LEDGER),
+        "ledger sentence in Aldric's perceive"
+    );
+    assert!(
+        !memories.contains(LEDGER),
+        "ledger sentence in Aldric's memories"
+    );
     assert!(!rumors.contains(LEDGER), "ledger sentence in rumors");
 
     let _ = fs::remove_dir_all(&pack);

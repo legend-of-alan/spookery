@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::error::Code;
+use crate::error::Reason;
 
 pub const MINUTES_PER_HOUR: u64 = 60;
 pub const MINUTES_PER_DAY: u64 = 1440;
@@ -75,10 +75,10 @@ pub fn world_hour(world_time: u64) -> i64 {
     ((world_time / MINUTES_PER_HOUR) % 24) as i64
 }
 
-pub fn load_tick_rules(text: &str) -> Result<Budget, Code> {
-    let file: TickFile = serde_saphyr::from_str(text).map_err(|_| Code::Schema)?;
+pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
+    let file: TickFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
     if file.schema != "tick/v0" {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let defaults = Budget::defaults();
     Ok(Budget {
@@ -130,11 +130,11 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Code> {
     })
 }
 
-fn take(value: Option<i64>, default: u64) -> Result<u64, Code> {
+fn take(value: Option<i64>, default: u64) -> Result<u64, Reason> {
     match value {
         None => Ok(default),
         Some(n) if n >= 0 => Ok(n as u64),
-        Some(_) => Err(Code::Schema),
+        Some(_) => Err(Reason::Schema),
     }
 }
 

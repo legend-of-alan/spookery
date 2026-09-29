@@ -1,6 +1,6 @@
 use serde_saphyr::SerializerOptions;
 
-use crate::error::Code;
+use crate::error::Reason;
 use crate::model::{sort_unique, Now, ProposalDoc};
 
 #[allow(non_snake_case)]
@@ -19,33 +19,33 @@ pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
     }
 }
 
-pub fn load_now(text: &str) -> Result<Now, Code> {
-    let now: Now = serde_saphyr::from_str(text).map_err(|_| Code::Schema)?;
+pub fn load_now(text: &str) -> Result<Now, Reason> {
+    let now: Now = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
     if now.schema != "now/v0" {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     check_occupancy(&now)?;
     Ok(now)
 }
 
-pub fn emit_now(now: &Now) -> Result<String, Code> {
+pub fn emit_now(now: &Now) -> Result<String, Reason> {
     let mut canonical = now.clone();
     canonicalize(&mut canonical);
     let text = serde_saphyr::to_string_with_options(&canonical, NOW_EMIT_OPTIONS())
-        .map_err(|_| Code::Schema)?;
+        .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
 }
 
-pub fn emit_proposal(doc: &ProposalDoc) -> Result<String, Code> {
+pub fn emit_proposal(doc: &ProposalDoc) -> Result<String, Reason> {
     if doc.schema != "proposal/v0" {
-        return Err(Code::Schema);
+        return Err(Reason::Schema);
     }
     let text = serde_saphyr::to_string_with_options(doc, NOW_EMIT_OPTIONS())
-        .map_err(|_| Code::Schema)?;
+        .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
 }
 
-pub fn emit_rumors(now: &Now) -> Result<String, Code> {
+pub fn emit_rumors(now: &Now) -> Result<String, Reason> {
     let mut rumors = now.rumors.clone();
     rumors.sort_by(|a, b| a.id.cmp(&b.id));
     for rumor in &mut rumors {
@@ -57,7 +57,7 @@ pub fn emit_rumors(now: &Now) -> Result<String, Code> {
         rumor.known_by = known;
     }
     let text = serde_saphyr::to_string_with_options(&rumors, NOW_EMIT_OPTIONS())
-        .map_err(|_| Code::Schema)?;
+        .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
 }
 
@@ -114,10 +114,10 @@ fn rebuilt_occupancy(now: &Now) -> std::collections::BTreeMap<String, Vec<String
     out
 }
 
-fn check_occupancy(now: &Now) -> Result<(), Code> {
+fn check_occupancy(now: &Now) -> Result<(), Reason> {
     for actor in now.actors.values() {
         if !now.places.contains_key(actor.place()) {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
     }
     let expected = rebuilt_occupancy(now);
@@ -126,7 +126,7 @@ fn check_occupancy(now: &Now) -> Result<(), Code> {
         listed.sort();
         let got = expected.get(place_id).map(Vec::as_slice).unwrap_or(&[]);
         if listed != got {
-            return Err(Code::Schema);
+            return Err(Reason::Schema);
         }
     }
     Ok(())
