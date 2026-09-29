@@ -1,9 +1,9 @@
 # Spookery v0.2 architecture
 
-Status: Draft. Not law. Three gates, none started. Tag `v0.1` is `b1d4fd1`. Where this file names a change, that change is the license for that gate. Until the gates are proved and this status says frozen, `docs/architecture_v0.1.md` holds, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope.
+Status: Frozen. Normative spec for v0.2. Gates A–C in §3 are proved. Tag `v0.1` is `b1d4fd1`. Where this file names a change, it wins over `docs/architecture_v0.1.md`, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope. §3 does not open another gate.
 License: CC BY 4.0, same as the v0 spec. Runtime code under /src stays AGPL-3.0-or-later.
 
-This file licenses three gates of one version. It names what becomes true, the proofs, and what stays unbuilt. It does not prescribe modules or a file-by-file plan. Do not edit `packs/oneshot-docks`, `docs/architecture_v0.md`, or the frozen body of `docs/architecture_v0.1.md`.
+This file is the frozen spec for v0.2. `docs/architecture_v0.1.md` remains the frozen spec for the sitting rules this file does not change, then `docs/architecture_v0.md`. This file does not copy them. §3 records the order in which this version became authority. Do not edit `packs/oneshot-docks`, `docs/architecture_v0.md`, or the frozen body of `docs/architecture_v0.1.md`.
 
 The v0.1 demo stays the demo. Its mechanical line is `wait`. Rowan stays in `docks_shop`. Gate B adds `travel <place>` because `expand` already turns a place target into a location effect.
 
@@ -11,7 +11,7 @@ The v0.1 demo stays the demo. Its mechanical line is `wait`. Rowan stays in `doc
 
 ## 1. What becomes true
 
-When all three gates are green, the following hold. A gate implements only the rules §3 assigns it.
+The following hold. Each gate implemented only the rules §3 assigns it.
 
 GM `tools/list` gives each name its own description. The sitting allowlist stays the v0.1 order. The five live tools name the keys their handlers already require.
 
@@ -57,7 +57,7 @@ Each item is the assertion. The new proofs live in one new conformance file, cre
 
 ## 3. Gates
 
-Three gates, none started. The letters belong to this version. v0.1's Gates A–E stay closed. This file does not open a gate in `docs/architecture_v0.1.md`.
+Gates A–C are proved. The letters belong to this version. v0.1's Gates A–E stay closed. This file does not open a gate in `docs/architecture_v0.1.md`.
 
 A gate does not prescribe modules or file order. It names what becomes true, and what stays unbuilt so the session does not invent the next gate. The proofs stay in §2. This section does not restate them.
 
