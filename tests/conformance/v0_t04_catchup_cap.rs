@@ -150,7 +150,7 @@ fn names_in(dir: &Path) -> Vec<String> {
 }
 
 #[test]
-fn tick_04_catchup_cap() {
+fn v0_t04_catchup_cap() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = std::env::temp_dir().join(format!(
         "spook-tick04-{}-{}",

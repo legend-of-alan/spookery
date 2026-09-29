@@ -69,7 +69,7 @@ fn evidence(before_pack: &str, after_pack: &str, before_rev: u64, after_rev: u64
 }
 
 #[test]
-fn cli_migrate_bumps_state_rev_and_appends_evidence() {
+fn v0_cli_migrate_bumps_state_rev_and_appends_evidence() {
     let pack = temp_pack("fresh");
     let first = migrate(&pack);
     assert!(
@@ -111,7 +111,7 @@ fn cli_migrate_bumps_state_rev_and_appends_evidence() {
 }
 
 #[test]
-fn cli_migrate_keeps_a_hand_edit_and_rewrites_pack_rev() {
+fn v0_cli_migrate_keeps_a_hand_edit_and_rewrites_pack_rev() {
     let pack = temp_pack("edit");
     let now_path = pack.join("state/now.yaml");
     let mut text = fs::read_to_string(&now_path).unwrap();
@@ -154,7 +154,7 @@ fn cli_migrate_keeps_a_hand_edit_and_rewrites_pack_rev() {
 }
 
 #[test]
-fn cli_migrate_schema_failure_writes_nothing() {
+fn v0_cli_migrate_schema_failure_writes_nothing() {
     let pack = temp_pack("schema");
     fs::write(pack.join("state/now.yaml"), "schema: no\n").unwrap();
     let before = files(&pack);

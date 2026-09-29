@@ -271,7 +271,7 @@ fn refuse_line(stream: &mut TcpStream) -> String {
 }
 
 #[test]
-fn stdin_is_not_a_play_door() {
+fn v01_p14_stdin_is_not_a_play_door() {
     let _lock = lock_port();
     let pack = temp_pack("stdin");
     let before = files(&pack);
@@ -292,7 +292,7 @@ fn stdin_is_not_a_play_door() {
 }
 
 #[test]
-fn run_as_is_not_in_spec() {
+fn v01_run_as_is_not_in_spec() {
     let _lock = lock_port();
     let pack = temp_pack("as");
     let before = files(&pack);
@@ -312,7 +312,7 @@ fn assert_port_is_free() {
 }
 
 #[test]
-fn bind_other_than_loopback_is_not_in_spec() {
+fn v01_p13_bind_other_than_loopback_is_not_in_spec() {
     let _lock = lock_port();
     let pack = temp_pack("bind");
     let before = files(&pack);
@@ -341,7 +341,7 @@ fn bind_other_than_loopback_is_not_in_spec() {
 }
 
 #[test]
-fn bind_in_use_is_the_operating_system_error() {
+fn v01_p13_bind_in_use_is_the_operating_system_error() {
     let _lock = lock_port();
     let pack = temp_pack("busy");
     let before = files(&pack);
@@ -358,7 +358,7 @@ fn bind_in_use_is_the_operating_system_error() {
 }
 
 #[test]
-fn clients_without_a_listener_use_the_operating_system_error() {
+fn v01_p19_clients_without_a_listener_use_the_operating_system_error() {
     let _lock = lock_port();
     let pack = temp_pack("down");
     let before = files(&pack);
@@ -391,7 +391,7 @@ fn clients_without_a_listener_use_the_operating_system_error() {
 }
 
 #[test]
-fn play_as_mira_is_schema_and_writes_nothing() {
+fn v01_play_as_mira_is_schema_and_writes_nothing() {
     let _lock = lock_port();
     let pack = temp_pack("mira");
     let before = files(&pack);
@@ -408,7 +408,7 @@ fn play_as_mira_is_schema_and_writes_nothing() {
 }
 
 #[test]
-fn player_hello_opens_one_session() {
+fn v01_p03_player_hello_opens_one_session() {
     let _lock = lock_port();
     let pack = temp_pack("open");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -430,7 +430,7 @@ fn player_hello_opens_one_session() {
 }
 
 #[test]
-fn second_player_is_session_full() {
+fn v01_p01_second_player_is_session_full() {
     let _lock = lock_port();
     let pack = temp_pack("full");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -460,7 +460,7 @@ fn second_player_is_session_full() {
 }
 
 #[test]
-fn gm_connect_does_not_write_presence_and_a_second_is_full() {
+fn v01_p02_p04_gm_connect_does_not_write_presence_and_a_second_is_full() {
     let _lock = lock_port();
     let pack = temp_pack("gm");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -484,7 +484,7 @@ fn gm_connect_does_not_write_presence_and_a_second_is_full() {
 }
 
 #[test]
-fn disconnect_and_close_drop_the_player_seat_without_a_tick() {
+fn v01_p05_disconnect_and_close_drop_the_player_seat_without_a_tick() {
     let _lock = lock_port();
     let pack = temp_pack("drop");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -530,7 +530,7 @@ fn wait_humans(pack: &Path, humans: u32, timeout: Duration) -> spookery_kernel::
 }
 
 #[test]
-fn stop_and_eof_drop_a_held_seat_and_do_not_tick() {
+fn v01_p14_stop_and_eof_drop_a_held_seat_and_do_not_tick() {
     let _lock = lock_port();
     let pack = temp_pack("stop");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -580,7 +580,7 @@ fn stop_and_eof_drop_a_held_seat_and_do_not_tick() {
 }
 
 #[test]
-fn bad_hellos_are_schema() {
+fn v01_p15_bad_hellos_are_schema() {
     let _lock = lock_port();
     let pack = temp_pack("schema");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -602,7 +602,7 @@ fn bad_hellos_are_schema() {
 }
 
 #[test]
-fn player_lines_do_not_commit() {
+fn v01_player_lines_do_not_commit() {
     let _lock = lock_port();
     let pack = temp_pack("lines");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -621,7 +621,7 @@ fn player_lines_do_not_commit() {
 }
 
 #[test]
-fn quiet_socket_stays_seated() {
+fn v01_p17_quiet_socket_stays_seated() {
     let _lock = lock_port();
     let pack = temp_pack("quiet");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -641,7 +641,7 @@ fn quiet_socket_stays_seated() {
 }
 
 #[test]
-fn simulated_read_error_drops_the_seat_like_close() {
+fn v01_p17_simulated_read_error_drops_the_seat_like_close() {
     let pack = temp_pack("sim");
     let mut shard = spookery_kernel::open_shard(&pack).unwrap();
     let session = spookery::seat::seat_player(&mut shard, "pc_rowan").unwrap();
@@ -692,7 +692,7 @@ fn simulated_read_error_drops_the_seat_like_close() {
 }
 
 #[test]
-fn crashed_presence_clears_before_accept_and_other_commands_do_not() {
+fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
     let _lock = lock_port();
     let pack = temp_pack("crash");
     write_crashed(&pack, None);
@@ -792,7 +792,7 @@ fn write_crashed(pack: &Path, every: Option<&str>) {
 }
 
 #[test]
-fn gm_tools_call_is_not_in_spec() {
+fn v01_gm_tools_call_is_not_in_spec() {
     let _lock = lock_port();
     let pack = temp_pack("tools");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -892,7 +892,7 @@ fn gm_tools_call_is_not_in_spec() {
 }
 
 #[test]
-fn say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
+fn v01_p06_say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
     let _lock = lock_port();
     let pack = temp_pack("say");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -927,7 +927,7 @@ fn say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
 }
 
 #[test]
-fn actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_actor() {
+fn v01_p07_actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_actor() {
     let _lock = lock_port();
     let pack = temp_pack("actor-say");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -970,7 +970,7 @@ fn actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_actor() {
 }
 
 #[test]
-fn talk_appends_for_a_seated_player_and_live_only_when_no_human() {
+fn v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human() {
     let pack = temp_pack("talk-direct");
     let shard = spookery_kernel::open_shard(&pack).unwrap();
     assert_eq!(shard.now().presence.humans, 0);
@@ -1006,7 +1006,7 @@ fn talk_appends_for_a_seated_player_and_live_only_when_no_human() {
 }
 
 #[test]
-fn torn_tape_tail_is_not_a_record() {
+fn v01_torn_tape_tail_is_not_a_record() {
     let pack = temp_pack("torn");
     let log = pack.join("state/log");
     fs::create_dir_all(&log).unwrap();
@@ -1025,7 +1025,7 @@ fn torn_tape_tail_is_not_a_record() {
 }
 
 #[test]
-fn no_gm_wait_commits_one_live_tick() {
+fn v01_p10_no_gm_wait_commits_one_live_tick() {
     let _lock = lock_port();
     let pack = temp_pack("live-wait");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -1059,7 +1059,7 @@ fn no_gm_wait_commits_one_live_tick() {
 }
 
 #[test]
-fn wake_while_a_seat_is_held_does_not_tick_or_drain() {
+fn v01_p10_p11_wake_while_a_seat_is_held_does_not_tick_or_drain() {
     let pack = temp_pack("held-wake");
     let mut shard = spookery_kernel::open_shard(&pack).unwrap();
     let session = spookery::seat::seat_player(&mut shard, "pc_rowan").unwrap();
@@ -1095,7 +1095,7 @@ fn wake_while_a_seat_is_held_does_not_tick_or_drain() {
 }
 
 #[test]
-fn gm_commit_advances_world_time_and_a_held_wake_does_not() {
+fn v01_p11_gm_commit_advances_world_time_and_a_held_wake_does_not() {
     let _lock = lock_port();
     let pack = temp_pack("gm-commit");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -1149,7 +1149,7 @@ fn gm_commit_advances_world_time_and_a_held_wake_does_not() {
 }
 
 #[test]
-fn early_wake_after_commit_does_not_tick_and_a_due_wake_does() {
+fn v01_p18_early_wake_after_commit_does_not_tick_and_a_due_wake_does() {
     let schedule = fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs")).unwrap();
     assert!(schedule.contains("pub fn wake("));
     assert!(schedule.contains("pub fn wake_shard("));
@@ -1208,7 +1208,7 @@ fn early_wake_after_commit_does_not_tick_and_a_due_wake_does() {
 }
 
 #[test]
-fn queued_wait_survives_gm_drop_and_the_next_wait_applies_both() {
+fn v01_p20_queued_wait_survives_gm_drop_and_the_next_wait_applies_both() {
     let _lock = lock_port();
     let pack = temp_pack("both-waits");
     let mut server = spawn(&["run", &pack_arg(&pack)]);

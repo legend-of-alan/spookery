@@ -30,7 +30,7 @@ fn stock(shard: &spookery_kernel::store::Shard) -> i64 {
 }
 
 #[test]
-fn tick_06_atomic_commit() {
+fn v0_t06_atomic_commit() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(

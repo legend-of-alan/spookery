@@ -33,7 +33,7 @@ fn hits(paths: &[PathBuf], needles: &[&str]) -> Vec<String> {
 }
 
 #[test]
-fn import_boundaries() {
+fn v0_import_boundaries() {
     let root = root();
     let kernel = root.join("src/kernel");
     let tick = root.join("src/tick");

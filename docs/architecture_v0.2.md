@@ -25,7 +25,7 @@ GM `tools/list` gives each name its own description. The sitting allowlist stays
 
 A missing required key stays `SCHEMA` or `UNSCOPED_PERCEIVE`, as today. `npc_act` stays `LLM_DISABLED`. `session_open`, `patch_entity`, `resolve_check`, `apply_effect`, `recall`, and `session_save` stay `NOT_IN_SPEC`. Each name on the list has a visible handler or a visible refusal. A name off the list stays `NOT_IN_SPEC`.
 
-`spook run <pack> --mcp pack-table` does not gain `say` and does not gain a `tools/call` body. The stdio server stays list-only. `product_01_load_mcp` stays green.
+`spook run <pack> --mcp pack-table` does not gain `say` and does not gain a `tools/call` body. The stdio server stays list-only. `v0_c01_load_mcp` stays green.
 
 `travel <place>` is one place id, on the same queue path as `wait`. With a GM seated, the line returns `queued`, does not advance `world_time`, and does not move the actor until `commit_turn`. With no GM, it commits one live tick. A missing place is `SCHEMA` and queues nothing. Any other shape of a `travel` line is `SCHEMA` and queues nothing. The applying tick uses the location effect `expand` already returns. A place the pack does not have stays that tick's existing kernel refusal. No new effect class. NPC derivation is unchanged.
 
@@ -45,10 +45,10 @@ Three outcomes, one per gate. Not a file list.
 
 ## 2. Proofs
 
-Each item is the assertion. The new proofs live in one new conformance file, created in Gate A and extended by Gates B and C. `tests/conformance/cli_run.rs` stays unrewritten. `tests/conformance/gate_d_check.rs` and `tests/conformance/gate_e_gm.rs` stay unrewritten. The v0 tests `docs/architecture_v0.1.md` §8 lists as unrewritten stay unrewritten. No shared test harness. No unit-test backfill. Do not split `store.rs`. These proofs do not edit `packs/oneshot-docks`.
+Each item is the assertion. The new proofs live in one new conformance file, created in Gate A and extended by Gates B and C. `tests/conformance/v01.rs` stays unrewritten. `tests/conformance/v01_p09.rs` and `tests/conformance/v01_p12_p21.rs` stay unrewritten. The v0 tests `docs/architecture_v0.1.md` §8 lists as unrewritten stay unrewritten. No shared test harness. No unit-test backfill. Do not split `store.rs`. These proofs do not edit `packs/oneshot-docks`.
 
 1. GM `tools/list` gives distinct descriptions and names the keys §1 lists for `say`, `perceive`, `commit_turn`, `session_status`, and `intent`. A missing required key stays `SCHEMA`, or `UNSCOPED_PERCEIVE` when `perceive` has no `as`. `npc_act` stays `LLM_DISABLED`. `session_open`, `patch_entity`, `resolve_check`, `apply_effect`, `recall`, and `session_save` stay `NOT_IN_SPEC`.
-2. `spook run --mcp pack-table` does not gain `say` or a `tools/call` body. `product_01_load_mcp` stays green.
+2. `spook run --mcp pack-table` does not gain `say` or a `tools/call` body. `v0_c01_load_mcp` stays green.
 3. With a GM seated, `travel <place>` returns `queued`, does not advance `world_time`, and does not move the actor until `commit_turn`. With no GM, it commits one live tick. A missing place is `SCHEMA` and queues nothing. `attack` stays `NOT_IN_SPEC` and queues nothing. No new effect class. NPC derivation is unchanged.
 4. The same PC drops and connects again. Scrollback returns, `humans` is 1, and the in-memory queue is not flushed or applied twice. No new session-id rule. No durable queue.
 5. The GM socket does not receive tape bytes before MCP `initialize`. Scrollback is `session_status` with `since`. A `say` tool result is still followed by its `spook/event`, not preceded by it. The stdio bridge still exits when nothing is listening.
@@ -63,7 +63,7 @@ A gate does not prescribe modules or file order. It names what becomes true, and
 
 The gates are linear. Gates A and B both leave the existing JSON builders in place. Gate C is the one that replaces them. Do not implement two gates in parallel. Do not start a gate whose predecessor is not already green. A session reads that gate, the proofs it names, and the §1 rules those proofs cite.
 
-Every gate keeps the §2 file rules. The v0 tests, `cli_run.rs`, `gate_d_check.rs`, and `gate_e_gm.rs` stay unrewritten in all three.
+Every gate keeps the §2 file rules. The v0 tests, `v01.rs`, `v01_p09.rs`, and `v01_p12_p21.rs` stay unrewritten in all three.
 
 ### Gate A — schemas
 

@@ -50,7 +50,7 @@ fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 }
 
 #[test]
-fn cli_status_prints_host_clocks_and_writes_nothing() {
+fn v0_cli_status_prints_host_clocks_and_writes_nothing() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(

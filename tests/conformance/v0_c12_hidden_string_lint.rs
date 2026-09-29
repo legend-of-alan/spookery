@@ -45,7 +45,7 @@ fn append(pack: &Path, rel: &str, text: &str) {
 }
 
 #[test]
-fn product_12_hidden_string_lint() {
+fn v0_c12_hidden_string_lint() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let clean = spookery_kernel::lint::lint(&fixture).unwrap_or_else(|err| panic!("lint: {err}"));

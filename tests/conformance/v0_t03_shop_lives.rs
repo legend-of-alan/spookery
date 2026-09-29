@@ -47,7 +47,7 @@ fn stock_rate(pack: &Path) -> i64 {
 }
 
 #[test]
-fn tick_03_shop_lives() {
+fn v0_t03_shop_lives() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(

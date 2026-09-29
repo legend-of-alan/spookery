@@ -35,7 +35,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 #[tokio::test]
-async fn product_01_load_mcp() {
+async fn v0_c01_load_mcp() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(
@@ -115,7 +115,7 @@ async fn listed_names(pack: &Path, profile: &str) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn pack_tick_and_studio_tools_follow_section_8() {
+async fn v0_pack_tick_and_studio_tools_follow_section_8() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(

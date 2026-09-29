@@ -179,7 +179,7 @@ fn tick_value(pack: &Path) -> Value {
 }
 
 #[test]
-fn attempt_line_refuses_before_a_roll() {
+fn v01_attempt_line_refuses_before_a_roll() {
     let pack = temp_pack("shape");
     let before = fs::read(pack.join("state/now.yaml")).unwrap();
     let mut shard = spookery_kernel::open_shard(&pack).unwrap();
@@ -246,7 +246,7 @@ fn intent(move_name: &str) -> Intent {
 }
 
 #[test]
-fn no_gm_attempt_rolls_on_send_and_writes_no_now_path() {
+fn v01_p09_no_gm_attempt_rolls_on_send_and_writes_no_now_path() {
     let _lock = lock_port();
     let pack = temp_pack("live");
     let sheet = fs::read(pack.join("state/actors/pc_rowan.yaml")).unwrap();
@@ -353,7 +353,7 @@ fn no_gm_attempt_rolls_on_send_and_writes_no_now_path() {
 }
 
 #[test]
-fn gm_attempt_rolls_on_commit_and_the_gm_sees_faces() {
+fn v01_p09_gm_attempt_rolls_on_commit_and_the_gm_sees_faces() {
     let _lock = lock_port();
     let pack = temp_pack("gm");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -404,7 +404,7 @@ fn gm_attempt_rolls_on_commit_and_the_gm_sees_faces() {
 }
 
 #[test]
-fn unknown_check_does_not_advance_the_die_or_send_a_check() {
+fn v01_unknown_check_does_not_advance_the_die_or_send_a_check() {
     let _lock = lock_port();
     let pack = temp_pack("unknown");
     let mut server = spawn(&["run", &pack_arg(&pack)]);

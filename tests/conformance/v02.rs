@@ -293,7 +293,7 @@ fn address_branch<'a>(schema: &'a Value, address: &str) -> &'a Value {
 }
 
 #[test]
-fn gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
+fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
     let _lock = lock_port();
     let pack = temp_pack("list");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -475,7 +475,7 @@ fn gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
 }
 
 #[tokio::test]
-async fn pack_table_stdio_does_not_gain_say_or_a_tools_call_body() {
+async fn v02_p02_pack_table_stdio_does_not_gain_say_or_a_tools_call_body() {
     let pack = temp_pack("stdio");
     let before = fs::read(pack.join("state/now.yaml")).unwrap();
     let mut command = TokioCommand::new(env!("CARGO_BIN_EXE_spook"));

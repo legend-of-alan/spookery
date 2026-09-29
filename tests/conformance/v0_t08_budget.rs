@@ -135,7 +135,7 @@ tick:
 }
 
 #[test]
-fn tick_08_budget() {
+fn v0_t08_budget() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = std::env::temp_dir().join(format!(
         "spook-tick08-{}-{}",

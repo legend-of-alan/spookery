@@ -28,7 +28,7 @@ num_word: \"1842\"
 ";
 
 #[test]
-fn emitter_sample_is_166_bytes() {
+fn v0_emitter_sample_is_166_bytes() {
     let sample = Sample {
         schema: "now/v0",
         last_tick_at: "2026-01-01T00:00:00Z",

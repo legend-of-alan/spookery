@@ -286,7 +286,7 @@ fn result_line<'a>(lines: &'a [String], id: u64) -> &'a str {
 }
 
 #[test]
-fn no_cargo_feature_named_llm() {
+fn v01_no_cargo_feature_named_llm() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [
         root.join("Cargo.toml"),
@@ -300,7 +300,7 @@ fn no_cargo_feature_named_llm() {
 }
 
 #[test]
-fn gm_tools_reach_perceive_and_the_refusals_write_nothing() {
+fn v01_p12_gm_tools_reach_perceive_and_the_refusals_write_nothing() {
     let _lock = lock_port();
     let pack = temp_pack("tools");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -386,7 +386,7 @@ fn gm_tools_reach_perceive_and_the_refusals_write_nothing() {
 }
 
 #[test]
-fn typed_gm_line_does_not_call_say() {
+fn v01_typed_gm_line_does_not_call_say() {
     let _lock = lock_port();
     let pack = temp_pack("typed");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -405,7 +405,7 @@ fn typed_gm_line_does_not_call_say() {
 }
 
 #[test]
-fn gm_say_appends_and_session_status_returns_the_tape() {
+fn v01_gm_say_appends_and_session_status_returns_the_tape() {
     let _lock = lock_port();
     let pack = temp_pack("say");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
@@ -540,7 +540,7 @@ fn gm_say_appends_and_session_status_returns_the_tape() {
 }
 
 #[test]
-fn stdio_bridge_copies_perceive_and_keeps_a_refused_hello_off_stdout() {
+fn v01_p21_stdio_bridge_copies_perceive_and_keeps_a_refused_hello_off_stdout() {
     let _lock = lock_port();
     let pack = temp_pack("stdio");
     let mut server = spawn(&["run", &pack_arg(&pack)]);

@@ -2,6 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+const LEDGER: &str = "The lamp-oil ledger is short.";
+
 fn spook(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_spook"))
         .args(args)
@@ -24,12 +26,24 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
+fn read_optional(path: &Path) -> String {
+    fs::read_to_string(path).unwrap_or_default()
+}
+
+fn aldric_perceive(pack: &Path) -> String {
+    let shard = spookery_kernel::open_shard(pack)
+        .unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let view = spookery_kernel::perceive(&shard, "npc:aldric")
+        .unwrap_or_else(|err| panic!("perceive: {err}"));
+    format!("{view:?}")
+}
+
 #[test]
-fn tick_02_no_self_win() {
+fn v0_t01_closed_secret() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(
-        "spook-tick02-{}-{}",
+        "spook-tick01-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
@@ -39,28 +53,32 @@ fn tick_02_no_self_win() {
     let _ = fs::remove_dir_all(&pack);
     copy_dir(&fixture, &pack);
 
-    for tick in 1..=12 {
+    let mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
+    let aldric = fs::read_to_string(pack.join("cast/aldric.md")).unwrap();
+    assert!(mira.contains(LEDGER), "fixture secret is on mira");
+    assert!(!aldric.contains(LEDGER), "fixture secret is absent on aldric");
+
+    for tick in 1..=100 {
         let output = spook(&["tick", pack.to_str().unwrap()]);
         assert!(
             output.status.success(),
-            "tick {tick}\nstdout:\n{}\nstderr:\n{}",
+            "idle tick {tick}\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
     }
 
-    let shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
-    let now = shard.now();
-    assert_eq!(now.tick_index, 12, "twelve ticks commit");
-    let clock = now
-        .clocks
-        .get("assassination_debt")
-        .unwrap_or_else(|| panic!("assassination_debt missing"));
-    assert_eq!(clock.value, 2);
-    assert_eq!(clock.max, 6);
-    assert!(clock.paused);
-    assert!(clock.requires_presence);
-    assert_eq!(clock.owners, vec!["pc_rowan".to_string()]);
+    let perceive = aldric_perceive(&pack);
+    let memories = read_optional(&pack.join("state/memories/aldric.jsonl"));
+    let rumors = format!(
+        "{}\n{}",
+        read_optional(&pack.join("state/rumors.yaml")),
+        read_optional(&pack.join("state/now.yaml"))
+    );
+
+    assert!(!perceive.contains(LEDGER), "ledger sentence in Aldric's perceive");
+    assert!(!memories.contains(LEDGER), "ledger sentence in Aldric's memories");
+    assert!(!rumors.contains(LEDGER), "ledger sentence in rumors");
 
     let _ = fs::remove_dir_all(&pack);
 }

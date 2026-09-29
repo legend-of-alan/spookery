@@ -202,7 +202,7 @@ All paths under `src/kernel/`.
 
 ### Import test
 
-`tests/conformance/import_boundaries.rs` fails the build if:
+`tests/conformance/v0_import_boundaries.rs` fails the build if:
 
 - `src/kernel` or `src/tick` contains `rmcp`, `tokio`, `sqlx`, `postgres`, or `redis`
 - any file under `src/` contains `langchain`, `openai`, `anthropic`, `ollama`, or `reqwest`
@@ -1801,22 +1801,22 @@ Synthetic packs (50 NPCs, kill-mid-commit) live under `tests/conformance/fixture
 
 | Test | File | Module that makes it pass | Assert |
 |---|---|---|---|
-| 1 Closed secret | `tests/conformance/tick_01_closed_secret.rs` | `kernel::firewall`, `kernel::perceive` | 100 idle ticks. The ledger sentence is absent from Aldric's perceive, memories, and rumors |
-| 2 No self-win | `tick_02_no_self_win.rs` | `kernel::pause`, `kernel::apply` | `assassination_debt` unchanged across 12 empty ticks |
-| 3 Shop lives | `tick_03_shop_lives.rs` | `kernel::inventory`, `apply` stock | `lamp_oil` changes by at most `stock_rate` per tick and stays `≥ 0` |
-| 4 Catch-up cap | `tick_04_catchup_cap.rs` | `tick::advance` | Trace D: 72h downtime → exactly 12 commits, exactly one `season_advance` proposal, `tick_index` 12, `world_time` 720 |
-| 5 Busy skip | `tick_05_busy_skip.rs` | `kernel::eligibility` | A present player in `docks_shop` → Mira has no idle move. Another place may still act |
-| 6 Atomic commit | `tick_06_atomic_commit.rs` | `kernel::store` | Kill after `apply_effect` and before `tick_commit`. Restart `state_rev` unchanged |
-| 7 Replay | `tick_07_replay.rs` | `tick::replay`, `kernel::codec` | 20 kernel-only ticks, replay, byte-equal `now.yaml` |
-| 8 Budget | `tick_08_budget.rs` | `tick::budget` | 50 eligible NPCs, one tick, `≤ 8` act, `≤ 12` intents applied |
-| 9 Tool scope | `tick_09_tool_scope.rs` | `mcp::tick_tools` | `perceive` with no `as` on the tick profile → `UNSCOPED_PERCEIVE` |
-| 10 Proposal only | `tick_10_proposal_only.rs` | `kernel::apply` proposal | Idle delete-place → `state/proposals/<id>.yaml` exists and the place markdown still exists |
+| 1 Closed secret | `tests/conformance/v0_t01_closed_secret.rs` | `kernel::firewall`, `kernel::perceive` | 100 idle ticks. The ledger sentence is absent from Aldric's perceive, memories, and rumors |
+| 2 No self-win | `v0_t02_no_self_win.rs` | `kernel::pause`, `kernel::apply` | `assassination_debt` unchanged across 12 empty ticks |
+| 3 Shop lives | `v0_t03_shop_lives.rs` | `kernel::inventory`, `apply` stock | `lamp_oil` changes by at most `stock_rate` per tick and stays `≥ 0` |
+| 4 Catch-up cap | `v0_t04_catchup_cap.rs` | `tick::advance` | Trace D: 72h downtime → exactly 12 commits, exactly one `season_advance` proposal, `tick_index` 12, `world_time` 720 |
+| 5 Busy skip | `v0_t05_busy_skip.rs` | `kernel::eligibility` | A present player in `docks_shop` → Mira has no idle move. Another place may still act |
+| 6 Atomic commit | `v0_t06_atomic_commit.rs` | `kernel::store` | Kill after `apply_effect` and before `tick_commit`. Restart `state_rev` unchanged |
+| 7 Replay | `v0_t07_replay.rs` | `tick::replay`, `kernel::codec` | 20 kernel-only ticks, replay, byte-equal `now.yaml` |
+| 8 Budget | `v0_t08_budget.rs` | `tick::budget` | 50 eligible NPCs, one tick, `≤ 8` act, `≤ 12` intents applied |
+| 9 Tool scope | `v0_t09_tool_scope.rs` | `mcp::tick_tools` | `perceive` with no `as` on the tick profile → `UNSCOPED_PERCEIVE` |
+| 10 Proposal only | `v0_t10_proposal_only.rs` | `kernel::apply` proposal | Idle delete-place → `state/proposals/<id>.yaml` exists and the place markdown still exists |
 
 ### Acceptance criteria
 
 | # | Criterion | Where it passes |
 |---|---|---|
-| 1 | Load a folder, MCP stdio | `product_01_load_mcp.rs` spawns `spook run <pack> --mcp pack-table` and checks `tools/list` order |
+| 1 | Load a folder, MCP stdio | `v0_c01_load_mcp.rs` spawns `spook run <pack> --mcp pack-table` and checks `tools/list` order |
 | 2 | Mira perceive vs hidden strings | Wording conflict C2. The automated assert is test 1, plus Mira's perceive contains `fact_ledger_short` text because she knows it |
 | 3 | 100 ticks, Aldric still ignorant | Test 1 |
 | 4 | Presence clock | Test 2 |
@@ -1824,10 +1824,10 @@ Synthetic packs (50 NPCs, kill-mid-commit) live under `tests/conformance/fixture
 | 6 | Kill between apply and commit | Test 6 |
 | 7 | Byte-equal replay | Test 7 |
 | 8 | 50 NPCs | Test 8 |
-| 9 | Fixture plays, host digest vs player resume vs in-place perceive | `product_09_idle_ux.rs`. Uses `spook status` and `idle_digest(Player)` and `perceive` |
+| 9 | Fixture plays, host digest vs player resume vs in-place perceive | `v0_c09_idle_ux.rs`. Uses `spook status` and `idle_digest(Player)` and `perceive` |
 | 10 | Another agent can add a move from the docs | Review gate, not a runtime test. The docs name `moves.yaml` plus a match arm plus a test in the same change |
-| 11 | Strip Markdown bodies on `packs/oneshot-docks`. Tests 1, 2, 3, 5, 6, and 7 still pass | `product_11_strip_bodies.rs` copies that pack, deletes every Markdown body, and reruns those six asserts |
-| 12 | Hidden-string lint on bodies | `product_12_hidden_string_lint.rs` → `kernel::lint` |
+| 11 | Strip Markdown bodies on `packs/oneshot-docks`. Tests 1, 2, 3, 5, 6, and 7 still pass | `v0_c11_strip_bodies.rs` copies that pack, deletes every Markdown body, and reruns those six asserts |
+| 12 | Hidden-string lint on bodies | `v0_c12_hidden_string_lint.rs` → `kernel::lint` |
 
 Test 4 and test 8 stay on the packs those tests build. Test 4 asserts Trace D on shard `ex` from `world_time` 0. Test 8 asserts 50 eligible NPCs, at most 8 acting and at most 12 intents applied. This criterion does not name a strip of those packs.
 
@@ -1841,7 +1841,7 @@ The order is three gates. Commit 1 stays the behavior-free file list at the end 
 
 ### Gate A — kernel proof
 
-Green: tests 1, 2, and 6, `import_boundaries`, schema load, `pack_rev` refusal, and the emitter sample in §4.
+Green: tests 1, 2, and 6, `v0_import_boundaries`, schema load, `pack_rev` refusal, and the emitter sample in §4.
 
 Test 1 is 100 idle ticks. This gate includes `perceive`, the firewall, pause, apply, and enough of `run_tick` to run that assertion. It is not a perceive-only change.
 
@@ -1879,7 +1879,7 @@ After gate C the work is bugfix on these crates. Each bug lands with the conform
 | GM agent calls `apply_effect` and expects durability | `apply_effect` stages a `Txn`. Only `commit_turn` / `tick_commit` rename files |
 | `npc_act` or a memory summarizer appends `state/memories/*.jsonl` | No LLM crate. `npc_act` returns `LLM_DISABLED`. Memory lines are written inside the commit, from effect `memory`, after the firewall |
 | `llm_say` or `public_say` copied into `Now`, a rumor, or resume | Inbound `llm_say` dropped. v0 does not call `npc_act`, so `public_say` is never stored. Digest prints effect rows only |
-| `spook status` output reused as the player login banner | Separate functions. `product_09_idle_ux.rs` asserts stock deltas appear in host status and do not appear in player resume |
+| `spook status` output reused as the player login banner | Separate functions. `v0_c09_idle_ux.rs` asserts stock deltas appear in host status and do not appear in player resume |
 | Host edits `now.yaml` in an editor and runs `spook tick` | `HAND_EDIT` unless the command is `spook migrate`, which bumps `state_rev` and re-emits |
 | Replay applies JSONL `effects` as the new state | `replay_recorded` re-executes moves through `expand` and `apply_effect` on a temp copy |
 | Two ticks in flight (MCP request plus scheduler) | One `flock` around `run_tick` and `commit_turn`. Second caller gets `COMMIT_CONFLICT`. Tick code is synchronous |
@@ -2009,10 +2009,10 @@ rulesets/moves.yaml              # the sixteen names
 rulesets/checks.yaml             # grit 2d6
 rulesets/tick.yaml               # defaults, llm_npc_intents_per_tick: 0
 packs/oneshot-docks/             # commit-1 subset from §12, secret on mira, absent on aldric
-tests/conformance/import_boundaries.rs
-tests/conformance/tick_01_closed_secret.rs
+tests/conformance/v0_import_boundaries.rs
+tests/conformance/v0_t01_closed_secret.rs
 ```
 
-`tick_01_closed_secret.rs` contains the real assertion (100 idle ticks, ledger sentence absent from Aldric's perceive, memories, and rumors) and is `#[ignore = "empty fixture; firewall not landed"]`. The ignore comes off in the change that makes gate A green: the firewall, `perceive`, and the tick path the assertion runs.
+`v0_t01_closed_secret.rs` contains the real assertion (100 idle ticks, ledger sentence absent from Aldric's perceive, memories, and rumors) and is `#[ignore = "empty fixture; firewall not landed"]`. The ignore comes off in the change that makes gate A green: the firewall, `perceive`, and the tick path the assertion runs.
 
 Commit 1 does not contain a green tick, a golden `now.yaml` byte claim, an MCP tool, or a scheduler. The §4 emitter sample is the gate A golden. The §12 docks bytes are the gate B golden.

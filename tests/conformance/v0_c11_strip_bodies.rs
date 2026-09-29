@@ -108,7 +108,7 @@ fn tick_ok(pack: &Path, tick: u32) {
 }
 
 #[test]
-fn product_11_strip_bodies() {
+fn v0_c11_strip_bodies() {
     let closed = stripped_pack("closed");
     for tick in 1..=100 {
         tick_ok(&closed, tick);

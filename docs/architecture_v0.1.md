@@ -88,7 +88,7 @@ This goal does not include plain-English play, a line whose `from` is `mira`, `a
 v0 §1 through §17 still hold where this file does not name a change. Load-bearing rules that stay:
 
 - One writer of `state/`. Clients do not write it. `tick_commit` and `commit_turn` remain the writers of `Now`. v0 §1 and §10.
-- The kernel must not link `tokio`, `rmcp`, `spookery-tick`, `spookery-mcp`, or a model SDK. Dependency arrows stay the v0 §3 table. `import_boundaries` stays.
+- The kernel must not link `tokio`, `rmcp`, `spookery-tick`, `spookery-mcp`, or a model SDK. Dependency arrows stay the v0 §3 table. `v0_import_boundaries` stays.
 - No `Gm` variant on `ViewerId`. v0 §6.
 - The closed effect enum stays the v0 §5 list. No new class.
 - Inbound `llm_say` is dropped. Persisted intents store `llm_say: null`. `public_say` is not written into `Now`.
@@ -96,14 +96,14 @@ v0 §1 through §17 still hold where this file does not name a change. Load-bear
 - No `--serve`. No accounts. No database. No HTTP route.
 - `pack_rev` and the `packs/oneshot-docks` bytes stay. v0.1 does not edit them. Do not edit `checks.yaml`, `schema/checks.schema.json`, or `packs/oneshot-docks` to hold a check target.
 - `replay_recorded` still replays tick files only. It does not read the session tape. v0 §7. An applied `attempt` is re-executed by calling `resolve_check` with the stored `args.check` and `args.target`.
-- `kernel::open_shard` does not drop sessions. `spook tick`, `spook status`, `spook migrate`, `spook replay`, and `spook run --mcp` do not either. A pack left with `humans` 1 still ticks live under `spook tick`. `schedule::wake` is unchanged. `tests/conformance/scheduler.rs` stays.
+- `kernel::open_shard` does not drop sessions. `spook tick`, `spook status`, `spook migrate`, `spook replay`, and `spook run --mcp` do not either. A pack left with `humans` 1 still ticks live under `spook tick`. `schedule::wake` is unchanged. `tests/conformance/v0_scheduler_sleeps_then_catches_up_on_this_thread.rs` stays.
 - `session_open`'s `include_tick` false behavior is v0 pin P41. Adopted here, not redesigned. The player hello is the only caller.
 - Studio and `migrate` stay host commands, not a seat. v0 §8 studio profile and §11.
 
 Intentional conflicts with v0. Do not "fix" these back.
 
 - v0 binds one MCP profile for the life of the process, and the play door is a different way to start a process. v0.1 starts one shard and attaches seats. `spook run <pack> --mcp <profile>` stays that v0 stdio process: one profile, the v0 §8 `tools/list` order, no `say` inserted. It is not the sitting. After the shard accepts the line `gm`, the GM seat uses that same rmcp 0.8 codec: one compact JSON-RPC message, then one LF, no header. `gm` is not a JSON-RPC message. It is not a second grammar.
-- v0 `spook run <pack>` reads play lines from stdin and does not call `session_open`, so a person at the keyboard leaves `presence.humans` at 0 (pin P22, pin P45). v0.1 stdin is not a play door. Any stdin line other than `stop` prints `NOT_IN_SPEC` on stderr, does not exit, and writes nothing. `stop` and EOF drop a held player seat the way a disconnect does, drop a held GM seat with no presence write, do not flush the intent queue, do not call `run_tick`, and exit 0. The listener keeps the process up until then. EOF is a clean shutdown, not a play script. `spook run <pack> --as ...` is `NOT_IN_SPEC`, exit 1, before `open_shard`. `--as` belongs to `spook play`. A player client calls `session_open`, which sets presence. One stdin is not two actor ids. v0 player stdout is raw `idle_digest(Player)` bytes plus one perceive line. v0.1 player stdout is the §6 events. Gate A rewrote `tests/conformance/cli_run.rs` because it asserted the stdin door this sitting removes.
+- v0 `spook run <pack>` reads play lines from stdin and does not call `session_open`, so a person at the keyboard leaves `presence.humans` at 0 (pin P22, pin P45). v0.1 stdin is not a play door. Any stdin line other than `stop` prints `NOT_IN_SPEC` on stderr, does not exit, and writes nothing. `stop` and EOF drop a held player seat the way a disconnect does, drop a held GM seat with no presence write, do not flush the intent queue, do not call `run_tick`, and exit 0. The listener keeps the process up until then. EOF is a clean shutdown, not a play script. `spook run <pack> --as ...` is `NOT_IN_SPEC`, exit 1, before `open_shard`. `--as` belongs to `spook play`. A player client calls `session_open`, which sets presence. One stdin is not two actor ids. v0 player stdout is raw `idle_digest(Player)` bytes plus one perceive line. v0.1 player stdout is the §6 events. Gate A rewrote `tests/conformance/v01.rs` because it asserted the stdin door this sitting removes.
 - v0 says do not add tools and do not reorder `tools/list`. v0.1 adds `say` to the GM seat only. The stdio `pack-table` list does not gain it. `session_open` stays on the GM list, in that order, and a GM `tools/call` of it returns `NOT_IN_SPEC`.
 - v0 `expand` returns `NOT_IN_SPEC` for `talk` even during a session. v0.1 `talk` is speech, not an expand arm that mutates `Now`. `attempt` is the one live-only name that gains a kernel behavior (the existing check) and still mutates nothing. The v0 line `attempt <check>` gains a `<target>` integer. Do not pass `0`. Do not put that integer in `checks.yaml`.
 - v0 `tools/call` falls through to the library's method-not-found. The stdio server still has no `tools/call` body. v0.1 GM `tools/call` on the shard reaches the handlers. A tool the seat does not have still returns the pinned refusal (`NOT_IN_SPEC` or `LLM_DISABLED`), not a transport error invented by the library.
@@ -312,7 +312,7 @@ Presence and the clock stay v0 §7 and §8, with these seat rules.
 
 The GM's `commit_turn` with `include_tick` true closes the round once (pin P20): one `state_rev` step and one tick file when the tick runs. `session_id` may be omitted. Do not invent one. That tick stamps `last_tick_at` and restarts the `spook run` sleep from that moment. It does not arm a second tick. A GM commit with no queued intents follows the v0 no-op: if nothing was accepted and presence is unchanged, `state_rev` stays, `run_tick` is not entered, `world_time` stays, and the sleep is not restarted. Narration alone does not move `world_time`. Do not turn that commit into the v0 empty tick that advances `world_time`.
 
-A wake that then arrives, including one whose sleep started before the commit, runs no tick while a connection is held. It also runs no tick when no connection is held if the elapsed real seconds since `last_tick_at` are still below `tick_every_real_seconds`. `schedule::wake` is not modified. A direct call of it, as `tests/conformance/scheduler.rs` does, still opens a shard from disk and ticks. The skip is the wrapper in `spook run`. When that wrapper ticks, it passes the shard thread's `Shard` into the same decision. That tick is the only owner of `Now`.
+A wake that then arrives, including one whose sleep started before the commit, runs no tick while a connection is held. It also runs no tick when no connection is held if the elapsed real seconds since `last_tick_at` are still below `tick_every_real_seconds`. `schedule::wake` is not modified. A direct call of it, as `tests/conformance/v0_scheduler_sleeps_then_catches_up_on_this_thread.rs` does, still opens a shard from disk and ticks. The skip is the wrapper in `spook run`. When that wrapper ticks, it passes the shard thread's `Shard` into the same decision. That tick is the only owner of `Now`.
 
 Zero players and a GM: the GM may queue NPC intents and commit. That tick is an idle tick because `humans` is 0. `pick_advance` uses `idle_minutes_per_tick`. The scheduler does not run that tick while the GM connection is held. `say` still does not tick.
 
@@ -406,9 +406,9 @@ Will not appear in this architecture:
 
 ## 8. Proofs
 
-Gates A–E are proved. `tests/conformance/cli_run.rs` was rewritten in Gate A. `spook play <pack> --as player:mira` is `SCHEMA`, exit 1, and writes nothing.
+Gates A–E are proved. `tests/conformance/v01.rs` was rewritten in Gate A. `spook play <pack> --as player:mira` is `SCHEMA`, exit 1, and writes nothing.
 
-These stayed unrewritten: `tests/conformance/tick_07_replay.rs`, `tests/conformance/docks_bytes.rs`, `tests/conformance/emitter_sample.rs`, `tests/conformance/import_boundaries.rs`, `tests/conformance/scheduler.rs`, `tick_01` through `tick_10`, `tick_jsonl`, and `tests/conformance/product_01_load_mcp.rs`. They do not read `session.jsonl` and do not require a listening socket. `replay_recorded` still does not read the tape. `product_01_load_mcp` keeps the v0 stdio `tools/list` order. `scheduler.rs` calls `schedule::wake` on a fixture and does not start `spook run`.
+These stayed unrewritten: `tests/conformance/v0_t07_replay.rs`, `tests/conformance/v0_oneshot_docks_matches_section12.rs`, `tests/conformance/v0_emitter_sample_is_166_bytes.rs`, `tests/conformance/v0_import_boundaries.rs`, `tests/conformance/v0_scheduler_sleeps_then_catches_up_on_this_thread.rs`, `v0_t01` through `v0_t10`, `v0_trace`, and `tests/conformance/v0_c01_load_mcp.rs`. They do not read `session.jsonl` and do not require a listening socket. `replay_recorded` still does not read the tape. `v0_c01_load_mcp` keeps the v0 stdio `tools/list` order. `v0_scheduler_sleeps_then_catches_up_on_this_thread.rs` calls `schedule::wake` on a fixture and does not start `spook run`.
 
 New scenarios. Each line is the assertion. These do not edit `packs/oneshot-docks`. With `player_slots = 1` there are never two player sockets.
 
@@ -440,7 +440,7 @@ New scenarios. Each line is the assertion. These do not edit `packs/oneshot-dock
 
 Five gates, all proved. The text below is the record of what each gate made true. It does not open a sixth gate. A session that did the work read this section, the proofs that gate names, and the v0 pins those proofs cite. It did not load the rest of `docs/architecture_v0.md`. The proofs stay in §8. This section does not restate them.
 
-A gate does not prescribe modules or file order. It names what becomes true, and what stays unbuilt so the session does not invent the next gate. The v0 tests §8 lists as unrewritten stay green in every gate. `cli_run.rs` is rewritten in Gate A and only there.
+A gate does not prescribe modules or file order. It names what becomes true, and what stays unbuilt so the session does not invent the next gate. The v0 tests §8 lists as unrewritten stay green in every gate. `v01.rs` is rewritten in Gate A and only there.
 
 The gates are linear. Gate B and Gate C both edit the player read loop and the shard thread. Gate C and Gate E both edit `tools/call`. Gate D and Gate E both edit the event sent to the GM. Do not implement two gates in parallel. Do not start a gate whose predecessor is not already green.
 
@@ -448,7 +448,7 @@ The gates are linear. Gate B and Gate C both edit the player read loop and the s
 
 Proofs 1, 2, 3, 4, 5, 13, 14, 15, 16, 17, and 19.
 
-`spook run` listens. Hellos and refusals work. Startup clears a crashed session. Disconnect, a socket error, and keepalive drop a held seat. One shard thread owns `Now`. `cli_run.rs` is rewritten here.
+`spook run` listens. Hellos and refusals work. Startup clears a crashed session. Disconnect, a socket error, and keepalive drop a held seat. One shard thread owns `Now`. `v01.rs` is rewritten here.
 
 Still absent. `say`, `talk`, `attempt`, and `wait` return `NOT_IN_SPEC` and commit nothing. After the line `gm`, every `tools/call` returns `NOT_IN_SPEC`. The scheduler still wakes as v0. Do not append a tape. Do not suppress a wake.
 

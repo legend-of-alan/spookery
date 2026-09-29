@@ -56,7 +56,7 @@ fn call(
 }
 
 #[test]
-fn tick_09_tool_scope() {
+fn v0_t09_tool_scope() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(

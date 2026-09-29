@@ -6,7 +6,7 @@ const NOW_BLAKE2S: &str = "75c31f56b61d32b5c02fa1bb655262d006e608b7a57d0775a3e74
 const SHEET_BLAKE2S: &str = "0bc253962ff105876e0687c3649959cc58735e43b02f6ec43ca13167894f0e7b";
 
 #[test]
-fn oneshot_docks_matches_section12() {
+fn v0_oneshot_docks_matches_section12() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
     let rev = spookery_kernel::canon::pack_rev(&root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
     assert_eq!(rev, PACK_REV);

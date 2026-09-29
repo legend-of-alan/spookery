@@ -20,7 +20,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 #[test]
-fn tick_10_proposal_only() {
+fn v0_t10_proposal_only() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(

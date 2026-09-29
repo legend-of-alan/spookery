@@ -18,7 +18,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 #[test]
-fn pack_rev_mismatch_does_not_commit() {
+fn v0_pack_rev_mismatch_does_not_commit() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let fixture = manifest.join("packs/oneshot-docks");
     let pack = std::env::temp_dir().join(format!(

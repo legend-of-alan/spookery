@@ -43,109 +43,109 @@ serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time"] }
 
 [[test]]
-name = "import_boundaries"
-path = "tests/conformance/import_boundaries.rs"
+name = "v0_import_boundaries"
+path = "tests/conformance/v0_import_boundaries.rs"
 
 [[test]]
-name = "tick_01_closed_secret"
-path = "tests/conformance/tick_01_closed_secret.rs"
+name = "v0_t01_closed_secret"
+path = "tests/conformance/v0_t01_closed_secret.rs"
 
 [[test]]
-name = "tick_02_no_self_win"
-path = "tests/conformance/tick_02_no_self_win.rs"
+name = "v0_t02_no_self_win"
+path = "tests/conformance/v0_t02_no_self_win.rs"
 
 [[test]]
-name = "tick_03_shop_lives"
-path = "tests/conformance/tick_03_shop_lives.rs"
+name = "v0_t03_shop_lives"
+path = "tests/conformance/v0_t03_shop_lives.rs"
 
 [[test]]
-name = "tick_04_catchup_cap"
-path = "tests/conformance/tick_04_catchup_cap.rs"
+name = "v0_t04_catchup_cap"
+path = "tests/conformance/v0_t04_catchup_cap.rs"
 
 [[test]]
-name = "tick_05_busy_skip"
-path = "tests/conformance/tick_05_busy_skip.rs"
+name = "v0_t05_busy_skip"
+path = "tests/conformance/v0_t05_busy_skip.rs"
 
 [[test]]
-name = "tick_07_replay"
-path = "tests/conformance/tick_07_replay.rs"
+name = "v0_t07_replay"
+path = "tests/conformance/v0_t07_replay.rs"
 
 [[test]]
-name = "tick_08_budget"
-path = "tests/conformance/tick_08_budget.rs"
+name = "v0_t08_budget"
+path = "tests/conformance/v0_t08_budget.rs"
 
 [[test]]
-name = "tick_jsonl"
-path = "tests/conformance/tick_jsonl.rs"
+name = "v0_trace"
+path = "tests/conformance/v0_trace.rs"
 
 [[test]]
-name = "scheduler"
-path = "tests/conformance/scheduler.rs"
+name = "v0_scheduler_sleeps_then_catches_up_on_this_thread"
+path = "tests/conformance/v0_scheduler_sleeps_then_catches_up_on_this_thread.rs"
 
 [[test]]
-name = "tick_06_atomic_commit"
-path = "tests/conformance/tick_06_atomic_commit.rs"
+name = "v0_t06_atomic_commit"
+path = "tests/conformance/v0_t06_atomic_commit.rs"
 
 [[test]]
-name = "tick_09_tool_scope"
-path = "tests/conformance/tick_09_tool_scope.rs"
+name = "v0_t09_tool_scope"
+path = "tests/conformance/v0_t09_tool_scope.rs"
 
 [[test]]
-name = "tick_10_proposal_only"
-path = "tests/conformance/tick_10_proposal_only.rs"
+name = "v0_t10_proposal_only"
+path = "tests/conformance/v0_t10_proposal_only.rs"
 
 [[test]]
-name = "product_01_load_mcp"
-path = "tests/conformance/product_01_load_mcp.rs"
+name = "v0_c01_load_mcp"
+path = "tests/conformance/v0_c01_load_mcp.rs"
 
 [[test]]
-name = "canon_schemas"
-path = "tests/conformance/canon_schemas.rs"
+name = "v0_canon_schemas_reject_unknown_keys"
+path = "tests/conformance/v0_canon_schemas_reject_unknown_keys.rs"
 
 [[test]]
-name = "pack_rev_refusal"
-path = "tests/conformance/pack_rev_refusal.rs"
+name = "v0_pack_rev_mismatch_does_not_commit"
+path = "tests/conformance/v0_pack_rev_mismatch_does_not_commit.rs"
 
 [[test]]
-name = "emitter_sample"
-path = "tests/conformance/emitter_sample.rs"
+name = "v0_emitter_sample_is_166_bytes"
+path = "tests/conformance/v0_emitter_sample_is_166_bytes.rs"
 
 [[test]]
-name = "docks_bytes"
-path = "tests/conformance/docks_bytes.rs"
+name = "v0_oneshot_docks_matches_section12"
+path = "tests/conformance/v0_oneshot_docks_matches_section12.rs"
 
 [[test]]
-name = "product_09_idle_ux"
-path = "tests/conformance/product_09_idle_ux.rs"
+name = "v0_c09_idle_ux"
+path = "tests/conformance/v0_c09_idle_ux.rs"
 
 [[test]]
-name = "product_11_strip_bodies"
-path = "tests/conformance/product_11_strip_bodies.rs"
+name = "v0_c11_strip_bodies"
+path = "tests/conformance/v0_c11_strip_bodies.rs"
 
 [[test]]
-name = "product_12_hidden_string_lint"
-path = "tests/conformance/product_12_hidden_string_lint.rs"
+name = "v0_c12_hidden_string_lint"
+path = "tests/conformance/v0_c12_hidden_string_lint.rs"
 
 [[test]]
-name = "cli_status"
-path = "tests/conformance/cli_status.rs"
+name = "v0_cli_status_prints_host_clocks_and_writes_nothing"
+path = "tests/conformance/v0_cli_status_prints_host_clocks_and_writes_nothing.rs"
 
 [[test]]
-name = "cli_run"
-path = "tests/conformance/cli_run.rs"
+name = "v01"
+path = "tests/conformance/v01.rs"
 
 [[test]]
-name = "gate_d_check"
-path = "tests/conformance/gate_d_check.rs"
+name = "v01_p09"
+path = "tests/conformance/v01_p09.rs"
 
 [[test]]
-name = "gate_e_gm"
-path = "tests/conformance/gate_e_gm.rs"
+name = "v01_p12_p21"
+path = "tests/conformance/v01_p12_p21.rs"
 
 [[test]]
 name = "v02"
 path = "tests/conformance/v02.rs"
 
 [[test]]
-name = "cli_migrate"
-path = "tests/conformance/cli_migrate.rs"
+name = "v0_cli_migrate"
+path = "tests/conformance/v0_cli_migrate.rs"

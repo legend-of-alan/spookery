@@ -34,7 +34,7 @@ fn arrange(pack: &Path) {
 }
 
 #[test]
-fn tick_05_busy_skip() {
+fn v0_t05_busy_skip() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = std::env::temp_dir().join(format!(
         "spook-tick05-{}-{}",

@@ -161,7 +161,7 @@ fn empty_idle(n: u64, shard: &str) -> String {
 }
 
 #[test]
-fn trace_a_empty_tick_jsonl() {
+fn v0_trace_a_empty_tick_jsonl() {
     let pack = temp_dir("a");
     copy_dir(
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks"),
@@ -182,7 +182,7 @@ fn trace_a_empty_tick_jsonl() {
 }
 
 #[test]
-fn trace_b_flush_jsonl() {
+fn v0_trace_b_flush_jsonl() {
     let pack = temp_dir("b");
     write(
         &pack.join("pack.yaml"),
@@ -261,7 +261,7 @@ flags: []
 }
 
 #[test]
-fn trace_c_budget_jsonl() {
+fn v0_trace_c_budget_jsonl() {
     let pack = temp_dir("c");
     write(
         &pack.join("pack.yaml"),
@@ -366,7 +366,7 @@ tick:
 }
 
 #[test]
-fn trace_d_catchup_jsonl() {
+fn v0_trace_d_catchup_jsonl() {
     let pack = temp_dir("d");
     write(
         &pack.join("pack.yaml"),

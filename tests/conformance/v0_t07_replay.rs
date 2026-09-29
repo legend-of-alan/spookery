@@ -19,7 +19,7 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 #[test]
-fn tick_07_replay() {
+fn v0_t07_replay() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let stamp = format!(
         "{}-{}",
