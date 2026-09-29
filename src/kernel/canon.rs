@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::check::{load_checks, CheckDef};
 use crate::error::Reason;
 use crate::limits::{load_tick_rules, Budget};
-use crate::moves::load_moves;
+use crate::moves::{load_moves, MoveDef};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -20,7 +20,7 @@ pub struct Canon {
     pub places: BTreeMap<String, PlaceCanon>,
     pub cast: BTreeMap<String, CastCanon>,
     pub facts: BTreeMap<String, FactCanon>,
-    pub moves: BTreeMap<String, Option<String>>,
+    pub moves: BTreeMap<String, MoveDef>,
     pub checks: BTreeMap<String, CheckDef>,
     pub budget: Budget,
 }

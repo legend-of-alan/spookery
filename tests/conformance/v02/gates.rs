@@ -1458,3 +1458,571 @@ fn v02_p05_initialize_writes_no_tape_and_the_four_shapes_keep_key_order() {
     assert_eq!(fs::read_to_string(&tape_path).unwrap().lines().count(), 3);
     let _ = fs::remove_dir_all(&pack);
 }
+
+fn load_err(pack: &Path) -> spookery_kernel::Reason {
+    spookery_kernel::canon::load_canon(pack).expect_err("pack load")
+}
+
+fn reject_moves(label: &str, rewrite: impl FnOnce(&str) -> String) {
+    let pack = temp_pack(label);
+    let path = pack.join("rules/moves.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = rewrite(&text);
+    assert_ne!(next, text, "{label} did not change moves.yaml");
+    fs::write(&path, next).unwrap();
+    assert_eq!(load_err(&pack), spookery_kernel::Reason::Schema, "{label}");
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn flags_of(now: &spookery_kernel::model::Now, id: &str) -> Vec<String> {
+    match now.actors.get(id) {
+        Some(
+            spookery_kernel::model::ActorLive::Npc { flags, .. }
+            | spookery_kernel::model::ActorLive::Pc { flags, .. },
+        ) => flags.clone(),
+        None => panic!("{id} missing"),
+    }
+}
+
+fn stamp_pack_rev(pack: &Path) {
+    let text = fs::read_to_string(pack.join("state/now.yaml")).unwrap();
+    let mut now = spookery_kernel::codec::load_now(&text).unwrap();
+    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+    fs::write(
+        pack.join("state/now.yaml"),
+        spookery_kernel::codec::emit_now(&now).unwrap(),
+    )
+    .unwrap();
+}
+
+fn action_pack(label: &str) -> PathBuf {
+    let pack = temp_pack(label);
+    let moves = pack.join("rules/moves.yaml");
+    let mut text = fs::read_to_string(&moves).unwrap();
+    text.push_str(
+        "  - name: mark
+    token: actor
+    on: named
+    effects:
+      - class: flag
+        key: marked
+        value: true
+  - name: wave
+    token: none
+    on: speaker
+    effects:
+      - class: flag
+        key: marked
+        value: true
+",
+    );
+    fs::write(&moves, text).unwrap();
+    let mira = pack.join("cast/mira.md");
+    let mira_text = fs::read_to_string(&mira).unwrap();
+    let patched = mira_text.replacen(
+        "tick:\n  eligible: true\n",
+        "tick:\n  eligible: true\n  flags:\n    - marked\n",
+        1,
+    );
+    assert_ne!(patched, mira_text, "mira tick block was not patched");
+    fs::write(&mira, patched).unwrap();
+    stamp_pack_rev(&pack);
+    pack
+}
+
+fn flag_effects(tick: &Value) -> Vec<&Value> {
+    tick["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|effect| effect["class"] == "flag")
+        .collect()
+}
+
+fn assert_no_derived_row(tick: &Value, moves: &[&str]) {
+    let tick_index = tick["tick_index"].as_u64().unwrap();
+    let intents = tick["intents"].as_array().unwrap();
+    if let Some(sample) = intents.iter().find(|intent| intent["source"] == "kernel") {
+        let actor = sample["actor_id"].as_str().unwrap();
+        let move_name = sample["move"].as_str().unwrap();
+        let expect =
+            spookery_kernel::derive::kernel_intent_id("docks-001", tick_index, actor, move_name);
+        assert_eq!(sample["id"].as_str().unwrap(), expect, "{sample}");
+    }
+    for actor in ["mira", "bram", "aldric", "pc_rowan"] {
+        for move_name in moves {
+            let id = spookery_kernel::derive::kernel_intent_id(
+                "docks-001",
+                tick_index,
+                actor,
+                move_name,
+            );
+            assert!(
+                intents.iter().all(|intent| intent["id"] != id),
+                "{actor} derived {move_name}"
+            );
+            assert!(
+                tick["rejected"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .all(|item| item["id"] != id),
+                "{actor} rejected derived {move_name}"
+            );
+        }
+    }
+    assert!(intents.iter().all(|intent| {
+        intent["source"] != "kernel" || !moves.contains(&intent["move"].as_str().unwrap())
+    }));
+}
+
+const MARK_ROW: &str = "  - name: mark
+    token: actor
+    on: named
+    effects:
+      - class: flag
+        key: marked
+        value: true
+";
+
+#[test]
+fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
+    reject_moves("p06-class", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: location\n        key: marked\n        value: true\n"
+        )
+    });
+    reject_moves("p06-place", |text| {
+        format!(
+            "{text}  - name: mark\n    token: place\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+        )
+    });
+    reject_moves("p06-actor-speaker", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+        )
+    });
+    reject_moves("p06-none-named", |text| {
+        format!(
+            "{text}  - name: mark\n    token: none\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+        )
+    });
+    reject_moves("p06-travel", |text| {
+        text.replacen(
+            "  - name: travel\n",
+            "  - name: travel\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            1,
+        )
+    });
+    reject_moves("p06-attack", |text| {
+        text.replacen(
+            "  - name: attack\n",
+            "  - name: attack\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            1,
+        )
+    });
+    reject_moves("p06-busy", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: busy\n        value: true\n"
+        )
+    });
+    reject_moves("p06-empty", |text| {
+        format!("{text}  - name: mark\n    token: actor\n    on: named\n    effects: []\n")
+    });
+    reject_moves("p06-missing", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n"
+        )
+    });
+    reject_moves("p06-extra", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n        delta: 1\n"
+        )
+    });
+    reject_moves("p06-check", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+        )
+    });
+
+    let pack = temp_pack("p06-ok");
+    let path = pack.join("rules/moves.yaml");
+    let mut text = fs::read_to_string(&path).unwrap();
+    text.push_str(MARK_ROW);
+    text.push_str(
+        "  - name: wave
+    token: none
+    on: speaker
+    effects:
+      - class: flag
+        key: marked
+        value: false
+",
+    );
+    fs::write(&path, text).unwrap();
+    let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+    let mark = canon.moves.get("mark").unwrap();
+    assert!(mark.check.is_none());
+    let mark_row = mark.row.as_ref().unwrap();
+    assert_eq!(mark_row.token, spookery_kernel::moves::MoveToken::Actor);
+    assert_eq!(mark_row.on, spookery_kernel::moves::MoveOn::Named);
+    assert_eq!(mark_row.effects.len(), 1);
+    assert_eq!(mark_row.effects[0].key, "marked");
+    assert!(mark_row.effects[0].value);
+    let wave = canon.moves.get("wave").unwrap().row.as_ref().unwrap();
+    assert_eq!(wave.token, spookery_kernel::moves::MoveToken::None);
+    assert_eq!(wave.on, spookery_kernel::moves::MoveOn::Speaker);
+    assert!(!wave.effects[0].value);
+    assert!(canon.moves.get("travel").unwrap().row.is_none());
+    assert!(canon.moves.get("work").unwrap().row.is_none());
+    assert!(canon.moves.get("attack").unwrap().row.is_none());
+    assert_eq!(canon.moves.get("attempt").unwrap().check.as_deref(), None);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn v02_p07_mark_queues_until_commit_or_commits_one_live_tick() {
+    let _lock = lock_port();
+    {
+        let pack = action_pack("row-seated");
+        let mut server = spawn(&["run", &pack_arg(&pack)]);
+        wait_listen(&mut server);
+        let mut gm = gm_session();
+        let mut next = 2u64;
+        let mut player = seat_player(&pack);
+        let opened = now_of(&pack);
+        assert_eq!(opened.presence.humans, 1);
+        assert_eq!(opened.world_time, 1080);
+        assert_eq!(rowan_place(&opened), "docks_shop");
+        assert!(flags_of(&opened, "mira").is_empty());
+
+        let mut schema = 0usize;
+        let mut spec = 0usize;
+        for line in ["mark", "mark mira extra", "mark  mira"] {
+            refuse_player(&mut player, line, "SCHEMA", &mut schema);
+        }
+        for line in ["attack", "attack mira", "dance"] {
+            refuse_player(&mut player, line, "NOT_IN_SPEC", &mut spec);
+        }
+        let held = now_of(&pack);
+        assert_eq!(held.world_time, 1080);
+        assert_eq!(held.tick_index, 0);
+        assert!(tick_names(&pack).is_empty());
+        assert!(flags_of(&held, "mira").is_empty());
+        let idle = tool_body(&mut gm, next, "session_status", "{}");
+        next += 1;
+        assert!(queued_rows(&idle).is_empty(), "{idle}");
+
+        let before = text_of(&player.stdout);
+        let stderr = text_of(&player.stderr);
+        write_stdin(&mut player, "mark mira");
+        let stdout = wait_has(
+            &player.stdout,
+            "\"kind\":\"queued\"",
+            Duration::from_secs(5),
+        );
+        let added = &stdout[before.len()..];
+        assert!(added.contains("\"kind\":\"queued\""), "{added}");
+        assert!(!added.contains("\"kind\":\"resume\""), "{added}");
+        assert_eq!(text_of(&player.stderr), stderr);
+        let mark_id = queued_ids(added);
+        assert_eq!(mark_id.len(), 1, "{added}");
+        let mark_id = mark_id[0].clone();
+        let queued_now = now_of(&pack);
+        assert_eq!(queued_now.world_time, 1080);
+        assert_eq!(queued_now.tick_index, 0);
+        assert!(flags_of(&queued_now, "mira").is_empty());
+        assert!(tick_names(&pack).is_empty());
+        let status = tool_body(&mut gm, next, "session_status", "{}");
+        next += 1;
+        assert_eq!(
+            queued_rows(&status),
+            vec![(mark_id.clone(), "mark".to_string())]
+        );
+
+        let committed = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
+        next += 1;
+        assert!(committed.get("code").is_none(), "{committed}");
+        let now = now_of(&pack);
+        assert_eq!(now.world_time, 1085);
+        assert_ne!(now.world_time, 1140);
+        assert_eq!(now.tick_index, 1);
+        assert_eq!(now.presence.humans, 1);
+        assert_eq!(flags_of(&now, "mira"), vec!["marked".to_string()]);
+        assert!(flags_of(&now, "pc_rowan").is_empty());
+        assert!(flags_of(&now, "aldric").is_empty());
+        assert!(flags_of(&now, "bram").is_empty());
+        assert_eq!(rowan_place(&now), "docks_shop");
+        let tick = tick_value(&pack, "tick-0001.jsonl");
+        assert_eq!(tick["world_time_before"], 1080);
+        assert_eq!(tick["world_time_after"], 1085);
+        let player_marks: Vec<_> = tick["intents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|intent| intent["move"] == "mark")
+            .collect();
+        assert_eq!(player_marks.len(), 1, "{tick}");
+        assert_eq!(player_marks[0]["id"], mark_id);
+        assert_eq!(player_marks[0]["source"], "player");
+        assert_eq!(player_marks[0]["actor_id"], "pc_rowan");
+        assert_eq!(player_marks[0]["target"]["actor"], "mira");
+        let flags = flag_effects(&tick);
+        assert_eq!(flags.len(), 1, "{tick}");
+        assert_eq!(flags[0]["as"], "player:pc_rowan");
+        assert_eq!(flags[0]["intent_id"], mark_id);
+        assert_eq!(flags[0]["payload"]["actor_id"], "mira");
+        assert_eq!(flags[0]["payload"]["key"], "marked");
+        assert_eq!(flags[0]["payload"]["value"], true);
+        assert_no_derived_row(&tick, &["mark", "wave"]);
+        assert!(tool_body(&mut gm, next, "session_status", "{}")["queued"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+        next += 1;
+
+        let before_missing = text_of(&player.stdout);
+        write_stdin(&mut player, "mark nobody");
+        let missing_out = wait_count(
+            &player.stdout,
+            "\"kind\":\"queued\"",
+            2,
+            Duration::from_secs(5),
+        );
+        let missing_added = &missing_out[before_missing.len()..];
+        let missing_ids = queued_ids(missing_added);
+        assert_eq!(missing_ids.len(), 1, "{missing_added}");
+        let missing_id = missing_ids[0].clone();
+        assert_ne!(missing_id, mark_id);
+        assert_eq!(now_of(&pack).world_time, 1085);
+        assert!(flags_of(&now_of(&pack), "mira") == vec!["marked".to_string()]);
+        let missing_status = tool_body(&mut gm, next, "session_status", "{}");
+        next += 1;
+        assert_eq!(
+            queued_rows(&missing_status),
+            vec![(missing_id.clone(), "mark".to_string())]
+        );
+        let second = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
+        next += 1;
+        assert!(second.get("code").is_none(), "{second}");
+        let after_missing = now_of(&pack);
+        assert_eq!(after_missing.world_time, 1090);
+        assert_eq!(after_missing.tick_index, 2);
+        assert!(!after_missing.actors.contains_key("nobody"));
+        assert_eq!(flags_of(&after_missing, "mira"), vec!["marked".to_string()]);
+        let missing_tick = tick_value(&pack, "tick-0002.jsonl");
+        assert_eq!(
+            missing_tick["rejected"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == missing_id)
+                .unwrap()["reason"],
+            "UNKNOWN_KEY"
+        );
+        assert!(flag_effects(&missing_tick).is_empty(), "{missing_tick}");
+        assert!(missing_tick["intents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|intent| intent["id"] != missing_id));
+
+        refuse_player(&mut player, "travel", "SCHEMA", &mut schema);
+        let before_travel = text_of(&player.stdout);
+        write_stdin(&mut player, "travel mira_rooms");
+        let travel_out = wait_count(
+            &player.stdout,
+            "\"kind\":\"queued\"",
+            3,
+            Duration::from_secs(5),
+        );
+        let travel_added = &travel_out[before_travel.len()..];
+        let travel_ids = queued_ids(travel_added);
+        assert_eq!(travel_ids.len(), 1, "{travel_added}");
+        let travel_id = travel_ids[0].clone();
+        assert_eq!(now_of(&pack).world_time, 1090);
+        assert_eq!(rowan_place(&now_of(&pack)), "docks_shop");
+        assert_eq!(
+            queued_rows(&tool_body(&mut gm, next, "session_status", "{}")),
+            vec![(travel_id.clone(), "travel".to_string())]
+        );
+        next += 1;
+        let traveled = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
+        assert!(traveled.get("code").is_none(), "{traveled}");
+        let after_travel = now_of(&pack);
+        assert_eq!(after_travel.world_time, 1095);
+        assert_eq!(after_travel.tick_index, 3);
+        assert_eq!(rowan_place(&after_travel), "docks_shop");
+        assert_eq!(flags_of(&after_travel, "mira"), vec!["marked".to_string()]);
+        let travel_tick = tick_value(&pack, "tick-0003.jsonl");
+        assert_eq!(
+            travel_tick["rejected"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|item| item["id"] == travel_id)
+                .unwrap()["reason"],
+            "NOT_OWNER"
+        );
+        assert_closed_effects(&travel_tick, &travel_id);
+        let _ = fs::remove_dir_all(&pack);
+    }
+
+    {
+        let pack = action_pack("row-live");
+        let mut server = spawn(&["run", &pack_arg(&pack)]);
+        wait_listen(&mut server);
+        let mut player = seat_player(&pack);
+        assert_eq!(now_of(&pack).world_time, 1080);
+        assert!(flags_of(&now_of(&pack), "mira").is_empty());
+        let mut schema = 0usize;
+        let mut spec = 0usize;
+        refuse_player(&mut player, "mark", "SCHEMA", &mut schema);
+        refuse_player(&mut player, "mark mira extra", "SCHEMA", &mut schema);
+        refuse_player(&mut player, "attack", "NOT_IN_SPEC", &mut spec);
+        let held = now_of(&pack);
+        assert_eq!(held.world_time, 1080);
+        assert_eq!(held.tick_index, 0);
+        assert!(tick_names(&pack).is_empty());
+        assert!(flags_of(&held, "mira").is_empty());
+
+        let before = text_of(&player.stdout);
+        write_stdin(&mut player, "mark mira");
+        let stdout = wait_count(
+            &player.stdout,
+            "\"kind\":\"resume\"",
+            before.matches("\"kind\":\"resume\"").count() + 1,
+            Duration::from_secs(5),
+        );
+        let added = &stdout[before.len()..];
+        assert!(added.contains("\"kind\":\"resume\""), "{added}");
+        assert!(!added.contains("\"kind\":\"queued\""), "{added}");
+        let now = now_of(&pack);
+        assert_eq!(now.presence.humans, 1);
+        assert_eq!(now.world_time, 1085);
+        assert_ne!(now.world_time, 1140);
+        assert_eq!(now.tick_index, 1);
+        assert_eq!(flags_of(&now, "mira"), vec!["marked".to_string()]);
+        assert!(flags_of(&now, "pc_rowan").is_empty());
+        assert_eq!(rowan_place(&now), "docks_shop");
+        let tick = tick_value(&pack, "tick-0001.jsonl");
+        assert_eq!(tick["world_time_before"], 1080);
+        assert_eq!(tick["world_time_after"], 1085);
+        let flags = flag_effects(&tick);
+        assert_eq!(flags.len(), 1, "{tick}");
+        assert_eq!(flags[0]["payload"]["actor_id"], "mira");
+        assert_eq!(flags[0]["payload"]["key"], "marked");
+        assert_no_derived_row(&tick, &["mark", "wave"]);
+        let _ = fs::remove_dir_all(&pack);
+    }
+}
+
+#[test]
+fn v02_p08_an_unlisted_flag_is_unknown_and_derivation_skips_the_row() {
+    let _lock = lock_port();
+    let pack = action_pack("row-unknown");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut gm = gm_session();
+    let mut next = 2u64;
+    let mut player = seat_player(&pack);
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(flags_of(&now_of(&pack), "mira").is_empty());
+    assert!(flags_of(&now_of(&pack), "aldric").is_empty());
+    assert!(flags_of(&now_of(&pack), "pc_rowan").is_empty());
+
+    let mut schema = 0usize;
+    refuse_player(&mut player, "wave extra", "SCHEMA", &mut schema);
+    let before_wave = text_of(&player.stdout);
+    write_stdin(&mut player, "wave");
+    let wave_out = wait_has(
+        &player.stdout,
+        "\"kind\":\"queued\"",
+        Duration::from_secs(5),
+    );
+    let wave_added = &wave_out[before_wave.len()..];
+    let wave_ids = queued_ids(wave_added);
+    assert_eq!(wave_ids.len(), 1, "{wave_added}");
+    let wave_id = wave_ids[0].clone();
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(tick_names(&pack).is_empty());
+    assert!(flags_of(&now_of(&pack), "pc_rowan").is_empty());
+    assert!(flags_of(&now_of(&pack), "mira").is_empty());
+    assert_eq!(
+        queued_rows(&tool_body(&mut gm, next, "session_status", "{}")),
+        vec![(wave_id.clone(), "wave".to_string())]
+    );
+    next += 1;
+    let waved = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
+    next += 1;
+    assert!(waved.get("code").is_none(), "{waved}");
+    let after_wave = now_of(&pack);
+    assert_eq!(after_wave.world_time, 1085);
+    assert!(flags_of(&after_wave, "pc_rowan").is_empty());
+    assert!(flags_of(&after_wave, "mira").is_empty());
+    assert!(flags_of(&after_wave, "aldric").is_empty());
+    let wave_tick = tick_value(&pack, "tick-0001.jsonl");
+    assert_eq!(
+        wave_tick["rejected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == wave_id)
+            .unwrap()["reason"],
+        "UNKNOWN_KEY"
+    );
+    assert!(flag_effects(&wave_tick).is_empty(), "{wave_tick}");
+    assert!(wave_tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|intent| intent["move"] != "wave" && intent["move"] != "mark"));
+    assert_no_derived_row(&wave_tick, &["mark", "wave"]);
+
+    let before_mark = text_of(&player.stdout);
+    write_stdin(&mut player, "mark aldric");
+    let mark_out = wait_count(
+        &player.stdout,
+        "\"kind\":\"queued\"",
+        2,
+        Duration::from_secs(5),
+    );
+    let mark_added = &mark_out[before_mark.len()..];
+    let mark_ids = queued_ids(mark_added);
+    assert_eq!(mark_ids.len(), 1, "{mark_added}");
+    let mark_id = mark_ids[0].clone();
+    assert_eq!(now_of(&pack).world_time, 1085);
+    assert!(flags_of(&now_of(&pack), "aldric").is_empty());
+    let marked = tool_body(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
+    assert!(marked.get("code").is_none(), "{marked}");
+    let after_mark = now_of(&pack);
+    assert_eq!(after_mark.world_time, 1090);
+    assert_eq!(after_mark.tick_index, 2);
+    assert!(flags_of(&after_mark, "aldric").is_empty());
+    assert!(flags_of(&after_mark, "mira").is_empty());
+    assert!(flags_of(&after_mark, "pc_rowan").is_empty());
+    assert!(flags_of(&after_mark, "bram").is_empty());
+    let mark_tick = tick_value(&pack, "tick-0002.jsonl");
+    assert_eq!(
+        mark_tick["rejected"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|item| item["id"] == mark_id)
+            .unwrap()["reason"],
+        "UNKNOWN_KEY"
+    );
+    assert!(flag_effects(&mark_tick).is_empty(), "{mark_tick}");
+    assert!(mark_tick["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|effect| effect["intent_id"] != mark_id));
+    assert!(mark_tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|intent| intent["move"] != "mark" && intent["id"] != mark_id));
+    assert_no_derived_row(&mark_tick, &["mark", "wave"]);
+    let _ = fs::remove_dir_all(&pack);
+}

@@ -1,8 +1,16 @@
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::model::{Effect, Intent, Now, Target, ViewerId};
+use crate::moves::{ActionRow, MoveOn};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
+    if let Some(row) = canon
+        .moves
+        .get(&intent.move_name)
+        .and_then(|def| def.row.as_ref())
+    {
+        return expand_row(intent, row);
+    }
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let intent_id = intent.id.clone();
     match intent.move_name.as_str() {
@@ -173,4 +181,27 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
             }
         }
     }
+}
+
+/// One `flag` per template. `speaker` is the acting actor. `named` is the typed id.
+fn expand_row(intent: &Intent, row: &ActionRow) -> Result<Vec<Effect>, Reason> {
+    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
+    let actor_id = match row.on {
+        MoveOn::Speaker => intent.actor_id.clone(),
+        MoveOn::Named => match &intent.target {
+            Target::Actor(id) => id.clone(),
+            _ => return Err(Reason::Schema),
+        },
+    };
+    let mut effects = Vec::with_capacity(row.effects.len());
+    for template in &row.effects {
+        effects.push(Effect::Flag {
+            as_viewer: viewer.clone(),
+            intent_id: intent.id.clone(),
+            actor_id: actor_id.clone(),
+            key: template.key.clone(),
+            value: template.value,
+        });
+    }
+    Ok(effects)
 }

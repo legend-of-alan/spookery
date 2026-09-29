@@ -1,6 +1,6 @@
 # Spookery v0.2 architecture
 
-Status: Draft. The bare tag `v0.2` is cut when the demo below is true. Patch `v0.2.0` is tag `v0.2.0` at `913eeb6`. A later patch is tagged `v0.2.N` when that patch's proofs are green. Where this file names a change, it wins over `docs/architecture_v0.1.md`, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope.
+Status: Draft. The bare tag `v0.2` is cut when the demo below is true. Patch `v0.2.0` is tag `v0.2.0` at `913eeb6`. Patch `v0.2.1` is tag `v0.2.1`. A later patch is tagged `v0.2.N` when that patch's proofs are green. Where this file names a change, it wins over `docs/architecture_v0.1.md`, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope.
 License: CC BY 4.0, same as the v0 spec. Runtime code under /src stays AGPL-3.0-or-later.
 
 This file is the draft spec for the v0.2 minor. `docs/architecture_v0.1.md` and `docs/architecture_v0.md` stay frozen. This file does not copy them. Do not edit those files. Do not edit `packs/oneshot-docks` before patch v0.2.2.
@@ -21,12 +21,12 @@ The pack does not choose the place or the actor. The player types that token. Fr
 
 ## Patches
 
-v0.2.0 is proved. v0.2.1 is open. The later rows are names. Their full text is written when a session is about to implement that patch. A later patch may be named before the previous one is green. Two patches proceed together only when they do not both edit the player read loop, the shard thread, or `tools/call`.
+v0.2.0 and v0.2.1 are proved. v0.2.2 is open. The later rows are names. Their full text is written when a session is about to implement that patch. A later patch may be named before the previous one is green. Two patches proceed together only when they do not both edit the player read loop, the shard thread, or `tools/call`.
 
 | Patch | What becomes true |
 |---|---|
 | v0.2.0 | Proved, below. Tool keys, `travel <place>` as a legal line, one wire codec. A successful arrival in `oneshot-docks` is not playable. |
-| v0.2.1 | Open, below. The kernel reads a pack row. A fixture verb the match has never named emits one `flag`. |
+| v0.2.1 | Proved, below. A pack row emits one `flag`. |
 | v0.2.2 | The docks `travel` row uses a place token and one `location` effect. Rowan starts in `docks_shop`, types `travel docks_street`, and after the tick the player can see Rowan on the street. Speech and `wait` still work. This patch may edit `packs/oneshot-docks`. |
 | v0.2.3 | The row may name a check. The acting player sees success or failure, and the effect templates run either way. |
 | v0.2.4 | A success list and a failure list. A `flag` on the success list is written only when the roll succeeds. |
@@ -69,7 +69,7 @@ Proofs `v02_p01` through `v02_p05` are `tests/conformance/v02/gates.rs`, compile
 
 ## v0.2.1 — action row
 
-Open. v0.2.0 is green. This patch does not edit `packs/oneshot-docks`.
+Proved. The behavior below is law. Proofs `v02_p06`, `v02_p07`, and `v02_p08` are `tests/conformance/v02/gates.rs`, compiled through `tests/sitting.rs`. They do not rewrite `v02_p01` through `v02_p05`. The fixture pack is one the proof builds. `packs/oneshot-docks` is unchanged.
 
 A move in `rules/moves.yaml` that carries `effects` is a player action row. `schema/moves.schema.json` accepts the keys below and still rejects an unknown key. A move without `effects` keeps today's arm, including `travel`. Idle moves such as `work` stay that match.
 
@@ -92,14 +92,6 @@ The names `say`, `talk`, `wait`, `attempt`, `travel`, `attack`, `give`, and `tak
 Expand of a row builds one `flag` per template. `on: speaker` writes the acting actor. `on: named` writes the typed actor id. The typed word is not looked up at parse time. An actor the pack does not have stays that tick's existing refusal.
 
 A `flag` whose `key` is listed in that actor's cast `tick.flags` writes `actors.<id>.flags.<key>`. A key that is not listed returns `UNKNOWN_KEY` and writes nothing. `busy` stays the kernel's own flag and is not a row key. No new effect class. NPC derivation does not emit a move that carries `effects`.
-
-Proofs `v02_p06` onward live under `tests/conformance/v02/` and compile through `tests/sitting.rs`. They do not rewrite `v02_p01` through `v02_p05`. The fixture pack is one the proof builds.
-
-1. Pack load rejects a template whose `class` is not `flag`, a `token` of `place`, a `token`/`on` pair other than the two accepted pairs, an `effects` list on `travel` or on `attack`, and a row whose `key` is `busy`.
-2. With a GM seated, `mark <actor>` returns `queued`, does not advance `world_time`, and does not write the flag until `commit_turn`. With no GM, it commits one live tick and the named actor's flags contain that key. A missing token is `SCHEMA` and queues nothing. `attack` stays `NOT_IN_SPEC` and queues nothing. `travel` without `effects` still follows `v02_p03`.
-3. A template key absent from that actor's `tick.flags` returns `UNKNOWN_KEY` and writes nothing. NPC derivation does not emit `mark`.
-
-Still absent. No `location` template. No `token: place`. No `effects` on `travel`. No check on a row. No success list and no failure list. A roll still writes nothing to `Now`. No opposing action. No required item. No new effect class. `packs/oneshot-docks` is unchanged. Rowan does not arrive on `docks_street` by this patch.
 
 ---
 

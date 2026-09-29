@@ -1,5 +1,8 @@
+use std::collections::BTreeMap;
+
 use spookery_kernel::check::CheckNotice;
 use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, Source, Target};
+use spookery_kernel::moves::{ActionRow, MoveDef, MoveToken};
 use spookery_kernel::store::Shard;
 use spookery_kernel::Reason;
 use spookery_tick::commit_turn_at;
@@ -21,14 +24,18 @@ pub enum Turn {
     },
 }
 
-/// `say` and `talk` are speech. `wait`, `attempt`, and `travel` take the queue.
+/// `say` and `talk` are speech. `wait`, `attempt`, `travel`, and a pack row take the queue.
 /// Any other verb is `NOT_IN_SPEC` here. Speech's `NOT_IN_SPEC` is not the signal.
 pub enum PlayerLine {
     Speech,
     Turn,
 }
 
-pub fn classify_player_line(line: &str, seated: &str) -> Result<PlayerLine, Reason> {
+pub fn classify_player_line(
+    line: &str,
+    seated: &str,
+    moves: &BTreeMap<String, MoveDef>,
+) -> Result<PlayerLine, Reason> {
     let (verb, _) = verb_line(line, seated)?;
     if verb.is_empty() {
         return Err(Reason::Schema);
@@ -36,6 +43,7 @@ pub fn classify_player_line(line: &str, seated: &str) -> Result<PlayerLine, Reas
     match verb {
         "say" | "talk" => Ok(PlayerLine::Speech),
         "wait" | "attempt" | "travel" => Ok(PlayerLine::Turn),
+        other if moves.get(other).is_some_and(|def| def.row.is_some()) => Ok(PlayerLine::Turn),
         _ => Err(Reason::NotInSpec),
     }
 }
@@ -82,7 +90,25 @@ pub fn turn(
                 notices: shard.take_rolls(),
             })
         }
-        _ => Err(Reason::NotInSpec),
+        other => {
+            let Some(row) = shard
+                .canon()
+                .moves
+                .get(other)
+                .and_then(|def| def.row.clone())
+            else {
+                return Err(Reason::NotInSpec);
+            };
+            let note = queue_row(shard, actor_id, other, rest, &row)?;
+            if gm_seated {
+                return Ok(Turn::Queued(note));
+            }
+            let advanced = commit_queued(shard)?;
+            Ok(Turn::Committed {
+                advanced,
+                notices: shard.take_rolls(),
+            })
+        }
     }
 }
 
@@ -188,6 +214,56 @@ fn integer_token(token: &str) -> Option<i64> {
         return None;
     }
     token.parse().ok()
+}
+
+/// The actor token is stored as typed. An unknown id stays the tick's existing refusal.
+fn queue_row(
+    shard: &mut Shard,
+    actor_id: &str,
+    verb: &str,
+    rest: &str,
+    row: &ActionRow,
+) -> Result<QueuedNote, Reason> {
+    if !shard
+        .now()
+        .actors
+        .get(actor_id)
+        .is_some_and(ActorLive::is_pc)
+    {
+        return Err(Reason::Schema);
+    }
+    let target = match row.token {
+        MoveToken::None => {
+            if !rest.is_empty() {
+                return Err(Reason::Schema);
+            }
+            Target::Empty
+        }
+        MoveToken::Actor => {
+            let (named, extra) = split_token(rest);
+            if named.is_empty() || !extra.is_empty() {
+                return Err(Reason::Schema);
+            }
+            Target::Actor(named.to_string())
+        }
+    };
+    let note = QueuedNote {
+        id: mint_intent_id()?,
+        actor_id: actor_id.to_string(),
+        move_name: verb.to_string(),
+    };
+    push_intent(
+        shard,
+        note.id.clone(),
+        actor_id,
+        ActorKind::Player,
+        verb,
+        target,
+        IntentArgs::default(),
+        String::new(),
+        None,
+    )?;
+    Ok(note)
 }
 
 /// One place id. A place the pack does not have is that tick's kernel refusal.

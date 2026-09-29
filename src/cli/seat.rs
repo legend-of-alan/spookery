@@ -497,7 +497,7 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match turn::classify_player_line(line, &actor_id) {
+    match turn::classify_player_line(line, &actor_id, &shard.canon().moves) {
         Ok(turn::PlayerLine::Speech) => match speak(shard, &actor_id, line) {
             Ok(spoken) => {
                 println!("{}", spoken.tape);

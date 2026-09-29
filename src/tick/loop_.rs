@@ -290,7 +290,7 @@ fn stage_tick(
                 .canon()
                 .moves
                 .get(&intent.move_name)
-                .and_then(|check| check.clone())
+                .and_then(|def| def.check.clone())
                 .ok_or(KernelReason::UnknownKey)?;
             let viewer = spookery_kernel::model::ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
             let seed = seed_preimage(&shard_id, tick_index);

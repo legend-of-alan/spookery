@@ -138,10 +138,35 @@ fn v0_canon_schemas_reject_unknown_keys() {
             "schema": "moves/v0",
             "moves": [
                 {"name": "wait"},
-                {"name": "attempt", "check": "grit"}
+                {"name": "attempt", "check": "grit"},
+                {
+                    "name": "mark",
+                    "token": "actor",
+                    "on": "named",
+                    "effects": [{
+                        "class": "flag",
+                        "key": "marked",
+                        "value": true
+                    }]
+                },
+                {
+                    "name": "wave",
+                    "token": "none",
+                    "on": "speaker",
+                    "effects": [{
+                        "class": "flag",
+                        "key": "marked",
+                        "value": false
+                    }]
+                }
             ]
         }),
-        &[&["moves", "0"]],
+        &[
+            &["moves", "0"],
+            &["moves", "2"],
+            &["moves", "2", "effects", "0"],
+            &["moves", "3"],
+        ],
     );
     assert_closed(
         "checks",
