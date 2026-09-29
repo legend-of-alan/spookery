@@ -48,6 +48,25 @@ impl ToolDone {
     }
 }
 
+/// `say` and `talk` are speech. `wait`, `attempt`, and `travel` take the queue.
+/// Any other verb is `NOT_IN_SPEC` here. Speech's `NOT_IN_SPEC` is not the signal.
+pub enum PlayerLine {
+    Speech,
+    Mechanical,
+}
+
+pub fn classify_player_line(line: &str, seated: &str) -> Result<PlayerLine, Code> {
+    let (verb, _) = verb_line(line, seated)?;
+    if verb.is_empty() {
+        return Err(Code::Schema);
+    }
+    match verb {
+        "say" | "talk" => Ok(PlayerLine::Speech),
+        "wait" | "attempt" | "travel" => Ok(PlayerLine::Mechanical),
+        _ => Err(Code::NotInSpec),
+    }
+}
+
 pub fn mechanical(shard: &mut Shard, actor_id: &str, line: &str, gm_seated: bool) -> Result<Mechanical, Code> {
     let (verb, rest) = verb_line(line, actor_id)?;
     match verb {
@@ -74,6 +93,17 @@ pub fn mechanical(shard: &mut Shard, actor_id: &str, line: &str, gm_seated: bool
             })
         }
         "wait" => Err(Code::Schema),
+        "travel" => {
+            let note = queue_travel(shard, actor_id, rest)?;
+            if gm_seated {
+                return Ok(Mechanical::Queued(note));
+            }
+            let advanced = commit_queued(shard)?;
+            Ok(Mechanical::Committed {
+                advanced,
+                notices: shard.take_rolls(),
+            })
+        }
         _ => Err(Code::NotInSpec),
     }
 }
@@ -458,6 +488,34 @@ fn integer_token(token: &str) -> Option<i64> {
         return None;
     }
     token.parse().ok()
+}
+
+/// One place id. A place the pack does not have is that tick's kernel refusal.
+fn queue_travel(shard: &mut Shard, actor_id: &str, rest: &str) -> Result<QueuedNote, Code> {
+    if !shard.now().actors.get(actor_id).is_some_and(ActorLive::is_pc) {
+        return Err(Code::Schema);
+    }
+    let (place, extra) = split_token(rest);
+    if place.is_empty() || !extra.is_empty() {
+        return Err(Code::Schema);
+    }
+    let note = QueuedNote {
+        id: mint_intent_id()?,
+        actor_id: actor_id.to_string(),
+        move_name: "travel".to_string(),
+    };
+    push_intent(
+        shard,
+        note.id.clone(),
+        actor_id,
+        ActorKind::Player,
+        "travel",
+        Target::Place(place.to_string()),
+        IntentArgs::default(),
+        String::new(),
+        None,
+    )?;
+    Ok(note)
 }
 
 pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Code> {

@@ -464,17 +464,23 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match speak(shard, &actor_id, line) {
-        Ok(spoken) => {
-            println!("{}", spoken.tape);
-            let _ = io::stdout().flush();
-            if let Some(gm) = &seats.gm {
-                let _ = gm.out.send(spoken.gm_event);
+    match round::classify_player_line(line, &actor_id) {
+        Ok(round::PlayerLine::Speech) => match speak(shard, &actor_id, line) {
+            Ok(spoken) => {
+                println!("{}", spoken.tape);
+                let _ = io::stdout().flush();
+                if let Some(gm) = &seats.gm {
+                    let _ = gm.out.send(spoken.gm_event);
+                }
+                send_player(seats, conn, spoken.player_event.into_bytes());
+                Ok(PlayerReply::Done)
             }
-            send_player(seats, conn, spoken.player_event.into_bytes());
-            Ok(PlayerReply::Done)
-        }
-        Err(Code::NotInSpec) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
+            Err(code) => {
+                send_player(seats, conn, refused_line(code).into_bytes());
+                Ok(PlayerReply::Done)
+            }
+        },
+        Ok(round::PlayerLine::Mechanical) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
         Err(code) => {
             send_player(seats, conn, refused_line(code).into_bytes());
             Ok(PlayerReply::Done)
