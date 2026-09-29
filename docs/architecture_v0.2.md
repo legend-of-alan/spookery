@@ -1,17 +1,45 @@
 # Spookery v0.2 architecture
 
-Status: Frozen. Normative spec for v0.2. Gates A–C in §3 are proved. Tag `v0.1` is `b1d4fd1`. Where this file names a change, it wins over `docs/architecture_v0.1.md`, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope. §3 does not open another gate.
+Status: Draft. The bare tag `v0.2` is cut when the demo below is true. Patch `v0.2.0` is tag `v0.2.0` at `913eeb6`. A later patch is tagged `v0.2.N` when that patch's proofs are green. Where this file names a change, it wins over `docs/architecture_v0.1.md`, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope.
 License: CC BY 4.0, same as the v0 spec. Runtime code under /src stays AGPL-3.0-or-later.
 
-This file is the frozen spec for v0.2. `docs/architecture_v0.1.md` remains the frozen spec for the sitting rules this file does not change, then `docs/architecture_v0.md`. This file does not copy them. §3 records the order in which this version became authority. Do not edit `packs/oneshot-docks`, `docs/architecture_v0.md`, or the frozen body of `docs/architecture_v0.1.md`.
+This file is the draft spec for the v0.2 minor. `docs/architecture_v0.1.md` and `docs/architecture_v0.md` stay frozen. This file does not copy them. Do not edit those files. Do not edit `packs/oneshot-docks` before patch v0.2.2.
 
-The v0.1 demo stays the demo. Its mechanical line is `wait`. Rowan stays in `docks_shop`. Gate B adds `travel <place>` because `expand` already turns a place target into a location effect.
+A session reads this file and implements the open patch. A pin this file quotes is the pin the session uses.
 
 ---
 
-## 1. What becomes true
+## Demo
 
-The following hold. Each gate implemented only the rules §3 assigns it.
+When v0.2.6 is green, a pack can define a player action as one row. The row names a verb. It says the token after the verb is absent, a place id, or an actor id, and which field of an existing effect that token fills. The effect lands on the speaker or on the named actor. The row may name a check, with one effect list for success and one for failure, using classes that already apply. Another actor's action, queued before `commit_turn`, may oppose that check. The row may name an item id the sheet must already hold, and a missing item refuses the action before any effect. No new effect class appears in this version.
+
+v0.2.2 is a scene a person can show before that sentence is true. Rowan starts in `docks_shop`, types `travel docks_street`, and after the tick the player can see Rowan on the street. Showing that scene does not cut the bare tag.
+
+The pack does not choose the place or the actor. The player types that token. Friends and foes are not a field in this version.
+
+---
+
+## Patches
+
+v0.2.0 is proved. v0.2.1 is open. The later rows are names. Their full text is written when a session is about to implement that patch. A later patch may be named before the previous one is green. Two patches proceed together only when they do not both edit the player read loop, the shard thread, or `tools/call`.
+
+| Patch | What becomes true |
+|---|---|
+| v0.2.0 | Proved, below. Tool keys, `travel <place>` as a legal line, one wire codec. A successful arrival in `oneshot-docks` is not playable. |
+| v0.2.1 | Open, below. The kernel reads a pack row. A fixture verb the match has never named emits one `flag`. |
+| v0.2.2 | The docks `travel` row uses a place token and one `location` effect. Rowan starts in `docks_shop`, types `travel docks_street`, and after the tick the player can see Rowan on the street. Speech and `wait` still work. This patch may edit `packs/oneshot-docks`. |
+| v0.2.3 | The row may name a check. The acting player sees success or failure, and the effect templates run either way. |
+| v0.2.4 | A success list and a failure list. A `flag` on the success list is written only when the roll succeeds. |
+| v0.2.5 | An action the named actor queued before `commit_turn` supplies the opposing check. |
+| v0.2.6 | The row may name an item id. A sheet that lacks it refuses the action, queues nothing, and leaves the item where it is. This patch meets the demo. |
+
+`attack` is a pack row once v0.2.4 exists: an actor token, a check, and a `resource` delta on a key the sheet already lists. `defend` is that actor's queued row at v0.2.5. This minor does not require `oneshot-docks` to contain either row. `give`, `take`, and an item changing hands are v0.3. Idle moves such as `work` keep the match arms they have.
+
+---
+
+## v0.2.0 — baseline
+
+Tag `v0.2.0` is `913eeb6`. The behavior below is law. The gate letters A–C belong to this patch and are proved.
 
 GM `tools/list` gives each name its own description. The sitting allowlist stays the v0.1 order. The five live tools name the keys their handlers already require.
 
@@ -29,83 +57,67 @@ A missing required key stays `SCHEMA` or `UNSCOPED_PERCEIVE`, as today. `npc_act
 
 `travel <place>` is one place id, on the same queue path as `wait`. With a GM seated, the line returns `queued`, does not advance `world_time`, and does not move the actor until `commit_turn`. With no GM, it commits one live tick. A missing place is `SCHEMA` and queues nothing. Any other shape of a `travel` line is `SCHEMA` and queues nothing. The applying tick uses the location effect `expand` already returns. A place the pack does not have stays that tick's existing kernel refusal. No new effect class. NPC derivation is unchanged.
 
-`attack`, `give`, and `take` stay `NOT_IN_SPEC` and queue nothing. The only new player verb is `travel`. Player lines are `say`, `talk`, `wait`, `attempt <check> <target>`, and `travel <place>`.
+`attack`, `give`, and `take` stay `NOT_IN_SPEC` and queue nothing. Player lines on this patch are `say`, `talk`, `wait`, `attempt <check> <target>`, and `travel <place>`.
 
 The same PC drops and connects again. That connect is a new `session_open` for the same actor, as v0.1. Scrollback returns. `humans` is 1. Intents already queued are still queued, once each. Reconnect does not apply them. No new session-id rule. No durable queue.
 
-The GM socket does not receive tape bytes before MCP `initialize`. `initialize` does not append the tape. GM scrollback is `session_status` with `since`. Player scrollback on hello stays the v0.1 lines. A `say` tool result is still followed by its `spook/event`, not preceded by it. A player `say` still reaches the seated GM as a `spook/event`. `spook gm --stdio`, when nothing is listening, still exits 1. Stderr is the operating-system error. Stdout is empty. The pack is unchanged.
+The GM socket does not receive tape bytes before MCP `initialize`. `initialize` does not append the tape. GM scrollback is `session_status` with `since`. Player scrollback on hello stays the v0.1 lines. A `say` tool result is still followed by its `spook/event`, not preceded by it. A player `say` still reaches the seated GM as a `spook/event`. `spook gm --stdio`, when nothing is listening, still exits 1. Stderr is the operating-system error. Stdout is empty.
 
-Three outcomes, one per gate. Not a file list.
-
-- Gate A: a dispatch table so each GM tool name has a visible handler or a visible refusal. Handlers stay on the shard thread.
-- Gate B: a player-line classifier, so an unknown verb is not discovered by catching `NOT_IN_SPEC`.
-- Gate C: one wire codec for player lines, tape objects, `spook/event` frames, and tool results. Key order stays the order v0.1 pins. The codec stays outside the kernel. The kernel still does not link `tokio`, `rmcp`, or a model SDK.
+Proofs `v02_p01` through `v02_p05` are `tests/conformance/v02/gates.rs`, compiled through `tests/sitting.rs`. v0 proofs compile through `tests/v0.rs` from `tests/conformance/v0/`. v0.1 proofs compile through `tests/sitting.rs` from `tests/conformance/v01/`. Shared helpers are `tests/support.rs`. Those functions stay as they are. `store.rs` stays one file.
 
 ---
 
-## 2. Proofs
+## v0.2.1 — action row
 
-Each item is the assertion. The new proofs live in one new conformance file, created in Gate A and extended by Gates B and C. `tests/conformance/v01.rs` stays unrewritten. `tests/conformance/v01_p09.rs` and `tests/conformance/v01_p12_p21.rs` stay unrewritten. The v0 tests `docs/architecture_v0.1.md` §8 lists as unrewritten stay unrewritten. No shared test harness. No unit-test backfill. Do not split `store.rs`. These proofs do not edit `packs/oneshot-docks`. Gate C withdraws only the proof 21 wait for stored tape on the bridge before `initialize`; the rest of `tests/conformance/v01_p12_p21.rs` stays unrewritten.
+Open. v0.2.0 is green. This patch does not edit `packs/oneshot-docks`.
 
-1. GM `tools/list` gives distinct descriptions and names the keys §1 lists for `say`, `perceive`, `commit_turn`, `session_status`, and `intent`. A missing required key stays `SCHEMA`, or `UNSCOPED_PERCEIVE` when `perceive` has no `as`. `npc_act` stays `LLM_DISABLED`. `session_open`, `patch_entity`, `resolve_check`, `apply_effect`, `recall`, and `session_save` stay `NOT_IN_SPEC`.
-2. `spook run --mcp pack-table` does not gain `say` or a `tools/call` body. `v0_c01_load_mcp` stays green.
-3. With a GM seated, `travel <place>` returns `queued`, does not advance `world_time`, and does not move the actor until `commit_turn`. With no GM, it commits one live tick. A missing place is `SCHEMA` and queues nothing. `attack` stays `NOT_IN_SPEC` and queues nothing. No new effect class. NPC derivation is unchanged.
-4. The same PC drops and connects again. Scrollback returns, `humans` is 1, and the in-memory queue is not flushed or applied twice. No new session-id rule. No durable queue.
-5. The GM socket does not receive tape bytes before MCP `initialize`. Scrollback is `session_status` with `since`. A `say` tool result is still followed by its `spook/event`, not preceded by it. The stdio bridge still exits when nothing is listening.
+A move in `rules/moves.yaml` that carries `effects` is a player action row. `schema/moves.schema.json` accepts the keys below and still rejects an unknown key. A move without `effects` keeps today's arm, including `travel`. Idle moves such as `work` stay that match.
 
----
+```yaml
+- name: mark
+  token: actor
+  on: named
+  effects:
+    - class: flag
+      key: marked
+      value: true
+```
 
-## 3. Gates
+`token` is `none` or `actor`. `on` is `speaker` or `named`. The load accepts `token: none` with `on: speaker`, and `token: actor` with `on: named`. Any other pair is `SCHEMA` at pack load. `token: place` is `SCHEMA` at pack load. A template `class` other than `flag` is `SCHEMA` at pack load. `effects` is a non-empty list. Each item is `class`, `key`, and `value`. `value` is a boolean. `key` is not `busy`. An empty list, a missing key, or an extra key is `SCHEMA` at pack load.
 
-Gates A–C are proved. The letters belong to this version. v0.1's Gates A–E stay closed. This file does not open a gate in `docs/architecture_v0.1.md`.
+The names `say`, `talk`, `wait`, `attempt`, `travel`, `attack`, `give`, and `take` reject an `effects` list at pack load. The optional `check` key on a row is `SCHEMA` at pack load. A move without `effects` may still carry `check`, and that key still does nothing.
 
-A gate does not prescribe modules or file order. It names what becomes true, and what stays unbuilt so the session does not invent the next gate. The proofs stay in §2. This section does not restate them.
+`say` and `talk` stay speech. A player verb that names a row is on the same queue path as `wait`. The line is the verb plus one actor token when `token` is `actor`, and the verb alone when `token` is `none`. A missing token, or an extra token, is `SCHEMA` and queues nothing. With a GM seated, the line returns `queued`, does not advance `world_time`, and does not write the flag until `commit_turn`. With no GM, it commits one live tick. A verb that is not `say`, `talk`, `wait`, `attempt`, `travel`, and not a row, stays `NOT_IN_SPEC` at the classifier. `attack`, `give`, and `take` stay `NOT_IN_SPEC` and queue nothing.
 
-The gates are linear. Gates A and B both leave the existing JSON builders in place. Gate C is the one that replaces them. Do not implement two gates in parallel. Do not start a gate whose predecessor is not already green. A session reads that gate, the proofs it names, and the §1 rules those proofs cite.
+Expand of a row builds one `flag` per template. `on: speaker` writes the acting actor. `on: named` writes the typed actor id. The typed word is not looked up at parse time. An actor the pack does not have stays that tick's existing refusal.
 
-Every gate keeps the §2 file rules. The v0 tests, `v01.rs`, `v01_p09.rs`, and `v01_p12_p21.rs` stay unrewritten in all three, aside from the §2 exception for proof 21.
+A `flag` whose `key` is listed in that actor's cast `tick.flags` writes `actors.<id>.flags.<key>`. A key that is not listed returns `UNKNOWN_KEY` and writes nothing. `busy` stays the kernel's own flag and is not a row key. No new effect class. NPC derivation does not emit a move that carries `effects`.
 
-### Gate A — schemas
+Proofs `v02_p06` onward live under `tests/conformance/v02/` and compile through `tests/sitting.rs`. They do not rewrite `v02_p01` through `v02_p05`. The fixture pack is one the proof builds.
 
-Proofs 1 and 2.
+1. Pack load rejects a template whose `class` is not `flag`, a `token` of `place`, a `token`/`on` pair other than the two accepted pairs, an `effects` list on `travel` or on `attack`, and a row whose `key` is `busy`.
+2. With a GM seated, `mark <actor>` returns `queued`, does not advance `world_time`, and does not write the flag until `commit_turn`. With no GM, it commits one live tick and the named actor's flags contain that key. A missing token is `SCHEMA` and queues nothing. `attack` stays `NOT_IN_SPEC` and queues nothing. `travel` without `effects` still follows `v02_p03`.
+3. A template key absent from that actor's `tick.flags` returns `UNKNOWN_KEY` and writes nothing. NPC derivation does not emit `mark`.
 
-GM `tools/list` gives each name its own description and names the §1 keys for the five live tools. A missing required key stays `SCHEMA` or `UNSCOPED_PERCEIVE`. The dispatch table gives each listed name a visible handler or a visible refusal. `spook run --mcp pack-table` does not gain `say` or a `tools/call` body.
-
-Still absent. `travel` stays `NOT_IN_SPEC` and queues nothing. No classifier. No codec. Accepting `gm` still writes the stored tape before MCP `initialize`. Player lines stay `say`, `talk`, `wait`, and `attempt <check> <target>`.
-
-### Gate B — travel
-
-Proofs 3 and 4. Gate A is green.
-
-`travel <place>` uses the same queue path as `wait`. The classifier refuses an unknown verb without catching `NOT_IN_SPEC` from speech. The same PC drops and connects again: scrollback returns, `humans` is 1, and the in-memory queue is not flushed or applied twice.
-
-Still absent. No codec. Accepting `gm` still writes the stored tape before `initialize`. No new effect class. No durable queue. No new session-id rule. `attack`, `give`, and `take` stay `NOT_IN_SPEC`.
-
-### Gate C — codec
-
-Proof 5. Gate B is green.
-
-One wire codec for player lines, tape objects, `spook/event` frames, and tool results. Key order stays the order v0.1 pins. The codec stays outside the kernel. The GM socket does not receive tape bytes before MCP `initialize`. GM scrollback is `session_status` with `since`. A `say` tool result is still followed by its `spook/event`. The stdio bridge still exits when nothing is listening.
-
-Still absent. No new player verb. Queue lifetime stays the Gate B rule: in memory, not flushed on reconnect, not durable, not applied twice. No ack cursor. No outbound queue. Player scrollback on hello stays the v0.1 lines. `initialize` does not append the tape.
+Still absent. No `location` template. No `token: place`. No `effects` on `travel`. No check on a row. No success list and no failure list. A roll still writes nothing to `Now`. No opposing action. No required item. No new effect class. `packs/oneshot-docks` is unchanged. Rowan does not arrive on `docks_street` by this patch.
 
 ---
 
-## 4. Still unbuilt
+## Still unbuilt for the minor
 
-`docs/architecture_v0.1.md` §7 still holds. None of the three gates opens the list below.
+These stay out for every patch of v0.2:
 
-Will not appear in this version:
-
-- No new effect class. A roll still writes nothing to `Now`. A rule that reads a roll and then changes the world is a later version.
+- No new effect class. `give`, `take`, and an item changing hands are v0.3.
+- Friends and foes are not a field. The row does not list who may be named.
 - No ack cursor. No outbound queue.
 - No model inside `npc_act`. No cargo feature named `llm`.
 - No change whose purpose is to make `spook/event` start a Grok turn.
-- The only new player verb is `travel`.
 - The typed `spook gm` client stays the v0.1 client. It accepts `close`.
+
+`docs/architecture_v0.1.md` §7 still holds where this file does not name a change.
 
 ---
 
-## 5. Host
+## Host
 
-A Grok skill may tell an already-running turn to call `say` and `session_status`. A host monitor on the tape may print new `player:` lines to wake that turn. Neither is shard behavior. None of these gates writes the skill.
+A Grok skill may tell an already-running turn to call `say` and `session_status`. A host monitor on the tape may print new `player:` lines to wake that turn. Neither is shard behavior. None of these patches writes the skill.
