@@ -78,39 +78,267 @@ pub fn mechanical(shard: &mut Shard, actor_id: &str, line: &str, gm_seated: bool
     }
 }
 
+/// Sitting `tools/list` order. Each name is one handler or one refusal.
+/// Any other name is `NOT_IN_SPEC`.
+pub(super) struct GmTool {
+    pub(super) name: &'static str,
+    pub(super) about: &'static str,
+    pub(super) schema: fn() -> Map<String, Value>,
+    run: fn(&mut Shard, Option<Map<String, Value>>) -> ToolDone,
+}
+
+const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_turn. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
+
+impl GmTool {
+    pub(super) fn description(&self) -> String {
+        format!("{} {}", self.about, SEAT_FACTS)
+    }
+}
+
+pub(super) const GM_LIST: &[GmTool] = &[
+    GmTool {
+        name: "session_open",
+        about: "Calling session_open on this seat returns NOT_IN_SPEC and writes nothing.",
+        schema: empty_schema,
+        run: refuse_not_in_spec,
+    },
+    GmTool {
+        name: "session_status",
+        about: "session_status takes no required key. An empty object stays legal. since is the only other accepted key.",
+        schema: status_schema,
+        run: run_session_status,
+    },
+    GmTool {
+        name: "perceive",
+        about: "perceive requires as. focus and budget_tokens may be sent. A missing as is UNSCOPED_PERCEIVE.",
+        schema: perceive_schema,
+        run: run_perceive,
+    },
+    GmTool {
+        name: "intent",
+        about: "intent requires actor_id, actor_kind, source, and move. source stays player.",
+        schema: intent_schema,
+        run: run_intent,
+    },
+    GmTool {
+        name: "say",
+        about: "say requires address and text. place is required when address is place. actor is required when address is actor. table takes neither place nor actor. A supplied from is SCHEMA.",
+        schema: say_schema,
+        run: run_say,
+    },
+    GmTool {
+        name: "resolve_check",
+        about: "Calling resolve_check on this seat returns NOT_IN_SPEC.",
+        schema: empty_schema,
+        run: refuse_not_in_spec,
+    },
+    GmTool {
+        name: "apply_effect",
+        about: "Calling apply_effect on this seat returns NOT_IN_SPEC.",
+        schema: empty_schema,
+        run: refuse_not_in_spec,
+    },
+    GmTool {
+        name: "npc_act",
+        about: "npc_act returns LLM_DISABLED and calls no model.",
+        schema: empty_schema,
+        run: refuse_llm_disabled,
+    },
+    GmTool {
+        name: "commit_turn",
+        about: "commit_turn requires include_tick. session_id may be a string.",
+        schema: commit_schema,
+        run: run_commit_turn,
+    },
+    GmTool {
+        name: "recall",
+        about: "Calling recall on this seat returns NOT_IN_SPEC.",
+        schema: empty_schema,
+        run: refuse_not_in_spec,
+    },
+    GmTool {
+        name: "session_save",
+        about: "Calling session_save on this seat returns NOT_IN_SPEC.",
+        schema: empty_schema,
+        run: refuse_not_in_spec,
+    },
+];
+
 pub fn gm_tool(shard: &mut Shard, name: &str, arguments: Option<Map<String, Value>>) -> ToolDone {
-    match name {
-        "intent" => match queue_tool_intent(shard, arguments) {
-            Ok(note) => ToolDone::new(serde_json::json!({ "queued": note.id })),
-            Err(code) => refused_tool(code),
+    match GM_LIST.iter().find(|tool| tool.name == name) {
+        Some(tool) => (tool.run)(shard, arguments),
+        None => refuse_not_in_spec(shard, arguments),
+    }
+}
+
+fn run_intent(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolDone {
+    match queue_tool_intent(shard, arguments) {
+        Ok(note) => ToolDone::new(serde_json::json!({ "queued": note.id })),
+        Err(code) => refused_tool(code),
+    }
+}
+
+fn run_commit_turn(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolDone {
+    match commit_tool(shard, arguments) {
+        Ok(done) => done,
+        Err(code) => refused_tool(code),
+    }
+}
+
+fn run_perceive(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolDone {
+    match perceive_tool(shard, arguments) {
+        Ok(value) => ToolDone::new(value),
+        Err(code) => refused_tool(code),
+    }
+}
+
+fn run_say(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolDone {
+    match speech::speak_tool(shard, arguments) {
+        Ok(spoken) => {
+            let value = serde_json::from_str(&spoken.gm_object).unwrap_or(Value::Null);
+            let mut done = ToolDone::new(value);
+            // Same object as the tool result, after that response. Ahead of it, the client stalls.
+            done.after.push(spoken.gm_event);
+            done.player_line = Some((spoken.recipients, spoken.player_event.into_bytes()));
+            done.tape = Some(spoken.tape);
+            done
+        }
+        Err(code) => refused_tool(code),
+    }
+}
+
+fn run_session_status(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolDone {
+    match session_status_tool(shard, arguments) {
+        Ok(value) => ToolDone::new(value),
+        Err(code) => refused_tool(code),
+    }
+}
+
+fn refuse_not_in_spec(_shard: &mut Shard, _arguments: Option<Map<String, Value>>) -> ToolDone {
+    refused_tool(Code::NotInSpec)
+}
+
+fn refuse_llm_disabled(_shard: &mut Shard, _arguments: Option<Map<String, Value>>) -> ToolDone {
+    refused_tool(Code::LlmDisabled)
+}
+
+fn empty_schema() -> Map<String, Value> {
+    schema_object(serde_json::json!({ "type": "object" }))
+}
+
+fn say_schema() -> Map<String, Value> {
+    schema_object(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "address": { "type": "string", "enum": ["table", "place", "actor"] },
+            "text": { "type": "string" },
+            "place": { "type": ["string", "null"] },
+            "actor": { "type": ["string", "null"] }
         },
-        "commit_turn" => match commit_tool(shard, arguments) {
-            Ok(done) => done,
-            Err(code) => refused_tool(code),
-        },
-        "perceive" => match perceive_tool(shard, arguments) {
-            Ok(value) => ToolDone::new(value),
-            Err(code) => refused_tool(code),
-        },
-        "say" => match speech::speak_tool(shard, arguments) {
-            Ok(spoken) => {
-                let value = serde_json::from_str(&spoken.gm_object).unwrap_or(Value::Null);
-                let mut done = ToolDone::new(value);
-                // Same object as the tool result, after that response. Ahead of it, the client stalls.
-                done.after.push(spoken.gm_event);
-                done.player_line = Some((spoken.recipients, spoken.player_event.into_bytes()));
-                done.tape = Some(spoken.tape);
-                done
+        "required": ["address", "text"],
+        "additionalProperties": false,
+        "allOf": [
+            {
+                "if": {
+                    "properties": { "address": { "const": "place" } },
+                    "required": ["address"]
+                },
+                "then": {
+                    "required": ["place"],
+                    "properties": {
+                        "place": { "type": "string", "minLength": 1 },
+                        "actor": { "type": "null" }
+                    }
+                }
+            },
+            {
+                "if": {
+                    "properties": { "address": { "const": "actor" } },
+                    "required": ["address"]
+                },
+                "then": {
+                    "required": ["actor"],
+                    "properties": {
+                        "actor": { "type": "string", "minLength": 1 },
+                        "place": { "type": "null" }
+                    }
+                }
+            },
+            {
+                "if": {
+                    "properties": { "address": { "const": "table" } },
+                    "required": ["address"]
+                },
+                "then": {
+                    "properties": {
+                        "place": { "type": "null" },
+                        "actor": { "type": "null" }
+                    }
+                }
             }
-            Err(code) => refused_tool(code),
+        ]
+    }))
+}
+
+fn perceive_schema() -> Map<String, Value> {
+    schema_object(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "as": { "type": "string" },
+            "focus": { "type": "string", "enum": ["place", "actor"] },
+            "budget_tokens": { "type": "integer", "minimum": 0 }
         },
-        "session_status" => match session_status_tool(shard, arguments) {
-            Ok(value) => ToolDone::new(value),
-            Err(code) => refused_tool(code),
+        "required": ["as"],
+        "additionalProperties": false
+    }))
+}
+
+fn commit_schema() -> Map<String, Value> {
+    schema_object(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "include_tick": { "type": "boolean" },
+            "session_id": { "type": "string" }
         },
-        "npc_act" => refused_tool(Code::LlmDisabled),
-        "session_open" | "patch_entity" => refused_tool(Code::NotInSpec),
-        _ => refused_tool(Code::NotInSpec),
+        "required": ["include_tick"],
+        "additionalProperties": false
+    }))
+}
+
+fn status_schema() -> Map<String, Value> {
+    schema_object(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "since": { "type": "integer", "minimum": 0 }
+        },
+        "additionalProperties": false
+    }))
+}
+
+fn intent_schema() -> Map<String, Value> {
+    schema_object(serde_json::json!({
+        "type": "object",
+        "properties": {
+            "actor_id": { "type": "string" },
+            "actor_kind": { "type": "string", "enum": ["npc", "player"] },
+            "source": { "type": "string", "const": "player" },
+            "move": { "type": "string" },
+            "id": { "type": "string" },
+            "tick_index": { "type": "integer", "minimum": 0 },
+            "target": { "type": "object" },
+            "args": { "type": "object" },
+            "rationale_code": { "type": "string" },
+            "llm_say": { "type": ["string", "null"] }
+        },
+        "required": ["actor_id", "actor_kind", "source", "move"],
+        "additionalProperties": false
+    }))
+}
+
+fn schema_object(value: Value) -> Map<String, Value> {
+    match value {
+        Value::Object(map) => map,
+        _ => Map::new(),
     }
 }
 

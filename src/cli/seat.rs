@@ -9,8 +9,8 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 
 use rmcp::model::{
-    CallToolRequestParam, CallToolResult, JsonObject, ListToolsResult, PaginatedRequestParam, ServerInfo,
-    Tool, ToolsCapability,
+    CallToolRequestParam, CallToolResult, ListToolsResult, PaginatedRequestParam, ServerInfo, Tool,
+    ToolsCapability,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
@@ -25,22 +25,6 @@ mod speech;
 
 pub use round::{commit_queued, mechanical, on_scheduled_wake, queue_attempt, queue_wait, Mechanical};
 pub use speech::{player_scrollback, speak};
-
-const GM_SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_turn. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
-
-const GM_TOOLS: &[&str] = &[
-    "session_open",
-    "session_status",
-    "perceive",
-    "intent",
-    "say",
-    "resolve_check",
-    "apply_effect",
-    "npc_act",
-    "commit_turn",
-    "recall",
-    "session_save",
-];
 
 pub enum Fail {
     Code(Code),
@@ -798,10 +782,9 @@ impl ServerHandler for GmHost {
         _request: Option<PaginatedRequestParam>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        let schema = std::sync::Arc::new(object_schema());
-        let tools = GM_TOOLS
+        let tools = round::GM_LIST
             .iter()
-            .map(|name| Tool::new(*name, GM_SEAT_FACTS, std::sync::Arc::clone(&schema)))
+            .map(|tool| Tool::new(tool.name, tool.description(), std::sync::Arc::new((tool.schema)())))
             .collect();
         std::future::ready(Ok(ListToolsResult::with_all_items(tools)))
     }
@@ -828,12 +811,6 @@ impl ServerHandler for GmHost {
             Ok(CallToolResult::structured(value))
         }
     }
-}
-
-fn object_schema() -> JsonObject {
-    let mut schema = JsonObject::new();
-    schema.insert("type".to_string(), "object".into());
-    schema
 }
 
 fn render_perceive(view: &Perceive) -> String {

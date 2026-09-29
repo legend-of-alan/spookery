@@ -143,5 +143,9 @@ name = "gate_e_gm"
 path = "tests/conformance/gate_e_gm.rs"
 
 [[test]]
+name = "v02"
+path = "tests/conformance/v02.rs"
+
+[[test]]
 name = "cli_migrate"
 path = "tests/conformance/cli_migrate.rs"
