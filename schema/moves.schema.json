@@ -19,12 +19,17 @@
       "properties": {
         "name": { "type": "string" },
         "check": { "type": "string" },
-        "token": { "enum": ["none", "actor"] },
+        "token": { "enum": ["none", "actor", "place"] },
         "on": { "enum": ["speaker", "named"] },
         "effects": {
           "type": "array",
           "minItems": 1,
-          "items": { "$ref": "#/$defs/flag" }
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/flag" },
+              { "$ref": "#/$defs/location" }
+            ]
+          }
         }
       },
       "allOf": [
@@ -55,6 +60,29 @@
         },
         {
           "if": {
+            "properties": { "token": { "const": "place" } },
+            "required": ["token"]
+          },
+          "then": {
+            "properties": {
+              "on": { "const": "speaker" },
+              "effects": { "items": { "$ref": "#/$defs/location" } }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "token": { "enum": ["none", "actor"] } },
+            "required": ["token"]
+          },
+          "then": {
+            "properties": {
+              "effects": { "items": { "$ref": "#/$defs/flag" } }
+            }
+          }
+        },
+        {
+          "if": {
             "properties": {
               "name": {
                 "enum": [
@@ -62,7 +90,6 @@
                   "talk",
                   "wait",
                   "attempt",
-                  "travel",
                   "attack",
                   "give",
                   "take"
@@ -72,6 +99,19 @@
             "required": ["name"]
           },
           "then": { "not": { "required": ["effects"] } }
+        },
+        {
+          "if": {
+            "properties": { "name": { "const": "travel" } },
+            "required": ["name", "effects"]
+          },
+          "then": {
+            "properties": {
+              "token": { "const": "place" },
+              "on": { "const": "speaker" },
+              "effects": { "items": { "$ref": "#/$defs/location" } }
+            }
+          }
         }
       ]
     },
@@ -83,6 +123,14 @@
         "class": { "const": "flag" },
         "key": { "type": "string", "not": { "const": "busy" } },
         "value": { "type": "boolean" }
+      }
+    },
+    "location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class"],
+      "properties": {
+        "class": { "const": "location" }
       }
     }
   }

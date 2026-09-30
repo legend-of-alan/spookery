@@ -12,18 +12,19 @@ pub struct MoveDef {
     pub row: Option<ActionRow>,
 }
 
-/// One player action. `effects` is a non-empty list of flag templates.
+/// One player action. `effects` is a non-empty list of flag or location templates.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionRow {
     pub token: MoveToken,
     pub on: MoveOn,
-    pub effects: Vec<FlagTemplate>,
+    pub effects: Vec<RowEffect>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MoveToken {
     None,
     Actor,
+    Place,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -32,10 +33,11 @@ pub enum MoveOn {
     Named,
 }
 
+/// A flag template, or one location template with no key and no value.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FlagTemplate {
-    pub key: String,
-    pub value: bool,
+pub enum RowEffect {
+    Flag { key: String, value: bool },
+    Location,
 }
 
 pub fn load_moves(text: &str) -> Result<BTreeMap<String, MoveDef>, Reason> {
@@ -84,6 +86,7 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     let token = match entry.token.as_deref() {
         Some("none") => MoveToken::None,
         Some("actor") => MoveToken::Actor,
+        Some("place") => MoveToken::Place,
         _ => return Err(Reason::Schema),
     };
     let on = match entry.on.as_deref() {
@@ -91,19 +94,9 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
         Some("named") => MoveOn::Named,
         _ => return Err(Reason::Schema),
     };
-    match (token, on) {
-        (MoveToken::None, MoveOn::Speaker) | (MoveToken::Actor, MoveOn::Named) => {}
-        _ => return Err(Reason::Schema),
-    }
-    let mut templates = Vec::with_capacity(effects.len());
-    for effect in effects {
-        if effect.class != "flag" || effect.key == "busy" {
-            return Err(Reason::Schema);
-        }
-        templates.push(FlagTemplate {
-            key: effect.key,
-            value: effect.value,
-        });
+    let templates = templates_for(token, on, effects)?;
+    if entry.name == "travel" && !location_shape(token, on, &templates) {
+        return Err(Reason::Schema);
     }
     Ok((
         entry.name,
@@ -118,10 +111,58 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     ))
 }
 
+fn templates_for(
+    token: MoveToken,
+    on: MoveOn,
+    effects: Vec<EffectTemplate>,
+) -> Result<Vec<RowEffect>, Reason> {
+    match (token, on) {
+        (MoveToken::None, MoveOn::Speaker) | (MoveToken::Actor, MoveOn::Named) => {
+            let mut templates = Vec::with_capacity(effects.len());
+            for effect in effects {
+                if effect.class != "flag" {
+                    return Err(Reason::Schema);
+                }
+                let Some(key) = effect.key else {
+                    return Err(Reason::Schema);
+                };
+                let Some(value) = effect.value else {
+                    return Err(Reason::Schema);
+                };
+                if key == "busy" {
+                    return Err(Reason::Schema);
+                }
+                templates.push(RowEffect::Flag { key, value });
+            }
+            Ok(templates)
+        }
+        (MoveToken::Place, MoveOn::Speaker) => {
+            let mut templates = Vec::with_capacity(effects.len());
+            for effect in effects {
+                if effect.class != "location" || effect.key.is_some() || effect.value.is_some() {
+                    return Err(Reason::Schema);
+                }
+                templates.push(RowEffect::Location);
+            }
+            Ok(templates)
+        }
+        _ => Err(Reason::Schema),
+    }
+}
+
+/// `travel` may carry effects only as a place token, `on: speaker`, and location templates.
+fn location_shape(token: MoveToken, on: MoveOn, effects: &[RowEffect]) -> bool {
+    token == MoveToken::Place
+        && on == MoveOn::Speaker
+        && effects
+            .iter()
+            .all(|effect| matches!(effect, RowEffect::Location))
+}
+
 fn rejects_effects(name: &str) -> bool {
     matches!(
         name,
-        "say" | "talk" | "wait" | "attempt" | "travel" | "attack" | "give" | "take"
+        "say" | "talk" | "wait" | "attempt" | "attack" | "give" | "take"
     )
 }
 
@@ -150,6 +191,8 @@ struct MoveEntry {
 #[serde(deny_unknown_fields)]
 struct EffectTemplate {
     class: String,
-    key: String,
-    value: bool,
+    #[serde(default)]
+    key: Option<String>,
+    #[serde(default)]
+    value: Option<bool>,
 }

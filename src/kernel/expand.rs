@@ -1,7 +1,7 @@
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::model::{Effect, Intent, Now, Target, ViewerId};
-use crate::moves::{ActionRow, MoveOn};
+use crate::moves::{ActionRow, MoveOn, RowEffect};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
     if let Some(row) = canon
@@ -9,7 +9,7 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
         .get(&intent.move_name)
         .and_then(|def| def.row.as_ref())
     {
-        return expand_row(intent, row);
+        return expand_row(now, intent, row);
     }
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let intent_id = intent.id.clone();
@@ -20,18 +20,7 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
             let Target::Place(to) = &intent.target else {
                 return Err(Reason::Schema);
             };
-            let from = now
-                .actors
-                .get(&intent.actor_id)
-                .map(|actor| actor.place().to_string())
-                .ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect::Location {
-                as_viewer: viewer,
-                intent_id,
-                actor_id: intent.actor_id.clone(),
-                from,
-                to: to.clone(),
-            }])
+            Ok(vec![location_effect(now, intent, to)?])
         }
         "work" => {
             let Some(profile) = canon.profile(&intent.actor_id) else {
@@ -183,25 +172,55 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
     }
 }
 
-/// One `flag` per template. `speaker` is the acting actor. `named` is the typed id.
-fn expand_row(intent: &Intent, row: &ActionRow) -> Result<Vec<Effect>, Reason> {
+/// One effect per template. A flag's `speaker` is the acting actor and `named` is the typed id.
+/// A location template is the same effect as the travel arm: `to` is the typed place.
+fn expand_row(now: &Now, intent: &Intent, row: &ActionRow) -> Result<Vec<Effect>, Reason> {
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    let actor_id = match row.on {
-        MoveOn::Speaker => intent.actor_id.clone(),
-        MoveOn::Named => match &intent.target {
-            Target::Actor(id) => id.clone(),
-            _ => return Err(Reason::Schema),
-        },
-    };
     let mut effects = Vec::with_capacity(row.effects.len());
     for template in &row.effects {
-        effects.push(Effect::Flag {
-            as_viewer: viewer.clone(),
-            intent_id: intent.id.clone(),
-            actor_id: actor_id.clone(),
-            key: template.key.clone(),
-            value: template.value,
-        });
+        match template {
+            RowEffect::Flag { key, value } => {
+                let actor_id = match row.on {
+                    MoveOn::Speaker => intent.actor_id.clone(),
+                    MoveOn::Named => match &intent.target {
+                        Target::Actor(id) => id.clone(),
+                        _ => return Err(Reason::Schema),
+                    },
+                };
+                effects.push(Effect::Flag {
+                    as_viewer: viewer.clone(),
+                    intent_id: intent.id.clone(),
+                    actor_id,
+                    key: key.clone(),
+                    value: *value,
+                });
+            }
+            RowEffect::Location => {
+                if row.on != MoveOn::Speaker {
+                    return Err(Reason::Schema);
+                }
+                let Target::Place(to) = &intent.target else {
+                    return Err(Reason::Schema);
+                };
+                effects.push(location_effect(now, intent, to)?);
+            }
+        }
     }
     Ok(effects)
+}
+
+fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reason> {
+    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
+    let from = now
+        .actors
+        .get(&intent.actor_id)
+        .map(|actor| actor.place().to_string())
+        .ok_or(Reason::UnknownKey)?;
+    Ok(Effect::Location {
+        as_viewer: viewer,
+        intent_id: intent.id.clone(),
+        actor_id: intent.actor_id.clone(),
+        from,
+        to: to.to_string(),
+    })
 }

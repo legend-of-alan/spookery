@@ -608,7 +608,7 @@ mod tests {
         let rev = pack_rev(&root).unwrap();
         assert_eq!(
             rev,
-            "blake2s:311fba8fa0b3678adfe606ba8113246ffcee6886a640138bf2adb015ee753ef4"
+            "blake2s:72453320cb4dccfce9d2b857cfec869790c442acfb81f5fa49df974db367a1ff"
         );
     }
 }

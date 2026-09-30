@@ -158,6 +158,12 @@ fn v0_canon_schemas_reject_unknown_keys() {
                         "key": "marked",
                         "value": false
                     }]
+                },
+                {
+                    "name": "travel",
+                    "token": "place",
+                    "on": "speaker",
+                    "effects": [{ "class": "location" }]
                 }
             ]
         }),
@@ -166,6 +172,8 @@ fn v0_canon_schemas_reject_unknown_keys() {
             &["moves", "2"],
             &["moves", "2", "effects", "0"],
             &["moves", "3"],
+            &["moves", "4"],
+            &["moves", "4", "effects", "0"],
         ],
     );
     assert_closed(

@@ -216,7 +216,7 @@ fn integer_token(token: &str) -> Option<i64> {
     token.parse().ok()
 }
 
-/// The actor token is stored as typed. An unknown id stays the tick's existing refusal.
+/// The actor or place token is stored as typed. An unknown id stays the tick's existing refusal.
 fn queue_row(
     shard: &mut Shard,
     actor_id: &str,
@@ -245,6 +245,13 @@ fn queue_row(
                 return Err(Reason::Schema);
             }
             Target::Actor(named.to_string())
+        }
+        MoveToken::Place => {
+            let (place, extra) = split_token(rest);
+            if place.is_empty() || !extra.is_empty() {
+                return Err(Reason::Schema);
+            }
+            Target::Place(place.to_string())
         }
     };
     let note = QueuedNote {

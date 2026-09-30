@@ -2,6 +2,10 @@ schema: moves/v0
 moves:
   - name: wait
   - name: travel
+    token: place
+    on: speaker
+    effects:
+      - class: location
   - name: work
   - name: restock
   - name: rest
