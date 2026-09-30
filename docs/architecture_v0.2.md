@@ -1,6 +1,6 @@
 # Spookery v0.2 architecture
 
-Status: Draft. The bare tag `v0.2` is cut when the demo below is true. Patch `v0.2.0` is tag `v0.2.0` at `913eeb6`. Patch `v0.2.1` is tag `v0.2.1`. Patch `v0.2.2` is proved. Patch `v0.2.3` is proved. A later patch is tagged `v0.2.N` when that patch's proofs are green. Where this file names a change, it wins over `docs/architecture_v0.1.md`, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope.
+Status: Draft. The bare tag `v0.2` is cut when the demo below is true. Patch `v0.2.0` is tag `v0.2.0` at `913eeb6`. Patch `v0.2.1` is tag `v0.2.1`. Patch `v0.2.2` is proved. Patch `v0.2.3` is proved. Patch `v0.2.4` is proved. A later patch is tagged `v0.2.N` when that patch's proofs are green. Where this file names a change, it wins over `docs/architecture_v0.1.md`, then `docs/architecture_v0.md`. Where this file does not name a change, v0.1 holds, then v0. A rule written in none of them is out of scope.
 License: CC BY 4.0, same as the v0 spec. Runtime code under /src stays AGPL-3.0-or-later.
 
 This file is the draft spec for the v0.2 minor. `docs/architecture_v0.1.md` and `docs/architecture_v0.md` stay frozen. This file does not copy them. Do not edit those files. v0.2.2 is the first edit of `packs/oneshot-docks`.
@@ -21,7 +21,7 @@ The pack does not choose the place or the actor. The player types that token. Fr
 
 ## Patches
 
-v0.2.0, v0.2.1, v0.2.2, and v0.2.3 are proved. The later rows are names. Their full text is written when a session is about to implement that patch. A later patch may be named before the previous one is green. Two patches proceed together only when they do not both edit the player read loop, the shard thread, or `tools/call`.
+v0.2.0, v0.2.1, v0.2.2, v0.2.3, and v0.2.4 are proved. The later rows are names. Their full text is written when a session is about to implement that patch. A later patch may be named before the previous one is green. Two patches proceed together only when they do not both edit the player read loop, the shard thread, or `tools/call`.
 
 | Patch | What becomes true |
 |---|---|
@@ -29,7 +29,7 @@ v0.2.0, v0.2.1, v0.2.2, and v0.2.3 are proved. The later rows are names. Their f
 | v0.2.1 | Proved, below. A pack row emits one `flag`. |
 | v0.2.2 | Proved, below. The docks `travel` row uses a place token and one `location` effect. Rowan starts in `docks_shop`, types `travel docks_street`, and after the tick the player can see Rowan on the street. Speech and `wait` still work. |
 | v0.2.3 | Proved, below. The row may name a check. The acting player sees success or failure, and the effect templates run either way. |
-| v0.2.4 | A success list and a failure list. A `flag` on the success list is written only when the roll succeeds. |
+| v0.2.4 | Proved, below. A success list and a failure list. A `flag` on the success list is written only when the roll succeeds. |
 | v0.2.5 | An action the named actor queued before `commit_turn` supplies the opposing check. |
 | v0.2.6 | The row may name an item id. A sheet that lacks it refuses the action, queues nothing, and leaves the item where it is. This patch meets the demo. |
 
@@ -119,7 +119,23 @@ Proved. The behavior below is law. Proof `v02_p10` is `tests/conformance/v02/gat
 
 A row may name `check`. The value is a check id. `schema/moves.schema.json` accepts that key on a row and still rejects an unknown key. A row that does not name `check` does not roll.
 
-On the tick that applies the row, the named check is resolved with target 0. Success is total at least the target. The acting player sees `{"kind":"check","success":true}` or `{"kind":"check","success":false}`. The effect templates run on both outcomes. A check id the pack does not have is that tick's existing refusal, and the templates do not run.
+On the tick that applies the row, the named check is resolved with target 0. Success is total at least the target. The acting player sees `{"kind":"check","success":true}` or `{"kind":"check","success":false}`. The effect templates run on both outcomes. A success list and a failure list are v0.2.4. A check id the pack does not have is that tick's existing refusal, and the templates do not run.
+
+The player line stays the verb plus the row's token. A missing token or an extra token is `SCHEMA`. With a GM seated, the line returns `queued` and the roll waits for `commit_turn`. With no GM, it commits one live tick.
+
+---
+
+## v0.2.4 — the two lists
+
+Proved. The behavior below is law. Proof `v02_p11` is `tests/conformance/v02/gates.rs`, compiled through `tests/sitting.rs`. It does not rewrite `v02_p01`, `v02_p02`, `v02_p03`, `v02_p04`, `v02_p05`, `v02_p06`, `v02_p07`, `v02_p08`, or `v02_p09`. `v02_p10` still proves that one `effects` list runs on both outcomes. The fixture pack is one the proof builds. `packs/oneshot-docks` is unchanged. No new effect class.
+
+A row may name `success` and `failure`. Each is a non-empty list of templates. A template on `success` is applied only when the roll succeeds. A template on `failure` is applied only when the roll fails. A flag on `success` is written only when the roll succeeds. The `effects` list still runs on both outcomes. A row that does not name `check` does not roll, and `success` and `failure` do not write.
+
+The check is still resolved with target 0. The acting player sees `{"kind":"check","success":true}` or `{"kind":"check","success":false}`. A check id the pack does not have is that tick's existing refusal, and the lists do not run.
+
+`schema/moves.schema.json` accepts `success`, `failure`, and a `resource` template, and still rejects an unknown key. A flag template is `class`, `key`, and `value`. A `resource` template is `class`, `key`, and `delta`. `resource` is the class the kernel already applies.
+
+`attack` is a pack row: `token: actor`, `on: named`, a check, and a `resource` delta on a key the sheet already lists. The delta is a template on `success` or `failure`. A flag `effects` list on `attack` is still `SCHEMA` at pack load. `attack` with no row stays `NOT_IN_SPEC` and queues nothing. `defend` stays the v0.2.5 row. An opposing queued action is v0.2.5. A required item is v0.2.6. `give`, `take`, and an item changing hands stay v0.3.
 
 The player line stays the verb plus the row's token. A missing token or an extra token is `SCHEMA`. With a GM seated, the line returns `queued` and the roll waits for `commit_turn`. With no GM, it commits one live tick.
 

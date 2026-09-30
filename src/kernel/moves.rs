@@ -5,19 +5,21 @@ use serde::Deserialize;
 use crate::canon::Canon;
 use crate::error::Reason;
 
-/// A listed move. `row` is set only when the file carries `effects`.
+/// A listed move. `row` is set when the file carries a template list.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MoveDef {
     pub check: Option<String>,
     pub row: Option<ActionRow>,
 }
 
-/// One player action. `effects` is a non-empty list of flag or location templates.
+/// One player action. `effects` runs on both outcomes. `success` and `failure` run on that outcome.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionRow {
     pub token: MoveToken,
     pub on: MoveOn,
     pub effects: Vec<RowEffect>,
+    pub success: Vec<RowEffect>,
+    pub failure: Vec<RowEffect>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,11 +35,12 @@ pub enum MoveOn {
     Named,
 }
 
-/// A flag template, or one location template with no key and no value.
+/// A flag template, a location template, or a resource delta.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RowEffect {
     Flag { key: String, value: bool },
     Location,
+    Resource { key: String, delta: i64 },
 }
 
 pub fn load_moves(text: &str) -> Result<BTreeMap<String, MoveDef>, Reason> {
@@ -75,7 +78,11 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if entry.name.is_empty() {
         return Err(Reason::Schema);
     }
-    let started = entry.token.is_some() || entry.on.is_some() || entry.effects.is_some();
+    let started = entry.token.is_some()
+        || entry.on.is_some()
+        || entry.effects.is_some()
+        || entry.success.is_some()
+        || entry.failure.is_some();
     if !started {
         return Ok((
             entry.name,
@@ -85,11 +92,16 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
             },
         ));
     }
-    if rejects_effects(&entry.name) {
+    if forbids_row(&entry.name) {
         return Err(Reason::Schema);
     }
-    let effects = entry.effects.ok_or(Reason::Schema)?;
-    if effects.is_empty() {
+    if entry.name == "attack" && entry.effects.is_some() {
+        return Err(Reason::Schema);
+    }
+    if entry.effects.as_ref().is_some_and(Vec::is_empty)
+        || entry.success.as_ref().is_some_and(Vec::is_empty)
+        || entry.failure.as_ref().is_some_and(Vec::is_empty)
+    {
         return Err(Reason::Schema);
     }
     let token = match entry.token.as_deref() {
@@ -103,8 +115,24 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
         Some("named") => MoveOn::Named,
         _ => return Err(Reason::Schema),
     };
-    let templates = templates_for(token, on, effects)?;
-    if entry.name == "travel" && !location_shape(token, on, &templates) {
+    let effects = match entry.effects {
+        Some(items) => templates_for(token, on, items)?,
+        None => Vec::new(),
+    };
+    let success = match entry.success {
+        Some(items) => outcome_templates(token, on, items)?,
+        None => Vec::new(),
+    };
+    let failure = match entry.failure {
+        Some(items) => outcome_templates(token, on, items)?,
+        None => Vec::new(),
+    };
+    if effects.is_empty() && success.is_empty() && failure.is_empty() {
+        return Err(Reason::Schema);
+    }
+    if entry.name == "travel"
+        && (!success.is_empty() || !failure.is_empty() || !location_shape(token, on, &effects))
+    {
         return Err(Reason::Schema);
     }
     Ok((
@@ -114,7 +142,9 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
             row: Some(ActionRow {
                 token,
                 on,
-                effects: templates,
+                effects,
+                success,
+                failure,
             }),
         },
     ))
@@ -129,7 +159,7 @@ fn templates_for(
         (MoveToken::None, MoveOn::Speaker) | (MoveToken::Actor, MoveOn::Named) => {
             let mut templates = Vec::with_capacity(effects.len());
             for effect in effects {
-                if effect.class != "flag" {
+                if effect.class != "flag" || effect.delta.is_some() {
                     return Err(Reason::Schema);
                 }
                 let Some(key) = effect.key else {
@@ -148,12 +178,67 @@ fn templates_for(
         (MoveToken::Place, MoveOn::Speaker) => {
             let mut templates = Vec::with_capacity(effects.len());
             for effect in effects {
-                if effect.class != "location" || effect.key.is_some() || effect.value.is_some() {
+                if effect.class != "location"
+                    || effect.key.is_some()
+                    || effect.value.is_some()
+                    || effect.delta.is_some()
+                {
                     return Err(Reason::Schema);
                 }
                 templates.push(RowEffect::Location);
             }
             Ok(templates)
+        }
+        _ => Err(Reason::Schema),
+    }
+}
+
+/// `success` and `failure` hold a flag or a resource delta. A place token has neither list.
+fn outcome_templates(
+    token: MoveToken,
+    on: MoveOn,
+    effects: Vec<EffectTemplate>,
+) -> Result<Vec<RowEffect>, Reason> {
+    match (token, on) {
+        (MoveToken::None, MoveOn::Speaker) | (MoveToken::Actor, MoveOn::Named) => {
+            let mut templates = Vec::with_capacity(effects.len());
+            for effect in effects {
+                templates.push(outcome_template(effect)?);
+            }
+            Ok(templates)
+        }
+        _ => Err(Reason::Schema),
+    }
+}
+
+fn outcome_template(effect: EffectTemplate) -> Result<RowEffect, Reason> {
+    match effect.class.as_str() {
+        "flag" => {
+            if effect.delta.is_some() {
+                return Err(Reason::Schema);
+            }
+            let Some(key) = effect.key else {
+                return Err(Reason::Schema);
+            };
+            let Some(value) = effect.value else {
+                return Err(Reason::Schema);
+            };
+            if key == "busy" {
+                return Err(Reason::Schema);
+            }
+            Ok(RowEffect::Flag { key, value })
+        }
+        "resource" => {
+            if effect.value.is_some() {
+                return Err(Reason::Schema);
+            }
+            let Some(key) = effect.key else {
+                return Err(Reason::Schema);
+            };
+            let Some(delta) = effect.delta else {
+                return Err(Reason::Schema);
+            };
+            Ok(RowEffect::Resource { key, delta })
         }
         _ => Err(Reason::Schema),
     }
@@ -168,10 +253,10 @@ fn location_shape(token: MoveToken, on: MoveOn, effects: &[RowEffect]) -> bool {
             .all(|effect| matches!(effect, RowEffect::Location))
 }
 
-fn rejects_effects(name: &str) -> bool {
+fn forbids_row(name: &str) -> bool {
     matches!(
         name,
-        "say" | "talk" | "wait" | "attempt" | "attack" | "give" | "take"
+        "say" | "talk" | "wait" | "attempt" | "give" | "take"
     )
 }
 
@@ -194,6 +279,10 @@ struct MoveEntry {
     on: Option<String>,
     #[serde(default)]
     effects: Option<Vec<EffectTemplate>>,
+    #[serde(default)]
+    success: Option<Vec<EffectTemplate>>,
+    #[serde(default)]
+    failure: Option<Vec<EffectTemplate>>,
 }
 
 #[derive(Deserialize)]
@@ -204,4 +293,6 @@ struct EffectTemplate {
     key: Option<String>,
     #[serde(default)]
     value: Option<bool>,
+    #[serde(default)]
+    delta: Option<i64>,
 }

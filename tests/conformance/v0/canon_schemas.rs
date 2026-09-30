@@ -148,6 +148,16 @@ fn v0_canon_schemas_reject_unknown_keys() {
                         "class": "flag",
                         "key": "marked",
                         "value": true
+                    }],
+                    "success": [{
+                        "class": "flag",
+                        "key": "marked",
+                        "value": true
+                    }],
+                    "failure": [{
+                        "class": "flag",
+                        "key": "missed",
+                        "value": true
                     }]
                 },
                 {
@@ -165,6 +175,22 @@ fn v0_canon_schemas_reject_unknown_keys() {
                     "token": "place",
                     "on": "speaker",
                     "effects": [{ "class": "location" }]
+                },
+                {
+                    "name": "attack",
+                    "token": "actor",
+                    "on": "named",
+                    "check": "grit",
+                    "success": [{
+                        "class": "resource",
+                        "key": "hp",
+                        "delta": -1
+                    }],
+                    "failure": [{
+                        "class": "resource",
+                        "key": "hp",
+                        "delta": 0
+                    }]
                 }
             ]
         }),
@@ -172,9 +198,14 @@ fn v0_canon_schemas_reject_unknown_keys() {
             &["moves", "0"],
             &["moves", "2"],
             &["moves", "2", "effects", "0"],
+            &["moves", "2", "success", "0"],
+            &["moves", "2", "failure", "0"],
             &["moves", "3"],
             &["moves", "4"],
             &["moves", "4", "effects", "0"],
+            &["moves", "5"],
+            &["moves", "5", "success", "0"],
+            &["moves", "5", "failure", "0"],
         ],
     );
     assert_closed(

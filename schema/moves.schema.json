@@ -30,6 +30,26 @@
               { "$ref": "#/$defs/location" }
             ]
           }
+        },
+        "success": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/flag" },
+              { "$ref": "#/$defs/resource" }
+            ]
+          }
+        },
+        "failure": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/flag" },
+              { "$ref": "#/$defs/resource" }
+            ]
+          }
         }
       },
       "allOf": [
@@ -40,8 +60,26 @@
           }
         },
         {
+          "if": { "required": ["success"] },
+          "then": {
+            "required": ["token", "on", "success"]
+          }
+        },
+        {
+          "if": { "required": ["failure"] },
+          "then": {
+            "required": ["token", "on", "failure"]
+          }
+        },
+        {
           "if": { "required": ["token", "on"] },
-          "then": { "required": ["effects"] }
+          "then": {
+            "anyOf": [
+              { "required": ["effects"] },
+              { "required": ["success"] },
+              { "required": ["failure"] }
+            ]
+          }
         },
         {
           "if": {
@@ -66,6 +104,12 @@
             "properties": {
               "on": { "const": "speaker" },
               "effects": { "items": { "$ref": "#/$defs/location" } }
+            },
+            "not": {
+              "anyOf": [
+                { "required": ["success"] },
+                { "required": ["failure"] }
+              ]
             }
           }
         },
@@ -130,6 +174,16 @@
       "required": ["class"],
       "properties": {
         "class": { "const": "location" }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "key", "delta"],
+      "properties": {
+        "class": { "const": "resource" },
+        "key": { "type": "string" },
+        "delta": { "type": "integer" }
       }
     }
   }

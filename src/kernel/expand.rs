@@ -4,12 +4,23 @@ use crate::model::{Effect, Intent, Now, Target, ViewerId};
 use crate::moves::{ActionRow, MoveOn, RowEffect};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
+    expand_outcome(canon, now, intent, None)
+}
+
+/// `outcome` selects `success` (`Some(true)`) or `failure` (`Some(false)`).
+/// `None` means the row did not roll. `effects` is included either way.
+pub fn expand_outcome(
+    canon: &Canon,
+    now: &Now,
+    intent: &Intent,
+    outcome: Option<bool>,
+) -> Result<Vec<Effect>, Reason> {
     if let Some(row) = canon
         .moves
         .get(&intent.move_name)
         .and_then(|def| def.row.as_ref())
     {
-        return expand_row(now, intent, row);
+        return expand_row(now, intent, row, outcome);
     }
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let intent_id = intent.id.clone();
@@ -172,12 +183,25 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
     }
 }
 
-/// One effect per template. A flag's `speaker` is the acting actor and `named` is the typed id.
+/// One effect per selected template. `effects` always. `success` or `failure` when that outcome was rolled.
+/// A flag's `speaker` is the acting actor and `named` is the typed id.
 /// A location template is the same effect as the travel arm: `to` is the typed place.
-fn expand_row(now: &Now, intent: &Intent, row: &ActionRow) -> Result<Vec<Effect>, Reason> {
+fn expand_row(
+    now: &Now,
+    intent: &Intent,
+    row: &ActionRow,
+    outcome: Option<bool>,
+) -> Result<Vec<Effect>, Reason> {
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    let mut effects = Vec::with_capacity(row.effects.len());
-    for template in &row.effects {
+    let mut selected = Vec::with_capacity(row.effects.len() + row.success.len().max(row.failure.len()));
+    selected.extend(row.effects.iter());
+    match outcome {
+        Some(true) => selected.extend(row.success.iter()),
+        Some(false) => selected.extend(row.failure.iter()),
+        None => {}
+    }
+    let mut effects = Vec::with_capacity(selected.len());
+    for template in selected {
         match template {
             RowEffect::Flag { key, value } => {
                 let actor_id = match row.on {
@@ -203,6 +227,22 @@ fn expand_row(now: &Now, intent: &Intent, row: &ActionRow) -> Result<Vec<Effect>
                     return Err(Reason::Schema);
                 };
                 effects.push(location_effect(now, intent, to)?);
+            }
+            RowEffect::Resource { key, delta } => {
+                let actor_id = match row.on {
+                    MoveOn::Speaker => intent.actor_id.clone(),
+                    MoveOn::Named => match &intent.target {
+                        Target::Actor(id) => id.clone(),
+                        _ => return Err(Reason::Schema),
+                    },
+                };
+                effects.push(Effect::Resource {
+                    as_viewer: viewer.clone(),
+                    intent_id: intent.id.clone(),
+                    actor_id,
+                    key: key.clone(),
+                    delta: *delta,
+                });
             }
         }
     }

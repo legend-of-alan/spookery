@@ -2534,3 +2534,180 @@ fn play_checked_mark(label: &str, grit: i64, success: bool) {
     assert_no_derived_row(&tick, &["mark", "wave"]);
     let _ = fs::remove_dir_all(&pack);
 }
+
+#[test]
+fn v02_p11_a_success_list_and_a_failure_list() {
+    assert_attack_resource_row();
+    let _lock = lock_port();
+    play_outcome_mark("lists-pass", 1, true);
+    play_outcome_mark("lists-fail", -20, false);
+}
+
+fn assert_attack_resource_row() {
+    let pack = temp_pack("p11-attack");
+    let path = pack.join("rules/moves.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replacen("  - name: attack\n", ATTACK_ROW, 1);
+    assert_ne!(next, text, "attack row was not written");
+    fs::write(&path, next).unwrap();
+    let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+    let attack = canon.moves.get("attack").unwrap();
+    assert_eq!(attack.check.as_deref(), Some("grit"));
+    let row = attack.row.as_ref().unwrap();
+    assert_eq!(row.token, spookery_kernel::moves::MoveToken::Actor);
+    assert_eq!(row.on, spookery_kernel::moves::MoveOn::Named);
+    assert!(row.effects.is_empty());
+    assert_eq!(
+        row.success,
+        vec![spookery_kernel::moves::RowEffect::Resource {
+            key: "hp".to_string(),
+            delta: -1,
+        }]
+    );
+    assert_eq!(
+        row.failure,
+        vec![spookery_kernel::moves::RowEffect::Resource {
+            key: "hp".to_string(),
+            delta: 0,
+        }]
+    );
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn play_outcome_mark(label: &str, grit: i64, success: bool) {
+    let pack = outcome_pack(label, grit);
+    let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+    let mark = canon.moves.get("mark").unwrap();
+    assert_eq!(mark.check.as_deref(), Some("grit"));
+    let row = mark.row.as_ref().unwrap();
+    assert!(row.effects.is_empty());
+    assert_eq!(
+        row.success,
+        vec![spookery_kernel::moves::RowEffect::Flag {
+            key: "marked".to_string(),
+            value: true,
+        }]
+    );
+    assert_eq!(
+        row.failure,
+        vec![spookery_kernel::moves::RowEffect::Flag {
+            key: "missed".to_string(),
+            value: true,
+        }]
+    );
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut player = seat_player(&pack);
+    let opened = now_of(&pack);
+    assert_eq!(opened.presence.humans, 1);
+    assert_eq!(opened.world_time, 1080);
+    assert_eq!(opened.tick_index, 0);
+    assert_eq!(rowan_place(&opened), "docks_shop");
+    assert!(flags_of(&opened, "mira").is_empty());
+    assert!(tick_names(&pack).is_empty());
+
+    let word = if success { "true" } else { "false" };
+    let line = format!("{{\"kind\":\"check\",\"success\":{word}}}");
+    let before = text_of(&player.stdout);
+    write_stdin(&mut player, "mark mira");
+    let stdout = wait_has(&player.stdout, &line, Duration::from_secs(5));
+    let added = &stdout[before.len()..];
+    assert!(added.contains(&line), "{added}");
+    assert!(!added.contains("\"faces\""), "{added}");
+    assert!(added.contains("\"kind\":\"resume\""), "{added}");
+    assert!(
+        text_of(&player.stderr).is_empty(),
+        "{}",
+        text_of(&player.stderr)
+    );
+    let now = now_of(&pack);
+    assert_eq!(now.presence.humans, 1);
+    assert_eq!(now.world_time, 1085);
+    assert_eq!(now.tick_index, 1);
+    assert_eq!(rowan_place(&now), "docks_shop");
+    let written = if success { "marked" } else { "missed" };
+    assert_eq!(flags_of(&now, "mira"), vec![written.to_string()]);
+    assert!(flags_of(&now, "pc_rowan").is_empty());
+    let tick = tick_value(&pack, "tick-0001.jsonl");
+    assert_eq!(tick["world_time_before"], 1080);
+    assert_eq!(tick["world_time_after"], 1085);
+    assert!(tick["tool_trace"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|name| name == "resolve_check"));
+    let marks: Vec<_> = tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|intent| intent["move"] == "mark")
+        .collect();
+    assert_eq!(marks.len(), 1, "{tick}");
+    assert_eq!(marks[0]["source"], "player");
+    assert_eq!(marks[0]["actor_id"], "pc_rowan");
+    assert_eq!(marks[0]["target"]["actor"], "mira");
+    let flags = flag_effects(&tick);
+    assert_eq!(flags.len(), 1, "{tick}");
+    assert_eq!(flags[0]["intent_id"], marks[0]["id"]);
+    assert_eq!(flags[0]["as"], "player:pc_rowan");
+    assert_eq!(flags[0]["payload"]["actor_id"], "mira");
+    assert_eq!(flags[0]["payload"]["key"], written);
+    assert_eq!(flags[0]["payload"]["value"], true);
+    assert_no_derived_row(&tick, &["mark", "wave"]);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn outcome_pack(label: &str, grit: i64) -> PathBuf {
+    let pack = temp_pack(label);
+    let moves = pack.join("rules/moves.yaml");
+    let mut text = fs::read_to_string(&moves).unwrap();
+    text.push_str(OUTCOME_ROW);
+    fs::write(&moves, text).unwrap();
+    let mira = pack.join("cast/mira.md");
+    let mira_text = fs::read_to_string(&mira).unwrap();
+    let patched = mira_text.replacen(
+        "tick:\n  eligible: true\n",
+        "tick:\n  eligible: true\n  flags:\n    - marked\n    - missed\n",
+        1,
+    );
+    assert_ne!(patched, mira_text, "mira tick block was not patched");
+    fs::write(&mira, patched).unwrap();
+    let sheet = pack.join("state/actors/pc_rowan.yaml");
+    let sheet_text = fs::read_to_string(&sheet).unwrap();
+    let sheet_next = sheet_text.replacen("stats:\n  grit: 1\n", &format!("stats:\n  grit: {grit}\n"), 1);
+    assert!(
+        sheet_next.contains(&format!("grit: {grit}\n")),
+        "{sheet_text}"
+    );
+    fs::write(&sheet, sheet_next).unwrap();
+    stamp_pack_rev(&pack);
+    pack
+}
+
+const OUTCOME_ROW: &str = "  - name: mark
+    token: actor
+    on: named
+    check: grit
+    success:
+      - class: flag
+        key: marked
+        value: true
+    failure:
+      - class: flag
+        key: missed
+        value: true
+";
+
+const ATTACK_ROW: &str = "  - name: attack
+    token: actor
+    on: named
+    check: grit
+    success:
+      - class: resource
+        key: hp
+        delta: -1
+    failure:
+      - class: resource
+        key: hp
+        delta: 0
+";

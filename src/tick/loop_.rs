@@ -7,7 +7,7 @@ use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::derive::{
     filter_blocklist, kernel_intents_for_eligible_npcs, allowed, season_intent,
 };
-use spookery_kernel::expand::expand;
+use spookery_kernel::expand::{expand, expand_outcome};
 use spookery_kernel::model::{ActorKind, Intent};
 use spookery_kernel::moves::{needs_roll, row_check};
 use spookery_kernel::pause::apply_pause_policy;
@@ -341,7 +341,8 @@ fn stage_tick(
                 continue;
             }
         }
-        let expanded = match expand(txn.canon(), txn.now(), &intent) {
+        let outcome = rolled.as_ref().map(|out| out.success);
+        let expanded = match expand_outcome(txn.canon(), txn.now(), &intent, outcome) {
             Ok(effects) => effects,
             Err(code) => {
                 rejected.push(Rejected {
