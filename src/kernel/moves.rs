@@ -62,6 +62,15 @@ pub fn needs_roll(canon: &Canon, move_name: &str) -> bool {
         .is_some_and(|def| def.check.is_some())
 }
 
+/// Check id named by a row. A move without `effects` is not a row.
+pub fn row_check(canon: &Canon, move_name: &str) -> Option<String> {
+    let def = canon.moves.get(move_name)?;
+    if def.row.is_none() {
+        return None;
+    }
+    def.check.clone()
+}
+
 fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if entry.name.is_empty() {
         return Err(Reason::Schema);
@@ -76,7 +85,7 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
             },
         ));
     }
-    if entry.check.is_some() || rejects_effects(&entry.name) {
+    if rejects_effects(&entry.name) {
         return Err(Reason::Schema);
     }
     let effects = entry.effects.ok_or(Reason::Schema)?;
@@ -101,7 +110,7 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     Ok((
         entry.name,
         MoveDef {
-            check: None,
+            check: entry.check,
             row: Some(ActionRow {
                 token,
                 on,

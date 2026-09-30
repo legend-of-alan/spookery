@@ -9,7 +9,7 @@ use spookery_kernel::derive::{
 };
 use spookery_kernel::expand::expand;
 use spookery_kernel::model::{ActorKind, Intent};
-use spookery_kernel::moves::needs_roll;
+use spookery_kernel::moves::{needs_roll, row_check};
 use spookery_kernel::pause::apply_pause_policy;
 use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::store::{
@@ -275,6 +275,35 @@ fn stage_tick(
                 &viewer,
                 &check_id,
                 target,
+                &rng,
+                &mut die_cursor,
+            ) {
+                Ok(out) => rolled = Some(out),
+                Err(code) => {
+                    reject_check(&mut rejected, &mut notices, &intent, code);
+                    continue;
+                }
+            }
+        } else if let Some(check_id) = row_check(txn.canon(), &intent.move_name) {
+            let viewer = match spookery_kernel::model::ViewerId::from_kind(
+                intent.actor_kind,
+                &intent.actor_id,
+            ) {
+                Ok(viewer) => viewer,
+                Err(code) => {
+                    reject_check(&mut rejected, &mut notices, &intent, code);
+                    continue;
+                }
+            };
+            trace.push("resolve_check".to_string());
+            let seed = seed_preimage(&shard_id, tick_index);
+            let rng = blake2s_256(seed.as_bytes());
+            match resolve_check(
+                txn.canon(),
+                shard.sheets(),
+                &viewer,
+                &check_id,
+                0,
                 &rng,
                 &mut die_cursor,
             ) {

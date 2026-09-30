@@ -36,8 +36,7 @@
         {
           "if": { "required": ["effects"] },
           "then": {
-            "required": ["token", "on", "effects"],
-            "not": { "required": ["check"] }
+            "required": ["token", "on", "effects"]
           }
         },
         {

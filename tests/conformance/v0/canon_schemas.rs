@@ -143,6 +143,7 @@ fn v0_canon_schemas_reject_unknown_keys() {
                     "name": "mark",
                     "token": "actor",
                     "on": "named",
+                    "check": "grit",
                     "effects": [{
                         "class": "flag",
                         "key": "marked",

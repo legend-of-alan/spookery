@@ -1495,6 +1495,38 @@ fn stamp_pack_rev(pack: &Path) {
     .unwrap();
 }
 
+fn check_pack(label: &str, grit: i64) -> PathBuf {
+    let pack = action_pack(label);
+    let moves = pack.join("rules/moves.yaml");
+    let text = fs::read_to_string(&moves).unwrap();
+    let next = text.replacen(
+        "  - name: mark\n    token: actor\n    on: named\n    effects:\n",
+        "  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n",
+        1,
+    );
+    assert_ne!(next, text, "mark row was not given a check");
+    fs::write(&moves, next).unwrap();
+    let sheet = pack.join("state/actors/pc_rowan.yaml");
+    let sheet_text = fs::read_to_string(&sheet).unwrap();
+    let sheet_next = sheet_text.replacen(
+        "stats:\n  grit: 1\n",
+        &format!("stats:\n  grit: {grit}\n"),
+        1,
+    );
+    assert!(
+        sheet_next.contains(&format!("grit: {grit}\n")),
+        "{sheet_text}"
+    );
+    fs::write(&sheet, sheet_next).unwrap();
+    let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+    assert_eq!(
+        canon.moves.get("mark").unwrap().check.as_deref(),
+        Some("grit")
+    );
+    stamp_pack_rev(&pack);
+    pack
+}
+
 fn action_pack(label: &str) -> PathBuf {
     let pack = temp_pack(label);
     let moves = pack.join("rules/moves.yaml");
@@ -1664,11 +1696,29 @@ fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
             "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n        delta: 1\n"
         )
     });
-    reject_moves("p06-check", |text| {
-        format!(
-            "{text}  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
-        )
-    });
+    {
+        let pack = temp_pack("p06-check");
+        let path = pack.join("rules/moves.yaml");
+        let mut text = fs::read_to_string(&path).unwrap();
+        text.push_str(
+            "  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+        );
+        fs::write(&path, text).unwrap();
+        let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+        let mark = canon.moves.get("mark").unwrap();
+        assert_eq!(mark.check.as_deref(), Some("grit"));
+        let row = mark.row.as_ref().unwrap();
+        assert_eq!(row.token, spookery_kernel::moves::MoveToken::Actor);
+        assert_eq!(row.on, spookery_kernel::moves::MoveOn::Named);
+        assert_eq!(
+            row.effects,
+            vec![spookery_kernel::moves::RowEffect::Flag {
+                key: "marked".to_string(),
+                value: true,
+            }]
+        );
+        let _ = fs::remove_dir_all(&pack);
+    }
 
     let pack = temp_pack("p06-ok");
     let path = pack.join("rules/moves.yaml");
@@ -2413,4 +2463,74 @@ fn v02_p09_rowan_travels_to_the_street() {
         assert_no_pc_kernel(&street_tick);
         let _ = fs::remove_dir_all(&pack);
     }
+}
+
+#[test]
+fn v02_p10_a_row_names_a_check_and_the_templates_run_either_way() {
+    let _lock = lock_port();
+    play_checked_mark("check-pass", 1, true);
+    play_checked_mark("check-fail", -20, false);
+}
+
+fn play_checked_mark(label: &str, grit: i64, success: bool) {
+    let pack = check_pack(label, grit);
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut player = seat_player(&pack);
+    let opened = now_of(&pack);
+    assert_eq!(opened.presence.humans, 1);
+    assert_eq!(opened.world_time, 1080);
+    assert_eq!(opened.tick_index, 0);
+    assert_eq!(rowan_place(&opened), "docks_shop");
+    assert!(flags_of(&opened, "mira").is_empty());
+    assert!(tick_names(&pack).is_empty());
+
+    let word = if success { "true" } else { "false" };
+    let line = format!("{{\"kind\":\"check\",\"success\":{word}}}");
+    let before = text_of(&player.stdout);
+    write_stdin(&mut player, "mark mira");
+    let stdout = wait_has(&player.stdout, &line, Duration::from_secs(5));
+    let added = &stdout[before.len()..];
+    assert!(added.contains(&line), "{added}");
+    assert!(!added.contains("\"faces\""), "{added}");
+    assert!(added.contains("\"kind\":\"resume\""), "{added}");
+    assert!(
+        text_of(&player.stderr).is_empty(),
+        "{}",
+        text_of(&player.stderr)
+    );
+    let now = now_of(&pack);
+    assert_eq!(now.presence.humans, 1);
+    assert_eq!(now.world_time, 1085);
+    assert_eq!(now.tick_index, 1);
+    assert_eq!(rowan_place(&now), "docks_shop");
+    assert_eq!(flags_of(&now, "mira"), vec!["marked".to_string()]);
+    assert!(flags_of(&now, "pc_rowan").is_empty());
+    let tick = tick_value(&pack, "tick-0001.jsonl");
+    assert_eq!(tick["world_time_before"], 1080);
+    assert_eq!(tick["world_time_after"], 1085);
+    assert!(tick["tool_trace"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|name| name == "resolve_check"));
+    let marks: Vec<_> = tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|intent| intent["move"] == "mark")
+        .collect();
+    assert_eq!(marks.len(), 1, "{tick}");
+    assert_eq!(marks[0]["source"], "player");
+    assert_eq!(marks[0]["actor_id"], "pc_rowan");
+    assert_eq!(marks[0]["target"]["actor"], "mira");
+    let flags = flag_effects(&tick);
+    assert_eq!(flags.len(), 1, "{tick}");
+    assert_eq!(flags[0]["intent_id"], marks[0]["id"]);
+    assert_eq!(flags[0]["as"], "player:pc_rowan");
+    assert_eq!(flags[0]["payload"]["actor_id"], "mira");
+    assert_eq!(flags[0]["payload"]["key"], "marked");
+    assert_eq!(flags[0]["payload"]["value"], true);
+    assert_no_derived_row(&tick, &["mark", "wave"]);
+    let _ = fs::remove_dir_all(&pack);
 }
