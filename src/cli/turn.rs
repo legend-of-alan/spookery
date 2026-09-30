@@ -216,6 +216,22 @@ fn integer_token(token: &str) -> Option<i64> {
     token.parse().ok()
 }
 
+/// A named item must already be on the acting sheet. The line is refused before queue.
+fn require_item(shard: &Shard, actor_id: &str, row: &ActionRow) -> Result<(), Reason> {
+    let Some(item) = row.item.as_deref() else {
+        return Ok(());
+    };
+    let held = shard
+        .sheets()
+        .get(actor_id)
+        .is_some_and(|sheet| sheet.inventory.iter().any(|id| id == item));
+    if held {
+        Ok(())
+    } else {
+        Err(Reason::MissingItem)
+    }
+}
+
 /// The actor or place token is stored as typed. An unknown id stays the tick's existing refusal.
 fn queue_row(
     shard: &mut Shard,
@@ -254,6 +270,7 @@ fn queue_row(
             Target::Place(place.to_string())
         }
     };
+    require_item(shard, actor_id, row)?;
     let note = QueuedNote {
         id: mint_intent_id()?,
         actor_id: actor_id.to_string(),
@@ -286,6 +303,14 @@ fn queue_travel(shard: &mut Shard, actor_id: &str, rest: &str) -> Result<QueuedN
     let (place, extra) = split_token(rest);
     if place.is_empty() || !extra.is_empty() {
         return Err(Reason::Schema);
+    }
+    if let Some(row) = shard
+        .canon()
+        .moves
+        .get("travel")
+        .and_then(|def| def.row.as_ref())
+    {
+        require_item(shard, actor_id, row)?;
     }
     let note = QueuedNote {
         id: mint_intent_id()?,

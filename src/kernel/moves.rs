@@ -13,6 +13,7 @@ pub struct MoveDef {
 }
 
 /// One player action. `effects` runs on both outcomes. `success` and `failure` run on that outcome.
+/// `item`, when set, must already be on the acting sheet or the line is refused before queue.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionRow {
     pub token: MoveToken,
@@ -20,6 +21,7 @@ pub struct ActionRow {
     pub effects: Vec<RowEffect>,
     pub success: Vec<RowEffect>,
     pub failure: Vec<RowEffect>,
+    pub item: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,11 +80,15 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if entry.name.is_empty() {
         return Err(Reason::Schema);
     }
+    if entry.item.as_ref().is_some_and(|id| id.is_empty()) {
+        return Err(Reason::Schema);
+    }
     let started = entry.token.is_some()
         || entry.on.is_some()
         || entry.effects.is_some()
         || entry.success.is_some()
-        || entry.failure.is_some();
+        || entry.failure.is_some()
+        || entry.item.is_some();
     if !started {
         return Ok((
             entry.name,
@@ -145,6 +151,7 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
                 effects,
                 success,
                 failure,
+                item: entry.item,
             }),
         },
     ))
@@ -283,6 +290,8 @@ struct MoveEntry {
     success: Option<Vec<EffectTemplate>>,
     #[serde(default)]
     failure: Option<Vec<EffectTemplate>>,
+    #[serde(default)]
+    item: Option<String>,
 }
 
 #[derive(Deserialize)]

@@ -2985,3 +2985,241 @@ resources: {}
 inventory: []
 flags: []
 ";
+
+#[test]
+fn v02_p13_a_sheet_that_lacks_the_named_item_queues_nothing() {
+    reject_moves("p13-empty-item", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: named\n    item: \"\"\n    success:\n      - class: flag\n        key: marked\n        value: true\n"
+        )
+    });
+    reject_moves("p13-gear", |text| {
+        format!(
+            "{text}  - name: mark\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n"
+        )
+    });
+    let _lock = lock_port();
+    refuse_lacking_item("item-gm", true);
+    refuse_lacking_item("item-open", false);
+    play_held_item("item-held");
+}
+
+fn refuse_lacking_item(label: &str, gm_seated: bool) {
+    let pack = item_pack(label, false);
+    let sheet_before = fs::read_to_string(pack.join("state/actors/pc_rowan.yaml")).unwrap();
+    assert!(sheet_before.contains("inventory: []\n"), "{sheet_before}");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut gm = if gm_seated {
+        Some(gm_session())
+    } else {
+        None
+    };
+    let mut player = seat_player(&pack);
+    let opened = now_of(&pack);
+    assert_eq!(opened.presence.humans, 1);
+    assert_eq!(opened.world_time, 1080);
+    assert_eq!(opened.tick_index, 0);
+    assert!(tick_names(&pack).is_empty());
+    let mut seen = 0usize;
+    refuse_player(&mut player, "mark pc_nell", "MISSING_ITEM", &mut seen);
+    let now = now_of(&pack);
+    assert_eq!(now.presence.humans, 1);
+    assert_eq!(now.world_time, 1080);
+    assert_eq!(now.tick_index, 0);
+    assert_eq!(rowan_place(&now), "docks_shop");
+    assert!(flags_of(&now, "pc_nell").is_empty());
+    assert!(tick_names(&pack).is_empty());
+    assert_eq!(
+        fs::read_to_string(pack.join("state/actors/pc_rowan.yaml")).unwrap(),
+        sheet_before
+    );
+    if let Some(gm) = gm.as_mut() {
+        let status = tool_body(gm, 2, "session_status", "{}");
+        let queued = status["queued"].as_array().unwrap();
+        assert!(queued.is_empty(), "{status}");
+        assert_eq!(status["world_time"], 1080);
+    }
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn play_held_item(label: &str) {
+    let pack = item_pack(label, true);
+    let sheet_before = fs::read_to_string(pack.join("state/actors/pc_rowan.yaml")).unwrap();
+    assert!(sheet_before.contains("\n  - knife\n"), "{sheet_before}");
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut gm = gm_session();
+    let mut next = 2u64;
+    let mut player = seat_player(&pack);
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(tick_names(&pack).is_empty());
+
+    let defend = tool_body(
+        &mut gm,
+        next,
+        "intent",
+        r#"{"actor_id":"pc_nell","actor_kind":"player","source":"player","move":"defend"}"#,
+    );
+    next += 1;
+    assert!(defend.get("code").is_none(), "{defend}");
+    assert!(defend
+        .get("queued")
+        .and_then(|id| id.as_str())
+        .is_some_and(|id| !id.is_empty()));
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(tick_names(&pack).is_empty());
+
+    let before = text_of(&player.stdout);
+    write_stdin(&mut player, "mark pc_nell");
+    let queued_out = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+    let queued_added = &queued_out[before.len()..];
+    assert!(queued_added.contains("\"kind\":\"queued\""), "{queued_added}");
+    assert!(!queued_added.contains("\"kind\":\"check\""), "{queued_added}");
+    assert!(
+        text_of(&player.stderr).is_empty(),
+        "{}",
+        text_of(&player.stderr)
+    );
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(tick_names(&pack).is_empty());
+
+    let status = tool_body(&mut gm, next, "session_status", "{}");
+    next += 1;
+    let queued = status["queued"].as_array().unwrap();
+    assert!(
+        queued.iter().any(|item| item["actor_id"] == "pc_nell" && item["move"] == "defend"),
+        "{status}"
+    );
+    assert!(
+        queued.iter().any(|item| item["actor_id"] == "pc_rowan" && item["move"] == "mark"),
+        "{status}"
+    );
+    assert_eq!(status["world_time"], 1080);
+
+    let line = "{\"kind\":\"check\",\"success\":false}";
+    let before_commit = text_of(&player.stdout);
+    let committed_lines = call(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
+    let committed = structured(result_line(&committed_lines, next));
+    assert!(committed.get("code").is_none(), "{committed}");
+    let stdout = wait_has(&player.stdout, line, Duration::from_secs(5));
+    let added = &stdout[before_commit.len()..];
+    assert!(added.contains(line), "{added}");
+    assert!(!added.contains("\"faces\""), "{added}");
+    assert!(
+        text_of(&player.stderr).is_empty(),
+        "{}",
+        text_of(&player.stderr)
+    );
+
+    let checks = gm_checks(&committed_lines);
+    let now = now_of(&pack);
+    assert_eq!(now.presence.humans, 1);
+    assert_eq!(now.world_time, 1085);
+    assert_eq!(now.tick_index, 1);
+    assert_eq!(rowan_place(&now), "docks_shop");
+    assert_eq!(now.actors.get("pc_nell").unwrap().place(), "docks_shop");
+    let tick = tick_value(&pack, "tick-0001.jsonl");
+    assert_eq!(tick["world_time_before"], 1080);
+    assert_eq!(tick["world_time_after"], 1085);
+    let mark = tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|intent| intent["move"] == "mark")
+        .unwrap_or_else(|| panic!("no mark in {tick}"));
+    assert_eq!(mark["actor_id"], "pc_rowan");
+    assert_eq!(mark["source"], "player");
+    assert_eq!(mark["target"]["actor"], "pc_nell");
+    assert_eq!(checks.len(), 2, "{checks:?}");
+    let nell = check_with_stat(&checks, 100);
+    let rowan = check_with_stat(&checks, 1);
+    assert_eq!(nell["target"], 0);
+    assert_eq!(nell["success"], true);
+    let total = nell["total"].as_i64().unwrap();
+    assert!(total >= 102, "{nell}");
+    assert_eq!(rowan["target"], total);
+    assert_eq!(rowan["success"], false);
+    let defend = tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|intent| intent["move"] == "defend")
+        .unwrap_or_else(|| panic!("no defend in {tick}"));
+    assert_eq!(defend["actor_id"], "pc_nell");
+    assert_eq!(defend["source"], "player");
+    let mut flags = flags_of(&now, "pc_nell");
+    flags.sort();
+    assert_eq!(flags, vec!["guarded".to_string(), "missed".to_string()]);
+    assert!(flags_of(&now, "pc_rowan").is_empty());
+    assert_no_derived_row(&tick, &["mark", "defend"]);
+    assert_eq!(
+        fs::read_to_string(pack.join("state/actors/pc_rowan.yaml")).unwrap(),
+        sheet_before
+    );
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn item_pack(label: &str, held: bool) -> PathBuf {
+    let pack = temp_pack(label);
+    let moves = pack.join("rules/moves.yaml");
+    let mut text = fs::read_to_string(&moves).unwrap();
+    text.push_str(ITEM_ROWS);
+    fs::write(&moves, text).unwrap();
+    fs::write(pack.join("cast/pc-nell.md"), NELL_CAST).unwrap();
+    fs::write(pack.join("state/actors/pc_nell.yaml"), NELL_SHEET).unwrap();
+    if held {
+        let sheet = pack.join("state/actors/pc_rowan.yaml");
+        let sheet_text = fs::read_to_string(&sheet).unwrap();
+        let sheet_next = sheet_text.replacen("inventory: []\n", "inventory:\n  - knife\n", 1);
+        assert_ne!(sheet_next, sheet_text, "rowan inventory was not patched");
+        fs::write(&sheet, sheet_next).unwrap();
+    }
+    let now_path = pack.join("state/now.yaml");
+    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    now.actors.insert(
+        "pc_nell".to_string(),
+        spookery_kernel::model::ActorLive::Pc {
+            place: "docks_shop".to_string(),
+            flags: Vec::new(),
+            busy: false,
+            known_facts: Vec::new(),
+            sheet: "state/actors/pc_nell.yaml".to_string(),
+        },
+    );
+    fs::write(&now_path, spookery_kernel::codec::emit_now(&now).unwrap()).unwrap();
+    stamp_pack_rev(&pack);
+    let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+    let mark = canon.moves.get("mark").unwrap();
+    assert_eq!(mark.check.as_deref(), Some("grit"));
+    let mark_row = mark.row.as_ref().unwrap();
+    assert_eq!(mark_row.item.as_deref(), Some("knife"));
+    assert!(mark_row.effects.is_empty());
+    let defend = canon.moves.get("defend").unwrap();
+    let defend_row = defend.row.as_ref().unwrap();
+    assert!(defend_row.item.is_none());
+    pack
+}
+
+const ITEM_ROWS: &str = "  - name: mark
+    token: actor
+    on: named
+    check: grit
+    item: knife
+    success:
+      - class: flag
+        key: marked
+        value: true
+    failure:
+      - class: flag
+        key: missed
+        value: true
+  - name: defend
+    token: none
+    on: speaker
+    check: grit
+    success:
+      - class: flag
+        key: guarded
+        value: true
+";
