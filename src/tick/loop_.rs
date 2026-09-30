@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use spookery_kernel::apply::apply_effect;
@@ -183,6 +183,10 @@ fn stage_tick(
 
     let mut trace = vec!["session_status".to_string()];
     let mut rejected = Vec::new();
+    let supply_from = match recorded {
+        Some(recorded) => recorded.intents.clone(),
+        None => queued.clone(),
+    };
     let candidates = if let Some(recorded) = recorded {
         recorded.intents.clone()
     } else {
@@ -217,6 +221,7 @@ fn stage_tick(
     let mut budget_stop = false;
     let mut notices = Vec::new();
     let mut die_cursor = 0usize;
+    let mut supplied = BTreeMap::new();
     for intent in candidates {
         if budget_stop {
             break;
@@ -298,20 +303,48 @@ fn stage_tick(
             trace.push("resolve_check".to_string());
             let seed = seed_preimage(&shard_id, tick_index);
             let rng = blake2s_256(seed.as_bytes());
-            match resolve_check(
+            let target = match supplied_target(
                 txn.canon(),
                 shard.sheets(),
-                &viewer,
-                &check_id,
-                0,
+                &supply_from,
+                &intent,
                 &rng,
                 &mut die_cursor,
+                &mut supplied,
             ) {
-                Ok(out) => rolled = Some(out),
+                Ok(target) => target,
                 Err(code) => {
                     reject_check(&mut rejected, &mut notices, &intent, code);
                     continue;
                 }
+            };
+            let cached = if target == 0 {
+                supplied.get(&intent.id).cloned()
+            } else {
+                None
+            };
+            match cached {
+                Some(out) => rolled = Some(out),
+                None => match resolve_check(
+                    txn.canon(),
+                    shard.sheets(),
+                    &viewer,
+                    &check_id,
+                    target,
+                    &rng,
+                    &mut die_cursor,
+                ) {
+                    Ok(out) => {
+                        if target == 0 {
+                            supplied.insert(intent.id.clone(), out.clone());
+                        }
+                        rolled = Some(out);
+                    }
+                    Err(code) => {
+                        reject_check(&mut rejected, &mut notices, &intent, code);
+                        continue;
+                    }
+                },
             }
         } else if needs_roll(txn.canon(), &intent.move_name) {
             trace.push("resolve_check".to_string());
@@ -489,6 +522,41 @@ fn stage_tick(
         &trace,
     );
     Ok((jsonl, notices))
+}
+
+/// The named actor's queued row, resolved once at target 0. Its total opposes this check.
+fn supplied_target(
+    canon: &spookery_kernel::canon::Canon,
+    sheets: &BTreeMap<String, spookery_kernel::model::PcSheet>,
+    queued: &[Intent],
+    intent: &Intent,
+    rng: &[u8],
+    die_cursor: &mut usize,
+    supplied: &mut BTreeMap<String, CheckOut>,
+) -> Result<i64, KernelReason> {
+    let spookery_kernel::model::Target::Actor(named) = &intent.target else {
+        return Ok(0);
+    };
+    let Some(opposing) = queued.iter().find(|other| {
+        other.id != intent.id
+            && other.actor_id == *named
+            && other.source == spookery_kernel::model::Source::Player
+            && row_check(canon, &other.move_name).is_some()
+    }) else {
+        return Ok(0);
+    };
+    if let Some(out) = supplied.get(&opposing.id) {
+        return Ok(out.total);
+    }
+    let Some(check_id) = row_check(canon, &opposing.move_name) else {
+        return Ok(0);
+    };
+    let viewer =
+        spookery_kernel::model::ViewerId::from_kind(opposing.actor_kind, &opposing.actor_id)?;
+    let out = resolve_check(canon, sheets, &viewer, &check_id, 0, rng, die_cursor)?;
+    let total = out.total;
+    supplied.insert(opposing.id.clone(), out);
+    Ok(total)
 }
 
 fn reject_check(rejected: &mut Vec<Rejected>, notices: &mut Vec<CheckNotice>, intent: &Intent, code: KernelReason) {

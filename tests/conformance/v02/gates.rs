@@ -2711,3 +2711,277 @@ const ATTACK_ROW: &str = "  - name: attack
         key: hp
         delta: 0
 ";
+
+#[test]
+fn v02_p12_a_queued_action_supplies_the_opposing_check() {
+    let _lock = lock_port();
+    play_opposed("oppose-open", false);
+    play_opposed("oppose-held", true);
+}
+
+fn play_opposed(label: &str, opposed: bool) {
+    let pack = oppose_pack(label);
+    let opened = now_of(&pack);
+    assert_eq!(opened.state_rev, 0);
+    assert_eq!(opened.world_time, 1080);
+    assert_eq!(opened.tick_index, 0);
+    assert_eq!(rowan_place(&opened), "docks_shop");
+    assert_eq!(
+        opened.actors.get("pc_nell").unwrap().place(),
+        "docks_shop"
+    );
+    assert!(flags_of(&opened, "pc_nell").is_empty());
+    let mut server = spawn(&["run", &pack_arg(&pack)]);
+    wait_listen(&mut server);
+    let mut gm = gm_session();
+    let mut next = 2u64;
+    let mut player = seat_player(&pack);
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(tick_names(&pack).is_empty());
+
+    if opposed {
+        let defend = tool_body(
+            &mut gm,
+            next,
+            "intent",
+            r#"{"actor_id":"pc_nell","actor_kind":"player","source":"player","move":"defend"}"#,
+        );
+        next += 1;
+        assert!(defend.get("code").is_none(), "{defend}");
+        assert!(defend
+            .get("queued")
+            .and_then(|id| id.as_str())
+            .is_some_and(|id| !id.is_empty()));
+        assert_eq!(now_of(&pack).world_time, 1080);
+        assert!(tick_names(&pack).is_empty());
+    }
+
+    let before = text_of(&player.stdout);
+    write_stdin(&mut player, "mark pc_nell");
+    let queued_out = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+    let queued_added = &queued_out[before.len()..];
+    assert!(queued_added.contains("\"kind\":\"queued\""), "{queued_added}");
+    assert!(!queued_added.contains("\"kind\":\"check\""), "{queued_added}");
+    assert_eq!(now_of(&pack).world_time, 1080);
+    assert!(tick_names(&pack).is_empty());
+
+    let status = tool_body(&mut gm, next, "session_status", "{}");
+    next += 1;
+    let queued = status["queued"].as_array().unwrap();
+    if opposed {
+        assert!(
+            queued.iter().any(|item| {
+                item["actor_id"] == "pc_nell" && item["move"] == "defend"
+            }),
+            "{status}"
+        );
+    } else {
+        assert!(
+            queued
+                .iter()
+                .all(|item| item["move"] != "defend"),
+            "{status}"
+        );
+    }
+    assert!(
+        queued
+            .iter()
+            .any(|item| item["actor_id"] == "pc_rowan" && item["move"] == "mark"),
+        "{status}"
+    );
+    assert_eq!(status["world_time"], 1080);
+
+    let word = if opposed { "false" } else { "true" };
+    let line = format!("{{\"kind\":\"check\",\"success\":{word}}}");
+    let before_commit = text_of(&player.stdout);
+    let committed_lines = call(&mut gm, next, "commit_turn", r#"{"include_tick":true}"#);
+    let committed = structured(result_line(&committed_lines, next));
+    assert!(committed.get("code").is_none(), "{committed}");
+    let stdout = wait_has(&player.stdout, &line, Duration::from_secs(5));
+    let added = &stdout[before_commit.len()..];
+    assert!(added.contains(&line), "{added}");
+    assert!(!added.contains("\"faces\""), "{added}");
+    assert!(
+        text_of(&player.stderr).is_empty(),
+        "{}",
+        text_of(&player.stderr)
+    );
+
+    let checks = gm_checks(&committed_lines);
+    let now = now_of(&pack);
+    assert_eq!(now.presence.humans, 1);
+    assert_eq!(now.world_time, 1085);
+    assert_eq!(now.tick_index, 1);
+    assert_eq!(rowan_place(&now), "docks_shop");
+    assert_eq!(now.actors.get("pc_nell").unwrap().place(), "docks_shop");
+    let tick = tick_value(&pack, "tick-0001.jsonl");
+    assert_eq!(tick["world_time_before"], 1080);
+    assert_eq!(tick["world_time_after"], 1085);
+    let mark = tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|intent| intent["move"] == "mark")
+        .unwrap_or_else(|| panic!("no mark in {tick}"));
+    assert_eq!(mark["actor_id"], "pc_rowan");
+    assert_eq!(mark["source"], "player");
+    assert_eq!(mark["target"]["actor"], "pc_nell");
+    if opposed {
+        assert_eq!(checks.len(), 2, "{checks:?}");
+        let nell = check_with_stat(&checks, 100);
+        let rowan = check_with_stat(&checks, 1);
+        assert_eq!(nell["target"], 0);
+        assert_eq!(nell["success"], true);
+        let total = nell["total"].as_i64().unwrap();
+        assert!(total >= 102, "{nell}");
+        assert_eq!(rowan["target"], total);
+        assert_eq!(rowan["success"], false);
+        let defend = tick["intents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|intent| intent["move"] == "defend")
+            .unwrap_or_else(|| panic!("no defend in {tick}"));
+        assert_eq!(defend["actor_id"], "pc_nell");
+        assert_eq!(defend["source"], "player");
+        let mut flags = flags_of(&now, "pc_nell");
+        flags.sort();
+        assert_eq!(
+            flags,
+            vec!["guarded".to_string(), "missed".to_string()]
+        );
+    } else {
+        assert_eq!(checks.len(), 1, "{checks:?}");
+        assert_eq!(checks[0]["stat"], 1);
+        assert_eq!(checks[0]["target"], 0);
+        assert_eq!(checks[0]["success"], true);
+        assert!(tick["intents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|intent| intent["move"] != "defend"));
+        assert_eq!(flags_of(&now, "pc_nell"), vec!["marked".to_string()]);
+    }
+    assert!(flags_of(&now, "pc_rowan").is_empty());
+    assert_no_derived_row(&tick, &["mark", "defend"]);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn oppose_pack(label: &str) -> PathBuf {
+    let pack = temp_pack(label);
+    let moves = pack.join("rules/moves.yaml");
+    let mut text = fs::read_to_string(&moves).unwrap();
+    text.push_str(OPPOSE_ROWS);
+    fs::write(&moves, text).unwrap();
+    fs::write(pack.join("cast/pc-nell.md"), NELL_CAST).unwrap();
+    fs::write(pack.join("state/actors/pc_nell.yaml"), NELL_SHEET).unwrap();
+    let now_path = pack.join("state/now.yaml");
+    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    now.actors.insert(
+        "pc_nell".to_string(),
+        spookery_kernel::model::ActorLive::Pc {
+            place: "docks_shop".to_string(),
+            flags: Vec::new(),
+            busy: false,
+            known_facts: Vec::new(),
+            sheet: "state/actors/pc_nell.yaml".to_string(),
+        },
+    );
+    fs::write(
+        &now_path,
+        spookery_kernel::codec::emit_now(&now).unwrap(),
+    )
+    .unwrap();
+    stamp_pack_rev(&pack);
+    let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+    let mark = canon.moves.get("mark").unwrap();
+    assert_eq!(mark.check.as_deref(), Some("grit"));
+    let mark_row = mark.row.as_ref().unwrap();
+    assert_eq!(mark_row.token, spookery_kernel::moves::MoveToken::Actor);
+    assert_eq!(mark_row.on, spookery_kernel::moves::MoveOn::Named);
+    assert!(mark_row.effects.is_empty());
+    let defend = canon.moves.get("defend").unwrap();
+    assert_eq!(defend.check.as_deref(), Some("grit"));
+    let defend_row = defend.row.as_ref().unwrap();
+    assert_eq!(defend_row.token, spookery_kernel::moves::MoveToken::None);
+    assert_eq!(defend_row.on, spookery_kernel::moves::MoveOn::Speaker);
+    assert!(defend_row.effects.is_empty());
+    assert_eq!(
+        defend_row.success,
+        vec![spookery_kernel::moves::RowEffect::Flag {
+            key: "guarded".to_string(),
+            value: true,
+        }]
+    );
+    pack
+}
+
+fn gm_checks(lines: &[String]) -> Vec<Value> {
+    let mut checks = Vec::new();
+    for line in lines {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(params) = value.get("params") else {
+            continue;
+        };
+        if params.get("kind").and_then(|kind| kind.as_str()) == Some("check") {
+            checks.push(params.clone());
+        }
+    }
+    checks
+}
+
+fn check_with_stat(checks: &[Value], stat: i64) -> &Value {
+    checks
+        .iter()
+        .find(|check| check["stat"].as_i64() == Some(stat))
+        .unwrap_or_else(|| panic!("no stat {stat} in {checks:?}"))
+}
+
+const OPPOSE_ROWS: &str = "  - name: mark
+    token: actor
+    on: named
+    check: grit
+    success:
+      - class: flag
+        key: marked
+        value: true
+    failure:
+      - class: flag
+        key: missed
+        value: true
+  - name: defend
+    token: none
+    on: speaker
+    check: grit
+    success:
+      - class: flag
+        key: guarded
+        value: true
+";
+
+const NELL_CAST: &str = "---
+schema: cast/v0
+id: pc_nell
+kind: pc_template
+facts: []
+tick:
+  eligible: false
+  flags:
+    - marked
+    - missed
+    - guarded
+---
+Nell keeps a guard up.
+";
+
+const NELL_SHEET: &str = "schema: sheet/v0
+id: pc_nell
+template: cast/pc-nell.md
+stats:
+  grit: 100
+resources: {}
+inventory: []
+flags: []
+";
