@@ -1,0 +1,16 @@
+@v0
+Feature: Oneshot docks
+  Proof: v0_oneshot_docks_matches_section12
+  The committed docks pack matches the recorded pack_rev, now.yaml, and pc_rowan.yaml bytes.
+
+  Scenario: Oneshot docks pack bytes match the recorded pack_rev, now.yaml, and pc_rowan.yaml
+    Given the source pack packs/oneshot-docks
+    Then pack_rev is "blake2s:72453320cb4dccfce9d2b857cfec869790c442acfb81f5fa49df974db367a1ff"
+    And "state/now.yaml" is 2006 bytes
+    And "state/now.yaml" blake2s is "cb4f40c631487021bdecdc691232baacad4a6291bdf497a51661dbe5ed3f1885"
+    And "state/now.yaml" round-trips through emit_now
+    And now pack_rev is "blake2s:72453320cb4dccfce9d2b857cfec869790c442acfb81f5fa49df974db367a1ff"
+    And "state/actors/pc_rowan.yaml" is 118 bytes
+    And "state/actors/pc_rowan.yaml" blake2s is "0bc253962ff105876e0687c3649959cc58735e43b02f6ec43ca13167894f0e7b"
+    And "state/actors/pc_rowan.yaml" round-trips through sheet emit
+    And the shard opens
