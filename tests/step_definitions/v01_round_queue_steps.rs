@@ -370,7 +370,7 @@ fn resume_not_queued(w: &mut World) {
     assert!(!added.contains("\"kind\":\"queued\""), "{added}");
 }
 
-#[then(expr = "the player stderr does not contain NOT_IN_SPEC")]
+#[then(expr = "the round queue player stderr does not contain NOT_IN_SPEC")]
 fn stderr_ok(w: &mut World) {
     let stderr = w.scratch.get("player_stderr").unwrap();
     assert!(!stderr.contains("NOT_IN_SPEC"), "{stderr}");

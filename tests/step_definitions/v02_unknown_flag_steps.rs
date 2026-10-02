@@ -482,17 +482,17 @@ fn flag_pack(w: &mut World) {
     });
 }
 
-#[then(expr = "flag world_time is {int}")]
+#[then(expr = "unlisted flag world_time is {int}")]
 fn flag_world_time(w: &mut World, n: i64) {
     assert_eq!(now_of(&pack_of(w)).world_time, n as u64);
 }
 
-#[then(expr = "flag tick_index is {int}")]
+#[then(expr = "unlisted flag tick_index is {int}")]
 fn flag_tick_index(w: &mut World, n: i64) {
     assert_eq!(now_of(&pack_of(w)).tick_index, n as u64);
 }
 
-#[then(expr = "flag actor {word} has no flags")]
+#[then(expr = "unlisted flag actor {word} has no flags")]
 fn flag_actor_empty(w: &mut World, id: String) {
     let flags = flags_of(&now_of(&pack_of(w)), &id);
     assert!(flags.is_empty(), "{id} flags {flags:?}");
@@ -575,7 +575,7 @@ fn flag_commit(w: &mut World) {
     w.scratch.insert("commit".to_string(), body.to_string());
 }
 
-#[then(expr = "the flag commit has no code")]
+#[then(expr = "the unlisted flag commit has no code")]
 fn flag_commit_ok(w: &mut World) {
     let raw = w.scratch.get("commit").expect("no flag commit");
     let body: Value = serde_json::from_str(raw).unwrap_or_else(|err| panic!("{err}: {raw}"));
@@ -601,7 +601,7 @@ fn flag_reject(w: &mut World, name: String, which: String) {
     );
 }
 
-#[then(expr = "flag tick {string} has no flag effects")]
+#[then(expr = "unlisted flag tick {string} has no flag effects")]
 fn flag_no_flag_effects(w: &mut World, name: String) {
     let tick = tick_of(w, &name);
     assert!(flag_effects(&tick).is_empty(), "{tick}");
@@ -615,7 +615,7 @@ fn flag_wave_intents(w: &mut World, name: String) {
     }));
 }
 
-#[then(expr = "flag tick {string} derives neither mark nor wave")]
+#[then(expr = "unlisted flag tick {string} derives neither mark nor wave")]
 fn flag_no_derived(w: &mut World, name: String) {
     assert_no_derived_row(&tick_of(w, &name), &["mark", "wave"]);
 }

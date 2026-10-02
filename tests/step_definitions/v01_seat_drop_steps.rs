@@ -105,21 +105,6 @@ fn now_of(pack: &Path) -> spookery_kernel::model::Now {
         .clone()
 }
 
-fn wait_humans(pack: &Path, humans: u32, timeout: Duration) -> spookery_kernel::model::Now {
-    let start = Instant::now();
-    loop {
-        if let Ok(shard) = spookery_kernel::open_shard(pack) {
-            if shard.now().presence.humans == humans {
-                return shard.now().clone();
-            }
-        }
-        if start.elapsed() > timeout {
-            panic!("humans did not become {humans}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
 fn release(w: &mut World, end: SocketEnd) {
     let mut shard =
         spookery_kernel::open_shard(pack_of(w)).unwrap_or_else(|err| panic!("open: {err}"));
@@ -174,18 +159,6 @@ fn client_exits_0(_w: &mut World) {
     let mut held = live();
     let status = wait_exit(held.client.as_mut().unwrap(), Duration::from_secs(5));
     assert_eq!(status.code(), Some(0));
-}
-
-#[then(expr = "presence humans is {int}")]
-fn humans_is(w: &mut World, n: u64) {
-    let now = now_of(pack_of(w));
-    assert_eq!(u64::from(now.presence.humans), n);
-}
-
-#[then(expr = "humans returns to 0")]
-fn humans_returns(w: &mut World) {
-    let now = wait_humans(pack_of(w), 0, Duration::from_secs(5));
-    assert_eq!(now.presence.humans, 0);
 }
 
 #[then(expr = "session_ids is empty")]

@@ -198,6 +198,48 @@ pub fn wait_listen(proc: &mut Proc) {
     }
 }
 
+pub fn release_listeners() {
+    let Ok(output) = Command::new("netstat").args(["-ano", "-p", "tcp"]).output() else {
+        return;
+    };
+    let text = String::from_utf8_lossy(&output.stdout);
+    let mut pids = Vec::new();
+    for line in text.lines() {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() < 4 || fields[3] != "LISTENING" {
+            continue;
+        }
+        let local = fields[1];
+        if !(local.ends_with(":9737") || local.ends_with("]:9737")) {
+            continue;
+        }
+        let pid = fields[fields.len() - 1];
+        if pid != "0" && !pids.contains(&pid.to_string()) {
+            pids.push(pid.to_string());
+        }
+    }
+    for pid in pids {
+        if !process_is_spook(&pid) {
+            continue;
+        }
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid, "/T", "/F"])
+            .output();
+    }
+}
+
+fn process_is_spook(pid: &str) -> bool {
+    let Ok(listed) = Command::new("tasklist")
+        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
+        .output()
+    else {
+        return false;
+    };
+    String::from_utf8_lossy(&listed.stdout)
+        .to_ascii_lowercase()
+        .contains("spook.exe")
+}
+
 pub fn pack_arg(pack: &Path) -> String {
     pack.to_str()
         .unwrap_or_else(|| panic!("pack path is not utf-8"))

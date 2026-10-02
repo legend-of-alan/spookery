@@ -28,6 +28,10 @@ async fn main() {
     World::cucumber()
         .max_concurrent_scenarios(1)
         .fail_on_skipped()
+        .after(|_, _, _, _, _| {
+            support::release_listeners();
+            Box::pin(async {})
+        })
         .run_and_exit("tests/features")
         .await;
 }

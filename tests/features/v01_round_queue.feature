@@ -16,7 +16,7 @@ Feature: Round queue
     And state/log holds 0 tick jsonl files
     When the round queue player sends wait
     Then the player stdout gained a resume and not a queued line
-    And the player stderr does not contain NOT_IN_SPEC
+    And the round queue player stderr does not contain NOT_IN_SPEC
     And presence humans is 1
     And world_time is 1085
     And world_time is not 1140
