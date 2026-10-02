@@ -9,7 +9,6 @@ moves:
   - name: work
   - name: restock
   - name: rest
-  - name: pay_upkeep
   - name: drift_relationship
   - name: spread_rumor
   - name: leave_note

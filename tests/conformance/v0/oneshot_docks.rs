@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::PathBuf;
 
-const PACK_REV: &str = "blake2s:72453320cb4dccfce9d2b857cfec869790c442acfb81f5fa49df974db367a1ff";
-const NOW_BLAKE2S: &str = "cb4f40c631487021bdecdc691232baacad4a6291bdf497a51661dbe5ed3f1885";
+const PACK_REV: &str = "blake2s:4fb2923546946116df5dec49198a50765588ac57b593f22b0cd266823c08710a";
+const NOW_BLAKE2S: &str = "ea8497770f4b2ae6f5f330a932149bdfcb2732f6766c4e67411b73f35e482d46";
 const SHEET_BLAKE2S: &str = "0bc253962ff105876e0687c3649959cc58735e43b02f6ec43ca13167894f0e7b";
 
 #[test]

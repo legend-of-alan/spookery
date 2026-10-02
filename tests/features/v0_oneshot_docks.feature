@@ -5,11 +5,11 @@ Feature: Oneshot docks
 
   Scenario: Oneshot docks pack bytes match the recorded pack_rev, now.yaml, and pc_rowan.yaml
     Given the source pack packs/oneshot-docks
-    Then pack_rev is "blake2s:72453320cb4dccfce9d2b857cfec869790c442acfb81f5fa49df974db367a1ff"
+    Then pack_rev is "blake2s:4fb2923546946116df5dec49198a50765588ac57b593f22b0cd266823c08710a"
     And "state/now.yaml" is 2006 bytes
-    And "state/now.yaml" blake2s is "cb4f40c631487021bdecdc691232baacad4a6291bdf497a51661dbe5ed3f1885"
+    And "state/now.yaml" blake2s is "ea8497770f4b2ae6f5f330a932149bdfcb2732f6766c4e67411b73f35e482d46"
     And "state/now.yaml" round-trips through emit_now
-    And now pack_rev is "blake2s:72453320cb4dccfce9d2b857cfec869790c442acfb81f5fa49df974db367a1ff"
+    And now pack_rev is "blake2s:4fb2923546946116df5dec49198a50765588ac57b593f22b0cd266823c08710a"
     And "state/actors/pc_rowan.yaml" is 118 bytes
     And "state/actors/pc_rowan.yaml" blake2s is "0bc253962ff105876e0687c3649959cc58735e43b02f6ec43ca13167894f0e7b"
     And "state/actors/pc_rowan.yaml" round-trips through sheet emit

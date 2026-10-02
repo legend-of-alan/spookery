@@ -4,7 +4,7 @@ use std::process::Command;
 
 use super::support::temp_pack;
 
-const PACK_REV: &str = "blake2s:72453320cb4dccfce9d2b857cfec869790c442acfb81f5fa49df974db367a1ff";
+const PACK_REV: &str = "blake2s:4fb2923546946116df5dec49198a50765588ac57b593f22b0cd266823c08710a";
 
 fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut out = Vec::new();

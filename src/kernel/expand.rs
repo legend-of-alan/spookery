@@ -87,30 +87,6 @@ pub fn expand_outcome(
                 delta,
             }])
         }
-        "pay_upkeep" => {
-            let key = intent.args.key.clone().ok_or(Reason::UnknownKey)?;
-            let delta = intent.args.delta.ok_or(Reason::UnknownKey)?;
-            let profile = canon.profile(&intent.actor_id);
-            if profile.is_some_and(|profile| profile.needs.contains_key(&key)) {
-                Ok(vec![Effect::Need {
-                    as_viewer: viewer,
-                    intent_id,
-                    actor_id: intent.actor_id.clone(),
-                    key,
-                    delta,
-                }])
-            } else if profile.is_some_and(|profile| profile.resources.contains_key(&key)) {
-                Ok(vec![Effect::Resource {
-                    as_viewer: viewer,
-                    intent_id,
-                    actor_id: intent.actor_id.clone(),
-                    key,
-                    delta,
-                }])
-            } else {
-                Err(Reason::UnknownKey)
-            }
-        }
         "drift_relationship" => {
             let Target::Actor(other) = &intent.target else {
                 return Err(Reason::Schema);

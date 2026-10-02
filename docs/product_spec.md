@@ -254,7 +254,7 @@ Why: v0 is proving a referee and a pack, not shipping a well-known game. The spe
 Minimum idle moves (must exist in the fixture `rules/moves.yaml`):
 
 ```text
-wait travel work restock rest pay_upkeep
+wait travel work restock rest
 drift_relationship spread_rumor leave_note file_proposal advance_clock
 ```
 

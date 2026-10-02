@@ -165,6 +165,12 @@ The player line stays the verb plus the row's token. A missing token or an extra
 
 ---
 
+## pay_upkeep
+
+`pay_upkeep` is retired. It is absent from `packs/oneshot-docks/rules/moves.yaml` and from `rulesets/moves.yaml`. `expand` has no arm for that name. Derivation does not match it. The v0 idle list, the move-effect row, derivation step 1, and the typed `pay_upkeep <key> <delta>` line no longer hold. Need floors stay out of the canon schema.
+
+---
+
 ## Still unbuilt for the minor
 
 These stay out for every patch of v0.2:
