@@ -57,6 +57,8 @@ mod v0_proposal_only_steps;
 mod v0_traces_steps;
 #[path = "step_definitions/v0_load_mcp_steps.rs"]
 mod v0_load_mcp_steps;
+#[path = "step_definitions/v0_mcp_profiles_steps.rs"]
+mod v0_mcp_profiles_steps;
 #[path = "step_definitions/v0_idle_ux_steps.rs"]
 mod v0_idle_ux_steps;
 #[path = "step_definitions/v0_strip_bodies_steps.rs"]
