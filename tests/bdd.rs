@@ -101,6 +101,8 @@ mod v01_gm_allowlist_steps;
 mod v01_gm_say_steps;
 #[path = "step_definitions/v01_stdio_bridge_steps.rs"]
 mod v01_stdio_bridge_steps;
+#[path = "step_definitions/v01_typed_gm_steps.rs"]
+mod v01_typed_gm_steps;
 #[path = "step_definitions/v02_tool_keys_steps.rs"]
 mod v02_tool_keys_steps;
 #[path = "step_definitions/v02_pack_table_list_only_steps.rs"]
