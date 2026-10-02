@@ -88,8 +88,14 @@ fn status_exits_0(w: &mut World) {
         w.scratch.get("idle-status-ok").map(String::as_str),
         Some("true"),
         "status\nstdout:\n{}\nstderr:\n{}",
-        w.scratch.get("idle-status-stdout").map(String::as_str).unwrap_or(""),
-        w.scratch.get("idle-status-stderr").map(String::as_str).unwrap_or("")
+        w.scratch
+            .get("idle-status-stdout")
+            .map(String::as_str)
+            .unwrap_or(""),
+        w.scratch
+            .get("idle-status-stderr")
+            .map(String::as_str)
+            .unwrap_or("")
     );
 }
 
@@ -104,7 +110,9 @@ fn status_stdout(w: &mut World) {
 #[then(expr = "status leaves the pack bytes unchanged")]
 fn status_leaves_pack(w: &mut World) {
     assert_eq!(
-        w.scratch.get("idle-status-pack-unchanged").map(String::as_str),
+        w.scratch
+            .get("idle-status-pack-unchanged")
+            .map(String::as_str),
         Some("true"),
         "status wrote the pack"
     );

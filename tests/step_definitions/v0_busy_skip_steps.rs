@@ -26,7 +26,8 @@ fn player_present(w: &mut World, player: String, npc: String, world_time: u64) {
 fn world_time_advanced(w: &mut World, n: u64) {
     let shard = spookery_kernel::open_shard(w.pack.as_ref().unwrap()).unwrap();
     assert_eq!(
-        shard.now().world_time, n,
+        shard.now().world_time,
+        n,
         "a present player still advances world_time"
     );
 }
@@ -34,7 +35,10 @@ fn world_time_advanced(w: &mut World, n: u64) {
 #[then(expr = "mira place is docks_shop")]
 fn mira_place(w: &mut World) {
     let shard = spookery_kernel::open_shard(w.pack.as_ref().unwrap()).unwrap();
-    assert_eq!(shard.now().actors.get("mira").unwrap().place(), "docks_shop");
+    assert_eq!(
+        shard.now().actors.get("mira").unwrap().place(),
+        "docks_shop"
+    );
 }
 
 #[then(expr = "mira last_act_tick is {int}")]

@@ -7,7 +7,7 @@ use cucumber::{then, when};
 use spookery_kernel::store::Shard;
 
 use crate::support::{
-    self, pack_arg, spawn, text_of, wait_count, wait_has, wait_exit, wait_listen, write_stdin, Proc,
+    self, pack_arg, spawn, text_of, wait_count, wait_exit, wait_has, wait_listen, write_stdin, Proc,
 };
 use crate::World;
 
@@ -163,26 +163,31 @@ fn scratch_u64(w: &World, key: &str) -> u64 {
 
 fn stamp(shard: &Shard, w: &mut World) {
     let now = shard.now();
-    w.scratch
-        .insert("committed_world_time".to_string(), now.world_time.to_string());
-    w.scratch
-        .insert("committed_tick_index".to_string(), now.tick_index.to_string());
+    w.scratch.insert(
+        "committed_world_time".to_string(),
+        now.world_time.to_string(),
+    );
+    w.scratch.insert(
+        "committed_tick_index".to_string(),
+        now.tick_index.to_string(),
+    );
     w.scratch.insert(
         "committed_humans".to_string(),
         now.presence.humans.to_string(),
     );
-    w.scratch
-        .insert("committed_last_tick_at".to_string(), now.last_tick_at.clone());
+    w.scratch.insert(
+        "committed_last_tick_at".to_string(),
+        now.last_tick_at.clone(),
+    );
     w.scratch
         .insert("committed_state_rev".to_string(), now.state_rev.to_string());
 }
 
 #[then(expr = "schedule.rs defines wake and wake_shard without player_held or gm_held")]
 fn schedule_wrapper(_w: &mut World) {
-    let schedule = fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"),
-    )
-    .unwrap();
+    let schedule =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
+            .unwrap();
     assert!(schedule.contains("pub fn wake("));
     assert!(schedule.contains("pub fn wake_shard("));
     assert!(!schedule.contains("player_held"));
@@ -200,8 +205,8 @@ fn turn_wrapper(_w: &mut World) {
 
 #[when(expr = "the round restart shard seats pc_rowan")]
 fn seat(w: &mut World) {
-    let mut shard = spookery_kernel::open_shard(pack_of(w))
-        .unwrap_or_else(|err| panic!("open: {err}"));
+    let mut shard =
+        spookery_kernel::open_shard(pack_of(w)).unwrap_or_else(|err| panic!("open: {err}"));
     let session = spookery::seat::seat_player(&mut shard, "pc_rowan")
         .unwrap_or_else(|err| panic!("seat: {err:?}"));
     w.scratch.insert("session_id".to_string(), session);
@@ -219,8 +224,8 @@ fn queue_on_open(w: &mut World) {
 
 #[when(expr = "the round restart shard opens and queues a wait for pc_rowan")]
 fn open_and_queue(w: &mut World) {
-    let mut shard = spookery_kernel::open_shard(pack_of(w))
-        .unwrap_or_else(|err| panic!("open: {err}"));
+    let mut shard =
+        spookery_kernel::open_shard(pack_of(w)).unwrap_or_else(|err| panic!("open: {err}"));
     let note = spookery::seat::queue_wait(&mut shard, "pc_rowan")
         .unwrap_or_else(|err| panic!("queue: {err:?}"));
     w.scratch.insert("queued_id".to_string(), note.id);
@@ -231,8 +236,8 @@ fn open_and_queue(w: &mut World) {
 fn commit_queue(w: &mut World) {
     let mut slot = shard_slot();
     let shard = slot.as_mut().unwrap();
-    let advanced = spookery::seat::commit_queued(shard)
-        .unwrap_or_else(|err| panic!("commit: {err:?}"));
+    let advanced =
+        spookery::seat::commit_queued(shard).unwrap_or_else(|err| panic!("commit: {err:?}"));
     assert!(advanced);
     stamp(shard, w);
 }
@@ -469,8 +474,10 @@ fn gm_closes(w: &mut World) {
     let gm = held.gm.as_mut().unwrap();
     write_stdin(gm, "close");
     let status = wait_exit(gm, Duration::from_secs(5));
-    w.scratch
-        .insert("gm_exit".to_string(), status.code().unwrap_or(-1).to_string());
+    w.scratch.insert(
+        "gm_exit".to_string(),
+        status.code().unwrap_or(-1).to_string(),
+    );
 }
 
 #[then(expr = "the round restart GM exits 0")]
@@ -494,8 +501,10 @@ fn player_wait_again(w: &mut World) {
         resumes + 1,
         Duration::from_secs(5),
     );
-    w.scratch
-        .insert("added_stdout".to_string(), finished[before.len()..].to_string());
+    w.scratch.insert(
+        "added_stdout".to_string(),
+        finished[before.len()..].to_string(),
+    );
 }
 
 #[then(expr = "the round restart player gained a resume")]

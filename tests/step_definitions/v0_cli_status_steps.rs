@@ -50,12 +50,7 @@ fn file_key(path: &Path) -> String {
 fn assert_files_unchanged(w: &World, message: &str) {
     let pack = w.pack.as_ref().unwrap();
     let listed = files(pack);
-    let count: usize = w
-        .scratch
-        .get("cli-file-count")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let count: usize = w.scratch.get("cli-file-count").unwrap().parse().unwrap();
     assert_eq!(listed.len(), count, "{message}");
     for (path, bytes) in listed {
         let saved = w
@@ -80,8 +75,7 @@ fn record_cli_files(w: &mut World) {
 #[when(expr = "spook status runs on the pack")]
 fn status_runs(w: &mut World) {
     let pack = w.pack.as_ref().unwrap().clone();
-    w.outputs
-        .push(spook(&["status", pack.to_str().unwrap()]));
+    w.outputs.push(spook(&["status", pack.to_str().unwrap()]));
 }
 
 #[then(expr = "the status command exits 0")]

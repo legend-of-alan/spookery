@@ -9,7 +9,9 @@ use rmcp::ServiceExt;
 use spookery_kernel::store::Shard;
 use tokio::io::AsyncWriteExt;
 
-use crate::support::{self, pack_arg, spawn, text_of, wait_count, wait_has, wait_listen, write_stdin, Proc};
+use crate::support::{
+    self, pack_arg, spawn, text_of, wait_count, wait_has, wait_listen, write_stdin, Proc,
+};
 use crate::World;
 
 // Live processes, the GM client, and the in-memory shard queue cannot live on World.
@@ -196,11 +198,7 @@ fn record_seat(w: &mut World) {
 }
 
 fn seated_rev(w: &World) -> u64 {
-    w.scratch
-        .get("seated_state_rev")
-        .unwrap()
-        .parse()
-        .unwrap()
+    w.scratch.get("seated_state_rev").unwrap().parse().unwrap()
 }
 
 async fn call_commit(
@@ -252,7 +250,10 @@ fn start_gm() -> GmSeat {
             let _ = ready_tx.send(Ok(()));
             while let Some(cmd) = rx.recv().await {
                 match cmd {
-                    GmCmd::Commit { include_tick, reply } => {
+                    GmCmd::Commit {
+                        include_tick,
+                        reply,
+                    } => {
                         let value = call_commit(&running, include_tick).await;
                         let _ = reply.send(value);
                     }
@@ -417,8 +418,8 @@ fn tick_after(w: &mut World, n: u64) {
 
 #[when(expr = "the round queue shard seats pc_rowan")]
 fn seat(w: &mut World) {
-    let mut shard = spookery_kernel::open_shard(pack_of(w))
-        .unwrap_or_else(|err| panic!("open: {err}"));
+    let mut shard =
+        spookery_kernel::open_shard(pack_of(w)).unwrap_or_else(|err| panic!("open: {err}"));
     let session = spookery::seat::seat_player(&mut shard, "pc_rowan")
         .unwrap_or_else(|err| panic!("seat: {err:?}"));
     w.scratch.insert("session_id".to_string(), session);

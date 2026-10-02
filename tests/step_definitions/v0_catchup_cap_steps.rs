@@ -196,7 +196,8 @@ fn shard_ex(w: &mut World) {
         fs::read_to_string(pack.join("cast/pc_rowan.md"))
             .unwrap_or_else(|err| panic!("read cast: {err}")),
     );
-    let shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let shard =
+        spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
     assert_eq!(shard.now().shard_id, "ex");
     assert_eq!(shard.now().world_time, 0);
     w.pack = Some(pack);

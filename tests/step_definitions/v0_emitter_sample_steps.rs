@@ -42,11 +42,9 @@ fn render_sample(w: &mut World) {
         yes_word: "yes",
         num_word: "1842",
     };
-    w.text = serde_saphyr::to_string_with_options(
-        &sample,
-        spookery_kernel::codec::NOW_EMIT_OPTIONS(),
-    )
-    .unwrap_or_else(|err| panic!("emit sample: {err}"));
+    w.text =
+        serde_saphyr::to_string_with_options(&sample, spookery_kernel::codec::NOW_EMIT_OPTIONS())
+            .unwrap_or_else(|err| panic!("emit sample: {err}"));
 }
 
 #[then(expr = "the emitter sample is {int} bytes")]

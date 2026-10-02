@@ -25,7 +25,12 @@ pub fn render_tick(
     push_key_u64(&mut out, "state_rev_after", state_rev_after, false);
     push_key_u64(&mut out, "world_time_before", world_time_before, false);
     push_key_u64(&mut out, "world_time_after", world_time_after, false);
-    push_key_u64(&mut out, "presence_humans", u64::from(presence_humans), false);
+    push_key_u64(
+        &mut out,
+        "presence_humans",
+        u64::from(presence_humans),
+        false,
+    );
     out.push_str(",\"seed\":");
     push_string(&mut out, seed);
     out.push_str(",\"last_tick_at\":");
@@ -205,15 +210,23 @@ fn push_effect(out: &mut String, effect: &Effect) {
     push_string(out, effect.intent_id());
     out.push_str(",\"payload\":{");
     match effect {
-        Effect::Clock { clock_id, delta, .. } => {
+        Effect::Clock {
+            clock_id, delta, ..
+        } => {
             field_str(out, "clock_id", clock_id, true);
             field_i64(out, "delta", *delta, false);
         }
         Effect::Need {
-            actor_id, key, delta, ..
+            actor_id,
+            key,
+            delta,
+            ..
         }
         | Effect::Resource {
-            actor_id, key, delta, ..
+            actor_id,
+            key,
+            delta,
+            ..
         } => {
             field_str(out, "actor_id", actor_id, true);
             field_str(out, "key", key, false);

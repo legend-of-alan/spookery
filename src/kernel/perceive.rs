@@ -53,7 +53,11 @@ pub fn perceive(shard: &Shard, as_arg: &str) -> Result<Perceive, Reason> {
     perceive_budget(shard, as_arg, BUDGET_TOKENS)
 }
 
-pub fn perceive_budget(shard: &Shard, as_arg: &str, budget_tokens: usize) -> Result<Perceive, Reason> {
+pub fn perceive_budget(
+    shard: &Shard,
+    as_arg: &str,
+    budget_tokens: usize,
+) -> Result<Perceive, Reason> {
     perceive_at_budget(shard.canon(), shard.now(), as_arg, budget_tokens)
 }
 
@@ -100,10 +104,7 @@ fn perceive_at_budget(
             .map(|fact| fact.text.clone())
             .unwrap_or_default();
         let body = canon.body_of_fact(&id).to_string();
-        let public = canon
-            .facts
-            .get(&id)
-            .is_some_and(|fact| !fact.hidden);
+        let public = canon.facts.get(&id).is_some_and(|fact| !fact.hidden);
         known_facts.push(KnownFact { id, text, body });
         public_flags.push(public);
     }

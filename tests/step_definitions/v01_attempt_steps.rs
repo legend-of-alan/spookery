@@ -255,7 +255,10 @@ fn hex_decode(text: &str) -> Vec<u8> {
 }
 
 fn scratch_bytes(w: &World, key: &str) -> Vec<u8> {
-    let text = w.scratch.get(key).unwrap_or_else(|| panic!("missing {key}"));
+    let text = w
+        .scratch
+        .get(key)
+        .unwrap_or_else(|| panic!("missing {key}"));
     hex_decode(text)
 }
 
@@ -1080,9 +1083,11 @@ fn rejected_unknown(w: &mut World) {
         rejected.iter().any(|row| row["reason"] == "UNKNOWN_KEY"),
         "{tick}"
     );
-    assert!(tick["intents"].as_array().unwrap().iter().any(
-        |intent| intent["move"] == "attempt" && intent["args"]["check"] == "grit"
-    ));
+    assert!(tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|intent| intent["move"] == "attempt" && intent["args"]["check"] == "grit"));
     assert!(!tick["intents"]
         .as_array()
         .unwrap()

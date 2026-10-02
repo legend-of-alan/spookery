@@ -7,7 +7,11 @@ use crate::support::copy_dir;
 use crate::World;
 
 fn saved_path(w: &World, key: &str) -> PathBuf {
-    PathBuf::from(w.scratch.get(key).unwrap_or_else(|| panic!("missing {key}")))
+    PathBuf::from(
+        w.scratch
+            .get(key)
+            .unwrap_or_else(|| panic!("missing {key}")),
+    )
 }
 
 fn read_utf8(path: &std::path::Path) -> String {
@@ -38,9 +42,7 @@ fn copy_start_and_played(w: &mut World) {
         .insert("played".to_string(), played.to_str().unwrap().to_string());
 }
 
-#[when(
-    expr = "the played pack is kernel-ticked {int} times and replayed onto the start snapshot"
-)]
+#[when(expr = "the played pack is kernel-ticked {int} times and replayed onto the start snapshot")]
 fn kernel_tick_and_replay(w: &mut World, n: usize) {
     let played = saved_path(w, "played");
     let start = saved_path(w, "start");
@@ -60,9 +62,12 @@ fn kernel_tick_and_replay(w: &mut World, n: usize) {
 #[then(expr = "the replay now.yaml bytes equal the golden now.yaml")]
 fn replay_now_matches(w: &mut World) {
     let replay = saved_path(w, "replay");
-    let golden = w.scratch.get("golden").unwrap_or_else(|| panic!("missing golden"));
-    let replayed = fs::read(replay.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read replay: {err}"));
+    let golden = w
+        .scratch
+        .get("golden")
+        .unwrap_or_else(|| panic!("missing golden"));
+    let replayed =
+        fs::read(replay.join("state/now.yaml")).unwrap_or_else(|err| panic!("read replay: {err}"));
     assert_eq!(replayed, golden.as_bytes());
 }
 
@@ -74,9 +79,12 @@ fn replay_dir_is_distinct(w: &mut World) {
 #[then(expr = "the played now.yaml bytes still equal the golden now.yaml")]
 fn source_now_unchanged(w: &mut World) {
     let played = saved_path(w, "played");
-    let golden = w.scratch.get("golden").unwrap_or_else(|| panic!("missing golden"));
-    let now = fs::read(played.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read golden: {err}"));
+    let golden = w
+        .scratch
+        .get("golden")
+        .unwrap_or_else(|| panic!("missing golden"));
+    let now =
+        fs::read(played.join("state/now.yaml")).unwrap_or_else(|err| panic!("read golden: {err}"));
     assert_eq!(now, golden.as_bytes(), "replay wrote the source pack");
 }
 

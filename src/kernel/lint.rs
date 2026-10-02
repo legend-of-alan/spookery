@@ -42,7 +42,11 @@ pub fn lint(root: &Path) -> Result<Vec<LintHit>, Reason> {
     Ok(hits)
 }
 
-fn collect_markdown(dir: &Path, root: &Path, out: &mut Vec<(String, String)>) -> Result<(), Reason> {
+fn collect_markdown(
+    dir: &Path,
+    root: &Path,
+    out: &mut Vec<(String, String)>,
+) -> Result<(), Reason> {
     if !dir.exists() {
         return Ok(());
     }

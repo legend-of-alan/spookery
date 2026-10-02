@@ -8,8 +8,8 @@ use crate::World;
 #[given(expr = "state\\/now.yaml bytes are recorded")]
 fn record_now(w: &mut World) {
     let pack = w.pack.as_ref().unwrap();
-    let before = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let before =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     let before = String::from_utf8(before).unwrap_or_else(|err| panic!("now.yaml utf-8: {err}"));
     w.scratch.insert("now.yaml".to_string(), before);
 }
@@ -26,8 +26,7 @@ fn append_mira_newline(w: &mut World) {
 #[when(expr = "the copied pack is ticked once")]
 fn tick_once(w: &mut World) {
     let pack = w.pack.as_ref().unwrap();
-    w.outputs
-        .push(spook(&["tick", pack.to_str().unwrap()]));
+    w.outputs.push(spook(&["tick", pack.to_str().unwrap()]));
 }
 
 #[then(expr = "the tick exits {int} with stderr {word}")]

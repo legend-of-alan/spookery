@@ -84,7 +84,11 @@ fn strip_pack(label: &str) -> PathBuf {
 }
 
 fn saved_path(w: &World, key: &str) -> PathBuf {
-    PathBuf::from(w.scratch.get(key).unwrap_or_else(|| panic!("missing {key}")))
+    PathBuf::from(
+        w.scratch
+            .get(key)
+            .unwrap_or_else(|| panic!("missing {key}")),
+    )
 }
 
 #[given(expr = "a temp copy of packs\\/oneshot-docks with every Markdown body deleted")]
@@ -113,8 +117,7 @@ fn bodies_omit(w: &mut World, left: String, right: String) {
 #[when(expr = "the shard runs one manual tick with no catch-up")]
 fn manual_tick(w: &mut World) {
     let pack = w.pack.as_ref().unwrap();
-    let mut shard =
-        spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let mut shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = shard.now().last_tick_at.clone();
     spookery_tick::run_tick(
         &mut shard,
@@ -147,8 +150,8 @@ fn kernel_tick_and_replay(w: &mut World, n: usize) {
     for tick in 1..=n {
         spookery_tick::tick_pack(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
-    let golden = fs::read(played.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read golden: {err}"));
+    let golden =
+        fs::read(played.join("state/now.yaml")).unwrap_or_else(|err| panic!("read golden: {err}"));
     let temp = spookery_tick::replay_recorded(&played, &start)
         .unwrap_or_else(|err| panic!("replay: {err}"));
     w.scratch.insert(
@@ -162,9 +165,12 @@ fn kernel_tick_and_replay(w: &mut World, n: usize) {
 #[then(expr = "the stripped replay now.yaml bytes equal the played now.yaml")]
 fn replay_now_matches(w: &mut World) {
     let replay = saved_path(w, "replay");
-    let golden = w.scratch.get("golden").unwrap_or_else(|| panic!("missing golden"));
-    let replayed = fs::read(replay.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read replay: {err}"));
+    let golden = w
+        .scratch
+        .get("golden")
+        .unwrap_or_else(|| panic!("missing golden"));
+    let replayed =
+        fs::read(replay.join("state/now.yaml")).unwrap_or_else(|err| panic!("read replay: {err}"));
     assert_eq!(replayed, golden.as_bytes());
     let _ = fs::remove_dir_all(saved_path(w, "start"));
     let _ = fs::remove_dir_all(saved_path(w, "played"));

@@ -5,7 +5,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
 use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::derive::{
-    filter_blocklist, kernel_intents_for_eligible_npcs, allowed, season_intent,
+    allowed, filter_blocklist, kernel_intents_for_eligible_npcs, season_intent,
 };
 use spookery_kernel::expand::{expand, expand_outcome};
 use spookery_kernel::model::{ActorKind, Intent};
@@ -36,7 +36,9 @@ pub struct RecordedTick {
     pub presence_humans: u32,
 }
 
-pub fn commit_turn(shard: &mut Shard) -> Result<spookery_kernel::store::CommitOutcome, KernelReason> {
+pub fn commit_turn(
+    shard: &mut Shard,
+) -> Result<spookery_kernel::store::CommitOutcome, KernelReason> {
     let wall = shard.now().last_tick_at.clone();
     commit_turn_at(shard, &wall)
 }
@@ -53,7 +55,10 @@ pub fn commit_turn_at(
 
 /// `include_tick: false`. No `run_tick`, no tick file, no clock advance.
 /// A write happens only when `presence` changed.
-pub fn commit_presence(shard: &mut Shard, presence: spookery_kernel::model::Presence) -> Result<bool, KernelReason> {
+pub fn commit_presence(
+    shard: &mut Shard,
+    presence: spookery_kernel::model::Presence,
+) -> Result<bool, KernelReason> {
     spookery_kernel::store::commit_presence(shard, presence)
 }
 
@@ -63,7 +68,11 @@ pub fn tick_pack(path: &Path) -> Result<(), KernelReason> {
     run_tick(&mut shard, Reason::Manual, &wall, Catchup::none())
 }
 
-pub fn run_catchup(shard: &mut Shard, now_wall: &str, downtime_hours: u64) -> Result<(), KernelReason> {
+pub fn run_catchup(
+    shard: &mut Shard,
+    now_wall: &str,
+    downtime_hours: u64,
+) -> Result<(), KernelReason> {
     let humans = session_status(shard.now()).humans;
     let plan = plan_catchup(humans, shard.budget(), downtime_hours)?;
     let ticks = plan.ticks_to_run;
@@ -235,11 +244,7 @@ fn stage_tick(
             continue;
         }
         trace.push(format!("perceive:{}", intent.actor_id));
-        let view = perceive_at(
-            txn.canon(),
-            txn.now(),
-            &viewer_token(&intent)?,
-        )?;
+        let view = perceive_at(txn.canon(), txn.now(), &viewer_token(&intent)?)?;
         if view.known_facts.is_empty() {
             rejected.push(Rejected {
                 id: intent.id,
@@ -264,7 +269,10 @@ fn stage_tick(
                 reject_check(&mut rejected, &mut notices, &intent, KernelReason::Schema);
                 continue;
             };
-            let viewer = match spookery_kernel::model::ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
+            let viewer = match spookery_kernel::model::ViewerId::from_kind(
+                intent.actor_kind,
+                &intent.actor_id,
+            ) {
                 Ok(viewer) => viewer,
                 Err(code) => {
                     reject_check(&mut rejected, &mut notices, &intent, code);
@@ -354,7 +362,8 @@ fn stage_tick(
                 .get(&intent.move_name)
                 .and_then(|def| def.check.clone())
                 .ok_or(KernelReason::UnknownKey)?;
-            let viewer = spookery_kernel::model::ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
+            let viewer =
+                spookery_kernel::model::ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
             let seed = seed_preimage(&shard_id, tick_index);
             let rng = blake2s_256(seed.as_bytes());
             let mut cursor = 0usize;
@@ -559,7 +568,12 @@ fn supplied_target(
     Ok(total)
 }
 
-fn reject_check(rejected: &mut Vec<Rejected>, notices: &mut Vec<CheckNotice>, intent: &Intent, code: KernelReason) {
+fn reject_check(
+    rejected: &mut Vec<Rejected>,
+    notices: &mut Vec<CheckNotice>,
+    intent: &Intent,
+    code: KernelReason,
+) {
     rejected.push(Rejected {
         id: intent.id.clone(),
         reason: code.jsonl_reason().to_string(),
@@ -592,4 +606,3 @@ fn viewer_token(intent: &Intent) -> Result<String, KernelReason> {
         ActorKind::System => Err(KernelReason::UnscopedPerceive),
     }
 }
-

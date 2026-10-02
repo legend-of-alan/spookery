@@ -7,7 +7,12 @@ use crate::model::{
     ActorKind, ActorLive, Intent, IntentArgs, Now, RunState, Source, Target, ViewerId,
 };
 
-pub fn kernel_intent_id(shard_id: &str, tick_index: u64, actor_id: &str, move_name: &str) -> String {
+pub fn kernel_intent_id(
+    shard_id: &str,
+    tick_index: u64,
+    actor_id: &str,
+    move_name: &str,
+) -> String {
     blake2s_hex(format!("{shard_id}|{tick_index}|{actor_id}|{move_name}").as_bytes())
 }
 
@@ -126,10 +131,7 @@ fn season_actor(now: &Now) -> Option<(String, ActorKind)> {
         .collect();
     owners.sort();
     owners.dedup();
-    owners
-        .into_iter()
-        .next()
-        .map(|id| (id, ActorKind::Npc))
+    owners.into_iter().next().map(|id| (id, ActorKind::Npc))
 }
 
 fn derive_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {

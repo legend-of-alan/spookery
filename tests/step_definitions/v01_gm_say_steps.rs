@@ -331,8 +331,8 @@ fn listen(w: &mut World) {
     let mut server = support::spawn(&["run", &support::pack_arg(&pack)]);
     assign_job(&server.child);
     support::wait_listen(&mut server);
-    let before = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let before =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     let stream = gm_session();
     w.pack = Some(pack.clone());
     *lock_hold() = Some(Hold {
@@ -550,8 +550,8 @@ fn player_connects(_w: &mut World) {
     hold().as_mut().unwrap().player = Some(player);
     let hello = wait_has(&stdout, "\"kind\":\"perceive\"", Duration::from_secs(5));
     assert_eq!(hello.matches("\"kind\":\"perceive\"").count(), 1, "{hello}");
-    let seated = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let seated =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     hold().as_mut().unwrap().seated = Some(seated);
 }
 
@@ -592,10 +592,7 @@ fn player_stdout_no_jsonrpc(_w: &mut World) {
 fn player_tools_list(_w: &mut World) {
     let mut guard = hold();
     let player = guard.as_mut().unwrap().player.as_mut().unwrap();
-    write_stdin(
-        player,
-        r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#,
-    );
+    write_stdin(player, r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#);
 }
 
 #[then(expr = "the player stderr is NOT_IN_SPEC twice")]

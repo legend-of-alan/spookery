@@ -11,8 +11,8 @@ fn read_optional(path: &Path) -> String {
 
 fn perceive_debug(pack: &Path, as_arg: &str) -> String {
     let shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
-    let view = spookery_kernel::perceive(&shard, as_arg)
-        .unwrap_or_else(|err| panic!("perceive: {err}"));
+    let view =
+        spookery_kernel::perceive(&shard, as_arg).unwrap_or_else(|err| panic!("perceive: {err}"));
     format!("{view:?}")
 }
 

@@ -228,7 +228,11 @@ impl Txn {
             if base != 0 {
                 self.track(format!("actors.{id}.tick.idle_acts_today"))?;
             }
-            if let Some(tick) = self.staging.actors.get_mut(&id).and_then(|actor| actor.tick_mut())
+            if let Some(tick) = self
+                .staging
+                .actors
+                .get_mut(&id)
+                .and_then(|actor| actor.tick_mut())
             {
                 tick.idle_acts_today = 0;
             }
@@ -251,7 +255,11 @@ impl Txn {
             if base != 0 {
                 self.track(format!("actors.{id}.tick.live_acts_this_hour"))?;
             }
-            if let Some(tick) = self.staging.actors.get_mut(&id).and_then(|actor| actor.tick_mut())
+            if let Some(tick) = self
+                .staging
+                .actors
+                .get_mut(&id)
+                .and_then(|actor| actor.tick_mut())
             {
                 tick.live_acts_this_hour = 0;
             }
@@ -548,7 +556,10 @@ pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Re
         return Ok(false);
     }
     let _lock = lock_shard(shard)?;
-    next.state_rev = next.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
+    next.state_rev = next
+        .state_rev
+        .checked_add(1)
+        .ok_or(Reason::CommitConflict)?;
     let now_bytes = emit_now(&next)?.into_bytes();
     let state = shard.root.join("state");
     let planned = vec![Planned {
@@ -636,7 +647,8 @@ pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u
         .open(&path)
         .map_err(|_| Reason::CommitConflict)?;
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes).map_err(|_| Reason::CommitConflict)?;
+    file.read_to_end(&mut bytes)
+        .map_err(|_| Reason::CommitConflict)?;
     let end = session_kept(&bytes);
     let seq = last_session_seq(&bytes[..end])
         .checked_add(1)
@@ -647,10 +659,13 @@ pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u
     }
     line.push('\n');
     if end != bytes.len() {
-        file.set_len(end as u64).map_err(|_| Reason::CommitConflict)?;
+        file.set_len(end as u64)
+            .map_err(|_| Reason::CommitConflict)?;
     }
-    file.seek(SeekFrom::End(0)).map_err(|_| Reason::CommitConflict)?;
-    file.write_all(line.as_bytes()).map_err(|_| Reason::CommitConflict)?;
+    file.seek(SeekFrom::End(0))
+        .map_err(|_| Reason::CommitConflict)?;
+    file.write_all(line.as_bytes())
+        .map_err(|_| Reason::CommitConflict)?;
     file.sync_all().map_err(|_| Reason::CommitConflict)?;
     fsync_dir(&log_dir)?;
     Ok(seq)
@@ -739,7 +754,8 @@ fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
         .append(true)
         .open(&path)
         .map_err(|_| Reason::CommitConflict)?;
-    file.write_all(line.as_bytes()).map_err(|_| Reason::CommitConflict)?;
+    file.write_all(line.as_bytes())
+        .map_err(|_| Reason::CommitConflict)?;
     file.sync_all().map_err(|_| Reason::CommitConflict)?;
     fsync_dir(&log_dir)?;
     Ok(())
@@ -830,7 +846,8 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Reason> {
         }
         {
             let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
-            file.write_all(&item.bytes).map_err(|_| Reason::CommitConflict)?;
+            file.write_all(&item.bytes)
+                .map_err(|_| Reason::CommitConflict)?;
             file.sync_all().map_err(|_| Reason::CommitConflict)?;
         }
         if let Some(parent) = item.target.parent() {
@@ -856,7 +873,10 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Reason> {
 fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, String>, Reason> {
     let mut by_actor: BTreeMap<String, Vec<&MemoryLine>> = BTreeMap::new();
     for line in lines {
-        by_actor.entry(line.actor_id.clone()).or_default().push(line);
+        by_actor
+            .entry(line.actor_id.clone())
+            .or_default()
+            .push(line);
     }
     let mut out = BTreeMap::new();
     for (actor, fresh) in by_actor {
@@ -942,7 +962,8 @@ fn recover(root: &Path) -> Result<(), Reason> {
             let live = load_now(
                 &fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?,
             )?;
-            if live.state_rev == prev.state_rev.saturating_add(1) && live.state_rev != prev.state_rev
+            if live.state_rev == prev.state_rev.saturating_add(1)
+                && live.state_rev != prev.state_rev
             {
                 fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
             } else if live.state_rev == prev.state_rev {
@@ -954,7 +975,8 @@ fn recover(root: &Path) -> Result<(), Reason> {
         }
     }
 
-    let now = load_now(&fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?)?;
+    let now =
+        load_now(&fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?)?;
     let log_dir = state.join("log");
     let mut live_ticks = BTreeSet::new();
     if log_dir.is_dir() {
@@ -971,7 +993,10 @@ fn recover(root: &Path) -> Result<(), Reason> {
                 continue;
             }
             let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-            match (json_u64(&text, "tick_index"), json_u64(&text, "state_rev_after")) {
+            match (
+                json_u64(&text, "tick_index"),
+                json_u64(&text, "state_rev_after"),
+            ) {
                 (Some(tick_index), Some(rev)) if rev <= now.state_rev => {
                     live_ticks.insert(tick_index);
                 }
@@ -1083,7 +1108,11 @@ fn collect_rel_files(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) -> Result<
         if path.is_dir() {
             collect_rel_files(&path, root, out)?;
         } else {
-            out.push(path.strip_prefix(root).map_err(|_| Reason::Schema)?.to_path_buf());
+            out.push(
+                path.strip_prefix(root)
+                    .map_err(|_| Reason::Schema)?
+                    .to_path_buf(),
+            );
         }
     }
     Ok(())
@@ -1140,10 +1169,7 @@ fn delete_tmp(dir: &Path) {
 }
 
 fn tmp_path(target: &Path) -> PathBuf {
-    let mut name = target
-        .file_name()
-        .unwrap_or_default()
-        .to_os_string();
+    let mut name = target.file_name().unwrap_or_default().to_os_string();
     name.push(".tmp");
     target.with_file_name(name)
 }

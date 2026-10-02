@@ -115,8 +115,7 @@ fn run_as(w: &mut World) {
 fn run_bind_rejected(w: &mut World) {
     let pack = pack_arg(w);
     for addr in ["0.0.0.0", "127.0.0.1:9737", "localhost"] {
-        w.outputs
-            .push(run(&["run", &pack, "--bind", addr]));
+        w.outputs.push(run(&["run", &pack, "--bind", addr]));
     }
 }
 
@@ -135,8 +134,8 @@ fn run_mcp_and_bind(w: &mut World) {
 
 #[when(expr = "spook run binds while 127.0.0.1:9737 is held")]
 fn run_bind_in_use(w: &mut World) {
-    let _held = TcpListener::bind("127.0.0.1:9737")
-        .unwrap_or_else(|err| panic!("hold 9737: {err}"));
+    let _held =
+        TcpListener::bind("127.0.0.1:9737").unwrap_or_else(|err| panic!("hold 9737: {err}"));
     let again = TcpListener::bind("127.0.0.1:9737").unwrap_err();
     w.text = again.to_string();
     let pack = pack_arg(w);
@@ -173,7 +172,11 @@ fn clients_without_listener(w: &mut World) {
 fn command_exits_1(w: &mut World) {
     let output = w.outputs.last().unwrap();
     let (stdout, stderr) = output_text(output);
-    assert_eq!(output.status.code(), Some(1), "stdout:\n{stdout}\nstderr:\n{stderr}");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout:\n{stdout}\nstderr:\n{stderr}"
+    );
 }
 
 #[then(expr = "each command exits 1")]
@@ -251,12 +254,7 @@ fn each_stderr_omits_not_in_spec(w: &mut World) {
 fn pack_bytes_unchanged(w: &mut World) {
     let pack = w.pack.as_ref().unwrap();
     let listed = files(pack);
-    let count: usize = w
-        .scratch
-        .get("bind-file-count")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let count: usize = w.scratch.get("bind-file-count").unwrap().parse().unwrap();
     assert_eq!(listed.len(), count, "pack file count changed");
     for (path, bytes) in listed {
         let saved = w

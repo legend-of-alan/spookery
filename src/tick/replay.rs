@@ -72,7 +72,10 @@ fn read_tick_lines(source: &Path) -> Result<Vec<TickLine>, Reason> {
 fn parse_tick_line(text: &str) -> Result<TickLine, Reason> {
     let value: Value = serde_json::from_str(text.trim_end()).map_err(|_| Reason::Schema)?;
     let object = value.as_object().ok_or(Reason::Schema)?;
-    let intents = object.get("intents").and_then(Value::as_array).ok_or(Reason::Schema)?;
+    let intents = object
+        .get("intents")
+        .and_then(Value::as_array)
+        .ok_or(Reason::Schema)?;
     let mut parsed = Vec::new();
     for intent in intents {
         parsed.push(parse_intent(intent)?);
@@ -80,7 +83,9 @@ fn parse_tick_line(text: &str) -> Result<TickLine, Reason> {
     Ok(TickLine {
         tick_index: u64_field(object, "tick_index")?,
         state_rev_after: u64_field(object, "state_rev_after")?,
-        presence_humans: u64_field(object, "presence_humans")?.try_into().map_err(|_| Reason::Schema)?,
+        presence_humans: u64_field(object, "presence_humans")?
+            .try_into()
+            .map_err(|_| Reason::Schema)?,
         seed: string_field(object, "seed")?,
         last_tick_at: string_field(object, "last_tick_at")?,
         intents: parsed,
@@ -144,7 +149,9 @@ fn parse_args(value: &Value) -> Result<IntentArgs, Reason> {
                 }
                 _ => return Err(Reason::Schema),
             },
-            "message_id" => args.message_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
+            "message_id" => {
+                args.message_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string())
+            }
             "due_clock" => args.due_clock = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
             "due_value" => args.due_value = Some(i64_value(item)?),
             "place" => args.place = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
@@ -157,7 +164,9 @@ fn parse_args(value: &Value) -> Result<IntentArgs, Reason> {
                 args.fact_ids = Some(ids);
             }
             "text" => args.text = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "proposal_id" => args.proposal_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
+            "proposal_id" => {
+                args.proposal_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string())
+            }
             "kind" => args.kind = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
             "check" => args.check = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
             "target" => match item {
@@ -200,7 +209,10 @@ fn string_field(object: &serde_json::Map<String, Value>, key: &str) -> Result<St
 }
 
 fn u64_field(object: &serde_json::Map<String, Value>, key: &str) -> Result<u64, Reason> {
-    object.get(key).and_then(Value::as_u64).ok_or(Reason::Schema)
+    object
+        .get(key)
+        .and_then(Value::as_u64)
+        .ok_or(Reason::Schema)
 }
 
 fn i64_value(value: &Value) -> Result<i64, Reason> {

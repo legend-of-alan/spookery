@@ -121,8 +121,8 @@ fn wait_humans(pack: &Path, humans: u32, timeout: Duration) -> spookery_kernel::
 }
 
 fn release(w: &mut World, end: SocketEnd) {
-    let mut shard = spookery_kernel::open_shard(pack_of(w))
-        .unwrap_or_else(|err| panic!("open: {err}"));
+    let mut shard =
+        spookery_kernel::open_shard(pack_of(w)).unwrap_or_else(|err| panic!("open: {err}"));
     let session = w.scratch.get("session_id").unwrap().clone();
     assert!(spookery::seat::release_player_seat(&mut shard, &session, "pc_rowan", end).unwrap());
 }
@@ -218,12 +218,7 @@ fn one_second(w: &mut World) {
 
 #[then(expr = "that wait stayed under 30 seconds")]
 fn under_30(w: &mut World) {
-    let ms: u128 = w
-        .scratch
-        .get("quiet_elapsed_ms")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let ms: u128 = w.scratch.get("quiet_elapsed_ms").unwrap().parse().unwrap();
     assert!(ms < 30_000);
 }
 
@@ -246,8 +241,8 @@ fn still_running(_w: &mut World) {
 #[when(expr = "the player seat opens for pc_rowan")]
 fn seat_opens(w: &mut World) {
     reclaim();
-    let mut shard = spookery_kernel::open_shard(pack_of(w))
-        .unwrap_or_else(|err| panic!("open: {err}"));
+    let mut shard =
+        spookery_kernel::open_shard(pack_of(w)).unwrap_or_else(|err| panic!("open: {err}"));
     let session = spookery::seat::seat_player(&mut shard, "pc_rowan").unwrap();
     w.scratch.insert("session_id".to_string(), session);
 }

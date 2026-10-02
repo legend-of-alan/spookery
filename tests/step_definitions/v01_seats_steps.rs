@@ -300,8 +300,8 @@ fn listen(w: &mut World) {
     let mut server = support::spawn(&["run", &support::pack_arg(&pack)]);
     assign_job(&server.child);
     support::wait_listen(&mut server);
-    let now_snapshot = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let now_snapshot =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     w.pack = Some(pack.clone());
     *lock_seat() = Some(Seat {
         server,
@@ -385,7 +385,8 @@ fn record_seated_now(w: &mut World) {
 
 #[when(expr = "a raw hello player:mira is refused")]
 fn raw_player_mira(_w: &mut World) {
-    let mut raw = TcpStream::connect("127.0.0.1:9737").unwrap_or_else(|err| panic!("connect: {err}"));
+    let mut raw =
+        TcpStream::connect("127.0.0.1:9737").unwrap_or_else(|err| panic!("connect: {err}"));
     raw.set_nodelay(true)
         .unwrap_or_else(|err| panic!("nodelay: {err}"));
     raw.write_all(b"player:mira\n")
@@ -514,11 +515,7 @@ fn player_resume(_w: &mut World) {
 #[then(expr = "the player stderr is empty")]
 fn player_stderr_empty(_w: &mut World) {
     with_seat(|seat| {
-        assert!(
-            seat.player_stderr.is_empty(),
-            "{}",
-            seat.player_stderr
-        );
+        assert!(seat.player_stderr.is_empty(), "{}", seat.player_stderr);
     });
 }
 
@@ -549,9 +546,7 @@ fn no_session_tape(w: &mut World) {
         .exists());
 }
 
-#[then(
-    expr = "the refusal line is \\{\"kind\":\"refused\",\"code\":\"{word}\"\\}"
-)]
+#[then(expr = "the refusal line is \\{\"kind\":\"refused\",\"code\":\"{word}\"\\}")]
 fn one_refusal(_w: &mut World, code: String) {
     let expected = refusal_line(&code);
     with_seat(|seat| {
@@ -559,9 +554,7 @@ fn one_refusal(_w: &mut World, code: String) {
     });
 }
 
-#[then(
-    expr = "every refusal line is \\{\"kind\":\"refused\",\"code\":\"{word}\"\\}"
-)]
+#[then(expr = "every refusal line is \\{\"kind\":\"refused\",\"code\":\"{word}\"\\}")]
 fn every_refusal(_w: &mut World, code: String) {
     let expected = refusal_line(&code);
     with_seat(|seat| {

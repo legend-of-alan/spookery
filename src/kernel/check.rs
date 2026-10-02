@@ -32,7 +32,9 @@ pub enum CheckNotice {
 impl CheckNotice {
     pub fn actor_id(&self) -> &str {
         match self {
-            CheckNotice::Rolled { actor_id, .. } | CheckNotice::Refused { actor_id, .. } => actor_id,
+            CheckNotice::Rolled { actor_id, .. } | CheckNotice::Refused { actor_id, .. } => {
+                actor_id
+            }
         }
     }
 }
@@ -92,7 +94,11 @@ pub fn resolve_check(
         return Err(Reason::UnknownKey);
     };
     let sheet = sheets.get(id).ok_or(Reason::UnknownKey)?;
-    let stat = sheet.stats.get(&check.stat).copied().ok_or(Reason::UnknownKey)?;
+    let stat = sheet
+        .stats
+        .get(&check.stat)
+        .copied()
+        .ok_or(Reason::UnknownKey)?;
     let mut faces = Vec::with_capacity(check.dice_count as usize);
     for _ in 0..check.dice_count {
         let face = die_face(rng, *die_cursor, check.dice_sides)?;

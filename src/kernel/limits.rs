@@ -89,10 +89,7 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
             defaults.llm_npc_intents_per_tick,
         )?,
         max_effects_per_intent: take(file.max_effects_per_intent, defaults.max_effects_per_intent)?,
-        max_state_keys_mutated: take(
-            file.max_state_keys_mutated,
-            defaults.max_state_keys_mutated,
-        )?,
+        max_state_keys_mutated: take(file.max_state_keys_mutated, defaults.max_state_keys_mutated)?,
         max_memory_writes: take(file.max_memory_writes, defaults.max_memory_writes)?,
         max_rumor_hops: take(file.max_rumor_hops, defaults.max_rumor_hops)?,
         idle_acts_per_world_day: take(
@@ -113,10 +110,7 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
         )?,
         idle_minutes_per_tick: take(file.idle_minutes_per_tick, defaults.idle_minutes_per_tick)?,
         live_minutes_per_tick: take(file.live_minutes_per_tick, defaults.live_minutes_per_tick)?,
-        idle_catchup_max_ticks: take(
-            file.idle_catchup_max_ticks,
-            defaults.idle_catchup_max_ticks,
-        )?,
+        idle_catchup_max_ticks: take(file.idle_catchup_max_ticks, defaults.idle_catchup_max_ticks)?,
         idle_max_world_hours_per_real_hour: take(
             file.idle_max_world_hours_per_real_hour,
             defaults.idle_max_world_hours_per_real_hour,

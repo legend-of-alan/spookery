@@ -32,7 +32,11 @@ pub fn pick_advance(humans: u32, _catchup: &Catchup, budget: &Budget) -> u64 {
     }
 }
 
-pub fn plan_catchup(humans: u32, budget: &Budget, downtime_hours: u64) -> Result<CatchupPlan, Reason> {
+pub fn plan_catchup(
+    humans: u32,
+    budget: &Budget,
+    downtime_hours: u64,
+) -> Result<CatchupPlan, Reason> {
     if humans > 0 {
         return Ok(CatchupPlan {
             ticks_to_run: 1,
@@ -51,9 +55,7 @@ pub fn plan_catchup(humans: u32, budget: &Budget, downtime_hours: u64) -> Result
         .checked_mul(per_hour)
         .ok_or(Reason::OutOfRange)?;
     let by_minutes = minute_cap / idle_minutes;
-    let ticks_to_run = printed
-        .min(budget.idle_catchup_max_ticks)
-        .min(by_minutes);
+    let ticks_to_run = printed.min(budget.idle_catchup_max_ticks).min(by_minutes);
     Ok(CatchupPlan {
         ticks_to_run,
         skipped: printed.saturating_sub(ticks_to_run),

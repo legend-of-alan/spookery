@@ -1,6 +1,11 @@
 use crate::error::Reason;
 
-pub fn clamp_need(current: i64, delta: i64, min: Option<i64>, max: Option<i64>) -> Result<i64, Reason> {
+pub fn clamp_need(
+    current: i64,
+    delta: i64,
+    min: Option<i64>,
+    max: Option<i64>,
+) -> Result<i64, Reason> {
     let mut next = current.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if let Some(min) = min {
         if next < min {

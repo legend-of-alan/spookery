@@ -175,18 +175,15 @@ async fn wake_on_this_thread(w: &mut World) {
         .await
         .unwrap_or_else(|err| panic!("wake: {err}"));
     let elapsed = started.elapsed();
-    w.scratch
-        .insert("wake_elapsed_ns".to_string(), elapsed.as_nanos().to_string());
+    w.scratch.insert(
+        "wake_elapsed_ns".to_string(),
+        elapsed.as_nanos().to_string(),
+    );
 }
 
 #[then(expr = "the wake slept at least 1 second and under 20 seconds")]
 fn wake_slept(w: &mut World) {
-    let nanos: u128 = w
-        .scratch
-        .get("wake_elapsed_ns")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let nanos: u128 = w.scratch.get("wake_elapsed_ns").unwrap().parse().unwrap();
     assert!(
         nanos >= 1_000_000_000,
         "slept {nanos} ns, shorter than tick_every_real_seconds"

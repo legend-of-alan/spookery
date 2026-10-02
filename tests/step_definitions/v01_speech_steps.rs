@@ -5,7 +5,9 @@ use std::time::Duration;
 
 use cucumber::{then, when};
 
-use crate::support::{self, pack_arg, spawn, text_of, wait_exit, wait_has, wait_listen, write_stdin, Proc};
+use crate::support::{
+    self, pack_arg, spawn, text_of, wait_exit, wait_has, wait_listen, write_stdin, Proc,
+};
 use crate::World;
 
 // Live spook processes cannot live on World. The port lock sits with them.
@@ -153,8 +155,7 @@ fn record_seated(w: &mut World) {
     let pack = pack_of(w);
     let bytes = fs::read(pack.join("state/now.yaml")).unwrap();
     let now = now_of(pack);
-    w.scratch
-        .insert("speech_now_yaml".to_string(), hex(&bytes));
+    w.scratch.insert("speech_now_yaml".to_string(), hex(&bytes));
     w.scratch
         .insert("speech_state_rev".to_string(), now.state_rev.to_string());
     w.scratch
@@ -320,7 +321,13 @@ fn shard_hello(w: &mut World) {
 fn gm_still_held(_w: &mut World) {
     let mut held = live();
     assert!(
-        held.gm.as_mut().unwrap().child.try_wait().unwrap().is_none(),
+        held.gm
+            .as_mut()
+            .unwrap()
+            .child
+            .try_wait()
+            .unwrap()
+            .is_none(),
         "gm seat dropped on say"
     );
 }
@@ -453,10 +460,7 @@ fn jsonl_no_torn(w: &mut World) {
 #[then(expr = "world_time matches the shard at the speak")]
 fn world_time_at_speak(w: &mut World) {
     let now = now_of(pack_of(w));
-    assert_eq!(
-        now.world_time,
-        scratch_u64(w, "speech_world_time_at_speak")
-    );
+    assert_eq!(now.world_time, scratch_u64(w, "speech_world_time_at_speak"));
 }
 
 #[then(expr = "the speech processes stop")]

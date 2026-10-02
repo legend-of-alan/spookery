@@ -2203,9 +2203,11 @@ fn assert_no_pc_kernel(tick: &Value) {
             "rejected derived {move_name}"
         );
     }
-    assert!(tick["intents"].as_array().unwrap().iter().all(|intent| {
-        intent["actor_id"] != "pc_rowan" || intent["source"] != "kernel"
-    }));
+    assert!(tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|intent| { intent["actor_id"] != "pc_rowan" || intent["source"] != "kernel" }));
 }
 
 fn player_rejections(tick: &Value) -> Vec<&Value> {
@@ -2233,7 +2235,10 @@ fn v02_p09_rowan_travels_to_the_street() {
         assert_eq!(opened.tick_index, 0);
         assert_eq!(rowan_place(&opened), "docks_shop");
         assert!(tick_names(&pack).is_empty());
-        assert_eq!(last_perceive(&text_of(&player.stdout))["place"], "docks_shop");
+        assert_eq!(
+            last_perceive(&text_of(&player.stdout))["place"],
+            "docks_shop"
+        );
 
         write_stdin(&mut player, "say the tin is out");
         wait_has(&player.stdout, "the tin is out", Duration::from_secs(5));
@@ -2327,7 +2332,10 @@ fn v02_p09_rowan_travels_to_the_street() {
             Duration::from_secs(5),
         );
         let street_added = &street_out[before_street.len()..];
-        assert!(!street_added.contains("\"kind\":\"resume\""), "{street_added}");
+        assert!(
+            !street_added.contains("\"kind\":\"resume\""),
+            "{street_added}"
+        );
         assert!(
             !street_added.contains("\"place\":\"docks_street\""),
             "{street_added}"
@@ -2375,7 +2383,10 @@ fn v02_p09_rowan_travels_to_the_street() {
         let mut player = seat_player(&pack);
         assert_eq!(now_of(&pack).world_time, 1080);
         assert_eq!(rowan_place(&now_of(&pack)), "docks_shop");
-        assert_eq!(last_perceive(&text_of(&player.stdout))["place"], "docks_shop");
+        assert_eq!(
+            last_perceive(&text_of(&player.stdout))["place"],
+            "docks_shop"
+        );
 
         write_stdin(&mut player, "say the tin is out");
         wait_has(&player.stdout, "the tin is out", Duration::from_secs(5));
@@ -2423,9 +2434,11 @@ fn v02_p09_rowan_travels_to_the_street() {
         assert_eq!(refused.len(), 1, "{mira_tick}");
         assert_eq!(refused[0]["reason"], "OUT_OF_RANGE");
         assert_eq!(pc_location_count(&mira_tick), 0);
-        assert!(mira_tick["intents"].as_array().unwrap().iter().all(|intent| {
-            intent["actor_id"] != "pc_rowan" || intent["move"] != "travel"
-        }));
+        assert!(mira_tick["intents"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|intent| { intent["actor_id"] != "pc_rowan" || intent["move"] != "travel" }));
         assert_no_pc_kernel(&mira_tick);
 
         let before_street = text_of(&player.stdout);
@@ -2436,9 +2449,18 @@ fn v02_p09_rowan_travels_to_the_street() {
             Duration::from_secs(5),
         );
         let street_added = &seen[before_street.len()..];
-        assert!(street_added.contains("\"kind\":\"resume\""), "{street_added}");
-        assert!(street_added.contains("\"kind\":\"perceive\""), "{street_added}");
-        assert!(!street_added.contains("\"kind\":\"queued\""), "{street_added}");
+        assert!(
+            street_added.contains("\"kind\":\"resume\""),
+            "{street_added}"
+        );
+        assert!(
+            street_added.contains("\"kind\":\"perceive\""),
+            "{street_added}"
+        );
+        assert!(
+            !street_added.contains("\"kind\":\"queued\""),
+            "{street_added}"
+        );
         let arrived = now_of(&pack);
         assert_eq!(arrived.presence.humans, 1);
         assert_eq!(arrived.world_time, 1095);
@@ -2674,7 +2696,11 @@ fn outcome_pack(label: &str, grit: i64) -> PathBuf {
     fs::write(&mira, patched).unwrap();
     let sheet = pack.join("state/actors/pc_rowan.yaml");
     let sheet_text = fs::read_to_string(&sheet).unwrap();
-    let sheet_next = sheet_text.replacen("stats:\n  grit: 1\n", &format!("stats:\n  grit: {grit}\n"), 1);
+    let sheet_next = sheet_text.replacen(
+        "stats:\n  grit: 1\n",
+        &format!("stats:\n  grit: {grit}\n"),
+        1,
+    );
     assert!(
         sheet_next.contains(&format!("grit: {grit}\n")),
         "{sheet_text}"
@@ -2726,10 +2752,7 @@ fn play_opposed(label: &str, opposed: bool) {
     assert_eq!(opened.world_time, 1080);
     assert_eq!(opened.tick_index, 0);
     assert_eq!(rowan_place(&opened), "docks_shop");
-    assert_eq!(
-        opened.actors.get("pc_nell").unwrap().place(),
-        "docks_shop"
-    );
+    assert_eq!(opened.actors.get("pc_nell").unwrap().place(), "docks_shop");
     assert!(flags_of(&opened, "pc_nell").is_empty());
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
@@ -2758,10 +2781,20 @@ fn play_opposed(label: &str, opposed: bool) {
 
     let before = text_of(&player.stdout);
     write_stdin(&mut player, "mark pc_nell");
-    let queued_out = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+    let queued_out = wait_has(
+        &player.stdout,
+        "\"kind\":\"queued\"",
+        Duration::from_secs(5),
+    );
     let queued_added = &queued_out[before.len()..];
-    assert!(queued_added.contains("\"kind\":\"queued\""), "{queued_added}");
-    assert!(!queued_added.contains("\"kind\":\"check\""), "{queued_added}");
+    assert!(
+        queued_added.contains("\"kind\":\"queued\""),
+        "{queued_added}"
+    );
+    assert!(
+        !queued_added.contains("\"kind\":\"check\""),
+        "{queued_added}"
+    );
     assert_eq!(now_of(&pack).world_time, 1080);
     assert!(tick_names(&pack).is_empty());
 
@@ -2770,16 +2803,14 @@ fn play_opposed(label: &str, opposed: bool) {
     let queued = status["queued"].as_array().unwrap();
     if opposed {
         assert!(
-            queued.iter().any(|item| {
-                item["actor_id"] == "pc_nell" && item["move"] == "defend"
-            }),
+            queued
+                .iter()
+                .any(|item| { item["actor_id"] == "pc_nell" && item["move"] == "defend" }),
             "{status}"
         );
     } else {
         assert!(
-            queued
-                .iter()
-                .all(|item| item["move"] != "defend"),
+            queued.iter().all(|item| item["move"] != "defend"),
             "{status}"
         );
     }
@@ -2846,10 +2877,7 @@ fn play_opposed(label: &str, opposed: bool) {
         assert_eq!(defend["source"], "player");
         let mut flags = flags_of(&now, "pc_nell");
         flags.sort();
-        assert_eq!(
-            flags,
-            vec!["guarded".to_string(), "missed".to_string()]
-        );
+        assert_eq!(flags, vec!["guarded".to_string(), "missed".to_string()]);
     } else {
         assert_eq!(checks.len(), 1, "{checks:?}");
         assert_eq!(checks[0]["stat"], 1);
@@ -2876,7 +2904,8 @@ fn oppose_pack(label: &str) -> PathBuf {
     fs::write(pack.join("cast/pc-nell.md"), NELL_CAST).unwrap();
     fs::write(pack.join("state/actors/pc_nell.yaml"), NELL_SHEET).unwrap();
     let now_path = pack.join("state/now.yaml");
-    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let mut now =
+        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         spookery_kernel::model::ActorLive::Pc {
@@ -2887,11 +2916,7 @@ fn oppose_pack(label: &str) -> PathBuf {
             sheet: "state/actors/pc_nell.yaml".to_string(),
         },
     );
-    fs::write(
-        &now_path,
-        spookery_kernel::codec::emit_now(&now).unwrap(),
-    )
-    .unwrap();
+    fs::write(&now_path, spookery_kernel::codec::emit_now(&now).unwrap()).unwrap();
     stamp_pack_rev(&pack);
     let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
     let mark = canon.moves.get("mark").unwrap();
@@ -3010,11 +3035,7 @@ fn refuse_lacking_item(label: &str, gm_seated: bool) {
     assert!(sheet_before.contains("inventory: []\n"), "{sheet_before}");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
-    let mut gm = if gm_seated {
-        Some(gm_session())
-    } else {
-        None
-    };
+    let mut gm = if gm_seated { Some(gm_session()) } else { None };
     let mut player = seat_player(&pack);
     let opened = now_of(&pack);
     assert_eq!(opened.presence.humans, 1);
@@ -3072,10 +3093,20 @@ fn play_held_item(label: &str) {
 
     let before = text_of(&player.stdout);
     write_stdin(&mut player, "mark pc_nell");
-    let queued_out = wait_has(&player.stdout, "\"kind\":\"queued\"", Duration::from_secs(5));
+    let queued_out = wait_has(
+        &player.stdout,
+        "\"kind\":\"queued\"",
+        Duration::from_secs(5),
+    );
     let queued_added = &queued_out[before.len()..];
-    assert!(queued_added.contains("\"kind\":\"queued\""), "{queued_added}");
-    assert!(!queued_added.contains("\"kind\":\"check\""), "{queued_added}");
+    assert!(
+        queued_added.contains("\"kind\":\"queued\""),
+        "{queued_added}"
+    );
+    assert!(
+        !queued_added.contains("\"kind\":\"check\""),
+        "{queued_added}"
+    );
     assert!(
         text_of(&player.stderr).is_empty(),
         "{}",
@@ -3088,11 +3119,15 @@ fn play_held_item(label: &str) {
     next += 1;
     let queued = status["queued"].as_array().unwrap();
     assert!(
-        queued.iter().any(|item| item["actor_id"] == "pc_nell" && item["move"] == "defend"),
+        queued
+            .iter()
+            .any(|item| item["actor_id"] == "pc_nell" && item["move"] == "defend"),
         "{status}"
     );
     assert!(
-        queued.iter().any(|item| item["actor_id"] == "pc_rowan" && item["move"] == "mark"),
+        queued
+            .iter()
+            .any(|item| item["actor_id"] == "pc_rowan" && item["move"] == "mark"),
         "{status}"
     );
     assert_eq!(status["world_time"], 1080);
@@ -3176,7 +3211,8 @@ fn item_pack(label: &str, held: bool) -> PathBuf {
         fs::write(&sheet, sheet_next).unwrap();
     }
     let now_path = pack.join("state/now.yaml");
-    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let mut now =
+        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         spookery_kernel::model::ActorLive::Pc {

@@ -252,8 +252,8 @@ fn listen(w: &mut World) {
     let mut server = support::spawn(&["run", &support::pack_arg(&pack)]);
     assign_job(&server.child);
     support::wait_listen(&mut server);
-    let before = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let before =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     w.pack = Some(pack.clone());
     *lock_hold() = Some(Hold {
         stream: None,
@@ -268,8 +268,7 @@ fn listen(w: &mut World) {
 
 fn empty_calls_report() -> RmcpReport {
     std::thread::spawn(|| {
-        let runtime =
-            tokio::runtime::Runtime::new().unwrap_or_else(|err| panic!("runtime: {err}"));
+        let runtime = tokio::runtime::Runtime::new().unwrap_or_else(|err| panic!("runtime: {err}"));
         runtime.block_on(empty_calls())
     })
     .join()
@@ -283,9 +282,7 @@ async fn empty_calls() -> RmcpReport {
         .await
         .unwrap_or_else(|err| panic!("connect: {err}"));
     stream.write_all(b"gm\n").await.unwrap();
-    let running = ().serve(stream)
-        .await
-        .unwrap_or_else(|err| panic!("mcp: {err}"));
+    let running = ().serve(stream).await.unwrap_or_else(|err| panic!("mcp: {err}"));
     let listed = tokio::time::timeout(Duration::from_secs(10), running.list_tools(None))
         .await
         .unwrap_or_else(|_| panic!("tools/list timed out"))
@@ -359,10 +356,7 @@ async fn empty_calls() -> RmcpReport {
 fn list_and_empty_calls(w: &mut World) {
     let _ = w;
     let report = empty_calls_report();
-    lock_hold()
-        .as_mut()
-        .expect("no GM allowlist shard")
-        .rmcp = Some(report);
+    lock_hold().as_mut().expect("no GM allowlist shard").rmcp = Some(report);
 }
 
 fn rmcp_report() -> RmcpReport {
@@ -705,9 +699,7 @@ fn session_open_refused(w: &mut World) {
     assert_eq!(raw_report().open["code"], "NOT_IN_SPEC");
 }
 
-#[then(
-    expr = "patch_entity of cast\\/mira.md returns NOT_IN_SPEC and not method-not-found"
-)]
+#[then(expr = "patch_entity of cast\\/mira.md returns NOT_IN_SPEC and not method-not-found")]
 fn patch_refused(w: &mut World) {
     let _ = w;
     let raw = raw_report();
@@ -722,7 +714,11 @@ fn patch_refused(w: &mut World) {
 fn other_refusals(w: &mut World) {
     let _ = w;
     let raw = raw_report();
-    let names: Vec<&str> = raw.refusals.iter().map(|refusal| refusal.name.as_str()).collect();
+    let names: Vec<&str> = raw
+        .refusals
+        .iter()
+        .map(|refusal| refusal.name.as_str())
+        .collect();
     assert_eq!(
         names,
         [

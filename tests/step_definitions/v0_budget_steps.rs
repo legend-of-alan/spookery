@@ -156,11 +156,7 @@ fn crowd_pack(w: &mut World, count: i64) {
             .as_nanos()
     ));
     let _ = fs::remove_dir_all(&pack);
-    crowd(
-        &pack,
-        &manifest.join("packs/oneshot-docks/rules"),
-        count,
-    );
+    crowd(&pack, &manifest.join("packs/oneshot-docks/rules"), count);
     w.pack = Some(pack);
 }
 
@@ -195,15 +191,10 @@ fn acted_between(w: &mut World, lo: i64, hi: i64, tick: i64) {
                 .is_some_and(|counters| counters.last_act_tick == tick as u64)
         })
         .count();
-    assert!(
-        acted as i64 >= lo && acted as i64 <= hi,
-        "acted {acted}"
-    );
+    assert!(acted as i64 >= lo && acted as i64 <= hi, "acted {acted}");
 }
 
-#[then(
-    expr = "state\\/log\\/tick-0001.jsonl records between {int} and {int} applied intents"
-)]
+#[then(expr = "state\\/log\\/tick-0001.jsonl records between {int} and {int} applied intents")]
 fn applied_between(w: &mut World, lo: i64, hi: i64) {
     let pack = w.pack.as_ref().unwrap();
     let tape = fs::read_to_string(pack.join("state/log/tick-0001.jsonl"))

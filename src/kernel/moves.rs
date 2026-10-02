@@ -261,10 +261,7 @@ fn location_shape(token: MoveToken, on: MoveOn, effects: &[RowEffect]) -> bool {
 }
 
 fn forbids_row(name: &str) -> bool {
-    matches!(
-        name,
-        "say" | "talk" | "wait" | "attempt" | "give" | "take"
-    )
+    matches!(name, "say" | "talk" | "wait" | "attempt" | "give" | "take")
 }
 
 #[derive(Deserialize)]

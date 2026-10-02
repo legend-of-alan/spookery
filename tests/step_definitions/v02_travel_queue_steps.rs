@@ -655,9 +655,11 @@ fn gains_one_resume(w: &mut World) {
 fn player_wait_intent(w: &mut World, name: String) {
     let _ = w;
     let tick = load_tick(&name);
-    assert!(tick["intents"].as_array().unwrap().iter().any(|intent| {
-        intent["move"] == "wait" && intent["source"] == "player"
-    }));
+    assert!(tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|intent| { intent["move"] == "wait" && intent["source"] == "player" }));
 }
 
 #[then(expr = "that tick is the travel derivation baseline")]
@@ -696,7 +698,11 @@ fn player_refused(w: &mut World, line: String, code: String) {
     };
     let stderr = wait_count(&session.player.stderr, &code, seen, Duration::from_secs(5));
     assert_eq!(stderr.matches(&code).count(), seen, "{line}\n{stderr}");
-    assert_eq!(text_of(&session.player.stdout), stdout, "{line} wrote on stdout");
+    assert_eq!(
+        text_of(&session.player.stdout),
+        stdout,
+        "{line} wrote on stdout"
+    );
 }
 
 #[then(expr = "the travel GM queue is empty")]
@@ -758,10 +764,7 @@ fn gm_commits(w: &mut World) {
 #[then(expr = "the travel commit has no code and log_path ends with {string}")]
 fn commit_log_path(w: &mut World, suffix: String) {
     let _ = w;
-    let committed = lock_record()
-        .commit
-        .clone()
-        .expect("no travel commit");
+    let committed = lock_record().commit.clone().expect("no travel commit");
     assert!(committed.get("code").is_none(), "{committed}");
     assert!(
         committed["log_path"].as_str().unwrap().ends_with(&suffix),
@@ -772,10 +775,7 @@ fn commit_log_path(w: &mut World, suffix: String) {
 #[then(expr = "the travel second commit has no code")]
 fn second_commit_has_no_code(w: &mut World) {
     let _ = w;
-    let committed = lock_record()
-        .commit
-        .clone()
-        .expect("no travel commit");
+    let committed = lock_record().commit.clone().expect("no travel commit");
     assert!(committed.get("code").is_none(), "{committed}");
 }
 

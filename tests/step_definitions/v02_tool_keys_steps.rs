@@ -376,8 +376,8 @@ fn list_tools(w: &mut World) {
     let mut server = support::spawn(&["run", &support::pack_arg(&pack)]);
     assign_job(&server.child);
     support::wait_listen(&mut server);
-    let before = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let before =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     let mut gm = gm_session();
     write!(
         gm,
@@ -488,9 +488,7 @@ fn perceive_schema(_w: &mut World) {
     assert_eq!(perceive["properties"]["budget_tokens"]["type"], "integer");
 }
 
-#[then(
-    expr = "the tool-keys commit_turn schema requires include_tick and accepts session_id"
-)]
+#[then(expr = "the tool-keys commit_turn schema requires include_tick and accepts session_id")]
 fn commit_schema(_w: &mut World) {
     let commit = schema_of(&tools(), "commit_turn");
     assert_eq!(
@@ -594,21 +592,11 @@ fn say_refusals(_w: &mut World) {
             "SCHEMA"
         );
         assert_eq!(
-            refusal(
-                gm,
-                next_id(id),
-                "say",
-                r#"{"address":"place","text":"hi"}"#
-            )["code"],
+            refusal(gm, next_id(id), "say", r#"{"address":"place","text":"hi"}"#)["code"],
             "SCHEMA"
         );
         assert_eq!(
-            refusal(
-                gm,
-                next_id(id),
-                "say",
-                r#"{"address":"actor","text":"hi"}"#
-            )["code"],
+            refusal(gm, next_id(id), "say", r#"{"address":"actor","text":"hi"}"#)["code"],
             "SCHEMA"
         );
         assert_eq!(

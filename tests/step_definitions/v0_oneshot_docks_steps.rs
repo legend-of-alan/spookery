@@ -14,8 +14,8 @@ fn source_docks(w: &mut World) {
 #[then(expr = "pack_rev is {string}")]
 fn pack_rev_is(w: &mut World, expected: String) {
     let root = w.pack.as_ref().unwrap();
-    let rev = spookery_kernel::canon::pack_rev(root)
-        .unwrap_or_else(|err| panic!("pack_rev: {err}"));
+    let rev =
+        spookery_kernel::canon::pack_rev(root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
     assert_eq!(rev, expected);
 }
 
@@ -34,10 +34,9 @@ fn file_blake2s(w: &mut World, rel: String, expected: String) {
 #[then(expr = "{string} round-trips through emit_now")]
 fn now_round_trip(w: &mut World, rel: String) {
     let now_bytes = read_pack_file(w, &rel);
-    let now_text =
-        std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
-    let now = spookery_kernel::codec::load_now(now_text)
-        .unwrap_or_else(|err| panic!("load now: {err}"));
+    let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
+    let now =
+        spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));
     let emitted =
         spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit now: {err}"));
     assert_eq!(emitted.as_bytes(), now_bytes.as_slice());
@@ -46,10 +45,9 @@ fn now_round_trip(w: &mut World, rel: String) {
 #[then(expr = "now pack_rev is {string}")]
 fn now_pack_rev_is(w: &mut World, expected: String) {
     let now_bytes = read_pack_file(w, "state/now.yaml");
-    let now_text =
-        std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
-    let now = spookery_kernel::codec::load_now(now_text)
-        .unwrap_or_else(|err| panic!("load now: {err}"));
+    let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
+    let now =
+        spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));
     assert_eq!(now.pack_rev, expected);
 }
 
@@ -60,11 +58,9 @@ fn sheet_round_trip(w: &mut World, rel: String) {
         std::str::from_utf8(&sheet_bytes).unwrap_or_else(|err| panic!("sheet utf-8: {err}"));
     let sheet: spookery_kernel::model::PcSheet =
         serde_saphyr::from_str(sheet_text).unwrap_or_else(|err| panic!("load sheet: {err}"));
-    let sheet_emit = serde_saphyr::to_string_with_options(
-        &sheet,
-        spookery_kernel::codec::NOW_EMIT_OPTIONS(),
-    )
-    .unwrap_or_else(|err| panic!("emit sheet: {err}"));
+    let sheet_emit =
+        serde_saphyr::to_string_with_options(&sheet, spookery_kernel::codec::NOW_EMIT_OPTIONS())
+            .unwrap_or_else(|err| panic!("emit sheet: {err}"));
     assert_eq!(sheet_emit.as_bytes(), sheet_bytes.as_slice());
 }
 
@@ -80,6 +76,5 @@ fn read_pack_file(w: &World, rel: &str) -> Vec<u8> {
     } else {
         "now"
     };
-    fs::read(w.pack.as_ref().unwrap().join(rel))
-        .unwrap_or_else(|err| panic!("read {what}: {err}"))
+    fs::read(w.pack.as_ref().unwrap().join(rel)).unwrap_or_else(|err| panic!("read {what}: {err}"))
 }

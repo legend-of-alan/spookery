@@ -452,10 +452,7 @@ fn now_matches_snapshot(w: &mut World) {
 fn tick_opens(w: &mut World) {
     let now = now_of(Path::new(&copy_of(w, "tick")));
     assert_eq!(now.presence.humans, 1);
-    assert_eq!(
-        now.presence.session_ids,
-        vec!["crash-session".to_string()]
-    );
+    assert_eq!(now.presence.session_ids, vec!["crash-session".to_string()]);
 }
 
 #[then(expr = "the {word} copy command succeeds")]
@@ -496,10 +493,7 @@ fn copy_state_rev(w: &mut World, label: String, state_rev: u64) {
 #[then(expr = "the {word} copy session_ids are crash-session")]
 fn copy_session_ids(w: &mut World, label: String) {
     let now = now_of(Path::new(&copy_of(w, &label)));
-    assert_eq!(
-        now.presence.session_ids,
-        vec!["crash-session".to_string()]
-    );
+    assert_eq!(now.presence.session_ids, vec!["crash-session".to_string()]);
 }
 
 #[then(expr = "the tick copy tick log is tick-0001.jsonl")]

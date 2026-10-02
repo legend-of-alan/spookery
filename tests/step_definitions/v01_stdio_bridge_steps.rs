@@ -64,8 +64,8 @@ fn structured(line: &str) -> Value {
 
 fn assert_seated(w: &World) {
     let pack = w.pack.as_ref().expect("no stdio bridge pack");
-    let now = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let now =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     let hold = lock_hold();
     let seated = &hold.as_ref().expect("no stdio bridge shard").seated;
     assert_eq!(now, *seated);
@@ -211,8 +211,8 @@ fn player_said(w: &mut World) {
         "\"text\":\"for the bridge\"",
         Duration::from_secs(5),
     );
-    let seated = fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let seated =
+        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     w.pack = Some(pack.clone());
     *lock_hold() = Some(Hold {
         refused: None,
@@ -259,9 +259,7 @@ fn bridge_perceive(w: &mut World) {
     hold.bridge = Some(bridge);
 }
 
-#[then(
-    expr = "the bridge perceive is kind perceive for viewer player:pc_rowan with a place"
-)]
+#[then(expr = "the bridge perceive is kind perceive for viewer player:pc_rowan with a place")]
 fn perceive_view(w: &mut World) {
     let _ = w;
     let guard = lock_hold();
@@ -331,10 +329,7 @@ fn bridge_running(w: &mut World) {
         .bridge
         .as_mut()
         .expect("no stdio bridge");
-    assert!(
-        bridge.child.try_wait().unwrap().is_none(),
-        "bridge exited"
-    );
+    assert!(bridge.child.try_wait().unwrap().is_none(), "bridge exited");
 }
 
 #[when(expr = "a second stdio bridge hello is refused")]
@@ -351,9 +346,7 @@ fn second_bridge(w: &mut World) {
     hold.refused = Some(refused);
 }
 
-#[then(
-    expr = "the refused stdio bridge exits 1 with SESSION_FULL on stderr and empty stdout"
-)]
+#[then(expr = "the refused stdio bridge exits 1 with SESSION_FULL on stderr and empty stdout")]
 fn refused_hello(w: &mut World) {
     let _ = w;
     let guard = lock_hold();

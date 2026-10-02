@@ -1,7 +1,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use rmcp::model::{JsonObject, ListToolsResult, PaginatedRequestParam, ServerInfo, Tool, ToolsCapability};
+use rmcp::model::{
+    JsonObject, ListToolsResult, PaginatedRequestParam, ServerInfo, Tool, ToolsCapability,
+};
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use spookery_kernel::Reason;

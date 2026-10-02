@@ -166,9 +166,7 @@ fn perceive_budget_keeps_fact_text(
     assert_eq!(fact.text, text);
 }
 
-#[then(
-    expr = "tick-profile perceive as {string} with budget {int} does not list unknown {string}"
-)]
+#[then(expr = "tick-profile perceive as {string} with budget {int} does not list unknown {string}")]
 fn perceive_budget_omits_unknown(w: &mut World, as_viewer: String, budget: u64, id: String) {
     let shard = open(w);
     let capped =
@@ -188,12 +186,7 @@ fn perceive_budget_lists_unknown(w: &mut World, as_viewer: String, budget: u64, 
 fn pack_files_unchanged(w: &mut World) {
     let pack = w.pack.as_ref().unwrap();
     let listed = files(pack);
-    let count: usize = w
-        .scratch
-        .get("scope-file-count")
-        .unwrap()
-        .parse()
-        .unwrap();
+    let count: usize = w.scratch.get("scope-file-count").unwrap().parse().unwrap();
     assert_eq!(listed.len(), count);
     for (path, bytes) in listed {
         let saved = w

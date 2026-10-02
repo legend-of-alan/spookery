@@ -231,7 +231,10 @@ fn skip_container(bytes: &[u8], index: &mut usize, open: u8, close: u8) -> Resul
 }
 
 fn skip_literal(bytes: &[u8], index: &mut usize, literal: &[u8]) -> Result<(), Reason> {
-    if bytes.get(*index..).is_some_and(|rest| rest.starts_with(literal)) {
+    if bytes
+        .get(*index..)
+        .is_some_and(|rest| rest.starts_with(literal))
+    {
         *index += literal.len();
         Ok(())
     } else {

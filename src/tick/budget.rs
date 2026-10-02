@@ -32,7 +32,11 @@ fn priority_key(
     let pc_clock = if targets_pc_clock(now, intent) { 0 } else { 1 };
     let claimed = if claimed(now, intent) { 0 } else { 1 };
     let tier = if notable(canon, intent) { 0 } else { 1 };
-    let proposal = if intent.move_name == "file_proposal" { 0 } else { 1 };
+    let proposal = if intent.move_name == "file_proposal" {
+        0
+    } else {
+        1
+    };
     let shuffle = shuffle_key(shard_id, tick_index, &intent.actor_id);
     (kind, pc_clock, claimed, tier, proposal, shuffle)
 }
@@ -42,11 +46,10 @@ fn targets_pc_clock(now: &Now, intent: &Intent) -> bool {
         return false;
     };
     now.clocks.get(id).is_some_and(|clock| {
-        clock.owners.iter().any(|owner| {
-            now.actors
-                .get(owner)
-                .is_some_and(|actor| actor.is_pc())
-        })
+        clock
+            .owners
+            .iter()
+            .any(|owner| now.actors.get(owner).is_some_and(|actor| actor.is_pc()))
     })
 }
 
@@ -61,9 +64,11 @@ fn claimed(now: &Now, intent: &Intent) -> bool {
         }),
         _ => false,
     };
-    let message_hit = intent.args.message_to.as_ref().is_some_and(|ids| {
-        ids.iter().any(|id| present.iter().any(|actor| actor == id))
-    });
+    let message_hit = intent
+        .args
+        .message_to
+        .as_ref()
+        .is_some_and(|ids| ids.iter().any(|id| present.iter().any(|actor| actor == id)));
     target_hit || message_hit
 }
 

@@ -57,5 +57,9 @@ fn place_unchanged(w: &mut World) {
         .scratch
         .get("place_before")
         .unwrap_or_else(|| panic!("missing place_before"));
-    assert_eq!(place_after, place_before.as_bytes(), "place markdown changed");
+    assert_eq!(
+        place_after,
+        place_before.as_bytes(),
+        "place markdown changed"
+    );
 }
