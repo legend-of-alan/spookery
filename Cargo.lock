@@ -1919,7 +1919,6 @@ name = "spookery-kernel"
 version = "0.1.0"
 dependencies = [
  "blake2",
- "jsonschema",
  "serde",
  "serde-saphyr",
 ]
@@ -1929,9 +1928,7 @@ name = "spookery-mcp"
 version = "0.1.0"
 dependencies = [
  "rmcp",
- "rmcp-macros",
  "spookery-kernel",
- "spookery-tick",
  "tokio",
 ]
 

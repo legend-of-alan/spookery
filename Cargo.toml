@@ -21,10 +21,6 @@ license.workspace = true
 name = "spook"
 path = "src/cli/main.rs"
 
-[[bin]]
-name = "spookery"
-path = "src/cli/main.rs"
-
 [dependencies]
 spookery-kernel = { path = "src/kernel" }
 spookery-mcp = { path = "src/mcp" }
