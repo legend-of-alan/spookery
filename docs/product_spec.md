@@ -1,6 +1,6 @@
 # Spookery — Product spec
 
-**Non-normative.** Engineering law for the v0.1 sitting is `architecture_v0.1.md`. `architecture_v0.md` still holds where v0.1 does not name a change. This file is business notes from early brainstorming. Where this file disagrees with either architecture file, the architecture wins.
+**Non-normative.** This file is business notes from early brainstorming. Engineering law is `docs/spec.md`. Where this file disagrees with that spec, the spec wins. This file does not fill a rule the spec does not state.
 
 **Working name:** Spookery (company) + `spook` (CLI / runtime) + pack (world format)
 **One-line pitch:** A runtime for private worlds you describe in text: agents may intend, only the tick may write, and the world keeps moving after everyone logs off.
@@ -11,17 +11,15 @@
 
 **Civilian hook:** Maker-shaped tools for private tick worlds that do not freeze — you write people and places in text, the clock runs subsistence when you leave. This is not “the default AI RPG.” It is the referee those worlds can share.
 
-**Status:** Business notes. The v0 kernel and the v0.1 sitting are implemented; this file does not specify them. Idle UX for v0 stays locked here.
+**Status:** Business notes. The v0 kernel and the v0.1 sitting are implemented; this file does not specify them.
 
-**Companion docs:** `docs/architecture.md` says which architecture file is law.
-
-**Who this document is for:** Founders reading the business case. Coding agents implement the sitting from `architecture_v0.1.md`. They read `architecture_v0.md` for every rule that file does not change. This product spec does not license a code change.
+**Who this document is for:** Founders reading the business case. This product spec does not license a code change.
 
 **v0.5 delta:** Brand freeze. Packetry → Spookery, `packetd` → `spook` (alias `spookery`), packet → pack. Schema field `pack_rev` (was `packet_rev`). Layout file `pack.yaml` (was `packet.yaml`). Mechanics unchanged. See `BRANDING.md`.
 
-**v0.4 delta:** Idle LLM default is 0 everywhere. Kernel intent derivation and the eligible-NPC predicate were specified. Year-0 business questions were answered then (price $9 to learn, AGPL stays, first-10-pack channel named, docks fixture authorship is days 22–45). Those engineering rules now live in `architecture_v0.md`.
+**v0.4 delta:** Idle LLM default is 0 everywhere. Year-0 business questions were answered then (price $9 to learn, AGPL stays, first-10-pack channel named, docks fixture authorship is days 22–45).
 
-**v0.3 delta:** Freeze implementation stack (Rust), pack encoding law (YAML data / Markdown flavor / JSONL logs), `now.yaml` runtime-owned, PC sheets in `state/`, hidden-string lint on bodies, official fixture uses a tiny original ruleset, and idle legibility is split: host `status` is omniscient; player resume is viewer-scoped. Kernel refusals and tick budgets did not move.
+**v0.3 delta:** Freeze implementation stack (Rust). Authors write diffable text. The official fixture uses a tiny original ruleset. A host can see an idle week. A player cannot read the whole harbor from the login line.
 
 **v0.2 delta (kept):** Beachhead, paying wedge, tool/company/moonshot stack, structural ceiling, fixture-as-demo, license pick, and gates that separate “kernel shipped” from “this is a business.”
 
@@ -140,16 +138,11 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 ## 6. Product principles
 
-1. **One writer.** Intents in. Tick or `commit_turn` writes. Nothing else.
-2. **Text is the source of truth.** If humans and models cannot diff it, it does not belong in v0.
-3. **Perception is scoped.** `perceive` always takes `as=player:id` or `as=npc:id`. No unscoped GM omniscience on the tick process.
-4. **Numbers live in code.** Models narrate after tools return.
-5. **Idle worlds are boring on purpose.** Shops restock. Plot does not self-clear.
-6. **Shells are swappable.** Clients, graphics, Discord, voice — never a second authority.
-7. **Tests are the spec.** If it is not in the conformance suite, it will regress.
-8. **Refuse rather than flex.** Unknown moves, leaked secrets, over-budget ticks fail closed.
-9. **Kernel proves the format.** A feature that cannot be expressed as a pack field plus a conformance test is not a v0 feature.
-10. **Prose is not mechanics.** Markdown bodies never invent facts, flags, places, or items. If deleting the body would break a tick, the field was in the wrong file.
+1. **Text is the source of truth.** If humans and models cannot diff it, it does not belong in v0.
+2. **Numbers live in code.** Models narrate after tools return.
+3. **Idle worlds are boring on purpose.** The shop keeps living. The plot does not finish itself while the table is away.
+4. **Shells are swappable.** Clients, graphics, Discord, voice. None of them is a second product.
+5. **Kernel proves the format.** A feature that cannot be expressed as a pack field is not a v0 feature.
 
 ---
 
@@ -161,10 +154,10 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - Runtime CLI: load pack, MCP stdio, write `state/`
 - Kernel: checks, inventory/resources, knowledge firewall
 - Table / tick MCP tool profiles (see §10)
-- Shard tick loop, as specified in `architecture_v0.md`
+- Shard tick loop
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
 - Terminal play loop (single human or two on one machine is enough)
-- Conformance tests, as listed in `architecture_v0.md`
+- Conformance tests
 
 ### Out of v0
 
@@ -192,7 +185,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 ## 8. Pack format (v0)
 
-A pack is a directory. The layout and encoding rules are in `architecture_v0.md`.
+A pack is a directory.
 
 ```text
 pack/
@@ -208,7 +201,7 @@ pack/
     moves.yaml
     tick.yaml
   state/
-    now.yaml                  # only mutable snapshot; runtime-owned
+    now.yaml                  # live world, kept by the runtime
     actors/<pc-id>.yaml       # mutable PC sheets
     log/tick-NNNN.jsonl
     memories/<id>.jsonl
@@ -217,70 +210,34 @@ pack/
   saves/
 ```
 
-**Canon** (`world/`, `cast/`, `rules/`) is read-only at runtime.
-**State** is the only live write surface.
-Permanent world changes file a **proposal**; a human or studio agent applies a diff later.
+**Canon** (`world/`, `cast/`, `rules/`) is the authored text.
+**State** is what the runtime keeps while the world runs.
+A permanent change to the authored world waits for a person. Players do not rewrite `cast/` during play.
 
-**Encoding split:**
+Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. Player characters start from a template in `cast/`. The live sheet is the runtime's.
 
-- YAML (frontmatter, rules, `now.yaml`, PC sheets) is kernel-true.
-- Markdown bodies are flavor. They are never the source of facts, flags, exits, or stock.
-- JSONL is the audit tape. It is not a second `Now`.
-
-`now.yaml` is not hand-edited mid-shard. A hand edit is a migration that must parse and re-commit. After a crash, `state_rev` on disk wins.
-
-Player characters: starting template lives in `cast/`. The live sheet lives in `state/actors/<pc-id>.yaml`. Players do not write `cast/` during play.
-
-NPC profile (conceptual fields, not final schema):
+NPC profile, as a product sketch:
 
 - identity, voice, goals, needs
-- `hidden` vs public facts (fact ids)
-- relationships / stance targets
-- `tick` block: eligible, range, schedule, stock_rate
-- allowed flag keys
+- what the table is allowed to know, and what it is not
+- relationships
+- where an NPC works, when, and what the shop does
 
-Hidden-string lint fails closed: a Markdown body may not contain another entity’s hidden fact text.
-
-Rulesets declare legal `move` enums. Unknown moves reject.
-
-`rules/tick.yaml` defaults live in the tick spec. v0 default: kernel-only idle ticks.
+v0 idle ticks are kernel-only. The world keeps moving after everyone logs off. The plot does not finish itself.
 
 ### 8.1 Official fixture ruleset
 
 The bundled one-shot (`packs/oneshot-docks/`) ships a **tiny original** ruleset, not an SRD or ORC subset.
 
-Why: v0 is proving a referee and a pack, not shipping a well-known game. The spec already forbids branding as D&D. An SRD subset pulls in license text, skill lists, and combat gravity the docks fixture does not need. A second implementer should add a move by editing `moves.yaml` + a test, not by reading 5e.
+Why: v0 is proving a referee and a pack, not shipping a well-known game. The product does not brand as D&D. An SRD subset pulls in license text, skill lists, and combat gravity the docks fixture does not need. A second author adds a move in the pack, not by reading 5e.
 
-Minimum idle moves (must exist in the fixture `rules/moves.yaml`):
+Do not import ability-score blocks, spell lists, or XP.
 
-```text
-wait travel work restock rest
-drift_relationship spread_rumor leave_note file_proposal advance_clock
-```
+An SRD/ORC **pack** may exist later as a different `rules/` folder. v0 does not load two rulesets at once.
 
-Live-only moves the fixture may also declare (rejected when `presence.humans == 0`):
+### 8.2 Docks fixture, a week later
 
-```text
-talk attempt attack give take
-```
-
-Checks stay tiny: one `resolve_check` profile (e.g. 2d6 + stat vs a target number) is enough. Do not import ability-score blocks, spell lists, or XP.
-
-An SRD/ORC **pack** may exist later as a different `rules/` folder. v0 does not load two rulesets at once. Genre packs choose their own pause-policy defaults; the docks fixture uses the tick-spec defaults in §8.2.
-
-### 8.2 Docks fixture pause policy
-
-```yaml
-# packs/oneshot-docks/rules/tick.yaml
-pause_policy:
-  named_plot_clocks: pause_when_empty
-  subsistence_clocks: always_run
-  relationship_drift: always_run
-  travel: run_if_schedule
-llm_npc_intents_per_tick: 0
-```
-
-That is the tick spec default. The fixture must be authored so those four lines produce a week a *host* can confirm in `spook status` and a *player* can discover in place via `perceive` (see §11). Off-screen stock is not announced on login.
+The fixture is a world a host can leave running and a player can return to. The host can tell the week happened. The player finds the shop by being there. Off-screen stock is not announced on login.
 
 ---
 
@@ -304,7 +261,6 @@ That is the tick spec default. The fixture must be authored so those four lines 
 
 **Play door:** human intents (“I search the desk”).
 **Agent door:** MCP.
-Same permissions model: players cannot `apply_effect`; tick process cannot `perceive` as GM; studio tools are a separate profile.
 
 Deployment:
 
@@ -322,76 +278,40 @@ Graphics are not in this process. A future 2D client reads state and submits int
 
 ## 10. MCP surface
 
-Two servers or two tool profiles on one process. Do not dump CRUD.
+Authors and the table do not share one grab-bag of tools. The product has three doors: table, tick, and studio. Do not dump CRUD.
 
 ### 10.1 Table / live (`pack-table`)
 
-`session_open`, `session_status`, `perceive`, `intent`, `resolve_check`, `apply_effect`, `npc_act`, `commit_turn`, `recall`, `session_save`
+The door a seated table uses.
 
 ### 10.2 Tick (`pack-tick`)
 
-Allowlist only: `session_status`, `perceive` (must pass `as=npc:id` or system actor), `recall`, `npc_act` (budgeted; off by default), `resolve_check`, `apply_effect`, `tick_commit`
-
-Denylist for tick process: `patch_entity`, unscoped `perceive`, studio tools, inventing effect classes.
+The door the clock uses. It is not a studio, and it is not a second product.
 
 ### 10.3 Studio (`pack-studio`)
 
-`pack_info`, `read_entity`, `patch_entity`, `lint_pack`, `simulate_knowledge`, `run_conformance`, `compile_preview`
+The door an author uses on the pack. It does not play the table.
 
-Tool design rules:
-
-- Outcome-sized names, not REST
-- Descriptions written for models (when to use, side effects)
-- Stable `tools/list` order
-- Writes return diffs
-- Destructive ops audited
-- Target ~10–17 tools per profile; do not grow to 50 without traces showing missed calls
-
-Full tick tool contracts are in `architecture_v0.md`.
+Tool names stay outcome-sized. The list does not grow because a model asked for REST. Descriptions say when to use a tool and what it changes. Order stays stable. A profile stays small enough that a model can choose.
 
 ---
 
 ## 11. Play loop
 
-1. Client sends player text as `intent`.
-2. Runtime queues; enforces turn / presence.
-3. GM agent (optional) calls `perceive` for relevant actors.
-4. Kernel resolves checks and effects.
-5. `commit_turn` or `tick_commit` atomically updates `state/` + log.
-6. Clients receive public narration and viewer-scoped private notes.
+1. A player types a line.
+2. The runtime holds it until the table commits a turn, or the clock runs.
+3. A GM, if one is seated, can look at the table.
+4. The clock resolves what the line and the world do.
+5. The world and its log update together.
+6. Players hear what their character can know.
 
 Players never see MCP, keys, or YAML in the intended UX. v0 may be terminal-only and still count.
 
-Idle / overnight is specified in `architecture_v0.md`. Summary: subsistence clocks run; named plot clocks pause when no humans are present; max 12 catch-up ticks; relationship drift ±1/day; rumors hop by fact id only.
+Overnight, shops keep living and the plot waits. Idle life must be **legible**. Legible does not mean a player wakes up omniscient.
 
-Idle life must be **legible**, not only buried in `now.yaml`. Legible does **not** mean a player wakes up omniscient.
+A host can tell the week happened. A player finds the shop by walking there. A returning player is not handed a newspaper of the whole harbor, and is not told the shop's stock while they are still in their room.
 
-Split the digest by viewer:
-
-| Surface | Who | What it may show |
-|---|---|---|
-| `spook status` (host / studio / tests) | Shard host | Full structured idle summary: stock deltas, notes, rumor hops, paused clocks. This proves the fixture. It is not player-facing. |
-| Session resume / `perceive(as=player:id)` | That player | Only events the viewer is allowed to know |
-
-**Player-visible on return** (no extra looking):
-
-- A `message` targeted at them, or left at their last place / claimed home
-- A rumor that hopped onto *their* `known_by` (or onto someone in their current place who would tell them — still a perceive at that place)
-- A named plot clock they already own or started (`requires_presence` stayed paused)
-
-**Player-visible only in place:**
-
-- Shop stock, hours, door notes on the shop, who is behind the counter. These appear when the player is at that place and `perceive`s, or asks. They do not appear as a login banner.
-
-A returning player should not be told `docks_shop lamp_oil 12 → 16` while they are still in their room. That is unscoped perception wearing a digest.
-
-The docks fixture is authored so both layers exist after a week idle:
-
-1. Host `status` shows all four effect classes fired (stock, note, rumor, paused clock).
-2. A player who walks back to the shop can see the restock and the door note through ordinary `perceive`.
-3. That player’s resume is not a newspaper of the whole harbor.
-
-No model writes the digest. It filters JSONL effect classes by `as=`. It does not invent sentences the log does not support. If the only way for a *host* to know the world moved is to diff `now.yaml`, criterion 9 fails. If a *player* learns off-screen stock without going there, the firewall failed.
+No model writes that summary. If the only way for a host to know the world moved is to diff files by hand, the fixture failed its demo. If a player learns off-screen stock without going there, the product's promise failed.
 
 ---
 
@@ -414,20 +334,11 @@ Website is a skin. Do not start there. A prettier client does not make this the 
 
 ### 13.1 Kernel shipped (v0 engineering)
 
-A reviewer or agent should treat the kernel as shipped only if all of these pass:
+A reviewer should treat the kernel as shipped only if all of these pass:
 
 1. Load a pack from a folder and speak MCP on stdio.
-2. `perceive(as=npc:mira)` never contains Mira’s `hidden` strings.
-3. After 100 idle ticks, Aldric still does not know Mira’s hidden fact (tick spec test 1).
-4. A plot clock tagged `requires_presence: true` does not advance across 12 empty-shard ticks.
-5. Shop stock changes only within `stock_rate` and never goes negative.
-6. Killing the process between `apply_effect` and `tick_commit` leaves the previous `state_rev`.
-7. Kernel-only 20-tick replay produces byte-equal `now.yaml`.
-8. 50 eligible NPCs, one tick: ≤ 8 act, ≤ 12 intents applied.
-9. One bundled one-shot pack plays in the CLI without editing code **and** is pleasant to leave running for a week. Host `status` shows stock / note / rumor / paused clock fired. A player resume does not leak off-screen stock; walking to the shop and `perceive`ing is enough to see the restock and door note.
-10. README + this spec + tick spec + encoding law are enough for another agent to add a move to `moves.yaml` and a test.
-11. Strip-bodies: delete every Markdown body in `packs/oneshot-docks`; tests 1, 2, 3, 5, 6, and 7 still pass. Tests 4 and 8 stay on the packs those tests build.
-12. Hidden-string lint: fixture bodies contain none of Mira’s hidden fact text.
+2. One bundled one-shot pack plays in the CLI without editing code and is pleasant to leave running for a week. A host can tell the week happened. A player resume does not hand them off-screen stock. Walking to the shop is how they find the restock and the door note.
+3. A second author can add a move to the pack without a kernel change.
 
 ### 13.2 Company gates (not the same checkbox)
 
@@ -544,10 +455,10 @@ Rebuild a category when you **refuse** something incumbents allow. We refuse mod
 Assumes a laptop is available. Phone week is notes only.
 
 **Days 1–21**
-Pin YAML crate. Freeze the pack schema against `architecture_v0.md`. Implement knowledge firewall + atomic `state/` writeback. Port tests 1, 2, and 6 as empty fixtures. No UI. No `--serve`.
+Pin YAML crate. Freeze the pack schema. Implement knowledge firewall and atomic `state/` writeback. Port tests 1, 2, and 6 as empty fixtures. No UI. No `--serve`.
 
 **Days 22–45**
-MCP stdio: `perceive`, `apply_effect`, `tick_commit`. CLI play. Bundled one-shot that is fun to idle, not only a secret-leak test — authorship pass required (3 named NPCs, shop, note, rumor, paused plot clock). BYOK unused if kernel-only. Still no website.
+MCP stdio and CLI play. Bundled one-shot that is fun to idle, not only a secret-leak test. Authorship pass required (3 named NPCs, shop, note, rumor, paused plot clock). BYOK unused if kernel-only. Still no website.
 
 **Days 46–70**
 Tick scheduler. `rules/tick.yaml`. Tests 3–5, 7–8. JSONL audit log. Measure cost per idle shard-day on a laptop process.
@@ -586,12 +497,11 @@ The core does not grow a second writer. Extensions are shells and packs.
 
 ```text
 /docs
-  architecture_v0.1.md        # frozen normative spec for the v0.1 sitting
-  architecture_v0.md          # frozen v0 spec; holds where v0.1 does not name a change
-  architecture.md             # index of the two files above
+  spec.md                  # referee law
+  README.md
   product_spec.md          # this file; business notes, not law
-/schema                    # now.schema.json, effect.schema.json, intent.schema.json
-/rulesets                  # default original moves, checks, tick.yaml
+/schema                    # pack schemas, documentation
+/rulesets                  # authoring templates
 /packs
   oneshot-docks/           # official fixture + week-idle demo
 /src
@@ -603,9 +513,9 @@ The core does not grow a second writer. Extensions are shells and packs.
   conformance/
 ```
 
-Language: Rust, as pinned in `architecture_v0.md`.
+Language: Rust.
 
-Agents implement; a human reviews. Agents implementing features MUST add or update a conformance test in the same change.
+Agents implement from `docs/spec.md`. A human reviews. This file does not license a code change.
 
 ---
 
@@ -617,12 +527,7 @@ Agents implement; a human reviews. Agents implementing features MUST add or upda
 - **Spec + schema + official fixture text:** CC BY 4.0, so a second implementer can speak the pack.
 - **Brand:** Spookery / `spook` / pack. Still do not brand as D&D. Details in `BRANDING.md`.
 - **Runtime language:** Rust. See `STACK.md`.
-- **Entity files:** `.md` with YAML frontmatter. Bodies are non-authoritative.
-- **`now.yaml`:** runtime-owned. No mid-shard hand edits.
-- **PCs:** template in `cast/`, live sheet in `state/actors/`.
-- **Fixture rules:** tiny original list in §8.1. Not SRD/ORC.
-- **Docks pause policy:** tick-spec defaults in §8.2.
-- **Hidden strings:** lint fails if they appear in any Markdown body.
+- **Fixture rules:** tiny original ruleset in §8.1. Not SRD/ORC.
 
 ### Not blockers
 
@@ -642,11 +547,11 @@ When reviewing this spec, answer:
 
 1. Is the refusal (“models do not write state”) still load-bearing in every section?
 2. Did any paragraph smuggle in a website, MMO, or event-page editor as v0 work?
-3. Can a second implementer build the kernel from this + the tick spec + tests?
+3. Does this file stay a business pitch, with referee law left in `docs/spec.md`?
 4. Is the business still “format + runtime + studio,” not “our official campaign”?
 5. Is the paying wedge still “shard + conformance,” or did a paragraph smuggle marketplace / official campaign / default-AI-RPG?
 6. Is the bundled pack a world someone would leave running for a week, or only a secret-leak test double?
 7. Is the kernel still the proof of the format (tests), not a closed World Engine and not a spec-only hope?
 8. What is the smallest change you would make before implementation?
 
-Suggested first implementation task after review: **conformance test 1** (hidden fact never appears in another actor’s `perceive` or memories), then the `perceive` tool that makes it pass.
+Suggested first read after review: `docs/spec.md`. This file is not the implementation task.
