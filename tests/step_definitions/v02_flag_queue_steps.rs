@@ -199,7 +199,7 @@ fn assert_closed_effects(tick: &Value, travel_id: &str) {
         let class = effect["class"].as_str().unwrap();
         assert!(EFFECT_CLASSES.contains(&class), "{effect}");
         if class == "location" {
-            assert_ne!(effect["payload"]["actor_id"], "pc_rowan", "{effect}");
+            assert_ne!(effect["actor_id"], "pc_rowan", "{effect}");
         }
     }
 }
@@ -804,9 +804,9 @@ fn flag_mark_effect(w: &mut World, name: String) {
     assert_eq!(flags.len(), 1, "{tick}");
     assert_eq!(flags[0]["as"], "player:pc_rowan");
     assert_eq!(flags[0]["intent_id"], mark_id);
-    assert_eq!(flags[0]["payload"]["actor_id"], "mira");
-    assert_eq!(flags[0]["payload"]["key"], "marked");
-    assert_eq!(flags[0]["payload"]["value"], true);
+    assert_eq!(flags[0]["actor_id"], "mira");
+    assert_eq!(flags[0]["key"], "marked");
+    assert_eq!(flags[0]["value"], true);
 }
 
 #[then(expr = "flag tick {string} has one flag effect on mira key marked")]
@@ -815,8 +815,8 @@ fn flag_live_effect(w: &mut World, name: String) {
     let tick = tick_value(&current_pack(), &name);
     let flags = flag_effects(&tick);
     assert_eq!(flags.len(), 1, "{tick}");
-    assert_eq!(flags[0]["payload"]["actor_id"], "mira");
-    assert_eq!(flags[0]["payload"]["key"], "marked");
+    assert_eq!(flags[0]["actor_id"], "mira");
+    assert_eq!(flags[0]["key"], "marked");
 }
 
 #[then(expr = "flag tick {string} derives neither mark nor wave")]

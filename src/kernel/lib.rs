@@ -5,6 +5,7 @@ pub mod codec;
 pub mod commit;
 pub mod derive;
 pub mod digest;
+pub mod effect;
 pub mod eligibility;
 pub mod error;
 pub mod expand;

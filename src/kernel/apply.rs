@@ -1,79 +1,67 @@
+use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::inventory::{clamp_need, resource_next, stock_next};
 use crate::limits::MINUTES_PER_DAY;
-use crate::model::{
-    ActorKind, Effect, Intent, MemoryLine, Message, ProposalDoc, Reputation, ViewerId,
-};
+use crate::model::{ActorKind, Intent, MemoryLine, Message, ProposalDoc, Reputation, ViewerId};
 use crate::shard::Txn;
 
 pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {
     if !viewer_matches(intent, &effect) {
         return Err(Reason::NotOwner);
     }
-    match effect {
-        Effect::Clock {
-            clock_id, delta, ..
-        } => apply_clock(txn, &clock_id, delta),
-        Effect::Need {
+    match effect.class {
+        EffectClass::Clock { clock_id, delta } => apply_clock(txn, &clock_id, delta),
+        EffectClass::Need {
             actor_id,
             key,
             delta,
-            ..
         } => apply_need(txn, &actor_id, &key, delta),
-        Effect::Stock {
-            place, sku, delta, ..
-        } => apply_stock(txn, intent, &place, &sku, delta),
-        Effect::Location {
-            actor_id, from, to, ..
-        } => apply_location(txn, intent, &actor_id, &from, &to),
-        Effect::Relationship { a, b, delta, .. } => apply_relationship(txn, &a, &b, delta),
-        Effect::Reputation {
+        EffectClass::Stock { place, sku, delta } => apply_stock(txn, intent, &place, &sku, delta),
+        EffectClass::Location { actor_id, from, to } => {
+            apply_location(txn, intent, &actor_id, &from, &to)
+        }
+        EffectClass::Relationship { a, b, delta } => apply_relationship(txn, &a, &b, delta),
+        EffectClass::Reputation {
             actor_id,
             faction,
             delta,
-            ..
         } => apply_reputation(txn, &actor_id, &faction, delta),
-        Effect::Memory {
+        EffectClass::Memory {
             actor_id,
             fact_ids,
             tags,
             text,
-            ..
         } => apply_memory(txn, intent, &actor_id, fact_ids, tags, text),
-        Effect::Rumor {
+        EffectClass::Rumor {
             rumor_id,
             fact_ids,
             to,
             heat,
             ..
         } => apply_rumor(txn, &rumor_id, &fact_ids, &to, heat),
-        Effect::Resource {
+        EffectClass::Resource {
             actor_id,
             key,
             delta,
-            ..
         } => apply_resource(txn, &actor_id, &key, delta),
-        Effect::Flag {
+        EffectClass::Flag {
             actor_id,
             key,
             value,
-            ..
         } => apply_flag(txn, &actor_id, &key, value),
-        Effect::Proposal {
+        EffectClass::Proposal {
             proposal_id,
             kind,
             target,
             summary,
-            ..
         } => apply_proposal(txn, intent, &proposal_id, &kind, &target, &summary),
-        Effect::Message {
+        EffectClass::Message {
             message_id,
             to,
             place,
             fact_ids,
             text,
-            ..
         } => apply_message(txn, message_id, to, place, fact_ids, text),
     }
 }

@@ -455,7 +455,7 @@ fn assert_closed_effects(tick: &Value, travel_id: &str) {
         let class = effect["class"].as_str().unwrap();
         assert!(EFFECT_CLASSES.contains(&class), "{effect}");
         if class == "location" {
-            assert_ne!(effect["payload"]["actor_id"], "pc_rowan", "{effect}");
+            assert_ne!(effect["actor_id"], "pc_rowan", "{effect}");
         }
     }
 }

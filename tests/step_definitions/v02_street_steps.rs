@@ -137,7 +137,7 @@ fn pc_location_count(tick: &Value) -> usize {
         .unwrap()
         .iter()
         .filter(|effect| {
-            effect["class"] == "location" && effect["payload"]["actor_id"] == "pc_rowan"
+            effect["class"] == "location" && effect["actor_id"] == "pc_rowan"
         })
         .count()
 }
@@ -148,14 +148,14 @@ fn assert_street_effect(tick: &Value, intent_id: &str) {
         .unwrap()
         .iter()
         .filter(|effect| {
-            effect["class"] == "location" && effect["payload"]["actor_id"] == "pc_rowan"
+            effect["class"] == "location" && effect["actor_id"] == "pc_rowan"
         })
         .collect();
     assert_eq!(hits.len(), 1, "{tick}");
     assert_eq!(hits[0]["intent_id"], intent_id);
     assert_eq!(hits[0]["as"], "player:pc_rowan");
-    assert_eq!(hits[0]["payload"]["from"], "docks_shop");
-    assert_eq!(hits[0]["payload"]["to"], "docks_street");
+    assert_eq!(hits[0]["from"], "docks_shop");
+    assert_eq!(hits[0]["to"], "docks_street");
 }
 
 fn assert_no_pc_kernel(tick: &Value) {

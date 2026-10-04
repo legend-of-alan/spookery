@@ -1,6 +1,7 @@
 use crate::canon::Canon;
+use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
-use crate::model::{Effect, Intent, Now, Target, ViewerId};
+use crate::model::{Intent, Now, Target, ViewerId};
 use crate::moves::{ActionRow, MoveOn, RowEffect};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
@@ -42,21 +43,25 @@ pub fn expand_outcome(
             };
             let mut effects = Vec::new();
             for item in &work.needs {
-                effects.push(Effect::Need {
+                effects.push(Effect {
+                    class: EffectClass::Need {
+                        actor_id: intent.actor_id.clone(),
+                        key: item.key.clone(),
+                        delta: item.delta,
+                    },
                     as_viewer: viewer.clone(),
                     intent_id: intent_id.clone(),
-                    actor_id: intent.actor_id.clone(),
-                    key: item.key.clone(),
-                    delta: item.delta,
                 });
             }
             for item in &work.resources {
-                effects.push(Effect::Resource {
+                effects.push(Effect {
+                    class: EffectClass::Resource {
+                        actor_id: intent.actor_id.clone(),
+                        key: item.key.clone(),
+                        delta: item.delta,
+                    },
                     as_viewer: viewer.clone(),
                     intent_id: intent_id.clone(),
-                    actor_id: intent.actor_id.clone(),
-                    key: item.key.clone(),
-                    delta: item.delta,
                 });
             }
             Ok(effects)
@@ -69,22 +74,22 @@ pub fn expand_outcome(
                 .get(&intent.actor_id)
                 .map(|actor| actor.place().to_string())
                 .ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect::Stock {
+            Ok(vec![Effect {
+                class: EffectClass::Stock { place, sku, delta },
                 as_viewer: viewer,
                 intent_id,
-                place,
-                sku,
-                delta,
             }])
         }
         "rest" => {
             let delta = intent.args.delta.ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect::Need {
+            Ok(vec![Effect {
+                class: EffectClass::Need {
+                    actor_id: intent.actor_id.clone(),
+                    key: "rest".to_string(),
+                    delta,
+                },
                 as_viewer: viewer,
                 intent_id,
-                actor_id: intent.actor_id.clone(),
-                key: "rest".to_string(),
-                delta,
             }])
         }
         "drift_relationship" => {
@@ -92,12 +97,14 @@ pub fn expand_outcome(
                 return Err(Reason::Schema);
             };
             let delta = intent.args.delta.ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect::Relationship {
+            Ok(vec![Effect {
+                class: EffectClass::Relationship {
+                    a: intent.actor_id.clone(),
+                    b: other.clone(),
+                    delta,
+                },
                 as_viewer: viewer,
                 intent_id,
-                a: intent.actor_id.clone(),
-                b: other.clone(),
-                delta,
             }])
         }
         "spread_rumor" => {
@@ -111,42 +118,50 @@ pub fn expand_outcome(
                 .iter()
                 .find(|rumor| rumor.id == rumor_id)
                 .ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect::Rumor {
+            Ok(vec![Effect {
+                class: EffectClass::Rumor {
+                    rumor_id,
+                    fact_ids: rumor.fact_ids.clone(),
+                    from: intent.actor_id.clone(),
+                    to,
+                    heat: rumor.heat,
+                },
                 as_viewer: viewer,
                 intent_id,
-                rumor_id,
-                fact_ids: rumor.fact_ids.clone(),
-                from: intent.actor_id.clone(),
-                to,
-                heat: rumor.heat,
             }])
         }
-        "leave_note" => Ok(vec![Effect::Message {
+        "leave_note" => Ok(vec![Effect {
+            class: EffectClass::Message {
+                message_id: intent.args.message_id.clone().ok_or(Reason::UnknownKey)?,
+                to: intent.args.message_to.clone().unwrap_or_default(),
+                place: intent.args.place.clone(),
+                fact_ids: intent.args.fact_ids.clone().unwrap_or_default(),
+                text: intent.args.text.clone().ok_or(Reason::UnknownKey)?,
+            },
             as_viewer: viewer,
             intent_id,
-            message_id: intent.args.message_id.clone().ok_or(Reason::UnknownKey)?,
-            to: intent.args.message_to.clone().unwrap_or_default(),
-            place: intent.args.place.clone(),
-            fact_ids: intent.args.fact_ids.clone().unwrap_or_default(),
-            text: intent.args.text.clone().ok_or(Reason::UnknownKey)?,
         }]),
-        "file_proposal" => Ok(vec![Effect::Proposal {
+        "file_proposal" => Ok(vec![Effect {
+            class: EffectClass::Proposal {
+                proposal_id: intent.args.proposal_id.clone().ok_or(Reason::UnknownKey)?,
+                kind: intent.args.kind.clone().ok_or(Reason::UnknownKey)?,
+                target: intent.args.target.clone().unwrap_or_default(),
+                summary: intent.args.summary.clone().ok_or(Reason::UnknownKey)?,
+            },
             as_viewer: viewer,
             intent_id,
-            proposal_id: intent.args.proposal_id.clone().ok_or(Reason::UnknownKey)?,
-            kind: intent.args.kind.clone().ok_or(Reason::UnknownKey)?,
-            target: intent.args.target.clone().unwrap_or_default(),
-            summary: intent.args.summary.clone().ok_or(Reason::UnknownKey)?,
         }]),
         "advance_clock" => {
             let Target::Clock(clock_id) = &intent.target else {
                 return Err(Reason::Schema);
             };
-            Ok(vec![Effect::Clock {
+            Ok(vec![Effect {
+                class: EffectClass::Clock {
+                    clock_id: clock_id.clone(),
+                    delta: intent.args.delta.unwrap_or(1),
+                },
                 as_viewer: viewer,
                 intent_id,
-                clock_id: clock_id.clone(),
-                delta: intent.args.delta.unwrap_or(1),
             }])
         }
         other => {
@@ -169,7 +184,8 @@ fn expand_row(
     outcome: Option<bool>,
 ) -> Result<Vec<Effect>, Reason> {
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    let mut selected = Vec::with_capacity(row.effects.len() + row.success.len().max(row.failure.len()));
+    let mut selected =
+        Vec::with_capacity(row.effects.len() + row.success.len().max(row.failure.len()));
     selected.extend(row.effects.iter());
     match outcome {
         Some(true) => selected.extend(row.success.iter()),
@@ -187,12 +203,14 @@ fn expand_row(
                         _ => return Err(Reason::Schema),
                     },
                 };
-                effects.push(Effect::Flag {
+                effects.push(Effect {
+                    class: EffectClass::Flag {
+                        actor_id,
+                        key: key.clone(),
+                        value: *value,
+                    },
                     as_viewer: viewer.clone(),
                     intent_id: intent.id.clone(),
-                    actor_id,
-                    key: key.clone(),
-                    value: *value,
                 });
             }
             RowEffect::Location => {
@@ -212,12 +230,14 @@ fn expand_row(
                         _ => return Err(Reason::Schema),
                     },
                 };
-                effects.push(Effect::Resource {
+                effects.push(Effect {
+                    class: EffectClass::Resource {
+                        actor_id,
+                        key: key.clone(),
+                        delta: *delta,
+                    },
                     as_viewer: viewer.clone(),
                     intent_id: intent.id.clone(),
-                    actor_id,
-                    key: key.clone(),
-                    delta: *delta,
                 });
             }
         }
@@ -232,11 +252,13 @@ fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reaso
         .get(&intent.actor_id)
         .map(|actor| actor.place().to_string())
         .ok_or(Reason::UnknownKey)?;
-    Ok(Effect::Location {
+    Ok(Effect {
+        class: EffectClass::Location {
+            actor_id: intent.actor_id.clone(),
+            from,
+            to: to.to_string(),
+        },
         as_viewer: viewer,
         intent_id: intent.id.clone(),
-        actor_id: intent.actor_id.clone(),
-        from,
-        to: to.to_string(),
     })
 }

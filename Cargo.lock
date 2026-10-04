@@ -1921,6 +1921,7 @@ dependencies = [
  "blake2",
  "serde",
  "serde-saphyr",
+ "serde_json",
 ]
 
 [[package]]

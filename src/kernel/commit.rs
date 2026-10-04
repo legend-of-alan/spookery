@@ -4,7 +4,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
-use crate::codec::{canonicalize, emit_now, emit_proposal, emit_rumors, load_now};
+use crate::codec::{
+    canonicalize, emit_memory_line, emit_migrate_line, emit_now, emit_proposal, emit_rumors,
+    load_now,
+};
 use crate::error::Reason;
 use crate::lock::{lock_pack, lock_shard};
 use crate::model::{MemoryLine, Now, Presence, ProposalDoc};
@@ -110,17 +113,15 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
     let planned = plan_commit(&state, &now, emitted, None, &[], &[])?;
     write_commit(&state, &planned)?;
-    let mut line = String::from("{\"op\":");
-    push_json_string(&mut line, "migrate");
-    line.push_str(",\"pack_rev_before\":");
-    push_json_string(&mut line, &pack_rev_before);
-    line.push_str(",\"pack_rev_after\":");
-    push_json_string(&mut line, &now.pack_rev);
-    line.push_str(",\"state_rev_before\":");
-    line.push_str(&state_rev_before.to_string());
-    line.push_str(",\"state_rev_after\":");
-    line.push_str(&now.state_rev.to_string());
-    line.push_str("}\n");
+    let line = format!(
+        "{}\n",
+        emit_migrate_line(
+            &pack_rev_before,
+            &now.pack_rev,
+            state_rev_before,
+            now.state_rev
+        )
+    );
     append_studio(&state, &line)?;
     Ok(())
 }
@@ -270,61 +271,12 @@ fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, 
             body.push('\n');
         }
         for line in fresh {
-            body.push_str(&render_memory_line(line));
+            body.push_str(&emit_memory_line(line));
             body.push('\n');
         }
         out.insert(actor, body);
     }
     Ok(out)
-}
-
-fn render_memory_line(line: &MemoryLine) -> String {
-    let mut out = String::from("{\"tick_index\":");
-    out.push_str(&line.tick_index.to_string());
-    out.push_str(",\"actor_id\":");
-    push_json_string(&mut out, &line.actor_id);
-    out.push_str(",\"intent_id\":");
-    push_json_string(&mut out, &line.intent_id);
-    out.push_str(",\"fact_ids\":");
-    push_json_strings(&mut out, &line.fact_ids);
-    out.push_str(",\"tags\":");
-    push_json_strings(&mut out, &line.tags);
-    out.push_str(",\"text\":");
-    match &line.text {
-        Some(text) => push_json_string(&mut out, text),
-        None => out.push_str("null"),
-    }
-    out.push('}');
-    out
-}
-
-fn push_json_strings(out: &mut String, values: &[String]) {
-    out.push('[');
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_json_string(out, value);
-    }
-    out.push(']');
-}
-
-fn push_json_string(out: &mut String, value: &str) {
-    out.push('"');
-    for ch in value.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            other if other.is_control() => {
-                out.push_str(&format!("\\u{:04x}", other as u32));
-            }
-            other => out.push(other),
-        }
-    }
-    out.push('"');
 }
 
 pub(crate) fn tmp_path(target: &Path) -> PathBuf {

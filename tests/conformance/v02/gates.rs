@@ -668,7 +668,7 @@ fn assert_closed_effects(tick: &Value, travel_id: &str) {
         let class = effect["class"].as_str().unwrap();
         assert!(EFFECT_CLASSES.contains(&class), "{effect}");
         if class == "location" {
-            assert_ne!(effect["payload"]["actor_id"], "pc_rowan", "{effect}");
+            assert_ne!(effect["actor_id"], "pc_rowan", "{effect}");
         }
     }
 }
@@ -1862,9 +1862,9 @@ fn v02_p07_mark_queues_until_commit_or_commits_one_live_tick() {
         assert_eq!(flags.len(), 1, "{tick}");
         assert_eq!(flags[0]["as"], "player:pc_rowan");
         assert_eq!(flags[0]["intent_id"], mark_id);
-        assert_eq!(flags[0]["payload"]["actor_id"], "mira");
-        assert_eq!(flags[0]["payload"]["key"], "marked");
-        assert_eq!(flags[0]["payload"]["value"], true);
+        assert_eq!(flags[0]["actor_id"], "mira");
+        assert_eq!(flags[0]["key"], "marked");
+        assert_eq!(flags[0]["value"], true);
         assert_no_derived_row(&tick, &["mark", "wave"]);
         assert!(tool_body(&mut gm, next, "session_status", "{}")["queued"]
             .as_array()
@@ -2001,8 +2001,8 @@ fn v02_p07_mark_queues_until_commit_or_commits_one_live_tick() {
         assert_eq!(tick["world_time_after"], 1085);
         let flags = flag_effects(&tick);
         assert_eq!(flags.len(), 1, "{tick}");
-        assert_eq!(flags[0]["payload"]["actor_id"], "mira");
-        assert_eq!(flags[0]["payload"]["key"], "marked");
+        assert_eq!(flags[0]["actor_id"], "mira");
+        assert_eq!(flags[0]["key"], "marked");
         assert_no_derived_row(&tick, &["mark", "wave"]);
         let _ = fs::remove_dir_all(&pack);
     }
@@ -2156,7 +2156,7 @@ fn pc_location_count(tick: &Value) -> usize {
         .unwrap()
         .iter()
         .filter(|effect| {
-            effect["class"] == "location" && effect["payload"]["actor_id"] == "pc_rowan"
+            effect["class"] == "location" && effect["actor_id"] == "pc_rowan"
         })
         .count()
 }
@@ -2167,14 +2167,14 @@ fn assert_street_effect(tick: &Value, intent_id: &str) {
         .unwrap()
         .iter()
         .filter(|effect| {
-            effect["class"] == "location" && effect["payload"]["actor_id"] == "pc_rowan"
+            effect["class"] == "location" && effect["actor_id"] == "pc_rowan"
         })
         .collect();
     assert_eq!(hits.len(), 1, "{tick}");
     assert_eq!(hits[0]["intent_id"], intent_id);
     assert_eq!(hits[0]["as"], "player:pc_rowan");
-    assert_eq!(hits[0]["payload"]["from"], "docks_shop");
-    assert_eq!(hits[0]["payload"]["to"], "docks_street");
+    assert_eq!(hits[0]["from"], "docks_shop");
+    assert_eq!(hits[0]["to"], "docks_street");
 }
 
 fn assert_no_pc_kernel(tick: &Value) {
@@ -2550,9 +2550,9 @@ fn play_checked_mark(label: &str, grit: i64, success: bool) {
     assert_eq!(flags.len(), 1, "{tick}");
     assert_eq!(flags[0]["intent_id"], marks[0]["id"]);
     assert_eq!(flags[0]["as"], "player:pc_rowan");
-    assert_eq!(flags[0]["payload"]["actor_id"], "mira");
-    assert_eq!(flags[0]["payload"]["key"], "marked");
-    assert_eq!(flags[0]["payload"]["value"], true);
+    assert_eq!(flags[0]["actor_id"], "mira");
+    assert_eq!(flags[0]["key"], "marked");
+    assert_eq!(flags[0]["value"], true);
     assert_no_derived_row(&tick, &["mark", "wave"]);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -2672,9 +2672,9 @@ fn play_outcome_mark(label: &str, grit: i64, success: bool) {
     assert_eq!(flags.len(), 1, "{tick}");
     assert_eq!(flags[0]["intent_id"], marks[0]["id"]);
     assert_eq!(flags[0]["as"], "player:pc_rowan");
-    assert_eq!(flags[0]["payload"]["actor_id"], "mira");
-    assert_eq!(flags[0]["payload"]["key"], written);
-    assert_eq!(flags[0]["payload"]["value"], true);
+    assert_eq!(flags[0]["actor_id"], "mira");
+    assert_eq!(flags[0]["key"], written);
+    assert_eq!(flags[0]["value"], true);
     assert_no_derived_row(&tick, &["mark", "wave"]);
     let _ = fs::remove_dir_all(&pack);
 }

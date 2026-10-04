@@ -1,4 +1,5 @@
-use spookery_kernel::model::{Effect, Intent, IntentArgs, Target};
+use spookery_kernel::effect::Effect;
+use spookery_kernel::model::{Intent, IntentArgs, Target};
 
 pub struct Rejected {
     pub id: String,
@@ -202,140 +203,7 @@ enum ArgValue<'a> {
 }
 
 fn push_effect(out: &mut String, effect: &Effect) {
-    out.push_str("{\"class\":");
-    push_string(out, effect.class_name());
-    out.push_str(",\"as\":");
-    push_string(out, &effect.as_viewer().token());
-    out.push_str(",\"intent_id\":");
-    push_string(out, effect.intent_id());
-    out.push_str(",\"payload\":{");
-    match effect {
-        Effect::Clock {
-            clock_id, delta, ..
-        } => {
-            field_str(out, "clock_id", clock_id, true);
-            field_i64(out, "delta", *delta, false);
-        }
-        Effect::Need {
-            actor_id,
-            key,
-            delta,
-            ..
-        }
-        | Effect::Resource {
-            actor_id,
-            key,
-            delta,
-            ..
-        } => {
-            field_str(out, "actor_id", actor_id, true);
-            field_str(out, "key", key, false);
-            field_i64(out, "delta", *delta, false);
-        }
-        Effect::Stock {
-            place, sku, delta, ..
-        } => {
-            field_str(out, "place", place, true);
-            field_str(out, "sku", sku, false);
-            field_i64(out, "delta", *delta, false);
-        }
-        Effect::Location {
-            actor_id, from, to, ..
-        } => {
-            field_str(out, "actor_id", actor_id, true);
-            field_str(out, "from", from, false);
-            field_str(out, "to", to, false);
-        }
-        Effect::Relationship { a, b, delta, .. } => {
-            field_str(out, "a", a, true);
-            field_str(out, "b", b, false);
-            field_i64(out, "delta", *delta, false);
-        }
-        Effect::Reputation {
-            actor_id,
-            faction,
-            delta,
-            ..
-        } => {
-            field_str(out, "actor_id", actor_id, true);
-            field_str(out, "faction", faction, false);
-            field_i64(out, "delta", *delta, false);
-        }
-        Effect::Memory {
-            actor_id,
-            fact_ids,
-            tags,
-            text,
-            ..
-        } => {
-            field_str(out, "actor_id", actor_id, true);
-            out.push_str(",\"fact_ids\":");
-            push_string_list(out, fact_ids);
-            out.push_str(",\"tags\":");
-            push_string_list(out, tags);
-            if let Some(text) = text {
-                out.push_str(",\"text\":");
-                push_string(out, text);
-            }
-        }
-        Effect::Rumor {
-            rumor_id,
-            fact_ids,
-            from,
-            to,
-            heat,
-            ..
-        } => {
-            field_str(out, "rumor_id", rumor_id, true);
-            out.push_str(",\"fact_ids\":");
-            push_string_list(out, fact_ids);
-            field_str(out, "from", from, false);
-            field_str(out, "to", to, false);
-            field_i64(out, "heat", *heat, false);
-        }
-        Effect::Flag {
-            actor_id,
-            key,
-            value,
-            ..
-        } => {
-            field_str(out, "actor_id", actor_id, true);
-            field_str(out, "key", key, false);
-            out.push_str(",\"value\":");
-            out.push_str(if *value { "true" } else { "false" });
-        }
-        Effect::Proposal {
-            proposal_id,
-            kind,
-            target,
-            summary,
-            ..
-        } => {
-            field_str(out, "proposal_id", proposal_id, true);
-            field_str(out, "kind", kind, false);
-            field_str(out, "target", target, false);
-            field_str(out, "summary", summary, false);
-        }
-        Effect::Message {
-            message_id,
-            to,
-            place,
-            fact_ids,
-            text,
-            ..
-        } => {
-            field_str(out, "message_id", message_id, true);
-            out.push_str(",\"to\":");
-            push_string_list(out, to);
-            if let Some(place) = place {
-                field_str(out, "place", place, false);
-            }
-            out.push_str(",\"fact_ids\":");
-            push_string_list(out, fact_ids);
-            field_str(out, "text", text, false);
-        }
-    }
-    out.push_str("}}");
+    out.push_str(&spookery_kernel::codec::emit_effect(effect));
 }
 
 fn push_key_u64(out: &mut String, key: &str, value: u64, first: bool) {
@@ -345,35 +213,6 @@ fn push_key_u64(out: &mut String, key: &str, value: u64, first: bool) {
     push_string(out, key);
     out.push(':');
     out.push_str(&value.to_string());
-}
-
-fn field_str(out: &mut String, key: &str, value: &str, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    push_string(out, key);
-    out.push(':');
-    push_string(out, value);
-}
-
-fn field_i64(out: &mut String, key: &str, value: i64, first: bool) {
-    if !first {
-        out.push(',');
-    }
-    push_string(out, key);
-    out.push(':');
-    out.push_str(&value.to_string());
-}
-
-fn push_string_list(out: &mut String, values: &[String]) {
-    out.push('[');
-    for (index, value) in values.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_string(out, value);
-    }
-    out.push(']');
 }
 
 fn push_string(out: &mut String, value: &str) {
@@ -390,4 +229,42 @@ fn push_string(out: &mut String, value: &str) {
         }
     }
     out.push('"');
+}
+
+#[cfg(test)]
+mod tests {
+    use spookery_kernel::effect::{Effect, EffectClass};
+    use spookery_kernel::model::ViewerId;
+
+    use super::render_tick;
+
+    #[test]
+    fn tick_line_embeds_the_flat_effect() {
+        let effect = Effect {
+            class: EffectClass::Stock {
+                place: "docks_shop".to_string(),
+                sku: "lamp_oil".to_string(),
+                delta: -1,
+            },
+            as_viewer: ViewerId::Npc("mira".to_string()),
+            intent_id: "i".to_string(),
+        };
+        let line = render_tick(
+            1,
+            0,
+            1,
+            0,
+            60,
+            0,
+            "seed",
+            "2026-01-01T00:00:00Z",
+            &[],
+            &[],
+            &[effect.clone()],
+            &[],
+        );
+        let encoded = spookery_kernel::codec::emit_effect(&effect);
+        assert!(line.contains(&encoded), "{line}");
+        assert!(!line.contains("\"payload\""));
+    }
 }

@@ -651,9 +651,9 @@ fn lists_flag_effect(w: &mut World, name: String, key: String) {
     assert_eq!(flags.len(), 1, "{tick}");
     assert_eq!(flags[0]["intent_id"], marks[0]["id"]);
     assert_eq!(flags[0]["as"], "player:pc_rowan");
-    assert_eq!(flags[0]["payload"]["actor_id"], "mira");
-    assert_eq!(flags[0]["payload"]["key"], key);
-    assert_eq!(flags[0]["payload"]["value"], true);
+    assert_eq!(flags[0]["actor_id"], "mira");
+    assert_eq!(flags[0]["key"], key);
+    assert_eq!(flags[0]["value"], true);
 }
 
 #[then(expr = "lists tick {string} derives neither mark nor wave")]
