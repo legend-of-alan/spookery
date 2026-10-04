@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery_kernel::expand::expand;
-use spookery_kernel::model::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::model::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::Reason;
 
 use super::support::{
@@ -35,7 +35,7 @@ fn v01_attempt_line_refuses_before_a_roll() {
         "attempt grit 3",
         false,
     ));
-    assert_eq!(live, Reason::TableEmpty);
+    assert_eq!(live, Reason::NotInSpec);
     assert!(shard.queued_intents().is_empty());
     assert!(!pack.join("state/log/session.jsonl").exists());
     assert!(!pack.join("state/log/tick-0001.jsonl").exists());
@@ -45,7 +45,7 @@ fn v01_attempt_line_refuses_before_a_roll() {
     let seated = fs::read(pack.join("state/now.yaml")).unwrap();
     for line in ["attempt", "attempt grit"] {
         let err = must_err(spookery::seat::turn(&mut shard, "pc_rowan", line, false));
-        assert_eq!(err, Reason::Schema, "{line}");
+        assert_eq!(err, Reason::NotInSpec, "{line}");
         assert!(shard.queued_intents().is_empty(), "{line}");
         assert_eq!(
             fs::read(pack.join("state/now.yaml")).unwrap(),
@@ -66,26 +66,27 @@ fn v01_attempt_line_refuses_before_a_roll() {
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
 
     let attempt = intent("attempt");
-    assert!(expand(shard.canon(), shard.now(), &attempt)
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        expand(shard.canon(), shard.now(), &attempt).unwrap_err(),
+        Reason::UnknownMove
+    );
     let mut attack = attempt.clone();
     attack.move_name = "attack".into();
     assert_eq!(
         expand(shard.canon(), shard.now(), &attack).unwrap_err(),
-        Reason::NotInSpec
+        Reason::UnknownMove
     );
     let mut give = attempt.clone();
     give.move_name = "give".into();
     assert_eq!(
         expand(shard.canon(), shard.now(), &give).unwrap_err(),
-        Reason::NotInSpec
+        Reason::UnknownMove
     );
     let mut take = attempt;
     take.move_name = "take".into();
     assert_eq!(
         expand(shard.canon(), shard.now(), &take).unwrap_err(),
-        Reason::NotInSpec
+        Reason::UnknownMove
     );
     let _ = fs::remove_dir_all(&pack);
 }
@@ -129,7 +130,7 @@ fn v01_p09_no_gm_attempt_rolls_on_send_and_writes_no_now_path() {
         Duration::from_secs(5),
     );
 
-    write_stdin(&mut player, "attempt grit 3");
+    write_stdin(&mut player, "grit");
     let stdout = wait_has(
         &player.stdout,
         "{\"kind\":\"check\",\"success\":true}",
@@ -193,15 +194,14 @@ fn v01_p09_no_gm_attempt_rolls_on_send_and_writes_no_now_path() {
         cursor += found + 1;
     }
     assert_no_roll_keys(&tick, false);
-    let attempt = tick["intents"]
+    let grit = tick["intents"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|intent| intent["move"] == "attempt")
+        .find(|intent| intent["move"] == "grit")
         .unwrap();
-    assert_eq!(attempt["args"]["check"], "grit");
-    assert_eq!(attempt["args"]["target"], 3);
-    assert!(attempt["args"]["target"].is_i64());
+    assert!(grit["args"]["check"].is_null());
+    assert!(grit["args"]["target"].is_null());
     assert!(tick["tool_trace"]
         .as_array()
         .unwrap()
@@ -224,17 +224,18 @@ fn v01_p09_no_gm_attempt_rolls_on_send_and_writes_no_now_path() {
     assert_eq!(waited.now().world_time, now.world_time);
     assert_eq!(kernel_moves(&tick_value(&twin)), kernel_moves(&tick));
 
-    write_stdin(&mut player, "attempt grit 14");
-    let failed = wait_has(
+    write_stdin(&mut player, "grit");
+    let again = wait_count(
         &player.stdout,
-        "{\"kind\":\"check\",\"success\":false}",
+        "{\"kind\":\"check\",\"success\":true}",
+        2,
         Duration::from_secs(5),
     );
     assert_eq!(
-        player_checks(&failed),
+        player_checks(&again),
         vec![
             "{\"kind\":\"check\",\"success\":true}".to_string(),
-            "{\"kind\":\"check\",\"success\":false}".to_string(),
+            "{\"kind\":\"check\",\"success\":true}".to_string(),
         ]
     );
     assert_eq!(
@@ -258,7 +259,7 @@ fn v01_p09_gm_attempt_rolls_on_commit_and_the_gm_sees_faces() {
         "\"kind\":\"perceive\"",
         Duration::from_secs(5),
     );
-    write_stdin(&mut player, "attempt grit 3");
+    write_stdin(&mut player, "grit");
     let queued = wait_has(
         &player.stdout,
         "\"kind\":\"queued\"",
@@ -311,7 +312,7 @@ fn v01_p09_gm_attempt_rolls_on_commit_and_the_gm_sees_faces() {
     );
     assert_event_order(event);
     let params = event_params(event);
-    assert_roll(&params, 3);
+    assert_roll(&params, 0);
 
     let stdout = wait_has(
         &player.stdout,
@@ -340,115 +341,48 @@ fn v01_unknown_check_does_not_advance_the_die_or_send_a_check() {
     let pack = temp_pack("unknown");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
-    let mut gm = gm_session();
     let mut player = spawn(&["play", &pack_arg(&pack)]);
     wait_has(
         &player.stdout,
         "\"kind\":\"perceive\"",
         Duration::from_secs(5),
     );
+    let seated = fs::read(pack.join("state/now.yaml")).unwrap();
     write_stdin(&mut player, "attempt nope 5");
-    wait_has(
-        &player.stdout,
-        "\"kind\":\"queued\"",
-        Duration::from_secs(5),
-    );
-    write_stdin(&mut player, "attempt grit 3");
-    let twice = wait_count(
-        &player.stdout,
-        "\"kind\":\"queued\"",
-        2,
-        Duration::from_secs(5),
-    );
-    let before = twice;
-    assert!(!before.contains("{\"kind\":\"check\""), "{before}");
-    let _ = drain_ready(&mut gm);
-    write!(
-        gm,
-        "{{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{{\"name\":\"commit_turn\",\"arguments\":{{\"include_tick\":true}}}}}}\n"
-    )
-    .unwrap();
-    gm.flush().unwrap();
-    let lines = read_until(&mut gm, |lines| {
-        lines.iter().any(|line| line.contains("\"faces\""))
-    });
-    let lines = finish_gm(&mut gm, lines);
-    let events: Vec<_> = lines
-        .iter()
-        .filter(|line| line.contains("\"kind\":\"check\""))
-        .cloned()
-        .collect::<Vec<_>>();
-    assert_eq!(events.len(), 1, "{lines:?}");
-    let stderr = wait_has(&player.stderr, "UNKNOWN_KEY", Duration::from_secs(5));
-    assert_eq!(stderr.trim(), "UNKNOWN_KEY");
-    let stdout = wait_has(
-        &player.stdout,
-        "{\"kind\":\"check\",\"success\":",
-        Duration::from_secs(5),
-    );
-    let added = &stdout[before.len()..];
-    let params = event_params(&events[0]);
-    assert_event_order(&events[0]);
-    assert_roll(&params, 3);
-    let word = if params["success"] == true {
-        "true"
-    } else {
-        "false"
-    };
-    assert_eq!(
-        player_checks(added),
-        vec![format!("{{\"kind\":\"check\",\"success\":{word}}}")]
-    );
+    let stderr = wait_has(&player.stderr, "NOT_IN_SPEC", Duration::from_secs(5));
+    assert_eq!(stderr.trim(), "NOT_IN_SPEC");
+    assert!(!pack.join("state/log/tick-0001.jsonl").exists());
+    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
+    let _ = fs::remove_dir_all(&pack);
+}
 
-    let tick = tick_value(&pack);
-    assert_no_roll_keys(&tick, false);
-    let rejected = tick["rejected"].as_array().unwrap();
-    assert!(
-        rejected.iter().any(|row| row["reason"] == "UNKNOWN_KEY"),
-        "{tick}"
-    );
-    assert!(tick["intents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|intent| intent["move"] == "attempt" && intent["args"]["check"] == "grit"));
-    assert!(!tick["intents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|intent| intent["args"]["check"] == "nope"));
-    assert_eq!(
-        tick["tool_trace"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|name| *name == "resolve_check")
-            .count(),
-        2
-    );
-
-    let shard = spookery_kernel::open_shard(&pack).unwrap();
-    let seed = tick["seed"].as_str().unwrap();
-    let rng = spookery_kernel::blake2s_256(seed.as_bytes());
-    let mut cursor = 0usize;
-    let fresh = spookery_kernel::check::resolve_check(
-        shard.canon(),
-        shard.sheets(),
-        &ViewerId::Player("pc_rowan".to_string()),
-        "grit",
-        3,
-        &rng,
-        &mut cursor,
-    )
-    .unwrap();
-    let faces: Vec<u32> = params["faces"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|face| face.as_u64().unwrap() as u32)
-        .collect();
-    assert_eq!(faces, fresh.faces);
-    assert_eq!(cursor, fresh.faces.len());
+#[test]
+fn v01_seated_advance_clock_and_season_advance_are_not_in_spec() {
+    let pack = temp_pack("agenda-line");
+    let mut shard = spookery_kernel::open_shard(&pack).unwrap();
+    spookery::seat::seat_player(&mut shard, "pc_rowan").unwrap();
+    assert_eq!(shard.now().clocks["assassination_debt"].value, 2);
+    for line in ["advance_clock", "season_advance"] {
+        let err = must_err(spookery::seat::turn(&mut shard, "pc_rowan", line, true));
+        assert_eq!(err, Reason::NotInSpec, "{line}");
+        let args = serde_json::json!({
+            "actor_id": "pc_rowan",
+            "actor_kind": "player",
+            "source": "player",
+            "move": line,
+            "target": {},
+            "args": {}
+        });
+        let tool = spookery::seat::gm_tool(
+            &mut shard,
+            "intent",
+            Some(args.as_object().unwrap().clone()),
+        );
+        assert_eq!(tool.value["code"], "NOT_IN_SPEC", "{line}");
+    }
+    assert!(shard.queued_intents().is_empty());
+    assert_eq!(shard.now().clocks["assassination_debt"].value, 2);
+    assert!(!pack.join("state/proposals/season_advance.yaml").exists());
     let _ = fs::remove_dir_all(&pack);
 }
 

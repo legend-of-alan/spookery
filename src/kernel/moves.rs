@@ -14,7 +14,7 @@ pub struct MoveDef {
 
 /// One action row. `effects` runs on both outcomes. `success` and `failure` run on that outcome.
 /// An empty `effects` list with neither outcome list is a yield.
-/// `audience` may be omitted. `item`, when set, must already be on the acting sheet.
+/// A row's `audience` is required. `item`, when set, must already be on the acting sheet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionRow {
     pub token: MoveToken,
@@ -175,6 +175,16 @@ pub fn needs_roll(canon: &Canon, move_name: &str) -> bool {
         .is_some_and(|def| def.check.is_some())
 }
 
+/// Difficulty on a row. A move without a row uses 0.
+pub fn row_difficulty(canon: &Canon, move_name: &str) -> i64 {
+    canon
+        .moves
+        .get(move_name)
+        .and_then(|def| def.row.as_ref())
+        .map(|row| row.difficulty)
+        .unwrap_or(0)
+}
+
 /// Check id named by a row. A move without `effects` is not a row.
 pub fn row_check(canon: &Canon, move_name: &str) -> Option<String> {
     let def = canon.moves.get(move_name)?;
@@ -191,8 +201,6 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if entry.item.as_ref().is_some_and(|id| id.is_empty()) {
         return Err(Reason::Schema);
     }
-    // Omitted audience stays legal so packs/oneshot-docks still loads.
-    let audience = audience_of(entry.audience.as_deref())?;
     let started = entry.token.is_some()
         || entry.on.is_some()
         || entry.effects.is_some()
@@ -213,9 +221,12 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if forbids_row(&entry.name) {
         return Err(Reason::Schema);
     }
-    if entry.name == "attack" && entry.effects.is_some() {
-        return Err(Reason::Schema);
-    }
+    let audience = match entry.audience.as_deref() {
+        Some("player") => Audience::Player,
+        Some("agenda") => Audience::Agenda,
+        Some("system") => Audience::System,
+        _ => return Err(Reason::Schema),
+    };
     // `effects: []` with neither outcome list is a yield. An empty success or failure list is not.
     let yield_row = entry.effects.as_ref().is_some_and(Vec::is_empty)
         && entry.success.is_none()
@@ -254,9 +265,6 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if !yield_row && effects.is_empty() && success.is_empty() && failure.is_empty() {
         return Err(Reason::Schema);
     }
-    if entry.name == "travel" && !location_shape(token, on, &effects, &success, &failure) {
-        return Err(Reason::Schema);
-    }
     Ok((
         entry.name,
         MoveDef {
@@ -268,21 +276,11 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
                 success,
                 failure,
                 item: entry.item,
-                audience,
+                audience: Some(audience),
                 difficulty: entry.difficulty.unwrap_or(0),
             }),
         },
     ))
-}
-
-fn audience_of(word: Option<&str>) -> Result<Option<Audience>, Reason> {
-    match word {
-        None => Ok(None),
-        Some("player") => Ok(Some(Audience::Player)),
-        Some("agenda") => Ok(Some(Audience::Agenda)),
-        Some("system") => Ok(Some(Audience::System)),
-        Some(_) => Err(Reason::Schema),
-    }
 }
 
 fn templates_for(
@@ -586,26 +584,8 @@ fn number_field(delta: Option<&DeltaField>) -> Result<Option<i64>, Reason> {
     }
 }
 
-/// Travel stays a non-empty location list. An empty list is not a travel yield.
-fn location_shape(
-    token: MoveToken,
-    on: MoveOn,
-    effects: &[RowEffect],
-    success: &[RowEffect],
-    failure: &[RowEffect],
-) -> bool {
-    token == MoveToken::Place
-        && on == MoveOn::Speaker
-        && success.is_empty()
-        && failure.is_empty()
-        && !effects.is_empty()
-        && effects
-            .iter()
-            .all(|effect| matches!(effect, RowEffect::Location))
-}
-
 fn forbids_row(name: &str) -> bool {
-    matches!(name, "say" | "talk" | "wait" | "attempt" | "give" | "take")
+    matches!(name, "say" | "talk")
 }
 
 #[derive(Deserialize)]
@@ -702,16 +682,34 @@ mod tests {
     }
 
     #[test]
-    fn docks_pack_omits_audience_and_still_loads() {
+    fn docks_pack_rows_name_an_audience() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let text = fs::read_to_string(root.join("rules/moves.yaml")).unwrap();
         let moves = load_moves(&text).unwrap();
         let travel = moves.get("travel").unwrap().row.as_ref().unwrap();
-        assert!(travel.audience.is_none());
+        assert_eq!(travel.audience, Some(Audience::Player));
         assert_eq!(travel.difficulty, 0);
         assert_eq!(travel.effects, vec![RowEffect::Location]);
-        assert!(moves.get("wait").unwrap().row.is_none());
-        assert!(moves.get("talk").unwrap().row.is_none());
+        let wait = moves.get("wait").unwrap().row.as_ref().unwrap();
+        assert_eq!(wait.audience, Some(Audience::Player));
+        assert!(wait.effects.is_empty());
+        let grit = moves.get("grit").unwrap().row.as_ref().unwrap();
+        assert_eq!(grit.audience, Some(Audience::Player));
+        assert_eq!(moves.get("grit").unwrap().check.as_deref(), Some("grit"));
+        assert_eq!(
+            moves.get("advance_clock").unwrap().row.as_ref().unwrap().audience,
+            Some(Audience::Agenda)
+        );
+        assert_eq!(
+            moves.get("season_advance").unwrap().row.as_ref().unwrap().audience,
+            Some(Audience::System)
+        );
+        assert!(moves.get("talk").is_none());
+        assert!(moves.get("attempt").is_none());
+        assert!(moves.get("attack").is_none());
+        assert!(moves.get("give").is_none());
+        assert!(moves.get("take").is_none());
+        assert!(moves.get("file_proposal").is_none());
         crate::canon::load_canon(&root).unwrap();
     }
 
@@ -777,12 +775,14 @@ moves:
         key: rest
         delta: schedule_rest
   - name: step
+    audience: player
     token: place
     on: speaker
     effects:
       - class: location
         to: token
   - name: mark
+    audience: player
     token: actor
     on: named
     success:
@@ -828,7 +828,7 @@ moves:
             }
         );
         let step = moves.get("step").unwrap().row.as_ref().unwrap();
-        assert!(step.audience.is_none());
+        assert_eq!(step.audience, Some(Audience::Player));
         assert_eq!(step.effects, vec![RowEffect::Location]);
         let mark = moves.get("mark").unwrap().row.as_ref().unwrap();
         assert!(mark.effects.is_empty());

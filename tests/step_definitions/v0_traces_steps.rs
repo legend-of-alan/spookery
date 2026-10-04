@@ -325,6 +325,11 @@ tick:
       - key: k4
         delta: 1
     resources: []
+  agenda:
+    - row: work
+      pause: subsistence_clocks
+      schedule: here
+      activity: work
 ---
 {id}
 "

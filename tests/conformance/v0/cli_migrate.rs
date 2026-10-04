@@ -4,7 +4,10 @@ use std::process::Command;
 
 use super::support::temp_pack;
 
-const PACK_REV: &str = "blake2s:4fb2923546946116df5dec49198a50765588ac57b593f22b0cd266823c08710a";
+fn docks_rev() -> String {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
+    spookery_kernel::canon::pack_rev(&root).unwrap_or_else(|err| panic!("pack_rev: {err}"))
+}
 
 fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut out = Vec::new();
@@ -67,7 +70,7 @@ fn v0_cli_migrate_bumps_state_rev_and_appends_evidence() {
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
-    assert_eq!(now.pack_rev, PACK_REV);
+    assert_eq!(now.pack_rev, docks_rev());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(
         now.places
@@ -85,8 +88,8 @@ fn v0_cli_migrate_bumps_state_rev_and_appends_evidence() {
         studio,
         format!(
             "{}{}",
-            evidence(PACK_REV, PACK_REV, 0, 1),
-            evidence(PACK_REV, PACK_REV, 1, 2)
+            evidence(&docks_rev(), &docks_rev(), 0, 1),
+            evidence(&docks_rev(), &docks_rev(), 1, 2)
         )
     );
     let _ = fs::remove_dir_all(&pack);
@@ -123,7 +126,7 @@ fn v0_cli_migrate_keeps_a_hand_edit_and_rewrites_pack_rev() {
         String::from_utf8_lossy(&output.stderr)
     );
     let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
-    assert_ne!(rev, PACK_REV);
+    assert_ne!(rev, docks_rev());
     let shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let now = shard.now();
     assert_eq!(now.pack_rev, rev);
@@ -134,7 +137,7 @@ fn v0_cli_migrate_keeps_a_hand_edit_and_rewrites_pack_rev() {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert!(!pack.join("state/log/tick-0001.jsonl").exists());
     let studio = fs::read_to_string(pack.join("state/log/studio.jsonl")).unwrap();
-    assert_eq!(studio, evidence(PACK_REV, &rev, 0, 1));
+    assert_eq!(studio, evidence(&docks_rev(), &rev, 0, 1));
     let _ = fs::remove_dir_all(&pack);
 }
 

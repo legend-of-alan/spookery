@@ -1,15 +1,16 @@
+pub mod agenda;
 pub mod apply;
 pub mod canon;
 pub mod check;
 pub mod codec;
 pub mod commit;
-pub mod derive;
 pub mod digest;
 pub mod effect;
 pub mod eligibility;
 pub mod error;
 pub mod expand;
 pub mod firewall;
+pub mod ids;
 pub mod inventory;
 pub mod key;
 pub mod limits;

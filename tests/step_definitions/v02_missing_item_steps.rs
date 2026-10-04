@@ -52,6 +52,7 @@ flags: []
 ";
 
 const ITEM_ROWS: &str = "  - name: mark
+    audience: player
     token: actor
     on: named
     check: grit
@@ -65,6 +66,7 @@ const ITEM_ROWS: &str = "  - name: mark
         key: missed
         value: true
   - name: defend
+    audience: player
     token: none
     on: speaker
     check: grit
@@ -162,29 +164,33 @@ fn assert_no_derived_row(tick: &Value, moves: &[&str]) {
         let actor = sample["actor_id"].as_str().unwrap();
         let move_name = sample["move"].as_str().unwrap();
         let expect =
-            spookery_kernel::derive::kernel_intent_id("docks-001", tick_index, actor, move_name);
+            spookery_kernel::ids::kernel_intent_id("docks-001", tick_index, actor, move_name);
         assert_eq!(sample["id"].as_str().unwrap(), expect, "{sample}");
     }
     for actor in ["mira", "bram", "aldric", "pc_rowan"] {
         for move_name in moves {
-            let id = spookery_kernel::derive::kernel_intent_id(
+            let id = spookery_kernel::ids::kernel_intent_id(
                 "docks-001",
                 tick_index,
                 actor,
                 move_name,
             );
             assert!(
-                intents.iter().all(|intent| intent["id"] != id),
+                intents.iter().all(|intent| {
+                    intent["id"] != id || intent["source"] == "player"
+                }),
                 "{actor} derived {move_name}"
             );
-            assert!(
-                tick["rejected"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|item| item["id"] != id),
-                "{actor} rejected derived {move_name}"
-            );
+            if actor != "pc_rowan" {
+                assert!(
+                    tick["rejected"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|item| item["id"] != id),
+                    "{actor} rejected derived {move_name}"
+                );
+            }
         }
     }
     assert!(intents.iter().all(|intent| {
@@ -551,13 +557,13 @@ fn listen(w: &mut World, with_gm: bool) {
 
 #[given(expr = "an item moves rewrite labeled {string} with an empty item id")]
 fn item_empty_id(w: &mut World, label: String) {
-    let row = "  - name: mark\n    token: actor\n    on: named\n    item: \"\"\n    success:\n      - class: flag\n        key: marked\n        value: true\n";
+    let row = "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: \"\"\n    success:\n      - class: flag\n        key: marked\n        value: true\n";
     w.pack = Some(reject_item_moves(&label, row));
 }
 
 #[given(expr = "an item moves rewrite labeled {string} with an unknown gear key")]
 fn item_unknown_gear(w: &mut World, label: String) {
-    let row = "  - name: mark\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n";
+    let row = "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n";
     w.pack = Some(reject_item_moves(&label, row));
 }
 

@@ -72,6 +72,11 @@ tick:
       end: 24
       place: yard
       activity: work
+  agenda:
+    - row: work
+      pause: subsistence_clocks
+      schedule: here
+      activity: work
 ---
 {id}
 "

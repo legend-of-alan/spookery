@@ -1500,8 +1500,8 @@ fn check_pack(label: &str, grit: i64) -> PathBuf {
     let moves = pack.join("rules/moves.yaml");
     let text = fs::read_to_string(&moves).unwrap();
     let next = text.replacen(
-        "  - name: mark\n    token: actor\n    on: named\n    effects:\n",
-        "  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n",
+        "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n",
+        "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    effects:\n",
         1,
     );
     assert_ne!(next, text, "mark row was not given a check");
@@ -1533,6 +1533,7 @@ fn action_pack(label: &str) -> PathBuf {
     let mut text = fs::read_to_string(&moves).unwrap();
     text.push_str(
         "  - name: mark
+    audience: player
     token: actor
     on: named
     effects:
@@ -1540,6 +1541,7 @@ fn action_pack(label: &str) -> PathBuf {
         key: marked
         value: true
   - name: wave
+    audience: player
     token: none
     on: speaker
     effects:
@@ -1578,29 +1580,33 @@ fn assert_no_derived_row(tick: &Value, moves: &[&str]) {
         let actor = sample["actor_id"].as_str().unwrap();
         let move_name = sample["move"].as_str().unwrap();
         let expect =
-            spookery_kernel::derive::kernel_intent_id("docks-001", tick_index, actor, move_name);
+            spookery_kernel::ids::kernel_intent_id("docks-001", tick_index, actor, move_name);
         assert_eq!(sample["id"].as_str().unwrap(), expect, "{sample}");
     }
     for actor in ["mira", "bram", "aldric", "pc_rowan"] {
         for move_name in moves {
-            let id = spookery_kernel::derive::kernel_intent_id(
+            let id = spookery_kernel::ids::kernel_intent_id(
                 "docks-001",
                 tick_index,
                 actor,
                 move_name,
             );
             assert!(
-                intents.iter().all(|intent| intent["id"] != id),
+                intents.iter().all(|intent| {
+                    intent["id"] != id || intent["source"] == "player"
+                }),
                 "{actor} derived {move_name}"
             );
-            assert!(
-                tick["rejected"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|item| item["id"] != id),
-                "{actor} rejected derived {move_name}"
-            );
+            if actor != "pc_rowan" {
+                assert!(
+                    tick["rejected"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|item| item["id"] != id),
+                    "{actor} rejected derived {move_name}"
+                );
+            }
         }
     }
     assert!(intents.iter().all(|intent| {
@@ -1609,6 +1615,7 @@ fn assert_no_derived_row(tick: &Value, moves: &[&str]) {
 }
 
 const MARK_ROW: &str = "  - name: mark
+    audience: player
     token: actor
     on: named
     effects:
@@ -1621,76 +1628,62 @@ const MARK_ROW: &str = "  - name: mark
 fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
     reject_moves("p06-location-key", |text| {
         format!(
-            "{text}  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        key: marked\n"
+            "{text}  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        key: marked\n"
         )
     });
     reject_moves("p06-location-value", |text| {
         format!(
-            "{text}  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        value: true\n"
+            "{text}  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        value: true\n"
         )
     });
     reject_moves("p06-location-other", |text| {
         format!(
-            "{text}  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        delta: 1\n"
+            "{text}  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        delta: 1\n"
         )
     });
     reject_moves("p06-place-flag", |text| {
         format!(
-            "{text}  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+            "{text}  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
         )
     });
     reject_moves("p06-place-named", |text| {
         format!(
-            "{text}  - name: step\n    token: place\n    on: named\n    effects:\n      - class: location\n"
+            "{text}  - name: step\n    audience: player\n    token: place\n    on: named\n    effects:\n      - class: location\n"
         )
     });
     reject_moves("p06-actor-location", |text| {
         format!(
-            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: location\n"
+            "{text}  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: location\n"
         )
     });
     reject_moves("p06-none-location", |text| {
         format!(
-            "{text}  - name: wave\n    token: none\n    on: speaker\n    effects:\n      - class: location\n"
+            "{text}  - name: wave\n    audience: player\n    token: none\n    on: speaker\n    effects:\n      - class: location\n"
         )
     });
     reject_moves("p06-actor-speaker", |text| {
         format!(
-            "{text}  - name: mark\n    token: actor\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+            "{text}  - name: mark\n    audience: player\n    token: actor\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
         )
     });
     reject_moves("p06-none-named", |text| {
         format!(
-            "{text}  - name: mark\n    token: none\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
-        )
-    });
-    reject_moves("p06-travel-flag", |text| {
-        text.replacen(
-            "  - name: travel\n    token: place\n    on: speaker\n    effects:\n      - class: location\n",
-            "  - name: travel\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
-            1,
-        )
-    });
-    reject_moves("p06-attack", |text| {
-        text.replacen(
-            "  - name: attack\n",
-            "  - name: attack\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
-            1,
+            "{text}  - name: mark\n    audience: player\n    token: none\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
         )
     });
     reject_moves("p06-busy", |text| {
         format!(
-            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: busy\n        value: true\n"
+            "{text}  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: busy\n        value: true\n"
         )
     });
     reject_moves("p06-missing", |text| {
         format!(
-            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n"
+            "{text}  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n"
         )
     });
     reject_moves("p06-extra", |text| {
         format!(
-            "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n        delta: 1\n"
+            "{text}  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n        delta: 1\n"
         )
     });
     {
@@ -1698,7 +1691,7 @@ fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
         let path = pack.join("rules/moves.yaml");
         let mut text = fs::read_to_string(&path).unwrap();
         text.push_str(
-            "  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
         );
         fs::write(&path, text).unwrap();
         let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
@@ -1723,6 +1716,7 @@ fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
     text.push_str(MARK_ROW);
     text.push_str(
         "  - name: wave
+    audience: player
     token: none
     on: speaker
     effects:
@@ -1762,9 +1756,19 @@ fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
         travel.effects,
         vec![spookery_kernel::moves::RowEffect::Location]
     );
-    assert!(canon.moves.get("work").unwrap().row.is_none());
-    assert!(canon.moves.get("attack").unwrap().row.is_none());
-    assert_eq!(canon.moves.get("attempt").unwrap().check.as_deref(), None);
+    assert_eq!(
+        canon
+            .moves
+            .get("work")
+            .unwrap()
+            .row
+            .as_ref()
+            .unwrap()
+            .audience,
+        Some(spookery_kernel::moves::Audience::Agenda)
+    );
+    assert!(canon.moves.get("attack").is_none());
+    assert!(canon.moves.get("attempt").is_none());
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -1773,7 +1777,7 @@ fn v02_p06_empty_effects_load_as_a_yield() {
     let pack = temp_pack("p06-empty");
     let path = pack.join("rules/moves.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let next = format!("{text}  - name: mark\n    token: actor\n    on: named\n    effects: []\n");
+    let next = format!("{text}  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects: []\n");
     fs::write(&path, next).unwrap();
     let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
     let row = canon.moves.get("mark").unwrap().row.as_ref().unwrap();
@@ -2192,7 +2196,7 @@ fn assert_street_effect(tick: &Value, intent_id: &str) {
 fn assert_no_pc_kernel(tick: &Value) {
     let tick_index = tick["tick_index"].as_u64().unwrap();
     for move_name in ["travel", "work", "rest", "restock", "wait"] {
-        let id = spookery_kernel::derive::kernel_intent_id(
+        let id = spookery_kernel::ids::kernel_intent_id(
             "docks-001",
             tick_index,
             "pc_rowan",
@@ -2203,16 +2207,8 @@ fn assert_no_pc_kernel(tick: &Value) {
                 .as_array()
                 .unwrap()
                 .iter()
-                .all(|intent| intent["id"] != id),
+                .all(|intent| intent["id"] != id || intent["source"] == "player"),
             "derived {move_name}"
-        );
-        assert!(
-            tick["rejected"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .all(|item| item["id"] != id),
-            "rejected derived {move_name}"
         );
     }
     assert!(tick["intents"]
@@ -2227,7 +2223,7 @@ fn player_rejections(tick: &Value) -> Vec<&Value> {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|item| item["id"].as_str().is_some_and(|id| id.contains('-')))
+        .filter(|item| item["id"].as_str().is_some_and(|id| !id.is_empty()))
         .collect()
 }
 
@@ -2581,7 +2577,7 @@ fn assert_attack_resource_row() {
     let pack = temp_pack("p11-attack");
     let path = pack.join("rules/moves.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let next = text.replacen("  - name: attack\n", ATTACK_ROW, 1);
+    let next = format!("{text}{ATTACK_ROW}");
     assert_ne!(next, text, "attack row was not written");
     fs::write(&path, next).unwrap();
     let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
@@ -2723,6 +2719,7 @@ fn outcome_pack(label: &str, grit: i64) -> PathBuf {
 }
 
 const OUTCOME_ROW: &str = "  - name: mark
+    audience: player
     token: actor
     on: named
     check: grit
@@ -2737,6 +2734,7 @@ const OUTCOME_ROW: &str = "  - name: mark
 ";
 
 const ATTACK_ROW: &str = "  - name: attack
+    audience: player
     token: actor
     on: named
     check: grit
@@ -2977,6 +2975,7 @@ fn check_with_stat(checks: &[Value], stat: i64) -> &Value {
 }
 
 const OPPOSE_ROWS: &str = "  - name: mark
+    audience: player
     token: actor
     on: named
     check: grit
@@ -2989,6 +2988,7 @@ const OPPOSE_ROWS: &str = "  - name: mark
         key: missed
         value: true
   - name: defend
+    audience: player
     token: none
     on: speaker
     check: grit
@@ -3027,12 +3027,12 @@ flags: []
 fn v02_p13_a_sheet_that_lacks_the_named_item_queues_nothing() {
     reject_moves("p13-empty-item", |text| {
         format!(
-            "{text}  - name: mark\n    token: actor\n    on: named\n    item: \"\"\n    success:\n      - class: flag\n        key: marked\n        value: true\n"
+            "{text}  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: \"\"\n    success:\n      - class: flag\n        key: marked\n        value: true\n"
         )
     });
     reject_moves("p13-gear", |text| {
         format!(
-            "{text}  - name: mark\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n"
+            "{text}  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n"
         )
     });
     let _lock = lock_port();
@@ -3250,6 +3250,7 @@ fn item_pack(label: &str, held: bool) -> PathBuf {
 }
 
 const ITEM_ROWS: &str = "  - name: mark
+    audience: player
     token: actor
     on: named
     check: grit
@@ -3263,6 +3264,7 @@ const ITEM_ROWS: &str = "  - name: mark
         key: missed
         value: true
   - name: defend
+    audience: player
     token: none
     on: speaker
     check: grit

@@ -10,6 +10,7 @@ use crate::support::temp_pack;
 use crate::World;
 
 const MARK_ROW: &str = "  - name: mark
+    audience: player
     token: actor
     on: named
     effects:
@@ -19,6 +20,7 @@ const MARK_ROW: &str = "  - name: mark
 ";
 
 const WAVE_ROW: &str = "  - name: wave
+    audience: player
     token: none
     on: speaker
     effects:
@@ -38,39 +40,39 @@ fn rewrite(label: &str, text: &str) -> String {
     match label {
         "p06-location-key" => append_row(
             text,
-            "  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        key: marked\n",
+            "  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        key: marked\n",
         ),
         "p06-location-value" => append_row(
             text,
-            "  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        value: true\n",
+            "  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        value: true\n",
         ),
         "p06-location-other" => append_row(
             text,
-            "  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        delta: 1\n",
+            "  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: location\n        delta: 1\n",
         ),
         "p06-place-flag" => append_row(
             text,
-            "  - name: step\n    token: place\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            "  - name: step\n    audience: player\n    token: place\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
         ),
         "p06-place-named" => append_row(
             text,
-            "  - name: step\n    token: place\n    on: named\n    effects:\n      - class: location\n",
+            "  - name: step\n    audience: player\n    token: place\n    on: named\n    effects:\n      - class: location\n",
         ),
         "p06-actor-location" => append_row(
             text,
-            "  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: location\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: location\n",
         ),
         "p06-none-location" => append_row(
             text,
-            "  - name: wave\n    token: none\n    on: speaker\n    effects:\n      - class: location\n",
+            "  - name: wave\n    audience: player\n    token: none\n    on: speaker\n    effects:\n      - class: location\n",
         ),
         "p06-actor-speaker" => append_row(
             text,
-            "  - name: mark\n    token: actor\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: speaker\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
         ),
         "p06-none-named" => append_row(
             text,
-            "  - name: mark\n    token: none\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            "  - name: mark\n    audience: player\n    token: none\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
         ),
         "p06-travel-flag" => text.replacen(
             "  - name: travel\n    token: place\n    on: speaker\n    effects:\n      - class: location\n",
@@ -79,28 +81,28 @@ fn rewrite(label: &str, text: &str) -> String {
         ),
         "p06-attack" => text.replacen(
             "  - name: attack\n",
-            "  - name: attack\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            "  - name: attack\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
             1,
         ),
         "p06-busy" => append_row(
             text,
-            "  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: busy\n        value: true\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: busy\n        value: true\n",
         ),
         "p06-empty" => append_row(
             text,
-            "  - name: mark\n    token: actor\n    on: named\n    effects: []\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects: []\n",
         ),
         "p06-missing" => append_row(
             text,
-            "  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n",
         ),
         "p06-extra" => append_row(
             text,
-            "  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n        delta: 1\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n        delta: 1\n",
         ),
         "p06-check" => append_row(
             text,
-            "  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
         ),
         "p06-ok" => {
             let mut next = append_row(text, MARK_ROW);
@@ -228,6 +230,21 @@ fn move_effects_empty(w: &mut World, name: String) {
 fn move_location(w: &mut World, name: String) {
     let canon = load(w);
     assert_eq!(move_row(&canon, &name).effects, vec![RowEffect::Location]);
+}
+
+#[then(expr = "move {string} audience is agenda")]
+fn move_audience_agenda(w: &mut World, name: String) {
+    let canon = load(w);
+    assert_eq!(
+        move_row(&canon, &name).audience,
+        Some(spookery_kernel::moves::Audience::Agenda)
+    );
+}
+
+#[then(expr = "move {string} is absent")]
+fn move_absent(w: &mut World, name: String) {
+    let canon = load(w);
+    assert!(canon.moves.get(&name).is_none(), "{name}");
 }
 
 #[then(expr = "move {string} has no action row")]

@@ -22,11 +22,14 @@ use spookery_tick::commit_presence;
 
 mod protocol;
 mod speech;
+mod line;
 mod tools;
 mod turn;
 
+pub use tools::{gm_tool, ToolResult};
+
 pub use speech::{player_scrollback, speak};
-pub use turn::{commit_queued, on_scheduled_wake, queue_attempt, queue_wait, turn, Turn};
+pub use turn::{commit_queued, on_scheduled_wake, queue_wait, turn, Turn};
 
 pub enum Error {
     Reason(Reason),

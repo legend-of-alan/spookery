@@ -487,24 +487,20 @@ fn gm_exits_0(w: &mut World) {
 
 #[when(expr = "the round restart player sends wait again")]
 fn player_wait_again(w: &mut World) {
-    let (stdout, before, resumes) = {
+    let stderr = {
         let mut held = live();
         let player = held.player.as_mut().unwrap();
-        let before = text_of(&player.stdout);
-        let resumes = before.matches("\"kind\":\"resume\"").count();
         write_stdin(player, "wait");
-        (std::sync::Arc::clone(&player.stdout), before, resumes)
+        std::sync::Arc::clone(&player.stderr)
     };
-    let finished = wait_count(
-        &stdout,
-        "\"kind\":\"resume\"",
-        resumes + 1,
-        Duration::from_secs(5),
-    );
-    w.scratch.insert(
-        "added_stdout".to_string(),
-        finished[before.len()..].to_string(),
-    );
+    let text = wait_has(&stderr, "SCHEMA", Duration::from_secs(5));
+    w.scratch.insert("player_stderr".to_string(), text);
+}
+
+#[then(expr = "the round restart player stderr is SCHEMA")]
+fn stderr_schema(w: &mut World) {
+    let text = w.scratch.get("player_stderr").unwrap();
+    assert_eq!(text.trim(), "SCHEMA");
 }
 
 #[then(expr = "the round restart player gained a resume")]

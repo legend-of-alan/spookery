@@ -116,29 +116,33 @@ fn assert_no_derived_row(tick: &Value, moves: &[&str]) {
         let actor = sample["actor_id"].as_str().unwrap();
         let move_name = sample["move"].as_str().unwrap();
         let expect =
-            spookery_kernel::derive::kernel_intent_id("docks-001", tick_index, actor, move_name);
+            spookery_kernel::ids::kernel_intent_id("docks-001", tick_index, actor, move_name);
         assert_eq!(sample["id"].as_str().unwrap(), expect, "{sample}");
     }
     for actor in ["mira", "bram", "aldric", "pc_rowan"] {
         for move_name in moves {
-            let id = spookery_kernel::derive::kernel_intent_id(
+            let id = spookery_kernel::ids::kernel_intent_id(
                 "docks-001",
                 tick_index,
                 actor,
                 move_name,
             );
             assert!(
-                intents.iter().all(|intent| intent["id"] != id),
+                intents.iter().all(|intent| {
+                    intent["id"] != id || intent["source"] == "player"
+                }),
                 "{actor} derived {move_name}"
             );
-            assert!(
-                tick["rejected"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .all(|item| item["id"] != id),
-                "{actor} rejected derived {move_name}"
-            );
+            if actor != "pc_rowan" {
+                assert!(
+                    tick["rejected"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .all(|item| item["id"] != id),
+                    "{actor} rejected derived {move_name}"
+                );
+            }
         }
     }
     assert!(intents.iter().all(|intent| {
@@ -178,6 +182,7 @@ fn action_pack(label: &str) -> PathBuf {
     let mut text = fs::read_to_string(&moves).unwrap();
     text.push_str(
         "  - name: mark
+    audience: player
     token: actor
     on: named
     effects:
@@ -185,6 +190,7 @@ fn action_pack(label: &str) -> PathBuf {
         key: marked
         value: true
   - name: wave
+    audience: player
     token: none
     on: speaker
     effects:
@@ -212,8 +218,8 @@ fn check_pack(label: &str, grit: i64) -> PathBuf {
     let moves = pack.join("rules/moves.yaml");
     let text = fs::read_to_string(&moves).unwrap();
     let next = text.replacen(
-        "  - name: mark\n    token: actor\n    on: named\n    effects:\n",
-        "  - name: mark\n    token: actor\n    on: named\n    check: grit\n    effects:\n",
+        "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    effects:\n",
+        "  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    effects:\n",
         1,
     );
     assert_ne!(next, text, "mark row was not given a check");
@@ -249,6 +255,7 @@ fn outcome_pack(label: &str, grit: i64) -> PathBuf {
 }
 
 const OUTCOME_ROW: &str = "  - name: mark
+    audience: player
     token: actor
     on: named
     check: grit
@@ -263,6 +270,7 @@ const OUTCOME_ROW: &str = "  - name: mark
 ";
 
 const ATTACK_ROW: &str = "  - name: attack
+    audience: player
     token: actor
     on: named
     check: grit
@@ -457,7 +465,7 @@ fn lists_attack_row(w: &mut World) {
     let pack = support::temp_pack("p11-attack");
     let path = pack.join("rules/moves.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let next = text.replacen("  - name: attack\n", ATTACK_ROW, 1);
+    let next = format!("{text}{ATTACK_ROW}");
     assert_ne!(next, text, "attack row was not written");
     fs::write(&path, next).unwrap();
     let canon = spookery_kernel::canon::load_canon(&pack).unwrap();

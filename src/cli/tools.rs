@@ -1,5 +1,6 @@
 use serde_json::{Map, Value};
 use spookery_kernel::model::{ActorKind, ActorLive, IntentArgs, Target};
+use spookery_kernel::moves::Audience;
 use spookery_kernel::perceive::perceive_budget;
 use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
@@ -445,11 +446,16 @@ fn queue_tool_intent(
     let actor_id = actor_id.ok_or(Reason::Schema)?;
     let actor_kind = actor_kind.ok_or(Reason::Schema)?;
     let move_name = move_name.ok_or(Reason::Schema)?;
-    if move_name == "attempt" && shard.now().presence.humans == 0 {
-        return Err(Reason::TableEmpty);
-    }
-    if !shard.canon().moves.contains_key(&move_name) {
-        return Err(Reason::UnknownMove);
+    match shard
+        .canon()
+        .moves
+        .get(&move_name)
+        .and_then(|def| def.row.as_ref())
+    {
+        Some(row) if row.audience == Some(Audience::Player) => {}
+        Some(_) => return Err(Reason::NotInSpec),
+        None if shard.canon().moves.contains_key(&move_name) => return Err(Reason::NotInSpec),
+        None => return Err(Reason::UnknownMove),
     }
     match actor_kind {
         ActorKind::Player => {

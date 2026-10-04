@@ -3,6 +3,7 @@ pub mod budget;
 pub mod log;
 pub mod loop_;
 pub mod replay;
+pub mod run;
 pub mod seed;
 
 pub use advance::Catchup;

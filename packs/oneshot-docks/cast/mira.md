@@ -43,5 +43,29 @@ tick:
       place: docks_shop
       fact_ids: []
       text: Back at dusk. Oil on the shelf.
+  agenda:
+    - row: restock
+      pause: subsistence_clocks
+      when_stock: true
+    - row: travel_schedule
+      pause: travel
+      schedule: away
+    - row: work
+      pause: subsistence_clocks
+      schedule: here
+      activity: work
+    - row: rest
+      schedule: here
+      activity: rest
+    - row: drift_relationship
+      pause: relationship_drift
+      when_drift: true
+    - row: spread_rumor
+      when_rumor: true
+    - row: leave_note
+      when_note: true
+    - row: advance_clock
+      pause: named_plot_clocks
+      when_clock: true
 ---
 Mira keeps the shop neat and the tin out of sight.

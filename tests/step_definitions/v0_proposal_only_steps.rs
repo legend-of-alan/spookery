@@ -15,6 +15,25 @@ fn file_idle_delete_place(w: &mut World) {
         String::from_utf8(place_before).unwrap_or_else(|err| panic!("utf-8 place: {err}"));
     w.scratch.insert("place_before".to_string(), place_before);
 
+    let moves = pack.join("rules/moves.yaml");
+    let mut moves_text =
+        fs::read_to_string(&moves).unwrap_or_else(|err| panic!("read moves: {err}"));
+    moves_text.push_str(
+        "\n  - name: file_proposal\n    audience: player\n    token: none\n    on: speaker\n    effects:\n      - class: proposal\n        proposal: delete_docks_shop\n        kind: delete_place\n        target: docks_shop\n        summary: delete place\n",
+    );
+    fs::write(&moves, moves_text).unwrap();
+    let now_path = pack.join("state/now.yaml");
+    let mut stamped = spookery_kernel::codec::load_now(
+        &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
+    )
+    .unwrap_or_else(|err| panic!("load now: {err}"));
+    stamped.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+    fs::write(
+        &now_path,
+        spookery_kernel::codec::emit_now(&stamped).unwrap_or_else(|err| panic!("emit now: {err}")),
+    )
+    .unwrap();
+
     let mut shard =
         spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
     assert_eq!(shard.now().presence.humans, 0, "idle shard");
@@ -27,13 +46,7 @@ fn file_idle_delete_place(w: &mut World) {
         source: Source::Kernel,
         move_name: "file_proposal".to_string(),
         target: Target::Empty,
-        args: IntentArgs {
-            proposal_id: Some("delete_docks_shop".to_string()),
-            kind: Some("delete_place".to_string()),
-            target: Some("docks_shop".to_string()),
-            summary: Some("delete place".to_string()),
-            ..IntentArgs::default()
-        },
+        args: IntentArgs::default(),
         rationale_code: String::new(),
     });
 

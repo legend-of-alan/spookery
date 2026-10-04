@@ -1,5 +1,6 @@
 use spookery_kernel::canon::{Canon, Tier};
 use spookery_kernel::model::{ActorKind, Intent, Now, Target};
+use spookery_kernel::moves::RowEffect;
 
 use crate::seed::shuffle_key;
 
@@ -32,7 +33,7 @@ fn priority_key(
     let pc_clock = if targets_pc_clock(now, intent) { 0 } else { 1 };
     let claimed = if claimed(now, intent) { 0 } else { 1 };
     let tier = if notable(canon, intent) { 0 } else { 1 };
-    let proposal = if intent.move_name == "file_proposal" {
+    let proposal = if row_has_proposal(canon, &intent.move_name) {
         0
     } else {
         1
@@ -70,6 +71,17 @@ fn claimed(now: &Now, intent: &Intent) -> bool {
         .as_ref()
         .is_some_and(|ids| ids.iter().any(|id| present.iter().any(|actor| actor == id)));
     target_hit || message_hit
+}
+
+fn row_has_proposal(canon: &Canon, name: &str) -> bool {
+    let Some(row) = canon.moves.get(name).and_then(|def| def.row.as_ref()) else {
+        return false;
+    };
+    row.effects
+        .iter()
+        .chain(row.success.iter())
+        .chain(row.failure.iter())
+        .any(|effect| matches!(effect, RowEffect::Proposal { .. }))
 }
 
 fn notable(canon: &Canon, intent: &Intent) -> bool {

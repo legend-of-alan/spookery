@@ -5,9 +5,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
 use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::commit::tick_commit;
-use spookery_kernel::derive::{
-    allowed, filter_blocklist, kernel_intents_for_eligible_npcs, season_intent,
-};
+use spookery_kernel::agenda::{allowed, filter_blocklist, kernel_intents_for_eligible_npcs};
 use spookery_kernel::expand::{expand, expand_outcome};
 use spookery_kernel::lock::lock_shard;
 use spookery_kernel::model::{ActorKind, Intent};
@@ -231,11 +229,12 @@ fn stage_tick(
     let mut notices = Vec::new();
     let mut die_cursor = 0usize;
     let mut supplied = BTreeMap::new();
+    let frozen = txn.now().clone();
     for intent in candidates {
         if budget_stop {
             break;
         }
-        let spends_slot = intent.actor_kind == ActorKind::Npc && intent.move_name != "wait";
+        let spends_slot = intent.actor_kind == ActorKind::Npc;
         if spends_slot && npc_slots >= max_npcs {
             rejected.push(Rejected {
                 id: intent.id,
@@ -320,7 +319,9 @@ fn stage_tick(
                 &mut die_cursor,
                 &mut supplied,
             ) {
-                Ok(target) => target,
+                Ok(opposed) => opposed.unwrap_or_else(|| {
+                    spookery_kernel::moves::row_difficulty(txn.canon(), &intent.move_name)
+                }),
                 Err(code) => {
                     reject_check(&mut rejected, &mut notices, &intent, code);
                     continue;
@@ -384,7 +385,7 @@ fn stage_tick(
             }
         }
         let outcome = rolled.as_ref().map(|out| out.success);
-        let expanded = match expand_outcome(txn.canon(), txn.now(), &intent, outcome) {
+        let expanded = match expand_outcome(txn.canon(), &frozen, &intent, outcome) {
             Ok(effects) => effects,
             Err(code) => {
                 rejected.push(Rejected {
@@ -478,8 +479,8 @@ fn stage_tick(
     }
 
     if catchup.skipped > 0 && catchup.last {
-        if let Some(intent) = season_intent(txn.now()) {
-            if seen.insert(intent.id.clone()) {
+        match crate::run::season_advance_intent(txn.canon(), txn.now()) {
+            Ok(Some(intent)) if seen.insert(intent.id.clone()) => {
                 match expand(txn.canon(), txn.now(), &intent) {
                     Ok(effects) => {
                         let mut accepted = 0;
@@ -509,6 +510,11 @@ fn stage_tick(
                     }),
                 }
             }
+            Ok(Some(_)) | Ok(None) => {}
+            Err(code) => rejected.push(Rejected {
+                id: "season_advance".to_string(),
+                reason: code.jsonl_reason().to_string(),
+            }),
         }
     }
 
@@ -541,9 +547,9 @@ fn supplied_target(
     rng: &[u8],
     die_cursor: &mut usize,
     supplied: &mut BTreeMap<String, CheckOut>,
-) -> Result<i64, KernelReason> {
+) -> Result<Option<i64>, KernelReason> {
     let spookery_kernel::model::Target::Actor(named) = &intent.target else {
-        return Ok(0);
+        return Ok(None);
     };
     let Some(opposing) = queued.iter().find(|other| {
         other.id != intent.id
@@ -551,20 +557,20 @@ fn supplied_target(
             && other.source == spookery_kernel::model::Source::Player
             && row_check(canon, &other.move_name).is_some()
     }) else {
-        return Ok(0);
+        return Ok(None);
     };
     if let Some(out) = supplied.get(&opposing.id) {
-        return Ok(out.total);
+        return Ok(Some(out.total));
     }
     let Some(check_id) = row_check(canon, &opposing.move_name) else {
-        return Ok(0);
+        return Ok(None);
     };
     let viewer =
         spookery_kernel::model::ViewerId::from_kind(opposing.actor_kind, &opposing.actor_id)?;
     let out = resolve_check(canon, sheets, &viewer, &check_id, 0, rng, die_cursor)?;
     let total = out.total;
     supplied.insert(opposing.id.clone(), out);
-    Ok(total)
+    Ok(Some(total))
 }
 
 fn reject_check(

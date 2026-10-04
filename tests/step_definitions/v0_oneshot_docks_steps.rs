@@ -11,6 +11,30 @@ fn source_docks(w: &mut World) {
     w.pack = Some(manifest.join("packs/oneshot-docks"));
 }
 
+#[then(expr = "pack_rev equals the now.yaml pack_rev")]
+fn pack_rev_equals_now(w: &mut World) {
+    let root = w.pack.as_ref().unwrap();
+    let rev =
+        spookery_kernel::canon::pack_rev(root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
+    let now_bytes = read_pack_file(w, "state/now.yaml");
+    let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
+    let now =
+        spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));
+    assert_eq!(now.pack_rev, rev);
+    assert!(now.presence.session_ids.is_empty());
+}
+
+#[then(expr = "now state_rev is 0 and world_time is 1080 and Rowan is in docks_shop")]
+fn now_fixture_stays(w: &mut World) {
+    let now_bytes = read_pack_file(w, "state/now.yaml");
+    let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
+    let now =
+        spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));
+    assert_eq!(now.state_rev, 0);
+    assert_eq!(now.world_time, 1080);
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
+}
+
 #[then(expr = "pack_rev is {string}")]
 fn pack_rev_is(w: &mut World, expected: String) {
     let root = w.pack.as_ref().unwrap();

@@ -1,11 +1,15 @@
 use std::fs;
+use std::path::PathBuf;
 
 use cucumber::{given, then, when};
 
 use crate::support::spook;
 use crate::World;
 
-const PACK_REV: &str = "blake2s:4fb2923546946116df5dec49198a50765588ac57b593f22b0cd266823c08710a";
+fn docks_rev() -> String {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
+    spookery_kernel::canon::pack_rev(&root).unwrap()
+}
 
 fn evidence(before_pack: &str, after_pack: &str, before_rev: u64, after_rev: u64) -> String {
     format!(
@@ -101,13 +105,13 @@ fn migrate_schema(w: &mut World) {
 
 #[then(expr = "now pack_rev is the docks pack rev")]
 fn pack_rev_is_docks(w: &mut World) {
-    assert_eq!(open(w).now().pack_rev, PACK_REV);
+    assert_eq!(open(w).now().pack_rev, docks_rev());
 }
 
 #[then(expr = "the canon pack_rev differs from the docks pack rev")]
 fn canon_differs(w: &mut World) {
     let rev = spookery_kernel::canon::pack_rev(w.pack.as_ref().unwrap()).unwrap();
-    assert_ne!(rev, PACK_REV);
+    assert_ne!(rev, docks_rev());
 }
 
 #[then(expr = "now pack_rev equals the canon pack_rev")]
@@ -149,8 +153,8 @@ fn studio_two(w: &mut World) {
         studio,
         format!(
             "{}{}",
-            evidence(PACK_REV, PACK_REV, 0, 1),
-            evidence(PACK_REV, PACK_REV, 1, 2)
+            evidence(&docks_rev(), &docks_rev(), 0, 1),
+            evidence(&docks_rev(), &docks_rev(), 1, 2)
         )
     );
 }
@@ -160,5 +164,5 @@ fn studio_hand(w: &mut World) {
     let pack = w.pack.as_ref().unwrap();
     let rev = spookery_kernel::canon::pack_rev(pack).unwrap();
     let studio = fs::read_to_string(pack.join("state/log/studio.jsonl")).unwrap();
-    assert_eq!(studio, evidence(PACK_REV, &rev, 0, 1));
+    assert_eq!(studio, evidence(&docks_rev(), &rev, 0, 1));
 }

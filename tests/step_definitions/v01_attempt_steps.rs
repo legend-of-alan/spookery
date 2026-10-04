@@ -692,7 +692,7 @@ fn seat_rowan(w: &mut World) {
     put_bytes(w, "attempt-seated", &seated);
 }
 
-#[then(expr = "attempt and attempt grit are SCHEMA and write nothing")]
+#[then(expr = "attempt and attempt grit are NOT_IN_SPEC and write nothing")]
 fn schema_lines(w: &mut World) {
     let seated = scratch_bytes(w, "attempt-seated");
     let pack = pack_of(w).to_path_buf();
@@ -700,7 +700,7 @@ fn schema_lines(w: &mut World) {
     let shard = slot.shard.as_mut().unwrap();
     for line in ["attempt", "attempt grit"] {
         let err = must_err(spookery::seat::turn(shard, "pc_rowan", line, false));
-        assert_eq!(err, Reason::Schema, "{line}");
+        assert_eq!(err, Reason::NotInSpec, "{line}");
         assert!(shard.queued_intents().is_empty(), "{line}");
         assert_eq!(
             fs::read(pack.join("state/now.yaml")).unwrap(),
@@ -723,17 +723,18 @@ fn in_memory_shadow(_w: &mut World) {
     slot.reason = Some(bad);
 }
 
-#[then(expr = "expand of move attempt is empty")]
+#[then(expr = "expand of move attempt is UNKNOWN_MOVE")]
 fn expand_attempt(_w: &mut World) {
     let attempt = intent("attempt");
     let slot = hold();
     let shard = slot.shard.as_ref().unwrap();
-    assert!(expand(shard.canon(), shard.now(), &attempt)
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        expand(shard.canon(), shard.now(), &attempt).unwrap_err(),
+        Reason::UnknownMove
+    );
 }
 
-#[then(expr = "expand of moves attack, give, and take is NOT_IN_SPEC")]
+#[then(expr = "expand of moves attack, give, and take is UNKNOWN_MOVE")]
 fn expand_others(_w: &mut World) {
     let attempt = intent("attempt");
     let slot = hold();
@@ -743,7 +744,7 @@ fn expand_others(_w: &mut World) {
         other.move_name = name.to_string();
         assert_eq!(
             expand(shard.canon(), shard.now(), &other).unwrap_err(),
-            Reason::NotInSpec,
+            Reason::UnknownMove,
             "{name}"
         );
     }
@@ -764,28 +765,34 @@ fn player_connects(w: &mut World) {
     slot.player = Some(player);
 }
 
-#[when(expr = "the attempt player sends attempt grit 3 with no GM")]
+#[when(expr = "the attempt player sends grit with no GM")]
 fn send_grit_live(_w: &mut World) {
-    let text = send_and_capture("attempt grit 3", "{\"kind\":\"check\",\"success\":true}");
+    let text = send_and_capture("grit", "{\"kind\":\"check\",\"success\":true}");
     remember_stdout(text, false);
 }
 
-#[when(expr = "the attempt player sends attempt grit 14")]
+#[when(expr = "the attempt player sends grit again")]
 fn send_grit_fail(_w: &mut World) {
-    let text = send_and_capture("attempt grit 14", "{\"kind\":\"check\",\"success\":false}");
+    let text = send_and_count("grit", "{\"kind\":\"check\",\"success\":true}", 2);
     remember_stdout(text, false);
 }
 
-#[when(expr = "the attempt player sends attempt grit 3 while a GM is seated")]
+#[when(expr = "the attempt player sends grit while a GM is seated")]
 fn send_grit_queued(_w: &mut World) {
-    let text = send_and_capture("attempt grit 3", "\"kind\":\"queued\"");
+    let text = send_and_capture("grit", "\"kind\":\"queued\"");
     remember_stdout(text, true);
 }
 
 #[when(expr = "the attempt player sends attempt nope 5")]
 fn send_nope(_w: &mut World) {
-    let text = send_and_capture("attempt nope 5", "\"kind\":\"queued\"");
-    remember_stdout(text, false);
+    let stderr = {
+        let mut slot = hold();
+        let player = slot.player.as_mut().unwrap();
+        support::write_stdin(player, "attempt nope 5");
+        player.stderr.clone()
+    };
+    let text = support::wait_has(&stderr, "NOT_IN_SPEC", Duration::from_secs(5));
+    hold().captured_stderr = text;
 }
 
 #[when(expr = "the attempt player sends a second queued attempt grit 3")]
@@ -886,18 +893,17 @@ fn commit_keys(w: &mut World) {
     assert_commit_keys(pack_of(w));
 }
 
-#[then(expr = "the attempt intent args are check grit and target 3")]
+#[then(expr = "the attempt intent move is grit")]
 fn attempt_args(w: &mut World) {
     let tick = tick_value(pack_of(w));
-    let attempt = tick["intents"]
+    let grit = tick["intents"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|intent| intent["move"] == "attempt")
+        .find(|intent| intent["move"] == "grit")
         .unwrap();
-    assert_eq!(attempt["args"]["check"], "grit");
-    assert_eq!(attempt["args"]["target"], 3);
-    assert!(attempt["args"]["target"].is_i64());
+    assert!(grit["args"]["check"].is_null());
+    assert!(grit["args"]["target"].is_null());
 }
 
 #[then(expr = "the attempt tool_trace contains resolve_check")]
@@ -940,14 +946,14 @@ fn twin_moves(w: &mut World) {
     );
 }
 
-#[then(expr = "the player checks are success true then success false")]
+#[then(expr = "the player checks are success true then success true")]
 fn both_checks(_w: &mut World) {
     let stdout = hold().captured_stdout.clone();
     assert_eq!(
         player_checks(&stdout),
         vec![
             "{\"kind\":\"check\",\"success\":true}".to_string(),
-            "{\"kind\":\"check\",\"success\":false}".to_string(),
+            "{\"kind\":\"check\",\"success\":true}".to_string(),
         ]
     );
 }
@@ -1011,10 +1017,10 @@ fn event_order(_w: &mut World) {
     assert_event_order(&event);
 }
 
-#[then(expr = "the GM roll has two faces stat 1 and target 3")]
+#[then(expr = "the GM roll has two faces stat 1 and target 0")]
 fn roll_shape(_w: &mut World) {
     let params = gm_params();
-    assert_roll(&params, 3);
+    assert_roll(&params, 0);
 }
 
 #[then(expr = "the player check success matches the GM roll")]

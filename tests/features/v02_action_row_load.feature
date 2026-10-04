@@ -7,7 +7,7 @@ Feature: Action row load
   A missing key or an extra key is SCHEMA.
   An empty effects list with no success list and no failure list is a yield.
   An empty success list or an empty failure list is SCHEMA.
-  attack with an effects list is SCHEMA.
+  attack is not a reserved name.
   A check key loads on the row.
   Travel keeps token place, on speaker, and a location effect.
 
@@ -29,10 +29,6 @@ Feature: Action row load
     When moves.yaml is rewritten as "p06-actor-speaker"
     Then pack load fails with SCHEMA
     When moves.yaml is rewritten as "p06-none-named"
-    Then pack load fails with SCHEMA
-    When moves.yaml is rewritten as "p06-travel-flag"
-    Then pack load fails with SCHEMA
-    When moves.yaml is rewritten as "p06-attack"
     Then pack load fails with SCHEMA
     When moves.yaml is rewritten as "p06-busy"
     Then pack load fails with SCHEMA
@@ -60,9 +56,9 @@ Feature: Action row load
     And move "travel" token is place
     And move "travel" on is speaker
     And move "travel" effects are location
-    And move "work" has no action row
-    And move "attack" has no action row
-    And move "attempt" check is absent
+    And move "work" audience is agenda
+    And move "attack" is absent
+    And move "attempt" is absent
 
   Scenario: An empty effects list with no outcome lists loads as a yield
     When moves.yaml is rewritten as "p06-empty"

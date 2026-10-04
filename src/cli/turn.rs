@@ -1,14 +1,16 @@
-use std::collections::BTreeMap;
-
 use spookery_kernel::check::CheckNotice;
+use spookery_kernel::ids::player_intent_id;
 use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, Source, Target};
-use spookery_kernel::moves::{ActionRow, MoveDef, MoveToken};
+use spookery_kernel::moves::{ActionRow, Audience, MoveToken};
 use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
 use spookery_tick::commit_turn_at;
 
+use super::line::{self, canonical_line};
 use super::protocol;
 use crate::schedule::{self, seconds_since, wall_now};
+
+pub use line::{classify_player_line, PlayerLine};
 
 pub struct QueuedNote {
     pub id: String,
@@ -24,92 +26,33 @@ pub enum Turn {
     },
 }
 
-/// `say` and `talk` are speech. `wait`, `attempt`, `travel`, and a pack row take the queue.
-/// Any other verb is `NOT_IN_SPEC` here. Speech's `NOT_IN_SPEC` is not the signal.
-pub enum PlayerLine {
-    Speech,
-    Turn,
-}
-
-pub fn classify_player_line(
-    line: &str,
-    seated: &str,
-    moves: &BTreeMap<String, MoveDef>,
-) -> Result<PlayerLine, Reason> {
-    let (verb, _) = verb_line(line, seated)?;
-    if verb.is_empty() {
-        return Err(Reason::Schema);
-    }
-    match verb {
-        "say" | "talk" => Ok(PlayerLine::Speech),
-        "wait" | "attempt" | "travel" => Ok(PlayerLine::Turn),
-        other if moves.get(other).is_some_and(|def| def.row.is_some()) => Ok(PlayerLine::Turn),
-        _ => Err(Reason::NotInSpec),
-    }
-}
-
 pub fn turn(
     shard: &mut Shard,
     actor_id: &str,
     line: &str,
     gm_seated: bool,
 ) -> Result<Turn, Reason> {
-    let (verb, rest) = verb_line(line, actor_id)?;
-    match verb {
-        "attempt" => {
-            let note = queue_attempt(shard, actor_id, rest)?;
-            if gm_seated {
-                return Ok(Turn::Queued(note));
-            }
-            let advanced = commit_queued(shard)?;
-            Ok(Turn::Committed {
-                advanced,
-                notices: shard.take_rolls(),
-            })
-        }
-        "wait" if rest.is_empty() => {
-            let note = queue_wait(shard, actor_id)?;
-            if gm_seated {
-                return Ok(Turn::Queued(note));
-            }
-            let advanced = commit_queued(shard)?;
-            Ok(Turn::Committed {
-                advanced,
-                notices: shard.take_rolls(),
-            })
-        }
-        "wait" => Err(Reason::Schema),
-        "travel" => {
-            let note = queue_travel(shard, actor_id, rest)?;
-            if gm_seated {
-                return Ok(Turn::Queued(note));
-            }
-            let advanced = commit_queued(shard)?;
-            Ok(Turn::Committed {
-                advanced,
-                notices: shard.take_rolls(),
-            })
-        }
-        other => {
-            let Some(row) = shard
-                .canon()
-                .moves
-                .get(other)
-                .and_then(|def| def.row.clone())
-            else {
-                return Err(Reason::NotInSpec);
-            };
-            let note = queue_row(shard, actor_id, other, rest, &row)?;
-            if gm_seated {
-                return Ok(Turn::Queued(note));
-            }
-            let advanced = commit_queued(shard)?;
-            Ok(Turn::Committed {
-                advanced,
-                notices: shard.take_rolls(),
-            })
-        }
+    let (verb, rest) = line::verb_line(line, actor_id)?;
+    let Some(row) = shard
+        .canon()
+        .moves
+        .get(verb)
+        .and_then(|def| def.row.clone())
+    else {
+        return Err(Reason::NotInSpec);
+    };
+    if row.audience != Some(Audience::Player) {
+        return Err(Reason::NotInSpec);
     }
+    let note = queue_row(shard, actor_id, verb, rest, &row)?;
+    if gm_seated {
+        return Ok(Turn::Queued(note));
+    }
+    let advanced = commit_queued(shard)?;
+    Ok(Turn::Committed {
+        advanced,
+        notices: shard.take_rolls(),
+    })
 }
 
 /// Seat check and interval check. A tick that runs borrows this `Shard`.
@@ -129,55 +72,6 @@ pub fn on_scheduled_wake(
     let before = shard.now().world_time;
     schedule::wake_shard(shard)?;
     Ok(shard.now().world_time != before)
-}
-
-pub fn queue_attempt(shard: &mut Shard, actor_id: &str, rest: &str) -> Result<QueuedNote, Reason> {
-    if shard.now().presence.humans == 0 {
-        return Err(Reason::TableEmpty);
-    }
-    if !shard
-        .now()
-        .actors
-        .get(actor_id)
-        .is_some_and(ActorLive::is_pc)
-    {
-        return Err(Reason::Schema);
-    }
-    let (check, rest) = split_token(rest);
-    if check.is_empty() || rest.is_empty() {
-        return Err(Reason::Schema);
-    }
-    let (target_token, extra) = split_token(rest);
-    if target_token.is_empty() {
-        return Err(Reason::Schema);
-    }
-    if !extra.is_empty() {
-        return Err(Reason::NotInSpec);
-    }
-    let Some(target) = integer_token(target_token) else {
-        return Err(Reason::NotInSpec);
-    };
-    let note = QueuedNote {
-        id: mint_intent_id()?,
-        actor_id: actor_id.to_string(),
-        move_name: "attempt".to_string(),
-    };
-    push_intent(
-        shard,
-        note.id.clone(),
-        actor_id,
-        ActorKind::Player,
-        "attempt",
-        Target::Empty,
-        IntentArgs {
-            check: Some(check.to_string()),
-            check_target: Some(target),
-            ..IntentArgs::default()
-        },
-        String::new(),
-        None,
-    )?;
-    Ok(note)
 }
 
 pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
@@ -206,14 +100,6 @@ pub fn gm_check_frames(notices: &[CheckNotice]) -> Vec<Vec<u8>> {
             CheckNotice::Refused { .. } => None,
         })
         .collect()
-}
-
-fn integer_token(token: &str) -> Option<i64> {
-    let digits = token.strip_prefix('-').unwrap_or(token);
-    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    token.parse().ok()
 }
 
 /// A named item must already be on the acting sheet. The line is refused before queue.
@@ -256,14 +142,14 @@ fn queue_row(
             Target::Empty
         }
         MoveToken::Actor => {
-            let (named, extra) = split_token(rest);
+            let (named, extra) = line::split_token(rest);
             if named.is_empty() || !extra.is_empty() {
                 return Err(Reason::Schema);
             }
             Target::Actor(named.to_string())
         }
         MoveToken::Place => {
-            let (place, extra) = split_token(rest);
+            let (place, extra) = line::split_token(rest);
             if place.is_empty() || !extra.is_empty() {
                 return Err(Reason::Schema);
             }
@@ -271,8 +157,13 @@ fn queue_row(
         }
     };
     require_item(shard, actor_id, row)?;
+    let token = match &target {
+        Target::Empty => "",
+        Target::Actor(id) | Target::Place(id) => id.as_str(),
+        Target::Clock(_) | Target::Rumor(_) => return Err(Reason::Schema),
+    };
     let note = QueuedNote {
-        id: mint_intent_id()?,
+        id: player_line_id(shard, actor_id, &canonical_line(verb, token))?,
         actor_id: actor_id.to_string(),
         move_name: verb.to_string(),
     };
@@ -290,73 +181,32 @@ fn queue_row(
     Ok(note)
 }
 
-/// One place id. A place the pack does not have is that tick's kernel refusal.
-fn queue_travel(shard: &mut Shard, actor_id: &str, rest: &str) -> Result<QueuedNote, Reason> {
-    if !shard
-        .now()
-        .actors
-        .get(actor_id)
-        .is_some_and(ActorLive::is_pc)
-    {
-        return Err(Reason::Schema);
-    }
-    let (place, extra) = split_token(rest);
-    if place.is_empty() || !extra.is_empty() {
-        return Err(Reason::Schema);
-    }
-    if let Some(row) = shard
+pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Reason> {
+    let Some(row) = shard
         .canon()
         .moves
-        .get("travel")
-        .and_then(|def| def.row.as_ref())
-    {
-        require_item(shard, actor_id, row)?;
-    }
-    let note = QueuedNote {
-        id: mint_intent_id()?,
-        actor_id: actor_id.to_string(),
-        move_name: "travel".to_string(),
+        .get("wait")
+        .and_then(|def| def.row.clone())
+    else {
+        return Err(Reason::NotInSpec);
     };
-    push_intent(
-        shard,
-        note.id.clone(),
-        actor_id,
-        ActorKind::Player,
-        "travel",
-        Target::Place(place.to_string()),
-        IntentArgs::default(),
-        String::new(),
-        None,
-    )?;
-    Ok(note)
+    if row.audience != Some(Audience::Player) {
+        return Err(Reason::NotInSpec);
+    }
+    queue_row(shard, actor_id, "wait", "", &row)
 }
 
-pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Reason> {
-    if !shard
+fn player_line_id(shard: &Shard, actor_id: &str, canonical: &str) -> Result<String, Reason> {
+    let tick = shard
         .now()
-        .actors
-        .get(actor_id)
-        .is_some_and(ActorLive::is_pc)
-    {
+        .tick_index
+        .checked_add(1)
+        .ok_or(Reason::Schema)?;
+    let id = player_intent_id(&shard.now().shard_id, tick, actor_id, canonical);
+    if shard.queued_intents().iter().any(|intent| intent.id == id) {
         return Err(Reason::Schema);
     }
-    let note = QueuedNote {
-        id: mint_intent_id()?,
-        actor_id: actor_id.to_string(),
-        move_name: "wait".to_string(),
-    };
-    push_intent(
-        shard,
-        note.id.clone(),
-        actor_id,
-        ActorKind::Player,
-        "wait",
-        Target::Empty,
-        IntentArgs::default(),
-        String::new(),
-        None,
-    )?;
-    Ok(note)
+    Ok(id)
 }
 
 /// An empty round does not enter `run_tick` and does not advance `world_time`.
@@ -411,27 +261,6 @@ pub(super) fn push_intent(
         rationale_code,
     });
     Ok(())
-}
-
-fn verb_line<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
-    if line.is_empty() {
-        return Err(Reason::Schema);
-    }
-    let (first, rest) = split_token(line);
-    if let Some(id) = first.strip_prefix("player:") {
-        if id.is_empty() || id != seated || rest.is_empty() {
-            return Err(Reason::Schema);
-        }
-        return Ok(split_token(rest));
-    }
-    Ok((first, rest))
-}
-
-fn split_token(line: &str) -> (&str, &str) {
-    match line.split_once(' ') {
-        Some((token, rest)) => (token, rest),
-        None => (line, ""),
-    }
 }
 
 pub(super) fn mint_intent_id() -> Result<String, Reason> {

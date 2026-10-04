@@ -25,154 +25,10 @@ pub fn expand_outcome(
     {
         return expand_row(canon, now, intent, row, outcome);
     }
-    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    let intent_id = intent.id.clone();
-    match intent.move_name.as_str() {
-        "wait" | "attempt" => Ok(Vec::new()),
-        "talk" | "attack" | "give" | "take" => Err(Reason::NotInSpec),
-        "travel" => {
-            let Target::Place(to) = &intent.target else {
-                return Err(Reason::Schema);
-            };
-            Ok(vec![location_effect(now, intent, to)?])
-        }
-        "work" => {
-            let Some(profile) = canon.profile(&intent.actor_id) else {
-                return Ok(Vec::new());
-            };
-            let Some(work) = &profile.work else {
-                return Ok(Vec::new());
-            };
-            let mut effects = Vec::new();
-            for item in &work.needs {
-                effects.push(Effect {
-                    class: EffectClass::Need {
-                        actor_id: intent.actor_id.clone(),
-                        key: item.key.clone(),
-                        delta: item.delta,
-                    },
-                    as_viewer: viewer.clone(),
-                    intent_id: intent_id.clone(),
-                });
-            }
-            for item in &work.resources {
-                effects.push(Effect {
-                    class: EffectClass::Resource {
-                        actor_id: intent.actor_id.clone(),
-                        key: item.key.clone(),
-                        delta: item.delta,
-                    },
-                    as_viewer: viewer.clone(),
-                    intent_id: intent_id.clone(),
-                });
-            }
-            Ok(effects)
-        }
-        "restock" => {
-            let sku = intent.args.sku.clone().ok_or(Reason::UnknownKey)?;
-            let delta = intent.args.delta.ok_or(Reason::UnknownKey)?;
-            let place = now
-                .actors
-                .get(&intent.actor_id)
-                .map(|actor| actor.place().to_string())
-                .ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect {
-                class: EffectClass::Stock { place, sku, delta },
-                as_viewer: viewer,
-                intent_id,
-            }])
-        }
-        "rest" => {
-            let delta = intent.args.delta.ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect {
-                class: EffectClass::Need {
-                    actor_id: intent.actor_id.clone(),
-                    key: "rest".to_string(),
-                    delta,
-                },
-                as_viewer: viewer,
-                intent_id,
-            }])
-        }
-        "drift_relationship" => {
-            let Target::Actor(other) = &intent.target else {
-                return Err(Reason::Schema);
-            };
-            let delta = intent.args.delta.ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect {
-                class: EffectClass::Relationship {
-                    a: intent.actor_id.clone(),
-                    b: other.clone(),
-                    delta,
-                },
-                as_viewer: viewer,
-                intent_id,
-            }])
-        }
-        "spread_rumor" => {
-            let Target::Rumor(rumor_id) = &intent.target else {
-                return Err(Reason::Schema);
-            };
-            let rumor_id = rumor_id.clone();
-            let to = intent.args.to.clone().ok_or(Reason::UnknownKey)?;
-            let rumor = now
-                .rumors
-                .iter()
-                .find(|rumor| rumor.id == rumor_id)
-                .ok_or(Reason::UnknownKey)?;
-            Ok(vec![Effect {
-                class: EffectClass::Rumor {
-                    rumor_id,
-                    fact_ids: rumor.fact_ids.clone(),
-                    from: intent.actor_id.clone(),
-                    to,
-                    heat: rumor.heat,
-                },
-                as_viewer: viewer,
-                intent_id,
-            }])
-        }
-        "leave_note" => Ok(vec![Effect {
-            class: EffectClass::Message {
-                message_id: intent.args.message_id.clone().ok_or(Reason::UnknownKey)?,
-                to: intent.args.message_to.clone().unwrap_or_default(),
-                place: intent.args.place.clone(),
-                fact_ids: intent.args.fact_ids.clone().unwrap_or_default(),
-                text: intent.args.text.clone().ok_or(Reason::UnknownKey)?,
-            },
-            as_viewer: viewer,
-            intent_id,
-        }]),
-        "file_proposal" => Ok(vec![Effect {
-            class: EffectClass::Proposal {
-                proposal_id: intent.args.proposal_id.clone().ok_or(Reason::UnknownKey)?,
-                kind: intent.args.kind.clone().ok_or(Reason::UnknownKey)?,
-                target: intent.args.target.clone().unwrap_or_default(),
-                summary: intent.args.summary.clone().ok_or(Reason::UnknownKey)?,
-            },
-            as_viewer: viewer,
-            intent_id,
-        }]),
-        "advance_clock" => {
-            let Target::Clock(clock_id) = &intent.target else {
-                return Err(Reason::Schema);
-            };
-            Ok(vec![Effect {
-                class: EffectClass::Clock {
-                    clock_id: clock_id.clone(),
-                    delta: intent.args.delta.unwrap_or(1),
-                },
-                as_viewer: viewer,
-                intent_id,
-            }])
-        }
-        other => {
-            if canon.moves.contains_key(other) {
-                Err(Reason::NotInSpec)
-            } else {
-                Err(Reason::UnknownMove)
-            }
-        }
+    if canon.moves.contains_key(&intent.move_name) {
+        Err(Reason::NotInSpec)
+    } else {
+        Err(Reason::UnknownMove)
     }
 }
 
@@ -409,7 +265,7 @@ fn stock_fields(
     }
 }
 
-fn stock_walk(canon: &Canon, now: &Now, actor_id: &str) -> Option<(String, String, i64)> {
+pub(crate) fn stock_walk(canon: &Canon, now: &Now, actor_id: &str) -> Option<(String, String, i64)> {
     let place = now.actors.get(actor_id)?.place().to_string();
     let rates = canon.profile(actor_id)?.stock_rate.get(&place)?;
     for (sku, rate) in rates {
@@ -495,7 +351,7 @@ fn schedule_place(canon: &Canon, now: &Now, actor_id: &str) -> Option<String> {
     Some(row.place.clone())
 }
 
-fn first_owned_clock(now: &Now, actor_id: &str) -> Option<String> {
+pub(crate) fn first_owned_clock(now: &Now, actor_id: &str) -> Option<String> {
     let humans = now.presence.humans;
     now.clocks
         .iter()
@@ -508,7 +364,7 @@ fn first_owned_clock(now: &Now, actor_id: &str) -> Option<String> {
         .map(|(id, _)| id.clone())
 }
 
-fn first_due_note<'a>(
+pub(crate) fn first_due_note<'a>(
     now: &Now,
     profile: &'a crate::canon::TickProfile,
 ) -> Option<&'a crate::canon::NoteDef> {
@@ -536,7 +392,7 @@ fn relationship_fields(
     }
 }
 
-fn first_drift(now: &Now, actor_id: &str) -> Option<(String, i64)> {
+pub(crate) fn first_drift(now: &Now, actor_id: &str) -> Option<(String, i64)> {
     let actor = now.actors.get(actor_id)?;
     if actor.busy() {
         return None;
@@ -564,7 +420,7 @@ fn first_drift(now: &Now, actor_id: &str) -> Option<(String, i64)> {
     pairs.into_iter().next()
 }
 
-fn rumor_class(canon: &Canon, now: &Now, actor_id: &str) -> Option<EffectClass> {
+pub(crate) fn rumor_class(canon: &Canon, now: &Now, actor_id: &str) -> Option<EffectClass> {
     if canon.budget.max_rumor_hops == 0 {
         return None;
     }
@@ -732,6 +588,7 @@ mod tests {
         target: ""
         summary: counted
   - name: overstock
+    audience: player
     token: none
     on: speaker
     effects:
@@ -740,6 +597,7 @@ mod tests {
         sku: lamp_oil
         delta: 5
   - name: overclock
+    audience: player
     token: none
     on: speaker
     effects:
@@ -747,6 +605,7 @@ mod tests {
         clock: shelf_count
         delta: 9
   - name: overneed
+    audience: player
     token: none
     on: speaker
     effects:
@@ -754,6 +613,7 @@ mod tests {
         key: rest
         delta: 9223372036854775807
   - name: bad_proposal
+    audience: player
     token: none
     on: speaker
     effects:
@@ -763,6 +623,7 @@ mod tests {
         target: ""
         summary: no
   - name: hold
+    audience: player
     token: none
     on: speaker
     effects: []
@@ -899,6 +760,6 @@ mod tests {
         let yielded = expand_outcome(shard.canon(), shard.now(), &hold, None).unwrap();
         assert!(yielded.is_empty());
         let travel = shard.canon().moves.get("travel").unwrap().row.as_ref().unwrap();
-        assert!(travel.audience.is_none());
+        assert_eq!(travel.audience, Some(crate::moves::Audience::Player));
     }
 }

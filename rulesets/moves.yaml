@@ -1,17 +1,105 @@
 schema: moves/v0
 moves:
   - name: wait
+    audience: player
+    token: none
+    on: speaker
+    effects: []
+
   - name: travel
-  - name: work
+    audience: player
+    token: place
+    on: speaker
+    effects:
+      - class: location
+        to: token
+
+  - name: grit
+    audience: player
+    token: none
+    on: speaker
+    check: grit
+    difficulty: 0
+    effects: []
+
+  - name: travel_schedule
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: location
+        to: schedule_place
+
   - name: restock
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: stock
+        place: here
+        sku: first_rate
+        delta: rate
+
+  - name: work
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: need
+        delta: from_work
+
   - name: rest
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: need
+        key: rest
+        delta: schedule_rest
+
   - name: drift_relationship
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: relationship
+        to: first_drift
+        delta: toward_target
+
   - name: spread_rumor
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: rumor
+        rumor: first_known
+        to: first_listener
+        heat: keep
+
   - name: leave_note
-  - name: file_proposal
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: message
+        message: first_due_note
+
   - name: advance_clock
-  - name: talk
-  - name: attempt
-  - name: attack
-  - name: give
-  - name: take
+    audience: agenda
+    token: none
+    on: speaker
+    effects:
+      - class: clock
+        clock: first_owned
+        delta: 1
+
+  - name: season_advance
+    audience: system
+    token: none
+    on: speaker
+    effects:
+      - class: proposal
+        proposal: season_advance
+        kind: other
+        target: ""
+        summary: season_advance

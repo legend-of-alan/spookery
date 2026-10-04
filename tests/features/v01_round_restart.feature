@@ -1,7 +1,7 @@
 @v01
 Feature: Round restart
   Proof: v01_p18_early_wake_after_commit_does_not_tick_and_a_due_wake_does, v01_p20_queued_wait_survives_gm_drop_and_the_next_wait_applies_both
-  A commit that advances world_time restarts the sleep, and an early wake does not tick. A queued wait survives a GM drop, and the next wait applies both.
+  A commit that advances world_time restarts the sleep, and an early wake does not tick. A queued wait survives a GM drop. A second wait in that round is refused.
 
   Scenario: Round restart early wake after commit does not tick
     Given a temp copy of pack packs/oneshot-docks
@@ -42,7 +42,7 @@ Feature: Round restart
     And tick_index is 12
     And the round restart queue is empty
 
-  Scenario: Round restart queued wait survives a GM drop and the next wait applies both
+  Scenario: Round restart queued wait survives a GM drop and the next wait is refused
     Given a temp copy of pack packs/oneshot-docks
     When the round restart shard is listening
     And a round restart GM client is seated
@@ -67,13 +67,9 @@ Feature: Round restart
     And round restart humans is 1
     And the pack has no tick file
     When the round restart player sends wait again
-    Then the round restart player gained a resume
-    And world_time is 1085
-    And tick_index is 1
+    Then the round restart player stderr is SCHEMA
+    And world_time is 1080
+    And tick_index is 0
     And round restart humans is 1
-    And the only tick file is tick-0001.jsonl
-    And tick-0001.jsonl has both queued waits
-    And tick-0001.jsonl world_time_before is 1080
-    And tick-0001.jsonl world_time_after is 1085
-    And tick-0001.jsonl presence_humans is 1
+    And the pack has no tick file
     And the round restart processes stop

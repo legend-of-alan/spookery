@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::check::{load_checks, CheckDef};
 use crate::error::Reason;
 use crate::limits::{load_tick_rules, Budget};
-use crate::moves::{load_moves, MoveDef};
+use crate::moves::{load_moves, Audience, MoveDef};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -74,6 +74,7 @@ pub struct TickProfile {
     pub flags: Vec<String>,
     pub work: Option<WorkBlock>,
     pub notes: Vec<NoteDef>,
+    pub agenda: Vec<AgendaEntry>,
 }
 
 impl TickProfile {
@@ -122,6 +123,33 @@ pub struct NoteDef {
     pub place: String,
     pub fact_ids: Vec<String>,
     pub text: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct AgendaEntry {
+    pub row: String,
+    pub pause: Option<PauseLane>,
+    pub schedule: Option<ScheduleGate>,
+    pub activity: Option<String>,
+    pub when_stock: bool,
+    pub when_drift: bool,
+    pub when_rumor: bool,
+    pub when_note: bool,
+    pub when_clock: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PauseLane {
+    NamedPlotClocks,
+    SubsistenceClocks,
+    RelationshipDrift,
+    Travel,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ScheduleGate {
+    Here,
+    Away,
 }
 
 impl Canon {
@@ -263,6 +291,8 @@ pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
     }
     let moves = load_moves(&read_string(&root.join("rules/moves.yaml"))?)?;
     let checks = load_checks(&read_string(&root.join("rules/checks.yaml"))?)?;
+    require_known_checks(&moves, &checks)?;
+    require_agenda_rows(&cast, &moves)?;
     let budget = load_tick_rules(&read_string(&root.join("rules/tick.yaml"))?)?;
     Ok(Canon {
         pack_id: pack.id,
@@ -404,7 +434,77 @@ fn validate_tick(file: TickFile) -> Result<TickProfile, Reason> {
                 text: note.text,
             })
             .collect(),
+        agenda: agenda_of(file.agenda)?,
     })
+}
+
+fn agenda_of(entries: Vec<AgendaFile>) -> Result<Vec<AgendaEntry>, Reason> {
+    let mut agenda = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if entry.row.is_empty() {
+            return Err(Reason::Schema);
+        }
+        if entry.activity.is_some() && entry.schedule.as_deref() != Some("here") {
+            return Err(Reason::Schema);
+        }
+        let pause = match entry.pause.as_deref() {
+            None => None,
+            Some("named_plot_clocks") => Some(PauseLane::NamedPlotClocks),
+            Some("subsistence_clocks") => Some(PauseLane::SubsistenceClocks),
+            Some("relationship_drift") => Some(PauseLane::RelationshipDrift),
+            Some("travel") => Some(PauseLane::Travel),
+            Some(_) => return Err(Reason::Schema),
+        };
+        let schedule = match entry.schedule.as_deref() {
+            None => None,
+            Some("here") => Some(ScheduleGate::Here),
+            Some("away") => Some(ScheduleGate::Away),
+            Some(_) => return Err(Reason::Schema),
+        };
+        agenda.push(AgendaEntry {
+            row: entry.row,
+            pause,
+            schedule,
+            activity: entry.activity,
+            when_stock: entry.when_stock,
+            when_drift: entry.when_drift,
+            when_rumor: entry.when_rumor,
+            when_note: entry.when_note,
+            when_clock: entry.when_clock,
+        });
+    }
+    Ok(agenda)
+}
+
+fn require_known_checks(
+    moves: &BTreeMap<String, MoveDef>,
+    checks: &BTreeMap<String, CheckDef>,
+) -> Result<(), Reason> {
+    for def in moves.values() {
+        if let Some(id) = &def.check {
+            if !checks.contains_key(id) {
+                return Err(Reason::Schema);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn require_agenda_rows(
+    cast: &BTreeMap<String, CastCanon>,
+    moves: &BTreeMap<String, MoveDef>,
+) -> Result<(), Reason> {
+    for profile in cast.values().filter_map(|cast| cast.tick.as_ref()) {
+        for entry in &profile.agenda {
+            let Some(row) = moves.get(&entry.row).and_then(|def| def.row.as_ref()) else {
+                return Err(Reason::Schema);
+            };
+            if row.audience != Some(Audience::Agenda) {
+                return Err(Reason::Schema);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn read_pack(path: &Path) -> Result<PackFile, Reason> {
@@ -547,6 +647,30 @@ struct TickFile {
     work: Option<WorkFile>,
     #[serde(default)]
     notes: Vec<NoteFile>,
+    #[serde(default)]
+    agenda: Vec<AgendaFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct AgendaFile {
+    row: String,
+    #[serde(default)]
+    pause: Option<String>,
+    #[serde(default)]
+    schedule: Option<String>,
+    #[serde(default)]
+    activity: Option<String>,
+    #[serde(default)]
+    when_stock: bool,
+    #[serde(default)]
+    when_drift: bool,
+    #[serde(default)]
+    when_rumor: bool,
+    #[serde(default)]
+    when_note: bool,
+    #[serde(default)]
+    when_clock: bool,
 }
 
 #[derive(Deserialize)]
@@ -603,12 +727,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn docks_pack_rev_matches_section12() {
+    fn docks_pack_rev_matches_now_yaml() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let rev = pack_rev(&root).unwrap();
-        assert_eq!(
-            rev,
-            "blake2s:4fb2923546946116df5dec49198a50765588ac57b593f22b0cd266823c08710a"
-        );
+        let text = fs::read_to_string(root.join("state/now.yaml")).unwrap();
+        let line = text
+            .lines()
+            .find(|line| line.starts_with("pack_rev:"))
+            .unwrap();
+        assert_eq!(line, format!("pack_rev: {rev}"));
     }
 }

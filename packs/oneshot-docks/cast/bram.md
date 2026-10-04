@@ -21,5 +21,17 @@ tick:
     rest:
       min: 0
       max: 5
+  agenda:
+    - row: travel_schedule
+      pause: travel
+      schedule: away
+    - row: drift_relationship
+      pause: relationship_drift
+      when_drift: true
+    - row: spread_rumor
+      when_rumor: true
+    - row: advance_clock
+      pause: named_plot_clocks
+      when_clock: true
 ---
 Bram walks the night watch between the street and the shop.
