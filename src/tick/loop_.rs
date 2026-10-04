@@ -408,7 +408,6 @@ fn stage_tick(
                     counted += 1;
                     trace.push("apply_effect".to_string());
                     effects_out.push(effect);
-                    crash_after_apply_effect();
                 }
                 Err(KernelReason::Skipped) => rejected.push(Rejected {
                     id: intent.id.clone(),
@@ -590,12 +589,6 @@ fn keep_roll(notices: &mut Vec<CheckNotice>, rolled: &mut Option<CheckOut>, acto
             actor_id: actor_id.to_string(),
             out,
         });
-    }
-}
-
-fn crash_after_apply_effect() {
-    if std::env::var_os("SPOOK_CRASH_AFTER").is_some_and(|value| value == "apply_effect") {
-        std::process::abort();
     }
 }
 

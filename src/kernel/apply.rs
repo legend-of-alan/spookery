@@ -2,6 +2,7 @@ use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::inventory::{clamp_need, resource_next, stock_next};
+use crate::key::StateKey;
 use crate::limits::MINUTES_PER_DAY;
 use crate::model::{ActorKind, Intent, MemoryLine, Message, ProposalDoc, Reputation, ViewerId};
 use crate::shard::Txn;
@@ -80,13 +81,13 @@ fn apply_clock(txn: &mut Txn, clock_id: &str, delta: i64) -> Result<(), Reason> 
     if clock.paused || (clock.requires_presence && humans == 0) {
         return Err(Reason::PausedClock);
     }
-    let next = clock.value.checked_add(delta).ok_or(Reason::OutOfRange)?;
+    let current = clock.value;
+    let next = current.checked_add(delta).ok_or(Reason::OutOfRange)?;
     if next < 0 || next > clock.max {
         return Err(Reason::OutOfRange);
     }
-    let base = txn.baseline().clocks.get(clock_id).map(|clock| clock.value);
-    if base != Some(next) {
-        txn.track(format!("clocks.{clock_id}.value"))?;
+    if next != current {
+        txn.track(StateKey::ClockValue(clock_id.to_string()))?;
     }
     txn.now_mut()
         .clocks
@@ -113,16 +114,8 @@ fn apply_need(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<()
         .copied()
         .unwrap_or(0);
     let next = clamp_need(current, delta, min, max)?;
-    let base = txn
-        .baseline()
-        .actors
-        .get(actor_id)
-        .and_then(|actor| actor.needs())
-        .and_then(|needs| needs.get(key))
-        .copied()
-        .unwrap_or(0);
-    if next != base {
-        txn.track(format!("actors.{actor_id}.needs.{key}"))?;
+    if next != current {
+        txn.track(StateKey::ActorNeed(actor_id.to_string(), key.to_string()))?;
     }
     txn.now_mut()
         .actors
@@ -164,15 +157,8 @@ fn apply_stock(
         .copied()
         .unwrap_or(0);
     let next = stock_next(current, delta)?;
-    let base = txn
-        .baseline()
-        .places
-        .get(place)
-        .and_then(|place_live| place_live.stock.get(sku))
-        .copied()
-        .unwrap_or(0);
-    if next != base {
-        txn.track(format!("places.{place}.stock.{sku}"))?;
+    if next != current {
+        txn.track(StateKey::PlaceStock(place.to_string(), sku.to_string()))?;
     }
     let place_live = txn
         .now_mut()
@@ -204,13 +190,9 @@ fn apply_location(
     if !profile.range.iter().any(|item| item == to) || !profile.on_graph(to) {
         return Err(Reason::OutOfRange);
     }
-    let base = txn
-        .baseline()
-        .actors
-        .get(actor_id)
-        .map(|actor| actor.place().to_string());
-    if base.as_deref() != Some(to) {
-        txn.track(format!("actors.{actor_id}.place"))?;
+    let place_changed = actor.place() != to;
+    if place_changed {
+        txn.track(StateKey::ActorPlace(actor_id.to_string()))?;
     }
     *txn.now_mut()
         .actors
@@ -240,26 +222,14 @@ fn apply_relationship(txn: &mut Txn, a: &str, b: &str, delta: i64) -> Result<(),
     {
         return Err(Reason::Skipped);
     }
-    let next_stance = relation
-        .stance
+    let current_stance = relation.stance;
+    let current_at = relation.last_interaction_world_time;
+    let next_stance = current_stance
         .checked_add(delta)
         .ok_or(Reason::OutOfRange)?;
-    let base = txn
-        .baseline()
-        .actors
-        .get(a)
-        .and_then(|actor| actor.relationships())
-        .and_then(|relations| relations.get(b));
-    let mut paths = Vec::new();
-    if base.map(|relation| relation.stance) != Some(next_stance) {
-        paths.push(format!("actors.{a}.relationships.{b}.stance"));
+    if next_stance != current_stance || world != current_at {
+        txn.track(StateKey::Relationship(a.to_string(), b.to_string()))?;
     }
-    if base.map(|relation| relation.last_interaction_world_time) != Some(world) {
-        paths.push(format!(
-            "actors.{a}.relationships.{b}.last_interaction_world_time"
-        ));
-    }
-    txn.track_many(&paths)?;
     let relation = txn
         .now_mut()
         .actors
@@ -295,29 +265,15 @@ fn apply_reputation(
             return Err(Reason::Skipped);
         }
     }
-    let next = current
-        .map(|rep| rep.value)
-        .unwrap_or(0)
-        .checked_add(delta)
-        .ok_or(Reason::OutOfRange)?;
-    let base = txn
-        .baseline()
-        .actors
-        .get(actor_id)
-        .and_then(|actor| match actor {
-            crate::model::ActorLive::Npc { reputation, .. } => reputation.get(faction),
-            crate::model::ActorLive::Pc { .. } => None,
-        });
-    let mut paths = Vec::new();
-    if base.map(|rep| rep.value) != Some(next) {
-        paths.push(format!("actors.{actor_id}.reputation.{faction}.value"));
+    let current_value = current.map(|rep| rep.value).unwrap_or(0);
+    let current_at = current.map(|rep| rep.last_world_time);
+    let next = current_value.checked_add(delta).ok_or(Reason::OutOfRange)?;
+    if next != current_value || current_at != Some(world) {
+        txn.track(StateKey::Reputation(
+            actor_id.to_string(),
+            faction.to_string(),
+        ))?;
     }
-    if base.map(|rep| rep.last_world_time) != Some(world) {
-        paths.push(format!(
-            "actors.{actor_id}.reputation.{faction}.last_world_time"
-        ));
-    }
-    txn.track_many(&paths)?;
     let reputation = txn
         .now_mut()
         .actors
@@ -419,20 +375,11 @@ fn apply_rumor(
         return Ok(());
     }
     txn.bump_rumor()?;
-    let base = txn
-        .baseline()
-        .rumors
-        .iter()
-        .find(|rumor| rumor.id == rumor_id)
-        .map(|rumor| rumor.known_by.clone())
-        .unwrap_or_default();
     let mut next = known;
     next.push(to.to_string());
     next.sort();
     next.dedup();
-    if next != base {
-        txn.track(format!("rumors.{rumor_id}.known_by"))?;
-    }
+    txn.track(StateKey::Rumor(rumor_id.to_string()))?;
     let rumor = txn
         .now_mut()
         .rumors
@@ -459,14 +406,11 @@ fn apply_resource(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Resul
         crate::model::ActorLive::Pc { .. } => return Err(Reason::NotInSpec),
     };
     let next = resource_next(current, delta)?;
-    let base = match txn.baseline().actors.get(actor_id) {
-        Some(crate::model::ActorLive::Npc { resources, .. }) => {
-            resources.get(key).copied().unwrap_or(0)
-        }
-        _ => 0,
-    };
-    if next != base {
-        txn.track(format!("actors.{actor_id}.resources.{key}"))?;
+    if next != current {
+        txn.track(StateKey::ActorResource(
+            actor_id.to_string(),
+            key.to_string(),
+        ))?;
     }
     match txn.now_mut().actors.get_mut(actor_id) {
         Some(crate::model::ActorLive::Npc { resources, .. }) => {
@@ -488,13 +432,9 @@ fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(
         }
     }
     if key == "busy" {
-        let base = txn
-            .baseline()
-            .actors
-            .get(actor_id)
-            .map(|actor| actor.busy());
-        if base != Some(value) {
-            txn.track(format!("actors.{actor_id}.busy"))?;
+        let current = txn.now().actors.get(actor_id).map(|actor| actor.busy());
+        if current != Some(value) {
+            txn.track(StateKey::ActorBusy(actor_id.to_string()))?;
         }
         *txn.now_mut()
             .actors
@@ -503,16 +443,16 @@ fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(
             .busy_mut() = value;
         return Ok(());
     }
-    let base_has = txn
-        .baseline()
+    let has = txn
+        .now()
         .actors
         .get(actor_id)
         .is_some_and(|actor| match actor {
             crate::model::ActorLive::Npc { flags, .. }
             | crate::model::ActorLive::Pc { flags, .. } => flags.iter().any(|flag| flag == key),
         });
-    if base_has != value {
-        txn.track(format!("actors.{actor_id}.flags.{key}"))?;
+    if has != value {
+        txn.track(StateKey::ActorFlag(actor_id.to_string(), key.to_string()))?;
     }
     let flags = txn
         .now_mut()
@@ -547,13 +487,13 @@ fn apply_proposal(
     if txn.now().proposals.iter().any(|id| id == proposal_id) {
         return Err(Reason::UnknownKey);
     }
-    let base = &txn.baseline().proposals;
     let mut next = txn.now().proposals.clone();
     next.push(proposal_id.to_string());
     next.sort();
     next.dedup();
-    if next != *base {
-        txn.track("proposals".to_string())?;
+    let changed = next != txn.now().proposals;
+    if changed {
+        txn.track(StateKey::Proposal(proposal_id.to_string()))?;
     }
     txn.now_mut().proposals = next;
     txn.stage_proposal(ProposalDoc {
@@ -590,14 +530,8 @@ fn apply_message(
             return Err(Reason::UnknownKey);
         }
     }
-    txn.track(format!("messages.{message_id}"))?;
+    txn.track(StateKey::Message(message_id.clone()))?;
     if let Some(place_id) = &place {
-        let base_notes = txn
-            .baseline()
-            .places
-            .get(place_id)
-            .map(|place_live| place_live.notes.clone())
-            .unwrap_or_default();
         let mut notes = txn
             .now()
             .places
@@ -607,9 +541,6 @@ fn apply_message(
         notes.push(message_id.clone());
         notes.sort();
         notes.dedup();
-        if notes != base_notes {
-            txn.track(format!("places.{place_id}.notes"))?;
-        }
         if let Some(place_live) = txn.now_mut().places.get_mut(place_id) {
             place_live.notes = notes;
         }

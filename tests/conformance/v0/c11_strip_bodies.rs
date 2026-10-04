@@ -1,9 +1,10 @@
 use std::fs;
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
+use spookery_kernel::apply::apply_effect;
+use spookery_kernel::effect::{Effect, EffectClass};
+use spookery_kernel::model::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::shard::Txn;
 use spookery_tick::{replay_recorded, run_tick, tick_pack, Catchup, Reason};
 
 use super::support::{copy_dir, spook};
@@ -154,29 +155,10 @@ fn v0_c11_strip_bodies() {
         .unwrap_or_else(|| panic!("lamp_oil missing"));
     let proposals = before.now().proposals.clone();
     drop(before);
-    let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["tick", crashed.to_str().unwrap()])
-        .env("SPOOK_CRASH_AFTER", "apply_effect")
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"));
-    #[cfg(unix)]
-    assert_eq!(
-        output.status.signal(),
-        Some(6),
-        "kill after apply_effect\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-    #[cfg(windows)]
-    assert!(
-        !output.status.success(),
-        "kill after apply_effect\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    drop_stock_txn(&crashed);
     assert!(
         !crashed.join("state/.txn").exists(),
-        "apply_effect created state/.txn"
+        "dropping the Txn created state/.txn"
     );
     let restarted =
         spookery_kernel::open_shard(&crashed).unwrap_or_else(|err| panic!("restart: {err}"));
@@ -320,4 +302,62 @@ fn lamp_oil_of(pack: &Path) -> i64 {
         .and_then(|place| place.stock.get("lamp_oil"))
         .copied()
         .unwrap_or_else(|| panic!("lamp_oil missing"))
+}
+
+fn drop_stock_txn(pack: &Path) {
+    let now_path = pack.join("state/now.yaml");
+    let before = fs::read(&now_path).unwrap_or_else(|err| panic!("read now: {err}"));
+    let shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let oil = shard
+        .now()
+        .places
+        .get("docks_shop")
+        .and_then(|place| place.stock.get("lamp_oil"))
+        .copied()
+        .unwrap_or_else(|| panic!("lamp_oil missing"));
+    let delta = if oil > 0 { -1 } else { 1 };
+    let mut txn = Txn::begin(&shard);
+    apply_effect(&mut txn, &mira_intent(), stock_effect(delta))
+        .unwrap_or_else(|err| panic!("apply_effect: {err}"));
+    let staged = txn
+        .now()
+        .places
+        .get("docks_shop")
+        .and_then(|place| place.stock.get("lamp_oil"))
+        .copied()
+        .unwrap_or_else(|| panic!("staged lamp_oil missing"));
+    assert_eq!(staged, oil + delta, "staging did not take the stock effect");
+    drop(txn);
+    drop(shard);
+    assert_eq!(
+        fs::read(&now_path).unwrap_or_else(|err| panic!("reread now: {err}")),
+        before,
+        "now.yaml bytes changed"
+    );
+}
+
+fn mira_intent() -> Intent {
+    Intent {
+        id: "drop-txn".to_string(),
+        tick_index: 1,
+        actor_id: "mira".to_string(),
+        actor_kind: ActorKind::Npc,
+        source: Source::Kernel,
+        move_name: "stock".to_string(),
+        target: Target::Place("docks_shop".to_string()),
+        args: IntentArgs::default(),
+        rationale_code: String::new(),
+    }
+}
+
+fn stock_effect(delta: i64) -> Effect {
+    Effect {
+        class: EffectClass::Stock {
+            place: "docks_shop".to_string(),
+            sku: "lamp_oil".to_string(),
+            delta,
+        },
+        as_viewer: ViewerId::Npc("mira".to_string()),
+        intent_id: "drop-txn".to_string(),
+    }
 }

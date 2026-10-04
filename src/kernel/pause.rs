@@ -1,4 +1,5 @@
 use crate::error::Reason;
+use crate::key::StateKey;
 use crate::limits::PausePolicy;
 use crate::model::RunState;
 use crate::shard::Txn;
@@ -31,13 +32,9 @@ pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Reason> {
 }
 
 fn set_paused(txn: &mut Txn, clock_id: &str, paused: bool) -> Result<(), Reason> {
-    let base = txn
-        .baseline()
-        .clocks
-        .get(clock_id)
-        .map(|clock| clock.paused);
-    if base != Some(paused) {
-        txn.track(format!("clocks.{clock_id}.paused"))?;
+    let current = txn.now().clocks.get(clock_id).map(|clock| clock.paused);
+    if current != Some(paused) {
+        txn.track(StateKey::ClockPaused(clock_id.to_string()))?;
     }
     if let Some(clock) = txn.now_mut().clocks.get_mut(clock_id) {
         clock.paused = paused;

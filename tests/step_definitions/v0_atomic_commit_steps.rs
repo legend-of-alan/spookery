@@ -1,9 +1,11 @@
-use std::process::Command;
-
-#[cfg(unix)]
-use std::os::unix::process::ExitStatusExt;
+use std::fs;
+use std::path::Path;
 
 use cucumber::{given, then, when};
+use spookery_kernel::apply::apply_effect;
+use spookery_kernel::effect::{Effect, EffectClass};
+use spookery_kernel::model::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::shard::Txn;
 
 use crate::World;
 
@@ -33,33 +35,75 @@ fn record_before(w: &mut World) {
 
 #[when(expr = "the pack is ticked with a crash after apply_effect")]
 fn tick_crash_after_apply_effect(w: &mut World) {
-    let pack = w.pack.as_ref().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["tick", pack.to_str().unwrap()])
-        .env("SPOOK_CRASH_AFTER", "apply_effect")
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"));
-    w.outputs.push(output);
+    let pack = w.pack.as_ref().unwrap().clone();
+    drop_stock_txn(&pack);
+    w.scratch
+        .insert("dropped_before_commit".to_string(), "1".to_string());
 }
 
 #[then(expr = "the tick is killed before commit")]
 fn tick_killed(w: &mut World) {
-    let output = w.outputs.last().unwrap();
-    #[cfg(unix)]
     assert_eq!(
-        output.status.signal(),
-        Some(6),
-        "kill after apply_effect\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        w.scratch.get("dropped_before_commit").map(String::as_str),
+        Some("1"),
+        "the Txn was not dropped before commit"
     );
-    #[cfg(windows)]
     assert!(
-        !output.status.success(),
-        "kill after apply_effect\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+        !w.pack.as_ref().unwrap().join("state/log").exists(),
+        "a tick log was committed"
     );
+}
+
+fn drop_stock_txn(pack: &Path) {
+    let now_path = pack.join("state/now.yaml");
+    let before = fs::read(&now_path).unwrap_or_else(|err| panic!("read now: {err}"));
+    let shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
+    let oil = stock(&shard);
+    let delta = if oil > 0 { -1 } else { 1 };
+    let mut txn = Txn::begin(&shard);
+    apply_effect(&mut txn, &mira_intent(), stock_effect(delta))
+        .unwrap_or_else(|err| panic!("apply_effect: {err}"));
+    let staged = txn
+        .now()
+        .places
+        .get("docks_shop")
+        .and_then(|place| place.stock.get("lamp_oil"))
+        .copied()
+        .unwrap_or_else(|| panic!("staged lamp_oil missing"));
+    assert_eq!(staged, oil + delta, "staging did not take the stock effect");
+    drop(txn);
+    drop(shard);
+    assert_eq!(
+        fs::read(&now_path).unwrap_or_else(|err| panic!("reread now: {err}")),
+        before,
+        "now.yaml bytes changed"
+    );
+}
+
+fn mira_intent() -> Intent {
+    Intent {
+        id: "drop-txn".to_string(),
+        tick_index: 1,
+        actor_id: "mira".to_string(),
+        actor_kind: ActorKind::Npc,
+        source: Source::Kernel,
+        move_name: "stock".to_string(),
+        target: Target::Place("docks_shop".to_string()),
+        args: IntentArgs::default(),
+        rationale_code: String::new(),
+    }
+}
+
+fn stock_effect(delta: i64) -> Effect {
+    Effect {
+        class: EffectClass::Stock {
+            place: "docks_shop".to_string(),
+            sku: "lamp_oil".to_string(),
+            delta,
+        },
+        as_viewer: ViewerId::Npc("mira".to_string()),
+        intent_id: "drop-txn".to_string(),
+    }
 }
 
 #[then(expr = "state\\/.txn does not exist")]

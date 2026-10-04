@@ -11,6 +11,7 @@ pub mod error;
 pub mod expand;
 pub mod firewall;
 pub mod inventory;
+pub mod key;
 pub mod limits;
 pub mod lint;
 pub mod lock;

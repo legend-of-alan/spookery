@@ -9,6 +9,7 @@ use crate::canon::{load_canon, pack_rev, Canon};
 use crate::check::CheckNotice;
 use crate::codec::{emit_now, load_now};
 use crate::error::Reason;
+use crate::key::StateKey;
 use crate::limits::Budget;
 use crate::model::{Intent, MemoryLine, Now, PauseView, PcSheet, ProposalDoc};
 use crate::recover::recover;
@@ -42,8 +43,7 @@ pub struct Txn {
     canon: Arc<Canon>,
     budget: Budget,
     pub(crate) staging: Now,
-    baseline: Now,
-    paths: BTreeSet<String>,
+    keys: BTreeSet<StateKey>,
     pub(crate) memories: Vec<MemoryLine>,
     pub(crate) proposals: Vec<ProposalDoc>,
     rumor_hops: u32,
@@ -107,8 +107,7 @@ impl Txn {
             canon: Arc::clone(&shard.canon),
             budget: shard.canon.budget,
             staging: shard.now.clone(),
-            baseline: shard.now.clone(),
-            paths: BTreeSet::new(),
+            keys: BTreeSet::new(),
             memories: Vec::new(),
             proposals: Vec::new(),
             rumor_hops: 0,
@@ -133,10 +132,6 @@ impl Txn {
         &mut self.staging
     }
 
-    pub(crate) fn baseline(&self) -> &Now {
-        &self.baseline
-    }
-
     pub fn pin_loop(&mut self, tick_index: u64, world_time: u64, last_tick_at: &str) {
         self.staging.tick_index = tick_index;
         self.staging.world_time = world_time;
@@ -150,8 +145,8 @@ impl Txn {
     pub fn reset_idle_acts(&mut self) -> Result<(), Reason> {
         let ids: Vec<String> = self.staging.actors.keys().cloned().collect();
         for id in ids {
-            let Some(base) = self
-                .baseline
+            let Some(current) = self
+                .staging
                 .actors
                 .get(&id)
                 .and_then(|actor| actor.tick())
@@ -159,8 +154,8 @@ impl Txn {
             else {
                 continue;
             };
-            if base != 0 {
-                self.track(format!("actors.{id}.tick.idle_acts_today"))?;
+            if current != 0 {
+                self.track(StateKey::TickIdleActs(id.clone()))?;
             }
             if let Some(tick) = self
                 .staging
@@ -177,8 +172,8 @@ impl Txn {
     pub fn reset_live_acts(&mut self) -> Result<(), Reason> {
         let ids: Vec<String> = self.staging.actors.keys().cloned().collect();
         for id in ids {
-            let Some(base) = self
-                .baseline
+            let Some(current) = self
+                .staging
                 .actors
                 .get(&id)
                 .and_then(|actor| actor.tick())
@@ -186,8 +181,8 @@ impl Txn {
             else {
                 continue;
             };
-            if base != 0 {
-                self.track(format!("actors.{id}.tick.live_acts_this_hour"))?;
+            if current != 0 {
+                self.track(StateKey::TickLiveActs(id.clone()))?;
             }
             if let Some(tick) = self
                 .staging
@@ -203,37 +198,32 @@ impl Txn {
 
     pub fn stage_npc_counters(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
         let tick_index = self.staging.tick_index;
-        let (current_idle, current_live) = {
+        let (current_idle, current_live, current_last) = {
             let tick = self
                 .staging
                 .actors
                 .get(actor_id)
                 .and_then(|actor| actor.tick())
                 .ok_or(Reason::NotOwner)?;
-            (tick.idle_acts_today, tick.live_acts_this_hour)
+            (
+                tick.idle_acts_today,
+                tick.live_acts_this_hour,
+                tick.last_act_tick,
+            )
         };
-        let base = self
-            .baseline
-            .actors
-            .get(actor_id)
-            .and_then(|actor| actor.tick())
-            .ok_or(Reason::NotOwner)?;
-        let base_last = base.last_act_tick;
-        let base_idle = base.idle_acts_today;
-        let base_live = base.live_acts_this_hour;
         let new_idle = current_idle.saturating_add(1);
         let new_live = current_live.saturating_add(1);
-        let mut paths = Vec::new();
-        if tick_index != base_last {
-            paths.push(format!("actors.{actor_id}.tick.last_act_tick"));
+        let mut keys = Vec::new();
+        if tick_index != current_last {
+            keys.push(StateKey::TickLastAct(actor_id.to_string()));
         }
-        if humans == 0 && new_idle != base_idle {
-            paths.push(format!("actors.{actor_id}.tick.idle_acts_today"));
+        if humans == 0 && new_idle != current_idle {
+            keys.push(StateKey::TickIdleActs(actor_id.to_string()));
         }
-        if humans > 0 && new_live != base_live {
-            paths.push(format!("actors.{actor_id}.tick.live_acts_this_hour"));
+        if humans > 0 && new_live != current_live {
+            keys.push(StateKey::TickLiveActs(actor_id.to_string()));
         }
-        self.track_many(&paths)?;
+        self.track_many(&keys)?;
         let tick = self
             .staging
             .actors
@@ -249,25 +239,25 @@ impl Txn {
         Ok(())
     }
 
-    pub fn track(&mut self, path: String) -> Result<(), Reason> {
-        self.track_many(std::slice::from_ref(&path))
+    pub fn track(&mut self, key: StateKey) -> Result<(), Reason> {
+        self.track_many(std::slice::from_ref(&key))
     }
 
-    pub fn track_many(&mut self, paths: &[String]) -> Result<(), Reason> {
+    pub fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
         let max = self.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
-        for path in paths {
-            if self.paths.contains(path) {
+        for key in keys {
+            if self.keys.contains(key) {
                 continue;
             }
-            if self.paths.len() >= max {
-                for path in &added {
-                    self.paths.remove(path);
+            if self.keys.len() >= max {
+                for key in &added {
+                    self.keys.remove(key);
                 }
                 return Err(Reason::Budget);
             }
-            self.paths.insert(path.clone());
-            added.push(path.clone());
+            self.keys.insert(key.clone());
+            added.push(key.clone());
         }
         Ok(())
     }
@@ -305,7 +295,9 @@ impl Txn {
     }
 
     pub fn staged_paths(&self) -> Vec<String> {
-        self.paths.iter().cloned().collect()
+        let mut lines: Vec<String> = self.keys.iter().map(ToString::to_string).collect();
+        lines.sort();
+        lines
     }
 }
 
