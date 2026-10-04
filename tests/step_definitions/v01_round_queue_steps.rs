@@ -6,7 +6,7 @@ use std::time::Duration;
 use cucumber::{then, when};
 use rmcp::model::CallToolRequestParam;
 use rmcp::ServiceExt;
-use spookery_kernel::store::Shard;
+use spookery_kernel::shard::Shard;
 use tokio::io::AsyncWriteExt;
 
 use crate::support::{

@@ -1,7 +1,7 @@
 use crate::error::Reason;
 use crate::limits::PausePolicy;
 use crate::model::RunState;
-use crate::store::Txn;
+use crate::shard::Txn;
 
 pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Reason> {
     let humans = txn.now().presence.humans;

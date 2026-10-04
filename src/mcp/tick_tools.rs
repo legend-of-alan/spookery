@@ -1,6 +1,6 @@
 use spookery_kernel::model::ViewerId;
 use spookery_kernel::perceive::{perceive_budget, Perceive};
-use spookery_kernel::store::Shard;
+use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
 
 pub struct PerceiveIn {

@@ -5,7 +5,7 @@ use crate::limits::MINUTES_PER_DAY;
 use crate::model::{
     ActorKind, Effect, Intent, MemoryLine, Message, ProposalDoc, Reputation, ViewerId,
 };
-use crate::store::Txn;
+use crate::shard::Txn;
 
 pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {
     if !viewer_matches(intent, &effect) {

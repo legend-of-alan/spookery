@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::store::{open_shard, Shard};
+use spookery_kernel::shard::{open_shard, Shard};
 use spookery_kernel::Reason;
 use spookery_tick::advance::plan_catchup;
 use spookery_tick::{run_catchup, run_tick, Catchup, Reason as TickReason};

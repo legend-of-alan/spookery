@@ -5,7 +5,7 @@ use crate::error::Reason;
 use crate::firewall::allows;
 use crate::limits::world_hour;
 use crate::model::{Message, Now, ViewerId};
-use crate::store::Shard;
+use crate::shard::Shard;
 
 const BUDGET_TOKENS: usize = 800;
 

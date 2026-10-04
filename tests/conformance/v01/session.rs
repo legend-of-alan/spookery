@@ -384,12 +384,19 @@ fn v01_p05_disconnect_and_close_drop_the_player_seat_without_a_tick() {
     let _ = fs::remove_dir_all(&pack);
 }
 
+// Read the live file. `open_shard` runs `recover`, which deletes `state/.txn`
+// while the seat process is still inside `write_commit`.
 fn wait_humans(pack: &Path, humans: u32, timeout: Duration) -> spookery_kernel::model::Now {
     let start = Instant::now();
+    let path = pack.join("state/now.yaml");
     loop {
-        if let Ok(shard) = spookery_kernel::open_shard(pack) {
-            if shard.now().presence.humans == humans {
-                return shard.now().clone();
+        if let Ok(bytes) = fs::read(&path) {
+            if let Ok(text) = std::str::from_utf8(&bytes) {
+                if let Ok(now) = spookery_kernel::codec::load_now(text) {
+                    if now.presence.humans == humans {
+                        return now;
+                    }
+                }
             }
         }
         if start.elapsed() > timeout {

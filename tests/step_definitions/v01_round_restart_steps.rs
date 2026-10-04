@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 
 use cucumber::{then, when};
-use spookery_kernel::store::Shard;
+use spookery_kernel::shard::Shard;
 
 use crate::support::{
     self, pack_arg, spawn, text_of, wait_count, wait_exit, wait_has, wait_listen, write_stdin, Proc,

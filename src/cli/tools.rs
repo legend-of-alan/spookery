@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 use spookery_kernel::model::{ActorKind, ActorLive, IntentArgs, Target};
 use spookery_kernel::perceive::perceive_budget;
-use spookery_kernel::store::Shard;
+use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
 use spookery_tick::commit_turn_at;
 

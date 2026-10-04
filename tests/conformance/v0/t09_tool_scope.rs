@@ -29,7 +29,7 @@ fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 }
 
 fn call(
-    shard: &spookery_kernel::store::Shard,
+    shard: &spookery_kernel::shard::Shard,
     as_viewer: Option<&str>,
     focus: Option<&str>,
     budget_tokens: Option<u64>,

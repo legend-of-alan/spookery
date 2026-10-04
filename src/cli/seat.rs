@@ -16,7 +16,7 @@ use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use spookery_kernel::model::{ActorLive, Presence};
 use spookery_kernel::perceive::perceive;
-use spookery_kernel::store::{open_shard, Shard};
+use spookery_kernel::shard::{open_shard, Shard};
 use spookery_kernel::{idle_digest, DigestViewer, Reason};
 use spookery_tick::commit_presence;
 

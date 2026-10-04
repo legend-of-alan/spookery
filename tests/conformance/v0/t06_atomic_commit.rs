@@ -6,7 +6,7 @@ use std::process::Command;
 
 use super::support::copy_dir;
 
-fn stock(shard: &spookery_kernel::store::Shard) -> i64 {
+fn stock(shard: &spookery_kernel::shard::Shard) -> i64 {
     shard
         .now()
         .places

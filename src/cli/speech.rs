@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 
 use serde_json::{Map, Value};
 use spookery_kernel::model::ActorLive;
-use spookery_kernel::store::{append_session, read_session, Shard};
+use spookery_kernel::shard::Shard;
+use spookery_kernel::tape::{append_session, read_session};
 use spookery_kernel::Reason;
 
 use super::protocol::{self, TapeLine};

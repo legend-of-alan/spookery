@@ -5,13 +5,13 @@ use cucumber::{given, then};
 
 use crate::World;
 
-fn open(w: &World) -> spookery_kernel::store::Shard {
+fn open(w: &World) -> spookery_kernel::shard::Shard {
     spookery_kernel::open_shard(w.pack.as_ref().unwrap())
         .unwrap_or_else(|err| panic!("open_shard: {err}"))
 }
 
 fn call(
-    shard: &spookery_kernel::store::Shard,
+    shard: &spookery_kernel::shard::Shard,
     as_viewer: Option<&str>,
     focus: Option<&str>,
     budget_tokens: Option<u64>,

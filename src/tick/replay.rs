@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 use spookery_kernel::model::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::store::open_shard;
+use spookery_kernel::shard::open_shard;
 use spookery_kernel::Reason;
 
 use crate::loop_::{run_recorded_tick, RecordedTick};

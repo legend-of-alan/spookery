@@ -4,17 +4,17 @@ use std::path::Path;
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
 use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
+use spookery_kernel::commit::tick_commit;
 use spookery_kernel::derive::{
     allowed, filter_blocklist, kernel_intents_for_eligible_npcs, season_intent,
 };
 use spookery_kernel::expand::{expand, expand_outcome};
+use spookery_kernel::lock::lock_shard;
 use spookery_kernel::model::{ActorKind, Intent};
 use spookery_kernel::moves::{needs_roll, row_check};
 use spookery_kernel::pause::apply_pause_policy;
 use spookery_kernel::perceive::perceive_at;
-use spookery_kernel::store::{
-    lock_shard, open_shard, session_status, tick_commit, PendingCommit, Shard, Txn,
-};
+use spookery_kernel::shard::{open_shard, session_status, PendingCommit, Shard, Txn};
 use spookery_kernel::Reason as KernelReason;
 
 use crate::advance::{pick_advance, plan_catchup, Catchup};
@@ -38,7 +38,7 @@ pub struct RecordedTick {
 
 pub fn commit_turn(
     shard: &mut Shard,
-) -> Result<spookery_kernel::store::CommitOutcome, KernelReason> {
+) -> Result<spookery_kernel::commit::CommitOutcome, KernelReason> {
     let wall = shard.now().last_tick_at.clone();
     commit_turn_at(shard, &wall)
 }
@@ -47,10 +47,10 @@ pub fn commit_turn(
 pub fn commit_turn_at(
     shard: &mut Shard,
     wall: &str,
-) -> Result<spookery_kernel::store::CommitOutcome, KernelReason> {
+) -> Result<spookery_kernel::commit::CommitOutcome, KernelReason> {
     let _lock = lock_shard(shard)?;
     run_tick(shard, Reason::Flush, wall, Catchup::none())?;
-    spookery_kernel::store::commit_pending(shard)
+    spookery_kernel::commit::commit_pending(shard)
 }
 
 /// `include_tick: false`. No `run_tick`, no tick file, no clock advance.
@@ -59,7 +59,7 @@ pub fn commit_presence(
     shard: &mut Shard,
     presence: spookery_kernel::model::Presence,
 ) -> Result<bool, KernelReason> {
-    spookery_kernel::store::commit_presence(shard, presence)
+    spookery_kernel::commit::commit_presence(shard, presence)
 }
 
 pub fn tick_pack(path: &Path) -> Result<(), KernelReason> {

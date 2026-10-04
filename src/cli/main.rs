@@ -24,7 +24,7 @@ fn dispatch() -> Result<(), spookery::Error> {
         return spookery_tick::tick_pack(Path::new(&args[1])).map_err(spookery::Error::Reason);
     }
     if args.len() == 2 && args[0] == "migrate" {
-        return spookery_kernel::store::migrate_pack(Path::new(&args[1]))
+        return spookery_kernel::commit::migrate_pack(Path::new(&args[1]))
             .map_err(spookery::Error::Reason);
     }
     if args.len() == 2 && args[0] == "status" {

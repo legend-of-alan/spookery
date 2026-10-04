@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::model::{Clock, ViewerId};
-use crate::store::Shard;
+use crate::shard::Shard;
 
 pub enum DigestViewer {
     Host,

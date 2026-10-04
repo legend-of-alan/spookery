@@ -13,7 +13,7 @@ fn evidence(before_pack: &str, after_pack: &str, before_rev: u64, after_rev: u64
     )
 }
 
-fn open(w: &World) -> spookery_kernel::store::Shard {
+fn open(w: &World) -> spookery_kernel::shard::Shard {
     spookery_kernel::open_shard(w.pack.as_ref().unwrap()).unwrap_or_else(|err| panic!("open: {err}"))
 }
 

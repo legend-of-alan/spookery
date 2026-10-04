@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use spookery_kernel::check::CheckNotice;
 use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, Source, Target};
 use spookery_kernel::moves::{ActionRow, MoveDef, MoveToken};
-use spookery_kernel::store::Shard;
+use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
 use spookery_tick::commit_turn_at;
 

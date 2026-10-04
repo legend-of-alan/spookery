@@ -7,7 +7,7 @@ use cucumber::{given, then, when};
 
 use crate::World;
 
-fn stock(shard: &spookery_kernel::store::Shard) -> i64 {
+fn stock(shard: &spookery_kernel::shard::Shard) -> i64 {
     shard
         .now()
         .places
