@@ -204,7 +204,7 @@ impl Txn {
                 .actors
                 .get(actor_id)
                 .and_then(|actor| actor.tick())
-                .ok_or(Reason::NotOwner)?;
+                .ok_or(Reason::NoProfile)?;
             (
                 tick.idle_acts_today,
                 tick.live_acts_this_hour,
@@ -229,7 +229,7 @@ impl Txn {
             .actors
             .get_mut(actor_id)
             .and_then(|actor| actor.tick_mut())
-            .ok_or(Reason::NotOwner)?;
+            .ok_or(Reason::NoProfile)?;
         tick.last_act_tick = tick_index;
         if humans == 0 {
             tick.idle_acts_today = new_idle;

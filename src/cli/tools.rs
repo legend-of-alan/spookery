@@ -446,7 +446,7 @@ fn queue_tool_intent(
     let actor_kind = actor_kind.ok_or(Reason::Schema)?;
     let move_name = move_name.ok_or(Reason::Schema)?;
     if move_name == "attempt" && shard.now().presence.humans == 0 {
-        return Err(Reason::LiveOnly);
+        return Err(Reason::TableEmpty);
     }
     if !shard.canon().moves.contains_key(&move_name) {
         return Err(Reason::UnknownMove);

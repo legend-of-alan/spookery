@@ -940,7 +940,7 @@ fn v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human() {
     assert_eq!(shard.now().presence.humans, 0);
     assert!(shard.now().presence.session_ids.is_empty());
     let err = spookery::seat::speak(&shard, "pc_rowan", "talk mira good evening").unwrap_err();
-    assert_eq!(err, spookery_kernel::Reason::LiveOnly);
+    assert_eq!(err, spookery_kernel::Reason::TableEmpty);
     assert!(!pack.join("state/log/session.jsonl").exists());
     drop(shard);
 
@@ -961,7 +961,7 @@ fn v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human() {
     let stdout = wait_has(&player.stdout, event, Duration::from_secs(5));
     assert!(stdout.contains(event));
     assert!(!text_of(&player.stderr).contains("NOT_IN_SPEC"));
-    assert!(!text_of(&player.stderr).contains("LIVE_ONLY"));
+    assert!(!text_of(&player.stderr).contains("TABLE_EMPTY"));
     let tape = format!(
         "{{\"seq\":1,\"from\":\"player:pc_rowan\",\"address\":\"actor\",\"place\":null,\"actor\":\"mira\",\"recipients\":[\"pc_rowan\"],\"text\":\"good evening\",\"tick_index\":{},\"world_time\":{}}}\n",
         now.tick_index, now.world_time

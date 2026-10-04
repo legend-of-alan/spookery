@@ -1,7 +1,7 @@
 @v01
 Feature: Speech
   Proof: v01_p06_say_while_gm_is_seated_appends_one_tape_line_without_a_tick, v01_p07_actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_actor, v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human, v01_torn_tape_tail_is_not_a_record
-  say while a GM is seated appends one tape line and does not tick. An actor-addressed say is on the GM and speaker cursors and absent for a later actor. talk appends for a seated player and is LIVE_ONLY when no human is seated. A torn tape tail is not a record.
+  say while a GM is seated appends one tape line and does not tick. An actor-addressed say is on the GM and speaker cursors and absent for a later actor. talk appends for a seated player and is TABLE_EMPTY when no human is seated. A torn tape tail is not a record.
 
   Scenario: Speech say while a GM is seated appends one tape line without a tick
     Given a temp copy of pack packs/oneshot-docks
@@ -47,7 +47,7 @@ Feature: Speech
     Then presence humans is 0
     And session_ids is empty
     When talk mira good evening is spoken with no human
-    Then the refusal is LIVE_ONLY
+    Then the refusal is TABLE_EMPTY
     And state/log/session.jsonl does not exist
     When the speech shard is listening
     And the speech player connects and perceives
@@ -55,7 +55,7 @@ Feature: Speech
     When the player talks to mira good evening
     Then the player stdout contains the mira good evening line
     And the player stderr does not contain NOT_IN_SPEC
-    And the player stderr does not contain LIVE_ONLY
+    And the player stderr does not contain TABLE_EMPTY
     And session.jsonl is the mira good evening tape line
     And now.yaml matches the seated snapshot
     And the pack has no tick file

@@ -394,16 +394,16 @@ fn talk_no_human(w: &mut World) {
     reclaim();
     let shard = spookery_kernel::open_shard(pack_of(w)).unwrap();
     let err = spookery::seat::speak(&shard, "pc_rowan", "talk mira good evening").unwrap_err();
-    assert_eq!(err, spookery_kernel::Reason::LiveOnly);
+    assert_eq!(err, spookery_kernel::Reason::TableEmpty);
     w.scratch
         .insert("speech_refusal".to_string(), err.token().to_string());
 }
 
-#[then(expr = "the refusal is LIVE_ONLY")]
+#[then(expr = "the refusal is TABLE_EMPTY")]
 fn refusal_live_only(w: &mut World) {
     assert_eq!(
         w.scratch.get("speech_refusal").map(String::as_str),
-        Some("LIVE_ONLY")
+        Some("TABLE_EMPTY")
     );
 }
 

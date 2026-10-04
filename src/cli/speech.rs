@@ -44,7 +44,7 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason
     if matches!(speech, Speech::TalkActor { .. } | Speech::TalkPlace { .. })
         && shard.now().presence.humans == 0
     {
-        return Err(Reason::LiveOnly);
+        return Err(Reason::TableEmpty);
     }
     let speaker_place = shard
         .now()

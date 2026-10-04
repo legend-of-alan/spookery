@@ -6,7 +6,7 @@ Feature: Attempt on round close
   Scenario: Attempt law refuses a line before a roll
     When an unseated attempt shard receives attempt grit 3
     Then attempt presence humans is 0
-    And the attempt refusal is LIVE_ONLY
+    And the attempt refusal is TABLE_EMPTY
     And the attempt queue is empty
     And the attempt pack has no session.jsonl
     And the attempt pack has no tick-0001.jsonl

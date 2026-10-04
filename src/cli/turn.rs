@@ -133,7 +133,7 @@ pub fn on_scheduled_wake(
 
 pub fn queue_attempt(shard: &mut Shard, actor_id: &str, rest: &str) -> Result<QueuedNote, Reason> {
     if shard.now().presence.humans == 0 {
-        return Err(Reason::LiveOnly);
+        return Err(Reason::TableEmpty);
     }
     if !shard
         .now()

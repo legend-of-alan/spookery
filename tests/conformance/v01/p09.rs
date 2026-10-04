@@ -35,7 +35,7 @@ fn v01_attempt_line_refuses_before_a_roll() {
         "attempt grit 3",
         false,
     ));
-    assert_eq!(live, Reason::LiveOnly);
+    assert_eq!(live, Reason::TableEmpty);
     assert!(shard.queued_intents().is_empty());
     assert!(!pack.join("state/log/session.jsonl").exists());
     assert!(!pack.join("state/log/tick-0001.jsonl").exists());

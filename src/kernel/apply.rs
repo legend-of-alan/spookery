@@ -9,7 +9,7 @@ use crate::shard::Txn;
 
 pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {
     if !viewer_matches(intent, &effect) {
-        return Err(Reason::NotOwner);
+        return Err(Reason::ViewerMismatch);
     }
     match effect.class {
         EffectClass::Clock { clock_id, delta } => apply_clock(txn, &clock_id, delta),
@@ -136,16 +136,16 @@ fn apply_stock(
     let profile = txn
         .canon()
         .profile(&intent.actor_id)
-        .ok_or(Reason::NotOwner)?;
+        .ok_or(Reason::NoProfile)?;
     if !profile.range.iter().any(|item| item == place) || !profile.on_graph(place) {
-        return Err(Reason::NotOwner);
+        return Err(Reason::OutOfRange);
     }
     let rate = profile
         .stock_rate
         .get(place)
         .and_then(|rates| rates.get(sku))
         .copied()
-        .ok_or(Reason::NotOwner)?;
+        .ok_or(Reason::OutOfRange)?;
     if delta.abs() > rate.abs() {
         return Err(Reason::OutOfRange);
     }
@@ -177,16 +177,16 @@ fn apply_location(
     to: &str,
 ) -> Result<(), Reason> {
     if actor_id != intent.actor_id {
-        return Err(Reason::NotOwner);
+        return Err(Reason::ActorMismatch);
     }
     let actor = txn.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     if txn.now().presence.humans == 0 && actor.is_pc() {
-        return Err(Reason::NotOwner);
+        return Err(Reason::TableEmpty);
     }
     if actor.place() != from {
         return Err(Reason::OutOfRange);
     }
-    let profile = txn.canon().profile(actor_id).ok_or(Reason::NotOwner)?;
+    let profile = txn.canon().profile(actor_id).ok_or(Reason::NoProfile)?;
     if !profile.range.iter().any(|item| item == to) || !profile.on_graph(to) {
         return Err(Reason::OutOfRange);
     }
@@ -299,7 +299,7 @@ fn apply_memory(
     text: Option<String>,
 ) -> Result<(), Reason> {
     if actor_id != intent.actor_id {
-        return Err(Reason::NotOwner);
+        return Err(Reason::ActorMismatch);
     }
     if text.as_ref().is_some_and(|text| text.chars().count() > 240) {
         return Err(Reason::Schema);
@@ -307,7 +307,7 @@ fn apply_memory(
     let viewer = match intent.actor_kind {
         ActorKind::Npc => ViewerId::Npc(actor_id.to_string()),
         ActorKind::Player => ViewerId::Player(actor_id.to_string()),
-        ActorKind::System => return Err(Reason::NotOwner),
+        ActorKind::System => return Err(Reason::ActorMismatch),
     };
     for fact in &fact_ids {
         if !allows(txn.canon(), txn.now(), &viewer, fact) {

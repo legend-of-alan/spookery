@@ -49,22 +49,9 @@ pub fn season_intent(now: &Now) -> Option<Intent> {
 }
 
 pub fn filter_blocklist(intents: Vec<Intent>, humans: u32) -> (Vec<Intent>, Vec<(Intent, Reason)>) {
-    if humans > 0 {
-        return (intents, Vec::new());
-    }
-    let mut kept = Vec::new();
-    let mut rejected = Vec::new();
-    for intent in intents {
-        if matches!(
-            intent.move_name.as_str(),
-            "talk" | "attempt" | "attack" | "give" | "take"
-        ) {
-            rejected.push((intent, Reason::LiveOnly));
-        } else {
-            kept.push(intent);
-        }
-    }
-    (kept, rejected)
+    // The five-name denylist is retired. Empty-table player lines refuse at queue time.
+    let _ = humans;
+    (intents, Vec::new())
 }
 
 pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> {
@@ -103,13 +90,13 @@ pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> 
         }
     }
     if intent.source == Source::Kernel && intent.actor_kind == ActorKind::Player {
-        return Err(Reason::NotOwner);
+        return Err(Reason::KernelOnPlayer);
     }
     if intent.source == Source::Kernel
         && intent.actor_kind == ActorKind::Npc
         && !is_eligible(canon, now, &intent.actor_id)
     {
-        return Err(Reason::NotOwner);
+        return Err(Reason::Ineligible);
     }
     Ok(())
 }

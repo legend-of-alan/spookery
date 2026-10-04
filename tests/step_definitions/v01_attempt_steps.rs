@@ -638,9 +638,9 @@ fn humans_is(w: &mut World, n: u64) {
     assert_eq!(open_now(w).presence.humans as u64, n);
 }
 
-#[then(expr = "the attempt refusal is LIVE_ONLY")]
+#[then(expr = "the attempt refusal is TABLE_EMPTY")]
 fn refusal_live(_w: &mut World) {
-    assert_eq!(hold().reason, Some(Reason::LiveOnly));
+    assert_eq!(hold().reason, Some(Reason::TableEmpty));
 }
 
 #[then(expr = "the attempt refusal is NOT_IN_SPEC")]
