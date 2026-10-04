@@ -3,8 +3,10 @@ Feature: Action row load
   Proof: v02_p06_pack_load_rejects_a_row_that_is_not_one_flag
   Pack load accepts token none with on speaker, and token actor with on named, as one flag.
   Any other pair is SCHEMA at pack load.
-  effects is a non-empty list of class, key, and a boolean value, and key is not busy.
-  An empty list, a missing key, or an extra key is SCHEMA.
+  A flag template is class, key, and a boolean value, and key is not busy.
+  A missing key or an extra key is SCHEMA.
+  An empty effects list with no success list and no failure list is a yield.
+  An empty success list or an empty failure list is SCHEMA.
   attack with an effects list is SCHEMA.
   A check key loads on the row.
   Travel keeps token place, on speaker, and a location effect.
@@ -34,8 +36,6 @@ Feature: Action row load
     Then pack load fails with SCHEMA
     When moves.yaml is rewritten as "p06-busy"
     Then pack load fails with SCHEMA
-    When moves.yaml is rewritten as "p06-empty"
-    Then pack load fails with SCHEMA
     When moves.yaml is rewritten as "p06-missing"
     Then pack load fails with SCHEMA
     When moves.yaml is rewritten as "p06-extra"
@@ -63,3 +63,7 @@ Feature: Action row load
     And move "work" has no action row
     And move "attack" has no action row
     And move "attempt" check is absent
+
+  Scenario: An empty effects list with no outcome lists loads as a yield
+    When moves.yaml is rewritten as "p06-empty"
+    Then move "mark" effects are empty

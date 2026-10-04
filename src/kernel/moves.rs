@@ -12,8 +12,9 @@ pub struct MoveDef {
     pub row: Option<ActionRow>,
 }
 
-/// One player action. `effects` runs on both outcomes. `success` and `failure` run on that outcome.
-/// `item`, when set, must already be on the acting sheet or the line is refused before queue.
+/// One action row. `effects` runs on both outcomes. `success` and `failure` run on that outcome.
+/// An empty `effects` list with neither outcome list is a yield.
+/// `audience` may be omitted. `item`, when set, must already be on the acting sheet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionRow {
     pub token: MoveToken,
@@ -22,6 +23,64 @@ pub struct ActionRow {
     pub success: Vec<RowEffect>,
     pub failure: Vec<RowEffect>,
     pub item: Option<String>,
+    pub audience: Option<Audience>,
+    pub difficulty: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Audience {
+    Player,
+    Agenda,
+    System,
+}
+
+/// Closed selector words. The YAML spellings are the short names (`first_rate`, `schedule_rest`, `keep`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Selector {
+    Token,
+    Here,
+    SchedulePlace,
+    ScheduleRestDelta,
+    FromWork,
+    FirstRateSku,
+    Rate,
+    FirstDrift,
+    TowardTarget,
+    FirstKnownRumor,
+    FirstListener,
+    KeepHeat,
+    FirstDueNote,
+    FirstOwnedClock,
+}
+
+impl Selector {
+    pub fn parse(word: &str) -> Option<Self> {
+        Some(match word {
+            "token" => Self::Token,
+            "here" => Self::Here,
+            "schedule_place" => Self::SchedulePlace,
+            "schedule_rest" => Self::ScheduleRestDelta,
+            "from_work" => Self::FromWork,
+            "first_rate" => Self::FirstRateSku,
+            "rate" => Self::Rate,
+            "first_drift" => Self::FirstDrift,
+            "toward_target" => Self::TowardTarget,
+            "first_known" => Self::FirstKnownRumor,
+            "first_listener" => Self::FirstListener,
+            "keep" => Self::KeepHeat,
+            "first_due_note" => Self::FirstDueNote,
+            "first_owned" => Self::FirstOwnedClock,
+            _ => return None,
+        })
+    }
+}
+
+/// A literal or one selector. Selectors do not compose.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Field {
+    Literal(String),
+    Number(i64),
+    Selector(Selector),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -37,12 +96,61 @@ pub enum MoveOn {
     Named,
 }
 
-/// A flag template, a location template, or a resource delta.
+/// One effect template. Flag, location, and resource keep the shapes the harness compares.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RowEffect {
-    Flag { key: String, value: bool },
+    Flag {
+        key: String,
+        value: bool,
+    },
     Location,
-    Resource { key: String, delta: i64 },
+    LocationTo {
+        to: Field,
+    },
+    Resource {
+        key: String,
+        delta: i64,
+    },
+    Stock {
+        place: Field,
+        sku: Field,
+        delta: Field,
+    },
+    Need {
+        key: Option<String>,
+        delta: Field,
+    },
+    Clock {
+        clock: Field,
+        delta: i64,
+    },
+    Message {
+        message: Selector,
+    },
+    Proposal {
+        proposal_id: String,
+        kind: String,
+        target: String,
+        summary: String,
+    },
+    Relationship {
+        to: Field,
+        delta: Field,
+    },
+    Reputation {
+        faction: String,
+        delta: i64,
+    },
+    Memory {
+        fact_ids: Vec<String>,
+        tags: Vec<String>,
+        text: Option<String>,
+    },
+    Rumor {
+        rumor: Selector,
+        to: Selector,
+        heat: Selector,
+    },
 }
 
 pub fn load_moves(text: &str) -> Result<BTreeMap<String, MoveDef>, Reason> {
@@ -83,12 +191,16 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if entry.item.as_ref().is_some_and(|id| id.is_empty()) {
         return Err(Reason::Schema);
     }
+    // Omitted audience stays legal so packs/oneshot-docks still loads.
+    let audience = audience_of(entry.audience.as_deref())?;
     let started = entry.token.is_some()
         || entry.on.is_some()
         || entry.effects.is_some()
         || entry.success.is_some()
         || entry.failure.is_some()
-        || entry.item.is_some();
+        || entry.item.is_some()
+        || entry.audience.is_some()
+        || entry.difficulty.is_some();
     if !started {
         return Ok((
             entry.name,
@@ -104,8 +216,14 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     if entry.name == "attack" && entry.effects.is_some() {
         return Err(Reason::Schema);
     }
-    if entry.effects.as_ref().is_some_and(Vec::is_empty)
-        || entry.success.as_ref().is_some_and(Vec::is_empty)
+    // `effects: []` with neither outcome list is a yield. An empty success or failure list is not.
+    let yield_row = entry.effects.as_ref().is_some_and(Vec::is_empty)
+        && entry.success.is_none()
+        && entry.failure.is_none();
+    if entry.effects.as_ref().is_some_and(Vec::is_empty) && !yield_row {
+        return Err(Reason::Schema);
+    }
+    if entry.success.as_ref().is_some_and(Vec::is_empty)
         || entry.failure.as_ref().is_some_and(Vec::is_empty)
     {
         return Err(Reason::Schema);
@@ -122,8 +240,8 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
         _ => return Err(Reason::Schema),
     };
     let effects = match entry.effects {
-        Some(items) => templates_for(token, on, items)?,
-        None => Vec::new(),
+        Some(items) if !items.is_empty() => templates_for(token, on, items)?,
+        _ => Vec::new(),
     };
     let success = match entry.success {
         Some(items) => outcome_templates(token, on, items)?,
@@ -133,12 +251,10 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
         Some(items) => outcome_templates(token, on, items)?,
         None => Vec::new(),
     };
-    if effects.is_empty() && success.is_empty() && failure.is_empty() {
+    if !yield_row && effects.is_empty() && success.is_empty() && failure.is_empty() {
         return Err(Reason::Schema);
     }
-    if entry.name == "travel"
-        && (!success.is_empty() || !failure.is_empty() || !location_shape(token, on, &effects))
-    {
+    if entry.name == "travel" && !location_shape(token, on, &effects, &success, &failure) {
         return Err(Reason::Schema);
     }
     Ok((
@@ -152,9 +268,21 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
                 success,
                 failure,
                 item: entry.item,
+                audience,
+                difficulty: entry.difficulty.unwrap_or(0),
             }),
         },
     ))
+}
+
+fn audience_of(word: Option<&str>) -> Result<Option<Audience>, Reason> {
+    match word {
+        None => Ok(None),
+        Some("player") => Ok(Some(Audience::Player)),
+        Some("agenda") => Ok(Some(Audience::Agenda)),
+        Some("system") => Ok(Some(Audience::System)),
+        Some(_) => Err(Reason::Schema),
+    }
 }
 
 fn templates_for(
@@ -162,45 +290,14 @@ fn templates_for(
     on: MoveOn,
     effects: Vec<EffectTemplate>,
 ) -> Result<Vec<RowEffect>, Reason> {
-    match (token, on) {
-        (MoveToken::None, MoveOn::Speaker) | (MoveToken::Actor, MoveOn::Named) => {
-            let mut templates = Vec::with_capacity(effects.len());
-            for effect in effects {
-                if effect.class != "flag" || effect.delta.is_some() {
-                    return Err(Reason::Schema);
-                }
-                let Some(key) = effect.key else {
-                    return Err(Reason::Schema);
-                };
-                let Some(value) = effect.value else {
-                    return Err(Reason::Schema);
-                };
-                if key == "busy" {
-                    return Err(Reason::Schema);
-                }
-                templates.push(RowEffect::Flag { key, value });
-            }
-            Ok(templates)
-        }
-        (MoveToken::Place, MoveOn::Speaker) => {
-            let mut templates = Vec::with_capacity(effects.len());
-            for effect in effects {
-                if effect.class != "location"
-                    || effect.key.is_some()
-                    || effect.value.is_some()
-                    || effect.delta.is_some()
-                {
-                    return Err(Reason::Schema);
-                }
-                templates.push(RowEffect::Location);
-            }
-            Ok(templates)
-        }
-        _ => Err(Reason::Schema),
+    let mut templates = Vec::with_capacity(effects.len());
+    for effect in effects {
+        templates.push(one_template(token, on, effect)?);
     }
+    Ok(templates)
 }
 
-/// `success` and `failure` hold a flag or a resource delta. A place token has neither list.
+/// A place token still has neither outcome list.
 fn outcome_templates(
     token: MoveToken,
     on: MoveOn,
@@ -208,53 +305,300 @@ fn outcome_templates(
 ) -> Result<Vec<RowEffect>, Reason> {
     match (token, on) {
         (MoveToken::None, MoveOn::Speaker) | (MoveToken::Actor, MoveOn::Named) => {
-            let mut templates = Vec::with_capacity(effects.len());
-            for effect in effects {
-                templates.push(outcome_template(effect)?);
-            }
-            Ok(templates)
+            templates_for(token, on, effects)
         }
         _ => Err(Reason::Schema),
     }
 }
 
-fn outcome_template(effect: EffectTemplate) -> Result<RowEffect, Reason> {
+fn one_template(
+    token: MoveToken,
+    on: MoveOn,
+    effect: EffectTemplate,
+) -> Result<RowEffect, Reason> {
+    if !pair_ok(token, on) {
+        return Err(Reason::Schema);
+    }
     match effect.class.as_str() {
-        "flag" => {
-            if effect.delta.is_some() {
-                return Err(Reason::Schema);
-            }
-            let Some(key) = effect.key else {
-                return Err(Reason::Schema);
-            };
-            let Some(value) = effect.value else {
-                return Err(Reason::Schema);
-            };
-            if key == "busy" {
-                return Err(Reason::Schema);
-            }
-            Ok(RowEffect::Flag { key, value })
-        }
-        "resource" => {
-            if effect.value.is_some() {
-                return Err(Reason::Schema);
-            }
-            let Some(key) = effect.key else {
-                return Err(Reason::Schema);
-            };
-            let Some(delta) = effect.delta else {
-                return Err(Reason::Schema);
-            };
-            Ok(RowEffect::Resource { key, delta })
-        }
+        "flag" => flag_template(token, on, &effect),
+        "location" => location_template(token, &effect),
+        "resource" => resource_template(&effect),
+        "stock" => stock_template(&effect),
+        "need" => need_template(&effect),
+        "clock" => clock_template(&effect),
+        "message" => message_template(&effect),
+        "proposal" => proposal_template(&effect),
+        "relationship" => relationship_template(&effect),
+        "reputation" => reputation_template(&effect),
+        "memory" => memory_template(&effect),
+        "rumor" => rumor_template(&effect),
         _ => Err(Reason::Schema),
     }
 }
 
-/// `travel` may carry effects only as a place token, `on: speaker`, and location templates.
-fn location_shape(token: MoveToken, on: MoveOn, effects: &[RowEffect]) -> bool {
+fn pair_ok(token: MoveToken, on: MoveOn) -> bool {
+    matches!(
+        (token, on),
+        (MoveToken::None, MoveOn::Speaker)
+            | (MoveToken::Actor, MoveOn::Named)
+            | (MoveToken::Place, MoveOn::Speaker)
+    )
+}
+
+fn flag_template(token: MoveToken, on: MoveOn, effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["key", "value"])?;
+    let flag_pair = matches!(
+        (token, on),
+        (MoveToken::None, MoveOn::Speaker) | (MoveToken::Actor, MoveOn::Named)
+    );
+    if !flag_pair {
+        return Err(Reason::Schema);
+    }
+    let Some(key) = effect.key.clone() else {
+        return Err(Reason::Schema);
+    };
+    let Some(value) = effect.value else {
+        return Err(Reason::Schema);
+    };
+    if key == "busy" {
+        return Err(Reason::Schema);
+    }
+    Ok(RowEffect::Flag { key, value })
+}
+
+fn location_template(token: MoveToken, effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["to"])?;
+    let Some(word) = effect.to.as_deref() else {
+        if token == MoveToken::Place {
+            return Ok(RowEffect::Location);
+        }
+        return Err(Reason::Schema);
+    };
+    match text_field(word)? {
+        Field::Selector(Selector::Token) => {
+            if token != MoveToken::Place {
+                return Err(Reason::Schema);
+            }
+            Ok(RowEffect::Location)
+        }
+        Field::Selector(Selector::SchedulePlace) => Ok(RowEffect::LocationTo {
+            to: Field::Selector(Selector::SchedulePlace),
+        }),
+        Field::Selector(_) => Err(Reason::Schema),
+        Field::Literal(place) => Ok(RowEffect::LocationTo {
+            to: Field::Literal(place),
+        }),
+        Field::Number(_) => Err(Reason::Schema),
+    }
+}
+
+fn resource_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["key", "delta"])?;
+    let Some(key) = effect.key.clone() else {
+        return Err(Reason::Schema);
+    };
+    let Some(delta) = number_field(effect.delta.as_ref())? else {
+        return Err(Reason::Schema);
+    };
+    Ok(RowEffect::Resource { key, delta })
+}
+
+fn stock_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["place", "sku", "delta"])?;
+    let place = text_field(effect.place.as_deref().ok_or(Reason::Schema)?)?;
+    let sku = text_field(effect.sku.as_deref().ok_or(Reason::Schema)?)?;
+    let delta = required_delta(effect.delta.as_ref())?;
+    let walk = place == Field::Selector(Selector::Here)
+        && sku == Field::Selector(Selector::FirstRateSku)
+        && delta == Field::Selector(Selector::Rate);
+    let literals = matches!(place, Field::Literal(_))
+        && matches!(sku, Field::Literal(_))
+        && matches!(delta, Field::Number(_));
+    if !walk && !literals {
+        return Err(Reason::Schema);
+    }
+    Ok(RowEffect::Stock { place, sku, delta })
+}
+
+fn need_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["key", "delta"])?;
+    let delta = required_delta(effect.delta.as_ref())?;
+    match delta {
+        Field::Selector(Selector::FromWork) => {
+            if effect.key.is_some() {
+                return Err(Reason::Schema);
+            }
+            Ok(RowEffect::Need {
+                key: None,
+                delta: Field::Selector(Selector::FromWork),
+            })
+        }
+        Field::Selector(Selector::ScheduleRestDelta) => {
+            if effect.key.as_deref() != Some("rest") {
+                return Err(Reason::Schema);
+            }
+            Ok(RowEffect::Need {
+                key: Some("rest".to_string()),
+                delta: Field::Selector(Selector::ScheduleRestDelta),
+            })
+        }
+        Field::Number(delta) => Ok(RowEffect::Need {
+            key: Some(effect.key.clone().ok_or(Reason::Schema)?),
+            delta: Field::Number(delta),
+        }),
+        _ => Err(Reason::Schema),
+    }
+}
+
+fn clock_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["clock", "delta"])?;
+    let clock = text_field(effect.clock.as_deref().ok_or(Reason::Schema)?)?;
+    match &clock {
+        Field::Selector(Selector::FirstOwnedClock) | Field::Literal(_) => {}
+        _ => return Err(Reason::Schema),
+    }
+    let Some(delta) = number_field(effect.delta.as_ref())? else {
+        return Err(Reason::Schema);
+    };
+    Ok(RowEffect::Clock { clock, delta })
+}
+
+fn message_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["message"])?;
+    let word = effect.message.as_deref().ok_or(Reason::Schema)?;
+    match Selector::parse(word) {
+        Some(Selector::FirstDueNote) => Ok(RowEffect::Message {
+            message: Selector::FirstDueNote,
+        }),
+        _ => Err(Reason::Schema),
+    }
+}
+
+fn proposal_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["proposal", "kind", "target", "summary"])?;
+    Ok(RowEffect::Proposal {
+        proposal_id: effect.proposal.clone().ok_or(Reason::Schema)?,
+        kind: effect.kind.clone().ok_or(Reason::Schema)?,
+        target: effect.target.clone().ok_or(Reason::Schema)?,
+        summary: effect.summary.clone().ok_or(Reason::Schema)?,
+    })
+}
+
+fn relationship_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["to", "delta"])?;
+    let to = text_field(effect.to.as_deref().ok_or(Reason::Schema)?)?;
+    let delta = required_delta(effect.delta.as_ref())?;
+    let walk = to == Field::Selector(Selector::FirstDrift)
+        && delta == Field::Selector(Selector::TowardTarget);
+    let literals = matches!(to, Field::Literal(_)) && matches!(delta, Field::Number(_));
+    if !walk && !literals {
+        return Err(Reason::Schema);
+    }
+    Ok(RowEffect::Relationship { to, delta })
+}
+
+fn reputation_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["faction", "delta"])?;
+    let Some(delta) = number_field(effect.delta.as_ref())? else {
+        return Err(Reason::Schema);
+    };
+    Ok(RowEffect::Reputation {
+        faction: effect.faction.clone().ok_or(Reason::Schema)?,
+        delta,
+    })
+}
+
+fn memory_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["fact_ids", "tags", "text"])?;
+    Ok(RowEffect::Memory {
+        fact_ids: effect.fact_ids.clone().ok_or(Reason::Schema)?,
+        tags: effect.tags.clone().ok_or(Reason::Schema)?,
+        text: effect.text.clone(),
+    })
+}
+
+fn rumor_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["rumor", "to", "heat"])?;
+    let rumor = selector_word(effect.rumor.as_deref().ok_or(Reason::Schema)?)?;
+    let to = selector_word(effect.to.as_deref().ok_or(Reason::Schema)?)?;
+    let heat = selector_word(effect.heat.as_deref().ok_or(Reason::Schema)?)?;
+    if rumor != Selector::FirstKnownRumor || to != Selector::FirstListener || heat != Selector::KeepHeat
+    {
+        return Err(Reason::Schema);
+    }
+    Ok(RowEffect::Rumor { rumor, to, heat })
+}
+
+fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
+    let present = [
+        ("key", effect.key.is_some()),
+        ("value", effect.value.is_some()),
+        ("delta", effect.delta.is_some()),
+        ("to", effect.to.is_some()),
+        ("place", effect.place.is_some()),
+        ("sku", effect.sku.is_some()),
+        ("clock", effect.clock.is_some()),
+        ("message", effect.message.is_some()),
+        ("proposal", effect.proposal.is_some()),
+        ("kind", effect.kind.is_some()),
+        ("target", effect.target.is_some()),
+        ("summary", effect.summary.is_some()),
+        ("faction", effect.faction.is_some()),
+        ("fact_ids", effect.fact_ids.is_some()),
+        ("tags", effect.tags.is_some()),
+        ("text", effect.text.is_some()),
+        ("rumor", effect.rumor.is_some()),
+        ("heat", effect.heat.is_some()),
+    ];
+    if present
+        .into_iter()
+        .any(|(name, set)| set && !allowed.contains(&name))
+    {
+        return Err(Reason::Schema);
+    }
+    Ok(())
+}
+
+fn text_field(word: &str) -> Result<Field, Reason> {
+    Ok(match Selector::parse(word) {
+        Some(selector) => Field::Selector(selector),
+        None => Field::Literal(word.to_string()),
+    })
+}
+
+fn selector_word(word: &str) -> Result<Selector, Reason> {
+    Selector::parse(word).ok_or(Reason::Schema)
+}
+
+fn required_delta(delta: Option<&DeltaField>) -> Result<Field, Reason> {
+    match delta {
+        Some(DeltaField::Int(n)) => Ok(Field::Number(*n)),
+        Some(DeltaField::Word(word)) => Ok(Field::Selector(selector_word(word)?)),
+        None => Err(Reason::Schema),
+    }
+}
+
+fn number_field(delta: Option<&DeltaField>) -> Result<Option<i64>, Reason> {
+    match delta {
+        None => Ok(None),
+        Some(DeltaField::Int(n)) => Ok(Some(*n)),
+        Some(DeltaField::Word(_)) => Err(Reason::Schema),
+    }
+}
+
+/// Travel stays a non-empty location list. An empty list is not a travel yield.
+fn location_shape(
+    token: MoveToken,
+    on: MoveOn,
+    effects: &[RowEffect],
+    success: &[RowEffect],
+    failure: &[RowEffect],
+) -> bool {
     token == MoveToken::Place
         && on == MoveOn::Speaker
+        && success.is_empty()
+        && failure.is_empty()
+        && !effects.is_empty()
         && effects
             .iter()
             .all(|effect| matches!(effect, RowEffect::Location))
@@ -289,6 +633,10 @@ struct MoveEntry {
     failure: Option<Vec<EffectTemplate>>,
     #[serde(default)]
     item: Option<String>,
+    #[serde(default)]
+    audience: Option<String>,
+    #[serde(default)]
+    difficulty: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -300,5 +648,281 @@ struct EffectTemplate {
     #[serde(default)]
     value: Option<bool>,
     #[serde(default)]
-    delta: Option<i64>,
+    delta: Option<DeltaField>,
+    #[serde(default)]
+    to: Option<String>,
+    #[serde(default)]
+    place: Option<String>,
+    #[serde(default)]
+    sku: Option<String>,
+    #[serde(default)]
+    clock: Option<String>,
+    #[serde(default)]
+    message: Option<String>,
+    #[serde(default)]
+    proposal: Option<String>,
+    #[serde(default)]
+    kind: Option<String>,
+    #[serde(default)]
+    target: Option<String>,
+    #[serde(default)]
+    summary: Option<String>,
+    #[serde(default)]
+    faction: Option<String>,
+    #[serde(default)]
+    fact_ids: Option<Vec<String>>,
+    #[serde(default)]
+    tags: Option<Vec<String>>,
+    #[serde(default)]
+    text: Option<String>,
+    #[serde(default)]
+    rumor: Option<String>,
+    #[serde(default)]
+    heat: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum DeltaField {
+    Int(i64),
+    Word(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use super::{load_moves, Audience, Field, MoveOn, MoveToken, RowEffect, Selector};
+    use crate::error::Reason;
+
+    fn schema(body: &str) -> Reason {
+        let text = format!("schema: moves/v0\nmoves:\n{body}");
+        load_moves(&text).expect_err("schema")
+    }
+
+    #[test]
+    fn docks_pack_omits_audience_and_still_loads() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let text = fs::read_to_string(root.join("rules/moves.yaml")).unwrap();
+        let moves = load_moves(&text).unwrap();
+        let travel = moves.get("travel").unwrap().row.as_ref().unwrap();
+        assert!(travel.audience.is_none());
+        assert_eq!(travel.difficulty, 0);
+        assert_eq!(travel.effects, vec![RowEffect::Location]);
+        assert!(moves.get("wait").unwrap().row.is_none());
+        assert!(moves.get("talk").unwrap().row.is_none());
+        crate::canon::load_canon(&root).unwrap();
+    }
+
+    #[test]
+    fn a_row_names_twelve_classes_selector_words_and_a_yield() {
+        let moves = load_moves(
+            r#"schema: moves/v0
+moves:
+  - name: hold
+    audience: player
+    token: none
+    on: speaker
+    effects: []
+  - name: shelf
+    audience: agenda
+    token: none
+    on: speaker
+    difficulty: 2
+    effects:
+      - class: stock
+        place: here
+        sku: first_rate
+        delta: rate
+      - class: need
+        delta: from_work
+      - class: clock
+        clock: first_owned
+        delta: 1
+      - class: message
+        message: first_due_note
+      - class: proposal
+        proposal: season_advance
+        kind: other
+        target: ""
+        summary: season_advance
+      - class: relationship
+        to: first_drift
+        delta: toward_target
+      - class: rumor
+        rumor: first_known
+        to: first_listener
+        heat: keep
+      - class: reputation
+        faction: harbor
+        delta: 1
+      - class: memory
+        fact_ids: []
+        tags: []
+      - class: resource
+        key: rest
+        delta: 1
+      - class: flag
+        key: marked
+        value: true
+  - name: night
+    audience: system
+    token: none
+    on: speaker
+    effects:
+      - class: location
+        to: schedule_place
+      - class: need
+        key: rest
+        delta: schedule_rest
+  - name: step
+    token: place
+    on: speaker
+    effects:
+      - class: location
+        to: token
+  - name: mark
+    token: actor
+    on: named
+    success:
+      - class: resource
+        key: hp
+        delta: -1
+    failure:
+      - class: flag
+        key: missed
+        value: true
+"#,
+        )
+        .unwrap();
+        let hold = moves.get("hold").unwrap().row.as_ref().unwrap();
+        assert_eq!(hold.audience, Some(Audience::Player));
+        assert!(hold.effects.is_empty());
+        assert_eq!(hold.difficulty, 0);
+        let shelf = moves.get("shelf").unwrap().row.as_ref().unwrap();
+        assert_eq!(shelf.audience, Some(Audience::Agenda));
+        assert_eq!(shelf.difficulty, 2);
+        assert_eq!(
+            shelf.effects[0],
+            RowEffect::Stock {
+                place: Field::Selector(Selector::Here),
+                sku: Field::Selector(Selector::FirstRateSku),
+                delta: Field::Selector(Selector::Rate),
+            }
+        );
+        assert!(matches!(
+            &shelf.effects[1],
+            RowEffect::Need {
+                key: None,
+                delta: Field::Selector(Selector::FromWork),
+            }
+        ));
+        assert_eq!(shelf.effects.len(), 11);
+        let night = moves.get("night").unwrap().row.as_ref().unwrap();
+        assert_eq!(night.audience, Some(Audience::System));
+        assert_eq!(
+            night.effects[0],
+            RowEffect::LocationTo {
+                to: Field::Selector(Selector::SchedulePlace),
+            }
+        );
+        let step = moves.get("step").unwrap().row.as_ref().unwrap();
+        assert!(step.audience.is_none());
+        assert_eq!(step.effects, vec![RowEffect::Location]);
+        let mark = moves.get("mark").unwrap().row.as_ref().unwrap();
+        assert!(mark.effects.is_empty());
+        assert_eq!(
+            mark.success,
+            vec![RowEffect::Resource {
+                key: "hp".to_string(),
+                delta: -1,
+            }]
+        );
+        assert_eq!(
+            mark.failure,
+            vec![RowEffect::Flag {
+                key: "missed".to_string(),
+                value: true,
+            }]
+        );
+        assert_eq!(mark.token, MoveToken::Actor);
+        assert_eq!(mark.on, MoveOn::Named);
+    }
+
+    #[test]
+    fn loader_still_rejects_the_old_shapes_and_unknown_selectors() {
+        assert_eq!(
+            schema("  - name: say\n    token: none\n    on: speaker\n    effects: []\n"),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema("  - name: talk\n    token: none\n    on: speaker\n    effects: []\n"),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema("  - name: wait\n    token: none\n    on: speaker\n    effects: []\n"),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: attack\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: travel\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    token: actor\n    on: named\n    effects: []\n    success:\n      - class: flag\n        key: marked\n        value: true\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n        value: true\n    success: []\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: gm\n    token: none\n    on: speaker\n    effects: []\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: inventory\n        key: bag\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: stock\n        place: here\n        sku: lamp_oil\n        delta: 4\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: message\n        message: first_note\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: location\n        to: token\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: flag\n        key: busy\n        value: true\n"
+            ),
+            Reason::Schema
+        );
+    }
 }

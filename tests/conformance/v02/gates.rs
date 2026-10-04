@@ -1683,9 +1683,6 @@ fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
             "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: busy\n        value: true\n"
         )
     });
-    reject_moves("p06-empty", |text| {
-        format!("{text}  - name: mark\n    token: actor\n    on: named\n    effects: []\n")
-    });
     reject_moves("p06-missing", |text| {
         format!(
             "{text}  - name: mark\n    token: actor\n    on: named\n    effects:\n      - class: flag\n        key: marked\n"
@@ -1768,6 +1765,21 @@ fn v02_p06_pack_load_rejects_a_row_that_is_not_one_flag() {
     assert!(canon.moves.get("work").unwrap().row.is_none());
     assert!(canon.moves.get("attack").unwrap().row.is_none());
     assert_eq!(canon.moves.get("attempt").unwrap().check.as_deref(), None);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+#[test]
+fn v02_p06_empty_effects_load_as_a_yield() {
+    let pack = temp_pack("p06-empty");
+    let path = pack.join("rules/moves.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = format!("{text}  - name: mark\n    token: actor\n    on: named\n    effects: []\n");
+    fs::write(&path, next).unwrap();
+    let canon = spookery_kernel::canon::load_canon(&pack).unwrap();
+    let row = canon.moves.get("mark").unwrap().row.as_ref().unwrap();
+    assert!(row.effects.is_empty());
+    assert!(row.success.is_empty());
+    assert!(row.failure.is_empty());
     let _ = fs::remove_dir_all(&pack);
 }
 

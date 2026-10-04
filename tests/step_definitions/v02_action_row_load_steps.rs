@@ -215,6 +215,15 @@ fn move_one_flag(w: &mut World, name: String, key: String, value: String) {
     );
 }
 
+#[then(expr = "move {string} effects are empty")]
+fn move_effects_empty(w: &mut World, name: String) {
+    let canon = load(w);
+    let row = move_row(&canon, &name);
+    assert!(row.effects.is_empty(), "{name}");
+    assert!(row.success.is_empty(), "{name}");
+    assert!(row.failure.is_empty(), "{name}");
+}
+
 #[then(expr = "move {string} effects are location")]
 fn move_location(w: &mut World, name: String) {
     let canon = load(w);
