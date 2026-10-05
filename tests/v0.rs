@@ -5,9 +5,6 @@ mod support;
 #[path = "conformance/v0/trace.rs"]
 mod trace;
 
-#[path = "conformance/v0/c01_load_mcp.rs"]
-mod c01_load_mcp;
-
 #[path = "conformance/v0/c09_idle_ux.rs"]
 mod c09_idle_ux;
 

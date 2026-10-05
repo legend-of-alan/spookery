@@ -12,8 +12,10 @@ use crate::World;
 
 pub struct Live {
     pub port: u16,
-    pub held_write: Option<TcpStream>,
-    pub held_text: Arc<Mutex<String>>,
+    pub player_write: Option<TcpStream>,
+    pub player_text: Arc<Mutex<String>>,
+    pub gm_write: Option<TcpStream>,
+    pub gm_text: Arc<Mutex<String>>,
     pub opened_now: Vec<u8>,
     pub seated_now: Vec<u8>,
     pub seated_rev: u64,
@@ -58,8 +60,10 @@ pub fn listen(pack: &Path, bind: &str, port: u16) {
         fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     crate::set_live(Live {
         port,
-        held_write: None,
-        held_text: Arc::new(Mutex::new(String::new())),
+        player_write: None,
+        player_text: Arc::new(Mutex::new(String::new())),
+        gm_write: None,
+        gm_text: Arc::new(Mutex::new(String::new())),
         opened_now: opened_now.clone(),
         seated_now: opened_now,
         seated_rev: 0,
@@ -74,8 +78,8 @@ pub fn seat_player(pack: &Path) {
         fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     let seated_rev = now_of(pack).state_rev;
     crate::with_live(|live| {
-        live.held_write = Some(write);
-        live.held_text = text;
+        live.player_write = Some(write);
+        live.player_text = text;
         live.seated_now = seated_now;
         live.seated_rev = seated_rev;
     });
@@ -85,22 +89,79 @@ pub fn seat_gm() {
     let port = crate::with_live(|live| live.port);
     let (write, text) = connect_gm(port);
     crate::with_live(|live| {
-        live.held_write = Some(write);
-        live.held_text = text;
+        live.gm_write = Some(write);
+        live.gm_text = text;
     });
 }
 
 pub fn say(line: &str, text: &str) {
-    let held = crate::with_live(|live| {
+    let _ = player_send(line, &format!("\"text\":\"{text}\""));
+}
+
+pub fn player_len() -> usize {
+    crate::with_live(|live| support::text_of(&live.player_text).len())
+}
+
+pub fn player_send(line: &str, needle: &str) -> (usize, String) {
+    let (slot, mark) = crate::with_live(|live| {
+        let mark = support::text_of(&live.player_text).len();
         let write = live
-            .held_write
+            .player_write
             .as_mut()
             .unwrap_or_else(|| panic!("no seated player"));
         writeln!(write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
         write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-        Arc::clone(&live.held_text)
+        (Arc::clone(&live.player_text), mark)
     });
-    wait_text(&held, &format!("\"text\":\"{text}\""));
+    (mark, wait_suffix(&slot, mark, needle))
+}
+
+pub fn wait_player_from(mark: usize, needle: &str) -> String {
+    let slot = crate::with_live(|live| Arc::clone(&live.player_text));
+    wait_suffix(&slot, mark, needle)
+}
+
+pub fn gm_call(id: u64, name: &str, arguments: &str) -> String {
+    let needle = format!("\"id\":{id}");
+    let (slot, mark) = crate::with_live(|live| {
+        let mark = support::text_of(&live.gm_text).len();
+        let write = live
+            .gm_write
+            .as_mut()
+            .unwrap_or_else(|| panic!("no seated GM"));
+        let name = serde_json::to_string(name).unwrap_or_else(|err| panic!("name: {err}"));
+        writeln!(
+            write,
+            "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":{name},\"arguments\":{arguments}}}}}"
+        )
+        .unwrap_or_else(|err| panic!("gm call: {err}"));
+        write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+        (Arc::clone(&live.gm_text), mark)
+    });
+    wait_suffix(&slot, mark, &needle)
+}
+
+pub fn wait_gm(needle: &str) -> String {
+    let slot = crate::with_live(|live| Arc::clone(&live.gm_text));
+    wait_text(&slot, needle);
+    support::text_of(&slot)
+}
+
+pub fn wait_world_time(pack: &Path, expected: u64) {
+    let start = Instant::now();
+    let path = pack.join("state/now.yaml");
+    loop {
+        let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+        if let Ok(now) = spookery_kernel::codec::load_now(&text) {
+            if now.world_time == expected {
+                return;
+            }
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("world_time did not become {expected}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 pub fn second_hello(line: &str) -> String {
@@ -224,14 +285,19 @@ fn spawn_reader(stream: &TcpStream) -> Arc<Mutex<String>> {
 }
 
 fn wait_text(slot: &Arc<Mutex<String>>, needle: &str) {
+    let _ = wait_suffix(slot, 0, needle);
+}
+
+fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> String {
     let start = Instant::now();
     loop {
         let text = support::text_of(slot);
-        if text.contains(needle) {
-            return;
+        let added = text.get(mark..).unwrap_or("");
+        if added.contains(needle) {
+            return added.to_string();
         }
         if start.elapsed() > Duration::from_secs(5) {
-            panic!("missing {needle}\n{text}");
+            panic!("missing {needle}\n{added}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }

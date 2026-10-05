@@ -17,6 +17,15 @@ mod seats;
 #[path = "steps/loopback.rs"]
 mod loopback;
 
+#[path = "steps/rounds.rs"]
+mod rounds;
+
+#[path = "steps/profiles.rs"]
+mod profiles;
+
+#[path = "steps/checks.rs"]
+mod checks;
+
 use std::process::Child;
 use std::sync::Mutex;
 
@@ -66,6 +75,9 @@ pub struct World {
     pub code: Option<i32>,
     pub stdout: String,
     pub stderr: String,
+    pub mark: usize,
+    pub player_added: String,
+    pub gm_added: String,
 }
 
 #[tokio::main]

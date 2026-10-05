@@ -1,11 +1,7 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::process::Command;
 
 use serde_json::{json, Value};
 use spookery::seat::{
@@ -158,179 +154,6 @@ fn finished(args: &[&str]) -> (Option<i32>, String, String) {
         String::from_utf8_lossy(&output.stdout).into_owned(),
         String::from_utf8_lossy(&output.stderr).into_owned(),
     )
-}
-
-fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
-    std::thread::spawn(move || {
-        let mut reader = reader;
-        let mut buf = [0u8; 256];
-        loop {
-            match reader.read(&mut buf) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => slot
-                    .lock()
-                    .unwrap()
-                    .push_str(&String::from_utf8_lossy(&buf[..n])),
-            }
-        }
-    });
-}
-
-struct Server {
-    child: Child,
-    port: u16,
-    stdin: Option<ChildStdin>,
-    stderr: Arc<Mutex<String>>,
-}
-
-impl Drop for Server {
-    fn drop(&mut self) {
-        drop(self.stdin.take());
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-impl Server {
-    fn start(pack: &Path, bind: &str, port: u16) -> Self {
-        let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-        command
-            .args(["run", &pack_arg(pack), "--bind", bind])
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = command
-            .spawn()
-            .unwrap_or_else(|err| panic!("spawn spook: {err}"));
-        let stdin = child.stdin.take();
-        let stdout = child.stdout.take().unwrap();
-        let stderr = child.stderr.take().unwrap();
-        let stderr_buf = Arc::new(Mutex::new(String::new()));
-        drain(stdout, Arc::new(Mutex::new(String::new())));
-        drain(stderr, Arc::clone(&stderr_buf));
-        let mut server = Server {
-            child,
-            port,
-            stdin,
-            stderr: stderr_buf,
-        };
-        server.wait_listen();
-        server
-    }
-
-    fn wait_listen(&mut self) {
-        let start = Instant::now();
-        let addr = format!("127.0.0.1:{}", self.port);
-        loop {
-            if TcpStream::connect(&addr).is_ok() {
-                return;
-            }
-            if let Some(status) = self.child.try_wait().unwrap() {
-                panic!(
-                    "spook run exited {:?}\n{}",
-                    status.code(),
-                    self.stderr.lock().unwrap()
-                );
-            }
-            if start.elapsed() > Duration::from_secs(10) {
-                panic!("listener did not open\n{}", self.stderr.lock().unwrap());
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    }
-}
-
-fn free_port() -> u16 {
-    loop {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        drop(listener);
-        if port != 9737 {
-            return port;
-        }
-    }
-}
-
-struct Pipe {
-    write: TcpStream,
-    text: Arc<Mutex<String>>,
-}
-
-impl Pipe {
-    fn connect(port: u16) -> TcpStream {
-        let start = Instant::now();
-        let addr = format!("127.0.0.1:{port}");
-        loop {
-            match TcpStream::connect(&addr) {
-                Ok(stream) => {
-                    stream.set_nodelay(true).unwrap();
-                    return stream;
-                }
-                Err(err) => {
-                    if start.elapsed() > Duration::from_secs(5) {
-                        panic!("connect {addr}: {err}");
-                    }
-                    std::thread::sleep(Duration::from_millis(20));
-                }
-            }
-        }
-    }
-
-    fn from_stream(stream: TcpStream) -> Self {
-        let read = stream.try_clone().unwrap();
-        let text = Arc::new(Mutex::new(String::new()));
-        drain(read, Arc::clone(&text));
-        Pipe { write: stream, text }
-    }
-
-    fn player(port: u16) -> Self {
-        let mut pipe = Self::from_stream(Self::connect(port));
-        pipe.send("player:pc_rowan");
-        pipe.wait("\"kind\":\"perceive\"");
-        pipe
-    }
-
-    fn gm(port: u16) -> Self {
-        let mut pipe = Self::from_stream(Self::connect(port));
-        pipe.write
-            .write_all(b"gm\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"proof\",\"version\":\"0\"}}}\n")
-            .unwrap();
-        pipe.write.flush().unwrap();
-        pipe.wait("\"id\":1");
-        pipe.send("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}");
-        pipe
-    }
-
-    fn send(&mut self, line: &str) {
-        writeln!(self.write, "{line}").unwrap();
-        self.write.flush().unwrap();
-    }
-
-    fn text(&self) -> String {
-        self.text.lock().unwrap().clone()
-    }
-
-    fn wait(&self, needle: &str) -> String {
-        let start = Instant::now();
-        loop {
-            let text = self.text();
-            if text.contains(needle) {
-                return text;
-            }
-            if start.elapsed() > Duration::from_secs(5) {
-                panic!("missing {needle}\n{text}");
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-    }
-
-    fn call(&mut self, id: u64, name: &str, arguments: &str) -> String {
-        let name = serde_json::to_string(name).unwrap();
-        self.send(&format!(
-            "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":{name},\"arguments\":{arguments}}}}}"
-        ));
-        self.wait(&format!("\"id\":{id}"))
-    }
 }
 
 #[test]
@@ -1163,18 +986,7 @@ fn player_waits(tick: &Value) -> Vec<String> {
 }
 
 #[test]
-fn gm_round_holds_the_queue() {
-    let live = temp_pack("live-wait");
-    let mut shard = open(&live);
-    seat_player(&mut shard, "pc_rowan").unwrap();
-    assert_eq!(shard.now().world_time, 1080);
-    queue_wait(&mut shard, "pc_rowan").unwrap();
-    assert!(commit_queued(&mut shard).unwrap());
-    assert_eq!(shard.now().world_time, 1085);
-    assert_eq!(shard.now().tick_index, 1);
-    assert_eq!(tick_names(&live), vec!["tick-0001.jsonl".to_string()]);
-    let _ = fs::remove_dir_all(&live);
-
+fn queued_line_survives_a_dropped_seat() {
     let held = temp_pack("held");
     let mut shard = open(&held);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
@@ -1192,20 +1004,6 @@ fn gm_round_holds_the_queue() {
     assert_eq!(shard.now().tick_index, 0);
     assert!(tick_names(&held).is_empty());
     let _ = fs::remove_dir_all(&held);
-
-    let commit = temp_pack("gm-commit");
-    let mut shard = open(&commit);
-    seat_player(&mut shard, "pc_rowan").unwrap();
-    let queued = turn(&mut shard, "pc_rowan", "wait", true).unwrap();
-    let Turn::Queued(note) = queued else {
-        panic!("gm-seated wait committed");
-    };
-    assert_eq!(shard.now().world_time, 1080);
-    assert!(tick_names(&commit).is_empty());
-    assert!(commit_queued(&mut shard).unwrap());
-    assert_eq!(shard.now().world_time, 1085);
-    assert_eq!(player_waits(&tick_value(&commit, "tick-0001.jsonl")), vec![note.id]);
-    let _ = fs::remove_dir_all(&commit);
 
     let dropped = temp_pack("drop-queue");
     let mut shard = open(&dropped);
@@ -1225,7 +1023,10 @@ fn gm_round_holds_the_queue() {
     assert_eq!(shard.queued_intents()[0].id, note.id);
     assert!(tick_names(&dropped).is_empty());
     let _ = fs::remove_dir_all(&dropped);
+}
 
+#[test]
+fn early_wake_does_not_tick_again() {
     let early = temp_pack("early-wake");
     let mut shard = open(&early);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
@@ -1239,7 +1040,10 @@ fn gm_round_holds_the_queue() {
     assert_eq!(shard.now().tick_index, committed.tick_index);
     assert_eq!(tick_names(&early), vec!["tick-0001.jsonl".to_string()]);
     let _ = fs::remove_dir_all(&early);
+}
 
+#[test]
+fn a_due_wake_applies_the_queued_wait() {
     let due = temp_pack("due-wake");
     let mut shard = open(&due);
     let note = queue_wait(&mut shard, "pc_rowan").unwrap();
@@ -1576,61 +1380,6 @@ fn rowan_travel() {
 }
 
 #[test]
-fn grit_row_wire() {
-    let live = temp_pack("grit-live");
-    let port = free_port();
-    let server = Server::start(&live, &format!("127.0.0.1:{port}"), port);
-    let mut player = Pipe::player(port);
-    let hello = player.text().len();
-    player.send("grit");
-    let stdout = player.wait("{\"kind\":\"check\",\"success\":true}");
-    let added = &stdout[hello..];
-    assert!(added.contains("{\"kind\":\"check\",\"success\":true}"), "{added}");
-    assert!(!added.contains("\"faces\""), "{added}");
-    let tick = fs::read_to_string(live.join("state/log/tick-0001.jsonl")).unwrap();
-    assert!(!tick.contains("faces"), "{tick}");
-    assert!(tick.contains("resolve_check"), "{tick}");
-    assert_eq!(now_of(&live).world_time, 1085);
-    drop(server);
-    let _ = fs::remove_dir_all(&live);
-
-    let held = temp_pack("grit-gm");
-    let port = free_port();
-    let server = Server::start(&held, &format!("127.0.0.1:{port}"), port);
-    let mut gm = Pipe::gm(port);
-    let mut player = Pipe::player(port);
-    let hello = player.text().len();
-    player.send("grit");
-    let queued = player.wait("\"kind\":\"queued\"");
-    assert!(!queued[hello..].contains("\"kind\":\"check\""), "{queued}");
-    assert_eq!(now_of(&held).world_time, 1080);
-    assert!(tick_names(&held).is_empty());
-    gm.call(2, "commit_turn", r#"{"include_tick":true}"#);
-    let gm_text = gm.wait("\"faces\"");
-    assert!(gm_text.contains("\"kind\":\"check\""));
-    let event = gm_text
-        .lines()
-        .find(|line| line.contains("\"faces\""))
-        .unwrap();
-    assert!(event.contains("\"faces\":["));
-    assert!(event.contains("\"stat\":1"));
-    assert!(event.contains("\"target\":0"));
-    let player_text = player.wait("{\"kind\":\"check\",\"success\":");
-    let added = &player_text[queued.len()..];
-    assert!(
-        added.contains("{\"kind\":\"check\",\"success\":true}")
-            || added.contains("{\"kind\":\"check\",\"success\":false}"),
-        "{added}"
-    );
-    assert!(!added.contains("\"faces\""), "{added}");
-    let tick = fs::read_to_string(held.join("state/log/tick-0001.jsonl")).unwrap();
-    assert!(!tick.contains("faces"), "{tick}");
-    assert!(tick.contains("resolve_check"), "{tick}");
-    drop(server);
-    let _ = fs::remove_dir_all(&held);
-}
-
-#[test]
 fn pack_rev_mismatch_until_migrate() {
     let pack = temp_pack("pack-rev");
     let now_path = pack.join("state/now.yaml");
@@ -1653,15 +1402,7 @@ fn pack_rev_mismatch_until_migrate() {
 }
 
 #[test]
-fn npc_act_is_llm_disabled() {
-    let pack = temp_pack("npc");
-    let before = fs::read(pack.join("state/now.yaml")).unwrap();
-    let mut shard = open(&pack);
-    let args = json!({"actor_id": "mira"});
-    let tool = gm_tool(&mut shard, "npc_act", Some(args.as_object().unwrap().clone()));
-    assert_eq!(tool.value, json!({ "code": "LLM_DISABLED" }));
-    drop(shard);
-    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
+fn manifests_do_not_name_a_model_crate() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [
         root.join("Cargo.toml"),
@@ -1672,5 +1413,4 @@ fn npc_act_is_llm_disabled() {
         let text = fs::read_to_string(&path).unwrap();
         assert!(!text.contains("llm"), "{}", path.display());
     }
-    let _ = fs::remove_dir_all(&pack);
 }
