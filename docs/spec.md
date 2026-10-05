@@ -13,10 +13,10 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 1. **Import boundary.** `spookery-kernel` and `spookery-tick` do not link a runtime, a database, or a model SDK.
 2. **`!Send` `Txn`.** One `std::thread` owns `Now`. The tick is not spawned on a runtime.
 3. **Atomic commit.** `now.yaml` is renamed last. A crash cannot apply a partial tick.
-4. **Closed effect, one apply.** Twelve effect classes. `apply_effect` is the only mutator of world numbers.
+4. **Closed effect, one apply.** Eleven effect classes. `apply_effect` is the only mutator of world numbers.
 5. **Firewall.** `firewall::allows` is the visibility test. A hidden fact does not leak through place or cast prose.
 6. **Deterministic tick.** Selector bindings freeze before the apply loop. Replay does not re-walk the agenda and does not re-roll.
-7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot. A proposal does not edit canon.
+7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
 8. **Action-row loader.** A moves file is names and rows. Selectors are a closed enum. A new verb is a new row in YAML.
 9. **Seeded checks.** `die_face` is Blake2s. One copy, in `check.rs`. `difficulty` applies only when the row sets `check` and no opposing total applies.
 10. **Eligibility and pause.** Both run before an agenda intent exists. An ineligible NPC produces no agenda intent.
@@ -27,7 +27,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 
 ## One writer
 
-The shard thread is the only writer of `Now` and of `Seats`. One `std::thread` owns `Now`. `Txn` stays `!Send`, with `PhantomData<Rc<()>>` as in `src/kernel/store.rs`. No `tokio::spawn` of a tick.
+The shard thread is the only writer of `Now` and of `Seats`. One `std::thread` owns `Now`. `Txn` stays `!Send`, with `PhantomData<Rc<()>>` as in `src/kernel/shard.rs`. No `tokio::spawn` of a tick.
 
 The queue is a `Vec` of intents on the shard thread. It is ephemeral. A crash drops every uncommitted line. A crash cannot apply a partial tick. The queue is not a field of `now.yaml`. It is not a side file that recovery has to remember.
 
@@ -60,7 +60,7 @@ Tokio in the bin is the accept loop, keepalive, and scheduler sleep. Tokio in `s
 
 ## Effect envelope
 
-`Effect` is one struct. The class is the payload. There is no `inventory`, `xp`, or `season` variant. A season overflow is a `proposal` whose `summary` is `season_advance`. Rows emit all twelve classes. There is no thirteenth class.
+`Effect` is one struct. The class is the payload. There is no `inventory` or `xp` variant. Rows emit all eleven classes. There is no twelfth class.
 
 ```rust
 pub struct Effect {
@@ -80,18 +80,17 @@ pub enum EffectClass {
     Rumor { rumor_id: String, fact_ids: Vec<String>, from: String, to: String, heat: i64 },
     Resource { actor_id: String, key: String, delta: i64 },
     Flag { actor_id: String, key: String, value: bool },
-    Proposal { proposal_id: String, kind: String, target: String, summary: String },
     Message { message_id: String, to: Vec<String>, place: Option<String>, fact_ids: Vec<String>, text: String },
 }
 ```
 
-`ViewerId` is `Player` or `Npc`. There is no `Gm` variant. The JSON token is `player:{id}` or `npc:{id}`. A system season row uses the actor kind of the chosen PC or NPC, with `Source::System`, so the viewer still matches that actor.
+`ViewerId` is `Player` or `Npc`. There is no `Gm` variant. The JSON token is `player:{id}` or `npc:{id}`.
 
-JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `need`, `stock`, `location`, `relationship`, `reputation`, `memory`, `rumor`, `resource`, `flag`, `proposal`, or `message`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `now.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
+JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `need`, `stock`, `location`, `relationship`, `reputation`, `memory`, `rumor`, `resource`, `flag`, or `message`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `now.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
 
 ## Apply
 
-`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. Needs clamp through the profile bounds. Stock and resources refuse a negative result. Relationship and reputation deltas outside `-1..=1` are `OUT_OF_RANGE`. A proposal is a staged proposal document, not an edit of canon. Memory text longer than 240 characters is `SCHEMA`. Memory and rumor facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. Relationship and reputation keep the once-per-world-day `SKIPPED` no-op. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
+`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. Needs clamp through the profile bounds. Stock and resources refuse a negative result. Relationship and reputation deltas outside `-1..=1` are `OUT_OF_RANGE`. Memory text longer than 240 characters is `SCHEMA`. Memory and rumor facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. Relationship and reputation keep the once-per-world-day `SKIPPED` no-op. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
 
 The effect's viewer must be the active intent's actor. Failure is `VIEWER_MISMATCH`.
 
@@ -120,7 +119,7 @@ A row has:
 - optional `difficulty`: `i64`, default 0, used only when `check` is set and no opposing total applies
 - optional `item`: a sheet inventory precondition
 
-`classify` and the GM intent tool queue a row only when `audience` is `player`. An `agenda` or `system` name, including `advance_clock`, `restock`, `travel_schedule`, and `season_advance`, is `NOT_IN_SPEC` and is not queued. Agenda selection queues a row only when `audience` is `agenda`. A cast agenda that names a `player` or `system` row is `SCHEMA` at load. The catch-up call site is the only caller that may resolve a `system` row, and only `season_advance`. Empty-table gates still apply to anything that does get into a tick. `season_advance` is not a player line.
+`classify` and the GM intent tool queue a row only when `audience` is `player`. An `agenda` or `system` name, including `advance_clock`, `restock`, and `travel_schedule`, is `NOT_IN_SPEC` and is not queued. Agenda selection queues a row only when `audience` is `agenda`. A cast agenda that names a `player` or `system` row is `SCHEMA` at load. No call site resolves a `system` row. Empty-table gates still apply to anything that does get into a tick.
 
 Load rejects a duplicate name, an empty name, an empty `item`, the flag key `busy`, a row on `say` or `talk`, an unknown class, an unknown selector, a template whose keys do not match its class, and any unknown shape. `give`, `take`, `wait`, and `attempt` are not reserved names. `attack` is not reserved. `travel` is not special-cased in Rust. A travel row is whatever templates it has, and `apply_location` enforces the graph. The docks grit check is a `grit` row. `attempt grit 3` is not a special parser. The wire object `{"kind":"check","success":true|false}` does not change.
 
@@ -208,7 +207,7 @@ pub enum Source {
 
 Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay copies the stored id and those stored classes. It does not mint again.
 
-Priority, computed before the roll, is unchanged in order: player before NPC before system, then PC-owned clocks, claimed targets, notable tier, proposal, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the frozen clock id in the bindings when the clock walk resolved, otherwise a literal clock id on the template. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a frozen note's `to` hits `actors_present`. "Proposal" means the row's `effects`, `success`, or `failure` templates include `class: proposal`, read off the row, not off the post-roll vec. Notable tier is `Named`, `Major`, or `plot_relevant`.
+Priority, computed before the roll, is unchanged in order: player before NPC before system, then PC-owned clocks, claimed targets, notable tier, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the frozen clock id in the bindings when the clock walk resolved, otherwise a literal clock id on the template. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a frozen note's `to` hits `actors_present`. Notable tier is `Named`, `Major`, or `plot_relevant`.
 
 Library paths return `Result`. The CLI prints `Reason::token()` and exits 1.
 
@@ -220,7 +219,7 @@ An entry has a row name, an optional pause lane (`named_plot_clocks`, `subsisten
 
 `pause` requires that lane's pause view to be running. The view is filled from the four policies in `tick.yaml` before agenda selection. `schedule: away` is the travel predicate in the selector table: the winning schedule row's place differs from the actor's place and lies in range. `schedule: here` plus `activity` is the work or rest gate: the winning row's place is the actor's place and the winning row's activity equals the string. `when_stock` is ready only when `FirstRateSku` returns a sku. `when_drift`, `when_rumor`, `when_note`, and `when_clock` are ready only when the matching walk returns a value. Notes use file order. Rumors, listeners, drift partners, and clocks use the orders in the selector table. An entry with no `when_*` flag and no schedule gate is always ready if its pause lane is running. An agenda entry names an `audience: agenda` row, or load returns `SCHEMA`.
 
-`audience` is `player`, `agenda`, or `system`. The player parser queues only `player`. Agenda selection queues only `agenda`. `season_advance` is `system`.
+`audience` is `player`, `agenda`, or `system`. The player parser queues only `player`. Agenda selection queues only `agenda`. No call site resolves `system`.
 
 Eligibility runs first. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, no PC may be in that place, tier or schedule must qualify, the NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no agenda intent. The shop stays still while a player stands in it because that NPC is not eligible. Plot clocks with `requires_presence` are paused while `humans == 0` and the policy is `pause_when_empty`. Subsistence, drift, and travel keep their own policies. `run_if_schedule` still leaves the travel view running. The schedule gate is the real condition.
 
@@ -251,7 +250,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 
 Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `DENIED_TOOL`, `COMMIT_CONFLICT`, `HAND_EDIT`, `LLM_DISABLED`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`, `SKIPPED`.
 
-`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is a new effect class at the parse boundary. `EffectClass` has twelve variants.
+`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is a new effect class at the parse boundary. `EffectClass` has eleven variants.
 
 ## Commit
 
@@ -260,17 +259,17 @@ Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLED
 1. Copy each live target that already exists into `state/.txn/prev`, and fsync the copies and the `prev` directory.
 2. Create `state/.txn/COMPLETE`, and fsync the file and the `.txn` directory.
 3. Write each new body to a temp file, fsync, and fsync the parent.
-4. Rename side files first (`rumors.yaml`, `log/tick-NNNN.jsonl`, `memories/*.jsonl`, `proposals/*.yaml`).
+4. Rename side files first (`rumors.yaml`, `log/tick-NNNN.jsonl`, `memories/*.jsonl`).
 5. Rename `now.yaml` last.
 6. Fsync `state/`. Remove `.txn`. `state_rev` was incremented in memory before the bytes were emitted, and it hits disk only in that last rename.
 
-`recover` keeps three shapes. No `COMPLETE` means delete `.txn` and leave the live tree. `COMPLETE` and `live.state_rev == prev.state_rev` means restore `prev`. `COMPLETE` and `live.state_rev == prev + 1` means delete `.txn` and keep live. Then drop tick logs whose `state_rev_after` is above live, drop memory lines whose `tick_index` is not in a live log, drop proposal files whose stem is not in `now.proposals`, and rewrite `rumors.yaml` from `now.rumors` when it differs. `rumors.yaml` is not a source. The next commit rewrites it from `now.rumors`.
+`recover` keeps three shapes. No `COMPLETE` means delete `.txn` and leave the live tree. `COMPLETE` and `live.state_rev == prev.state_rev` means restore `prev`. `COMPLETE` and `live.state_rev == prev + 1` means delete `.txn` and keep live. Then drop tick logs whose `state_rev_after` is above live, drop memory lines whose `tick_index` is not in a live log, and rewrite `rumors.yaml` from `now.rumors` when it differs. `rumors.yaml` is not a source. The next commit rewrites it from `now.rumors`.
 
 `commit_presence` writes `now.yaml` alone, through the same `write_commit`. Presence is `humans` and `actors_present` only. When those two fields are unchanged after canonicalize, it writes nothing and does not increment `state_rev`. When either field changes, it increments `state_rev` by 1 and then emits. It does not open a `Txn`, does not write a tick log, and does not advance clocks. A session id is not an input.
 
 `migrate_pack` is the only writer that changes `pack_rev`. It goes through `write_commit` and appends one studio line. A hand edit of `now.yaml` that is not `spook migrate` remains `HAND_EDIT` on the next tick. Studio tools do not write `state/`.
 
-`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Txn` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev`, stock, and proposals at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `now.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `now.yaml` and deletes a tick log, a memory line, and a proposal file that do not belong to it.
+`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Txn` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev` and stock at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `now.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `now.yaml` and deletes a tick log and a memory line that do not belong to it.
 
 Replay byte-compares `now.yaml` produced by this kernel. It does not pin a frozen docks hash.
 
@@ -330,7 +329,7 @@ Still not built, and not implied by a missing sentence above:
 - An ack cursor, or a per-client outbound queue whose purpose is to make a host event start a host turn.
 - `apply_effect` or `patch_entity` on the sitting.
 - Studio tools that write `state/`.
-- An inventory, xp, health, or season effect class, or a new need floor in the canon schema.
+- An inventory, xp, or health effect class, or a new need floor in the canon schema.
 - Rewriting `.grok/skills/gm-docks`.
 - Changing the player wire kinds `refused`, `check`, and `say`.
 - WebSockets, HTTP, `--serve`, or a database.
@@ -352,7 +351,7 @@ The player line grammar does change. The check wire object does not. That split 
 | Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It wraps the stored post-roll classes and calls `apply_effect` on a temp copy. It does not re-walk the agenda or re-roll. Apply still refuses a paused, out-of-range, or illegal-knowledge class. |
 | Two ticks in flight | One lock around the tick run and `commit_turn`. The second caller gets `COMMIT_CONFLICT`. Tick code is synchronous on the shard thread. |
 | `patch_entity` writes canon and the live shard | Not a sitting tool. The studio list-only server does not write `state/`. A canon byte change mismatches `pack_rev` until migrate. |
-| New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has twelve variants. |
+| New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has eleven variants. |
 | `perceive` with no `as`, or `as=gm` | `ViewerId` has no GM variant. Tick perceive rejects players. Sitting perceive rejects anything but `player:` and `npc:`. |
 | `places.actors` edited apart from `actors.place` | Load fails `SCHEMA`. Emit rebuilds occupancy from `actors.*.place`. |
 | `state/rumors.yaml` treated as live | Ignored as a source. Recovery and the next commit rewrite it from `now.rumors`. |
