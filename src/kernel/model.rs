@@ -19,7 +19,6 @@ pub struct Now {
     pub clocks: BTreeMap<String, Clock>,
     pub rumors: Vec<Rumor>,
     pub messages: Vec<Message>,
-    pub proposals: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -252,19 +251,6 @@ pub struct PcSheet {
     pub resources: BTreeMap<String, i64>,
     pub inventory: Vec<String>,
     pub flags: Vec<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProposalDoc {
-    pub schema: String,
-    pub id: String,
-    pub kind: String,
-    pub target: String,
-    pub summary: String,
-    pub actor_id: String,
-    pub source: String,
-    pub tick_index: u64,
 }
 
 pub fn sort_unique(items: &mut Vec<String>) {

@@ -5,13 +5,12 @@ use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
 use crate::codec::{
-    canonicalize, emit_memory_line, emit_migrate_line, emit_now, emit_proposal, emit_rumors,
-    load_now,
+    canonicalize, emit_memory_line, emit_migrate_line, emit_now, emit_rumors, load_now,
 };
 use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
 use crate::lock::{lock_pack, lock_shard};
-use crate::model::{MemoryLine, Now, Presence, ProposalDoc};
+use crate::model::{MemoryLine, Now, Presence};
 use crate::shard::{Shard, Txn};
 
 pub struct CommitOutcome {
@@ -36,7 +35,6 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
         now_bytes,
         Some((tick_index, tick_jsonl.as_bytes())),
         &txn.memories,
-        &txn.proposals,
     )?;
     write_commit(&state, &planned)?;
     shard.now = txn.staging;
@@ -84,7 +82,6 @@ pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Reason> {
         now_bytes,
         Some((tick_index, pending.tick_jsonl.as_bytes())),
         &pending.memories,
-        &pending.proposals,
     )?;
     write_commit(&state, &planned)?;
     shard.now = now;
@@ -112,7 +109,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     canonicalize(&mut now);
     let emitted = emit_now(&now)?.into_bytes();
     let state = root.join("state");
-    let planned = plan_commit(&state, &now, emitted, None, &[], &[])?;
+    let planned = plan_commit(&state, &now, emitted, None, &[])?;
     write_commit(&state, &planned)?;
     let line = format!(
         "{}\n",
@@ -149,7 +146,6 @@ fn plan_commit(
     now_bytes: Vec<u8>,
     tick: Option<(u64, &[u8])>,
     memories: &[MemoryLine],
-    proposals: &[ProposalDoc],
 ) -> Result<Vec<Planned>, Reason> {
     let rumor_bytes = emit_rumors(now)?.into_bytes();
     let mut planned = Vec::new();
@@ -174,13 +170,6 @@ fn plan_commit(
         planned.push(Planned {
             target: state.join("memories").join(format!("{actor_id}.jsonl")),
             bytes: body.into_bytes(),
-            is_now: false,
-        });
-    }
-    for doc in proposals {
-        planned.push(Planned {
-            target: state.join("proposals").join(format!("{}.yaml", doc.id)),
-            bytes: emit_proposal(doc)?.into_bytes(),
             is_now: false,
         });
     }

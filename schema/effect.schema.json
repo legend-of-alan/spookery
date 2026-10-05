@@ -459,56 +459,6 @@
       ],
       "properties": {
         "class": {
-          "const": "proposal"
-        },
-        "as": {
-          "type": "string",
-          "pattern": "^(player|npc):.+$"
-        },
-        "intent_id": {
-          "type": "string"
-        },
-        "payload": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": [
-            "proposal_id",
-            "kind",
-            "target",
-            "summary"
-          ],
-          "properties": {
-            "proposal_id": {
-              "type": "string"
-            },
-            "kind": {
-              "enum": [
-                "delete_place",
-                "patch_entity",
-                "other"
-              ]
-            },
-            "target": {
-              "type": "string"
-            },
-            "summary": {
-              "type": "string"
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "class",
-        "as",
-        "intent_id",
-        "payload"
-      ],
-      "properties": {
-        "class": {
           "const": "message"
         },
         "as": {

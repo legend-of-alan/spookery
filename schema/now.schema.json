@@ -17,8 +17,7 @@
     "actors",
     "clocks",
     "rumors",
-    "messages",
-    "proposals"
+    "messages"
   ],
   "properties": {
     "schema": { "const": "now/v0" },
@@ -52,10 +51,6 @@
     "messages": {
       "type": "array",
       "items": { "$ref": "#/$defs/message" }
-    },
-    "proposals": {
-      "type": "array",
-      "items": { "type": "string" }
     }
   },
   "$defs": {

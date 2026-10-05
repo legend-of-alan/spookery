@@ -259,18 +259,4 @@ pub(crate) fn schemas_reject_unknown_keys() {
         }),
         &[],
     );
-    assert_closed(
-        "proposal",
-        json!({
-            "schema": "proposal/v0",
-            "id": "season_advance",
-            "kind": "other",
-            "target": "",
-            "summary": "season_advance",
-            "actor_id": "pc_rowan",
-            "source": "system",
-            "tick_index": 12
-        }),
-        &[],
-    );
 }

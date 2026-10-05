@@ -128,7 +128,6 @@ flags: []
         clocks: std::collections::BTreeMap::new(),
         rumors: Vec::new(),
         messages: Vec::new(),
-        proposals: Vec::new(),
     };
     let text = spookery_kernel::codec::emit_now(&now).unwrap();
     write(&root.join("state/now.yaml"), &text);
@@ -163,7 +162,6 @@ pub(crate) async fn scheduler_sleeps_then_catches_up() {
     assert_eq!(shard.now().tick_index, 12);
     assert_eq!(shard.now().state_rev, 12);
     assert_eq!(shard.now().world_time, 720);
-    assert_eq!(shard.now().proposals, vec!["season_advance".to_string()]);
     assert_ne!(shard.now().last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(shard.now().last_tick_at.len(), 20);
     assert!(shard.now().last_tick_at.ends_with('Z'));

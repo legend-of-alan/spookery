@@ -19,7 +19,7 @@ use spookery_kernel::model::{
 };
 use spookery_kernel::shard::{Shard, Txn};
 use spookery_kernel::Reason;
-use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack, Catchup};
+use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack};
 
 use crate::World;
 
@@ -183,30 +183,28 @@ fn an_agenda_name_is_not_a_move() {
     let mut shard = open(&seated);
     seat_player(&mut shard, "pc_rowan").unwrap();
     assert_eq!(shard.now().clocks["assassination_debt"].value, 2);
-    for line in ["advance_clock", "season_advance"] {
-        let err = match turn(&mut shard, "pc_rowan", line, true) {
-            Err(err) => err,
-            Ok(_) => panic!("{line} was queued"),
-        };
-        assert_eq!(err, Reason::NotInSpec, "{line}");
-        let args = json!({
-            "actor_id": "pc_rowan",
-            "actor_kind": "player",
-            "source": "player",
-            "move": line,
-            "target": {},
-            "args": {}
-        });
-        let tool = gm_tool(
-            &mut shard,
-            "intent",
-            Some(args.as_object().unwrap().clone()),
-        );
-        assert_eq!(tool.value["code"], "NOT_IN_SPEC", "{line}");
-    }
+    let line = "advance_clock";
+    let err = match turn(&mut shard, "pc_rowan", line, true) {
+        Err(err) => err,
+        Ok(_) => panic!("{line} was queued"),
+    };
+    assert_eq!(err, Reason::NotInSpec, "{line}");
+    let args = json!({
+        "actor_id": "pc_rowan",
+        "actor_kind": "player",
+        "source": "player",
+        "move": line,
+        "target": {},
+        "args": {}
+    });
+    let tool = gm_tool(
+        &mut shard,
+        "intent",
+        Some(args.as_object().unwrap().clone()),
+    );
+    assert_eq!(tool.value["code"], "NOT_IN_SPEC", "{line}");
     assert!(shard.queued_intents().is_empty());
     assert_eq!(shard.now().clocks["assassination_debt"].value, 2);
-    assert!(!seated.join("state/proposals/season_advance.yaml").exists());
     let _ = fs::remove_dir_all(&seated);
 }
 
@@ -249,17 +247,6 @@ fn shop_lives() {
     assert_ne!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     let _ = fs::remove_dir_all(&pack);
 }
-
-const SEASON: &str = "\
-schema: proposal/v0
-id: season_advance
-kind: other
-target: \"\"
-summary: season_advance
-actor_id: pc_rowan
-source: system
-tick_index: 12
-";
 
 fn catchup_cap() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -370,7 +357,6 @@ flags: []
         clocks: BTreeMap::new(),
         rumors: Vec::new(),
         messages: Vec::new(),
-        proposals: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
@@ -384,10 +370,7 @@ flags: []
     assert_eq!(now.tick_index, 12);
     assert_eq!(now.world_time, 720);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
-    assert_eq!(now.proposals, vec!["season_advance".to_string()]);
     assert_eq!(tick_names(&pack).len(), 12);
-    let proposal = fs::read_to_string(pack.join("state/proposals/season_advance.yaml")).unwrap();
-    assert_eq!(proposal, SEASON);
     assert_eq!(fs::read(pack.join("world/places/gate.md")).unwrap(), place_before);
     assert_eq!(fs::read(pack.join("cast/pc_rowan.md")).unwrap(), cast_before);
     let _ = fs::remove_dir_all(&pack);
@@ -407,13 +390,7 @@ fn busy_skip() {
     }
     let mut shard = open(&pack);
     let wall = shard.now().last_tick_at.clone();
-    run_tick(
-        &mut shard,
-        spookery_tick::Cause::Manual,
-        &wall,
-        Catchup::none(),
-    )
-    .unwrap();
+    run_tick(&mut shard, spookery_tick::Cause::Manual, &wall).unwrap();
     let now = shard.now();
     assert_eq!(now.world_time, 365);
     assert_eq!(now.actors.get("mira").unwrap().place(), "docks_shop");
@@ -462,7 +439,6 @@ fn an_open_transaction_writes_nothing() {
     let before = fs::read(&now_path).unwrap();
     let shard = open(&dropped);
     let state_rev = shard.now().state_rev;
-    let proposals = shard.now().proposals.clone();
     let oil = lamp_oil(shard.now());
     let delta = if oil > 0 { -1 } else { 1 };
     let mut txn = Txn::begin(&shard);
@@ -475,8 +451,6 @@ fn an_open_transaction_writes_nothing() {
     let restarted = open(&dropped);
     assert_eq!(restarted.now().state_rev, state_rev);
     assert_eq!(lamp_oil(restarted.now()), oil);
-    assert_eq!(restarted.now().proposals, proposals);
-    assert!(!dropped.join("state/proposals").exists());
     assert!(!dropped.join("state/memories").exists());
     let _ = fs::remove_dir_all(&dropped);
 }
@@ -563,9 +537,6 @@ fn the_next_revision_keeps_the_new_save() {
         "{\"tick_index\":1,\"text\":\"kept-line\"}\n{\"tick_index\":99,\"text\":\"orphan-line\"}\n",
     )
     .unwrap();
-    let proposals = next.join("state/proposals");
-    fs::create_dir_all(&proposals).unwrap();
-    fs::write(proposals.join("orphan.yaml"), b"orphan\n").unwrap();
     let opened = open(&next);
     assert_eq!(opened.now().state_rev, live.state_rev);
     assert_eq!(lamp_oil(opened.now()), kept_oil);
@@ -575,7 +546,6 @@ fn the_next_revision_keeps_the_new_save() {
     let memory = fs::read_to_string(memories.join("mira.jsonl")).unwrap();
     assert!(memory.contains("kept-line"));
     assert!(!memory.contains("orphan-line"));
-    assert!(!proposals.join("orphan.yaml").exists());
     let _ = fs::remove_dir_all(&next);
 }
 
@@ -734,7 +704,6 @@ tick:
         clocks: BTreeMap::new(),
         rumors: Vec::new(),
         messages: Vec::new(),
-        proposals: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
     tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
@@ -800,43 +769,6 @@ fn tool_scope() {
     assert!(capped.unknown_mentioned.iter().any(|id| id == "fact_room_lamp"));
     drop(shard);
     assert_eq!(snapshot(&pack), before);
-    let _ = fs::remove_dir_all(&pack);
-}
-
-fn proposal_only() {
-    let pack = temp_pack("proposal");
-    let moves = pack.join("rules/moves.yaml");
-    let mut moves_text = fs::read_to_string(&moves).unwrap();
-    moves_text.push_str(
-        "\n  - name: file_proposal\n    audience: player\n    token: none\n    on: speaker\n    effects:\n      - class: proposal\n        proposal: delete_docks_shop\n        kind: delete_place\n        target: docks_shop\n        summary: delete place\n",
-    );
-    fs::write(&moves, moves_text).unwrap();
-    stamp_pack_rev(&pack);
-    let place_path = pack.join("world/places/docks_shop.md");
-    let place_before = fs::read(&place_path).unwrap();
-    let mut shard = open(&pack);
-    assert_eq!(shard.now().presence.humans, 0);
-    let wall = shard.now().last_tick_at.clone();
-    shard.queue_intent(Intent {
-        id: "idle-delete-place".to_string(),
-        tick_index: shard.now().tick_index + 1,
-        actor_id: "mira".to_string(),
-        actor_kind: ActorKind::Npc,
-        source: Source::Kernel,
-        move_name: "file_proposal".to_string(),
-        target: Target::Empty,
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    });
-    run_tick(
-        &mut shard,
-        spookery_tick::Cause::Manual,
-        &wall,
-        Catchup::none(),
-    )
-    .unwrap();
-    assert!(pack.join("state/proposals/delete_docks_shop.yaml").is_file());
-    assert_eq!(fs::read(&place_path).unwrap(), place_before);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -1322,11 +1254,6 @@ fn fifty_minor_npcs(_world: &mut World) {
 #[when(expr = "perceive is called with the closed viewer set")]
 fn perceive_is_called(_world: &mut World) {
     tool_scope();
-}
-
-#[when(expr = "a proposal row runs")]
-fn a_proposal_row_runs(_world: &mut World) {
-    proposal_only();
 }
 
 #[when(expr = "prose is stripped and a hidden sentence is repeated")]

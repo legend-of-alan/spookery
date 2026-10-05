@@ -92,14 +92,3 @@ moves:
       - class: clock
         clock: first_owned
         delta: 1
-
-  - name: season_advance
-    audience: system
-    token: none
-    on: speaker
-    effects:
-      - class: proposal
-        proposal: season_advance
-        kind: other
-        target: ""
-        summary: season_advance

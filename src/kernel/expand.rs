@@ -162,23 +162,6 @@ fn expand_template(
             ));
         }
         RowEffect::Message { .. } => return Err(Reason::Schema),
-        RowEffect::Proposal {
-            proposal_id,
-            kind,
-            target,
-            summary,
-        } => {
-            effects.push(wrap(
-                viewer,
-                &intent.id,
-                EffectClass::Proposal {
-                    proposal_id: proposal_id.clone(),
-                    kind: kind.clone(),
-                    target: target.clone(),
-                    summary: summary.clone(),
-                },
-            ));
-        }
         RowEffect::Relationship { to, delta } => {
             let (other, delta) = relationship_fields(now, &intent.actor_id, to, delta)?;
             effects.push(wrap(
@@ -428,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn row_emits_stock_need_clock_message_and_proposal_through_apply_effect() {
+    fn row_emits_stock_need_clock_and_message_through_apply_effect() {
         let docks = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let nanos = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -458,11 +441,6 @@ mod tests {
         delta: 1
       - class: message
         message: first_due_note
-      - class: proposal
-        proposal: shelf_note
-        kind: other
-        target: ""
-        summary: counted
   - name: overstock
     audience: player
     token: none
@@ -488,16 +466,6 @@ mod tests {
       - class: need
         key: rest
         delta: 9223372036854775807
-  - name: bad_proposal
-    audience: player
-    token: none
-    on: speaker
-    effects:
-      - class: proposal
-        proposal: shelf_note
-        kind: invent
-        target: ""
-        summary: no
   - name: hold
     audience: player
     token: none
@@ -552,12 +520,6 @@ mod tests {
                     fact_ids: Vec::new(),
                     text: "Back at dusk. Oil on the shelf.".to_string(),
                 },
-                EffectClass::Proposal {
-                    proposal_id: "shelf_note".to_string(),
-                    kind: "other".to_string(),
-                    target: String::new(),
-                    summary: "counted".to_string(),
-                },
             ]
         );
         assert!(expanded.iter().all(|effect| {
@@ -577,9 +539,6 @@ mod tests {
         assert_eq!(txn.now().actors["mira"].needs().unwrap()["rest"], 4);
         assert_eq!(txn.now().clocks["shelf_count"].value, 1);
         assert_eq!(txn.now().messages[0].id, "note_mira_door");
-        assert_eq!(txn.now().proposals, vec!["shelf_note".to_string()]);
-        assert_eq!(txn.proposals()[0].kind, "other");
-        assert_eq!(txn.proposals()[0].actor_id, "mira");
 
         let again = expand_outcome(shard.canon(), shard.now(), &shelf, None).unwrap();
         let message = again
@@ -623,20 +582,6 @@ mod tests {
             Reason::OutOfRange
         );
         assert_eq!(need_txn.now().actors["mira"].needs().unwrap()["rest"], 3);
-
-        let mut proposal_txn = crate::shard::Txn::begin(&shard);
-        let bad = intent("bad_proposal", Target::Empty);
-        let proposal = expand_outcome(shard.canon(), shard.now(), &bad, None).unwrap();
-        assert_eq!(
-            apply_effect(
-                &mut proposal_txn,
-                &bad,
-                proposal.into_iter().next().unwrap()
-            )
-            .unwrap_err(),
-            Reason::Schema
-        );
-        assert!(proposal_txn.now().proposals.is_empty());
 
         let hold = intent("hold", Target::Empty);
         let yielded = expand_outcome(shard.canon(), shard.now(), &hold, None).unwrap();

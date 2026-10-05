@@ -20,7 +20,6 @@ pub enum StateKey {
     Reputation(String, String),
     Rumor(String),
     Message(String),
-    Proposal(String),
 }
 
 impl fmt::Display for StateKey {
@@ -42,7 +41,6 @@ impl fmt::Display for StateKey {
             StateKey::Reputation(actor, faction) => write!(f, "reputation {actor} {faction}"),
             StateKey::Rumor(id) => write!(f, "rumor {id}"),
             StateKey::Message(id) => write!(f, "message {id}"),
-            StateKey::Proposal(id) => write!(f, "proposal {id}"),
         }
     }
 }

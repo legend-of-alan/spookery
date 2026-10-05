@@ -65,12 +65,6 @@ pub enum EffectClass {
         key: String,
         value: bool,
     },
-    Proposal {
-        proposal_id: String,
-        kind: String,
-        target: String,
-        summary: String,
-    },
     Message {
         message_id: String,
         to: Vec<String>,
@@ -107,7 +101,6 @@ impl EffectClass {
             EffectClass::Rumor { .. } => "rumor",
             EffectClass::Resource { .. } => "resource",
             EffectClass::Flag { .. } => "flag",
-            EffectClass::Proposal { .. } => "proposal",
             EffectClass::Message { .. } => "message",
         }
     }
@@ -148,7 +141,6 @@ fn payload_len(class: &EffectClass) -> usize {
         | EffectClass::Flag { .. } => 3,
         EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
         EffectClass::Rumor { .. } => 5,
-        EffectClass::Proposal { .. } => 4,
         EffectClass::Message { place, .. } => 4 + usize::from(place.is_some()),
     }
 }
@@ -234,17 +226,6 @@ where
             state.serialize_field("actor_id", actor_id)?;
             state.serialize_field("key", key)?;
             state.serialize_field("value", value)?;
-        }
-        EffectClass::Proposal {
-            proposal_id,
-            kind,
-            target,
-            summary,
-        } => {
-            state.serialize_field("proposal_id", proposal_id)?;
-            state.serialize_field("kind", kind)?;
-            state.serialize_field("target", target)?;
-            state.serialize_field("summary", summary)?;
         }
         EffectClass::Message {
             message_id,

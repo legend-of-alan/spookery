@@ -10,7 +10,7 @@ pub(crate) fn docks_save_round_trips() {
 
     let now_bytes =
         fs::read(root.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now: {err}"));
-    assert_eq!(now_bytes.len(), 1988);
+    assert_eq!(now_bytes.len(), 1974);
     let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
     let now =
         spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));

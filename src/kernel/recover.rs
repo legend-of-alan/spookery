@@ -99,24 +99,6 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
         }
     }
 
-    let proposals = state.join("proposals");
-    if proposals.is_dir() {
-        let entries = fs::read_dir(&proposals)
-            .map_err(|_| Reason::Schema)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Reason::Schema)?;
-        for entry in entries {
-            let path = entry.path();
-            let stem = path
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .unwrap_or_default();
-            if !now.proposals.iter().any(|id| id == stem) {
-                fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
-            }
-        }
-    }
-
     let rumors_path = state.join("rumors.yaml");
     if rumors_path.is_file() {
         let text = fs::read_to_string(&rumors_path).map_err(|_| Reason::Schema)?;

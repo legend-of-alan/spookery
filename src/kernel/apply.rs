@@ -5,7 +5,7 @@ use crate::intent::{ActorKind, Intent, ViewerId};
 use crate::inventory::{clamp_need, resource_next, stock_next};
 use crate::key::StateKey;
 use crate::limits::MINUTES_PER_DAY;
-use crate::model::{MemoryLine, Message, ProposalDoc, Reputation};
+use crate::model::{MemoryLine, Message, Reputation};
 use crate::shard::Txn;
 
 pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {
@@ -52,12 +52,6 @@ pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<()
             key,
             value,
         } => apply_flag(txn, &actor_id, &key, value),
-        EffectClass::Proposal {
-            proposal_id,
-            kind,
-            target,
-            summary,
-        } => apply_proposal(txn, intent, &proposal_id, &kind, &target, &summary),
         EffectClass::Message {
             message_id,
             to,
@@ -468,45 +462,6 @@ fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(
     } else {
         flags.retain(|flag| flag != key);
     }
-    Ok(())
-}
-
-fn apply_proposal(
-    txn: &mut Txn,
-    intent: &Intent,
-    proposal_id: &str,
-    kind: &str,
-    target: &str,
-    summary: &str,
-) -> Result<(), Reason> {
-    if !matches!(kind, "delete_place" | "patch_entity" | "other") {
-        return Err(Reason::Schema);
-    }
-    if proposal_id.is_empty() || proposal_id.contains('/') || proposal_id.contains('\\') {
-        return Err(Reason::Schema);
-    }
-    if txn.now().proposals.iter().any(|id| id == proposal_id) {
-        return Err(Reason::UnknownKey);
-    }
-    let mut next = txn.now().proposals.clone();
-    next.push(proposal_id.to_string());
-    next.sort();
-    next.dedup();
-    let changed = next != txn.now().proposals;
-    if changed {
-        txn.track(StateKey::Proposal(proposal_id.to_string()))?;
-    }
-    txn.now_mut().proposals = next;
-    txn.stage_proposal(ProposalDoc {
-        schema: "proposal/v0".to_string(),
-        id: proposal_id.to_string(),
-        kind: kind.to_string(),
-        target: target.to_string(),
-        summary: summary.to_string(),
-        actor_id: intent.actor_id.clone(),
-        source: intent.source.token().to_string(),
-        tick_index: intent.tick_index,
-    });
     Ok(())
 }
 

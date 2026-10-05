@@ -12,7 +12,7 @@ use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::StateKey;
 use crate::limits::Budget;
-use crate::model::{MemoryLine, Now, PauseView, PcSheet, ProposalDoc};
+use crate::model::{MemoryLine, Now, PauseView, PcSheet};
 use crate::recover::recover;
 
 pub struct Shard {
@@ -29,7 +29,6 @@ pub struct PendingCommit {
     pub now: Now,
     pub tick_jsonl: String,
     pub tick_index: u64,
-    pub proposals: Vec<ProposalDoc>,
     pub memories: Vec<MemoryLine>,
     pub paths: Vec<String>,
 }
@@ -45,7 +44,6 @@ pub struct Txn {
     pub(crate) staging: Now,
     keys: BTreeSet<StateKey>,
     pub(crate) memories: Vec<MemoryLine>,
-    pub(crate) proposals: Vec<ProposalDoc>,
     rumor_hops: u32,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
@@ -109,7 +107,6 @@ impl Txn {
             staging: shard.now.clone(),
             keys: BTreeSet::new(),
             memories: Vec::new(),
-            proposals: Vec::new(),
             rumor_hops: 0,
             memory_writes: 0,
             _nosend: PhantomData,
@@ -282,16 +279,8 @@ impl Txn {
         self.memories.push(line);
     }
 
-    pub(crate) fn stage_proposal(&mut self, doc: ProposalDoc) {
-        self.proposals.push(doc);
-    }
-
     pub fn memories(&self) -> &[MemoryLine] {
         &self.memories
-    }
-
-    pub fn proposals(&self) -> &[ProposalDoc] {
-        &self.proposals
     }
 
     pub fn staged_paths(&self) -> Vec<String> {

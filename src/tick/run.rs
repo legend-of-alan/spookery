@@ -6,7 +6,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
 use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::commit::tick_commit;
-use spookery_kernel::expand::{expand, expand_outcome};
+use spookery_kernel::expand::expand_outcome;
 use spookery_kernel::intent::{ActorKind, Intent, Source, Target, ViewerId};
 use spookery_kernel::lock::lock_shard;
 use spookery_kernel::pause::apply_pause_policy;
@@ -14,7 +14,7 @@ use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::shard::{open_shard, session_status, PendingCommit, Shard, Txn};
 use spookery_kernel::Reason as KernelReason;
 
-use crate::advance::{pick_advance, plan_catchup, Catchup};
+use crate::advance::{pick_advance, plan_catchup};
 use crate::budget::prioritize;
 use crate::log::{render_tick, Rejected};
 use crate::seed::seed_preimage;
@@ -46,14 +46,14 @@ pub fn commit_turn_at(
     wall: &str,
 ) -> Result<spookery_kernel::commit::CommitOutcome, KernelReason> {
     let _lock = lock_shard(shard)?;
-    run_tick(shard, Cause::Flush, wall, Catchup::none())?;
+    run_tick(shard, Cause::Flush, wall)?;
     spookery_kernel::commit::commit_pending(shard)
 }
 
 pub fn tick_pack(path: &Path) -> Result<(), KernelReason> {
     let mut shard = open_shard(path)?;
     let wall = shard.now().last_tick_at.clone();
-    run_tick(&mut shard, Cause::Manual, &wall, Catchup::none())
+    run_tick(&mut shard, Cause::Manual, &wall)
 }
 
 pub fn run_catchup(
@@ -62,31 +62,15 @@ pub fn run_catchup(
     downtime_hours: u64,
 ) -> Result<(), KernelReason> {
     let humans = session_status(shard.now()).humans;
-    let plan = plan_catchup(humans, shard.budget(), downtime_hours)?;
-    let ticks = plan.ticks_to_run;
-    for index in 1..=ticks {
-        let last = index == ticks;
-        run_tick(
-            shard,
-            Cause::Catchup,
-            now_wall,
-            Catchup {
-                downtime_hours: Some(downtime_hours),
-                skipped: if last { plan.skipped } else { 0 },
-                last,
-            },
-        )?;
+    let ticks = plan_catchup(humans, shard.budget(), downtime_hours)?;
+    for _ in 0..ticks {
+        run_tick(shard, Cause::Catchup, now_wall)?;
     }
     Ok(())
 }
 
-pub fn run_tick(
-    shard: &mut Shard,
-    cause: Cause,
-    now_wall: &str,
-    catchup: Catchup,
-) -> Result<(), KernelReason> {
-    run_tick_with(shard, cause, now_wall, catchup, None)
+pub fn run_tick(shard: &mut Shard, cause: Cause, now_wall: &str) -> Result<(), KernelReason> {
+    run_tick_with(shard, cause, now_wall, None)
 }
 
 pub(crate) fn run_recorded_tick(
@@ -94,20 +78,13 @@ pub(crate) fn run_recorded_tick(
     now_wall: &str,
     recorded: RecordedTick,
 ) -> Result<(), KernelReason> {
-    run_tick_with(
-        shard,
-        Cause::Replay,
-        now_wall,
-        Catchup::none(),
-        Some(recorded),
-    )
+    run_tick_with(shard, Cause::Replay, now_wall, Some(recorded))
 }
 
 fn run_tick_with(
     shard: &mut Shard,
     cause: Cause,
     now_wall: &str,
-    catchup: Catchup,
     recorded: Option<RecordedTick>,
 ) -> Result<(), KernelReason> {
     let _lock = if cause == Cause::Flush {
@@ -124,7 +101,6 @@ fn run_tick_with(
         &mut txn,
         queued,
         now_wall,
-        &catchup,
         owns_commit,
         recorded.as_ref(),
     )?;
@@ -133,7 +109,6 @@ fn run_tick_with(
             now: txn.now().clone(),
             tick_jsonl: record,
             tick_index: txn.now().tick_index,
-            proposals: txn.proposals().to_vec(),
             memories: txn.memories().to_vec(),
             paths: txn.staged_paths(),
         });
@@ -153,7 +128,6 @@ fn stage_tick(
     txn: &mut Txn,
     queued: Vec<Intent>,
     now_wall: &str,
-    catchup: &Catchup,
     owns_commit: bool,
     recorded: Option<&RecordedTick>,
 ) -> Result<(String, Vec<CheckNotice>), KernelReason> {
@@ -165,7 +139,7 @@ fn stage_tick(
     let tick_index = txn.now().tick_index + 1;
     let shard_id = txn.now().shard_id.clone();
     txn.pin_loop(tick_index, world_before, now_wall);
-    let minutes = pick_advance(humans, catchup, txn.budget());
+    let minutes = pick_advance(humans, txn.budget());
     let world_after = world_before.saturating_add(minutes);
     let day_changed = world_before / 1440 != world_after / 1440;
     let hour_changed = world_before / 60 != world_after / 60;
@@ -424,46 +398,6 @@ fn stage_tick(
             }
             keep_roll(&mut notices, &mut rolled, &intent.actor_id);
             applied.push(intent);
-        }
-    }
-
-    if catchup.skipped > 0 && catchup.last {
-        match crate::season::season_advance_intent(txn.canon(), txn.now()) {
-            Ok(Some(intent)) if seen.insert(intent.id.clone()) => {
-                match expand(txn.canon(), txn.now(), &intent) {
-                    Ok(effects) => {
-                        let mut accepted = 0;
-                        for effect in effects {
-                            match apply_effect(txn, &intent, effect.clone()) {
-                                Ok(()) => {
-                                    accepted += 1;
-                                    trace.push("apply_effect".to_string());
-                                    effects_out.push(effect);
-                                }
-                                Err(code) => {
-                                    rejected.push(Rejected {
-                                        id: intent.id.clone(),
-                                        reason: code.jsonl_reason().to_string(),
-                                    });
-                                    break;
-                                }
-                            }
-                        }
-                        if accepted > 0 {
-                            applied.push(intent);
-                        }
-                    }
-                    Err(code) => rejected.push(Rejected {
-                        id: intent.id,
-                        reason: code.jsonl_reason().to_string(),
-                    }),
-                }
-            }
-            Ok(Some(_)) | Ok(None) => {}
-            Err(code) => rejected.push(Rejected {
-                id: "season_advance".to_string(),
-                reason: code.jsonl_reason().to_string(),
-            }),
         }
     }
 

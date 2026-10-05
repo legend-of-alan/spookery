@@ -5,7 +5,7 @@ use serde_saphyr::SerializerOptions;
 use crate::effect::{Effect, EffectClass, EffectPayload};
 use crate::error::Reason;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use crate::model::{sort_unique, MemoryLine, Now, ProposalDoc};
+use crate::model::{sort_unique, MemoryLine, Now};
 
 #[allow(non_snake_case)]
 pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
@@ -40,15 +40,6 @@ pub fn emit_now(now: &Now) -> Result<String, Reason> {
     Ok(one_trailing_lf(text))
 }
 
-pub fn emit_proposal(doc: &ProposalDoc) -> Result<String, Reason> {
-    if doc.schema != "proposal/v0" {
-        return Err(Reason::Schema);
-    }
-    let text = serde_saphyr::to_string_with_options(doc, NOW_EMIT_OPTIONS())
-        .map_err(|_| Reason::Schema)?;
-    Ok(one_trailing_lf(text))
-}
-
 pub fn emit_rumors(now: &Now) -> Result<String, Reason> {
     let mut rumors = now.rumors.clone();
     rumors.sort_by(|a, b| a.id.cmp(&b.id));
@@ -75,7 +66,6 @@ fn one_trailing_lf(mut text: String) -> String {
 
 pub fn canonicalize(now: &mut Now) {
     sort_unique(&mut now.presence.actors_present);
-    sort_unique(&mut now.proposals);
     now.rumors.sort_by(|a, b| a.id.cmp(&b.id));
     for rumor in &mut now.rumors {
         sort_unique(&mut rumor.fact_ids);
@@ -425,15 +415,6 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 value: req_bool(object, "value")?,
             })
         }
-        "proposal" => {
-            allow(object, &["proposal_id", "kind", "target", "summary"])?;
-            Ok(EffectClass::Proposal {
-                proposal_id: req_str(object, "proposal_id")?,
-                kind: req_str(object, "kind")?,
-                target: req_str(object, "target")?,
-                summary: req_str(object, "summary")?,
-            })
-        }
         "message" => {
             allow(object, &["message_id", "to", "place", "fact_ids", "text"])?;
             Ok(EffectClass::Message {
@@ -679,19 +660,6 @@ mod tests {
                     "i10",
                 ),
                 r#"{"class":"flag","as":"npc:mira","intent_id":"i10","actor_id":"mira","key":"marked","value":true}"#,
-            ),
-            (
-                effect(
-                    EffectClass::Proposal {
-                        proposal_id: "season_advance".to_string(),
-                        kind: "other".to_string(),
-                        target: String::new(),
-                        summary: "season_advance".to_string(),
-                    },
-                    player("pc_rowan"),
-                    "i11",
-                ),
-                r#"{"class":"proposal","as":"player:pc_rowan","intent_id":"i11","proposal_id":"season_advance","kind":"other","target":"","summary":"season_advance"}"#,
             ),
             (
                 effect(

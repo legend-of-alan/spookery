@@ -126,12 +126,6 @@ pub enum RowEffect {
     Message {
         message: Selector,
     },
-    Proposal {
-        proposal_id: String,
-        kind: String,
-        target: String,
-        summary: String,
-    },
     Relationship {
         to: Field,
         delta: Field,
@@ -298,7 +292,6 @@ fn one_template(
         "need" => need_template(&effect),
         "clock" => clock_template(&effect),
         "message" => message_template(&effect),
-        "proposal" => proposal_template(&effect),
         "relationship" => relationship_template(&effect),
         "reputation" => reputation_template(&effect),
         "memory" => memory_template(&effect),
@@ -445,16 +438,6 @@ fn message_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     }
 }
 
-fn proposal_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["proposal", "kind", "target", "summary"])?;
-    Ok(RowEffect::Proposal {
-        proposal_id: effect.proposal.clone().ok_or(Reason::Schema)?,
-        kind: effect.kind.clone().ok_or(Reason::Schema)?,
-        target: effect.target.clone().ok_or(Reason::Schema)?,
-        summary: effect.summary.clone().ok_or(Reason::Schema)?,
-    })
-}
-
 fn relationship_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["to", "delta"])?;
     let to = text_field(effect.to.as_deref().ok_or(Reason::Schema)?)?;
@@ -510,10 +493,6 @@ fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
         ("sku", effect.sku.is_some()),
         ("clock", effect.clock.is_some()),
         ("message", effect.message.is_some()),
-        ("proposal", effect.proposal.is_some()),
-        ("kind", effect.kind.is_some()),
-        ("target", effect.target.is_some()),
-        ("summary", effect.summary.is_some()),
         ("faction", effect.faction.is_some()),
         ("fact_ids", effect.fact_ids.is_some()),
         ("tags", effect.tags.is_some()),
@@ -613,14 +592,6 @@ struct EffectTemplate {
     #[serde(default)]
     message: Option<String>,
     #[serde(default)]
-    proposal: Option<String>,
-    #[serde(default)]
-    kind: Option<String>,
-    #[serde(default)]
-    target: Option<String>,
-    #[serde(default)]
-    summary: Option<String>,
-    #[serde(default)]
     faction: Option<String>,
     #[serde(default)]
     fact_ids: Option<Vec<String>>,
@@ -673,21 +644,16 @@ mod tests {
             moves.get("advance_clock").unwrap().row.as_ref().unwrap().audience,
             Some(Audience::Agenda)
         );
-        assert_eq!(
-            moves.get("season_advance").unwrap().row.as_ref().unwrap().audience,
-            Some(Audience::System)
-        );
         assert!(moves.get("talk").is_none());
         assert!(moves.get("attempt").is_none());
         assert!(moves.get("attack").is_none());
         assert!(moves.get("give").is_none());
         assert!(moves.get("take").is_none());
-        assert!(moves.get("file_proposal").is_none());
         crate::canon::load_canon(&root).unwrap();
     }
 
     #[test]
-    fn a_row_names_twelve_classes_selector_words_and_a_yield() {
+    fn a_row_names_eleven_classes_selector_words_and_a_yield() {
         let moves = load_moves(
             r#"schema: moves/v0
 moves:
@@ -713,11 +679,6 @@ moves:
         delta: 1
       - class: message
         message: first_due_note
-      - class: proposal
-        proposal: season_advance
-        kind: other
-        target: ""
-        summary: season_advance
       - class: relationship
         to: first_drift
         delta: toward_target
@@ -791,7 +752,7 @@ moves:
                 delta: Field::Selector(Selector::FromWork),
             }
         ));
-        assert_eq!(shelf.effects.len(), 11);
+        assert_eq!(shelf.effects.len(), 10);
         let night = moves.get("night").unwrap().row.as_ref().unwrap();
         assert_eq!(night.audience, Some(Audience::System));
         assert_eq!(
