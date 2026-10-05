@@ -1,32 +1,9 @@
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-
-pub struct PortLock(std::fs::File);
-
-impl Drop for PortLock {
-    fn drop(&mut self) {
-        let _ = self.0.unlock();
-    }
-}
-
-pub fn lock_port() -> PortLock {
-    let path = std::env::temp_dir().join("spookery-9737.lock");
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&path)
-        .unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
-    file.lock()
-        .unwrap_or_else(|err| panic!("lock {path:?}: {err}"));
-    PortLock(file)
-}
 
 pub fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
@@ -175,69 +152,6 @@ pub fn wait_exit(proc: &mut Proc, timeout: Duration) -> std::process::ExitStatus
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-}
-
-pub fn wait_listen(proc: &mut Proc) {
-    let start = Instant::now();
-    loop {
-        if TcpStream::connect("127.0.0.1:9737").is_ok() {
-            return;
-        }
-        if let Some(status) = proc.child.try_wait().unwrap() {
-            panic!(
-                "spook run exited {:?}\nstdout:\n{}\nstderr:\n{}",
-                status.code(),
-                text_of(&proc.stdout),
-                text_of(&proc.stderr)
-            );
-        }
-        if start.elapsed() > Duration::from_secs(10) {
-            panic!("listener did not open\nstderr:\n{}", text_of(&proc.stderr));
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-pub fn release_listeners() {
-    let Ok(output) = Command::new("netstat").args(["-ano", "-p", "tcp"]).output() else {
-        return;
-    };
-    let text = String::from_utf8_lossy(&output.stdout);
-    let mut pids = Vec::new();
-    for line in text.lines() {
-        let fields: Vec<&str> = line.split_whitespace().collect();
-        if fields.len() < 4 || fields[3] != "LISTENING" {
-            continue;
-        }
-        let local = fields[1];
-        if !(local.ends_with(":9737") || local.ends_with("]:9737")) {
-            continue;
-        }
-        let pid = fields[fields.len() - 1];
-        if pid != "0" && !pids.contains(&pid.to_string()) {
-            pids.push(pid.to_string());
-        }
-    }
-    for pid in pids {
-        if !process_is_spook(&pid) {
-            continue;
-        }
-        let _ = Command::new("taskkill")
-            .args(["/PID", &pid, "/T", "/F"])
-            .output();
-    }
-}
-
-fn process_is_spook(pid: &str) -> bool {
-    let Ok(listed) = Command::new("tasklist")
-        .args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"])
-        .output()
-    else {
-        return false;
-    };
-    String::from_utf8_lossy(&listed.stdout)
-        .to_ascii_lowercase()
-        .contains("spook.exe")
 }
 
 pub fn pack_arg(pack: &Path) -> String {

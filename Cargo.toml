@@ -38,6 +38,7 @@ serde = { version = "1", features = ["derive"] }
 serde-saphyr = "=1.3.0"
 serde_json = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "time"] }
+cucumber = "=0.23.0"
 
 [[test]]
 name = "properties"
@@ -46,3 +47,8 @@ path = "tests/properties.rs"
 [[test]]
 name = "v0"
 path = "tests/v0.rs"
+
+[[test]]
+name = "promises"
+path = "tests/promises.rs"
+harness = false
