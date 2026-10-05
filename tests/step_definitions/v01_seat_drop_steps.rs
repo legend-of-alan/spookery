@@ -161,22 +161,10 @@ fn client_exits_0(_w: &mut World) {
     assert_eq!(status.code(), Some(0));
 }
 
-#[then(expr = "session_ids is empty")]
-fn session_ids_empty(w: &mut World) {
-    let now = now_of(pack_of(w));
-    assert!(now.presence.session_ids.is_empty());
-}
-
 #[then(expr = "actors_present is empty")]
 fn actors_present_empty(w: &mut World) {
     let now = now_of(pack_of(w));
     assert!(now.presence.actors_present.is_empty());
-}
-
-#[then(expr = "one session id is seated")]
-fn one_session(w: &mut World) {
-    let now = now_of(pack_of(w));
-    assert_eq!(now.presence.session_ids.len(), 1);
 }
 
 #[when(expr = "one second passes with no player line")]

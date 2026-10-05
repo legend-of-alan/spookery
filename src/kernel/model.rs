@@ -28,7 +28,6 @@ pub struct Now {
 #[serde(deny_unknown_fields)]
 pub struct Presence {
     pub humans: u32,
-    pub session_ids: Vec<String>,
     pub actors_present: Vec<String>,
 }
 

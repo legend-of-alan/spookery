@@ -151,7 +151,6 @@ fn write_crashed(pack: &Path) {
     let mut now = spookery_kernel::codec::load_now(&text).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
     now.presence.humans = 1;
-    now.presence.session_ids = vec!["crash-session".to_string()];
     now.presence.actors_present = vec!["pc_rowan".to_string()];
     fs::write(
         pack.join("state/now.yaml"),
@@ -207,6 +206,63 @@ fn remember_exit(w: &mut World, label: &str, proc: &mut support::Proc, timeout: 
         .insert(format!("{label}-ok"), status.success().to_string());
     w.scratch
         .insert(format!("{label}-stderr"), text_of(&proc.stderr));
+}
+
+#[given(expr = "the pack now.yaml still names session_ids")]
+fn plant_session_ids(w: &mut World) {
+    let path = w.pack.as_ref().unwrap().join("state/now.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let from = "presence:\n  humans: 0\n  actors_present: []\n";
+    let to = "presence:\n  humans: 1\n  session_ids: [\"crash-session\"]\n  actors_present: [\"pc_rowan\"]\n";
+    assert!(text.contains(from), "{text}");
+    let next = text.replacen(from, to, 1);
+    fs::write(&path, &next).unwrap();
+    w.scratch.insert("schema-now".to_string(), next);
+}
+
+#[when(expr = "tick, status, migrate, and mcp run against that now.yaml")]
+fn schema_commands(w: &mut World) {
+    let pack = pack_string(w);
+    let commands = [
+        ("tick", vec!["tick".to_string(), pack.clone()]),
+        ("status", vec!["status".to_string(), pack.clone()]),
+        ("migrate", vec!["migrate".to_string(), pack.clone()]),
+        (
+            "mcp",
+            vec![
+                "run".to_string(),
+                pack,
+                "--mcp".to_string(),
+                "pack-table".to_string(),
+            ],
+        ),
+    ];
+    for (label, args) in commands {
+        let owned: Vec<&str> = args.iter().map(String::as_str).collect();
+        let mut proc = support::spawn(&owned);
+        remember_exit(w, label, &mut proc, Duration::from_secs(10));
+    }
+}
+
+#[then(expr = "each of those commands fails with SCHEMA")]
+fn schema_failed(w: &mut World) {
+    for label in ["tick", "status", "migrate", "mcp"] {
+        let ok = w.scratch.get(&format!("{label}-ok")).map(String::as_str);
+        let stderr = w
+            .scratch
+            .get(&format!("{label}-stderr"))
+            .map(String::as_str)
+            .unwrap_or("");
+        assert_eq!(ok, Some("false"), "{label} {stderr}");
+        assert!(stderr.contains("SCHEMA"), "{label} {stderr}");
+    }
+}
+
+#[then(expr = "that now.yaml still names session_ids")]
+fn schema_bytes_stay(w: &mut World) {
+    let text = fs::read_to_string(w.pack.as_ref().unwrap().join("state/now.yaml")).unwrap();
+    assert_eq!(text, *w.scratch.get("schema-now").expect("planted now"));
+    assert!(text.contains("session_ids"));
 }
 
 #[given(expr = "the pack now.yaml is a crashed presence")]
@@ -347,7 +403,8 @@ fn migrate_copy(w: &mut World) {
 fn wake_pack(w: &mut World) {
     drop_sitting();
     let pack = w.pack.as_ref().unwrap().clone();
-    spookery::schedule::wake(&pack).unwrap_or_else(|err| panic!("wake: {err}"));
+    let mut shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    spookery::schedule::wake_shard(&mut shard).unwrap_or_else(|err| panic!("wake: {err}"));
 }
 
 #[then(expr = "the run stderr is NOT_IN_SPEC")]
@@ -425,8 +482,8 @@ fn humans_returns(w: &mut World, humans: u64) {
 
 #[then(expr = "session_ids are empty")]
 fn session_ids_empty(w: &mut World) {
-    let now = now_of(w.pack.as_ref().unwrap());
-    assert!(now.presence.session_ids.is_empty());
+    let text = fs::read_to_string(w.pack.as_ref().unwrap().join("state/now.yaml")).unwrap();
+    assert!(!text.contains("session_ids"), "{text}");
 }
 
 #[then(expr = "actors_present are empty")]
@@ -452,7 +509,9 @@ fn now_matches_snapshot(w: &mut World) {
 fn tick_opens(w: &mut World) {
     let now = now_of(Path::new(&copy_of(w, "tick")));
     assert_eq!(now.presence.humans, 1);
-    assert_eq!(now.presence.session_ids, vec!["crash-session".to_string()]);
+    assert_eq!(now.presence.actors_present, vec!["pc_rowan".to_string()]);
+    let text = fs::read_to_string(Path::new(&copy_of(w, "tick")).join("state/now.yaml")).unwrap();
+    assert!(!text.contains("session_ids"), "{text}");
 }
 
 #[then(expr = "the {word} copy command succeeds")]
@@ -488,12 +547,6 @@ fn copy_world_time(w: &mut World, label: String, world_time: u64) {
 fn copy_state_rev(w: &mut World, label: String, state_rev: u64) {
     let now = now_of(Path::new(&copy_of(w, &label)));
     assert_eq!(now.state_rev, state_rev);
-}
-
-#[then(expr = "the {word} copy session_ids are crash-session")]
-fn copy_session_ids(w: &mut World, label: String) {
-    let now = now_of(Path::new(&copy_of(w, &label)));
-    assert_eq!(now.presence.session_ids, vec!["crash-session".to_string()]);
 }
 
 #[then(expr = "the tick copy tick log is tick-0001.jsonl")]

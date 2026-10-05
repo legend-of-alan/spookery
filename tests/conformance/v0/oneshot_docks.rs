@@ -11,7 +11,7 @@ fn v0_oneshot_docks_matches_section12() {
 
     let now_bytes =
         fs::read(root.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now: {err}"));
-    assert_eq!(now_bytes.len(), 2006);
+    assert_eq!(now_bytes.len(), 1988);
     let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
     let now =
         spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));
@@ -22,7 +22,7 @@ fn v0_oneshot_docks_matches_section12() {
     assert_eq!(now.state_rev, 0);
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
-    assert!(now.presence.session_ids.is_empty());
+    assert!(!now_text.contains("session_ids"));
 
     let sheet_bytes = fs::read(root.join("state/actors/pc_rowan.yaml"))
         .unwrap_or_else(|err| panic!("read sheet: {err}"));

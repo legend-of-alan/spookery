@@ -45,7 +45,6 @@ Feature: Speech
   Scenario: Speech talk appends for a seated player and is live only when no human
     Given a temp copy of pack packs/oneshot-docks
     Then presence humans is 0
-    And session_ids is empty
     When talk mira good evening is spoken with no human
     Then the refusal is TABLE_EMPTY
     And state/log/session.jsonl does not exist

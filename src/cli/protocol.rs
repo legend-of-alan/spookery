@@ -1,9 +1,10 @@
 //! Player lines, tape objects, `spook/event` frames, and tool results.
-//! A tape line this parser cannot read is skipped. There is no torn-line code.
+//! A tape line this parser cannot read is `SCHEMA` for the whole read.
 
 use serde_json::{Map, Value};
 use spookery_kernel::check::CheckOut;
 use spookery_kernel::model::{Intent, Message, Now, RunState};
+use spookery_kernel::Reason;
 use spookery_kernel::perceive::{ClockView, KnownFact, Perceive, ScheduleHint, StockView};
 
 pub struct TapeLine {
@@ -18,23 +19,48 @@ pub struct TapeLine {
     pub world_time: u64,
 }
 
-pub fn parse_tape(line: &str) -> Option<TapeLine> {
-    let value: Value = serde_json::from_str(line).ok()?;
-    let recipients = value.get("recipients")?.as_array()?;
+pub fn parse_tape(line: &str) -> Result<TapeLine, Reason> {
+    let value: Value = serde_json::from_str(line).map_err(|_| Reason::Schema)?;
+    let recipients = value
+        .get("recipients")
+        .and_then(Value::as_array)
+        .ok_or(Reason::Schema)?;
     let mut ids = Vec::new();
     for id in recipients {
-        ids.push(id.as_str()?.to_string());
+        ids.push(
+            id.as_str()
+                .ok_or(Reason::Schema)?
+                .to_string(),
+        );
     }
-    Some(TapeLine {
-        seq: value.get("seq")?.as_u64()?,
-        from: value.get("from")?.as_str()?.to_string(),
-        address: value.get("address")?.as_str()?.to_string(),
-        place: optional_string(value.get("place")?)?,
-        actor: optional_string(value.get("actor")?)?,
+    Ok(TapeLine {
+        seq: value.get("seq").and_then(Value::as_u64).ok_or(Reason::Schema)?,
+        from: value
+            .get("from")
+            .and_then(Value::as_str)
+            .ok_or(Reason::Schema)?
+            .to_string(),
+        address: value
+            .get("address")
+            .and_then(Value::as_str)
+            .ok_or(Reason::Schema)?
+            .to_string(),
+        place: optional_string(value.get("place").ok_or(Reason::Schema)?).ok_or(Reason::Schema)?,
+        actor: optional_string(value.get("actor").ok_or(Reason::Schema)?).ok_or(Reason::Schema)?,
         recipients: ids,
-        text: value.get("text")?.as_str()?.to_string(),
-        tick_index: value.get("tick_index")?.as_u64()?,
-        world_time: value.get("world_time")?.as_u64()?,
+        text: value
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or(Reason::Schema)?
+            .to_string(),
+        tick_index: value
+            .get("tick_index")
+            .and_then(Value::as_u64)
+            .ok_or(Reason::Schema)?,
+        world_time: value
+            .get("world_time")
+            .and_then(Value::as_u64)
+            .ok_or(Reason::Schema)?,
     })
 }
 
@@ -203,7 +229,6 @@ pub fn session_status(
         "presence".to_string(),
         obj([
             ("humans", Value::from(now.presence.humans)),
-            ("session_ids", string_list(&now.presence.session_ids)),
             ("actors_present", string_list(&now.presence.actors_present)),
         ]),
     );

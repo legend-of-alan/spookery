@@ -128,7 +128,6 @@ tick:
         last_tick_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
             humans: 0,
-            session_ids: Vec::new(),
             actors_present: Vec::new(),
         },
         pause: PauseView {

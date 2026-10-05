@@ -35,7 +35,6 @@ pub struct PendingCommit {
 
 pub struct SessionStatus {
     pub humans: u32,
-    pub session_ids: Vec<String>,
     pub actors_present: Vec<String>,
 }
 
@@ -304,7 +303,6 @@ impl Txn {
 pub fn session_status(now: &Now) -> SessionStatus {
     SessionStatus {
         humans: now.presence.humans,
-        session_ids: now.presence.session_ids.clone(),
         actors_present: now.presence.actors_present.clone(),
     }
 }

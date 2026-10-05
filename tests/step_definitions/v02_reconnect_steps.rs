@@ -24,7 +24,6 @@ struct Session {
 }
 
 struct Record {
-    first_session: Option<String>,
     wait_id: Option<String>,
     travel_id: Option<String>,
     waited_stdout: String,
@@ -33,7 +32,6 @@ struct Record {
 
 static SESSION: Mutex<Option<Session>> = Mutex::new(None);
 static RECORD: Mutex<Record> = Mutex::new(Record {
-    first_session: None,
     wait_id: None,
     travel_id: None,
     waited_stdout: String::new(),
@@ -65,7 +63,6 @@ fn lock_record() -> std::sync::MutexGuard<'static, Record> {
 
 fn clear_record() {
     *lock_record() = Record {
-        first_session: None,
         wait_id: None,
         travel_id: None,
         waited_stdout: String::new(),
@@ -526,18 +523,6 @@ fn reconnect_humans_becomes(w: &mut World, n: i64) {
     assert_eq!(dropped.presence.humans as i64, n);
 }
 
-#[then(expr = "reconnect session count is {int}")]
-fn session_count(w: &mut World, n: i64) {
-    let _ = w;
-    assert_eq!(current_now().presence.session_ids.len() as i64, n);
-}
-
-#[then(expr = "reconnect session ids are empty")]
-fn session_ids_empty(w: &mut World) {
-    let _ = w;
-    assert!(current_now().presence.session_ids.is_empty());
-}
-
 #[then(expr = "reconnect actors present are {word}")]
 fn actors_present(w: &mut World, who: String) {
     let _ = w;
@@ -584,14 +569,6 @@ fn tick_files_are(w: &mut World, list: String) {
     let _ = w;
     let names: Vec<String> = list.split(',').map(str::to_string).collect();
     assert_eq!(tick_names(&current_pack()), names);
-}
-
-#[then(expr = "the reconnect first session id is stored")]
-fn store_first_session(w: &mut World) {
-    let _ = w;
-    let ids = current_now().presence.session_ids;
-    assert_eq!(ids.len(), 1, "{ids:?}");
-    lock_record().first_session = Some(ids[0].clone());
 }
 
 #[when(expr = "the reconnect player sends {string}")]
@@ -706,15 +683,6 @@ fn scrollback_say(w: &mut World, text: String) {
         .filter(|line| line.contains("\"kind\":\"say\"") && line.contains(&text))
         .count();
     assert_eq!(say_lines, 1, "{back}");
-}
-
-#[then(expr = "the reconnect session id differs from the first")]
-fn session_id_differs(w: &mut World) {
-    let _ = w;
-    let first = require_id(&lock_record().first_session, "first session");
-    let ids = current_now().presence.session_ids;
-    assert_eq!(ids.len(), 1, "{ids:?}");
-    assert_ne!(ids[0], first);
 }
 
 #[then(expr = "reconnect session tape contains {string} once")]

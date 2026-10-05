@@ -7,7 +7,6 @@ world_time: 1080
 last_tick_at: "2026-01-01T00:00:00Z"
 presence:
   humans: 0
-  session_ids: []
   actors_present: []
 pause:
   named_plot_clocks: paused

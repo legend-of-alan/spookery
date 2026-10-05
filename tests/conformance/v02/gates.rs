@@ -1006,11 +1006,9 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     let mut player = seat_player(&pack);
     let opened = now_of(&pack);
     assert_eq!(opened.presence.humans, 1);
-    assert_eq!(opened.presence.session_ids.len(), 1);
     assert_eq!(opened.presence.actors_present, vec!["pc_rowan".to_string()]);
     assert_eq!(opened.world_time, 1080);
     assert_eq!(opened.tick_index, 0);
-    let first_session = opened.presence.session_ids[0].clone();
 
     write_stdin(&mut player, "say the tin is out");
     wait_has(&player.stdout, "the tin is out", Duration::from_secs(5));
@@ -1068,7 +1066,6 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
     let dropped = wait_humans(&pack, 0, Duration::from_secs(5));
     assert_eq!(dropped.world_time, 1080);
     assert_eq!(dropped.tick_index, 0);
-    assert!(dropped.presence.session_ids.is_empty());
     assert!(dropped.presence.actors_present.is_empty());
     assert!(tick_names(&pack).is_empty());
     let while_down = tool_body(&mut gm, next, "session_status", "{}");
@@ -1095,8 +1092,6 @@ fn v02_p04_reconnect_returns_scrollback_and_keeps_the_queue_once() {
         reseated.presence.actors_present,
         vec!["pc_rowan".to_string()]
     );
-    assert_eq!(reseated.presence.session_ids.len(), 1);
-    assert_ne!(reseated.presence.session_ids[0], first_session);
     assert_eq!(reseated.world_time, 1080);
     assert_eq!(reseated.tick_index, 0);
     assert_eq!(rowan_place(&reseated), "docks_shop");

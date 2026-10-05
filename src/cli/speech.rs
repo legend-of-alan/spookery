@@ -6,6 +6,7 @@ use spookery_kernel::shard::Shard;
 use spookery_kernel::tape::{append_session, read_session};
 use spookery_kernel::Reason;
 
+use super::line::split_token;
 use super::protocol::{self, TapeLine};
 
 #[derive(Debug)]
@@ -135,24 +136,14 @@ pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Resul
 }
 
 pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Reason> {
-    let mut last = 0u64;
-    for tape in read_session(root)? {
-        if let Some(stored) = protocol::parse_tape(&tape) {
-            last = stored.seq;
-        }
-    }
-    Ok(last)
+    spookery_kernel::tape::session_end_seq(root)
 }
 
-/// Stored lines with `seq` greater than `since`, in file order.
+/// Stored lines with `seq` greater than `since`, in file order, inside the tape window.
 pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, Reason> {
     let mut out = Vec::new();
-    for tape in read_session(root)? {
-        if let Some(stored) = protocol::parse_tape(&tape) {
-            if stored.seq > since {
-                out.push(stored);
-            }
-        }
+    for tape in read_session(root, since, None)? {
+        out.push(protocol::parse_tape(&tape)?);
     }
     Ok(out)
 }
@@ -198,10 +189,8 @@ fn append_speech(
 
 pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<String>, Reason> {
     let mut out = Vec::new();
-    for tape in read_session(root)? {
-        let Some(stored) = protocol::parse_tape(&tape) else {
-            continue;
-        };
+    for tape in read_session(root, 0, Some(256))? {
+        let stored = protocol::parse_tape(&tape)?;
         if stored.recipients.iter().any(|id| id == actor_id) {
             out.push(protocol::player_say_line(&stored));
         }
@@ -271,13 +260,6 @@ fn one_line(text: &str) -> Result<&str, Reason> {
         return Err(Reason::Schema);
     }
     Ok(text)
-}
-
-fn split_token(line: &str) -> (&str, &str) {
-    match line.split_once(' ') {
-        Some((token, rest)) => (token, rest),
-        None => (line, ""),
-    }
 }
 
 fn recipients(

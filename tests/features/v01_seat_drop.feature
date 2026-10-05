@@ -17,7 +17,6 @@ Feature: Player seat drop
     And state_rev is 2
     And tick_index is 0
     And world_time is 1080
-    And session_ids is empty
     And state/log holds 0 tick jsonl files
     When the player client connects and perceives
     And the player sends close
@@ -34,7 +33,6 @@ Feature: Player seat drop
     And one second passes with no player line
     Then that wait stayed under 30 seconds
     And presence humans is 1
-    And one session id is seated
     And state_rev is 1
     And state/log holds 0 tick jsonl files
     And the player client is still running
@@ -47,7 +45,6 @@ Feature: Player seat drop
     And state/log holds 0 tick jsonl files
     When the player seat ends with a read error
     Then presence humans is 0
-    And session_ids is empty
     And actors_present is empty
     And state_rev is 2
     And tick_index is 0

@@ -1,7 +1,7 @@
 @v01
 Feature: Stdin and crash presence
   Proof: v01_p14_stdin_is_not_a_play_door, v01_p14_stop_and_eof_drop_a_held_seat_and_do_not_tick, v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not
-  Stdin wait on spook run prints NOT_IN_SPEC, does not exit, and writes nothing. With a player connection held, stop and stdin EOF drop that seat, commit include_tick false, do not call run_tick, and exit 0. With a GM connection held, stop frees it and writes no presence. With neither connection held, stop exits 0 and writes nothing. A crashed humans 1 and session id is cleared by spook run before accept: humans is 0, session_ids is empty, and there is no tick file. The next player hello sets humans to 1. The following wake is idle catch-up. spook tick on a copy leaves humans 1 and ticks live. status, migrate, and run --mcp leave the crashed presence.
+  Stdin wait on spook run prints NOT_IN_SPEC, does not exit, and writes nothing. With a player connection held, stop and stdin EOF drop that seat, commit include_tick false, do not call run_tick, and exit 0. With a GM connection held, stop frees it and writes no presence. With neither connection held, stop exits 0 and writes nothing. A crashed humans 1 with the seated PC present is cleared by spook run before accept: humans is 0, actors_present is empty, now.yaml has no session_ids key, and there is no tick file. The next player hello sets humans to 1. The following wake is idle catch-up. spook tick on a copy leaves humans 1 and ticks live. status, migrate, and run --mcp leave that crashed presence. A now.yaml that still names session_ids fails load with SCHEMA.
 
   Scenario: Stdin law rejects wait and stop with no seat writes nothing
     Given a temp copy of pack packs/oneshot-docks
@@ -72,11 +72,9 @@ Feature: Stdin and crash presence
     When mcp pack-table runs on the mcp copy
     Then the mcp copy is still running
     And the mcp copy humans is 1
-    And the mcp copy session_ids are crash-session
     When migrate runs on the migrate copy
     Then the migrate copy command succeeds
     And the migrate copy humans is 1
-    And the migrate copy session_ids are crash-session
 
   Scenario: Stdin law run clears crashed presence and the wake is idle catch-up
     Given a temp copy of pack packs/oneshot-docks
@@ -104,3 +102,10 @@ Feature: Stdin and crash presence
     Then humans is 0
     And tick_index is 12
     And world_time is 1800
+
+  Scenario: A now.yaml that still names session_ids fails load with SCHEMA
+    Given a temp copy of pack packs/oneshot-docks
+    And the pack now.yaml still names session_ids
+    When tick, status, migrate, and mcp run against that now.yaml
+    Then each of those commands fails with SCHEMA
+    And that now.yaml still names session_ids

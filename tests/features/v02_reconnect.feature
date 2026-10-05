@@ -9,11 +9,9 @@ Feature: Reconnect
     Given the reconnect port is locked
     When a reconnect player sits with a GM on shard "b-again"
     Then reconnect humans is 1
-    And reconnect session count is 1
     And reconnect actors present are pc_rowan
     And reconnect world_time is 1080
     And reconnect tick_index is 0
-    And the reconnect first session id is stored
     When the reconnect player sends "say the tin is out"
     Then the reconnect player stdout contains "the tin is out"
     And reconnect world_time is 1080
@@ -33,7 +31,6 @@ Feature: Reconnect
     And reconnect humans becomes 0
     And reconnect world_time is 1080
     And reconnect tick_index is 0
-    And reconnect session ids are empty
     And reconnect actors present are empty
     And reconnect tick files are none
     And the reconnect GM status shows humans 0 and the stored queue
@@ -41,8 +38,6 @@ Feature: Reconnect
     Then reconnect scrollback has one say of "the tin is out"
     And reconnect humans is 1
     And reconnect actors present are pc_rowan
-    And reconnect session count is 1
-    And the reconnect session id differs from the first
     And reconnect world_time is 1080
     And reconnect tick_index is 0
     And reconnect Rowan is in docks_shop

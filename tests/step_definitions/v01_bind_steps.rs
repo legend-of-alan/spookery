@@ -111,12 +111,37 @@ fn run_as(w: &mut World) {
         .push(run(&["run", &pack, "--as", "player:pc_rowan"]));
 }
 
-#[when(expr = "spook run --bind is tried for 0.0.0.0, 127.0.0.1:9737, and localhost")]
+#[when(expr = "spook run --bind is tried for 0.0.0.0 and localhost")]
 fn run_bind_rejected(w: &mut World) {
     let pack = pack_arg(w);
-    for addr in ["0.0.0.0", "127.0.0.1:9737", "localhost"] {
+    for addr in ["0.0.0.0", "localhost"] {
         w.outputs.push(run(&["run", &pack, "--bind", addr]));
     }
+}
+
+#[when(expr = "spook run --bind 127.0.0.1:9737 listens")]
+fn run_bind_loopback_port(w: &mut World) {
+    let pack = pack_arg(w);
+    let mut proc = support::spawn(&["run", &pack, "--bind", "127.0.0.1:9737"]);
+    support::wait_listen(&mut proc);
+    support::write_stdin(&mut proc, "stop");
+    let status = wait_exit(&mut proc, Duration::from_secs(5));
+    w.scratch
+        .insert("bind-accepted".to_string(), status.code().unwrap_or(1).to_string());
+    w.scratch
+        .insert("bind-accepted-stderr".to_string(), text_of(&proc.stderr));
+}
+
+#[then(expr = "that loopback bind was accepted")]
+fn bind_accepted(w: &mut World) {
+    let code = w.scratch.get("bind-accepted").map(String::as_str);
+    let stderr = w
+        .scratch
+        .get("bind-accepted-stderr")
+        .map(String::as_str)
+        .unwrap_or("");
+    assert_eq!(code, Some("0"), "{stderr}");
+    assert!(!stderr.contains("NOT_IN_SPEC"), "{stderr}");
 }
 
 #[when(expr = "spook run starts with --mcp pack-table and --bind 127.0.0.1")]

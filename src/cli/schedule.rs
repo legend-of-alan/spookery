@@ -7,12 +7,10 @@ use spookery_tick::advance::plan_catchup;
 use spookery_tick::{run_catchup, run_tick, Catchup, Reason as TickReason};
 
 pub async fn run_wake(pack: &Path) -> Result<(), Reason> {
-    let seconds = {
-        let shard = open_shard(pack)?;
-        shard.budget().tick_every_real_seconds
-    };
+    let mut shard = open_shard(pack)?;
+    let seconds = shard.budget().tick_every_real_seconds;
     tokio::time::sleep(Duration::from_secs(seconds)).await;
-    wake(pack)
+    wake_shard(&mut shard)
 }
 
 pub async fn run_scheduler(pack: &Path) -> Result<(), Reason> {
@@ -27,11 +25,6 @@ pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {
 
 pub fn wall_now() -> Result<String, Reason> {
     format_utc(SystemTime::now())
-}
-
-pub fn wake(pack: &Path) -> Result<(), Reason> {
-    let mut shard = open_shard(pack)?;
-    wake_shard(&mut shard)
 }
 
 pub fn wake_shard(shard: &mut Shard) -> Result<(), Reason> {

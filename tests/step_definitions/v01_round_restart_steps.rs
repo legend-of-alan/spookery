@@ -183,12 +183,12 @@ fn stamp(shard: &Shard, w: &mut World) {
         .insert("committed_state_rev".to_string(), now.state_rev.to_string());
 }
 
-#[then(expr = "schedule.rs defines wake and wake_shard without player_held or gm_held")]
+#[then(expr = "schedule.rs defines wake_shard without a second wake, player_held, or gm_held")]
 fn schedule_wrapper(_w: &mut World) {
     let schedule =
         fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
             .unwrap();
-    assert!(schedule.contains("pub fn wake("));
+    assert!(!schedule.contains("pub fn wake("));
     assert!(schedule.contains("pub fn wake_shard("));
     assert!(!schedule.contains("player_held"));
     assert!(!schedule.contains("gm_held"));

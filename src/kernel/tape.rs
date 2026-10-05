@@ -1,10 +1,16 @@
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
 use crate::commit::fsync_dir;
 use crate::error::Reason;
 use crate::lock::lock_session;
+
+/// Hard cap for `state/log/session.jsonl`.
+pub const MAX_TAPE_BYTES: u64 = 1024 * 1024;
+
+const DEFAULT_TAPE_LIMIT: usize = 64;
+const MAX_TAPE_LIMIT: usize = 256;
 
 /// Append one session tape line under `state/.session.lock`.
 /// Assigns `seq`, drops a trailing partial line, and does not open a `Txn`.
@@ -20,21 +26,26 @@ pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u
         .truncate(false)
         .open(&path)
         .map_err(|_| Reason::CommitConflict)?;
-    let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)
-        .map_err(|_| Reason::CommitConflict)?;
-    let end = session_kept(&bytes);
-    let seq = last_session_seq(&bytes[..end])
-        .checked_add(1)
-        .ok_or(Reason::CommitConflict)?;
+    let len = file
+        .metadata()
+        .map_err(|_| Reason::CommitConflict)?
+        .len();
+    if len > MAX_TAPE_BYTES {
+        return Err(Reason::OutOfRange);
+    }
+    let (end, last_seq) = tail_seq(&mut file, len)?;
+    let seq = last_seq.checked_add(1).ok_or(Reason::CommitConflict)?;
     let mut line = body(seq);
     if line.is_empty() || line.bytes().any(|byte| byte == b'\n' || byte == b'\r') {
         return Err(Reason::Schema);
     }
     line.push('\n');
-    if end != bytes.len() {
-        file.set_len(end as u64)
-            .map_err(|_| Reason::CommitConflict)?;
+    let next_len = end + line.len() as u64;
+    if next_len > MAX_TAPE_BYTES {
+        return Err(Reason::OutOfRange);
+    }
+    if end != len {
+        file.set_len(end).map_err(|_| Reason::CommitConflict)?;
     }
     file.seek(SeekFrom::End(0))
         .map_err(|_| Reason::CommitConflict)?;
@@ -45,63 +56,113 @@ pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u
     Ok(seq)
 }
 
-/// Complete tape lines. A missing file is empty. A trailing partial line is not a record.
-pub fn read_session(root: &Path) -> Result<Vec<String>, Reason> {
+/// Tape lines with `seq` greater than `after_seq`, at most `limit` of them.
+/// `limit` defaults to 64 and is clamped to 256. A missing file is empty.
+/// A trailing partial line is not a record. A complete line that does not
+/// parse is `SCHEMA` for the whole read. A file past 1 MiB is `OUT_OF_RANGE`.
+pub fn read_session(
+    root: &Path,
+    after_seq: u64,
+    limit: Option<usize>,
+) -> Result<Vec<String>, Reason> {
+    let limit = match limit {
+        Some(limit) => limit.min(MAX_TAPE_LIMIT),
+        None => DEFAULT_TAPE_LIMIT,
+    };
+    let mut out = Vec::new();
+    for line in load_kept(root)? {
+        let seq = session_seq(line.as_bytes()).ok_or(Reason::Schema)?;
+        if seq > after_seq && out.len() < limit {
+            out.push(line);
+        }
+    }
+    Ok(out)
+}
+
+/// Last complete `seq`, or 0 when the tape has no record.
+pub fn session_end_seq(root: &Path) -> Result<u64, Reason> {
+    match load_kept(root)?.last() {
+        Some(line) => session_seq(line.as_bytes()).ok_or(Reason::Schema),
+        None => Ok(0),
+    }
+}
+
+fn load_kept(root: &Path) -> Result<Vec<String>, Reason> {
     let path = root.join("state/log/session.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
     }
     let _lock = lock_session(root)?;
+    let len = fs::metadata(&path)
+        .map_err(|_| Reason::CommitConflict)?
+        .len();
+    if len > MAX_TAPE_BYTES {
+        return Err(Reason::OutOfRange);
+    }
     let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
-    let end = session_kept(&bytes);
-    let text = std::str::from_utf8(&bytes[..end]).map_err(|_| Reason::Schema)?;
+    let Some(last_nl) = bytes.iter().rposition(|byte| *byte == b'\n') else {
+        return Ok(Vec::new());
+    };
+    let text = std::str::from_utf8(&bytes[..=last_nl]).map_err(|_| Reason::Schema)?;
     let mut lines = Vec::new();
-    for line in text.lines() {
-        if session_seq(line.as_bytes()).is_some() {
-            lines.push(line.to_string());
+    for line in text.split_inclusive('\n') {
+        let line = line.strip_suffix('\n').unwrap_or(line);
+        let line = line.strip_suffix('\r').unwrap_or(line);
+        if session_seq(line.as_bytes()).is_none() {
+            return Err(Reason::Schema);
         }
+        lines.push(line.to_string());
     }
     Ok(lines)
 }
 
-fn session_kept(bytes: &[u8]) -> usize {
-    let Some(last_lf) = bytes.iter().rposition(|byte| *byte == b'\n') else {
-        return 0;
+/// `(kept_end, last_seq)` from the file tail. A torn suffix is not a record.
+/// A complete line that does not parse is `SCHEMA`.
+fn tail_seq(file: &mut File, len: u64) -> Result<(u64, u64), Reason> {
+    if len == 0 {
+        return Ok((0, 0));
+    }
+    let mut start = len;
+    let mut suffix = Vec::new();
+    loop {
+        let take = start.min(8192);
+        if take == 0 {
+            break;
+        }
+        start -= take;
+        file.seek(SeekFrom::Start(start))
+            .map_err(|_| Reason::CommitConflict)?;
+        let mut chunk = vec![0u8; take as usize];
+        file.read_exact(&mut chunk)
+            .map_err(|_| Reason::CommitConflict)?;
+        chunk.append(&mut suffix);
+        suffix = chunk;
+        if last_line_in_suffix(&suffix, start == 0) {
+            break;
+        }
+    }
+    let Some(last_nl) = suffix.iter().rposition(|byte| *byte == b'\n') else {
+        return Ok((0, 0));
     };
-    let mut end = last_lf + 1;
-    while end > 0 {
-        let start = bytes[..end - 1]
-            .iter()
-            .rposition(|byte| *byte == b'\n')
-            .map(|index| index + 1)
-            .unwrap_or(0);
-        let mut line = &bytes[start..end - 1];
-        if line.last() == Some(&b'\r') {
-            line = &line[..line.len() - 1];
-        }
-        if session_seq(line).is_some() {
-            return end;
-        }
-        end = start;
-    }
-    0
-}
-
-fn last_session_seq(bytes: &[u8]) -> u64 {
-    let end = session_kept(bytes);
-    if end == 0 {
-        return 0;
-    }
-    let start = bytes[..end - 1]
+    let kept_end = start + last_nl as u64 + 1;
+    let line_start = suffix[..last_nl]
         .iter()
         .rposition(|byte| *byte == b'\n')
         .map(|index| index + 1)
         .unwrap_or(0);
-    let mut line = &bytes[start..end - 1];
+    let mut line = &suffix[line_start..last_nl];
     if line.last() == Some(&b'\r') {
         line = &line[..line.len() - 1];
     }
-    session_seq(line).unwrap_or(0)
+    let seq = session_seq(line).ok_or(Reason::Schema)?;
+    Ok((kept_end, seq))
+}
+
+fn last_line_in_suffix(suffix: &[u8], at_start: bool) -> bool {
+    let Some(last_nl) = suffix.iter().rposition(|byte| *byte == b'\n') else {
+        return at_start;
+    };
+    at_start || suffix[..last_nl].contains(&b'\n')
 }
 
 fn session_seq(line: &[u8]) -> Option<u64> {

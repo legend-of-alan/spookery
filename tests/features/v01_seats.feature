@@ -21,7 +21,6 @@ Feature: Seats
     And the player stderr is empty
     And presence humans is 1
     And actors present are pc_rowan
-    And session_ids length is 1
     And state_rev is 1
     And tick_index is 0
     And world_time is 1080

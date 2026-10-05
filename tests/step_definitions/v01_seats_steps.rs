@@ -525,12 +525,6 @@ fn actors_present(w: &mut World, id: String) {
     assert_eq!(now.presence.actors_present, vec![id]);
 }
 
-#[then(expr = "session_ids length is {int}")]
-fn session_len(w: &mut World, n: u64) {
-    let now = now_of(w.pack.as_ref().unwrap());
-    assert_eq!(now.presence.session_ids.len() as u64, n);
-}
-
 #[then(expr = "there is no tick file")]
 fn no_tick_file(w: &mut World) {
     assert!(tick_files(w.pack.as_ref().unwrap()).is_empty());

@@ -103,7 +103,6 @@ fn base_now(shard_id: &str, world_time: u64, humans: u32, present: Vec<String>) 
         last_tick_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
             humans,
-            session_ids: Vec::new(),
             actors_present: present,
         },
         pause: PauseView {

@@ -153,7 +153,7 @@ fn v01_p13_bind_other_than_loopback_is_not_in_spec() {
     let _lock = lock_port();
     let pack = temp_pack("bind");
     let before = files(&pack);
-    for addr in ["0.0.0.0", "127.0.0.1:9737", "localhost"] {
+    for addr in ["0.0.0.0", "localhost"] {
         let mut proc = spawn(&["run", &pack_arg(&pack), "--bind", addr]);
         let status = wait_exit(&mut proc, Duration::from_secs(5));
         assert_eq!(status.code(), Some(1), "{addr}");
@@ -173,6 +173,36 @@ fn v01_p13_bind_other_than_loopback_is_not_in_spec() {
     assert_eq!(status.code(), Some(1));
     assert_eq!(text_of(&both.stderr).trim(), "NOT_IN_SPEC");
     assert_eq!(files(&pack), before);
+    let mut server = spawn(&["run", &pack_arg(&pack), "--bind", "127.0.0.1:9737"]);
+    wait_listen(&mut server);
+    write_stdin(&mut server, "stop");
+    assert_eq!(
+        wait_exit(&mut server, Duration::from_secs(5)).code(),
+        Some(0)
+    );
+    let mut other = spawn(&["run", &pack_arg(&pack), "--bind", "127.0.0.1:9738"]);
+    let started = Instant::now();
+    loop {
+        if TcpStream::connect("127.0.0.1:9738").is_ok() {
+            break;
+        }
+        if let Some(status) = other.child.try_wait().unwrap() {
+            panic!(
+                "second port exited {:?}\n{}",
+                status.code(),
+                text_of(&other.stderr)
+            );
+        }
+        if started.elapsed() > Duration::from_secs(10) {
+            panic!("127.0.0.1:9738 did not listen\n{}", text_of(&other.stderr));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    write_stdin(&mut other, "stop");
+    assert_eq!(
+        wait_exit(&mut other, Duration::from_secs(5)).code(),
+        Some(0)
+    );
     assert_port_is_free();
     let _ = fs::remove_dir_all(&pack);
 }
@@ -278,7 +308,6 @@ fn v01_p03_player_hello_opens_one_session() {
     let now = now_of(&pack);
     assert_eq!(now.presence.humans, 1);
     assert_eq!(now.presence.actors_present, vec!["pc_rowan".to_string()]);
-    assert_eq!(now.presence.session_ids.len(), 1);
     assert_eq!(now.state_rev, 1);
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.world_time, 1080);
@@ -365,7 +394,7 @@ fn v01_p05_disconnect_and_close_drop_the_player_seat_without_a_tick() {
     assert_eq!(dropped.state_rev, 2);
     assert_eq!(dropped.tick_index, 0);
     assert_eq!(dropped.world_time, 1080);
-    assert!(dropped.presence.session_ids.is_empty());
+    assert!(dropped.presence.actors_present.is_empty());
     assert!(tick_files(&pack).is_empty());
 
     let mut again = spawn(&["play", &pack_arg(&pack)]);
@@ -424,7 +453,7 @@ fn v01_p14_stop_and_eof_drop_a_held_seat_and_do_not_tick() {
     assert_eq!(status.code(), Some(0));
     let now = now_of(&pack);
     assert_eq!(now.presence.humans, 0);
-    assert!(now.presence.session_ids.is_empty());
+    assert!(now.presence.actors_present.is_empty());
     assert_eq!(now.state_rev, 2);
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.world_time, 1080);
@@ -530,7 +559,7 @@ fn v01_p17_quiet_socket_stays_seated() {
     assert!(started.elapsed() < Duration::from_secs(30));
     let now = now_of(&pack);
     assert_eq!(now.presence.humans, 1);
-    assert_eq!(now.presence.session_ids.len(), 1);
+    assert_eq!(now.presence.actors_present, vec!["pc_rowan".to_string()]);
     assert_eq!(now.state_rev, 1);
     assert!(tick_files(&pack).is_empty());
     assert!(client.child.try_wait().unwrap().is_none());
@@ -553,7 +582,6 @@ fn v01_p17_simulated_read_error_drops_the_seat_like_close() {
     )
     .unwrap());
     assert_eq!(shard.now().presence.humans, 0);
-    assert!(shard.now().presence.session_ids.is_empty());
     assert!(shard.now().presence.actors_present.is_empty());
     assert_eq!(shard.now().state_rev, 2);
     assert_eq!(shard.now().tick_index, 0);
@@ -605,8 +633,8 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
     let opened = spookery_kernel::open_shard(&untouched).unwrap();
     assert_eq!(opened.now().presence.humans, 1);
     assert_eq!(
-        opened.now().presence.session_ids,
-        vec!["crash-session".to_string()]
+        opened.now().presence.actors_present,
+        vec!["pc_rowan".to_string()]
     );
     drop(opened);
 
@@ -632,10 +660,6 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
         text_of(&mcp.stderr)
     );
     assert_eq!(now_of(&mcp_pack).presence.humans, 1);
-    assert_eq!(
-        now_of(&mcp_pack).presence.session_ids,
-        vec!["crash-session".to_string()]
-    );
     drop(mcp);
 
     let mut migrated = spawn(&["migrate", &pack_arg(&migrate_pack)]);
@@ -646,14 +670,16 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
     );
     let now = now_of(&migrate_pack);
     assert_eq!(now.presence.humans, 1);
-    assert_eq!(now.presence.session_ids, vec!["crash-session".to_string()]);
+    assert_eq!(now.presence.actors_present, vec!["pc_rowan".to_string()]);
 
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let cleared = now_of(&pack);
     assert_eq!(cleared.presence.humans, 0);
-    assert!(cleared.presence.session_ids.is_empty());
     assert!(cleared.presence.actors_present.is_empty());
+    assert!(!fs::read_to_string(pack.join("state/now.yaml"))
+        .unwrap()
+        .contains("session_ids"));
     assert_eq!(cleared.state_rev, 1);
     assert_eq!(cleared.tick_index, 0);
     assert_eq!(cleared.world_time, 1080);
@@ -684,12 +710,55 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
         wait_exit(&mut server, Duration::from_secs(5)).code(),
         Some(0)
     );
-    spookery::schedule::wake(Path::new(&pack_arg(&pack)))
-        .unwrap_or_else(|err| panic!("wake: {err}"));
+    let mut caught_shard =
+        spookery_kernel::open_shard(Path::new(&pack_arg(&pack))).unwrap_or_else(|err| {
+            panic!("open: {err}");
+        });
+    spookery::schedule::wake_shard(&mut caught_shard).unwrap_or_else(|err| panic!("wake: {err}"));
+    drop(caught_shard);
     let caught = now_of(&pack);
     assert_eq!(caught.presence.humans, 0);
     assert_eq!(caught.tick_index, 12);
     assert_eq!(caught.world_time, 1800);
+
+    let schema_pack = temp_pack("crash-schema");
+    plant_session_ids(&schema_pack);
+    let schema_before = fs::read(schema_pack.join("state/now.yaml")).unwrap();
+    assert!(std::str::from_utf8(&schema_before)
+        .unwrap()
+        .contains("session_ids"));
+    match spookery_kernel::open_shard(&schema_pack) {
+        Err(spookery_kernel::Reason::Schema) => {}
+        Err(err) => panic!("open: {err}"),
+        Ok(_) => panic!("session_ids loaded"),
+    }
+    for args in [
+        vec!["tick".to_string(), pack_arg(&schema_pack)],
+        vec!["status".to_string(), pack_arg(&schema_pack)],
+        vec!["migrate".to_string(), pack_arg(&schema_pack)],
+        vec![
+            "run".to_string(),
+            pack_arg(&schema_pack),
+            "--mcp".to_string(),
+            "pack-table".to_string(),
+        ],
+    ] {
+        let owned: Vec<&str> = args.iter().map(String::as_str).collect();
+        let mut proc = spawn(&owned);
+        let status = wait_exit(&mut proc, Duration::from_secs(10));
+        assert_eq!(status.code(), Some(1), "{args:?}\n{}", text_of(&proc.stderr));
+        assert!(
+            text_of(&proc.stderr).contains("SCHEMA"),
+            "{args:?}\n{}",
+            text_of(&proc.stderr)
+        );
+        assert_eq!(
+            fs::read(schema_pack.join("state/now.yaml")).unwrap(),
+            schema_before,
+            "{args:?}"
+        );
+    }
+    let _ = fs::remove_dir_all(&schema_pack);
     let _ = fs::remove_dir_all(&pack);
     let _ = fs::remove_dir_all(&untouched);
     let _ = fs::remove_dir_all(&status_pack);
@@ -714,13 +783,21 @@ fn write_crashed(pack: &Path, every: Option<&str>) {
     let mut now = spookery_kernel::codec::load_now(&text).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
     now.presence.humans = 1;
-    now.presence.session_ids = vec!["crash-session".to_string()];
     now.presence.actors_present = vec!["pc_rowan".to_string()];
     fs::write(
         pack.join("state/now.yaml"),
         spookery_kernel::codec::emit_now(&now).unwrap(),
     )
     .unwrap();
+}
+
+fn plant_session_ids(pack: &Path) {
+    let path = pack.join("state/now.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let from = "presence:\n  humans: 0\n  actors_present: []\n";
+    let to = "presence:\n  humans: 1\n  session_ids: [\"crash-session\"]\n  actors_present: [\"pc_rowan\"]\n";
+    assert!(text.contains(from), "{text}");
+    fs::write(&path, text.replacen(from, to, 1)).unwrap();
 }
 
 #[test]
@@ -938,7 +1015,6 @@ fn v01_p08_talk_appends_for_a_seated_player_and_live_only_when_no_human() {
     let pack = temp_pack("talk-direct");
     let shard = spookery_kernel::open_shard(&pack).unwrap();
     assert_eq!(shard.now().presence.humans, 0);
-    assert!(shard.now().presence.session_ids.is_empty());
     let err = spookery::seat::speak(&shard, "pc_rowan", "talk mira good evening").unwrap_err();
     assert_eq!(err, spookery_kernel::Reason::TableEmpty);
     assert!(!pack.join("state/log/session.jsonl").exists());
@@ -1151,7 +1227,7 @@ fn v01_p18_early_wake_after_commit_does_not_tick_and_a_due_wake_does() {
     let schedule =
         fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
             .unwrap();
-    assert!(schedule.contains("pub fn wake("));
+    assert!(!schedule.contains("pub fn wake("));
     assert!(schedule.contains("pub fn wake_shard("));
     assert!(!schedule.contains("player_held"));
     assert!(!schedule.contains("gm_held"));

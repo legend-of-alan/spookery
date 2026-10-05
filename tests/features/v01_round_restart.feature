@@ -5,7 +5,7 @@ Feature: Round restart
 
   Scenario: Round restart early wake after commit does not tick
     Given a temp copy of pack packs/oneshot-docks
-    Then schedule.rs defines wake and wake_shard without player_held or gm_held
+    Then schedule.rs defines wake_shard without a second wake, player_held, or gm_held
     And turn.rs calls schedule::wake_shard and does not open a shard
     When the round restart shard seats pc_rowan
     And the round restart shard queues a wait on the open shard

@@ -1,7 +1,7 @@
 @v01
 Feature: Loopback bind
   Proof: v01_run_as_is_not_in_spec, v01_p13_bind_other_than_loopback_is_not_in_spec, v01_p13_bind_in_use_is_the_operating_system_error, v01_p19_clients_without_a_listener_use_the_operating_system_error
-  A bind address other than 127.0.0.1 exits 1 with NOT_IN_SPEC and does not open the pack. A failed bind of 127.0.0.1:9737 exits 1 with the operating-system error text on stderr, opens no pack, and writes nothing. It does not print NOT_IN_SPEC. spook play, spook gm, and spook gm --stdio with nothing listening exit 1 with the operating-system error, empty stdout, and an unchanged pack.
+  --bind 127.0.0.1 and --bind 127.0.0.1:<port> are legal. The default listen address is 127.0.0.1:9737. 0.0.0.0 and localhost exit 1 with NOT_IN_SPEC and do not open the pack. A failed bind of a port that is already held exits 1 with the operating-system error text on stderr, opens no pack, and writes nothing. It does not print NOT_IN_SPEC. spook play, spook gm, and spook gm --stdio with nothing listening exit 1 with the operating-system error, empty stdout, and an unchanged pack.
 
   Scenario: Bind law rejects spook run --as player:pc_rowan
     Given a temp copy of pack packs/oneshot-docks
@@ -18,7 +18,7 @@ Feature: Loopback bind
     Given a temp copy of pack packs/oneshot-docks
     And the 9737 port lock is held
     And the pack file bytes are recorded
-    When spook run --bind is tried for 0.0.0.0, 127.0.0.1:9737, and localhost
+    When spook run --bind is tried for 0.0.0.0 and localhost
     Then each command exits 1
     And each command stderr is NOT_IN_SPEC
     And each command stdout is empty
@@ -27,6 +27,8 @@ Feature: Loopback bind
     Then the command exits 1
     And the command stderr is NOT_IN_SPEC
     And the recorded pack file bytes are unchanged
+    When spook run --bind 127.0.0.1:9737 listens
+    Then that loopback bind was accepted
     And port 9737 is free
 
   Scenario: Bind law reports the operating-system error when 127.0.0.1:9737 is in use

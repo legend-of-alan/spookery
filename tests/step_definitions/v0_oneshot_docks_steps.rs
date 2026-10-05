@@ -21,7 +21,7 @@ fn pack_rev_equals_now(w: &mut World) {
     let now =
         spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));
     assert_eq!(now.pack_rev, rev);
-    assert!(now.presence.session_ids.is_empty());
+    assert!(!now_text.contains("session_ids"));
 }
 
 #[then(expr = "now state_rev is 0 and world_time is 1080 and Rowan is in docks_shop")]

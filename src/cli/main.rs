@@ -1,5 +1,6 @@
 mod play;
 
+use std::net::SocketAddr;
 use std::path::Path;
 
 use spookery_kernel::Reason;
@@ -59,12 +60,27 @@ fn dispatch_run(args: &[String]) -> Result<(), spookery::Error> {
         };
         return spookery_mcp::serve(pack, profile).map_err(spookery::Error::Reason);
     }
-    if let Some(addr) = flags.bind {
-        if addr != "127.0.0.1" {
-            return Err(spookery::Error::Reason(Reason::NotInSpec));
-        }
+    let addr = match flags.bind {
+        Some(addr) => parse_loopback(addr)?,
+        None => SocketAddr::from(([127, 0, 0, 1], 9737)),
+    };
+    spookery::seat::listen(pack, addr)
+}
+
+fn parse_loopback(addr: &str) -> Result<SocketAddr, spookery::Error> {
+    if addr == "127.0.0.1" {
+        return Ok(SocketAddr::from(([127, 0, 0, 1], 9737)));
     }
-    spookery::seat::listen(pack)
+    let Some(port) = addr.strip_prefix("127.0.0.1:") else {
+        return Err(spookery::Error::Reason(Reason::NotInSpec));
+    };
+    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(spookery::Error::Reason(Reason::NotInSpec));
+    }
+    let port: u16 = port
+        .parse()
+        .map_err(|_| spookery::Error::Reason(Reason::NotInSpec))?;
+    Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
 struct RunFlags<'a> {
