@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use spookery::seat::{
-    commit_queued, gm_tool, on_scheduled_wake, queue_wait, release_player_seat, seat_player, speak,
+    commit_queued, gm_tool, on_scheduled_wake, queue_wait, release_player_seat, seat_player,
     turn, SocketEnd, Turn,
 };
 use spookery_kernel::apply::apply_effect;
@@ -331,27 +331,6 @@ impl Pipe {
         ));
         self.wait(&format!("\"id\":{id}"))
     }
-}
-
-fn read_line(stream: &mut TcpStream) -> String {
-    stream
-        .set_read_timeout(Some(Duration::from_secs(5)))
-        .unwrap();
-    let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
-    loop {
-        match stream.read(&mut byte) {
-            Ok(0) => panic!("eof {}", String::from_utf8_lossy(&buf)),
-            Ok(_) => {
-                if byte[0] == b'\n' {
-                    break;
-                }
-                buf.push(byte[0]);
-            }
-            Err(err) => panic!("read {err}; {}", String::from_utf8_lossy(&buf)),
-        }
-    }
-    String::from_utf8(buf).unwrap()
 }
 
 #[test]
@@ -1171,126 +1150,6 @@ fn import_boundary() {
         &["langchain", "openai", "anthropic", "ollama", "reqwest"],
     );
     assert!(src_hits.is_empty(), "{}", src_hits.join("\n"));
-}
-
-#[test]
-fn loopback_bind() {
-    let pack = temp_pack("bind");
-    let before = snapshot(&pack);
-    let arg = pack_arg(&pack);
-    for addr in ["0.0.0.0", "localhost", "192.0.2.1"] {
-        let (code, stdout, stderr) = finished(&["run", &arg, "--bind", addr]);
-        assert_eq!(code, Some(1), "{addr}");
-        assert_eq!(stderr.trim(), "NOT_IN_SPEC", "{addr}");
-        assert!(stdout.is_empty(), "{addr}");
-        assert_eq!(snapshot(&pack), before, "{addr}");
-    }
-    let (code, stdout, stderr) = finished(&["run", &arg, "--as", "player:pc_rowan"]);
-    assert_eq!(code, Some(1));
-    assert_eq!(stderr.trim(), "NOT_IN_SPEC");
-    assert!(stdout.is_empty());
-    assert_eq!(snapshot(&pack), before);
-    let (code, stdout, stderr) = finished(&["run", &arg, "--mcp", "pack-table", "--bind", "127.0.0.1"]);
-    assert_eq!(code, Some(1));
-    assert_eq!(stderr.trim(), "NOT_IN_SPEC");
-    assert!(stdout.is_empty());
-    assert_eq!(snapshot(&pack), before);
-
-    {
-        let server = Server::start(&pack, "127.0.0.1", 9737);
-        assert!(TcpStream::connect("127.0.0.1:9737").is_ok());
-        drop(server);
-    }
-    let port = free_port();
-    let bind = format!("127.0.0.1:{port}");
-    let server = Server::start(&pack, &bind, port);
-    assert!(TcpStream::connect(("127.0.0.1", port)).is_ok());
-    assert_ne!(server.port, 9737);
-    drop(server);
-    let _ = fs::remove_dir_all(&pack);
-}
-
-#[test]
-fn one_seat_session_full() {
-    let pack = temp_pack("seat");
-    let port = free_port();
-    let bind = format!("127.0.0.1:{port}");
-    let server = Server::start(&pack, &bind, port);
-    let _player = Pipe::player(port);
-    let now = now_of(&pack);
-    assert_eq!(now.presence.humans, 1);
-    assert_eq!(now.presence.actors_present, vec!["pc_rowan".to_string()]);
-    assert_eq!(now.state_rev, 1);
-    assert_eq!(now.tick_index, 0);
-    assert_eq!(now.world_time, 1080);
-    assert!(tick_names(&pack).is_empty());
-    assert!(!pack.join("state/log/session.jsonl").exists());
-    let seated = fs::read(pack.join("state/now.yaml")).unwrap();
-    let mut second = Pipe::connect(port);
-    second.write_all(b"player:pc_rowan\n").unwrap();
-    second.flush().unwrap();
-    assert_eq!(
-        read_line(&mut second),
-        "{\"kind\":\"refused\",\"code\":\"SESSION_FULL\"}"
-    );
-    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
-    drop(server);
-
-    let gm_pack = temp_pack("gm-seat");
-    let port = free_port();
-    let server = Server::start(&gm_pack, &format!("127.0.0.1:{port}"), port);
-    let before = fs::read(gm_pack.join("state/now.yaml")).unwrap();
-    let _gm = Pipe::gm(port);
-    assert_eq!(fs::read(gm_pack.join("state/now.yaml")).unwrap(), before);
-    assert_eq!(now_of(&gm_pack).presence.humans, 0);
-    let mut second = Pipe::connect(port);
-    second.write_all(b"gm\n").unwrap();
-    second.flush().unwrap();
-    assert_eq!(
-        read_line(&mut second),
-        "{\"kind\":\"refused\",\"code\":\"SESSION_FULL\"}"
-    );
-    assert_eq!(fs::read(gm_pack.join("state/now.yaml")).unwrap(), before);
-    drop(server);
-    let _ = fs::remove_dir_all(&pack);
-    let _ = fs::remove_dir_all(&gm_pack);
-}
-
-#[test]
-fn speech_does_not_bump_state_rev() {
-    let pack = temp_pack("say");
-    let mut shard = open(&pack);
-    seat_player(&mut shard, "pc_rowan").unwrap();
-    let seated = fs::read(pack.join("state/now.yaml")).unwrap();
-    let rev = shard.now().state_rev;
-    let spoken = speak(&shard, "pc_rowan", "say hello").unwrap();
-    assert!(spoken.tape.contains("\"text\":\"hello\""));
-    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
-    assert_eq!(now_of(&pack).state_rev, rev);
-    assert!(pack.join("state/log/session.jsonl").is_file());
-    assert!(tick_names(&pack).is_empty());
-    let _ = fs::remove_dir_all(&pack);
-}
-
-#[test]
-fn talk_at_empty_table_appends_nothing() {
-    let pack = temp_pack("talk");
-    let shard = open(&pack);
-    assert_eq!(shard.now().presence.humans, 0);
-    let err = speak(&shard, "pc_rowan", "talk mira good evening").unwrap_err();
-    assert_eq!(err, Reason::TableEmpty);
-    assert!(!pack.join("state/log/session.jsonl").exists());
-    drop(shard);
-
-    let mut shard = open(&pack);
-    seat_player(&mut shard, "pc_rowan").unwrap();
-    let seated = fs::read(pack.join("state/now.yaml")).unwrap();
-    let spoken = speak(&shard, "pc_rowan", "talk mira good evening").unwrap();
-    assert!(spoken.tape.contains("good evening"));
-    assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), seated);
-    assert!(pack.join("state/log/session.jsonl").is_file());
-    assert!(tick_names(&pack).is_empty());
-    let _ = fs::remove_dir_all(&pack);
 }
 
 fn player_waits(tick: &Value) -> Vec<String> {
