@@ -22,17 +22,7 @@ use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack, Catchup};
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
 fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
-    for entry in fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display())) {
-        let entry = entry.unwrap();
-        let dest = to.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), &dest)
-                .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
-        }
-    }
+    super::support::copy_dir(from, to);
 }
 
 fn scratch(label: &str) -> PathBuf {
@@ -137,7 +127,6 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     out
 }
 
-#[test]
 fn closed_secret() {
     let pack = temp_pack("secret");
     let mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
@@ -166,7 +155,6 @@ fn closed_secret() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-#[test]
 fn no_self_win() {
     let pack = temp_pack("self-win");
     for tick in 1..=12 {
@@ -216,7 +204,6 @@ fn no_self_win() {
     let _ = fs::remove_dir_all(&seated);
 }
 
-#[test]
 fn shop_lives() {
     let pack = temp_pack("shop");
     {
@@ -268,7 +255,6 @@ source: system
 tick_index: 12
 ";
 
-#[test]
 fn catchup_cap() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = scratch("catchup");
@@ -401,7 +387,6 @@ flags: []
     let _ = fs::remove_dir_all(&pack);
 }
 
-#[test]
 fn busy_skip() {
     let pack = temp_pack("busy");
     {
@@ -465,7 +450,6 @@ fn stock_effect(delta: i64) -> Effect {
     }
 }
 
-#[test]
 fn atomic_commit() {
     let dropped = temp_pack("drop");
     let now_path = dropped.join("state/now.yaml");
@@ -583,7 +567,6 @@ fn atomic_commit() {
     let _ = fs::remove_dir_all(&next);
 }
 
-#[test]
 fn replay_byte_compares_now() {
     let stamp = format!(
         "{}-{}",
@@ -617,7 +600,6 @@ fn replay_byte_compares_now() {
     let _ = fs::remove_dir_all(&temp);
 }
 
-#[test]
 fn budget_caps() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = scratch("budget");
@@ -761,7 +743,6 @@ tick:
     let _ = fs::remove_dir_all(&pack);
 }
 
-#[test]
 fn tool_scope() {
     let pack = temp_pack("scope");
     let before = snapshot(&pack);
@@ -810,7 +791,6 @@ fn tool_scope() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-#[test]
 fn proposal_only() {
     let pack = temp_pack("proposal");
     let moves = pack.join("rules/moves.yaml");
@@ -864,7 +844,6 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-#[test]
 fn strip_bodies_and_hidden_string_lint() {
     let pack = temp_pack("strip");
     let mut files = Vec::new();
@@ -916,7 +895,6 @@ fn strip_bodies_and_hidden_string_lint() {
     let _ = fs::remove_dir_all(&folded);
 }
 
-#[test]
 fn import_boundary() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut kernel_tick = Vec::new();
@@ -966,7 +944,6 @@ fn player_waits(tick: &Value) -> Vec<String> {
         .collect()
 }
 
-#[test]
 fn queued_line_survives_a_dropped_seat() {
     let held = temp_pack("held");
     let mut shard = open(&held);
@@ -1006,7 +983,6 @@ fn queued_line_survives_a_dropped_seat() {
     let _ = fs::remove_dir_all(&dropped);
 }
 
-#[test]
 fn early_wake_does_not_tick_again() {
     let early = temp_pack("early-wake");
     let mut shard = open(&early);
@@ -1023,7 +999,6 @@ fn early_wake_does_not_tick_again() {
     let _ = fs::remove_dir_all(&early);
 }
 
-#[test]
 fn a_due_wake_applies_the_queued_wait() {
     let due = temp_pack("due-wake");
     let mut shard = open(&due);
@@ -1076,7 +1051,6 @@ fn play_mark(pack: &Path, line: &str) -> Now {
     shard.now().clone()
 }
 
-#[test]
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     for (label, grit, success) in [("effects-pass", 1, true), ("effects-fail", -20, false)] {
         let pack = temp_pack(label);
@@ -1171,7 +1145,6 @@ fn rolled_stat(notices: &[CheckNotice], stat: i64) -> spookery_kernel::check::Ch
         .unwrap_or_else(|| panic!("no stat {stat} in {notices:?}"))
 }
 
-#[test]
 fn opposing_total_reused() {
     for opposed in [false, true] {
         let label = if opposed { "opposed" } else { "open-check" };
@@ -1225,7 +1198,6 @@ fn opposing_total_reused() {
     }
 }
 
-#[test]
 fn a_held_knife_still_runs_the_opposed_row() {
     let held = temp_pack("item-held");
     let mut moves = fs::read_to_string(held.join("rules/moves.yaml")).unwrap();
@@ -1260,7 +1232,6 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let _ = fs::remove_dir_all(&held);
 }
 
-#[test]
 fn manifests_do_not_name_a_model_crate() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [
@@ -1272,4 +1243,26 @@ fn manifests_do_not_name_a_model_crate() {
         let text = fs::read_to_string(&path).unwrap();
         assert!(!text.contains("llm"), "{}", path.display());
     }
+}
+
+pub fn run() {
+    closed_secret();
+    no_self_win();
+    shop_lives();
+    catchup_cap();
+    busy_skip();
+    atomic_commit();
+    replay_byte_compares_now();
+    budget_caps();
+    tool_scope();
+    proposal_only();
+    strip_bodies_and_hidden_string_lint();
+    import_boundary();
+    queued_line_survives_a_dropped_seat();
+    early_wake_does_not_tick_again();
+    a_due_wake_applies_the_queued_wait();
+    effects_run_on_both_outcomes_and_lists_run_on_one();
+    opposing_total_reused();
+    a_held_knife_still_runs_the_opposed_row();
+    manifests_do_not_name_a_model_crate();
 }

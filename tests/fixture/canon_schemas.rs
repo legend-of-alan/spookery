@@ -68,8 +68,7 @@ fn assert_closed(name: &str, valid: Value, nested: &[&[&str]]) {
     }
 }
 
-#[test]
-fn schemas_reject_unknown_keys() {
+pub(crate) fn schemas_reject_unknown_keys() {
     assert_closed(
         "place",
         json!({

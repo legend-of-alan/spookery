@@ -41,14 +41,6 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "ti
 cucumber = "=0.23.0"
 
 [[test]]
-name = "properties"
-path = "tests/properties.rs"
-
-[[test]]
-name = "fixtures"
-path = "tests/fixtures.rs"
-
-[[test]]
 name = "promises"
 path = "tests/promises.rs"
 harness = false

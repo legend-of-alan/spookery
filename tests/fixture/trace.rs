@@ -150,8 +150,7 @@ fn empty_idle(n: u64, shard: &str) -> String {
     )
 }
 
-#[test]
-fn empty_tick_log() {
+pub(crate) fn empty_tick_log() {
     let pack = temp_dir("a");
     copy_dir(
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks"),
@@ -174,8 +173,7 @@ fn empty_tick_log() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-#[test]
-fn flushed_wait_log() {
+pub(crate) fn flushed_wait_log() {
     let pack = temp_dir("b");
     write(
         &pack.join("pack.yaml"),
@@ -254,8 +252,7 @@ flags: []
     let _ = fs::remove_dir_all(&pack);
 }
 
-#[test]
-fn budget_tick_log() {
+pub(crate) fn budget_tick_log() {
     let pack = temp_dir("c");
     write(
         &pack.join("pack.yaml"),
@@ -364,8 +361,7 @@ tick:
     let _ = fs::remove_dir_all(&pack);
 }
 
-#[test]
-fn catchup_tick_log() {
+pub(crate) fn catchup_tick_log() {
     let pack = temp_dir("d");
     write(
         &pack.join("pack.yaml"),

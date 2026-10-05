@@ -35,9 +35,28 @@ mod digest;
 #[path = "steps/commit.rs"]
 mod commit;
 
+#[path = "properties.rs"]
+mod properties;
+
+#[path = "fixture/trace.rs"]
+mod trace;
+
+#[path = "fixture/canon_schemas.rs"]
+mod canon_schemas;
+
+#[path = "fixture/emitter_sample.rs"]
+mod emitter_sample;
+
+#[path = "fixture/oneshot_docks.rs"]
+mod oneshot_docks;
+
+#[path = "fixture/scheduler.rs"]
+mod scheduler;
+
 use std::process::Child;
 use std::sync::Mutex;
 
+use cucumber::writer::Stats;
 use cucumber::World as _;
 
 static CHILDREN: Mutex<Vec<Child>> = Mutex::new(Vec::new());
@@ -92,7 +111,7 @@ pub struct World {
 
 #[tokio::main]
 async fn main() {
-    World::cucumber()
+    let writer = World::cucumber()
         .max_concurrent_scenarios(1)
         .fail_on_skipped()
         .after(|_, _, _, _, world| {
@@ -104,6 +123,19 @@ async fn main() {
             }
             Box::pin(async {})
         })
-        .run_and_exit("tests/features")
+        .run("tests/features")
         .await;
+    let features_failed = writer.execution_has_failed();
+    properties::run();
+    trace::empty_tick_log();
+    trace::flushed_wait_log();
+    trace::budget_tick_log();
+    trace::catchup_tick_log();
+    canon_schemas::schemas_reject_unknown_keys();
+    emitter_sample::now_sample_emits_the_recorded_bytes();
+    oneshot_docks::docks_save_round_trips();
+    scheduler::scheduler_sleeps_then_catches_up().await;
+    if features_failed {
+        std::process::exit(1);
+    }
 }

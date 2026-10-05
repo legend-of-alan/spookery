@@ -1,9 +1,8 @@
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 pub fn copy_dir(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
@@ -101,67 +100,8 @@ pub fn text_of(slot: &Arc<Mutex<String>>) -> String {
     slot.lock().unwrap().clone()
 }
 
-pub fn wait_count(
-    slot: &Arc<Mutex<String>>,
-    needle: &str,
-    count: usize,
-    timeout: Duration,
-) -> String {
-    let start = Instant::now();
-    loop {
-        let text = text_of(slot);
-        if text.matches(needle).count() >= count {
-            return text;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "saw {} of {needle}, wanted {count}\n{text}",
-                text.matches(needle).count()
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-pub fn wait_has(slot: &Arc<Mutex<String>>, needle: &str, timeout: Duration) -> String {
-    let start = Instant::now();
-    loop {
-        let text = text_of(slot);
-        if text.contains(needle) {
-            return text;
-        }
-        if start.elapsed() > timeout {
-            panic!("missing {needle} after {timeout:?}\n{text}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-pub fn wait_exit(proc: &mut Proc, timeout: Duration) -> std::process::ExitStatus {
-    let start = Instant::now();
-    loop {
-        if let Some(status) = proc.child.try_wait().unwrap() {
-            return status;
-        }
-        if start.elapsed() > timeout {
-            panic!(
-                "process still running\nstdout:\n{}\nstderr:\n{}",
-                text_of(&proc.stdout),
-                text_of(&proc.stderr)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
 pub fn pack_arg(pack: &Path) -> String {
     pack.to_str()
         .unwrap_or_else(|| panic!("pack path is not utf-8"))
         .to_string()
-}
-
-pub fn write_stdin(proc: &mut Proc, line: &str) {
-    let stdin = proc.stdin.as_mut().unwrap();
-    writeln!(stdin, "{line}").unwrap();
-    stdin.flush().unwrap();
 }

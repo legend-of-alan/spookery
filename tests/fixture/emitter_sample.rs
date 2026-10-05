@@ -27,8 +27,7 @@ yes_word: \"yes\"
 num_word: \"1842\"
 ";
 
-#[test]
-fn now_sample_emits_the_recorded_bytes() {
+pub(crate) fn now_sample_emits_the_recorded_bytes() {
     let sample = Sample {
         schema: "now/v0",
         last_tick_at: "2026-01-01T00:00:00Z",
