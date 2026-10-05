@@ -218,7 +218,7 @@ fn listen(w: &mut World) {
 #[when(expr = "a gm client is seated")]
 fn gm_seated(w: &mut World) {
     let arg = pack_arg(pack_of(w));
-    let mut gm = spawn(&["gm", &arg]);
+    let mut gm = spawn(&["gm", &arg, "--stdio"]);
     std::thread::sleep(Duration::from_millis(200));
     assert!(
         gm.child.try_wait().unwrap().is_none(),

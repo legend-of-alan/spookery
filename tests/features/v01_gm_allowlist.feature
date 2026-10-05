@@ -7,7 +7,7 @@ Feature: GM allowlist
   Scenario: GM allowlist empty tools/call returns the recorded codes
     Given a listening GM allowlist shard
     When the GM lists tools and calls the empty-argument tools, commit_turn, and the pc_rowan wait intent
-    Then the listed GM tools are session_open, session_status, perceive, intent, say, resolve_check, apply_effect, npc_act, commit_turn, recall, session_save
+    Then the listed GM tools are session_status, perceive, intent, say, npc_act, commit_turn
     And empty session_open returns NOT_IN_SPEC
     And empty say returns SCHEMA
     And empty perceive returns UNSCOPED_PERCEIVE
@@ -26,7 +26,7 @@ Feature: GM allowlist
   Scenario: GM allowlist perceive reaches the handler and refusals write nothing
     Given a listening GM allowlist shard
     When the GM raw session lists tools and calls perceive, npc_act, session_open, patch_entity, and the refusal names
-    Then the raw listed GM tools are session_open, session_status, perceive, intent, say, resolve_check, apply_effect, npc_act, commit_turn, recall, session_save
+    Then the raw listed GM tools are session_status, perceive, intent, say, npc_act, commit_turn
     And every listed tool description contains "queued until commit_turn"
     And every listed tool description contains "does not tick"
     And every listed tool description contains "player:<id>"

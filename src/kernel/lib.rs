@@ -20,7 +20,6 @@ pub mod model;
 pub mod moves;
 pub mod pause;
 pub mod perceive;
-pub mod recall {}
 pub mod recover;
 pub mod shard;
 pub mod tape;

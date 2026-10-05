@@ -54,7 +54,7 @@ Feature: Seats
     And presence humans is 0
     When a second gm client starts
     Then that client exits 1
-    And that client's stderr is SESSION_FULL
+    And that client's stderr is NOT_IN_SPEC
     And that client's stdout is empty
     And the recorded now.yaml bytes are unchanged
     And the listening shard stops

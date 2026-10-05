@@ -126,8 +126,10 @@ fn run_bind_loopback_port(w: &mut World) {
     support::wait_listen(&mut proc);
     support::write_stdin(&mut proc, "stop");
     let status = wait_exit(&mut proc, Duration::from_secs(5));
-    w.scratch
-        .insert("bind-accepted".to_string(), status.code().unwrap_or(1).to_string());
+    w.scratch.insert(
+        "bind-accepted".to_string(),
+        status.code().unwrap_or(1).to_string(),
+    );
     w.scratch
         .insert("bind-accepted-stderr".to_string(), text_of(&proc.stderr));
 }
@@ -168,7 +170,7 @@ fn run_bind_in_use(w: &mut World) {
 }
 
 #[when(
-    expr = "spook play, spook play on the yaml-only directory, spook gm, spook gm --stdio on the yaml-only directory, and spook play --as player:pc_rowan run with nothing listening"
+    expr = "spook play, spook play on the yaml-only directory, spook gm --stdio on the yaml-only directory, and spook play --as player:pc_rowan run with nothing listening"
 )]
 fn clients_without_listener(w: &mut World) {
     let expected = TcpStream::connect("127.0.0.1:9737").unwrap_err();
@@ -178,7 +180,6 @@ fn clients_without_listener(w: &mut World) {
     let commands = [
         vec!["play".to_string(), pack.clone()],
         vec!["play".to_string(), only.clone()],
-        vec!["gm".to_string(), pack.clone()],
         vec!["gm".to_string(), only, "--stdio".to_string()],
         vec![
             "play".to_string(),
@@ -191,6 +192,12 @@ fn clients_without_listener(w: &mut World) {
         let owned: Vec<&str> = args.iter().map(String::as_str).collect();
         w.outputs.push(run(&owned));
     }
+}
+
+#[when(expr = "spook gm runs with nothing listening")]
+fn gm_without_listener(w: &mut World) {
+    let pack = pack_arg(w);
+    w.outputs.push(run(&["gm", &pack]));
 }
 
 #[then(expr = "the command exits 1")]

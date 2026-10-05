@@ -12,17 +12,12 @@ use super::support::{
 };
 
 const GM_TOOLS: &[&str] = &[
-    "session_open",
     "session_status",
     "perceive",
     "intent",
     "say",
-    "resolve_check",
-    "apply_effect",
     "npc_act",
     "commit_turn",
-    "recall",
-    "session_save",
 ];
 
 fn gm_session() -> TcpStream {
@@ -268,14 +263,12 @@ fn v01_typed_gm_line_does_not_call_say() {
     wait_listen(&mut server);
     let before = fs::read(pack.join("state/now.yaml")).unwrap();
     let mut typed = spawn(&["gm", &pack_arg(&pack)]);
-    std::thread::sleep(Duration::from_millis(200));
-    assert!(typed.child.try_wait().unwrap().is_none());
-    write_stdin(&mut typed, "say from the keyboard");
-    let typed_err = wait_has(&typed.stderr, "NOT_IN_SPEC", Duration::from_secs(5));
-    assert_eq!(typed_err.trim(), "NOT_IN_SPEC");
+    let status = wait_exit(&mut typed, Duration::from_secs(5));
+    assert_eq!(status.code(), Some(1));
+    assert_eq!(text_of(&typed.stderr).trim(), "NOT_IN_SPEC");
+    assert!(text_of(&typed.stdout).is_empty());
     assert!(!pack.join("state/log/session.jsonl").exists());
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
-    assert!(typed.child.try_wait().unwrap().is_none());
     let _ = fs::remove_dir_all(&pack);
 }
 

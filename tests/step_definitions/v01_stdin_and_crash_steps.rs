@@ -353,7 +353,7 @@ fn gm_held(w: &mut World) {
     w.scratch.insert("now-before".to_string(), hex(&before));
     let mut server = support::spawn(&["run", &pack]);
     support::wait_listen(&mut server);
-    let mut gm = support::spawn(&["gm", &pack]);
+    let mut gm = support::spawn(&["gm", &pack, "--stdio"]);
     let line = wait_for_session_full(&mut gm);
     w.scratch.insert("gm-refusal".to_string(), line);
     put_sitting(Sitting {

@@ -1,12 +1,12 @@
 @v02
 Feature: Tool keys
   Proof: v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals
-  GM tools/list names distinct keys. A missing required key stays SCHEMA or UNSCOPED_PERCEIVE. npc_act stays LLM_DISABLED. session_open, patch_entity, resolve_check, apply_effect, recall, and session_save stay NOT_IN_SPEC. A name off the list stays NOT_IN_SPEC.
+  GM tools/list names the six sitting handlers. A missing required key stays SCHEMA or UNSCOPED_PERCEIVE. npc_act stays LLM_DISABLED. session_open, patch_entity, resolve_check, apply_effect, recall, and session_save stay NOT_IN_SPEC. A name off the list stays NOT_IN_SPEC.
 
   Scenario: Tool keys list names distinct keys and keeps the refusals
     Given a temp copy of pack packs/oneshot-docks
     When the GM lists tools on the tool-keys shard
-    Then the tool-keys names are session_open, session_status, perceive, intent, say, resolve_check, apply_effect, npc_act, commit_turn, recall, session_save
+    Then the tool-keys names are session_status, perceive, intent, say, npc_act, commit_turn
     And the tool-keys list does not include patch_entity
     And each tool-keys description contains its recorded phrase and the descriptions are distinct
     And the tool-keys say schema requires address and text and branches table, place, and actor
@@ -15,7 +15,7 @@ Feature: Tool keys
     And the tool-keys session_status schema accepts since and requires nothing
     And the tool-keys intent schema requires actor_id, actor_kind, source, and move and source stays player
     And the tool-keys live schemas for say, perceive, commit_turn, session_status, and intent differ
-    And the tool-keys schemas for session_open, resolve_check, apply_effect, npc_act, recall, and session_save are type object
+    And the tool-keys schema for npc_act is type object
     And tool-keys say returns SCHEMA when a required key is missing or from is supplied
     And tool-keys perceive returns UNSCOPED_PERCEIVE when as is missing
     And tool-keys commit_turn returns SCHEMA when include_tick is missing

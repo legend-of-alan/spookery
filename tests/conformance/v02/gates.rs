@@ -17,17 +17,12 @@ use super::support::{
 };
 
 const GM_TOOLS: &[&str] = &[
-    "session_open",
     "session_status",
     "perceive",
     "intent",
     "say",
-    "resolve_check",
-    "apply_effect",
     "npc_act",
     "commit_turn",
-    "recall",
-    "session_save",
 ];
 
 const TABLE_TOOLS: &[&str] = &[
@@ -205,26 +200,12 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
 
     let mut descriptions = BTreeSet::new();
     for (name, phrase) in [
-        ("session_open", "returns NOT_IN_SPEC and writes nothing"),
         ("session_status", "empty object stays legal"),
         ("perceive", "A missing as is UNSCOPED_PERCEIVE"),
         ("intent", "source stays player"),
         ("say", "A supplied from is SCHEMA"),
-        (
-            "resolve_check",
-            "Calling resolve_check on this seat returns NOT_IN_SPEC",
-        ),
-        (
-            "apply_effect",
-            "Calling apply_effect on this seat returns NOT_IN_SPEC",
-        ),
         ("npc_act", "calls no model"),
         ("commit_turn", "requires include_tick"),
-        ("recall", "Calling recall on this seat returns NOT_IN_SPEC"),
-        (
-            "session_save",
-            "Calling session_save on this seat returns NOT_IN_SPEC",
-        ),
     ] {
         let tool = tools.iter().find(|tool| tool["name"] == name).unwrap();
         let description = tool["description"].as_str().unwrap();
@@ -344,17 +325,8 @@ fn v02_p01_gm_tools_list_names_distinct_keys_and_keeps_the_refusals() {
             );
         }
     }
-    for name in [
-        "session_open",
-        "resolve_check",
-        "apply_effect",
-        "npc_act",
-        "recall",
-        "session_save",
-    ] {
-        let schema = &tools.iter().find(|tool| tool["name"] == name).unwrap()["inputSchema"];
-        assert_eq!(schema, &serde_json::json!({ "type": "object" }), "{name}");
-    }
+    let npc_act = &tools.iter().find(|tool| tool["name"] == "npc_act").unwrap()["inputSchema"];
+    assert_eq!(npc_act, &serde_json::json!({ "type": "object" }));
 
     let mut id = 3u64;
     let mut next = || {
@@ -1580,16 +1552,12 @@ fn assert_no_derived_row(tick: &Value, moves: &[&str]) {
     }
     for actor in ["mira", "bram", "aldric", "pc_rowan"] {
         for move_name in moves {
-            let id = spookery_kernel::ids::kernel_intent_id(
-                "docks-001",
-                tick_index,
-                actor,
-                move_name,
-            );
+            let id =
+                spookery_kernel::ids::kernel_intent_id("docks-001", tick_index, actor, move_name);
             assert!(
-                intents.iter().all(|intent| {
-                    intent["id"] != id || intent["source"] == "player"
-                }),
+                intents
+                    .iter()
+                    .all(|intent| { intent["id"] != id || intent["source"] == "player" }),
                 "{actor} derived {move_name}"
             );
             if actor != "pc_rowan" {
@@ -2166,9 +2134,7 @@ fn pc_location_count(tick: &Value) -> usize {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|effect| {
-            effect["class"] == "location" && effect["actor_id"] == "pc_rowan"
-        })
+        .filter(|effect| effect["class"] == "location" && effect["actor_id"] == "pc_rowan")
         .count()
 }
 
@@ -2177,9 +2143,7 @@ fn assert_street_effect(tick: &Value, intent_id: &str) {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|effect| {
-            effect["class"] == "location" && effect["actor_id"] == "pc_rowan"
-        })
+        .filter(|effect| effect["class"] == "location" && effect["actor_id"] == "pc_rowan")
         .collect();
     assert_eq!(hits.len(), 1, "{tick}");
     assert_eq!(hits[0]["intent_id"], intent_id);
@@ -2191,12 +2155,8 @@ fn assert_street_effect(tick: &Value, intent_id: &str) {
 fn assert_no_pc_kernel(tick: &Value) {
     let tick_index = tick["tick_index"].as_u64().unwrap();
     for move_name in ["travel", "work", "rest", "restock", "wait"] {
-        let id = spookery_kernel::ids::kernel_intent_id(
-            "docks-001",
-            tick_index,
-            "pc_rowan",
-            move_name,
-        );
+        let id =
+            spookery_kernel::ids::kernel_intent_id("docks-001", tick_index, "pc_rowan", move_name);
         assert!(
             tick["intents"]
                 .as_array()

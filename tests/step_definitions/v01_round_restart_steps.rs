@@ -375,7 +375,7 @@ fn listen(w: &mut World) {
 #[when(expr = "a round restart GM client is seated")]
 fn gm_seated(w: &mut World) {
     let pack = pack_arg(pack_of(w));
-    let gm = spawn(&["gm", &pack]);
+    let gm = spawn(&["gm", &pack, "--stdio"]);
     assign_job(&gm.child);
     {
         let mut held = live();
@@ -472,7 +472,7 @@ fn session_exists(w: &mut World) {
 fn gm_closes(w: &mut World) {
     let mut held = live();
     let gm = held.gm.as_mut().unwrap();
-    write_stdin(gm, "close");
+    gm.stdin.take();
     let status = wait_exit(gm, Duration::from_secs(5));
     w.scratch.insert(
         "gm_exit".to_string(),

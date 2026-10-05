@@ -59,17 +59,12 @@ struct Refusal {
 }
 
 const GM_TOOLS: &[&str] = &[
-    "session_open",
     "session_status",
     "perceive",
     "intent",
     "say",
-    "resolve_check",
-    "apply_effect",
     "npc_act",
     "commit_turn",
-    "recall",
-    "session_save",
 ];
 
 static HOLD: Mutex<Option<Hold>> = Mutex::new(None);
@@ -369,7 +364,7 @@ fn rmcp_report() -> RmcpReport {
 }
 
 #[then(
-    expr = "the listed GM tools are session_open, session_status, perceive, intent, say, resolve_check, apply_effect, npc_act, commit_turn, recall, session_save"
+    expr = "the listed GM tools are session_status, perceive, intent, say, npc_act, commit_turn"
 )]
 fn listed_tools(w: &mut World) {
     let _ = w;
@@ -621,7 +616,7 @@ fn raw_report() -> RawReport {
 }
 
 #[then(
-    expr = "the raw listed GM tools are session_open, session_status, perceive, intent, say, resolve_check, apply_effect, npc_act, commit_turn, recall, session_save"
+    expr = "the raw listed GM tools are session_status, perceive, intent, say, npc_act, commit_turn"
 )]
 fn raw_listed_tools(w: &mut World) {
     let _ = w;

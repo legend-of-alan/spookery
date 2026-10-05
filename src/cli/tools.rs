@@ -36,8 +36,8 @@ impl ToolResult {
     }
 }
 
-/// Sitting `tools/list` order. Each name is one handler or one refusal.
-/// Any other name is `NOT_IN_SPEC`.
+/// Sitting `tools/list` order. Each name is one handler.
+/// Any other name is `NOT_IN_SPEC` and writes nothing.
 pub(super) struct GmTool {
     pub(super) name: &'static str,
     pub(super) about: &'static str,
@@ -54,12 +54,6 @@ impl GmTool {
 }
 
 pub(super) const GM_LIST: &[GmTool] = &[
-    GmTool {
-        name: "session_open",
-        about: "Calling session_open on this seat returns NOT_IN_SPEC and writes nothing.",
-        schema: empty_schema,
-        run: refuse_not_in_spec,
-    },
     GmTool {
         name: "session_status",
         about: "session_status takes no required key. An empty object stays legal. since is the only other accepted key.",
@@ -85,18 +79,6 @@ pub(super) const GM_LIST: &[GmTool] = &[
         run: run_say,
     },
     GmTool {
-        name: "resolve_check",
-        about: "Calling resolve_check on this seat returns NOT_IN_SPEC.",
-        schema: empty_schema,
-        run: refuse_not_in_spec,
-    },
-    GmTool {
-        name: "apply_effect",
-        about: "Calling apply_effect on this seat returns NOT_IN_SPEC.",
-        schema: empty_schema,
-        run: refuse_not_in_spec,
-    },
-    GmTool {
         name: "npc_act",
         about: "npc_act returns LLM_DISABLED and calls no model.",
         schema: empty_schema,
@@ -107,18 +89,6 @@ pub(super) const GM_LIST: &[GmTool] = &[
         about: "commit_turn requires include_tick. session_id may be a string.",
         schema: commit_schema,
         run: run_commit_turn,
-    },
-    GmTool {
-        name: "recall",
-        about: "Calling recall on this seat returns NOT_IN_SPEC.",
-        schema: empty_schema,
-        run: refuse_not_in_spec,
-    },
-    GmTool {
-        name: "session_save",
-        about: "Calling session_save on this seat returns NOT_IN_SPEC.",
-        schema: empty_schema,
-        run: refuse_not_in_spec,
     },
 ];
 

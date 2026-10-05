@@ -362,7 +362,7 @@ fn play_starts(w: &mut World) {
 #[when(expr = "gm starts")]
 fn gm_starts(w: &mut World) {
     let pack = support::pack_arg(w.pack.as_ref().unwrap());
-    let client = support::spawn(&["gm", &pack]);
+    let client = support::spawn(&["gm", &pack, "--stdio"]);
     assign_job(&client.child);
     with_seat(|seat| seat.gm = Some(client));
 }

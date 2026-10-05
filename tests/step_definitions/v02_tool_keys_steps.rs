@@ -27,40 +27,21 @@ struct Hold {
 }
 
 const GM_TOOLS: &[&str] = &[
-    "session_open",
     "session_status",
     "perceive",
     "intent",
     "say",
-    "resolve_check",
-    "apply_effect",
     "npc_act",
     "commit_turn",
-    "recall",
-    "session_save",
 ];
 
 const PHRASES: &[(&str, &str)] = &[
-    ("session_open", "returns NOT_IN_SPEC and writes nothing"),
     ("session_status", "empty object stays legal"),
     ("perceive", "A missing as is UNSCOPED_PERCEIVE"),
     ("intent", "source stays player"),
     ("say", "A supplied from is SCHEMA"),
-    (
-        "resolve_check",
-        "Calling resolve_check on this seat returns NOT_IN_SPEC",
-    ),
-    (
-        "apply_effect",
-        "Calling apply_effect on this seat returns NOT_IN_SPEC",
-    ),
     ("npc_act", "calls no model"),
     ("commit_turn", "requires include_tick"),
-    ("recall", "Calling recall on this seat returns NOT_IN_SPEC"),
-    (
-        "session_save",
-        "Calling session_save on this seat returns NOT_IN_SPEC",
-    ),
 ];
 
 static HOLD: Mutex<Option<Hold>> = Mutex::new(None);
@@ -404,7 +385,7 @@ fn list_tools(w: &mut World) {
 }
 
 #[then(
-    expr = "the tool-keys names are session_open, session_status, perceive, intent, say, resolve_check, apply_effect, npc_act, commit_turn, recall, session_save"
+    expr = "the tool-keys names are session_status, perceive, intent, say, npc_act, commit_turn"
 )]
 fn names_are(_w: &mut World) {
     let names: Vec<String> = tools()
@@ -561,22 +542,10 @@ fn live_schemas_differ(_w: &mut World) {
     }
 }
 
-#[then(
-    expr = "the tool-keys schemas for session_open, resolve_check, apply_effect, npc_act, recall, and session_save are type object"
-)]
-fn refusal_schemas(_w: &mut World) {
-    let tools = tools();
-    for name in [
-        "session_open",
-        "resolve_check",
-        "apply_effect",
-        "npc_act",
-        "recall",
-        "session_save",
-    ] {
-        let schema = schema_of(&tools, name);
-        assert_eq!(schema, serde_json::json!({ "type": "object" }), "{name}");
-    }
+#[then(expr = "the tool-keys schema for npc_act is type object")]
+fn npc_act_schema(_w: &mut World) {
+    let schema = schema_of(&tools(), "npc_act");
+    assert_eq!(schema, serde_json::json!({ "type": "object" }));
 }
 
 #[then(expr = "tool-keys say returns SCHEMA when a required key is missing or from is supplied")]

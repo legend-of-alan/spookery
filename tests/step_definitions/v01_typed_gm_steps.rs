@@ -197,17 +197,11 @@ fn listen(w: &mut World) {
     });
 }
 
-#[when(expr = "the typed GM sends say from the keyboard")]
-fn send_say(_w: &mut World) {
+#[when(expr = "spook gm runs without --stdio")]
+fn run_without_stdio(_w: &mut World) {
     let pack = with_hold(|hold| support::pack_arg(&hold.pack));
-    let mut typed = support::spawn(&["gm", &pack]);
+    let typed = support::spawn(&["gm", &pack]);
     assign_job(&typed.child);
-    std::thread::sleep(Duration::from_millis(200));
-    assert!(
-        typed.child.try_wait().unwrap().is_none(),
-        "typed gm exited before the line"
-    );
-    support::write_stdin(&mut typed, "say from the keyboard");
     with_hold(|hold| hold.gm = Some(typed));
 }
 
@@ -236,11 +230,12 @@ fn now_unchanged(_w: &mut World) {
     });
 }
 
-#[then(expr = "the typed GM process is still running")]
-fn still_running(_w: &mut World) {
+#[then(expr = "the typed GM exits 1")]
+fn exits_1(_w: &mut World) {
     with_hold(|hold| {
         let gm = hold.gm.as_mut().expect("no typed gm");
-        assert!(gm.child.try_wait().unwrap().is_none());
+        let status = support::wait_exit(gm, Duration::from_secs(5));
+        assert_eq!(status.code(), Some(1));
     });
 }
 

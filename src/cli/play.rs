@@ -73,58 +73,14 @@ pub fn play(args: &[String]) -> Result<(), Error> {
 }
 
 pub fn gm(args: &[String]) -> Result<(), Error> {
-    if args.is_empty() {
+    if args.len() != 2 || args[1] != "--stdio" {
         return Err(Error::Reason(Reason::NotInSpec));
     }
-    let stdio = if args.len() == 1 {
-        false
-    } else if args.len() == 2 && args[1] == "--stdio" {
-        true
-    } else {
-        return Err(Error::Reason(Reason::NotInSpec));
-    };
     let mut stream = TcpStream::connect("127.0.0.1:9737").map_err(Error::Io)?;
     stream.set_nodelay(true).map_err(Error::Io)?;
-    if stdio {
-        stream.write_all(b"gm\n").map_err(Error::Io)?;
-        stream.flush().map_err(Error::Io)?;
-        return bridge_stdio(stream);
-    }
     stream.write_all(b"gm\n").map_err(Error::Io)?;
     stream.flush().map_err(Error::Io)?;
-    let watch = stream.try_clone().map_err(Error::Io)?;
-    std::thread::spawn(move || {
-        for line in io::stdin().lines() {
-            match line {
-                Ok(line) if line == "close" => {
-                    let _ = watch.shutdown(std::net::Shutdown::Write);
-                    // Dropping this clone resets the socket before the server finishes the seat drop.
-                    std::mem::forget(watch);
-                    return;
-                }
-                Ok(_) => eprintln!("{}", Reason::NotInSpec),
-                Err(_) => {
-                    let _ = watch.shutdown(std::net::Shutdown::Both);
-                    return;
-                }
-            }
-        }
-        let _ = watch.shutdown(std::net::Shutdown::Both);
-    });
-    let mut reader = BufReader::new(stream);
-    loop {
-        let Some(line) = read_line(&mut reader)? else {
-            return Ok(());
-        };
-        if let Some(code) = refused_code(&line) {
-            eprintln!("{code}");
-            std::process::exit(1);
-        }
-        if let Some(params) = event_params(&line) {
-            println!("{params}");
-            let _ = io::stdout().flush();
-        }
-    }
+    bridge_stdio(stream)
 }
 
 enum BridgeEnd {
@@ -296,20 +252,6 @@ fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error>
         line.pop();
     }
     Ok(Some(line))
-}
-
-fn event_params(line: &str) -> Option<String> {
-    let value: serde_json::Value = serde_json::from_str(line).ok()?;
-    if value.get("method").and_then(|method| method.as_str()) != Some("spook/event") {
-        return None;
-    }
-    let marker = "\"params\":";
-    let start = line.find(marker)? + marker.len();
-    let params = line[start..].strip_suffix('}')?;
-    if !params.starts_with('{') {
-        return None;
-    }
-    Some(params.to_string())
 }
 
 fn refused_code(line: &str) -> Option<String> {

@@ -240,7 +240,6 @@ fn v01_p19_clients_without_a_listener_use_the_operating_system_error() {
     for args in [
         vec!["play".to_string(), pack_arg(&pack)],
         vec!["play".to_string(), pack_arg(&only_yaml)],
-        vec!["gm".to_string(), pack_arg(&pack)],
         vec![
             "gm".to_string(),
             pack_arg(&only_yaml),
@@ -265,6 +264,11 @@ fn v01_p19_clients_without_a_listener_use_the_operating_system_error() {
         );
         assert!(!text_of(&proc.stderr).contains("NOT_IN_SPEC"), "{args:?}");
     }
+    let mut gm = spawn(&["gm", &pack_arg(&pack)]);
+    let status = wait_exit(&mut gm, Duration::from_secs(5));
+    assert_eq!(status.code(), Some(1));
+    assert!(text_of(&gm.stdout).is_empty());
+    assert_eq!(text_of(&gm.stderr).trim(), "NOT_IN_SPEC");
     assert_eq!(files(&pack), before);
     let _ = fs::remove_dir_all(&pack);
     let _ = fs::remove_dir_all(&only_yaml);
@@ -357,7 +361,7 @@ fn v01_p02_p04_gm_connect_does_not_write_presence_and_a_second_is_full() {
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
     let before = fs::read(pack.join("state/now.yaml")).unwrap();
-    let mut gm = spawn(&["gm", &pack_arg(&pack)]);
+    let mut gm = spawn(&["gm", &pack_arg(&pack), "--stdio"]);
     assert_eq!(
         wait_for_session_full(&mut gm),
         "{\"kind\":\"refused\",\"code\":\"SESSION_FULL\"}\n"
@@ -368,7 +372,7 @@ fn v01_p02_p04_gm_connect_does_not_write_presence_and_a_second_is_full() {
     let mut second = spawn(&["gm", &pack_arg(&pack)]);
     let status = wait_exit(&mut second, Duration::from_secs(5));
     assert_eq!(status.code(), Some(1));
-    assert_eq!(text_of(&second.stderr).trim(), "SESSION_FULL");
+    assert_eq!(text_of(&second.stderr).trim(), "NOT_IN_SPEC");
     assert!(text_of(&second.stdout).is_empty());
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
     let _ = fs::remove_dir_all(&pack);
@@ -483,7 +487,7 @@ fn v01_p14_stop_and_eof_drop_a_held_seat_and_do_not_tick() {
     drop(before_server);
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
-    let mut gm = spawn(&["gm", &pack_arg(&pack)]);
+    let mut gm = spawn(&["gm", &pack_arg(&pack), "--stdio"]);
     assert!(wait_for_session_full(&mut gm).contains("SESSION_FULL"));
     assert_eq!(fs::read(pack.join("state/now.yaml")).unwrap(), before);
     write_stdin(&mut server, "stop");
@@ -746,7 +750,12 @@ fn v01_p16_crashed_presence_clears_before_accept_and_other_commands_do_not() {
         let owned: Vec<&str> = args.iter().map(String::as_str).collect();
         let mut proc = spawn(&owned);
         let status = wait_exit(&mut proc, Duration::from_secs(10));
-        assert_eq!(status.code(), Some(1), "{args:?}\n{}", text_of(&proc.stderr));
+        assert_eq!(
+            status.code(),
+            Some(1),
+            "{args:?}\n{}",
+            text_of(&proc.stderr)
+        );
         assert!(
             text_of(&proc.stderr).contains("SCHEMA"),
             "{args:?}\n{}",
@@ -822,17 +831,12 @@ fn v01_gm_tools_call_is_not_in_spec() {
         assert_eq!(
             names,
             [
-                "session_open",
                 "session_status",
                 "perceive",
                 "intent",
                 "say",
-                "resolve_check",
-                "apply_effect",
                 "npc_act",
                 "commit_turn",
-                "recall",
-                "session_save",
             ]
         );
         for (name, code) in [
@@ -915,7 +919,7 @@ fn v01_p06_say_while_gm_is_seated_appends_one_tape_line_without_a_tick() {
     let pack = temp_pack("say");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
-    let mut gm = spawn(&["gm", &pack_arg(&pack)]);
+    let mut gm = spawn(&["gm", &pack_arg(&pack), "--stdio"]);
     std::thread::sleep(Duration::from_millis(200));
     assert!(
         gm.child.try_wait().unwrap().is_none(),
@@ -963,7 +967,7 @@ fn v01_p07_actor_say_is_on_the_gm_and_speaker_cursors_and_absent_for_a_later_act
     let pack = temp_pack("actor-say");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
-    let gm = spawn(&["gm", &pack_arg(&pack)]);
+    let gm = spawn(&["gm", &pack_arg(&pack), "--stdio"]);
     std::thread::sleep(Duration::from_millis(200));
     let mut player = spawn(&["play", &pack_arg(&pack)]);
     wait_has(
@@ -1299,7 +1303,7 @@ fn v01_p20_queued_wait_survives_gm_drop_and_the_next_wait_applies_both() {
     let pack = temp_pack("both-waits");
     let mut server = spawn(&["run", &pack_arg(&pack)]);
     wait_listen(&mut server);
-    let mut gm = spawn(&["gm", &pack_arg(&pack)]);
+    let mut gm = spawn(&["gm", &pack_arg(&pack), "--stdio"]);
     std::thread::sleep(Duration::from_millis(200));
     assert!(gm.child.try_wait().unwrap().is_none());
     let mut player = spawn(&["play", &pack_arg(&pack)]);
@@ -1336,7 +1340,7 @@ fn v01_p20_queued_wait_survives_gm_drop_and_the_next_wait_applies_both() {
     assert!(tick_files(&pack).is_empty());
     assert!(pack.join("state/log/session.jsonl").is_file());
 
-    write_stdin(&mut gm, "close");
+    gm.stdin.take();
     assert_eq!(wait_exit(&mut gm, Duration::from_secs(5)).code(), Some(0));
     let dropped = now_of(&pack);
     assert_eq!(dropped.world_time, 1080);
