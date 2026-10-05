@@ -35,8 +35,11 @@ mod digest;
 #[path = "steps/commit.rs"]
 mod commit;
 
-#[path = "properties.rs"]
-mod properties;
+#[path = "steps/proofs.rs"]
+mod proofs;
+
+#[path = "steps/fixtures.rs"]
+mod fixtures;
 
 #[path = "fixture/trace.rs"]
 mod trace;
@@ -125,17 +128,7 @@ async fn main() {
         })
         .run("tests/features")
         .await;
-    let features_failed = writer.execution_has_failed();
-    properties::run();
-    trace::empty_tick_log();
-    trace::flushed_wait_log();
-    trace::budget_tick_log();
-    trace::catchup_tick_log();
-    canon_schemas::schemas_reject_unknown_keys();
-    emitter_sample::now_sample_emits_the_recorded_bytes();
-    oneshot_docks::docks_save_round_trips();
-    scheduler::scheduler_sleeps_then_catches_up().await;
-    if features_failed {
+    if writer.execution_has_failed() {
         std::process::exit(1);
     }
 }

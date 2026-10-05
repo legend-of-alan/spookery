@@ -1,3 +1,5 @@
+use cucumber::when;
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -18,6 +20,8 @@ use spookery_kernel::model::{
 use spookery_kernel::shard::{Shard, Txn};
 use spookery_kernel::Reason;
 use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack, Catchup};
+
+use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
@@ -172,7 +176,9 @@ fn no_self_win() {
     assert!(clock.requires_presence);
     assert_eq!(clock.owners, vec!["pc_rowan".to_string()]);
     let _ = fs::remove_dir_all(&pack);
+}
 
+fn an_agenda_name_is_not_a_move() {
     let seated = temp_pack("agenda-line");
     let mut shard = open(&seated);
     seat_player(&mut shard, "pc_rowan").unwrap();
@@ -450,7 +456,7 @@ fn stock_effect(delta: i64) -> Effect {
     }
 }
 
-fn atomic_commit() {
+fn an_open_transaction_writes_nothing() {
     let dropped = temp_pack("drop");
     let now_path = dropped.join("state/now.yaml");
     let before = fs::read(&now_path).unwrap();
@@ -473,7 +479,9 @@ fn atomic_commit() {
     assert!(!dropped.join("state/proposals").exists());
     assert!(!dropped.join("state/memories").exists());
     let _ = fs::remove_dir_all(&dropped);
+}
 
+fn an_incomplete_transaction_is_discarded() {
     let incomplete = temp_pack("incomplete");
     let now_path = incomplete.join("state/now.yaml");
     let before = fs::read(&now_path).unwrap();
@@ -485,7 +493,9 @@ fn atomic_commit() {
     assert_eq!(lamp_oil(opened.now()), lamp_oil(&spookery_kernel::codec::load_now(std::str::from_utf8(&before).unwrap()).unwrap()));
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&incomplete);
+}
 
+fn the_same_revision_restores_the_previous_save() {
     let same = temp_pack("same-rev");
     let now_path = same.join("state/now.yaml");
     let original = fs::read(&now_path).unwrap();
@@ -511,7 +521,9 @@ fn atomic_commit() {
     );
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&same);
+}
 
+fn the_next_revision_keeps_the_new_save() {
     let next = temp_pack("next-rev");
     let shard = open(&next);
     let prev = shard.now().clone();
@@ -962,7 +974,9 @@ fn queued_line_survives_a_dropped_seat() {
     assert_eq!(shard.now().tick_index, 0);
     assert!(tick_names(&held).is_empty());
     let _ = fs::remove_dir_all(&held);
+}
 
+fn a_reseated_player_keeps_the_queued_wait() {
     let dropped = temp_pack("drop-queue");
     let mut shard = open(&dropped);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
@@ -1245,24 +1259,122 @@ fn manifests_do_not_name_a_model_crate() {
     }
 }
 
-pub fn run() {
+#[when(expr = "one hundred ticks pass with the ledger on Mira")]
+fn one_hundred_ticks_pass(_world: &mut World) {
     closed_secret();
+}
+
+#[when(expr = "twelve empty ticks pass")]
+fn twelve_empty_ticks_pass(_world: &mut World) {
     no_self_win();
+}
+
+#[when(expr = "a player submits an agenda name")]
+fn a_player_submits_an_agenda_name(_world: &mut World) {
+    an_agenda_name_is_not_a_move();
+}
+
+#[when(expr = "Mira is in the shop and Rowan is on the street")]
+fn mira_is_in_the_shop(_world: &mut World) {
     shop_lives();
+}
+
+#[when(expr = "seventy-two hours of catch-up run")]
+fn seventy_two_hours(_world: &mut World) {
     catchup_cap();
+}
+
+#[when(expr = "Mira is busy and a tick runs")]
+fn mira_is_busy(_world: &mut World) {
     busy_skip();
-    atomic_commit();
+}
+
+#[when(expr = "an open transaction is dropped")]
+fn an_open_transaction_is_dropped(_world: &mut World) {
+    an_open_transaction_writes_nothing();
+}
+
+#[when(expr = "an incomplete transaction is opened")]
+fn an_incomplete_transaction_is_opened(_world: &mut World) {
+    an_incomplete_transaction_is_discarded();
+}
+
+#[when(expr = "a finished transaction repeats the current revision")]
+fn a_finished_transaction_repeats(_world: &mut World) {
+    the_same_revision_restores_the_previous_save();
+}
+
+#[when(expr = "a finished transaction advances the revision")]
+fn a_finished_transaction_advances(_world: &mut World) {
+    the_next_revision_keeps_the_new_save();
+}
+
+#[when(expr = "twenty ticks are replayed")]
+fn twenty_ticks_are_replayed(_world: &mut World) {
     replay_byte_compares_now();
+}
+
+#[when(expr = "fifty minor NPCs share one tick")]
+fn fifty_minor_npcs(_world: &mut World) {
     budget_caps();
+}
+
+#[when(expr = "perceive is called with the closed viewer set")]
+fn perceive_is_called(_world: &mut World) {
     tool_scope();
+}
+
+#[when(expr = "a proposal row runs")]
+fn a_proposal_row_runs(_world: &mut World) {
     proposal_only();
+}
+
+#[when(expr = "prose is stripped and a hidden sentence is repeated")]
+fn prose_is_stripped(_world: &mut World) {
     strip_bodies_and_hidden_string_lint();
+}
+
+#[when(expr = "the kernel and tick sources are scanned")]
+fn the_kernel_and_tick_sources_are_scanned(_world: &mut World) {
     import_boundary();
+}
+
+#[when(expr = "a queued wait meets a wake and the seat drops")]
+fn a_queued_wait_meets_a_wake(_world: &mut World) {
     queued_line_survives_a_dropped_seat();
+}
+
+#[when(expr = "the player drops and sits again with a queued wait")]
+fn the_player_drops_and_sits_again(_world: &mut World) {
+    a_reseated_player_keeps_the_queued_wait();
+}
+
+#[when(expr = "a committed wait wakes early")]
+fn a_committed_wait_wakes_early(_world: &mut World) {
     early_wake_does_not_tick_again();
+}
+
+#[when(expr = "a queued wait is due")]
+fn a_queued_wait_is_due(_world: &mut World) {
     a_due_wake_applies_the_queued_wait();
+}
+
+#[when(expr = "effect rows and outcome lists are played")]
+fn effect_rows_and_outcome_lists(_world: &mut World) {
     effects_run_on_both_outcomes_and_lists_run_on_one();
+}
+
+#[when(expr = "an opposing total is in the queue")]
+fn an_opposing_total_is_in_the_queue(_world: &mut World) {
     opposing_total_reused();
+}
+
+#[when(expr = "Rowan marks Nell while holding the knife")]
+fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
     a_held_knife_still_runs_the_opposed_row();
+}
+
+#[when(expr = "the crate manifests are scanned")]
+fn the_crate_manifests_are_scanned(_world: &mut World) {
     manifests_do_not_name_a_model_crate();
 }
