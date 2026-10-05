@@ -6,8 +6,6 @@ Spec text is CC BY 4.0. Runtime code under `/src` is AGPL-3.0-or-later.
 
 This spec records one writer, the crate boundary, the threat list, loopback and one seat, and the rule that a host monitor is not shard behavior.
 
-The idle match in `src/kernel/derive.rs` and `src/kernel/expand.rs` is still in the tree. That match is code PR 7 deletes. A session does not add a match arm and does not cite a deleted file as a reason to keep the match. An empty agenda means the NPC does not act. There is no shim that runs the match when the agenda is empty. PR 11 deletes this paragraph once the code matches this spec.
-
 ## Referee rules
 
 These fourteen rules are the referee, in this order. Later sections are the detail. A sentence in another document does not add a fifteenth rule.
