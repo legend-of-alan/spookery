@@ -26,6 +26,15 @@ mod profiles;
 #[path = "steps/checks.rs"]
 mod checks;
 
+#[path = "steps/rows.rs"]
+mod rows;
+
+#[path = "steps/digest.rs"]
+mod digest;
+
+#[path = "steps/commit.rs"]
+mod commit;
+
 use std::process::Child;
 use std::sync::Mutex;
 
@@ -78,6 +87,7 @@ pub struct World {
     pub mark: usize,
     pub player_added: String,
     pub gm_added: String,
+    pub now_bytes: Vec<u8>,
 }
 
 #[tokio::main]

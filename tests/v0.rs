@@ -5,15 +5,6 @@ mod support;
 #[path = "conformance/v0/trace.rs"]
 mod trace;
 
-#[path = "conformance/v0/c09_idle_ux.rs"]
-mod c09_idle_ux;
-
-#[path = "conformance/v0/cli_migrate.rs"]
-mod cli_migrate;
-
-#[path = "conformance/v0/cli_status.rs"]
-mod cli_status;
-
 #[path = "conformance/v0/canon_schemas.rs"]
 mod canon_schemas;
 

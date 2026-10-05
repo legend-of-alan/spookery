@@ -22,6 +22,28 @@ pub struct Live {
     pub server: Option<Proc>,
 }
 
+pub fn files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
+    let mut out = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries =
+            fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
+        for entry in entries {
+            let entry = entry.unwrap_or_else(|err| panic!("dirent {}: {err}", dir.display()));
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                let bytes =
+                    fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+                out.push((path, bytes));
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 pub fn pack<'a>(world: &'a World) -> &'a Path {
     world
         .pack

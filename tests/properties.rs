@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::{json, Value};
 use spookery::seat::{
@@ -55,12 +54,6 @@ fn temp_pack(label: &str) -> PathBuf {
         &pack,
     );
     pack
-}
-
-fn pack_arg(pack: &Path) -> String {
-    pack.to_str()
-        .unwrap_or_else(|| panic!("pack path is not utf-8"))
-        .to_string()
 }
 
 fn open(pack: &Path) -> Shard {
@@ -142,18 +135,6 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let mut out = Vec::new();
     walk(root, root, &mut out);
     out
-}
-
-fn finished(args: &[&str]) -> (Option<i32>, String, String) {
-    let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(args)
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"));
-    (
-        output.status.code(),
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-    )
 }
 
 #[test]
@@ -1245,53 +1226,7 @@ fn opposing_total_reused() {
 }
 
 #[test]
-fn missing_item_before_queue() {
-    let empty = temp_pack("empty-item");
-    let mut moves = fs::read_to_string(empty.join("rules/moves.yaml")).unwrap();
-    moves.push_str(
-        "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: \"\"\n    success:\n      - class: flag\n        key: marked\n        value: true\n",
-    );
-    fs::write(empty.join("rules/moves.yaml"), moves).unwrap();
-    assert_eq!(
-        spookery_kernel::canon::load_canon(&empty).unwrap_err(),
-        Reason::Schema
-    );
-    let _ = fs::remove_dir_all(&empty);
-
-    let gear = temp_pack("gear");
-    let mut moves = fs::read_to_string(gear.join("rules/moves.yaml")).unwrap();
-    moves.push_str(
-        "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n",
-    );
-    fs::write(gear.join("rules/moves.yaml"), moves).unwrap();
-    assert_eq!(
-        spookery_kernel::canon::load_canon(&gear).unwrap_err(),
-        Reason::Schema
-    );
-    let _ = fs::remove_dir_all(&gear);
-
-    for gm_seated in [false, true] {
-        let pack = temp_pack(if gm_seated { "item-gm" } else { "item-open" });
-        let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
-        moves.push_str(
-            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    item: knife\n    success:\n      - class: flag\n        key: marked\n        value: true\n    failure:\n      - class: flag\n        key: missed\n        value: true\n",
-        );
-        fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
-        insert_nell(&pack);
-        stamp_pack_rev(&pack);
-        let mut shard = open(&pack);
-        seat_player(&mut shard, "pc_rowan").unwrap();
-        let err = match turn(&mut shard, "pc_rowan", "mark pc_nell", gm_seated) {
-            Err(err) => err,
-            Ok(_) => panic!("mark queued without the knife"),
-        };
-        assert_eq!(err, Reason::MissingItem);
-        assert!(shard.queued_intents().is_empty());
-        assert_eq!(shard.now().world_time, 1080);
-        assert!(tick_names(&pack).is_empty());
-        let _ = fs::remove_dir_all(&pack);
-    }
-
+fn a_held_knife_still_runs_the_opposed_row() {
     let held = temp_pack("item-held");
     let mut moves = fs::read_to_string(held.join("rules/moves.yaml")).unwrap();
     moves.push_str(
@@ -1323,82 +1258,6 @@ fn missing_item_before_queue() {
     assert!(!rowan.success);
     assert!(!fs::read_to_string(held.join("state/log/tick-0001.jsonl")).unwrap().contains("faces"));
     let _ = fs::remove_dir_all(&held);
-}
-
-#[test]
-fn rowan_travel() {
-    let live = temp_pack("travel-live");
-    let mut shard = open(&live);
-    seat_player(&mut shard, "pc_rowan").unwrap();
-    let played = turn(&mut shard, "pc_rowan", "travel mira_rooms", false).unwrap();
-    let Turn::Committed { .. } = played else {
-        panic!("live travel stayed queued");
-    };
-    assert_eq!(shard.now().actors.get("pc_rowan").unwrap().place(), "docks_shop");
-    assert_eq!(shard.now().world_time, 1085);
-    let tick = tick_value(&live, "tick-0001.jsonl");
-    assert!(tick["rejected"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|item| item["reason"] == "OUT_OF_RANGE"));
-    assert!(tick["effects"].as_array().unwrap().iter().all(|effect| {
-        !(effect["class"] == "location" && effect["actor_id"] == "pc_rowan")
-    }));
-    let played = turn(&mut shard, "pc_rowan", "travel docks_street", false).unwrap();
-    let Turn::Committed { .. } = played else {
-        panic!("street travel stayed queued");
-    };
-    assert_eq!(shard.now().actors.get("pc_rowan").unwrap().place(), "docks_street");
-    assert_eq!(shard.now().world_time, 1090);
-    let street = tick_value(&live, "tick-0002.jsonl");
-    let hits: Vec<_> = street["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|effect| effect["class"] == "location" && effect["actor_id"] == "pc_rowan")
-        .collect();
-    assert_eq!(hits.len(), 1);
-    assert_eq!(hits[0]["from"], "docks_shop");
-    assert_eq!(hits[0]["to"], "docks_street");
-    let _ = fs::remove_dir_all(&live);
-
-    let held = temp_pack("travel-gm");
-    let mut shard = open(&held);
-    seat_player(&mut shard, "pc_rowan").unwrap();
-    let queued = turn(&mut shard, "pc_rowan", "travel docks_street", true).unwrap();
-    let Turn::Queued(_) = queued else {
-        panic!("gm travel committed");
-    };
-    assert_eq!(shard.now().actors.get("pc_rowan").unwrap().place(), "docks_shop");
-    assert_eq!(shard.now().world_time, 1080);
-    assert!(tick_names(&held).is_empty());
-    assert!(commit_queued(&mut shard).unwrap());
-    assert_eq!(shard.now().actors.get("pc_rowan").unwrap().place(), "docks_street");
-    assert_eq!(shard.now().world_time, 1085);
-    let _ = fs::remove_dir_all(&held);
-}
-
-#[test]
-fn pack_rev_mismatch_until_migrate() {
-    let pack = temp_pack("pack-rev");
-    let now_path = pack.join("state/now.yaml");
-    let before = fs::read(&now_path).unwrap();
-    let mira = pack.join("cast/mira.md");
-    let mut body = fs::read_to_string(&mira).unwrap();
-    body.push('\n');
-    fs::write(&mira, body).unwrap();
-    let (code, stdout, stderr) = finished(&["tick", &pack_arg(&pack)]);
-    assert_eq!((code, stderr.trim()), (Some(1), "PACK_REV_MISMATCH"), "{stdout}");
-    assert_eq!(fs::read(&now_path).unwrap(), before);
-    assert!(!pack.join("state/.txn").exists());
-    assert!(!pack.join("state/log").exists());
-    match spookery_kernel::open_shard(&pack) {
-        Err(Reason::PackRevMismatch) => {}
-        Err(code) => panic!("expected PACK_REV_MISMATCH, got {code}"),
-        Ok(_) => panic!("open_shard accepted a mismatched pack_rev"),
-    }
-    let _ = fs::remove_dir_all(&pack);
 }
 
 #[test]

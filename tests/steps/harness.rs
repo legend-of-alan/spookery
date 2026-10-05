@@ -1,37 +1,14 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-
 use cucumber::{given, then, when};
 
 use crate::support::spook;
 use crate::World;
 
-fn files(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
-    let mut out = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        let entries =
-            fs::read_dir(&dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
-        for entry in entries {
-            let entry = entry.unwrap_or_else(|err| panic!("dirent {}: {err}", dir.display()));
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else {
-                let bytes =
-                    fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-                out.push((path, bytes));
-            }
-        }
-    }
-    out.sort();
-    out
-}
+use super::table;
 
 #[given(expr = "a docks table")]
 fn a_docks_table(world: &mut World) {
     let pack = crate::support::temp_pack("status");
-    world.before = files(&pack);
+    world.before = table::files(&pack);
     world.pack = Some(pack);
 }
 
@@ -43,11 +20,9 @@ fn the_operator_runs_status(world: &mut World) {
         .unwrap_or_else(|| panic!("no docks table"));
     let output = spook(&["status", pack.to_str().unwrap()]);
     world.code = output.status.code();
-    world.scratch = format!(
-        "stdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    world.scratch = format!("stdout:\n{}\nstderr:\n{}", world.stdout, world.stderr);
 }
 
 #[then(expr = "status exits 0")]
@@ -61,5 +36,5 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
         .pack
         .as_ref()
         .unwrap_or_else(|| panic!("no docks table"));
-    assert_eq!(files(pack), world.before, "status wrote the pack");
+    assert_eq!(table::files(pack), world.before, "status wrote the pack");
 }
