@@ -6,3 +6,9 @@
 
 # MSVC debug info from Windows rustc builds
 *.pdb
+
+# Local Grok MCP paths and permission choices
+/.grok/config.toml
+
+# Point-in-time notes
+/reports/
