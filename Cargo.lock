@@ -1899,7 +1899,7 @@ dependencies = [
 
 [[package]]
 name = "spookery"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "cucumber",
  "jsonschema",
@@ -1916,7 +1916,7 @@ dependencies = [
 
 [[package]]
 name = "spookery-kernel"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "blake2",
  "serde",
@@ -1926,7 +1926,7 @@ dependencies = [
 
 [[package]]
 name = "spookery-mcp"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "rmcp",
  "spookery-kernel",
@@ -1935,7 +1935,7 @@ dependencies = [
 
 [[package]]
 name = "spookery-tick"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "spookery-kernel",
 ]

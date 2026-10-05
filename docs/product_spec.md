@@ -11,7 +11,7 @@
 
 **Civilian hook:** Maker-shaped tools for private tick worlds that do not freeze — you write people and places in text, the clock runs subsistence when you leave. This is not “the default AI RPG.” It is the referee those worlds can share.
 
-**Status:** Business notes. The v0 kernel and the v0.1 sitting are implemented; this file does not specify them.
+**Status:** Business notes. This file does not specify the kernel or the sitting.
 
 **Who this document is for:** Founders reading the business case. This product spec does not license a code change.
 
@@ -75,7 +75,7 @@ Primary user is **not** “D&D players at large.”
 | 3 | Coding agents (Claude Code, Codex, etc.) | Edit packs and call MCP tools |
 | 4 | Players in those worlds | Type what they do; do not see YAML |
 
-Anti-users for v0: AAA MMO players, people who want a visual VTT on day one, people who want “ChatGPT with a tavern skin,” people shopping for a Friday-night AI RPG to replace Voyage.
+Anti-users: AAA MMO players, people who want a visual VTT on day one, people who want “ChatGPT with a tavern skin,” people shopping for a Friday-night AI RPG to replace Voyage.
 
 They may play a pack later. They do not found the company.
 
@@ -129,15 +129,15 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 ## 6. Product principles
 
-1. **Text is the source of truth.** If humans and models cannot diff it, it does not belong in v0.
+1. **Text is the source of truth.** If humans and models cannot diff it, it does not belong in the product.
 2. **Numbers live in code.** Models narrate after tools return.
 3. **Idle worlds are boring on purpose.** The shop keeps living. The plot does not finish itself while the table is away.
 4. **Shells are swappable.** Clients, graphics, Discord, voice. None of them is a second product.
-5. **Kernel proves the format.** A feature that cannot be expressed as a pack field is not a v0 feature.
+5. **Kernel proves the format.** A feature that cannot be expressed as a pack field is not a feature.
 
 ---
 
-## 7. v0 scope
+## 7. Scope
 
 ### In
 
@@ -150,7 +150,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - Terminal play: one player seat and one GM seat
 - Conformance tests
 
-### Out of v0
+### Out of scope
 
 - Public website / PWA
 - Discord bot
@@ -174,7 +174,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 ---
 
-## 8. Pack format (v0)
+## 8. Pack format
 
 A pack is a directory.
 
@@ -211,17 +211,17 @@ NPC profile, as a product sketch:
 - relationships
 - where an NPC works, when, and what the shop does
 
-v0 idle ticks are kernel-only. The world keeps moving after everyone logs off. The plot does not finish itself.
+Idle ticks are kernel-only. The world keeps moving after everyone logs off. The plot does not finish itself.
 
 ### 8.1 Official fixture ruleset
 
 The bundled one-shot (`packs/oneshot-docks/`) ships a **tiny original** ruleset, not an SRD or ORC subset.
 
-Why: v0 is proving a referee and a pack, not shipping a well-known game. The product does not brand as D&D. An SRD subset pulls in license text, skill lists, and combat gravity the docks fixture does not need. A second author adds a move in the pack, not by reading 5e.
+Why: the work is proving a referee and a pack, not shipping a well-known game. The product does not brand as D&D. An SRD subset pulls in license text, skill lists, and combat gravity the docks fixture does not need. A second author adds a move in the pack, not by reading 5e.
 
 Do not import ability-score blocks, spell lists, or XP.
 
-An SRD/ORC **pack** may exist later as a different `rules/` folder. v0 does not load two rulesets at once.
+An SRD/ORC **pack** may exist later as a different `rules/` folder. The runtime does not load two rulesets at once.
 
 ### 8.2 Docks fixture, a week later
 
@@ -293,7 +293,7 @@ Tool names stay outcome-sized. The list does not grow because a model asked for 
 5. The world and its log update together.
 6. Players hear what their character can know.
 
-Players never see MCP, keys, or YAML in the intended UX. v0 may be terminal-only and still count.
+Players never see MCP, keys, or YAML in the intended UX. A terminal-only build still counts.
 
 Overnight, shops keep living and the plot waits. Idle life must be **legible**. Legible does not mean a player wakes up omniscient.
 
@@ -320,7 +320,7 @@ Website is a skin. Do not start there. A prettier client does not make this the 
 
 ## 13. Acceptance criteria
 
-### 13.1 Kernel shipped (v0 engineering)
+### 13.1 Kernel shipped
 
 A reviewer should treat the kernel as shipped only if all of these pass:
 
@@ -330,7 +330,7 @@ A reviewer should treat the kernel as shipped only if all of these pass:
 
 ### 13.2 Company gates (not the same checkbox)
 
-v0 engineering can pass while the business is still a gist. Treat these as separate:
+The engineering gates can pass while the business is still a gist. Treat these as separate:
 
 | Gate | Target | Meaning |
 |---|---|---|
@@ -385,11 +385,11 @@ Starting price to learn from, not a freeze: **$9 per shard-month** (band $8–15
 3. **B2B kernel** — platforms that do not want to rewrite isolation + commit. Assume Voyage/Craft will not be this buyer.
 4. **Pack registry** — tax verification (“this pack passed isolation on model X”), not creativity. Year-3. Nobody pays this until untrusted packs have burned someone.
 
-Do not take 30% of someone else’s game as v1. That is a platform company.
+Do not take 30% of someone else’s game. That is a platform company.
 
 ### 14.6 Unit economics constraint
 
-A 4-player turn that spins a frontier model per NPC is a money fire. v0 idle path is kernel-only. Live path: one GM agent, small models for banter, kernel for numbers. Target to learn later: well under $1 per player-hour on mid models.
+A 4-player turn that spins a frontier model per NPC is a money fire. The idle path is kernel-only. Live path: one GM agent, small models for banter, kernel for numbers. Target to learn later: well under $1 per player-hour on mid models.
 
 **Ship gate:** if the idle path depends on a frontier model, the company is dead. This is not a cost note. It is a kill switch.
 

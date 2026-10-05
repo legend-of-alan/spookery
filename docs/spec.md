@@ -1,6 +1,6 @@
 # Spookery referee spec
 
-This file is the only normative spec. A rule it does not state is unspecified. It is not inherited from a tag. Tags `v0`, `v0.1`, and `v0.2` are the archive.
+This file is the only normative spec. A rule it does not state is unspecified.
 
 Spec text is CC BY 4.0. Runtime code under `/src` is AGPL-3.0-or-later.
 

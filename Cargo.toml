@@ -3,6 +3,7 @@ resolver = "2"
 members = [".", "src/kernel", "src/tick", "src/mcp"]
 
 [workspace.package]
+version = "0.0.0"
 edition = "2021"
 rust-version = "1.89"
 publish = false
@@ -10,7 +11,7 @@ license = "AGPL-3.0-or-later"
 
 [package]
 name = "spookery"
-version = "0.1.0"
+version.workspace = true
 autotests = false
 autobins = false
 edition.workspace = true
