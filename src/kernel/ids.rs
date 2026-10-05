@@ -1,4 +1,4 @@
-use crate::canon::blake2s_hex;
+use crate::hash::blake2s_hex;
 
 /// Blake2s of `shard|tick|actor|row`. The P37 preimage stays.
 pub fn kernel_intent_id(

@@ -2,13 +2,13 @@ use crate::canon::{AgendaEntry, Canon, PauseLane, ScheduleGate};
 use crate::effect::{Effect, EffectClass};
 use crate::eligibility::is_eligible;
 use crate::error::Reason;
-use crate::expand::{
-    expand_outcome, first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk,
-};
+use crate::expand::expand_outcome;
 use crate::ids::kernel_intent_id;
+use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use crate::limits::world_hour;
-use crate::model::{ActorKind, Intent, IntentArgs, Now, RunState, Source, Target};
+use crate::model::{Now, RunState};
 use crate::moves::Audience;
+use crate::select::{first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk};
 
 /// First agenda entry whose gates pass and whose row expands is the NPC's intent.
 pub fn kernel_intents_for_eligible_npcs(canon: &Canon, now: &Now) -> Vec<Intent> {
@@ -66,7 +66,8 @@ pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> 
 fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
     let profile = canon.profile(actor_id)?;
     for entry in &profile.agenda {
-        if !gates(now, profile, entry, actor_id) || !when_ready(canon, now, profile, entry, actor_id)
+        if !gates(now, profile, entry, actor_id)
+            || !when_ready(canon, now, profile, entry, actor_id)
         {
             continue;
         }
@@ -86,7 +87,12 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
     None
 }
 
-fn gates(now: &Now, profile: &crate::canon::TickProfile, entry: &AgendaEntry, actor_id: &str) -> bool {
+fn gates(
+    now: &Now,
+    profile: &crate::canon::TickProfile,
+    entry: &AgendaEntry,
+    actor_id: &str,
+) -> bool {
     if let Some(lane) = entry.pause {
         let state = match lane {
             PauseLane::NamedPlotClocks => now.pause.named_plot_clocks,

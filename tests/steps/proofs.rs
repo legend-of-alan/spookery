@@ -13,9 +13,9 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::check::CheckNotice;
 use spookery_kernel::codec::emit_now;
 use spookery_kernel::effect::{Effect, EffectClass};
+use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::model::{
-    ActorKind, ActorLive, Intent, IntentArgs, Now, PauseView, PlaceLive, Presence, RunState,
-    Source, Target, TickCounters, ViewerId,
+    ActorLive, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_kernel::shard::{Shard, Txn};
 use spookery_kernel::Reason;
@@ -409,7 +409,7 @@ fn busy_skip() {
     let wall = shard.now().last_tick_at.clone();
     run_tick(
         &mut shard,
-        spookery_tick::Reason::Manual,
+        spookery_tick::Cause::Manual,
         &wall,
         Catchup::none(),
     )
@@ -830,7 +830,7 @@ fn proposal_only() {
     });
     run_tick(
         &mut shard,
-        spookery_tick::Reason::Manual,
+        spookery_tick::Cause::Manual,
         &wall,
         Catchup::none(),
     )

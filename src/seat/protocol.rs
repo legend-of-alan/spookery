@@ -3,7 +3,8 @@
 
 use serde_json::{Map, Value};
 use spookery_kernel::check::CheckOut;
-use spookery_kernel::model::{Intent, Message, Now, RunState};
+use spookery_kernel::intent::Intent;
+use spookery_kernel::model::{Message, Now, RunState};
 use spookery_kernel::Reason;
 use spookery_kernel::perceive::{ClockView, KnownFact, Perceive, ScheduleHint, StockView};
 

@@ -1,5 +1,6 @@
 use serde_json::{Map, Value};
-use spookery_kernel::model::{ActorKind, ActorLive, IntentArgs, Target};
+use spookery_kernel::intent::{ActorKind, IntentArgs, Target};
+use spookery_kernel::model::ActorLive;
 use spookery_kernel::moves::Audience;
 use spookery_kernel::perceive::perceive_budget;
 use spookery_kernel::shard::Shard;

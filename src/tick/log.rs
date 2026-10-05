@@ -1,5 +1,5 @@
 use spookery_kernel::effect::Effect;
-use spookery_kernel::model::{Intent, IntentArgs, Target};
+use spookery_kernel::intent::{Intent, IntentArgs, Target};
 
 pub struct Rejected {
     pub id: String,
@@ -168,7 +168,7 @@ fn push_string(out: &mut String, value: &str) {
 #[cfg(test)]
 mod tests {
     use spookery_kernel::effect::{Effect, EffectClass};
-    use spookery_kernel::model::ViewerId;
+    use spookery_kernel::intent::ViewerId;
 
     use super::render_tick;
 

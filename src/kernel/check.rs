@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::Canon;
 use crate::error::Reason;
-use crate::model::{PcSheet, ViewerId};
+use crate::intent::ViewerId;
+use crate::model::PcSheet;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CheckDef {
@@ -81,15 +81,13 @@ pub fn die_face(rng: &[u8], n: usize, sides: u32) -> Result<u32, Reason> {
 
 /// NPC viewers return `UNKNOWN_KEY` and do not advance `die_cursor`.
 pub fn resolve_check(
-    canon: &Canon,
+    check: &CheckDef,
     sheets: &BTreeMap<String, PcSheet>,
     viewer: &ViewerId,
-    check_id: &str,
     target: i64,
     rng: &[u8],
     die_cursor: &mut usize,
 ) -> Result<CheckOut, Reason> {
-    let check = canon.checks.get(check_id).ok_or(Reason::UnknownKey)?;
     let ViewerId::Player(id) = viewer else {
         return Err(Reason::UnknownKey);
     };

@@ -1,10 +1,11 @@
 use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::firewall::allows;
+use crate::intent::{ActorKind, Intent, ViewerId};
 use crate::inventory::{clamp_need, resource_next, stock_next};
 use crate::key::StateKey;
 use crate::limits::MINUTES_PER_DAY;
-use crate::model::{ActorKind, Intent, MemoryLine, Message, ProposalDoc, Reputation, ViewerId};
+use crate::model::{MemoryLine, Message, ProposalDoc, Reputation};
 use crate::shard::Txn;
 
 pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {

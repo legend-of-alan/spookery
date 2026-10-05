@@ -1,5 +1,6 @@
 use crate::canon::Canon;
-use crate::model::{Now, ViewerId};
+use crate::intent::ViewerId;
+use crate::model::Now;
 
 pub fn allows(canon: &Canon, now: &Now, viewer: &ViewerId, fact_id: &str) -> bool {
     let Some(actor) = now.actors.get(viewer.actor_id()) else {

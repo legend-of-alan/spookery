@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::Canon;
 use crate::error::Reason;
 
 /// A listed move. `row` is set when the file carries a template list.
@@ -166,32 +165,6 @@ pub fn load_moves(text: &str) -> Result<BTreeMap<String, MoveDef>, Reason> {
         }
     }
     Ok(moves)
-}
-
-pub fn needs_roll(canon: &Canon, move_name: &str) -> bool {
-    canon
-        .moves
-        .get(move_name)
-        .is_some_and(|def| def.check.is_some())
-}
-
-/// Difficulty on a row. A move without a row uses 0.
-pub fn row_difficulty(canon: &Canon, move_name: &str) -> i64 {
-    canon
-        .moves
-        .get(move_name)
-        .and_then(|def| def.row.as_ref())
-        .map(|row| row.difficulty)
-        .unwrap_or(0)
-}
-
-/// Check id named by a row. A move without `effects` is not a row.
-pub fn row_check(canon: &Canon, move_name: &str) -> Option<String> {
-    let def = canon.moves.get(move_name)?;
-    if def.row.is_none() {
-        return None;
-    }
-    def.check.clone()
 }
 
 fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {

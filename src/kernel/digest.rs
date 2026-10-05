@@ -4,7 +4,8 @@ use std::path::Path;
 use crate::codec::{emit_effect_payload, parse_tick_effects};
 use crate::error::Reason;
 use crate::firewall::allows;
-use crate::model::{Clock, ViewerId};
+use crate::intent::ViewerId;
+use crate::model::Clock;
 use crate::shard::Shard;
 
 pub enum DigestViewer {

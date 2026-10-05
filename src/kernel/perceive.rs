@@ -3,8 +3,9 @@ use std::collections::BTreeSet;
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::firewall::allows;
+use crate::intent::ViewerId;
 use crate::limits::world_hour;
-use crate::model::{Message, Now, ViewerId};
+use crate::model::{Message, Now};
 use crate::shard::Shard;
 
 const BUDGET_TOKENS: usize = 800;

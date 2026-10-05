@@ -1,17 +1,11 @@
-#[path = "../protocol.rs"]
-mod protocol;
-#[path = "../speech.rs"]
-mod speech;
-#[path = "../line.rs"]
-mod line;
-#[path = "../tools.rs"]
-mod tools;
-#[path = "../turn.rs"]
-mod turn;
-
 mod gm;
+mod line;
 mod listen;
+mod protocol;
+mod speech;
 mod thread;
+mod tools;
+mod turn;
 
 pub use listen::{listen, Error};
 pub use speech::{player_scrollback, speak};

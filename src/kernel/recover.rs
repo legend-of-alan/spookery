@@ -4,7 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::codec::{emit_rumors, load_now};
-use crate::commit::{fsync_dir, fsync_file, tmp_path};
+use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
 
 pub(crate) fn recover(root: &Path) -> Result<(), Reason> {

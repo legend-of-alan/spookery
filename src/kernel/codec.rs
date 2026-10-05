@@ -4,7 +4,8 @@ use serde_saphyr::SerializerOptions;
 
 use crate::effect::{Effect, EffectClass, EffectPayload};
 use crate::error::Reason;
-use crate::model::{sort_unique, MemoryLine, Now, ProposalDoc, ViewerId};
+use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use crate::model::{sort_unique, MemoryLine, Now, ProposalDoc};
 
 #[allow(non_snake_case)]
 pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
@@ -180,6 +181,117 @@ pub fn parse_effect(value: &Value) -> Result<Effect, Reason> {
         as_viewer,
         intent_id,
     })
+}
+
+/// Header and intents of one tick JSONL object. Trailing whitespace is ignored.
+/// Other fields, including `effects`, stay on `parse_tick_effects`.
+pub struct RecordedLine {
+    pub tick_index: u64,
+    pub state_rev_after: u64,
+    pub presence_humans: u32,
+    pub seed: String,
+    pub last_tick_at: String,
+    pub intents: Vec<Intent>,
+}
+
+pub fn parse_recorded_line(text: &str) -> Result<RecordedLine, Reason> {
+    let value: Value = serde_json::from_str(text.trim_end()).map_err(|_| Reason::Schema)?;
+    let object = value.as_object().ok_or(Reason::Schema)?;
+    let intents = object
+        .get("intents")
+        .and_then(Value::as_array)
+        .ok_or(Reason::Schema)?;
+    let mut parsed = Vec::new();
+    for intent in intents {
+        parsed.push(parse_intent(intent)?);
+    }
+    Ok(RecordedLine {
+        tick_index: req_u64(object, "tick_index")?,
+        state_rev_after: req_u64(object, "state_rev_after")?,
+        presence_humans: req_u64(object, "presence_humans")?
+            .try_into()
+            .map_err(|_| Reason::Schema)?,
+        seed: req_str(object, "seed")?,
+        last_tick_at: req_str(object, "last_tick_at")?,
+        intents: parsed,
+    })
+}
+
+fn parse_intent(value: &Value) -> Result<Intent, Reason> {
+    let object = value.as_object().ok_or(Reason::Schema)?;
+    Ok(Intent {
+        id: req_str(object, "id")?,
+        tick_index: req_u64(object, "tick_index")?,
+        actor_id: req_str(object, "actor_id")?,
+        actor_kind: actor_kind(&req_str(object, "actor_kind")?)?,
+        source: intent_source(&req_str(object, "source")?)?,
+        move_name: req_str(object, "move")?,
+        target: parse_target(object.get("target").ok_or(Reason::Schema)?)?,
+        args: parse_args(object.get("args").ok_or(Reason::Schema)?)?,
+        rationale_code: req_str(object, "rationale_code")?,
+    })
+}
+
+fn parse_target(value: &Value) -> Result<Target, Reason> {
+    let object = value.as_object().ok_or(Reason::Schema)?;
+    if object.is_empty() {
+        return Ok(Target::Empty);
+    }
+    if object.len() != 1 {
+        return Err(Reason::Schema);
+    }
+    if let Some(place) = object.get("place").and_then(Value::as_str) {
+        return Ok(Target::Place(place.to_string()));
+    }
+    if let Some(actor) = object.get("actor").and_then(Value::as_str) {
+        return Ok(Target::Actor(actor.to_string()));
+    }
+    if let Some(clock) = object.get("clock").and_then(Value::as_str) {
+        return Ok(Target::Clock(clock.to_string()));
+    }
+    if let Some(rumor) = object.get("rumor").and_then(Value::as_str) {
+        return Ok(Target::Rumor(rumor.to_string()));
+    }
+    Err(Reason::Schema)
+}
+
+fn parse_args(value: &Value) -> Result<IntentArgs, Reason> {
+    let object = value.as_object().ok_or(Reason::Schema)?;
+    let mut args = IntentArgs::default();
+    for (key, item) in object {
+        match key.as_str() {
+            "to" => args.message_to = Some(req_string_array(item)?),
+            _ => return Err(Reason::Schema),
+        }
+    }
+    Ok(args)
+}
+
+fn req_string_array(value: &Value) -> Result<Vec<String>, Reason> {
+    let values = value.as_array().ok_or(Reason::Schema)?;
+    let mut ids = Vec::new();
+    for item in values {
+        ids.push(item.as_str().ok_or(Reason::Schema)?.to_string());
+    }
+    Ok(ids)
+}
+
+fn actor_kind(text: &str) -> Result<ActorKind, Reason> {
+    match text {
+        "npc" => Ok(ActorKind::Npc),
+        "player" => Ok(ActorKind::Player),
+        "system" => Ok(ActorKind::System),
+        _ => Err(Reason::Schema),
+    }
+}
+
+fn intent_source(text: &str) -> Result<Source, Reason> {
+    match text {
+        "kernel" => Ok(Source::Kernel),
+        "player" => Ok(Source::Player),
+        "system" => Ok(Source::System),
+        _ => Err(Reason::Schema),
+    }
 }
 
 pub fn emit_memory_line(line: &MemoryLine) -> String {
@@ -362,6 +474,13 @@ fn opt_str(object: &Map<String, Value>, key: &str) -> Result<Option<String>, Rea
     }
 }
 
+fn req_u64(object: &Map<String, Value>, key: &str) -> Result<u64, Reason> {
+    object
+        .get(key)
+        .and_then(Value::as_u64)
+        .ok_or(Reason::Schema)
+}
+
 fn req_i64(object: &Map<String, Value>, key: &str) -> Result<i64, Reason> {
     object
         .get(key)
@@ -404,7 +523,8 @@ mod tests {
     }
 
     use crate::effect::EffectClass;
-    use crate::model::{MemoryLine, ViewerId};
+    use crate::intent::ViewerId;
+    use crate::model::MemoryLine;
 
     fn effect(class: EffectClass, viewer: ViewerId, intent_id: &str) -> super::Effect {
         super::Effect {

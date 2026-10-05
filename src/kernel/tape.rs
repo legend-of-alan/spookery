@@ -2,7 +2,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-use crate::commit::fsync_dir;
+use crate::durable::fsync_dir;
 use crate::error::Reason;
 use crate::lock::lock_session;
 

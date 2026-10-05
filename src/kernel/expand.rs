@@ -1,10 +1,11 @@
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
-use crate::firewall::allows;
-use crate::limits::{world_hour, MINUTES_PER_DAY};
-use crate::model::{ActorKind, Intent, Now, RunState, Target, ViewerId};
+use crate::intent::{Intent, Target, ViewerId};
+use crate::limits::world_hour;
+use crate::model::{Now, RunState};
 use crate::moves::{ActionRow, Field, MoveOn, RowEffect, Selector};
+use crate::select::{first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
     expand_outcome(canon, now, intent, None)
@@ -92,8 +93,9 @@ fn expand_template(
         }
         RowEffect::LocationTo { to } => {
             let place = match to {
-                Field::Selector(Selector::SchedulePlace) => schedule_place(canon, now, &intent.actor_id)
-                    .ok_or(Reason::UnknownKey)?,
+                Field::Selector(Selector::SchedulePlace) => {
+                    schedule_place(canon, now, &intent.actor_id).ok_or(Reason::UnknownKey)?
+                }
                 Field::Literal(place) => place.clone(),
                 _ => return Err(Reason::Schema),
             };
@@ -112,7 +114,8 @@ fn expand_template(
             ));
         }
         RowEffect::Stock { place, sku, delta } => {
-            let (place, sku, delta) = stock_fields(canon, now, &intent.actor_id, place, sku, delta)?;
+            let (place, sku, delta) =
+                stock_fields(canon, now, &intent.actor_id, place, sku, delta)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
@@ -265,23 +268,6 @@ fn stock_fields(
     }
 }
 
-pub(crate) fn stock_walk(canon: &Canon, now: &Now, actor_id: &str) -> Option<(String, String, i64)> {
-    let place = now.actors.get(actor_id)?.place().to_string();
-    let rates = canon.profile(actor_id)?.stock_rate.get(&place)?;
-    for (sku, rate) in rates {
-        let stock = now
-            .places
-            .get(&place)
-            .and_then(|place_live| place_live.stock.get(sku))
-            .copied()
-            .unwrap_or(0);
-        if stock.checked_add(*rate).is_some_and(|next| next >= 0) {
-            return Some((place, sku.clone(), *rate));
-        }
-    }
-    None
-}
-
 fn need_classes(
     canon: &Canon,
     now: &Now,
@@ -310,7 +296,10 @@ fn need_classes(
 }
 
 fn from_work(canon: &Canon, actor_id: &str) -> Vec<EffectClass> {
-    let Some(work) = canon.profile(actor_id).and_then(|profile| profile.work.as_ref()) else {
+    let Some(work) = canon
+        .profile(actor_id)
+        .and_then(|profile| profile.work.as_ref())
+    else {
         return Vec::new();
     };
     let mut classes = Vec::new();
@@ -351,38 +340,14 @@ fn schedule_place(canon: &Canon, now: &Now, actor_id: &str) -> Option<String> {
     Some(row.place.clone())
 }
 
-pub(crate) fn first_owned_clock(now: &Now, actor_id: &str) -> Option<String> {
-    let humans = now.presence.humans;
-    now.clocks
-        .iter()
-        .find(|(_, clock)| {
-            clock.owners.iter().any(|owner| owner == actor_id)
-                && !clock.paused
-                && clock.value < clock.max
-                && !(clock.requires_presence && humans == 0)
-        })
-        .map(|(id, _)| id.clone())
-}
-
-pub(crate) fn first_due_note<'a>(
-    now: &Now,
-    profile: &'a crate::canon::TickProfile,
-) -> Option<&'a crate::canon::NoteDef> {
-    profile.notes.iter().find(|note| {
-        now.clocks
-            .get(&note.due_clock)
-            .is_some_and(|clock| clock.value >= note.due_value)
-            && !now.messages.iter().any(|message| message.id == note.id)
-    })
-}
-
 fn relationship_fields(
     now: &Now,
     actor_id: &str,
     to: &Field,
     delta: &Field,
 ) -> Result<(String, i64), Reason> {
-    if to == &Field::Selector(Selector::FirstDrift) && delta == &Field::Selector(Selector::TowardTarget)
+    if to == &Field::Selector(Selector::FirstDrift)
+        && delta == &Field::Selector(Selector::TowardTarget)
     {
         return first_drift(now, actor_id).ok_or(Reason::UnknownKey);
     }
@@ -390,94 +355,6 @@ fn relationship_fields(
         (Field::Literal(other), Field::Number(delta)) => Ok((other.clone(), *delta)),
         _ => Err(Reason::Schema),
     }
-}
-
-pub(crate) fn first_drift(now: &Now, actor_id: &str) -> Option<(String, i64)> {
-    let actor = now.actors.get(actor_id)?;
-    if actor.busy() {
-        return None;
-    }
-    let relations = actor.relationships()?;
-    let mut pairs: Vec<(String, i64)> = relations
-        .iter()
-        .filter(|(other, relation)| {
-            relation.stance != relation.target
-                && now
-                    .world_time
-                    .saturating_sub(relation.last_interaction_world_time)
-                    >= MINUTES_PER_DAY
-                && now
-                    .actors
-                    .get(*other)
-                    .is_some_and(|other_actor| !other_actor.busy())
-        })
-        .map(|(other, relation)| {
-            let delta = (relation.target - relation.stance).clamp(-1, 1);
-            (other.clone(), delta)
-        })
-        .collect();
-    pairs.sort_by(|left, right| left.0.cmp(&right.0));
-    pairs.into_iter().next()
-}
-
-pub(crate) fn rumor_class(canon: &Canon, now: &Now, actor_id: &str) -> Option<EffectClass> {
-    if canon.budget.max_rumor_hops == 0 {
-        return None;
-    }
-    let place = now.actors.get(actor_id)?.place().to_string();
-    let mut rumors: Vec<&crate::model::Rumor> = now
-        .rumors
-        .iter()
-        .filter(|rumor| rumor.heat >= 1 && rumor.known_by.iter().any(|id| id == actor_id))
-        .collect();
-    rumors.sort_by(|left, right| left.id.cmp(&right.id));
-    for rumor in rumors {
-        let mut recipients: Vec<String> = now
-            .actors
-            .keys()
-            .filter(|other| *other != actor_id)
-            .filter(|other| adjacent(now, actor_id, other, &place))
-            .filter(|other| {
-                let kind = match now.actors.get(*other) {
-                    Some(actor) if actor.is_npc() => ActorKind::Npc,
-                    Some(actor) if actor.is_pc() => ActorKind::Player,
-                    _ => return false,
-                };
-                let Ok(viewer) = ViewerId::from_kind(kind, other) else {
-                    return false;
-                };
-                rumor
-                    .fact_ids
-                    .iter()
-                    .all(|fact| allows(canon, now, &viewer, fact))
-            })
-            .cloned()
-            .collect();
-        recipients.sort();
-        if let Some(to) = recipients.into_iter().next() {
-            return Some(EffectClass::Rumor {
-                rumor_id: rumor.id.clone(),
-                fact_ids: rumor.fact_ids.clone(),
-                from: actor_id.to_string(),
-                to,
-                heat: rumor.heat,
-            });
-        }
-    }
-    None
-}
-
-fn adjacent(now: &Now, actor_id: &str, other: &str, place: &str) -> bool {
-    let same_place = now
-        .actors
-        .get(other)
-        .is_some_and(|actor| actor.place() == place);
-    let related = now
-        .actors
-        .get(actor_id)
-        .and_then(|actor| actor.relationships())
-        .is_some_and(|relations| relations.contains_key(other));
-    same_place || related
 }
 
 fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reason> {
@@ -509,9 +386,8 @@ mod tests {
     use crate::codec::{emit_now, load_now};
     use crate::effect::EffectClass;
     use crate::error::Reason;
-    use crate::model::{
-        ActorKind, Clock, Intent, IntentArgs, Source, Target, ViewerId,
-    };
+    use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+    use crate::model::Clock;
     use crate::shard::open_shard;
 
     use super::expand_outcome;
@@ -685,7 +561,8 @@ mod tests {
             ]
         );
         assert!(expanded.iter().all(|effect| {
-            effect.as_viewer() == &ViewerId::Npc("mira".to_string()) && effect.intent_id() == "shelf-1"
+            effect.as_viewer() == &ViewerId::Npc("mira".to_string())
+                && effect.intent_id() == "shelf-1"
         }));
 
         let mut txn = crate::shard::Txn::begin(&shard);
@@ -728,7 +605,12 @@ mod tests {
         let overclock = intent("overclock", Target::Empty);
         let clock = expand_outcome(shard.canon(), shard.now(), &overclock, None).unwrap();
         assert_eq!(
-            apply_effect(&mut clock_txn, &overclock, clock.into_iter().next().unwrap()).unwrap_err(),
+            apply_effect(
+                &mut clock_txn,
+                &overclock,
+                clock.into_iter().next().unwrap()
+            )
+            .unwrap_err(),
             Reason::OutOfRange
         );
         assert_eq!(clock_txn.now().clocks["shelf_count"].value, 0);
@@ -759,7 +641,14 @@ mod tests {
         let hold = intent("hold", Target::Empty);
         let yielded = expand_outcome(shard.canon(), shard.now(), &hold, None).unwrap();
         assert!(yielded.is_empty());
-        let travel = shard.canon().moves.get("travel").unwrap().row.as_ref().unwrap();
+        let travel = shard
+            .canon()
+            .moves
+            .get("travel")
+            .unwrap()
+            .row
+            .as_ref()
+            .unwrap();
         assert_eq!(travel.audience, Some(crate::moves::Audience::Player));
     }
 }

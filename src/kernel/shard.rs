@@ -9,9 +9,10 @@ use crate::canon::{load_canon, pack_rev, Canon};
 use crate::check::CheckNotice;
 use crate::codec::{emit_now, load_now};
 use crate::error::Reason;
+use crate::intent::Intent;
 use crate::key::StateKey;
 use crate::limits::Budget;
-use crate::model::{Intent, MemoryLine, Now, PauseView, PcSheet, ProposalDoc};
+use crate::model::{MemoryLine, Now, PauseView, PcSheet, ProposalDoc};
 use crate::recover::recover;
 
 pub struct Shard {

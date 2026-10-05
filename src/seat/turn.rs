@@ -1,6 +1,7 @@
 use spookery_kernel::check::CheckNotice;
 use spookery_kernel::ids::player_intent_id;
-use spookery_kernel::model::{ActorKind, ActorLive, Intent, IntentArgs, Source, Target};
+use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_kernel::model::ActorLive;
 use spookery_kernel::moves::{ActionRow, Audience, MoveToken};
 use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
@@ -10,7 +11,7 @@ use super::line::{self, canonical_line};
 use super::protocol;
 use crate::schedule::{self, seconds_since, wall_now};
 
-pub use line::{classify_player_line, PlayerLine};
+pub use super::line::{classify_player_line, PlayerLine};
 
 pub struct QueuedNote {
     pub id: String,

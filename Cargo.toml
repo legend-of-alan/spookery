@@ -12,6 +12,7 @@ license = "AGPL-3.0-or-later"
 name = "spookery"
 version = "0.1.0"
 autotests = false
+autobins = false
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
@@ -19,7 +20,7 @@ license.workspace = true
 
 [[bin]]
 name = "spook"
-path = "src/cli/main.rs"
+path = "src/main.rs"
 
 [dependencies]
 spookery-kernel = { path = "src/kernel" }

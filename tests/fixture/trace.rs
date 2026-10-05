@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::model::{
-    ActorKind, ActorLive, Intent, IntentArgs, Now, PauseView, PlaceLive, Presence, RunState,
-    Source, Target, TickCounters,
+    ActorLive, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_tick::{commit_turn, run_catchup, tick_pack};
 

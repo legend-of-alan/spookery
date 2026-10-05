@@ -1,6 +1,6 @@
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 
-use crate::model::ViewerId;
+use crate::intent::ViewerId;
 
 /// One effect. `class` is the payload. JSON for this value is written by the
 /// serializer below: `class`, `as`, `intent_id`, then the fields of `class`.

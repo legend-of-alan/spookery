@@ -8,6 +8,7 @@ use crate::codec::{
     canonicalize, emit_memory_line, emit_migrate_line, emit_now, emit_proposal, emit_rumors,
     load_now,
 };
+use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
 use crate::lock::{lock_pack, lock_shard};
 use crate::model::{MemoryLine, Now, Presence, ProposalDoc};
@@ -277,42 +278,4 @@ fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, 
         out.insert(actor, body);
     }
     Ok(out)
-}
-
-pub(crate) fn tmp_path(target: &Path) -> PathBuf {
-    let mut name = target.file_name().unwrap_or_default().to_os_string();
-    name.push(".tmp");
-    target.with_file_name(name)
-}
-
-pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path)
-        .map_err(|_| Reason::CommitConflict)?;
-    file.sync_all().map_err(|_| Reason::CommitConflict)?;
-    Ok(())
-}
-
-pub(crate) fn fsync_dir(path: &Path) -> Result<(), Reason> {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::OpenOptionsExt;
-        const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
-            .open(path)
-            .map_err(|_| Reason::CommitConflict)?;
-        file.sync_all().map_err(|_| Reason::CommitConflict)?;
-        return Ok(());
-    }
-    #[cfg(not(windows))]
-    {
-        let file = File::open(path).map_err(|_| Reason::CommitConflict)?;
-        file.sync_all().map_err(|_| Reason::CommitConflict)?;
-        Ok(())
-    }
 }

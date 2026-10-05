@@ -1,10 +1,10 @@
 use std::io::{self, Write};
 
+use spookery_kernel::commit::commit_presence;
 use spookery_kernel::model::{ActorLive, Presence};
 use spookery_kernel::perceive::perceive;
 use spookery_kernel::shard::Shard;
 use spookery_kernel::{idle_digest, DigestViewer, Reason};
-use spookery_tick::commit_presence;
 
 use super::protocol;
 use super::speech::speak;
@@ -305,12 +305,7 @@ fn on_hello(
         if seats.player.is_some() {
             return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
-        if !shard
-            .now()
-            .actors
-            .get(id)
-            .is_some_and(ActorLive::is_pc)
-        {
+        if !shard.now().actors.get(id).is_some_and(ActorLive::is_pc) {
             return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
         }
         let session_id = format!("s{next_session}");

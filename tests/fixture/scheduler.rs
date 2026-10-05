@@ -137,7 +137,7 @@ flags: []
 
 pub(crate) async fn scheduler_sleeps_then_catches_up() {
     let source =
-        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/schedule.rs"))
             .unwrap();
     assert!(
         source.contains("tokio::time::sleep"),

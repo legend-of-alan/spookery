@@ -2,11 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
-use blake2::{Blake2s256, Digest};
 use serde::Deserialize;
 
 use crate::check::{load_checks, CheckDef};
 use crate::error::Reason;
+use crate::hash::blake2s_hex;
 use crate::limits::{load_tick_rules, Budget};
 use crate::moves::{load_moves, Audience, MoveDef};
 
@@ -83,7 +83,9 @@ impl TickProfile {
     }
 
     pub fn winning_row(&self, hour: i64) -> Option<&ScheduleRow> {
-        self.schedule.iter().find(|row| hour_in(row.start, row.end, hour))
+        self.schedule
+            .iter()
+            .find(|row| hour_in(row.start, row.end, hour))
     }
 }
 
@@ -169,6 +171,30 @@ impl Canon {
         }
         ""
     }
+
+    pub fn needs_roll(&self, move_name: &str) -> bool {
+        self.moves
+            .get(move_name)
+            .is_some_and(|def| def.check.is_some())
+    }
+
+    /// Difficulty on a row. A move without a row uses 0.
+    pub fn row_difficulty(&self, move_name: &str) -> i64 {
+        self.moves
+            .get(move_name)
+            .and_then(|def| def.row.as_ref())
+            .map(|row| row.difficulty)
+            .unwrap_or(0)
+    }
+
+    /// Check id named by a row. A move without `effects` is not a row.
+    pub fn row_check(&self, move_name: &str) -> Option<String> {
+        let def = self.moves.get(move_name)?;
+        if def.row.is_none() {
+            return None;
+        }
+        def.check.clone()
+    }
 }
 
 pub fn hour_in(start: i64, end: i64, hour: i64) -> bool {
@@ -179,17 +205,6 @@ pub fn hour_in(start: i64, end: i64, hour: i64) -> bool {
     } else {
         false
     }
-}
-
-pub fn blake2s_256(bytes: &[u8]) -> [u8; 32] {
-    let digest = Blake2s256::digest(bytes);
-    let mut out = [0u8; 32];
-    out.copy_from_slice(&digest);
-    out
-}
-
-pub fn blake2s_hex(bytes: &[u8]) -> String {
-    hex_encode(&blake2s_256(bytes))
 }
 
 pub fn pack_rev(root: &Path) -> Result<String, Reason> {
@@ -317,7 +332,11 @@ fn fact_ids_of(facts: &BTreeMap<String, FactCanon>, owner: &str) -> Vec<String> 
         .collect()
 }
 
-fn insert_fact(facts: &mut BTreeMap<String, FactCanon>, fact: FactFile, owner: &str) -> Result<(), Reason> {
+fn insert_fact(
+    facts: &mut BTreeMap<String, FactCanon>,
+    fact: FactFile,
+    owner: &str,
+) -> Result<(), Reason> {
     if fact.id.is_empty() {
         return Err(Reason::Schema);
     }
@@ -532,7 +551,10 @@ fn collect_files(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) -> R
     if !dir.exists() {
         return Ok(());
     }
-    let mut entries = fs::read_dir(dir).map_err(|_| Reason::Schema)?.collect::<Result<Vec<_>, _>>().map_err(|_| Reason::Schema)?;
+    let mut entries = fs::read_dir(dir)
+        .map_err(|_| Reason::Schema)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| Reason::Schema)?;
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         let path = entry.path();
@@ -567,16 +589,6 @@ fn split_frontmatter(text: &str) -> Result<(&str, &str), Reason> {
         return Ok((yaml, ""));
     }
     Err(Reason::Schema)
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut out = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        out.push(HEX[(byte >> 4) as usize] as char);
-        out.push(HEX[(byte & 0xf) as usize] as char);
-    }
-    out
 }
 
 #[derive(Deserialize)]

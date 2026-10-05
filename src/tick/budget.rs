@@ -1,5 +1,6 @@
 use spookery_kernel::canon::{Canon, Tier};
-use spookery_kernel::model::{ActorKind, Intent, Now, Target};
+use spookery_kernel::intent::{ActorKind, Intent, Target};
+use spookery_kernel::model::Now;
 use spookery_kernel::moves::RowEffect;
 
 use crate::seed::shuffle_key;
