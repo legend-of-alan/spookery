@@ -45,8 +45,8 @@ name = "properties"
 path = "tests/properties.rs"
 
 [[test]]
-name = "v0"
-path = "tests/v0.rs"
+name = "fixtures"
+path = "tests/fixtures.rs"
 
 [[test]]
 name = "promises"

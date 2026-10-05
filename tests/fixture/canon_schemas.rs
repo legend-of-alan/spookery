@@ -69,7 +69,7 @@ fn assert_closed(name: &str, valid: Value, nested: &[&[&str]]) {
 }
 
 #[test]
-fn v0_canon_schemas_reject_unknown_keys() {
+fn schemas_reject_unknown_keys() {
     assert_closed(
         "place",
         json!({

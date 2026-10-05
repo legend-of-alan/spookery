@@ -4,7 +4,7 @@ use std::path::PathBuf;
 const SHEET_BLAKE2S: &str = "0bc253962ff105876e0687c3649959cc58735e43b02f6ec43ca13167894f0e7b";
 
 #[test]
-fn v0_oneshot_docks_matches_section12() {
+fn docks_save_round_trips() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
     let rev =
         spookery_kernel::canon::pack_rev(&root).unwrap_or_else(|err| panic!("pack_rev: {err}"));

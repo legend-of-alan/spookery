@@ -136,7 +136,7 @@ flags: []
 }
 
 #[tokio::test]
-async fn v0_scheduler_sleeps_then_catches_up_on_this_thread() {
+async fn scheduler_sleeps_then_catches_up() {
     let source =
         fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/cli/schedule.rs"))
             .unwrap();
