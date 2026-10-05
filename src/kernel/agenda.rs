@@ -5,12 +5,9 @@ use crate::error::Reason;
 use crate::expand::{
     expand_outcome, first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk,
 };
-use crate::firewall::allows;
 use crate::ids::kernel_intent_id;
 use crate::limits::world_hour;
-use crate::model::{
-    ActorKind, Intent, IntentArgs, Now, RunState, Source, Target, ViewerId,
-};
+use crate::model::{ActorKind, Intent, IntentArgs, Now, RunState, Source, Target};
 use crate::moves::Audience;
 
 /// First agenda entry whose gates pass and whose row expands is the NPC's intent.
@@ -25,12 +22,6 @@ pub fn kernel_intents_for_eligible_npcs(canon: &Canon, now: &Now) -> Vec<Intent>
         }
     }
     intents
-}
-
-pub fn filter_blocklist(intents: Vec<Intent>, humans: u32) -> (Vec<Intent>, Vec<(Intent, Reason)>) {
-    // The five-name denylist is retired. Empty-table player lines refuse at queue time.
-    let _ = humans;
-    (intents, Vec::new())
 }
 
 pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> {
@@ -57,14 +48,6 @@ pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> 
         Target::Rumor(id) => {
             if !now.rumors.iter().any(|rumor| rumor.id == *id) {
                 return Err(Reason::UnknownKey);
-            }
-        }
-    }
-    if let Some(facts) = &intent.args.fact_ids {
-        let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-        for fact in facts {
-            if !allows(canon, now, &viewer, fact) {
-                return Err(Reason::IllegalKnowledge);
             }
         }
     }
@@ -183,9 +166,8 @@ fn stamp(intent: &mut Intent, effects: &[Effect]) {
             EffectClass::Relationship { b, .. } => {
                 intent.target = Target::Actor(b.clone());
             }
-            EffectClass::Rumor { rumor_id, to, .. } => {
+            EffectClass::Rumor { rumor_id, .. } => {
                 intent.target = Target::Rumor(rumor_id.clone());
-                intent.args.to = Some(to.clone());
             }
             EffectClass::Clock { clock_id, .. } => {
                 intent.target = Target::Clock(clock_id.clone());

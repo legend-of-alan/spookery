@@ -203,11 +203,8 @@ pub enum Source {
     Kernel,
     Player,
     System,
-    Llm, // replay of a recorded line only. Never minted.
 }
 ```
-
-`Source::Llm` stays so a recorded object can round-trip. `npc_act` does not create one. The kernel never mints `Source::Llm`. `llm_npc_intents_per_tick` stays 0. The field remains on the budget so a recorded log can show the cap.
 
 Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay copies the stored id and those stored classes. It does not mint again.
 

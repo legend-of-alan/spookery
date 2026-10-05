@@ -135,46 +135,14 @@ fn parse_args(value: &Value) -> Result<IntentArgs, Reason> {
     let mut args = IntentArgs::default();
     for (key, item) in object {
         match key.as_str() {
-            "sku" => args.sku = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "delta" => args.delta = Some(i64_value(item)?),
-            "key" => args.key = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "to" => match item {
-                Value::String(text) => args.to = Some(text.clone()),
-                Value::Array(values) => {
-                    let mut ids = Vec::new();
-                    for value in values {
-                        ids.push(value.as_str().ok_or(Reason::Schema)?.to_string());
-                    }
-                    args.message_to = Some(ids);
-                }
-                _ => return Err(Reason::Schema),
-            },
-            "message_id" => {
-                args.message_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string())
-            }
-            "due_clock" => args.due_clock = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "due_value" => args.due_value = Some(i64_value(item)?),
-            "place" => args.place = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "fact_ids" => {
+            "to" => {
                 let values = item.as_array().ok_or(Reason::Schema)?;
                 let mut ids = Vec::new();
                 for value in values {
                     ids.push(value.as_str().ok_or(Reason::Schema)?.to_string());
                 }
-                args.fact_ids = Some(ids);
+                args.message_to = Some(ids);
             }
-            "text" => args.text = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "proposal_id" => {
-                args.proposal_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string())
-            }
-            "kind" => args.kind = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "check" => args.check = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "target" => match item {
-                Value::String(text) => args.target = Some(text.clone()),
-                Value::Number(_) => args.check_target = Some(i64_value(item)?),
-                _ => return Err(Reason::Schema),
-            },
-            "summary" => args.summary = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
             _ => return Err(Reason::Schema),
         }
     }
@@ -193,7 +161,6 @@ fn actor_kind(text: &str) -> Result<ActorKind, Reason> {
 fn source(text: &str) -> Result<Source, Reason> {
     match text {
         "kernel" => Ok(Source::Kernel),
-        "llm" => Ok(Source::Llm),
         "player" => Ok(Source::Player),
         "system" => Ok(Source::System),
         _ => Err(Reason::Schema),
@@ -213,10 +180,6 @@ fn u64_field(object: &serde_json::Map<String, Value>, key: &str) -> Result<u64, 
         .get(key)
         .and_then(Value::as_u64)
         .ok_or(Reason::Schema)
-}
-
-fn i64_value(value: &Value) -> Result<i64, Reason> {
-    value.as_i64().ok_or(Reason::Schema)
 }
 
 fn copy_dir(from: &Path, to: &Path) -> Result<(), Reason> {

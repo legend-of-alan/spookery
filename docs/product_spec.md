@@ -166,7 +166,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - Spatial MMO, character controllers, netcode for movement
 - Tile editor, RPG Maker event pages
 - Visual VTT, battle maps
-- LLM on idle ticks (`llm_npc_intents_per_tick: 0`)
+- LLM on idle ticks
 - Marketplace, accounts, billing UI (price the shard on paper; do not build the store)
 - Multi-ruleset soup (no Fate + COC + 5e on day one)
 - Using the word “D&D” as product branding (SRD/ORC or original rules only)

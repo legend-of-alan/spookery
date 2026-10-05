@@ -254,8 +254,7 @@ fn intent_schema() -> Map<String, Value> {
             "tick_index": { "type": "integer", "minimum": 0 },
             "target": { "type": "object" },
             "args": { "type": "object" },
-            "rationale_code": { "type": "string" },
-            "llm_say": { "type": ["string", "null"] }
+            "rationale_code": { "type": "string" }
         },
         "required": ["actor_id", "actor_kind", "source", "move"],
         "additionalProperties": false
@@ -402,11 +401,6 @@ fn queue_tool_intent(
             "target" => target = parse_target(value)?,
             "args" => args = parse_args(value)?,
             "rationale_code" => rationale = value.as_str().ok_or(Reason::Schema)?.to_string(),
-            "llm_say" => {
-                if !value.is_null() && !value.is_string() {
-                    return Err(Reason::Schema);
-                }
-            }
             _ => return Err(Reason::Schema),
         }
     }
@@ -513,46 +507,14 @@ fn parse_args(value: &Value) -> Result<IntentArgs, Reason> {
     let mut args = IntentArgs::default();
     for (key, item) in object {
         match key.as_str() {
-            "sku" => args.sku = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "delta" => args.delta = Some(item.as_i64().ok_or(Reason::Schema)?),
-            "key" => args.key = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "to" => match item {
-                Value::String(text) => args.to = Some(text.clone()),
-                Value::Array(values) => {
-                    let mut ids = Vec::new();
-                    for value in values {
-                        ids.push(value.as_str().ok_or(Reason::Schema)?.to_string());
-                    }
-                    args.message_to = Some(ids);
-                }
-                _ => return Err(Reason::Schema),
-            },
-            "message_id" => {
-                args.message_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string())
-            }
-            "due_clock" => args.due_clock = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "due_value" => args.due_value = Some(item.as_i64().ok_or(Reason::Schema)?),
-            "place" => args.place = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "fact_ids" => {
+            "to" => {
                 let values = item.as_array().ok_or(Reason::Schema)?;
                 let mut ids = Vec::new();
                 for value in values {
                     ids.push(value.as_str().ok_or(Reason::Schema)?.to_string());
                 }
-                args.fact_ids = Some(ids);
+                args.message_to = Some(ids);
             }
-            "text" => args.text = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "proposal_id" => {
-                args.proposal_id = Some(item.as_str().ok_or(Reason::Schema)?.to_string())
-            }
-            "kind" => args.kind = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "check" => args.check = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
-            "target" => match item {
-                Value::String(text) => args.target = Some(text.clone()),
-                Value::Number(_) => args.check_target = Some(item.as_i64().ok_or(Reason::Schema)?),
-                _ => return Err(Reason::Schema),
-            },
-            "summary" => args.summary = Some(item.as_str().ok_or(Reason::Schema)?.to_string()),
             _ => return Err(Reason::Schema),
         }
     }

@@ -5,7 +5,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
 use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::commit::tick_commit;
-use spookery_kernel::agenda::{allowed, filter_blocklist, kernel_intents_for_eligible_npcs};
+use spookery_kernel::agenda::{allowed, kernel_intents_for_eligible_npcs};
 use spookery_kernel::expand::{expand, expand_outcome};
 use spookery_kernel::lock::lock_shard;
 use spookery_kernel::model::{ActorKind, Intent};
@@ -199,13 +199,6 @@ fn stage_tick(
     } else {
         let mut candidates = queued;
         candidates.extend(kernel_intents_for_eligible_npcs(txn.canon(), txn.now()));
-        let (candidates, blocked) = filter_blocklist(candidates, humans);
-        for (intent, code) in blocked {
-            rejected.push(Rejected {
-                id: intent.id,
-                reason: code.jsonl_reason().to_string(),
-            });
-        }
         let mut candidates = prioritize(txn.canon(), txn.now(), candidates, tick_index, &shard_id);
         let max_intents = txn.budget().max_intents_applied as usize;
         if candidates.len() > max_intents {
@@ -259,44 +252,7 @@ fn stage_tick(
             continue;
         }
         let mut rolled: Option<CheckOut> = None;
-        if intent.move_name == "attempt" {
-            let Some(check_id) = intent.args.check.clone().filter(|id| !id.is_empty()) else {
-                reject_check(&mut rejected, &mut notices, &intent, KernelReason::Schema);
-                continue;
-            };
-            let Some(target) = intent.args.check_target else {
-                reject_check(&mut rejected, &mut notices, &intent, KernelReason::Schema);
-                continue;
-            };
-            let viewer = match spookery_kernel::model::ViewerId::from_kind(
-                intent.actor_kind,
-                &intent.actor_id,
-            ) {
-                Ok(viewer) => viewer,
-                Err(code) => {
-                    reject_check(&mut rejected, &mut notices, &intent, code);
-                    continue;
-                }
-            };
-            trace.push("resolve_check".to_string());
-            let seed = seed_preimage(&shard_id, tick_index);
-            let rng = blake2s_256(seed.as_bytes());
-            match resolve_check(
-                txn.canon(),
-                shard.sheets(),
-                &viewer,
-                &check_id,
-                target,
-                &rng,
-                &mut die_cursor,
-            ) {
-                Ok(out) => rolled = Some(out),
-                Err(code) => {
-                    reject_check(&mut rejected, &mut notices, &intent, code);
-                    continue;
-                }
-            }
-        } else if let Some(check_id) = row_check(txn.canon(), &intent.move_name) {
+        if let Some(check_id) = row_check(txn.canon(), &intent.move_name) {
             let viewer = match spookery_kernel::model::ViewerId::from_kind(
                 intent.actor_kind,
                 &intent.actor_id,

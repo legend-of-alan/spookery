@@ -226,7 +226,6 @@ fn v0_canon_schemas_reject_unknown_keys() {
             "schema": "tick/v0",
             "max_intents_applied": 12,
             "max_npcs_acting": 8,
-            "llm_npc_intents_per_tick": 0,
             "max_effects_per_intent": 4,
             "max_state_keys_mutated": 24,
             "max_memory_writes": 8,

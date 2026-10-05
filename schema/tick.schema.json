@@ -8,7 +8,6 @@
     "schema": { "const": "tick/v0" },
     "max_intents_applied": { "type": "integer", "minimum": 0 },
     "max_npcs_acting": { "type": "integer", "minimum": 0 },
-    "llm_npc_intents_per_tick": { "type": "integer", "minimum": 0 },
     "max_effects_per_intent": { "type": "integer", "minimum": 0 },
     "max_state_keys_mutated": { "type": "integer", "minimum": 0 },
     "max_memory_writes": { "type": "integer", "minimum": 0 },

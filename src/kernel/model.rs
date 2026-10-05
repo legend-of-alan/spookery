@@ -332,7 +332,6 @@ impl ActorKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Source {
     Kernel,
-    Llm,
     Player,
     System,
 }
@@ -341,7 +340,6 @@ impl Source {
     pub fn token(self) -> &'static str {
         match self {
             Source::Kernel => "kernel",
-            Source::Llm => "llm",
             Source::Player => "player",
             Source::System => "system",
         }
@@ -360,24 +358,7 @@ pub enum Target {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct IntentArgs {
-    pub sku: Option<String>,
-    pub delta: Option<i64>,
-    pub key: Option<String>,
-    pub to: Option<String>,
-    pub message_id: Option<String>,
-    pub due_clock: Option<String>,
-    pub due_value: Option<i64>,
-    pub place: Option<String>,
-    pub fact_ids: Option<Vec<String>>,
     pub message_to: Option<Vec<String>>,
-    pub text: Option<String>,
-    pub proposal_id: Option<String>,
-    pub kind: Option<String>,
-    pub target: Option<String>,
-    /// Integer target for `attempt`. Serialized as args `target` when set.
-    pub check_target: Option<i64>,
-    pub check: Option<String>,
-    pub summary: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -9,37 +9,16 @@ use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 use spookery_kernel::Reason;
 
 const TABLE_TOOLS: &[&str] = &[
-    "session_open",
     "session_status",
     "perceive",
     "intent",
-    "resolve_check",
-    "apply_effect",
     "npc_act",
     "commit_turn",
-    "recall",
-    "session_save",
 ];
 
-const TICK_TOOLS: &[&str] = &[
-    "session_status",
-    "perceive",
-    "recall",
-    "npc_act",
-    "resolve_check",
-    "apply_effect",
-    "tick_commit",
-];
+const TICK_TOOLS: &[&str] = &["session_status", "perceive", "npc_act"];
 
-const STUDIO_TOOLS: &[&str] = &[
-    "pack_info",
-    "read_entity",
-    "patch_entity",
-    "lint_pack",
-    "simulate_knowledge",
-    "run_conformance",
-    "compile_preview",
-];
+const STUDIO_TOOLS: &[&str] = &[];
 
 #[derive(Clone, Copy)]
 pub enum Profile {

@@ -9,7 +9,6 @@ pub const MINUTES_PER_DAY: u64 = 1440;
 pub struct Budget {
     pub max_intents_applied: u64,
     pub max_npcs_acting: u64,
-    pub llm_npc_intents_per_tick: u64,
     pub max_effects_per_intent: u64,
     pub max_state_keys_mutated: u64,
     pub max_memory_writes: u64,
@@ -48,7 +47,6 @@ impl Budget {
         Self {
             max_intents_applied: 12,
             max_npcs_acting: 8,
-            llm_npc_intents_per_tick: 0,
             max_effects_per_intent: 4,
             max_state_keys_mutated: 24,
             max_memory_writes: 8,
@@ -84,10 +82,6 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
     Ok(Budget {
         max_intents_applied: take(file.max_intents_applied, defaults.max_intents_applied)?,
         max_npcs_acting: take(file.max_npcs_acting, defaults.max_npcs_acting)?,
-        llm_npc_intents_per_tick: take(
-            file.llm_npc_intents_per_tick,
-            defaults.llm_npc_intents_per_tick,
-        )?,
         max_effects_per_intent: take(file.max_effects_per_intent, defaults.max_effects_per_intent)?,
         max_state_keys_mutated: take(file.max_state_keys_mutated, defaults.max_state_keys_mutated)?,
         max_memory_writes: take(file.max_memory_writes, defaults.max_memory_writes)?,
@@ -138,7 +132,6 @@ struct TickFile {
     schema: String,
     max_intents_applied: Option<i64>,
     max_npcs_acting: Option<i64>,
-    llm_npc_intents_per_tick: Option<i64>,
     max_effects_per_intent: Option<i64>,
     max_state_keys_mutated: Option<i64>,
     max_memory_writes: Option<i64>,

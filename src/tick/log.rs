@@ -91,7 +91,7 @@ fn push_intent(out: &mut String, intent: &Intent) {
     push_args(out, &intent.args);
     out.push_str(",\"rationale_code\":");
     push_string(out, &intent.rationale_code);
-    out.push_str(",\"llm_say\":null}");
+    out.push('}');
 }
 
 fn push_target(out: &mut String, target: &Target) {
@@ -121,85 +121,19 @@ fn push_target(out: &mut String, target: &Target) {
 }
 
 fn push_args(out: &mut String, args: &IntentArgs) {
-    let mut fields: Vec<(&str, ArgValue<'_>)> = Vec::new();
-    if let Some(value) = &args.sku {
-        fields.push(("sku", ArgValue::Str(value)));
-    }
-    if let Some(value) = args.delta {
-        fields.push(("delta", ArgValue::Int(value)));
-    }
-    if let Some(value) = &args.key {
-        fields.push(("key", ArgValue::Str(value)));
-    }
-    if let Some(value) = &args.to {
-        fields.push(("to", ArgValue::Str(value)));
-    } else if let Some(value) = &args.message_to {
-        fields.push(("to", ArgValue::Strs(value)));
-    }
-    if let Some(value) = &args.message_id {
-        fields.push(("message_id", ArgValue::Str(value)));
-    }
-    if let Some(value) = &args.due_clock {
-        fields.push(("due_clock", ArgValue::Str(value)));
-    }
-    if let Some(value) = args.due_value {
-        fields.push(("due_value", ArgValue::Int(value)));
-    }
-    if let Some(value) = &args.place {
-        fields.push(("place", ArgValue::Str(value)));
-    }
-    if let Some(value) = &args.fact_ids {
-        fields.push(("fact_ids", ArgValue::Strs(value)));
-    }
-    if let Some(value) = &args.text {
-        fields.push(("text", ArgValue::Str(value)));
-    }
-    if let Some(value) = &args.proposal_id {
-        fields.push(("proposal_id", ArgValue::Str(value)));
-    }
-    if let Some(value) = &args.kind {
-        fields.push(("kind", ArgValue::Str(value)));
-    }
-    if let Some(value) = &args.check {
-        fields.push(("check", ArgValue::Str(value)));
-    }
-    if let Some(value) = args.check_target {
-        fields.push(("target", ArgValue::Int(value)));
-    } else if let Some(value) = &args.target {
-        fields.push(("target", ArgValue::Str(value)));
-    }
-    if let Some(value) = &args.summary {
-        fields.push(("summary", ArgValue::Str(value)));
-    }
     out.push('{');
-    for (index, (key, value)) in fields.iter().enumerate() {
-        if index > 0 {
-            out.push(',');
-        }
-        push_string(out, key);
-        out.push(':');
-        match value {
-            ArgValue::Str(text) => push_string(out, text),
-            ArgValue::Int(number) => out.push_str(&number.to_string()),
-            ArgValue::Strs(values) => {
-                out.push('[');
-                for (index, item) in values.iter().enumerate() {
-                    if index > 0 {
-                        out.push(',');
-                    }
-                    push_string(out, item);
-                }
-                out.push(']');
+    if let Some(values) = &args.message_to {
+        push_string(out, "to");
+        out.push_str(":[");
+        for (index, item) in values.iter().enumerate() {
+            if index > 0 {
+                out.push(',');
             }
+            push_string(out, item);
         }
+        out.push(']');
     }
     out.push('}');
-}
-
-enum ArgValue<'a> {
-    Str(&'a str),
-    Int(i64),
-    Strs(&'a [String]),
 }
 
 fn push_effect(out: &mut String, effect: &Effect) {

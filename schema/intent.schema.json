@@ -12,15 +12,14 @@
     "move",
     "target",
     "args",
-    "rationale_code",
-    "llm_say"
+    "rationale_code"
   ],
   "properties": {
     "id": { "type": "string" },
     "tick_index": { "type": "integer", "minimum": 0 },
     "actor_id": { "type": "string" },
     "actor_kind": { "enum": ["npc", "player", "system"] },
-    "source": { "enum": ["kernel", "llm", "player", "system"] },
+    "source": { "enum": ["kernel", "player", "system"] },
     "move": { "type": "string" },
     "target": {
       "type": "object",
@@ -34,7 +33,6 @@
       }
     },
     "args": { "type": "object" },
-    "rationale_code": { "type": "string" },
-    "llm_say": { "type": "null" }
+    "rationale_code": { "type": "string" }
   }
 }
