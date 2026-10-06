@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use spookery_kernel::moves::{Audience, MoveDef};
 use spookery_kernel::Reason;
 
-/// `say` and `talk` are speech. A player-audience row is a turn.
+/// `say` is speech. A player-audience row is a turn.
 /// A habit or system name is `NOT_IN_SPEC` and is not queued.
 pub enum PlayerLine {
     Speech,
@@ -19,7 +19,7 @@ pub fn classify_player_line(
     if verb.is_empty() {
         return Err(Reason::Schema);
     }
-    if verb == "say" || verb == "talk" {
+    if verb == "say" {
         return Ok(PlayerLine::Speech);
     }
     match moves.get(verb).and_then(|def| def.row.as_ref()) {

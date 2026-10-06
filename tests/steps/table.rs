@@ -116,10 +116,6 @@ pub fn seat_gm() {
     });
 }
 
-pub fn say(line: &str, text: &str) {
-    let _ = player_send(line, &format!("\"text\":\"{text}\""));
-}
-
 pub fn player_len() -> usize {
     crate::with_live(|live| support::text_of(&live.player_text).len())
 }

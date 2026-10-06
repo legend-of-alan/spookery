@@ -118,7 +118,7 @@ A row has:
 
 `classify` queues a row only when `audience` is `player`. A `habit` or `system` name is `NOT_IN_SPEC` on a player line and is not queued. The GM intent tool queues a `player` row for a player or an NPC, and a `habit` row only when `actor_kind` is `npc`. A player actor queuing a habit row is `NOT_IN_SPEC`. `source` on that tool stays `player`. A cast habit that names a `player` or `system` row is `SCHEMA` at load. No call site resolves a `system` row. Empty-table gates still apply to a kernel habit intent. They do not apply to a player-sourced intent.
 
-Load rejects a duplicate name, an empty name, an empty `item`, the flag key `busy`, a row on `say` or `talk`, an unknown class, a search word, a template whose keys do not match its class, and any unknown shape. `give`, `take`, `wait`, and `attempt` are not reserved names. `attack` is not reserved. `travel` is not special-cased in Rust. A travel row is whatever templates it has, and `apply_location` enforces the range. The docks grit check is a `grit` row. `attempt grit 3` is not a special parser. The wire object `{"kind":"check","success":true|false}` does not change.
+Load rejects a duplicate name, an empty name, an empty `item`, the flag key `busy`, a row named `say`, an unknown class, a search word, a template whose keys do not match its class, and any unknown shape. `say` is the speech line, so that name is not a row. `travel` is not special-cased in Rust. A travel row is whatever templates it has, and `apply_location` enforces the range. The docks grit check is a `grit` row. `attempt grit 3` is not a special parser. The wire object `{"kind":"check","success":true|false}` does not change.
 
 **Yield.** The key `effects` may be present and empty only when `success` and `failure` are absent. That row is a yield. Omitted `effects` together with omitted outcome lists, on a row that set `token` or `on`, is `SCHEMA`. A yield with no `check` expands to zero effects and is still an applied intent if it was allowed. A yield with a `check` rolls, emits the check notice, and writes no world key. Nothing matches on the name `wait` or `attempt`. `wait` is a yield row (`effects` present and empty). An NPC habit that does not list `wait` does not emit it. Absence of an on habit whose row expands means no kernel intent.
 
@@ -183,7 +183,7 @@ NPC perceive includes `habits`, the ids that are on for that NPC, in file order.
 
 `tick.yaml` pause is `named_plot_clocks`. `now.pause` stores that one view. Plot clocks with `requires_presence` are paused while `humans == 0` and the policy is `pause_when_empty`.
 
-Kernel habits do not emit `say` or `talk`. A player world line while `humans == 0` is refused at queue time with `TABLE_EMPTY`. A five-name denylist is not part of habit selection.
+Kernel habits do not emit speech. A player world line while `humans == 0` is refused at queue time with `TABLE_EMPTY`. A five-name denylist is not part of habit selection.
 
 ## Failure tokens
 
@@ -203,7 +203,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 | `NOT_OWNER` when a stock place is outside range, or missing a rate | `OUT_OF_RANGE` | The same bounds token location already uses |
 | `NOT_OWNER` when a PC changes location while `humans == 0` | `TABLE_EMPTY` | This change requires a seated human |
 | `LIVE_ONLY` on the five-name denylist | retired | Those names are not a denylist |
-| `LIVE_ONLY` on `talk` while `humans == 0`, or any player world line while `humans == 0` | `TABLE_EMPTY` | The table is empty |
+| `LIVE_ONLY` on a player world line while `humans == 0` | `TABLE_EMPTY` | A world line needs a seated human |
 | The `empty_perceive` log word | `EMPTY_PERCEIVE` | JSONL spelling stays `empty_perceive`. It is not a player-socket token unless the seat surfaces it as `refused`. |
 
 `NOT_OWNER` and `LIVE_ONLY` are not variants. Nothing emits them.
@@ -235,9 +235,15 @@ Replay byte-compares `now.yaml` produced by this kernel. It does not pin a froze
 
 ## Speech
 
-`say` and `talk` are speech. They are not rows. The tape is not an input to expand. Text is not parsed into `known_facts`. There is no whisper that grants a fact.
+`say` is speech. It is not a row. The tape is not an input to expand. Text is not parsed into `known_facts`. There is no whisper that grants a fact.
 
-`talk` while `humans` is 0 returns `TABLE_EMPTY` and appends nothing. `say`, or `talk` with a human seated, takes `state/.session.lock`, appends one object, and fsyncs. That path uses no `Txn` and does not bump `state_rev`. The object keeps `seq`, `from`, `address`, `place`, `actor`, `recipients`, `text`, `tick_index`, and `world_time`. `from` is `player:{id}` or `gm`. A typed `from` on the GM tool is `SCHEMA` and appends nothing. An NPC `from` is not representable. The speech parser has no NPC speaker.
+A player line is `say` plus the words. The first word is the address when it is `place`, or an actor id, and more words follow. `place` is the speaker's live place. An actor id is that actor. Any other line is address `table`, and every word is the text. A line of one word is table text, including when that word is `place` or an actor id. An empty `say` is `SCHEMA`.
+
+Speech appends when `humans` is 0. The append takes `state/.session.lock`, writes one object, and fsyncs. That path uses no `Txn` and does not bump `state_rev`. The object keeps `seq`, `from`, `address`, `place`, `actor`, `recipients`, `text`, `tick_index`, and `world_time`. `from` is `player:{id}` or `gm`. A typed `from` on the GM tool is `SCHEMA` and appends nothing. An NPC `from` is not representable. The speech parser has no NPC speaker.
+
+Recipients are seated player actors. `table` includes every seated player. `place` includes the seated players in that place. `actor` includes that actor when they are a seated player. The speaking player is included. An NPC stored in `actor` is on the tape and is not a recipient.
+
+The GM tool is the same act. `address` is `table`, `place`, or `actor`. `place` is required when the address is `place`, and `actor` is required when the address is `actor`. `actor` must name an actor. The other field is absent.
 
 `read_session` returns the tape lines after a sequence number, up to a limit. The limit defaults to 64 and is clamped to 256. The file hard cap is 1 MiB. `append_session` reads the tail for the last `seq` and returns `OUT_OF_RANGE` when the next append would pass 1 MiB. A line that does not parse is `SCHEMA` for the whole read, not a skipped line. `session_status` with `since` uses this window.
 

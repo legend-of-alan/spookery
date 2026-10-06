@@ -456,7 +456,7 @@ fn required_number(delta: Option<&DeltaField>) -> Result<i64, Reason> {
 }
 
 fn forbids_row(name: &str) -> bool {
-    matches!(name, "say" | "talk")
+    name == "say"
 }
 
 #[derive(Deserialize)]
@@ -766,13 +766,27 @@ moves:
     }
 
     #[test]
+    fn a_row_named_talk_loads() {
+        let moves = load_moves(
+            r#"schema: moves/v0
+moves:
+  - name: talk
+    audience: player
+    token: none
+    on: speaker
+    effects: []
+"#,
+        )
+        .unwrap();
+        assert!(moves.get("talk").unwrap().row.is_some());
+    }
+
+    #[test]
     fn loader_still_rejects_the_old_shapes_and_unknown_selectors() {
         assert_eq!(
-            schema("  - name: say\n    token: none\n    on: speaker\n    effects: []\n"),
-            Reason::Schema
-        );
-        assert_eq!(
-            schema("  - name: talk\n    token: none\n    on: speaker\n    effects: []\n"),
+            schema(
+                "  - name: say\n    audience: player\n    token: none\n    on: speaker\n    effects: []\n"
+            ),
             Reason::Schema
         );
         assert_eq!(

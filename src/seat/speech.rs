@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
 use spookery_kernel::model::ActorLive;
@@ -19,13 +19,13 @@ pub struct Spoken {
 }
 
 enum Speech {
-    Say { text: String },
-    TalkActor { actor: String, text: String },
-    TalkPlace { text: String },
+    Table { text: String },
+    Actor { actor: String, text: String },
+    Place { text: String },
 }
 
 pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
-    let speech = parse_line(line, actor_id)?;
+    let speech = parse_line(line, actor_id, &shard.now().actors)?;
     if !shard
         .now()
         .actors
@@ -33,19 +33,6 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason
         .is_some_and(ActorLive::is_pc)
     {
         return Err(Reason::Schema);
-    }
-    match &speech {
-        Speech::TalkActor { actor, .. } => {
-            if !shard.now().actors.contains_key(actor) {
-                return Err(Reason::Schema);
-            }
-        }
-        Speech::Say { .. } | Speech::TalkPlace { .. } => {}
-    }
-    if matches!(speech, Speech::TalkActor { .. } | Speech::TalkPlace { .. })
-        && shard.now().presence.humans == 0
-    {
-        return Err(Reason::TableEmpty);
     }
     let speaker_place = shard
         .now()
@@ -55,9 +42,9 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason
         .place()
         .to_string();
     let (address, place, actor, text) = match speech {
-        Speech::Say { text } => ("table", None, None, text),
-        Speech::TalkActor { actor, text } => ("actor", None, Some(actor), text),
-        Speech::TalkPlace { text } => ("place", Some(speaker_place), None, text),
+        Speech::Table { text } => ("table", None, None, text),
+        Speech::Actor { actor, text } => ("actor", None, Some(actor), text),
+        Speech::Place { text } => ("place", Some(speaker_place), None, text),
     };
     let recipients = recipients(
         shard,
@@ -208,7 +195,11 @@ fn spoken_from(stored: &TapeLine) -> Spoken {
     }
 }
 
-fn parse_line(line: &str, seated: &str) -> Result<Speech, Reason> {
+fn parse_line(
+    line: &str,
+    seated: &str,
+    actors: &BTreeMap<String, ActorLive>,
+) -> Result<Speech, Reason> {
     if line.is_empty() {
         return Err(Reason::Schema);
     }
@@ -227,32 +218,29 @@ fn parse_line(line: &str, seated: &str) -> Result<Speech, Reason> {
     if verb.is_empty() {
         return Err(Reason::Schema);
     }
-    match verb {
-        "say" => Ok(Speech::Say {
-            text: one_line(rest)?.to_string(),
-        }),
-        "talk" => parse_talk(rest),
-        _ => Err(Reason::NotInSpec),
+    if verb != "say" {
+        return Err(Reason::NotInSpec);
     }
-}
-
-fn parse_talk(rest: &str) -> Result<Speech, Reason> {
+    // `place`, or an actor id, is the address when more words follow.
+    // One word is table text, so a name by itself still reaches the table.
     if rest.is_empty() {
         return Err(Reason::Schema);
     }
     let (target, text) = split_token(rest);
-    if target.is_empty() {
-        return Err(Reason::Schema);
+    if !text.is_empty() && target == "place" {
+        return Ok(Speech::Place {
+            text: one_line(text)?.to_string(),
+        });
     }
-    let text = one_line(text)?.to_string();
-    if target == "place" {
-        Ok(Speech::TalkPlace { text })
-    } else {
-        Ok(Speech::TalkActor {
+    if !text.is_empty() && actors.contains_key(target) {
+        return Ok(Speech::Actor {
             actor: target.to_string(),
-            text,
-        })
+            text: one_line(text)?.to_string(),
+        });
     }
+    Ok(Speech::Table {
+        text: one_line(rest)?.to_string(),
+    })
 }
 
 fn one_line(text: &str) -> Result<&str, Reason> {
