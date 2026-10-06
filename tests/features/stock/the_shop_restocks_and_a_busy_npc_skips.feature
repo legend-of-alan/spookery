@@ -6,5 +6,5 @@ Feature: The shop restocks and a busy NPC skips
   Scenario: A busy Mira does not act and Bram does
     When Mira is busy and a tick runs
 
-  Scenario: Fifty minor NPCs stay inside the tick budget
-    When fifty minor NPCs share one tick
+  Scenario: Fifty NPCs stay inside the tick budget
+    When fifty NPCs share one tick

@@ -2,10 +2,9 @@ use crate::canon::Canon;
 use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
-use crate::limits::world_hour;
-use crate::meter::{MeterWrite, WorkWrite};
-use crate::model::{Now, RunState};
-use crate::moves::{ActionRow, Field, MeterArm, MeterTemplate, MoveOn, RowEffect, Selector};
+use crate::meter::WorkWrite;
+use crate::model::Now;
+use crate::moves::{ActionRow, Field, MoveOn, RowEffect, Selector};
 use crate::select::{first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
@@ -93,19 +92,17 @@ fn expand_template(
             effects.push(location_effect(now, intent, to)?);
         }
         RowEffect::LocationTo { to } => {
-            let place = match to {
-                Field::Selector(Selector::SchedulePlace) => {
-                    schedule_place(canon, now, &intent.actor_id).ok_or(Reason::UnknownKey)?
-                }
-                Field::Literal(place) => place.clone(),
-                _ => return Err(Reason::Schema),
+            let Field::Literal(place) = to else {
+                return Err(Reason::Schema);
             };
-            effects.push(location_effect(now, intent, &place)?);
+            effects.push(location_effect(now, intent, place)?);
         }
-        RowEffect::Meter(template) => {
-            for class in meter_classes(canon, now, intent, row, template)? {
-                effects.push(wrap(viewer, &intent.id, class));
-            }
+        RowEffect::Meter(write) => {
+            effects.push(wrap(
+                viewer,
+                &intent.id,
+                meter_class(&actor_of(row, intent)?, write),
+            ));
         }
         RowEffect::Stock { place, sku, delta } => {
             let (place, sku, delta) =
@@ -248,64 +245,6 @@ fn meter_class(actor_id: &str, write: &WorkWrite) -> EffectClass {
     }
 }
 
-fn meter_classes(
-    canon: &Canon,
-    now: &Now,
-    intent: &Intent,
-    row: &ActionRow,
-    template: &MeterTemplate,
-) -> Result<Vec<EffectClass>, Reason> {
-    match template {
-        MeterTemplate::FromWork => Ok(from_work(canon, &intent.actor_id)),
-        MeterTemplate::ScheduleRest { arm, .. } => {
-            let delta = schedule_rest(canon, now, &intent.actor_id).ok_or(Reason::UnknownKey)?;
-            let write = match arm {
-                MeterArm::Base => MeterWrite::Base(delta),
-                MeterArm::Offset => MeterWrite::Offset(delta),
-            };
-            Ok(vec![meter_class(
-                &intent.actor_id,
-                &WorkWrite {
-                    key: "rest".to_string(),
-                    write,
-                },
-            )])
-        }
-        MeterTemplate::Literal(write) => Ok(vec![meter_class(&actor_of(row, intent)?, write)]),
-    }
-}
-
-fn from_work(canon: &Canon, actor_id: &str) -> Vec<EffectClass> {
-    let Some(profile) = canon.profile(actor_id) else {
-        return Vec::new();
-    };
-    profile
-        .work
-        .iter()
-        .map(|write| meter_class(actor_id, write))
-        .collect()
-}
-
-fn schedule_rest(canon: &Canon, now: &Now, actor_id: &str) -> Option<i64> {
-    let profile = canon.profile(actor_id)?;
-    let hour = world_hour(now.world_time);
-    profile.winning_row(hour)?.rest_delta
-}
-
-fn schedule_place(canon: &Canon, now: &Now, actor_id: &str) -> Option<String> {
-    if now.pause.travel != RunState::Running {
-        return None;
-    }
-    let profile = canon.profile(actor_id)?;
-    let actor_place = now.actors.get(actor_id)?.place().to_string();
-    let hour = world_hour(now.world_time);
-    let row = profile.winning_row(hour)?;
-    if row.place == actor_place || !profile.range.iter().any(|item| item == &row.place) {
-        return None;
-    }
-    Some(row.place.clone())
-}
-
 fn relationship_fields(
     now: &Now,
     actor_id: &str,
@@ -419,7 +358,9 @@ mod tests {
         sku: first_rate
         delta: rate
       - class: meter
-        delta: from_work
+        key: rest
+        write: base
+        delta: 1
       - class: clock
         clock: first_owned
         delta: 1

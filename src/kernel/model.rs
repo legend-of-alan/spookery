@@ -44,7 +44,6 @@ pub struct PauseView {
     pub named_plot_clocks: RunState,
     pub relationship_drift: RunState,
     pub subsistence_clocks: RunState,
-    pub travel: RunState,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

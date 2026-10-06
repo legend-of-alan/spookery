@@ -4,7 +4,6 @@ use crate::canon::Canon;
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::ViewerId;
-use crate::limits::world_hour;
 use crate::model::{Message, Now};
 use crate::shard::Shard;
 
@@ -20,7 +19,6 @@ pub struct Perceive {
     pub unknown_mentioned: Vec<String>,
     pub clocks: Vec<ClockView>,
     pub stocks: Vec<StockView>,
-    pub schedule_hint: Option<ScheduleHint>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -42,12 +40,6 @@ pub struct ClockView {
 pub struct StockView {
     pub sku: String,
     pub qty: i64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ScheduleHint {
-    pub place: String,
-    pub activity: Option<String>,
 }
 
 pub fn perceive(shard: &Shard, as_arg: &str) -> Result<Perceive, Reason> {
@@ -168,18 +160,6 @@ fn perceive_at_budget(
         })
         .unwrap_or_default();
 
-    let schedule_hint = match &viewer {
-        ViewerId::Player(_) => None,
-        ViewerId::Npc(id) => canon.profile(id).and_then(|profile| {
-            profile
-                .winning_row(world_hour(now.world_time))
-                .map(|row| ScheduleHint {
-                    place: row.place.clone(),
-                    activity: row.activity.clone(),
-                })
-        }),
-    };
-
     Ok(Perceive {
         viewer: viewer.token(),
         place,
@@ -189,7 +169,6 @@ fn perceive_at_budget(
         unknown_mentioned,
         clocks,
         stocks,
-        schedule_hint,
     })
 }
 

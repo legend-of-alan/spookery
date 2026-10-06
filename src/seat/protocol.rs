@@ -5,8 +5,8 @@ use serde_json::{Map, Value};
 use spookery_kernel::check::CheckOut;
 use spookery_kernel::intent::Intent;
 use spookery_kernel::model::{Message, Now, RunState};
+use spookery_kernel::perceive::{ClockView, KnownFact, Perceive, StockView};
 use spookery_kernel::Reason;
-use spookery_kernel::perceive::{ClockView, KnownFact, Perceive, ScheduleHint, StockView};
 
 pub struct TapeLine {
     pub seq: u64,
@@ -187,13 +187,6 @@ pub fn perceive_value(view: &Perceive) -> Value {
         "stocks".to_string(),
         Value::Array(view.stocks.iter().map(stock_value).collect()),
     );
-    map.insert(
-        "schedule_hint".to_string(),
-        match &view.schedule_hint {
-            Some(hint) => hint_value(hint),
-            None => Value::Null,
-        },
-    );
     Value::Object(map)
 }
 
@@ -245,7 +238,6 @@ pub fn session_status(
                 "subsistence_clocks",
                 run_state(now.pause.subsistence_clocks),
             ),
-            ("travel", run_state(now.pause.travel)),
         ]),
     );
     map.insert("world_time".to_string(), Value::from(now.world_time));
@@ -314,19 +306,6 @@ fn stock_value(stock: &StockView) -> Value {
     obj([
         ("sku", Value::String(stock.sku.clone())),
         ("qty", Value::from(stock.qty)),
-    ])
-}
-
-fn hint_value(hint: &ScheduleHint) -> Value {
-    obj([
-        ("place", Value::String(hint.place.clone())),
-        (
-            "activity",
-            match &hint.activity {
-                Some(activity) => Value::String(activity.clone()),
-                None => Value::Null,
-            },
-        ),
     ])
 }
 

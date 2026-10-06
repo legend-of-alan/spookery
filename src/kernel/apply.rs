@@ -131,7 +131,7 @@ fn apply_stock(
         .canon()
         .profile(&intent.actor_id)
         .ok_or(Reason::NoProfile)?;
-    if !profile.range.iter().any(|item| item == place) || !profile.on_graph(place) {
+    if !profile.range.iter().any(|item| item == place) {
         return Err(Reason::OutOfRange);
     }
     let rate = profile
@@ -181,7 +181,7 @@ fn apply_location(
         return Err(Reason::OutOfRange);
     }
     let profile = txn.canon().profile(actor_id).ok_or(Reason::NoProfile)?;
-    if !profile.range.iter().any(|item| item == to) || !profile.on_graph(to) {
+    if !profile.range.iter().any(|item| item == to) {
         return Err(Reason::OutOfRange);
     }
     let place_changed = actor.place() != to;

@@ -8,9 +8,9 @@ use crate::check::{load_checks, CheckDef};
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::limits::{load_tick_rules, Budget};
-use crate::meter::{self, MeterDef, MeterLive, MeterWrite, WorkWrite};
+use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
-use crate::moves::{load_moves, Audience, MeterTemplate, MoveDef, RowEffect};
+use crate::moves::{load_moves, Audience, MoveDef, RowEffect};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -70,33 +70,10 @@ pub struct TickProfile {
     pub tier: Tier,
     pub plot_relevant: bool,
     pub range: Vec<String>,
-    pub schedule: Vec<ScheduleRow>,
     pub stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
     pub flags: Vec<String>,
-    pub work: Vec<WorkWrite>,
     pub notes: Vec<NoteDef>,
     pub agenda: Vec<AgendaEntry>,
-}
-
-impl TickProfile {
-    pub fn on_graph(&self, place: &str) -> bool {
-        self.schedule.iter().any(|row| row.place == place)
-    }
-
-    pub fn winning_row(&self, hour: i64) -> Option<&ScheduleRow> {
-        self.schedule
-            .iter()
-            .find(|row| hour_in(row.start, row.end, hour))
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ScheduleRow {
-    pub start: i64,
-    pub end: i64,
-    pub place: String,
-    pub activity: Option<String>,
-    pub rest_delta: Option<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -114,8 +91,6 @@ pub struct NoteDef {
 pub struct AgendaEntry {
     pub row: String,
     pub pause: Option<PauseLane>,
-    pub schedule: Option<ScheduleGate>,
-    pub activity: Option<String>,
     pub when_stock: bool,
     pub when_drift: bool,
     pub when_rumor: bool,
@@ -128,13 +103,6 @@ pub enum PauseLane {
     NamedPlotClocks,
     SubsistenceClocks,
     RelationshipDrift,
-    Travel,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ScheduleGate {
-    Here,
-    Away,
 }
 
 impl Canon {
@@ -177,16 +145,6 @@ impl Canon {
             return None;
         }
         def.check.clone()
-    }
-}
-
-pub fn hour_in(start: i64, end: i64, hour: i64) -> bool {
-    if start < end {
-        start <= hour && hour < end
-    } else if start > end {
-        hour >= start || hour < end
-    } else {
-        false
     }
 }
 
@@ -291,7 +249,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
     let checks = load_checks(&read_string(&root.join("rules/checks.yaml"))?)?;
     let meters = load_meters(&read_string(&root.join("rules/meters.yaml"))?)?;
     require_known_checks(&moves, &checks)?;
-    require_meter_ids(&meters, &checks, &cast, &moves)?;
+    require_meter_ids(&meters, &checks, &moves)?;
     require_agenda_rows(&cast, &moves)?;
     let budget = load_tick_rules(&read_string(&root.join("rules/tick.yaml"))?)?;
     Ok(Canon {
@@ -343,21 +301,6 @@ fn insert_fact(
 }
 
 fn validate_tick(file: TickFile) -> Result<TickProfile, Reason> {
-    for row in &file.schedule {
-        if !(0..=24).contains(&row.start) || !(0..=24).contains(&row.end) {
-            return Err(Reason::Schema);
-        }
-        match row.activity.as_deref() {
-            None => {}
-            Some("work") => {}
-            Some("rest") => {
-                if row.rest_delta.is_none() {
-                    return Err(Reason::Schema);
-                }
-            }
-            Some(_) => return Err(Reason::Schema),
-        }
-    }
     let mut seen_notes = BTreeSet::new();
     for note in &file.notes {
         if note.id.is_empty() || !seen_notes.insert(note.id.clone()) {
@@ -369,20 +312,8 @@ fn validate_tick(file: TickFile) -> Result<TickProfile, Reason> {
         tier: file.tier,
         plot_relevant: file.plot_relevant,
         range: file.range,
-        schedule: file
-            .schedule
-            .into_iter()
-            .map(|row| ScheduleRow {
-                start: row.start,
-                end: row.end,
-                place: row.place,
-                activity: row.activity,
-                rest_delta: row.rest_delta,
-            })
-            .collect(),
         stock_rate: file.stock_rate,
         flags: file.flags,
-        work: work_of(file.work)?,
         notes: file
             .notes
             .into_iter()
@@ -406,28 +337,16 @@ fn agenda_of(entries: Vec<AgendaFile>) -> Result<Vec<AgendaEntry>, Reason> {
         if entry.row.is_empty() {
             return Err(Reason::Schema);
         }
-        if entry.activity.is_some() && entry.schedule.as_deref() != Some("here") {
-            return Err(Reason::Schema);
-        }
         let pause = match entry.pause.as_deref() {
             None => None,
             Some("named_plot_clocks") => Some(PauseLane::NamedPlotClocks),
             Some("subsistence_clocks") => Some(PauseLane::SubsistenceClocks),
             Some("relationship_drift") => Some(PauseLane::RelationshipDrift),
-            Some("travel") => Some(PauseLane::Travel),
-            Some(_) => return Err(Reason::Schema),
-        };
-        let schedule = match entry.schedule.as_deref() {
-            None => None,
-            Some("here") => Some(ScheduleGate::Here),
-            Some("away") => Some(ScheduleGate::Away),
             Some(_) => return Err(Reason::Schema),
         };
         agenda.push(AgendaEntry {
             row: entry.row,
             pause,
-            schedule,
-            activity: entry.activity,
             when_stock: entry.when_stock,
             when_drift: entry.when_drift,
             when_rumor: entry.when_rumor,
@@ -436,22 +355,6 @@ fn agenda_of(entries: Vec<AgendaFile>) -> Result<Vec<AgendaEntry>, Reason> {
         });
     }
     Ok(agenda)
-}
-
-fn work_of(entries: Vec<WorkEntryFile>) -> Result<Vec<WorkWrite>, Reason> {
-    let mut work = Vec::with_capacity(entries.len());
-    for entry in entries {
-        let write = match entry.write.as_str() {
-            "base" => MeterWrite::Base(entry.delta),
-            "offset" => MeterWrite::Offset(entry.delta),
-            _ => return Err(Reason::Schema),
-        };
-        work.push(WorkWrite {
-            key: entry.key,
-            write,
-        });
-    }
-    Ok(work)
 }
 
 pub fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Reason> {
@@ -522,7 +425,6 @@ pub fn bind_inventory(now: &Now) -> Result<(), Reason> {
 fn require_meter_ids(
     meters: &BTreeMap<String, MeterDef>,
     checks: &BTreeMap<String, CheckDef>,
-    cast: &BTreeMap<String, CastCanon>,
     moves: &BTreeMap<String, MoveDef>,
 ) -> Result<(), Reason> {
     for check in checks.values() {
@@ -530,27 +432,15 @@ fn require_meter_ids(
             return Err(Reason::Schema);
         }
     }
-    for profile in cast.values().filter_map(|cast| cast.tick.as_ref()) {
-        for entry in &profile.work {
-            if !meters.contains_key(&entry.key) || matches!(entry.write, MeterWrite::Snap) {
-                return Err(Reason::Schema);
-            }
-        }
-    }
     for def in moves.values() {
         let Some(row) = def.row.as_ref() else {
             continue;
         };
         for effect in row.effects.iter().chain(&row.success).chain(&row.failure) {
-            let RowEffect::Meter(template) = effect else {
+            let RowEffect::Meter(write) = effect else {
                 continue;
             };
-            let key = match template {
-                MeterTemplate::FromWork => continue,
-                MeterTemplate::ScheduleRest { key, .. } => key,
-                MeterTemplate::Literal(write) => &write.key,
-            };
-            if !meters.contains_key(key) {
+            if !meters.contains_key(&write.key) {
                 return Err(Reason::Schema);
             }
         }
@@ -709,13 +599,9 @@ struct TickFile {
     #[serde(default)]
     range: Vec<String>,
     #[serde(default)]
-    schedule: Vec<ScheduleFile>,
-    #[serde(default)]
     stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
     #[serde(default)]
     flags: Vec<String>,
-    #[serde(default)]
-    work: Vec<WorkEntryFile>,
     #[serde(default)]
     notes: Vec<NoteFile>,
     #[serde(default)]
@@ -729,10 +615,6 @@ struct AgendaFile {
     #[serde(default)]
     pause: Option<String>,
     #[serde(default)]
-    schedule: Option<String>,
-    #[serde(default)]
-    activity: Option<String>,
-    #[serde(default)]
     when_stock: bool,
     #[serde(default)]
     when_drift: bool,
@@ -742,26 +624,6 @@ struct AgendaFile {
     when_note: bool,
     #[serde(default)]
     when_clock: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ScheduleFile {
-    start: i64,
-    end: i64,
-    place: String,
-    #[serde(default)]
-    activity: Option<String>,
-    #[serde(default)]
-    rest_delta: Option<i64>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct WorkEntryFile {
-    key: String,
-    write: String,
-    delta: i64,
 }
 
 #[derive(Deserialize)]

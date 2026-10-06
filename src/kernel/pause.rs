@@ -26,7 +26,6 @@ pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Reason> {
     view.named_plot_clocks = view_state(policies.named_plot_clocks, humans);
     view.subsistence_clocks = view_state(policies.subsistence_clocks, humans);
     view.relationship_drift = view_state(policies.relationship_drift, humans);
-    view.travel = view_state(policies.travel, humans);
     txn.set_pause_view(view);
     Ok(())
 }
@@ -45,8 +44,6 @@ fn set_paused(txn: &mut Txn, clock_id: &str, paused: bool) -> Result<(), Reason>
 fn view_state(policy: PausePolicy, humans: u32) -> RunState {
     match policy {
         PausePolicy::PauseWhenEmpty if humans == 0 => RunState::Paused,
-        PausePolicy::PauseWhenEmpty | PausePolicy::AlwaysRun | PausePolicy::RunIfSchedule => {
-            RunState::Running
-        }
+        PausePolicy::PauseWhenEmpty | PausePolicy::AlwaysRun => RunState::Running,
     }
 }

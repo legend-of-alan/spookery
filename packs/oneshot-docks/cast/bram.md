@@ -10,17 +10,7 @@ tick:
   range:
     - docks_street
     - docks_shop
-  schedule:
-    - start: 6
-      end: 18
-      place: docks_shop
-    - start: 18
-      end: 6
-      place: docks_street
   agenda:
-    - row: travel_schedule
-      pause: travel
-      schedule: away
     - row: drift_relationship
       pause: relationship_drift
       when_drift: true

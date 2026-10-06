@@ -16,7 +16,7 @@ use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::meter::MeterLive;
 use spookery_kernel::model::{
-    ActorLive, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
+    ActorLive, Clock, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_kernel::shard::{Shard, Txn};
 use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack};
@@ -295,7 +295,6 @@ Rowan.
             named_plot_clocks: RunState::Paused,
             relationship_drift: RunState::Running,
             subsistence_clocks: RunState::Running,
-            travel: RunState::Running,
         },
         places,
         actors,
@@ -337,6 +336,16 @@ fn busy_skip() {
         now.presence.actors_present = vec!["pc_rowan".to_string()];
         now.world_time = 360;
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        now.clocks.insert(
+            "watch".to_string(),
+            Clock {
+                value: 0,
+                max: 2,
+                requires_presence: false,
+                owners: vec!["bram".to_string()],
+                paused: false,
+            },
+        );
         fs::write(pack.join("state/now.yaml"), emit_now(&now).unwrap()).unwrap();
     }
     let mut shard = open(&pack);
@@ -355,7 +364,7 @@ fn busy_skip() {
         0
     );
     assert_eq!(lamp_oil(now), 4);
-    assert_eq!(now.actors.get("bram").unwrap().place(), "docks_shop");
+    assert_eq!(now.actors.get("bram").unwrap().place(), "docks_street");
     assert_eq!(
         now.actors
             .get("bram")
@@ -599,20 +608,12 @@ kind: npc
 facts: []
 tick:
   eligible: true
-  tier: minor
+  tier: named
   plot_relevant: false
   range:
     - yard
-  schedule:
-    - start: 0
-      end: 24
-      place: yard
-      activity: work
   agenda:
-    - row: work
-      pause: subsistence_clocks
-      schedule: here
-      activity: work
+    - row: hold
 ---
 {id}
 "
@@ -642,6 +643,12 @@ tick:
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
     }
+    let moves_path = pack.join("rules/moves.yaml");
+    let mut moves = fs::read_to_string(&moves_path).unwrap();
+    moves.push_str(
+        "\n  - name: hold\n    audience: agenda\n    token: none\n    on: speaker\n    effects: []\n",
+    );
+    fs::write(&moves_path, moves).unwrap();
     let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
@@ -669,7 +676,6 @@ tick:
             named_plot_clocks: RunState::Paused,
             relationship_drift: RunState::Running,
             subsistence_clocks: RunState::Running,
-            travel: RunState::Running,
         },
         places,
         actors,
@@ -1239,8 +1245,8 @@ fn twenty_ticks_are_replayed(_world: &mut World) {
     replay_byte_compares_now();
 }
 
-#[when(expr = "fifty minor NPCs share one tick")]
-fn fifty_minor_npcs(_world: &mut World) {
+#[when(expr = "fifty NPCs share one tick")]
+fn fifty_npcs(_world: &mut World) {
     budget_caps();
 }
 

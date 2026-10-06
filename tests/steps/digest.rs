@@ -14,10 +14,6 @@ clock shop_day 1 1 running
 
 const HOST: &str = "\
 effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
-effect location 12 {\"actor_id\":\"bram\",\"from\":\"docks_street\",\"to\":\"docks_shop\"}
-effect location 12 {\"actor_id\":\"mira\",\"from\":\"mira_rooms\",\"to\":\"docks_shop\"}
-effect stock 13 {\"place\":\"docks_shop\",\"sku\":\"lamp_oil\",\"delta\":4}
-effect rumor 13 {\"rumor_id\":\"r_184\",\"fact_ids\":[\"fact_oil_on_shelf\"],\"from\":\"bram\",\"to\":\"aldric\",\"heat\":1}
 clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
@@ -48,8 +44,8 @@ fn the_host_text_lists_the_clocks(world: &mut World) {
     assert_eq!(world.stdout, CLOCKS);
 }
 
-#[then(expr = "the host text lists the oil stock and the shop arrivals")]
-fn the_host_text_lists_the_stock_and_arrivals(world: &mut World) {
+#[then(expr = "the host text lists the door note")]
+fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(world.stdout, HOST);
     let now = table::now_of(table::pack(world));
     assert_eq!(now.tick_index, 13);
@@ -60,7 +56,7 @@ fn the_host_text_lists_the_stock_and_arrivals(world: &mut World) {
             .get("docks_shop")
             .and_then(|place| place.stock.get("lamp_oil"))
             .copied(),
-        Some(8)
+        Some(4)
     );
     let debt = now.clocks.get("assassination_debt").unwrap();
     assert_eq!(debt.value, 2);
@@ -88,7 +84,7 @@ fn the_shop_lists_the_oil(world: &mut World) {
         shop.stocks,
         vec![StockView {
             sku: "lamp_oil".to_string(),
-            qty: 8,
+            qty: 4,
         }]
     );
     let mut away = shard.now().clone();

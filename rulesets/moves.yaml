@@ -22,14 +22,6 @@ moves:
     difficulty: 0
     effects: []
 
-  - name: travel_schedule
-    audience: agenda
-    token: none
-    on: speaker
-    effects:
-      - class: location
-        to: schedule_place
-
   - name: restock
     audience: agenda
     token: none
@@ -39,24 +31,6 @@ moves:
         place: here
         sku: first_rate
         delta: rate
-
-  - name: work
-    audience: agenda
-    token: none
-    on: speaker
-    effects:
-      - class: meter
-        delta: from_work
-
-  - name: rest
-    audience: agenda
-    token: none
-    on: speaker
-    effects:
-      - class: meter
-        key: rest
-        write: base
-        delta: schedule_rest
 
   - name: drift_relationship
     audience: agenda

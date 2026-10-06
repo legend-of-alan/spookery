@@ -14,21 +14,9 @@ tick:
     - docks_shop
     - docks_street
     - mira_rooms
-  schedule:
-    - start: 6
-      end: 18
-      place: docks_shop
-      activity: work
-    - start: 18
-      end: 6
-      place: mira_rooms
   stock_rate:
     docks_shop:
       lamp_oil: 4
-  work:
-    - key: rest
-      write: base
-      delta: 1
   notes:
     - id: note_mira_door
       due_clock: shop_day
@@ -42,16 +30,6 @@ tick:
     - row: restock
       pause: subsistence_clocks
       when_stock: true
-    - row: travel_schedule
-      pause: travel
-      schedule: away
-    - row: work
-      pause: subsistence_clocks
-      schedule: here
-      activity: work
-    - row: rest
-      schedule: here
-      activity: rest
     - row: drift_relationship
       pause: relationship_drift
       when_drift: true

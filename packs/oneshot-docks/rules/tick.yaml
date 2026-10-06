@@ -17,4 +17,3 @@ pause:
   named_plot_clocks: pause_when_empty
   subsistence_clocks: always_run
   relationship_drift: always_run
-  travel: run_if_schedule

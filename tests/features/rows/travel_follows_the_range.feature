@@ -1,6 +1,6 @@
-Feature: Travel follows the graph
+Feature: Travel follows the range
 
-  Scenario: A live travel off the graph stays put and a street travel moves
+  Scenario: A live travel outside the range stays put and a street travel moves
     Given a docks table with a seated player
     When the player travels to "mira_rooms"
     Then world_time is 1085

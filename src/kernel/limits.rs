@@ -2,7 +2,6 @@ use serde::Deserialize;
 
 use crate::error::Reason;
 
-pub const MINUTES_PER_HOUR: u64 = 60;
 pub const MINUTES_PER_DAY: u64 = 1440;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,7 +28,6 @@ pub struct PausePolicies {
     pub named_plot_clocks: PausePolicy,
     pub subsistence_clocks: PausePolicy,
     pub relationship_drift: PausePolicy,
-    pub travel: PausePolicy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -38,8 +36,6 @@ pub enum PausePolicy {
     PauseWhenEmpty,
     #[serde(rename = "always_run")]
     AlwaysRun,
-    #[serde(rename = "run_if_schedule")]
-    RunIfSchedule,
 }
 
 impl Budget {
@@ -63,14 +59,9 @@ impl Budget {
                 named_plot_clocks: PausePolicy::PauseWhenEmpty,
                 subsistence_clocks: PausePolicy::AlwaysRun,
                 relationship_drift: PausePolicy::AlwaysRun,
-                travel: PausePolicy::RunIfSchedule,
             },
         }
     }
-}
-
-pub fn world_hour(world_time: u64) -> i64 {
-    ((world_time / MINUTES_PER_HOUR) % 24) as i64
 }
 
 pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
@@ -113,7 +104,6 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
             named_plot_clocks: file.pause.named_plot_clocks,
             subsistence_clocks: file.pause.subsistence_clocks,
             relationship_drift: file.pause.relationship_drift,
-            travel: file.pause.travel,
         },
     })
 }
@@ -153,5 +143,4 @@ struct PauseFile {
     named_plot_clocks: PausePolicy,
     subsistence_clocks: PausePolicy,
     relationship_drift: PausePolicy,
-    travel: PausePolicy,
 }

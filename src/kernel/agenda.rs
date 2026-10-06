@@ -1,11 +1,10 @@
-use crate::canon::{AgendaEntry, Canon, PauseLane, ScheduleGate};
+use crate::canon::{AgendaEntry, Canon, PauseLane};
 use crate::effect::{Effect, EffectClass};
 use crate::eligibility::is_eligible;
 use crate::error::Reason;
 use crate::expand::expand_outcome;
 use crate::ids::kernel_intent_id;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use crate::limits::world_hour;
 use crate::model::{Now, RunState};
 use crate::moves::Audience;
 use crate::select::{first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk};
@@ -66,9 +65,7 @@ pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> 
 fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
     let profile = canon.profile(actor_id)?;
     for entry in &profile.agenda {
-        if !gates(now, profile, entry, actor_id)
-            || !when_ready(canon, now, profile, entry, actor_id)
-        {
+        if !gates(now, entry) || !when_ready(canon, now, profile, entry, actor_id) {
             continue;
         }
         let row = canon.moves.get(&entry.row)?.row.as_ref()?;
@@ -87,41 +84,16 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
     None
 }
 
-fn gates(
-    now: &Now,
-    profile: &crate::canon::TickProfile,
-    entry: &AgendaEntry,
-    actor_id: &str,
-) -> bool {
-    if let Some(lane) = entry.pause {
-        let state = match lane {
-            PauseLane::NamedPlotClocks => now.pause.named_plot_clocks,
-            PauseLane::SubsistenceClocks => now.pause.subsistence_clocks,
-            PauseLane::RelationshipDrift => now.pause.relationship_drift,
-            PauseLane::Travel => now.pause.travel,
-        };
-        if state != RunState::Running {
-            return false;
-        }
-    }
-    if entry.schedule.is_none() && entry.activity.is_none() {
+fn gates(now: &Now, entry: &AgendaEntry) -> bool {
+    let Some(lane) = entry.pause else {
         return true;
-    }
-    let Some(actor) = now.actors.get(actor_id) else {
-        return false;
     };
-    let Some(row) = profile.winning_row(world_hour(now.world_time)) else {
-        return false;
+    let state = match lane {
+        PauseLane::NamedPlotClocks => now.pause.named_plot_clocks,
+        PauseLane::SubsistenceClocks => now.pause.subsistence_clocks,
+        PauseLane::RelationshipDrift => now.pause.relationship_drift,
     };
-    match entry.schedule {
-        Some(ScheduleGate::Away) => {
-            row.place != actor.place() && profile.range.iter().any(|place| place == &row.place)
-        }
-        Some(ScheduleGate::Here) => {
-            row.place == actor.place() && entry.activity.as_deref() == row.activity.as_deref()
-        }
-        None => false,
-    }
+    state == RunState::Running
 }
 
 fn when_ready(
