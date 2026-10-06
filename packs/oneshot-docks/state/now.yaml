@@ -47,6 +47,7 @@ actors:
       rest:
         base: 3
         offset: 0
+    inventory: []
     relationships: {}
     reputation: {}
     known_facts: []
@@ -66,6 +67,7 @@ actors:
       rest:
         base: 3
         offset: 0
+    inventory: []
     relationships: {}
     reputation: {}
     known_facts: []
@@ -85,6 +87,7 @@ actors:
       rest:
         base: 3
         offset: 0
+    inventory: []
     relationships: {}
     reputation: {}
     known_facts:
@@ -105,8 +108,8 @@ actors:
       rest:
         base: 3
         offset: 0
+    inventory: []
     known_facts: []
-    sheet: state/actors/pc_rowan.yaml
 clocks:
   assassination_debt:
     value: 2

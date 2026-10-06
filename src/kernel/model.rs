@@ -65,6 +65,7 @@ pub enum ActorLive {
         flags: Vec<String>,
         busy: bool,
         meters: BTreeMap<String, MeterLive>,
+        inventory: Vec<String>,
         relationships: BTreeMap<String, Relation>,
         reputation: BTreeMap<String, Reputation>,
         known_facts: Vec<String>,
@@ -76,8 +77,8 @@ pub enum ActorLive {
         flags: Vec<String>,
         busy: bool,
         meters: BTreeMap<String, MeterLive>,
+        inventory: Vec<String>,
         known_facts: Vec<String>,
-        sheet: String,
     },
 }
 
@@ -158,6 +159,12 @@ impl ActorLive {
         }
     }
 
+    pub fn inventory(&self) -> &[String] {
+        match self {
+            ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
+        }
+    }
+
     pub fn relationships(&self) -> Option<&BTreeMap<String, Relation>> {
         match self {
             ActorLive::Npc { relationships, .. } => Some(relationships),
@@ -232,15 +239,6 @@ pub struct Message {
     pub place: Option<String>,
     pub fact_ids: Vec<String>,
     pub text: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PcSheet {
-    pub schema: String,
-    pub id: String,
-    pub template: String,
-    pub inventory: Vec<String>,
 }
 
 pub fn sort_unique(items: &mut Vec<String>) {

@@ -103,15 +103,16 @@ pub fn gm_check_frames(notices: &[CheckNotice]) -> Vec<Vec<u8>> {
         .collect()
 }
 
-/// A named item must already be on the acting sheet. The line is refused before queue.
+/// A named item must already be on the actor. The line is refused before queue.
 fn require_item(shard: &Shard, actor_id: &str, row: &ActionRow) -> Result<(), Reason> {
     let Some(item) = row.item.as_deref() else {
         return Ok(());
     };
     let held = shard
-        .sheets()
+        .now()
+        .actors
         .get(actor_id)
-        .is_some_and(|sheet| sheet.inventory.iter().any(|id| id == item));
+        .is_some_and(|actor| actor.inventory().iter().any(|id| id == item));
     if held {
         Ok(())
     } else {

@@ -145,16 +145,6 @@ Nell keeps a guard up.
 ",
     )
     .unwrap();
-    fs::write(
-        pack.join("state/actors/pc_nell.yaml"),
-        "\
-schema: sheet/v0
-id: pc_nell
-template: cast/pc-nell.md
-inventory: []
-",
-    )
-    .unwrap();
     let now_path = pack.join("state/now.yaml");
     let mut now =
         spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
@@ -174,8 +164,8 @@ inventory: []
                 ),
                 ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
             ]),
+            inventory: Vec::new(),
             known_facts: Vec::new(),
-            sheet: "state/actors/pc_nell.yaml".to_string(),
         },
     );
     fs::write(&now_path, spookery_kernel::codec::emit_now(&now).unwrap()).unwrap();

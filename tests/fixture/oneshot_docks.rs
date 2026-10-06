@@ -20,16 +20,5 @@ pub(crate) fn docks_save_round_trips() {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert!(!now_text.contains("session_ids"));
 
-    let sheet_bytes = fs::read(root.join("state/actors/pc_rowan.yaml"))
-        .unwrap_or_else(|err| panic!("read sheet: {err}"));
-    let sheet_text =
-        std::str::from_utf8(&sheet_bytes).unwrap_or_else(|err| panic!("sheet utf-8: {err}"));
-    let sheet: spookery_kernel::model::PcSheet =
-        serde_saphyr::from_str(sheet_text).unwrap_or_else(|err| panic!("load sheet: {err}"));
-    let sheet_emit =
-        serde_saphyr::to_string_with_options(&sheet, spookery_kernel::codec::NOW_EMIT_OPTIONS())
-            .unwrap_or_else(|err| panic!("emit sheet: {err}"));
-    assert_eq!(sheet_emit.as_bytes(), sheet_bytes.as_slice());
-
     spookery_kernel::open_shard(&root).unwrap_or_else(|err| panic!("open_shard: {err}"));
 }

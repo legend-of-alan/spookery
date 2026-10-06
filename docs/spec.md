@@ -33,7 +33,7 @@ The queue is a `Vec` of intents on the shard thread. It is ephemeral. A crash dr
 
 `Txn::begin` clones `Now` once into `staging`. That is the only clone. `commit` moves `staging` into `Shard.now` after `write_commit` returns. It does not clone again.
 
-`expand` takes `&Canon`, `&Now` (the staging borrow), and `&Intent`. It does not hold `Shard`. `apply_effect` takes `&mut Staging`. `Staging` borrows `Txn`'s staging, the typed key set, and the active intent, so it is `!Send`. The tick does not hold `&Shard` and `&mut Txn` in a way that aliases `Now`. Checks read `current` off the pre-loop `frozen` snapshot, the same `Now` expand uses. They do not read live staging. Sheets remain the inventory file on `Shard`, read at queue time. `stage_tick` receives `&mut Txn` and the queue snapshot: the `Vec` of intents is moved out for the tick and put back only if the tick is abandoned. `Shard` fields are private.
+`expand` takes `&Canon`, `&Now` (the staging borrow), and `&Intent`. It does not hold `Shard`. `apply_effect` takes `&mut Staging`. `Staging` borrows `Txn`'s staging, the typed key set, and the active intent, so it is `!Send`. The tick does not hold `&Shard` and `&mut Txn` in a way that aliases `Now`. Checks read `current` off the pre-loop `frozen` snapshot, the same `Now` expand uses. They do not read live staging. The item precondition reads the actor's inventory before queue. `stage_tick` receives `&mut Txn` and the queue snapshot: the `Vec` of intents is moved out for the tick and put back only if the tick is abandoned. `Shard` fields are private.
 
 `append_session` takes the session lock and never a `Txn`. `commit_presence` takes the shard lock and never a `Txn`.
 
@@ -114,7 +114,7 @@ A row has:
 - `success` and `failure`: templates that run on that outcome
 - optional `check`: an id that must exist in `checks.yaml`, or load returns `SCHEMA`
 - optional `difficulty`: `i64`, default 0, used only when `check` is set and no opposing total applies
-- optional `item`: a sheet inventory precondition
+- optional `item`: an actor inventory precondition
 
 `classify` and the GM intent tool queue a row only when `audience` is `player`. An `agenda` or `system` name, including `advance_clock`, `restock`, and `travel_schedule`, is `NOT_IN_SPEC` and is not queued. Agenda selection queues a row only when `audience` is `agenda`. A cast agenda that names a `player` or `system` row is `SCHEMA` at load. No call site resolves a `system` row. Empty-table gates still apply to anything that does get into a tick.
 

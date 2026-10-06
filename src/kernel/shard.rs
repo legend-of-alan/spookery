@@ -1,25 +1,24 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::fs;
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::canon::{bind_meters, load_canon, pack_rev, Canon};
+use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
 use crate::check::CheckNotice;
 use crate::codec::{emit_now, load_now};
 use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::StateKey;
 use crate::limits::Budget;
-use crate::model::{MemoryLine, Now, PauseView, PcSheet};
+use crate::model::{MemoryLine, Now, PauseView};
 use crate::recover::recover;
 
 pub struct Shard {
     pub(crate) root: PathBuf,
     canon: Arc<Canon>,
     pub(crate) now: Now,
-    sheets: BTreeMap<String, PcSheet>,
     pub(crate) queue: Vec<Intent>,
     pub(crate) pending: Option<PendingCommit>,
     rolls: Vec<CheckNotice>,
@@ -64,10 +63,6 @@ impl Shard {
 
     pub fn budget(&self) -> &Budget {
         &self.canon.budget
-    }
-
-    pub fn sheets(&self) -> &BTreeMap<String, PcSheet> {
-        &self.sheets
     }
 
     pub fn queued_intents(&self) -> &[Intent] {
@@ -315,23 +310,11 @@ pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
         return Err(Reason::HandEdit);
     }
     bind_meters(&canon, &mut now)?;
-    let mut sheets = BTreeMap::new();
-    for (id, actor) in &now.actors {
-        if let crate::model::ActorLive::Pc { sheet, .. } = actor {
-            let path = root.join(sheet);
-            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-            let loaded: PcSheet = serde_saphyr::from_str(&text).map_err(|_| Reason::Schema)?;
-            if loaded.schema != "sheet/v0" {
-                return Err(Reason::Schema);
-            }
-            sheets.insert(id.clone(), loaded);
-        }
-    }
+    bind_inventory(&now)?;
     Ok(Shard {
         root: root.to_path_buf(),
         canon,
         now,
-        sheets,
         queue: Vec::new(),
         pending: None,
         rolls: Vec::new(),

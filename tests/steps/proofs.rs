@@ -256,15 +256,6 @@ Rowan.
         })
         .unwrap_or_else(|err| panic!("copy {name}: {err}"));
     }
-    write_text(
-        &pack.join("state/actors/pc_rowan.yaml"),
-        "\
-schema: sheet/v0
-id: pc_rowan
-template: cast/pc_rowan.md
-inventory: []
-",
-    );
     let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
@@ -284,8 +275,8 @@ inventory: []
             flags: Vec::new(),
             busy: false,
             meters: meters(1),
+            inventory: Vec::new(),
             known_facts: Vec::new(),
-            sheet: "state/actors/pc_rowan.yaml".to_string(),
         },
     );
     let now = Now {
@@ -634,6 +625,7 @@ tick:
                 flags: Vec::new(),
                 busy: false,
                 meters: meters(1),
+                inventory: Vec::new(),
                 relationships: BTreeMap::new(),
                 reputation: BTreeMap::new(),
                 known_facts: Vec::new(),
@@ -1047,15 +1039,6 @@ tick:
 Nell keeps a guard up.
 ",
     );
-    write_text(
-        &pack.join("state/actors/pc_nell.yaml"),
-        "\
-schema: sheet/v0
-id: pc_nell
-template: cast/pc-nell.md
-inventory: []
-",
-    );
     let now_path = pack.join("state/now.yaml");
     let mut now =
         spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
@@ -1066,8 +1049,8 @@ inventory: []
             flags: Vec::new(),
             busy: false,
             meters: meters(100),
+            inventory: Vec::new(),
             known_facts: Vec::new(),
-            sheet: "state/actors/pc_nell.yaml".to_string(),
         },
     );
     fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
@@ -1148,11 +1131,15 @@ fn a_held_knife_still_runs_the_opposed_row() {
     );
     fs::write(held.join("rules/moves.yaml"), moves).unwrap();
     insert_nell(&held);
-    let sheet = held.join("state/actors/pc_rowan.yaml");
-    let text = fs::read_to_string(&sheet).unwrap();
-    let next = text.replacen("inventory: []\n", "inventory:\n  - knife\n", 1);
+    let now_path = held.join("state/now.yaml");
+    let text = fs::read_to_string(&now_path).unwrap();
+    let next = text.replacen(
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: []\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      - knife\n",
+        1,
+    );
     assert_ne!(next, text);
-    fs::write(&sheet, next).unwrap();
+    fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);
     let mut shard = open(&held);
     seat_player(&mut shard, "pc_rowan").unwrap();

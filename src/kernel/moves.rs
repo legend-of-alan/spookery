@@ -14,7 +14,7 @@ pub struct MoveDef {
 
 /// One action row. `effects` runs on both outcomes. `success` and `failure` run on that outcome.
 /// An empty `effects` list with neither outcome list is a yield.
-/// A row's `audience` is required. `item`, when set, must already be on the acting sheet.
+/// A row's `audience` is required. `item`, when set, must already be on the actor.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionRow {
     pub token: MoveToken,

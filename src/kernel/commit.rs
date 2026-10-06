@@ -102,6 +102,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     let mut now = load_now(now_text)?;
     let canon = crate::canon::load_canon(root)?;
     crate::canon::bind_meters(&canon, &mut now)?;
+    crate::canon::bind_inventory(&now)?;
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;

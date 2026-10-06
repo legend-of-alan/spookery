@@ -505,6 +505,20 @@ pub fn bind_meters(canon: &Canon, now: &mut Now) -> Result<(), Reason> {
     Ok(())
 }
 
+/// An empty id or a duplicate is `SCHEMA`. This does not fill and does not
+/// look at meter pairs.
+pub fn bind_inventory(now: &Now) -> Result<(), Reason> {
+    for actor in now.actors.values() {
+        let mut seen = BTreeSet::new();
+        for id in actor.inventory() {
+            if id.is_empty() || !seen.insert(id.as_str()) {
+                return Err(Reason::Schema);
+            }
+        }
+    }
+    Ok(())
+}
+
 fn require_meter_ids(
     meters: &BTreeMap<String, MeterDef>,
     checks: &BTreeMap<String, CheckDef>,
