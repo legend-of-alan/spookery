@@ -8,8 +8,6 @@ facts:
     hidden: true
 tick:
   eligible: true
-  tier: named
-  plot_relevant: false
   range:
     - docks_shop
     - docks_street
@@ -17,28 +15,19 @@ tick:
   stock_rate:
     docks_shop:
       lamp_oil: 4
-  notes:
-    - id: note_mira_door
-      due_clock: shop_day
-      due_value: 1
-      to:
-        - pc_rowan
-      place: docks_shop
-      fact_ids: []
-      text: Back at dusk. Oil on the shelf.
-  agenda:
-    - row: restock
-      pause: subsistence_clocks
-      when_stock: true
-    - row: drift_relationship
-      pause: relationship_drift
-      when_drift: true
-    - row: spread_rumor
-      when_rumor: true
-    - row: leave_note
-      when_note: true
-    - row: advance_clock
-      pause: named_plot_clocks
-      when_clock: true
+  habits:
+    - id: door_note
+      runs_while_empty: true
+      clock: shop_day
+      at_least: 1
+      unless_message: note_mira_door
+      rows:
+        - leave_door_note
+    - id: tend_shop
+      runs_while_empty: true
+      from_hour: 8
+      to_hour: 16
+      rows:
+        - restock_lamp_oil
 ---
 Mira keeps the shop neat and the tin out of sight.

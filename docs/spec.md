@@ -15,11 +15,11 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 3. **Atomic commit.** `now.yaml` is renamed last. A crash cannot apply a partial tick.
 4. **Closed effect, one apply.** Ten effect classes. `apply_effect` is the only mutator of world numbers.
 5. **Firewall.** `firewall::allows` is the visibility test. A hidden fact does not leak through place or cast prose.
-6. **Deterministic tick.** Selector bindings freeze before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed.
+6. **Deterministic tick.** A row's literals are filled before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed.
 7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
-8. **Action-row loader.** A moves file is names and rows. Selectors are a closed enum. A new verb is a new row in YAML.
+8. **Action-row loader.** A moves file is names and rows. A field is a literal, or the player token on a player row. A new verb is a new row in YAML.
 9. **Seeded checks.** `die_face` is Blake2s. One copy, in `check.rs`. `difficulty` applies only when the row sets `check` and no opposing total applies.
-10. **Eligibility and pause.** Both run before an agenda intent exists. An ineligible NPC produces no agenda intent.
+10. **Eligibility and habits.** Both run before a kernel habit intent exists. An ineligible NPC produces no habit intent. A player-sourced intent is not a habit intent.
 11. **Failure tokens.** Each token has one meaning. `NOT_OWNER` and `LIVE_ONLY` are not tokens.
 12. **Speech versus queue.** Speech appends to the tape. It is not a row, it does not enter the intent queue, and it does not tick.
 13. **Seat law and profile split.** One player seat and one GM seat. Three static MCP profiles. `npc_act` does not call a model.
@@ -101,13 +101,13 @@ Stock: a missing profile is `NO_PROFILE`. A place outside range, an absolute del
 
 Meter: `write` is `base`, `offset`, or `snap`. `base` adds the delta to `base` and clamps that base into `[min, base_cap]`, and keeps `offset`. `offset` adds the delta to `offset` and keeps `base`. `snap` sets the next pair to `(base, 0)`. The live pair is assigned only when `base` is inside `[min, base_cap]` and `base + offset` fits in `i64`. A sum that fits and passes `max` is clamped when `current` is read. `current` is `clamp(base + offset, min, max)`. It is not stored. An add that does not fit in `i64`, or a next pair that fails that check, is `OUT_OF_RANGE` and the record is unchanged. An unknown meter id is `UNKNOWN_KEY`. A PC and an NPC take the same write.
 
-## Rows and selectors
+## Rows and habits
 
 A moves file is still a name or a row. The schema version string stays `moves/v0`. New fields are optional. A misspelled field is rejected because unknown fields are denied.
 
 A row has:
 
-- `audience`: `player`, `agenda`, or `system`. Omitted audience is `SCHEMA`. A row is not implicitly player-facing.
+- `audience`: `player`, `habit`, or `system`. Omitted audience is `SCHEMA`. A row is not implicitly player-facing.
 - one token: `none`, `actor`, or `place`
 - one subject: `speaker` or `named`
 - `effects`: templates that run on both outcomes
@@ -116,59 +116,24 @@ A row has:
 - optional `difficulty`: `i64`, default 0, used only when `check` is set and no opposing total applies
 - optional `item`: an actor inventory precondition
 
-`classify` and the GM intent tool queue a row only when `audience` is `player`. An `agenda` or `system` name, including `advance_clock` and `restock`, is `NOT_IN_SPEC` and is not queued. Agenda selection queues a row only when `audience` is `agenda`. A cast agenda that names a `player` or `system` row is `SCHEMA` at load. No call site resolves a `system` row. Empty-table gates still apply to anything that does get into a tick.
+`classify` queues a row only when `audience` is `player`. A `habit` or `system` name is `NOT_IN_SPEC` on a player line and is not queued. The GM intent tool queues a `player` row for a player or an NPC, and a `habit` row only when `actor_kind` is `npc`. A player actor queuing a habit row is `NOT_IN_SPEC`. `source` on that tool stays `player`. A cast habit that names a `player` or `system` row is `SCHEMA` at load. No call site resolves a `system` row. Empty-table gates still apply to a kernel habit intent. They do not apply to a player-sourced intent.
 
-Load rejects a duplicate name, an empty name, an empty `item`, the flag key `busy`, a row on `say` or `talk`, an unknown class, an unknown selector, a template whose keys do not match its class, and any unknown shape. `give`, `take`, `wait`, and `attempt` are not reserved names. `attack` is not reserved. `travel` is not special-cased in Rust. A travel row is whatever templates it has, and `apply_location` enforces the range. The docks grit check is a `grit` row. `attempt grit 3` is not a special parser. The wire object `{"kind":"check","success":true|false}` does not change.
+Load rejects a duplicate name, an empty name, an empty `item`, the flag key `busy`, a row on `say` or `talk`, an unknown class, a search word, a template whose keys do not match its class, and any unknown shape. `give`, `take`, `wait`, and `attempt` are not reserved names. `attack` is not reserved. `travel` is not special-cased in Rust. A travel row is whatever templates it has, and `apply_location` enforces the range. The docks grit check is a `grit` row. `attempt grit 3` is not a special parser. The wire object `{"kind":"check","success":true|false}` does not change.
 
-**Yield.** The key `effects` may be present and empty only when `success` and `failure` are absent. That row is a yield. Omitted `effects` together with omitted outcome lists, on a row that set `token` or `on`, is `SCHEMA`. A yield with no `check` expands to zero effects and is still an applied intent if it was allowed. A yield with a `check` rolls, emits the check notice, and writes no world key. Nothing matches on the name `wait` or `attempt`. `wait` is a yield row (`effects` present and empty). An NPC agenda that does not list `wait` does not emit it. Absence of a ready agenda entry means no kernel intent.
+**Yield.** The key `effects` may be present and empty only when `success` and `failure` are absent. That row is a yield. Omitted `effects` together with omitted outcome lists, on a row that set `token` or `on`, is `SCHEMA`. A yield with no `check` expands to zero effects and is still an applied intent if it was allowed. A yield with a `check` rolls, emits the check notice, and writes no world key. Nothing matches on the name `wait` or `attempt`. `wait` is a yield row (`effects` present and empty). An NPC habit that does not list `wait` does not emit it. Absence of an on habit whose row expands means no kernel intent.
 
-**Selectors.** A template field is either a literal or one selector. Selectors do not compose. There is no expression language. Unknown selector text is `SCHEMA` at load. Adding a verb is a new row in YAML. Adding a selector is a kernel change and a conformance test. The docks fixture does not need a selector outside this list.
+**Fields.** A template field is a literal, except `to: token` on a player travel row. That token is the queued place. Search words (`here`, `first_rate`, `rate`, `first_drift`, `toward_target`, `first_known`, `first_listener`, `keep`, `first_due_note`, `first_owned`) are `SCHEMA` at load. There is no expression language. Adding a verb is a new row in YAML.
 
-```rust
-pub enum Selector {
-    Token,
-    Here,
-    FirstRateSku,
-    Rate,
-    FirstDrift,
-    TowardTarget,
-    FirstKnownRumor,
-    FirstListener,
-    KeepHeat,
-    FirstDueNote,
-    FirstOwnedClock,
-}
-```
-
-`ready` and `resolve` match on this enum. They do not match on the row's name.
-
-Several YAML keys are one walk. Mixing a selector from a walk with a literal for another field of the same walk is `SCHEMA`. `FirstRateSku`, `Rate`, and `Here` together fill one `Stock`. `FirstDrift` and `TowardTarget` together fill one `Relationship`. `FirstKnownRumor`, `FirstListener`, and `KeepHeat` together fill one `Rumor`. `FirstDueNote` fills one `Message`. A meter template is a literal key and write. The nickname `first_short` is not a selector. The restock walk is not a search for a sku below a cap. There is no stock maximum in the docks profile.
-
-| Selector | Inputs | Order | Fields written | Rule |
-|---|---|---|---|---|
-| `Here` | Actor's live place on staging `Now` | n/a | `Stock.place` | The place is `actor.place()`, the same place argument restock uses. |
-| `FirstRateSku` | `profile.stock_rate[place]`, `now.places[place].stock` | `BTreeMap` key order of that place's rate map | `Stock.sku` | For each `(sku, rate)`, stock is the live quantity or 0. Take the first sku where `stock.checked_add(rate)` is `Some` and `>= 0`. If the add overflows, skip that sku. If none qualify, the walk fails and the agenda entry is not taken. |
-| `Rate` | The rate on the sku `FirstRateSku` just chose | Same walk | `Stock.delta` | That sku's `rate` value. |
-| `Token` | The intent token | n/a | `Location.to` when the token is `Place`; the named actor when the token is `Actor` | For player travel, `to` is the typed place. A `none` token where a template says `token` is `SCHEMA`. |
-| Location `from` | Live place of `intent.actor_id` | n/a | `Location.from`, `Location.actor_id` | `from` is the actor's live place. `actor_id` is the intent actor. `to` is the place argument. A missing actor is `UNKNOWN_KEY`. `from` is not a YAML field. |
-| `FirstDrift` | Speaker's relationships, `now.world_time`, both actors' `busy` | Pairs collected, then sorted by the other actor id. First pair wins | `Relationship.a` is the speaker. `Relationship.b` is the other actor. | Speaker busy means no intent. Keep pairs where stance is not the target, `world_time` is at least 1440 minutes after `last_interaction_world_time`, the other actor exists, and the other is not busy. |
-| `TowardTarget` | That pair's stance and target | Same pair | `Relationship.delta` | `(target - stance)` clamped to `-1..=1`. Not a free delta. `apply_relationship` still returns `SKIPPED` when the once-per-world-day rule fails. |
-| `FirstKnownRumor` | `now.rumors`, speaker id, `budget.max_rumor_hops` | Rumors with `heat >= 1` whose `known_by` contains the speaker, sorted by id. First rumor that has a listener | `Rumor.rumor_id`, `Rumor.fact_ids` copied from that rumor, `Rumor.from` = speaker | If `max_rumor_hops == 0`, the walk fails. `fact_ids` is a copy, not a YAML list. `from` is the speaker, not a YAML field. |
-| `FirstListener` | Other actors, adjacency, `allows` | Recipient ids sorted. First id | `Rumor.to` | Adjacent means the same place, or the speaker's relationship map contains the other id. The other's viewer must `allows` every `fact_id`. No listener for this rumor means try the next rumor id. No listener at all means the agenda entry is not taken. |
-| `KeepHeat` | That rumor's `heat` | Same rumor | `Rumor.heat` | Copy `rumor.heat`. `apply_rumor` returns `OUT_OF_RANGE` unless heat is in `1..=3`. The walk already required `heat >= 1`. |
-| `FirstDueNote` | `profile.notes`, clocks, `now.messages` | File order of `profile.notes` | One `Message`: id, `to`, `place`, `fact_ids`, and `text` copied from that note | The first note where `clocks[due_clock].value >= due_value` and no message has that note's id. Notes are not sorted as a `BTreeMap`. |
-| `FirstOwnedClock` | `now.clocks`, speaker id, `humans` | Clock ids sorted. First match | `Clock.clock_id`. `Clock.delta` is the literal `1` on the template | The owner contains the actor, `paused` is false, and `value < max`. Also skip when the clock requires presence and `humans == 0`. The skip happens at selection, so the entry is not taken. |
-
-`Token` on a player row is the queued place or actor. It does not walk `Now`. It is stored in the binding so expand does not re-parse the line.
+Stock names `place`, `sku`, and `delta`. `apply_stock` still refuses a place outside range, an absolute delta above `stock_rate`, or a negative result. Relationship names `to` and `delta`. Rumor names `rumor`, `to`, and `heat`. Expand copies `fact_ids` from that rumor in `now.rumors`. A missing rumor is `UNKNOWN_KEY` and that habit row is not taken. Message names `id`, `to`, `place`, `fact_ids`, and `text`. Clock names `clock` and `delta`. Location `from` is the actor's live place and is not a YAML field. A meter template is a literal key and write. There is no stock maximum in the docks profile.
 
 Bindings and the outcome list are different steps.
 
-1. Before the apply loop, agenda selection and the player-queue snapshot resolve every selector walk against staging `Now` and store a bindings value on the candidate. That value holds the sku and rate, the live `from`, the drift pair and clamped delta, the rumor id, the copied fact ids, the speaker, the listener, the heat, the note fields, and the clock id. A later intent in the same tick cannot change which sku or rumor was chosen. A walk that fails means that agenda entry is not a candidate. Player rows that use only literals and `Token` bind the token, and travel also binds the live `from`.
+1. Habit selection picks a row before the apply loop. Expand fills that row's literals against the staging `Now` it sees, including `fact_ids` copied from a named rumor and `from` taken from the actor's live place. A row that does not expand is not the kernel intent. Player travel binds the typed place.
 2. Inside the per-candidate loop, `resolve_check` runs if the row has a `check`. An unknown id is `UNKNOWN_KEY`. Templates do not run. The die cursor does not move.
-3. After that roll, the selected templates are `effects`, plus `success` if the roll succeeded, plus `failure` if it failed. No roll means `effects` only. Those templates are filled from the frozen bindings, not by walking `Now` again. The result is a `Vec` of `EffectClass`.
+3. After that roll, the selected templates are `effects`, plus `success` if the roll succeeded, plus `failure` if it failed. No roll means `effects` only. Those templates are filled from the row, not by choosing a new target. The result is a `Vec` of `EffectClass`.
 4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `run_recorded_tick` expands those intents again, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. Replay does not install the log as `Now`. The names `need` and `resource` are not variants.
 
-A vec built before the roll cannot be both the success list and the failure list. The pre-roll value is the bindings. The post-roll value is the effect vec. Agenda rows may have `success` and `failure`. Outcome lists are not limited to player rows.
+A vec built before the roll cannot be both the success list and the failure list. The post-roll value is the effect vec. Habit rows may have `success` and `failure`. Outcome lists are not limited to player rows.
 
 The queued player value is not a struct per verb.
 
@@ -198,23 +163,27 @@ pub enum Source {
 
 Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again.
 
-Priority, computed before the roll, is unchanged in order: player before NPC before system, then PC-owned clocks, claimed targets, notable tier, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the frozen clock id in the bindings when the clock walk resolved, otherwise a literal clock id on the template. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a frozen note's `to` hits `actors_present`. Notable tier is `Named`, `Major`, or `plot_relevant`.
+Priority, computed before the roll, is player before NPC before system, then PC-owned clocks, claimed targets, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the clock id on the expanded effect. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a message's `to` hits `actors_present`.
 
 Library paths return `Result`. The CLI prints `Reason::token()` and exits 1.
 
-## Agenda and audience
+## Habits
 
-`TickProfile` gains `agenda`, a `Vec` of entries in file order. The first entry whose `when` gates all pass and whose selectors resolve to at least one class, or an explicit yield, is the NPC's intent. Later entries are not looked at.
+A tick profile has `habits`, a list in file order. The idle runner produces at most one kernel intent per eligible NPC. It takes the first habit that is on and whose first expanding row is an `audience: habit` row. Later habits wait. A habit that is always ready starves the ones under it. No such row means no kernel intent.
 
-An entry has a row name, an optional pause lane (`named_plot_clocks`, `subsistence_clocks`, or `relationship_drift`), and the flags `when_stock`, `when_drift`, `when_rumor`, `when_note`, and `when_clock`.
+A habit is on when every gate it sets is true. `runs_while_empty` is required. When `humans == 0`, only a habit with `runs_while_empty: true` can be chosen. When someone is seated, that flag does not block the runner. `from_hour` and `to_hour` are optional and come together. Each is an integer in `0..24`. The hour is `(world_time / 60) % 24`, read after the tick has advanced world time. `from < to` means `from <= hour < to`. `from > to` wraps midnight. `from == to` is never on. The check reads the hour. It does not write at the window's edge. `clock` and `at_least` are optional and come together. The habit is on when that clock exists, is not paused, and `value >= at_least`. A missing clock means the habit is off. `unless_message` is optional. The habit is off when a message with that id is already in `now.messages`.
 
-`pause` requires that lane's pause view to be running. The view is filled from the three policies in `tick.yaml` before agenda selection. `when_stock` is ready only when `FirstRateSku` returns a sku. `when_drift`, `when_rumor`, `when_note`, and `when_clock` are ready only when the matching walk returns a value. Notes use file order. Rumors, listeners, drift partners, and clocks use the orders in the selector table. An entry with no `when_*` flag is always ready if its pause lane is running. An agenda entry names an `audience: agenda` row, or load returns `SCHEMA`.
+An empty id, a duplicate id, an empty row list, a half-set hour pair, a half-set clock pair, or an hour outside `0..24` is `SCHEMA`. A habit row name that is not an `audience: habit` row is `SCHEMA`.
 
-`audience` is `player`, `agenda`, or `system`. The player parser queues only `player`. Agenda selection queues only `agenda`. No call site resolves `system`.
+`audience` is `player`, `habit`, or `system`. The player parser queues only `player`. Habit selection queues only `habit`. No call site resolves `system`.
 
-Eligibility runs first. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, no PC may be in that place, and the tier must be `named`, `major`, or `plot_relevant`. The NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no agenda intent. The shop stays still while a player stands in it because that NPC is not eligible. Plot clocks with `requires_presence` are paused while `humans == 0` and the policy is `pause_when_empty`. Subsistence and drift keep their own policies.
+Eligibility runs first. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, and no PC may be in that place. The NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no habit intent. The shop stays still while a player stands in it because that NPC is not eligible. `allowed` checks those gates only for `source: kernel`. A player-sourced intent is not checked against the hour, the clock, `unless_message`, `runs_while_empty`, or eligibility. Apply still checks range, stock rate, the firewall, paused clocks, and the other effect rules.
 
-Kernel agenda does not emit `say` or `talk`. A player world line while `humans == 0` is refused at queue time with `TABLE_EMPTY`. A five-name denylist is not part of agenda selection.
+NPC perceive includes `habits`, the ids that are on for that NPC, in file order. Player perceive sends an empty list. Queueing an intent does not consult that list.
+
+`tick.yaml` pause is `named_plot_clocks`. `now.pause` stores that one view. Plot clocks with `requires_presence` are paused while `humans == 0` and the policy is `pause_when_empty`.
+
+Kernel habits do not emit `say` or `talk`. A player world line while `humans == 0` is refused at queue time with `TABLE_EMPTY`. A five-name denylist is not part of habit selection.
 
 ## Failure tokens
 
@@ -227,7 +196,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 | Old emission | Token | One meaning |
 |---|---|---|
 | `NOT_OWNER` when the viewer is not the intent actor | `VIEWER_MISMATCH` | Effect viewer is not the intent actor |
-| `NOT_OWNER` when a kernel source acts for a player | `KERNEL_ON_PLAYER` | Agenda tried to act for a PC |
+| `NOT_OWNER` when a kernel source acts for a player | `KERNEL_ON_PLAYER` | A kernel habit tried to act for a PC |
 | `NOT_OWNER` when a kernel source acts for an ineligible NPC | `INELIGIBLE` | NPC failed eligibility |
 | `NOT_OWNER` when stock, location, or NPC counters need a tick profile and there is none | `NO_PROFILE` | The effect needed a tick profile and there is none |
 | `NOT_OWNER` when location, memory, or a system memory names an actor other than the intent actor | `ACTOR_MISMATCH` | The effect names an actor other than the intent actor |

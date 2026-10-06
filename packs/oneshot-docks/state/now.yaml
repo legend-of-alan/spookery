@@ -1,6 +1,6 @@
 schema: now/v0
 shard_id: docks-001
-pack_rev: blake2s:910db856fde9711264c3e3a9bdeead628a2cfebd6d58672b9c89249614adfa6f
+pack_rev: blake2s:9c70dad6757c9789745493a94ba6ee36f3cd2674561de64683a91596136e2cad
 state_rev: 0
 tick_index: 0
 world_time: 1080
@@ -10,8 +10,6 @@ presence:
   actors_present: []
 pause:
   named_plot_clocks: paused
-  relationship_drift: running
-  subsistence_clocks: running
 places:
   docks_shop:
     stock:

@@ -1,12 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use spookery_kernel::agenda::{allowed, kernel_intents_for_eligible_npcs};
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
 use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
 use spookery_kernel::commit::tick_commit;
 use spookery_kernel::expand::expand_outcome;
+use spookery_kernel::habit::{allowed, kernel_intents_for_eligible_npcs, stamp_for_priority};
 use spookery_kernel::intent::{ActorKind, Intent, Source, Target, ViewerId};
 use spookery_kernel::lock::lock_shard;
 use spookery_kernel::pause::apply_pause_policy;
@@ -154,8 +154,11 @@ fn stage_tick(
         recorded.intents.clone()
     } else {
         let mut candidates = queued;
+        for intent in &mut candidates {
+            stamp_for_priority(txn.canon(), txn.now(), intent);
+        }
         candidates.extend(kernel_intents_for_eligible_npcs(txn.canon(), txn.now()));
-        let mut candidates = prioritize(txn.canon(), txn.now(), candidates, tick_index, &shard_id);
+        let mut candidates = prioritize(txn.now(), candidates, tick_index, &shard_id);
         let max_intents = txn.budget().max_intents_applied as usize;
         if candidates.len() > max_intents {
             candidates.truncate(max_intents);

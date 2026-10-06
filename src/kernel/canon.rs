@@ -55,54 +55,25 @@ pub struct CastCanon {
     pub tick: Option<TickProfile>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Default)]
-#[serde(rename_all = "snake_case")]
-pub enum Tier {
-    Named,
-    Major,
-    #[default]
-    Minor,
-}
-
 #[derive(Clone, Debug)]
 pub struct TickProfile {
     pub eligible: bool,
-    pub tier: Tier,
-    pub plot_relevant: bool,
     pub range: Vec<String>,
     pub stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
     pub flags: Vec<String>,
-    pub notes: Vec<NoteDef>,
-    pub agenda: Vec<AgendaEntry>,
+    pub habits: Vec<Habit>,
 }
 
 #[derive(Clone, Debug)]
-pub struct NoteDef {
+pub struct Habit {
     pub id: String,
-    pub due_clock: String,
-    pub due_value: i64,
-    pub to: Vec<String>,
-    pub place: String,
-    pub fact_ids: Vec<String>,
-    pub text: String,
-}
-
-#[derive(Clone, Debug)]
-pub struct AgendaEntry {
-    pub row: String,
-    pub pause: Option<PauseLane>,
-    pub when_stock: bool,
-    pub when_drift: bool,
-    pub when_rumor: bool,
-    pub when_note: bool,
-    pub when_clock: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PauseLane {
-    NamedPlotClocks,
-    SubsistenceClocks,
-    RelationshipDrift,
+    pub runs_while_empty: bool,
+    pub from_hour: Option<i64>,
+    pub to_hour: Option<i64>,
+    pub clock: Option<String>,
+    pub at_least: Option<i64>,
+    pub unless_message: Option<String>,
+    pub rows: Vec<String>,
 }
 
 impl Canon {
@@ -250,7 +221,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
     let meters = load_meters(&read_string(&root.join("rules/meters.yaml"))?)?;
     require_known_checks(&moves, &checks)?;
     require_meter_ids(&meters, &checks, &moves)?;
-    require_agenda_rows(&cast, &moves)?;
+    require_habit_rows(&cast, &moves)?;
     let budget = load_tick_rules(&read_string(&root.join("rules/tick.yaml"))?)?;
     Ok(Canon {
         pack_id: pack.id,
@@ -301,60 +272,56 @@ fn insert_fact(
 }
 
 fn validate_tick(file: TickFile) -> Result<TickProfile, Reason> {
-    let mut seen_notes = BTreeSet::new();
-    for note in &file.notes {
-        if note.id.is_empty() || !seen_notes.insert(note.id.clone()) {
-            return Err(Reason::Schema);
-        }
-    }
     Ok(TickProfile {
         eligible: file.eligible,
-        tier: file.tier,
-        plot_relevant: file.plot_relevant,
         range: file.range,
         stock_rate: file.stock_rate,
         flags: file.flags,
-        notes: file
-            .notes
-            .into_iter()
-            .map(|note| NoteDef {
-                id: note.id,
-                due_clock: note.due_clock,
-                due_value: note.due_value,
-                to: note.to,
-                place: note.place,
-                fact_ids: note.fact_ids,
-                text: note.text,
-            })
-            .collect(),
-        agenda: agenda_of(file.agenda)?,
+        habits: habits_of(file.habits)?,
     })
 }
 
-fn agenda_of(entries: Vec<AgendaFile>) -> Result<Vec<AgendaEntry>, Reason> {
-    let mut agenda = Vec::with_capacity(entries.len());
+fn habits_of(entries: Vec<HabitFile>) -> Result<Vec<Habit>, Reason> {
+    let mut habits = Vec::with_capacity(entries.len());
+    let mut seen = BTreeSet::new();
     for entry in entries {
-        if entry.row.is_empty() {
+        if entry.id.is_empty() || !seen.insert(entry.id.clone()) || entry.rows.is_empty() {
             return Err(Reason::Schema);
         }
-        let pause = match entry.pause.as_deref() {
-            None => None,
-            Some("named_plot_clocks") => Some(PauseLane::NamedPlotClocks),
-            Some("subsistence_clocks") => Some(PauseLane::SubsistenceClocks),
-            Some("relationship_drift") => Some(PauseLane::RelationshipDrift),
-            Some(_) => return Err(Reason::Schema),
+        if entry.rows.iter().any(|row| row.is_empty()) {
+            return Err(Reason::Schema);
+        }
+        let hours = match (entry.from_hour, entry.to_hour) {
+            (None, None) => (None, None),
+            (Some(from), Some(to)) if (0..24).contains(&from) && (0..24).contains(&to) => {
+                (Some(from), Some(to))
+            }
+            _ => return Err(Reason::Schema),
         };
-        agenda.push(AgendaEntry {
-            row: entry.row,
-            pause,
-            when_stock: entry.when_stock,
-            when_drift: entry.when_drift,
-            when_rumor: entry.when_rumor,
-            when_note: entry.when_note,
-            when_clock: entry.when_clock,
+        let clock = match (entry.clock, entry.at_least) {
+            (None, None) => (None, None),
+            (Some(id), Some(at_least)) if !id.is_empty() => (Some(id), Some(at_least)),
+            _ => return Err(Reason::Schema),
+        };
+        if entry
+            .unless_message
+            .as_ref()
+            .is_some_and(|id| id.is_empty())
+        {
+            return Err(Reason::Schema);
+        }
+        habits.push(Habit {
+            id: entry.id,
+            runs_while_empty: entry.runs_while_empty,
+            from_hour: hours.0,
+            to_hour: hours.1,
+            clock: clock.0,
+            at_least: clock.1,
+            unless_message: entry.unless_message,
+            rows: entry.rows,
         });
     }
-    Ok(agenda)
+    Ok(habits)
 }
 
 pub fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Reason> {
@@ -462,17 +429,19 @@ fn require_known_checks(
     Ok(())
 }
 
-fn require_agenda_rows(
+fn require_habit_rows(
     cast: &BTreeMap<String, CastCanon>,
     moves: &BTreeMap<String, MoveDef>,
 ) -> Result<(), Reason> {
     for profile in cast.values().filter_map(|cast| cast.tick.as_ref()) {
-        for entry in &profile.agenda {
-            let Some(row) = moves.get(&entry.row).and_then(|def| def.row.as_ref()) else {
-                return Err(Reason::Schema);
-            };
-            if row.audience != Some(Audience::Agenda) {
-                return Err(Reason::Schema);
+        for habit in &profile.habits {
+            for name in &habit.rows {
+                let Some(row) = moves.get(name).and_then(|def| def.row.as_ref()) else {
+                    return Err(Reason::Schema);
+                };
+                if row.audience != Some(Audience::Habit) {
+                    return Err(Reason::Schema);
+                }
             }
         }
     }
@@ -593,37 +562,31 @@ struct CastFile {
 struct TickFile {
     eligible: bool,
     #[serde(default)]
-    tier: Tier,
-    #[serde(default)]
-    plot_relevant: bool,
-    #[serde(default)]
     range: Vec<String>,
     #[serde(default)]
     stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
     #[serde(default)]
     flags: Vec<String>,
     #[serde(default)]
-    notes: Vec<NoteFile>,
-    #[serde(default)]
-    agenda: Vec<AgendaFile>,
+    habits: Vec<HabitFile>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct AgendaFile {
-    row: String,
+struct HabitFile {
+    id: String,
+    runs_while_empty: bool,
     #[serde(default)]
-    pause: Option<String>,
+    from_hour: Option<i64>,
     #[serde(default)]
-    when_stock: bool,
+    to_hour: Option<i64>,
     #[serde(default)]
-    when_drift: bool,
+    clock: Option<String>,
     #[serde(default)]
-    when_rumor: bool,
+    at_least: Option<i64>,
     #[serde(default)]
-    when_note: bool,
-    #[serde(default)]
-    when_clock: bool,
+    unless_message: Option<String>,
+    rows: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -641,18 +604,6 @@ struct MeterEntryFile {
     base_cap: i64,
     max: i64,
     start: i64,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct NoteFile {
-    id: String,
-    due_clock: String,
-    due_value: i64,
-    to: Vec<String>,
-    place: String,
-    fact_ids: Vec<String>,
-    text: String,
 }
 
 #[cfg(test)]

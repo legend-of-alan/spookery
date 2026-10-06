@@ -13,7 +13,9 @@ pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<()
         return Err(Reason::ViewerMismatch);
     }
     match effect.class {
-        EffectClass::Clock { clock_id, delta } => apply_clock(txn, &clock_id, delta),
+        EffectClass::Clock { clock_id, delta } => {
+            apply_clock(txn, &intent.actor_id, &clock_id, delta)
+        }
         EffectClass::Meter {
             actor_id,
             key,
@@ -65,9 +67,12 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     }
 }
 
-fn apply_clock(txn: &mut Txn, clock_id: &str, delta: i64) -> Result<(), Reason> {
+fn apply_clock(txn: &mut Txn, actor_id: &str, clock_id: &str, delta: i64) -> Result<(), Reason> {
     let humans = txn.now().presence.humans;
     let clock = txn.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
+    if !clock.owners.iter().any(|owner| owner == actor_id) {
+        return Err(Reason::UnknownKey);
+    }
     if clock.paused || (clock.requires_presence && humans == 0) {
         return Err(Reason::PausedClock);
     }

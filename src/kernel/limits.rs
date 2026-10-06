@@ -26,8 +26,6 @@ pub struct Budget {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PausePolicies {
     pub named_plot_clocks: PausePolicy,
-    pub subsistence_clocks: PausePolicy,
-    pub relationship_drift: PausePolicy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -57,8 +55,6 @@ impl Budget {
             idle_max_world_hours_per_real_hour: 8,
             pause: PausePolicies {
                 named_plot_clocks: PausePolicy::PauseWhenEmpty,
-                subsistence_clocks: PausePolicy::AlwaysRun,
-                relationship_drift: PausePolicy::AlwaysRun,
             },
         }
     }
@@ -102,8 +98,6 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
         )?,
         pause: PausePolicies {
             named_plot_clocks: file.pause.named_plot_clocks,
-            subsistence_clocks: file.pause.subsistence_clocks,
-            relationship_drift: file.pause.relationship_drift,
         },
     })
 }
@@ -141,6 +135,4 @@ struct TickFile {
 #[serde(deny_unknown_fields)]
 struct PauseFile {
     named_plot_clocks: PausePolicy,
-    subsistence_clocks: PausePolicy,
-    relationship_drift: PausePolicy,
 }

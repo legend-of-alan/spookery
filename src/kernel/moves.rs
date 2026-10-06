@@ -30,51 +30,8 @@ pub struct ActionRow {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Audience {
     Player,
-    Agenda,
+    Habit,
     System,
-}
-
-/// Closed selector words. The YAML spellings are the short names (`first_rate`, `keep`).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Selector {
-    Token,
-    Here,
-    FirstRateSku,
-    Rate,
-    FirstDrift,
-    TowardTarget,
-    FirstKnownRumor,
-    FirstListener,
-    KeepHeat,
-    FirstDueNote,
-    FirstOwnedClock,
-}
-
-impl Selector {
-    pub fn parse(word: &str) -> Option<Self> {
-        Some(match word {
-            "token" => Self::Token,
-            "here" => Self::Here,
-            "first_rate" => Self::FirstRateSku,
-            "rate" => Self::Rate,
-            "first_drift" => Self::FirstDrift,
-            "toward_target" => Self::TowardTarget,
-            "first_known" => Self::FirstKnownRumor,
-            "first_listener" => Self::FirstListener,
-            "keep" => Self::KeepHeat,
-            "first_due_note" => Self::FirstDueNote,
-            "first_owned" => Self::FirstOwnedClock,
-            _ => return None,
-        })
-    }
-}
-
-/// A literal or one selector. Selectors do not compose.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Field {
-    Literal(String),
-    Number(i64),
-    Selector(Selector),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -99,24 +56,28 @@ pub enum RowEffect {
     },
     Location,
     LocationTo {
-        to: Field,
+        to: String,
     },
     Meter(WorkWrite),
     Stock {
-        place: Field,
-        sku: Field,
-        delta: Field,
+        place: String,
+        sku: String,
+        delta: i64,
     },
     Clock {
-        clock: Field,
+        clock: String,
         delta: i64,
     },
     Message {
-        message: Selector,
+        id: String,
+        to: Vec<String>,
+        place: Option<String>,
+        fact_ids: Vec<String>,
+        text: String,
     },
     Relationship {
-        to: Field,
-        delta: Field,
+        to: String,
+        delta: i64,
     },
     Reputation {
         faction: String,
@@ -128,9 +89,9 @@ pub enum RowEffect {
         text: Option<String>,
     },
     Rumor {
-        rumor: Selector,
-        to: Selector,
-        heat: Selector,
+        rumor: String,
+        to: String,
+        heat: i64,
     },
 }
 
@@ -178,7 +139,7 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     }
     let audience = match entry.audience.as_deref() {
         Some("player") => Audience::Player,
-        Some("agenda") => Audience::Agenda,
+        Some("habit") => Audience::Habit,
         Some("system") => Audience::System,
         _ => return Err(Reason::Schema),
     };
@@ -319,24 +280,18 @@ fn flag_template(
 
 fn location_template(token: MoveToken, effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["to"])?;
-    let Some(word) = effect.to.as_deref() else {
-        if token == MoveToken::Place {
-            return Ok(RowEffect::Location);
-        }
-        return Err(Reason::Schema);
-    };
-    match text_field(word)? {
-        Field::Selector(Selector::Token) => {
+    match effect.to.as_ref() {
+        None if token == MoveToken::Place => Ok(RowEffect::Location),
+        Some(ToField::One(word)) if word == "token" => {
             if token != MoveToken::Place {
                 return Err(Reason::Schema);
             }
             Ok(RowEffect::Location)
         }
-        Field::Selector(_) => Err(Reason::Schema),
-        Field::Literal(place) => Ok(RowEffect::LocationTo {
-            to: Field::Literal(place),
+        Some(ToField::One(word)) => Ok(RowEffect::LocationTo {
+            to: literal_id(Some(word))?,
         }),
-        Field::Number(_) => Err(Reason::Schema),
+        _ => Err(Reason::Schema),
     }
 }
 
@@ -354,63 +309,66 @@ fn meter_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
 
 fn stock_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["place", "sku", "delta"])?;
-    let place = text_field(effect.place.as_deref().ok_or(Reason::Schema)?)?;
-    let sku = text_field(effect.sku.as_deref().ok_or(Reason::Schema)?)?;
-    let delta = required_delta(effect.delta.as_ref())?;
-    let walk = place == Field::Selector(Selector::Here)
-        && sku == Field::Selector(Selector::FirstRateSku)
-        && delta == Field::Selector(Selector::Rate);
-    let literals = matches!(place, Field::Literal(_))
-        && matches!(sku, Field::Literal(_))
-        && matches!(delta, Field::Number(_));
-    if !walk && !literals {
-        return Err(Reason::Schema);
-    }
-    Ok(RowEffect::Stock { place, sku, delta })
+    Ok(RowEffect::Stock {
+        place: literal_id(effect.place.as_deref())?,
+        sku: literal_id(effect.sku.as_deref())?,
+        delta: required_number(effect.delta.as_ref())?,
+    })
 }
 
 fn clock_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["clock", "delta"])?;
-    let clock = text_field(effect.clock.as_deref().ok_or(Reason::Schema)?)?;
-    match &clock {
-        Field::Selector(Selector::FirstOwnedClock) | Field::Literal(_) => {}
-        _ => return Err(Reason::Schema),
-    }
-    let Some(delta) = number_field(effect.delta.as_ref())? else {
-        return Err(Reason::Schema);
-    };
-    Ok(RowEffect::Clock { clock, delta })
+    Ok(RowEffect::Clock {
+        clock: literal_id(effect.clock.as_deref())?,
+        delta: required_number(effect.delta.as_ref())?,
+    })
 }
 
 fn message_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["message"])?;
-    let word = effect.message.as_deref().ok_or(Reason::Schema)?;
-    match Selector::parse(word) {
-        Some(Selector::FirstDueNote) => Ok(RowEffect::Message {
-            message: Selector::FirstDueNote,
-        }),
-        _ => Err(Reason::Schema),
-    }
+    only(effect, &["id", "to", "place", "fact_ids", "text"])?;
+    let id = literal_id(effect.id.as_deref())?;
+    let to = match effect.to.as_ref() {
+        Some(ToField::Many(ids)) if !ids.is_empty() => ids
+            .iter()
+            .map(|id| literal_id(Some(id.as_str())))
+            .collect::<Result<Vec<_>, _>>()?,
+        _ => return Err(Reason::Schema),
+    };
+    let place = match effect.place.as_deref() {
+        None => None,
+        Some(place) => Some(literal_id(Some(place))?),
+    };
+    let fact_ids = effect
+        .fact_ids
+        .iter()
+        .flatten()
+        .map(|id| literal_id(Some(id.as_str())))
+        .collect::<Result<Vec<_>, _>>()?;
+    let text = effect.text.clone().ok_or(Reason::Schema)?;
+    Ok(RowEffect::Message {
+        id,
+        to,
+        place,
+        fact_ids,
+        text,
+    })
 }
 
 fn relationship_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["to", "delta"])?;
-    let to = text_field(effect.to.as_deref().ok_or(Reason::Schema)?)?;
-    let delta = required_delta(effect.delta.as_ref())?;
-    let walk = to == Field::Selector(Selector::FirstDrift)
-        && delta == Field::Selector(Selector::TowardTarget);
-    let literals = matches!(to, Field::Literal(_)) && matches!(delta, Field::Number(_));
-    if !walk && !literals {
-        return Err(Reason::Schema);
-    }
-    Ok(RowEffect::Relationship { to, delta })
+    let to = match effect.to.as_ref() {
+        Some(ToField::One(word)) => literal_id(Some(word))?,
+        _ => return Err(Reason::Schema),
+    };
+    Ok(RowEffect::Relationship {
+        to,
+        delta: required_number(effect.delta.as_ref())?,
+    })
 }
 
 fn reputation_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["faction", "delta"])?;
-    let Some(delta) = number_field(effect.delta.as_ref())? else {
-        return Err(Reason::Schema);
-    };
+    let delta = required_number(effect.delta.as_ref())?;
     Ok(RowEffect::Reputation {
         faction: effect.faction.clone().ok_or(Reason::Schema)?,
         delta,
@@ -428,15 +386,12 @@ fn memory_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
 
 fn rumor_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["rumor", "to", "heat"])?;
-    let rumor = selector_word(effect.rumor.as_deref().ok_or(Reason::Schema)?)?;
-    let to = selector_word(effect.to.as_deref().ok_or(Reason::Schema)?)?;
-    let heat = selector_word(effect.heat.as_deref().ok_or(Reason::Schema)?)?;
-    if rumor != Selector::FirstKnownRumor
-        || to != Selector::FirstListener
-        || heat != Selector::KeepHeat
-    {
-        return Err(Reason::Schema);
-    }
+    let rumor = literal_id(effect.rumor.as_deref())?;
+    let to = match effect.to.as_ref() {
+        Some(ToField::One(word)) => literal_id(Some(word))?,
+        _ => return Err(Reason::Schema),
+    };
+    let heat = effect.heat.ok_or(Reason::Schema)?;
     Ok(RowEffect::Rumor { rumor, to, heat })
 }
 
@@ -450,7 +405,7 @@ fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
         ("place", effect.place.is_some()),
         ("sku", effect.sku.is_some()),
         ("clock", effect.clock.is_some()),
-        ("message", effect.message.is_some()),
+        ("id", effect.id.is_some()),
         ("faction", effect.faction.is_some()),
         ("fact_ids", effect.fact_ids.is_some()),
         ("tags", effect.tags.is_some()),
@@ -467,30 +422,36 @@ fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
     Ok(())
 }
 
-fn text_field(word: &str) -> Result<Field, Reason> {
-    Ok(match Selector::parse(word) {
-        Some(selector) => Field::Selector(selector),
-        None => Field::Literal(word.to_string()),
-    })
-}
-
-fn selector_word(word: &str) -> Result<Selector, Reason> {
-    Selector::parse(word).ok_or(Reason::Schema)
-}
-
-fn required_delta(delta: Option<&DeltaField>) -> Result<Field, Reason> {
-    match delta {
-        Some(DeltaField::Int(n)) => Ok(Field::Number(*n)),
-        Some(DeltaField::Word(word)) => Ok(Field::Selector(selector_word(word)?)),
-        None => Err(Reason::Schema),
+fn literal_id(word: Option<&str>) -> Result<String, Reason> {
+    let Some(word) = word else {
+        return Err(Reason::Schema);
+    };
+    if word.is_empty() || word == "token" || retired_word(word) {
+        return Err(Reason::Schema);
     }
+    Ok(word.to_string())
 }
 
-fn number_field(delta: Option<&DeltaField>) -> Result<Option<i64>, Reason> {
+fn retired_word(word: &str) -> bool {
+    matches!(
+        word,
+        "here"
+            | "first_rate"
+            | "rate"
+            | "first_drift"
+            | "toward_target"
+            | "first_known"
+            | "first_listener"
+            | "keep"
+            | "first_due_note"
+            | "first_owned"
+    )
+}
+
+fn required_number(delta: Option<&DeltaField>) -> Result<i64, Reason> {
     match delta {
-        None => Ok(None),
-        Some(DeltaField::Int(n)) => Ok(Some(*n)),
-        Some(DeltaField::Word(_)) => Err(Reason::Schema),
+        Some(DeltaField::Int(n)) => Ok(*n),
+        _ => Err(Reason::Schema),
     }
 }
 
@@ -542,7 +503,7 @@ struct EffectTemplate {
     #[serde(default)]
     delta: Option<DeltaField>,
     #[serde(default)]
-    to: Option<String>,
+    to: Option<ToField>,
     #[serde(default)]
     place: Option<String>,
     #[serde(default)]
@@ -550,7 +511,7 @@ struct EffectTemplate {
     #[serde(default)]
     clock: Option<String>,
     #[serde(default)]
-    message: Option<String>,
+    id: Option<String>,
     #[serde(default)]
     faction: Option<String>,
     #[serde(default)]
@@ -562,14 +523,20 @@ struct EffectTemplate {
     #[serde(default)]
     rumor: Option<String>,
     #[serde(default)]
-    heat: Option<String>,
+    heat: Option<i64>,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ToField {
+    One(String),
+    Many(Vec<String>),
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum DeltaField {
     Int(i64),
-    Word(String),
 }
 
 #[cfg(test)]
@@ -577,7 +544,7 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use super::{load_moves, Audience, Field, MoveOn, MoveToken, RowEffect, Selector};
+    use super::{load_moves, Audience, MoveOn, MoveToken, RowEffect};
     use crate::error::Reason;
     use crate::meter::{MeterWrite, WorkWrite};
 
@@ -603,13 +570,23 @@ mod tests {
         assert_eq!(moves.get("grit").unwrap().check.as_deref(), Some("grit"));
         assert_eq!(
             moves
-                .get("advance_clock")
+                .get("restock_lamp_oil")
                 .unwrap()
                 .row
                 .as_ref()
                 .unwrap()
                 .audience,
-            Some(Audience::Agenda)
+            Some(Audience::Habit)
+        );
+        assert_eq!(
+            moves
+                .get("leave_door_note")
+                .unwrap()
+                .row
+                .as_ref()
+                .unwrap()
+                .audience,
+            Some(Audience::Habit)
         );
         assert!(moves.get("talk").is_none());
         assert!(moves.get("attempt").is_none());
@@ -620,7 +597,7 @@ mod tests {
     }
 
     #[test]
-    fn a_row_names_eleven_classes_selector_words_and_a_yield() {
+    fn a_row_names_ten_classes_literals_and_a_yield() {
         let moves = load_moves(
             r#"schema: moves/v0
 moves:
@@ -630,31 +607,36 @@ moves:
     on: speaker
     effects: []
   - name: shelf
-    audience: agenda
+    audience: habit
     token: none
     on: speaker
     difficulty: 2
     effects:
       - class: stock
-        place: here
-        sku: first_rate
-        delta: rate
+        place: docks_shop
+        sku: lamp_oil
+        delta: 4
       - class: meter
         key: rest
         write: base
         delta: 1
       - class: clock
-        clock: first_owned
+        clock: shop_day
         delta: 1
       - class: message
-        message: first_due_note
+        id: note_mira_door
+        to:
+          - pc_rowan
+        place: docks_shop
+        fact_ids: []
+        text: Back at dusk.
       - class: relationship
-        to: first_drift
-        delta: toward_target
+        to: bram
+        delta: -1
       - class: rumor
-        rumor: first_known
-        to: first_listener
-        heat: keep
+        rumor: r_184
+        to: aldric
+        heat: 1
       - class: reputation
         faction: harbor
         delta: 1
@@ -703,14 +685,39 @@ moves:
         assert!(hold.effects.is_empty());
         assert_eq!(hold.difficulty, 0);
         let shelf = moves.get("shelf").unwrap().row.as_ref().unwrap();
-        assert_eq!(shelf.audience, Some(Audience::Agenda));
+        assert_eq!(shelf.audience, Some(Audience::Habit));
         assert_eq!(shelf.difficulty, 2);
         assert_eq!(
             shelf.effects[0],
             RowEffect::Stock {
-                place: Field::Selector(Selector::Here),
-                sku: Field::Selector(Selector::FirstRateSku),
-                delta: Field::Selector(Selector::Rate),
+                place: "docks_shop".to_string(),
+                sku: "lamp_oil".to_string(),
+                delta: 4,
+            }
+        );
+        assert_eq!(
+            shelf.effects[3],
+            RowEffect::Message {
+                id: "note_mira_door".to_string(),
+                to: vec!["pc_rowan".to_string()],
+                place: Some("docks_shop".to_string()),
+                fact_ids: Vec::new(),
+                text: "Back at dusk.".to_string(),
+            }
+        );
+        assert_eq!(
+            shelf.effects[4],
+            RowEffect::Relationship {
+                to: "bram".to_string(),
+                delta: -1,
+            }
+        );
+        assert_eq!(
+            shelf.effects[5],
+            RowEffect::Rumor {
+                rumor: "r_184".to_string(),
+                to: "aldric".to_string(),
+                heat: 1,
             }
         );
         assert_eq!(
@@ -725,7 +732,7 @@ moves:
         assert_eq!(
             night.effects[0],
             RowEffect::LocationTo {
-                to: Field::Literal("docks_shop".to_string()),
+                to: "docks_shop".to_string(),
             }
         );
         let step = moves.get("step").unwrap().row.as_ref().unwrap();
@@ -822,13 +829,61 @@ moves:
         );
         assert_eq!(
             schema(
-                "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: stock\n        place: here\n        sku: lamp_oil\n        delta: 4\n"
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: stock\n        place: here\n        sku: lamp_oil\n        delta: 4\n"
             ),
             Reason::Schema
         );
         assert_eq!(
             schema(
-                "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: message\n        message: first_note\n"
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: stock\n        place: docks_shop\n        sku: first_rate\n        delta: 4\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: relationship\n        to: first_drift\n        delta: -1\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: first_known\n        to: aldric\n        heat: 1\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: r_184\n        to: aldric\n        heat: keep\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: clock\n        clock: first_owned\n        delta: 1\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: agenda\n    token: none\n    on: speaker\n    effects: []\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: message\n        message: first_due_note\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: message\n        id: note\n        to:\n          - first_listener\n        text: hi\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: message\n        id: note\n        to:\n          - pc_rowan\n        fact_ids:\n          - here\n        text: hi\n"
             ),
             Reason::Schema
         );

@@ -24,8 +24,6 @@ pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Reason> {
     }
     let mut view = txn.now().pause.clone();
     view.named_plot_clocks = view_state(policies.named_plot_clocks, humans);
-    view.subsistence_clocks = view_state(policies.subsistence_clocks, humans);
-    view.relationship_drift = view_state(policies.relationship_drift, humans);
     txn.set_pause_view(view);
     Ok(())
 }

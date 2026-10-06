@@ -22,48 +22,25 @@ moves:
     difficulty: 0
     effects: []
 
-  - name: restock
-    audience: agenda
+  - name: restock_lamp_oil
+    audience: habit
     token: none
     on: speaker
     effects:
       - class: stock
-        place: here
-        sku: first_rate
-        delta: rate
+        place: docks_shop
+        sku: lamp_oil
+        delta: 4
 
-  - name: drift_relationship
-    audience: agenda
-    token: none
-    on: speaker
-    effects:
-      - class: relationship
-        to: first_drift
-        delta: toward_target
-
-  - name: spread_rumor
-    audience: agenda
-    token: none
-    on: speaker
-    effects:
-      - class: rumor
-        rumor: first_known
-        to: first_listener
-        heat: keep
-
-  - name: leave_note
-    audience: agenda
+  - name: leave_door_note
+    audience: habit
     token: none
     on: speaker
     effects:
       - class: message
-        message: first_due_note
-
-  - name: advance_clock
-    audience: agenda
-    token: none
-    on: speaker
-    effects:
-      - class: clock
-        clock: first_owned
-        delta: 1
+        id: note_mira_door
+        to:
+          - pc_rowan
+        place: docks_shop
+        fact_ids: []
+        text: Back at dusk. Oil on the shelf.

@@ -15,5 +15,3 @@ idle_catchup_max_ticks: 12
 idle_max_world_hours_per_real_hour: 8
 pause:
   named_plot_clocks: pause_when_empty
-  subsistence_clocks: always_run
-  relationship_drift: always_run

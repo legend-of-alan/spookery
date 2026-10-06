@@ -28,14 +28,13 @@ pub fn parse_tape(line: &str) -> Result<TapeLine, Reason> {
         .ok_or(Reason::Schema)?;
     let mut ids = Vec::new();
     for id in recipients {
-        ids.push(
-            id.as_str()
-                .ok_or(Reason::Schema)?
-                .to_string(),
-        );
+        ids.push(id.as_str().ok_or(Reason::Schema)?.to_string());
     }
     Ok(TapeLine {
-        seq: value.get("seq").and_then(Value::as_u64).ok_or(Reason::Schema)?,
+        seq: value
+            .get("seq")
+            .and_then(Value::as_u64)
+            .ok_or(Reason::Schema)?,
         from: value
             .get("from")
             .and_then(Value::as_str)
@@ -187,6 +186,7 @@ pub fn perceive_value(view: &Perceive) -> Value {
         "stocks".to_string(),
         Value::Array(view.stocks.iter().map(stock_value).collect()),
     );
+    map.insert("habits".to_string(), string_list(&view.habits));
     Value::Object(map)
 }
 
@@ -228,17 +228,7 @@ pub fn session_status(
     );
     map.insert(
         "pause".to_string(),
-        obj([
-            ("named_plot_clocks", run_state(now.pause.named_plot_clocks)),
-            (
-                "relationship_drift",
-                run_state(now.pause.relationship_drift),
-            ),
-            (
-                "subsistence_clocks",
-                run_state(now.pause.subsistence_clocks),
-            ),
-        ]),
+        obj([("named_plot_clocks", run_state(now.pause.named_plot_clocks))]),
     );
     map.insert("world_time".to_string(), Value::from(now.world_time));
     map.insert("tick_index".to_string(), Value::from(now.tick_index));

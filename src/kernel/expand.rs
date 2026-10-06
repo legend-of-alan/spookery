@@ -4,8 +4,7 @@ use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::meter::WorkWrite;
 use crate::model::Now;
-use crate::moves::{ActionRow, Field, MoveOn, RowEffect, Selector};
-use crate::select::{first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk};
+use crate::moves::{ActionRow, MoveOn, RowEffect};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
     expand_outcome(canon, now, intent, None)
@@ -24,7 +23,7 @@ pub fn expand_outcome(
         .get(&intent.move_name)
         .and_then(|def| def.row.as_ref())
     {
-        return expand_row(canon, now, intent, row, outcome);
+        return expand_row(now, intent, row, outcome);
     }
     if canon.moves.contains_key(&intent.move_name) {
         Err(Reason::NotInSpec)
@@ -36,9 +35,8 @@ pub fn expand_outcome(
 /// One effect per selected template. `effects` always. `success` or `failure` when that outcome was rolled.
 /// A flag's `speaker` is the acting actor and `named` is the typed id.
 /// A bare location template is the same effect as the travel arm: `to` is the typed place.
-/// Selector walks run here, against the `Now` this call sees.
+/// Literals are copied here. A rumor row copies `fact_ids` from the named rumor.
 fn expand_row(
-    canon: &Canon,
     now: &Now,
     intent: &Intent,
     row: &ActionRow,
@@ -55,13 +53,12 @@ fn expand_row(
     }
     let mut effects = Vec::with_capacity(selected.len());
     for template in selected {
-        expand_template(canon, now, intent, row, &viewer, template, &mut effects)?;
+        expand_template(now, intent, row, &viewer, template, &mut effects)?;
     }
     Ok(effects)
 }
 
 fn expand_template(
-    canon: &Canon,
     now: &Now,
     intent: &Intent,
     row: &ActionRow,
@@ -92,10 +89,7 @@ fn expand_template(
             effects.push(location_effect(now, intent, to)?);
         }
         RowEffect::LocationTo { to } => {
-            let Field::Literal(place) = to else {
-                return Err(Reason::Schema);
-            };
-            effects.push(location_effect(now, intent, place)?);
+            effects.push(location_effect(now, intent, to)?);
         }
         RowEffect::Meter(write) => {
             effects.push(wrap(
@@ -105,58 +99,53 @@ fn expand_template(
             ));
         }
         RowEffect::Stock { place, sku, delta } => {
-            let (place, sku, delta) =
-                stock_fields(canon, now, &intent.actor_id, place, sku, delta)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Stock { place, sku, delta },
+                EffectClass::Stock {
+                    place: place.clone(),
+                    sku: sku.clone(),
+                    delta: *delta,
+                },
             ));
         }
         RowEffect::Clock { clock, delta } => {
-            let clock_id = match clock {
-                Field::Selector(Selector::FirstOwnedClock) => {
-                    first_owned_clock(now, &intent.actor_id).ok_or(Reason::UnknownKey)?
-                }
-                Field::Literal(id) => id.clone(),
-                _ => return Err(Reason::Schema),
-            };
             effects.push(wrap(
                 viewer,
                 &intent.id,
                 EffectClass::Clock {
-                    clock_id,
+                    clock_id: clock.clone(),
                     delta: *delta,
                 },
             ));
         }
         RowEffect::Message {
-            message: Selector::FirstDueNote,
+            id,
+            to,
+            place,
+            fact_ids,
+            text,
         } => {
-            let profile = canon.profile(&intent.actor_id).ok_or(Reason::UnknownKey)?;
-            let note = first_due_note(now, profile).ok_or(Reason::UnknownKey)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
                 EffectClass::Message {
-                    message_id: note.id.clone(),
-                    to: note.to.clone(),
-                    place: Some(note.place.clone()),
-                    fact_ids: note.fact_ids.clone(),
-                    text: note.text.clone(),
+                    message_id: id.clone(),
+                    to: to.clone(),
+                    place: place.clone(),
+                    fact_ids: fact_ids.clone(),
+                    text: text.clone(),
                 },
             ));
         }
-        RowEffect::Message { .. } => return Err(Reason::Schema),
         RowEffect::Relationship { to, delta } => {
-            let (other, delta) = relationship_fields(now, &intent.actor_id, to, delta)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
                 EffectClass::Relationship {
                     a: intent.actor_id.clone(),
-                    b: other,
-                    delta,
+                    b: to.clone(),
+                    delta: *delta,
                 },
             ));
         }
@@ -189,9 +178,24 @@ fn expand_template(
                 },
             ));
         }
-        RowEffect::Rumor { .. } => {
-            let class = rumor_class(canon, now, &intent.actor_id).ok_or(Reason::UnknownKey)?;
-            effects.push(wrap(viewer, &intent.id, class));
+        RowEffect::Rumor { rumor, to, heat } => {
+            let fact_ids = now
+                .rumors
+                .iter()
+                .find(|record| record.id == *rumor)
+                .map(|record| record.fact_ids.clone())
+                .ok_or(Reason::UnknownKey)?;
+            effects.push(wrap(
+                viewer,
+                &intent.id,
+                EffectClass::Rumor {
+                    rumor_id: rumor.clone(),
+                    fact_ids,
+                    from: intent.actor_id.clone(),
+                    to: to.clone(),
+                    heat: *heat,
+                },
+            ));
         }
     }
     Ok(())
@@ -215,50 +219,11 @@ fn actor_of(row: &ActionRow, intent: &Intent) -> Result<String, Reason> {
     }
 }
 
-fn stock_fields(
-    canon: &Canon,
-    now: &Now,
-    actor_id: &str,
-    place: &Field,
-    sku: &Field,
-    delta: &Field,
-) -> Result<(String, String, i64), Reason> {
-    let walk = place == &Field::Selector(Selector::Here)
-        && sku == &Field::Selector(Selector::FirstRateSku)
-        && delta == &Field::Selector(Selector::Rate);
-    if walk {
-        return stock_walk(canon, now, actor_id).ok_or(Reason::UnknownKey);
-    }
-    match (place, sku, delta) {
-        (Field::Literal(place), Field::Literal(sku), Field::Number(delta)) => {
-            Ok((place.clone(), sku.clone(), *delta))
-        }
-        _ => Err(Reason::Schema),
-    }
-}
-
 fn meter_class(actor_id: &str, write: &WorkWrite) -> EffectClass {
     EffectClass::Meter {
         actor_id: actor_id.to_string(),
         key: write.key.clone(),
         write: write.write,
-    }
-}
-
-fn relationship_fields(
-    now: &Now,
-    actor_id: &str,
-    to: &Field,
-    delta: &Field,
-) -> Result<(String, i64), Reason> {
-    if to == &Field::Selector(Selector::FirstDrift)
-        && delta == &Field::Selector(Selector::TowardTarget)
-    {
-        return first_drift(now, actor_id).ok_or(Reason::UnknownKey);
-    }
-    match (to, delta) {
-        (Field::Literal(other), Field::Number(delta)) => Ok((other.clone(), *delta)),
-        _ => Err(Reason::Schema),
     }
 }
 
@@ -289,7 +254,7 @@ mod tests {
     use crate::apply::apply_effect;
     use crate::canon::pack_rev;
     use crate::codec::{emit_now, load_now};
-    use crate::effect::EffectClass;
+    use crate::effect::{Effect, EffectClass};
     use crate::error::Reason;
     use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
     use crate::meter::MeterWrite;
@@ -349,23 +314,28 @@ mod tests {
         text.push_str(
             r#"
   - name: shelf
-    audience: agenda
+    audience: habit
     token: none
     on: speaker
     effects:
       - class: stock
-        place: here
-        sku: first_rate
-        delta: rate
+        place: docks_shop
+        sku: lamp_oil
+        delta: 4
       - class: meter
         key: rest
         write: base
         delta: 1
       - class: clock
-        clock: first_owned
+        clock: shelf_count
         delta: 1
       - class: message
-        message: first_due_note
+        id: note_mira_door
+        to:
+          - pc_rowan
+        place: docks_shop
+        fact_ids: []
+        text: Back at dusk. Oil on the shelf.
   - name: overstock
     audience: player
     token: none
@@ -519,6 +489,32 @@ mod tests {
             Reason::OutOfRange
         );
         assert_eq!(clock_txn.now().clocks["shelf_count"].value, 0);
+
+        let mut stranger_txn = crate::shard::Txn::begin(&shard);
+        let stranger = Intent {
+            id: "bram-clock".to_string(),
+            tick_index: 0,
+            actor_id: "bram".to_string(),
+            actor_kind: ActorKind::Npc,
+            source: Source::Kernel,
+            move_name: "overclock".to_string(),
+            target: Target::Empty,
+            args: IntentArgs::default(),
+            rationale_code: String::new(),
+        };
+        let borrowed = Effect {
+            class: EffectClass::Clock {
+                clock_id: "shelf_count".to_string(),
+                delta: 1,
+            },
+            as_viewer: ViewerId::Npc("bram".to_string()),
+            intent_id: "bram-clock".to_string(),
+        };
+        assert_eq!(
+            apply_effect(&mut stranger_txn, &stranger, borrowed).unwrap_err(),
+            Reason::UnknownKey
+        );
+        assert_eq!(stranger_txn.now().clocks["shelf_count"].value, 0);
 
         let mut need_txn = crate::shard::Txn::begin(&shard);
         let overneed = intent("overneed", Target::Empty);

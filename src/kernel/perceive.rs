@@ -3,6 +3,7 @@ use std::collections::BTreeSet;
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::firewall::allows;
+use crate::habit::habits_on;
 use crate::intent::ViewerId;
 use crate::model::{Message, Now};
 use crate::shard::Shard;
@@ -19,6 +20,7 @@ pub struct Perceive {
     pub unknown_mentioned: Vec<String>,
     pub clocks: Vec<ClockView>,
     pub stocks: Vec<StockView>,
+    pub habits: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -160,6 +162,11 @@ fn perceive_at_budget(
         })
         .unwrap_or_default();
 
+    let habits = match &viewer {
+        ViewerId::Player(_) => Vec::new(),
+        ViewerId::Npc(id) => habits_on(canon, now, id),
+    };
+
     Ok(Perceive {
         viewer: viewer.token(),
         place,
@@ -169,6 +176,7 @@ fn perceive_at_budget(
         unknown_mentioned,
         clocks,
         stocks,
+        habits,
     })
 }
 

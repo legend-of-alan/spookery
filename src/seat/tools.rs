@@ -69,7 +69,7 @@ pub(super) const GM_LIST: &[GmTool] = &[
     },
     GmTool {
         name: "intent",
-        about: "intent requires actor_id, actor_kind, source, and move. source stays player.",
+        about: "intent requires actor_id, actor_kind, source, and move. source stays player. A habit row is legal when actor_kind is npc.",
         schema: intent_schema,
         run: run_intent,
     },
@@ -411,19 +411,21 @@ fn queue_tool_intent(
     let actor_id = actor_id.ok_or(Reason::Schema)?;
     let actor_kind = actor_kind.ok_or(Reason::Schema)?;
     let move_name = move_name.ok_or(Reason::Schema)?;
-    match shard
+    let audience = match shard
         .canon()
         .moves
         .get(&move_name)
         .and_then(|def| def.row.as_ref())
     {
-        Some(row) if row.audience == Some(Audience::Player) => {}
-        Some(_) => return Err(Reason::NotInSpec),
+        Some(row) => row.audience,
         None if shard.canon().moves.contains_key(&move_name) => return Err(Reason::NotInSpec),
         None => return Err(Reason::UnknownMove),
-    }
+    };
     match actor_kind {
         ActorKind::Player => {
+            if audience != Some(Audience::Player) {
+                return Err(Reason::NotInSpec);
+            }
             if !shard
                 .now()
                 .actors
@@ -434,6 +436,9 @@ fn queue_tool_intent(
             }
         }
         ActorKind::Npc => {
+            if audience != Some(Audience::Player) && audience != Some(Audience::Habit) {
+                return Err(Reason::NotInSpec);
+            }
             if !shard
                 .now()
                 .actors

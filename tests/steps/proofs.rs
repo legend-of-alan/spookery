@@ -16,7 +16,7 @@ use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::meter::MeterLive;
 use spookery_kernel::model::{
-    ActorLive, Clock, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
+    ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_kernel::shard::{Shard, Txn};
 use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack};
@@ -164,44 +164,170 @@ fn no_self_win() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn shop_lives() {
-    let pack = temp_pack("shop");
+fn door_message() -> Message {
+    Message {
+        id: "note_mira_door".to_string(),
+        to: vec!["pc_rowan".to_string()],
+        place: Some("docks_shop".to_string()),
+        fact_ids: Vec::new(),
+        text: "Back at dusk. Oil on the shelf.".to_string(),
+    }
+}
+
+fn save_now(pack: &Path, now: &Now) {
+    fs::write(pack.join("state/now.yaml"), emit_now(now).unwrap()).unwrap();
+}
+
+fn evening_note() {
+    let pack = temp_pack("evening");
+    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    let now = now_of(&pack);
+    assert_eq!(lamp_oil(&now), 4);
+    assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
+    assert_eq!(now.messages.len(), 1);
+    assert_eq!(now.messages[0].id, "note_mira_door");
+    assert_eq!(now.messages[0].place.as_deref(), Some("docks_shop"));
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn morning_restock() {
+    let pack = temp_pack("morning");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
         drop(shard);
-        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        now.world_time = 600;
+        now.messages.push(door_message());
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
-        now.presence.humans = 0;
-        now.presence.actors_present.clear();
-        fs::write(pack.join("state/now.yaml"), emit_now(&now).unwrap()).unwrap();
+        save_now(&pack, &now);
     }
-    let rate = open(&pack)
-        .canon()
-        .profile("mira")
-        .and_then(|profile| profile.stock_rate.get("docks_shop"))
-        .and_then(|rates| rates.get("lamp_oil"))
-        .copied()
-        .unwrap();
-    assert_eq!(rate, 4);
-    assert_eq!(lamp_oil(&now_of(&pack)), 4);
     assert_eq!(
         now_of(&pack).actors.get("mira").unwrap().place(),
-        "docks_shop"
-    );
-    assert_eq!(
-        now_of(&pack).actors.get("pc_rowan").unwrap().place(),
-        "docks_street"
+        "mira_rooms"
     );
     tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
+    assert_eq!(lamp_oil(&now), 8);
+    assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
+    assert_eq!(now.messages.len(), 1);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn off_hours_hold() {
+    let pack = temp_pack("off-hours");
+    {
+        let shard = open(&pack);
+        let mut now = shard.now().clone();
+        drop(shard);
+        now.messages.push(door_message());
+        save_now(&pack, &now);
+    }
+    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    let now = now_of(&pack);
+    assert_eq!(lamp_oil(&now), 4);
+    assert_eq!(now.messages.len(), 1);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn player_in_the_shop() {
+    let pack = temp_pack("present");
+    {
+        let shard = open(&pack);
+        let mut now = shard.now().clone();
+        drop(shard);
+        now.world_time = 600;
+        now.presence.humans = 1;
+        now.presence.actors_present = vec!["pc_rowan".to_string()];
+        now.messages.push(door_message());
+        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        save_now(&pack, &now);
+    }
+    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    let now = now_of(&pack);
+    assert_eq!(lamp_oil(&now), 4);
+    assert_eq!(now.messages.len(), 1);
     assert_eq!(
-        lamp_oil(&now),
-        8,
-        "mira restocks lamp_oil by the docks_shop rate"
+        now.actors
+            .get("mira")
+            .unwrap()
+            .tick()
+            .unwrap()
+            .last_act_tick,
+        0
     );
-    assert_eq!(now.actors.get("mira").unwrap().place(), "docks_shop");
-    assert_ne!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn gm_restocks() {
+    let pack = temp_pack("gm-restock");
+    {
+        let shard = open(&pack);
+        let mut now = shard.now().clone();
+        drop(shard);
+        now.world_time = 600;
+        now.presence.humans = 1;
+        now.presence.actors_present = vec!["pc_rowan".to_string()];
+        now.messages.push(door_message());
+        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        save_now(&pack, &now);
+    }
+    let mut shard = open(&pack);
+    let wall = shard.now().last_tick_at.clone();
+    let args = json!({
+        "actor_id": "mira",
+        "actor_kind": "npc",
+        "source": "player",
+        "move": "restock_lamp_oil"
+    });
+    let queued = gm_tool(
+        &mut shard,
+        "intent",
+        Some(args.as_object().unwrap().clone()),
+    );
+    assert!(queued.value.get("code").is_none(), "{}", queued.value);
+    run_tick(&mut shard, spookery_tick::Cause::Manual, &wall).unwrap();
+    assert_eq!(lamp_oil(shard.now()), 8);
+    assert_eq!(shard.now().messages.len(), 1);
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn claimed_note_sorts_first() {
+    let pack = temp_pack("claimed");
+    {
+        let shard = open(&pack);
+        let mut now = shard.now().clone();
+        drop(shard);
+        now.presence.humans = 1;
+        now.presence.actors_present = vec!["pc_rowan".to_string()];
+        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        save_now(&pack, &now);
+    }
+    let mut shard = open(&pack);
+    let wall = shard.now().last_tick_at.clone();
+    for (actor, move_name) in [("bram", "wait"), ("mira", "leave_door_note")] {
+        let args = json!({
+            "actor_id": actor,
+            "actor_kind": "npc",
+            "source": "player",
+            "move": move_name
+        });
+        let queued = gm_tool(
+            &mut shard,
+            "intent",
+            Some(args.as_object().unwrap().clone()),
+        );
+        assert!(queued.value.get("code").is_none(), "{}", queued.value);
+    }
+    run_tick(&mut shard, spookery_tick::Cause::Manual, &wall).unwrap();
+    let log = tick_value(&pack, "tick-0001.jsonl");
+    let moves: Vec<&str> = log["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|intent| intent["move"].as_str().unwrap())
+        .collect();
+    assert_eq!(moves, vec!["leave_door_note", "wait"]);
+    assert_eq!(log["intents"][0]["args"]["to"][0].as_str(), Some("pc_rowan"));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -293,8 +419,6 @@ Rowan.
         },
         pause: PauseView {
             named_plot_clocks: RunState::Paused,
-            relationship_drift: RunState::Running,
-            subsistence_clocks: RunState::Running,
         },
         places,
         actors,
@@ -332,28 +456,15 @@ fn busy_skip() {
         let shard = open(&pack);
         let mut now = shard.now().clone();
         drop(shard);
-        now.presence.humans = 1;
-        now.presence.actors_present = vec!["pc_rowan".to_string()];
-        now.world_time = 360;
-        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
-        now.clocks.insert(
-            "watch".to_string(),
-            Clock {
-                value: 0,
-                max: 2,
-                requires_presence: false,
-                owners: vec!["bram".to_string()],
-                paused: false,
-            },
-        );
-        fs::write(pack.join("state/now.yaml"), emit_now(&now).unwrap()).unwrap();
+        now.world_time = 600;
+        now.messages.push(door_message());
+        *now.actors.get_mut("mira").unwrap().busy_mut() = true;
+        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        save_now(&pack, &now);
     }
-    let mut shard = open(&pack);
-    let wall = shard.now().last_tick_at.clone();
-    run_tick(&mut shard, spookery_tick::Cause::Manual, &wall).unwrap();
-    let now = shard.now();
-    assert_eq!(now.world_time, 365);
-    assert_eq!(now.actors.get("mira").unwrap().place(), "docks_shop");
+    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    let now = now_of(&pack);
+    assert_eq!(lamp_oil(&now), 4);
     assert_eq!(
         now.actors
             .get("mira")
@@ -363,8 +474,6 @@ fn busy_skip() {
             .last_act_tick,
         0
     );
-    assert_eq!(lamp_oil(now), 4);
-    assert_eq!(now.actors.get("bram").unwrap().place(), "docks_street");
     assert_eq!(
         now.actors
             .get("bram")
@@ -372,7 +481,7 @@ fn busy_skip() {
             .tick()
             .unwrap()
             .last_act_tick,
-        1
+        0
     );
     let _ = fs::remove_dir_all(&pack);
 }
@@ -608,12 +717,13 @@ kind: npc
 facts: []
 tick:
   eligible: true
-  tier: named
-  plot_relevant: false
   range:
     - yard
-  agenda:
-    - row: hold
+  habits:
+    - id: hold_still
+      runs_while_empty: true
+      rows:
+        - hold
 ---
 {id}
 "
@@ -646,7 +756,7 @@ tick:
     let moves_path = pack.join("rules/moves.yaml");
     let mut moves = fs::read_to_string(&moves_path).unwrap();
     moves.push_str(
-        "\n  - name: hold\n    audience: agenda\n    token: none\n    on: speaker\n    effects: []\n",
+        "\n  - name: hold\n    audience: habit\n    token: none\n    on: speaker\n    effects: []\n",
     );
     fs::write(&moves_path, moves).unwrap();
     let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
@@ -674,8 +784,6 @@ tick:
         },
         pause: PauseView {
             named_plot_clocks: RunState::Paused,
-            relationship_drift: RunState::Running,
-            subsistence_clocks: RunState::Running,
         },
         places,
         actors,
@@ -1205,9 +1313,34 @@ fn twelve_empty_ticks_pass(_world: &mut World) {
     no_self_win();
 }
 
-#[when(expr = "Mira is in the shop and Rowan is on the street")]
-fn mira_is_in_the_shop(_world: &mut World) {
-    shop_lives();
+#[when(expr = "the evening tick runs with Rowan away")]
+fn the_evening_tick_runs(_world: &mut World) {
+    evening_note();
+}
+
+#[when(expr = "the morning tick runs with the note already left")]
+fn the_morning_tick_runs(_world: &mut World) {
+    morning_restock();
+}
+
+#[when(expr = "an off-hours tick runs with the note already left")]
+fn an_off_hours_tick_runs(_world: &mut World) {
+    off_hours_hold();
+}
+
+#[when(expr = "Rowan stands with Mira during shop hours")]
+fn rowan_stands_with_mira(_world: &mut World) {
+    player_in_the_shop();
+}
+
+#[when(expr = "the GM queues Mira's restock in front of Rowan")]
+fn the_gm_queues_miras_restock(_world: &mut World) {
+    gm_restocks();
+}
+
+#[when(expr = "the GM queues the door note ahead of a wait")]
+fn the_gm_queues_the_door_note(_world: &mut World) {
+    claimed_note_sorts_first();
 }
 
 #[when(expr = "seventy-two hours of catch-up run")]

@@ -4,7 +4,7 @@ use spookery_kernel::moves::{Audience, MoveDef};
 use spookery_kernel::Reason;
 
 /// `say` and `talk` are speech. A player-audience row is a turn.
-/// An agenda or system name is `NOT_IN_SPEC` and is not queued.
+/// A habit or system name is `NOT_IN_SPEC` and is not queued.
 pub enum PlayerLine {
     Speech,
     Turn,

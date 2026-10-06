@@ -17,13 +17,6 @@ pub fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
     if actor.busy() || player_present_at(now, actor.place()) {
         return false;
     }
-    let tier_ok = matches!(
-        profile.tier,
-        crate::canon::Tier::Named | crate::canon::Tier::Major
-    ) || profile.plot_relevant;
-    if !tier_ok {
-        return false;
-    }
     let Some(tick) = actor.tick() else {
         return false;
     };

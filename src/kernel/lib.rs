@@ -1,4 +1,3 @@
-pub mod agenda;
 pub mod apply;
 pub mod canon;
 pub mod check;
@@ -11,6 +10,7 @@ pub(crate) mod eligibility;
 pub mod error;
 pub mod expand;
 pub(crate) mod firewall;
+pub mod habit;
 pub(crate) mod hash;
 pub mod ids;
 pub mod intent;
@@ -24,7 +24,6 @@ pub mod moves;
 pub mod pause;
 pub mod perceive;
 pub(crate) mod recover;
-pub(crate) mod select;
 pub mod shard;
 pub mod tape;
 
