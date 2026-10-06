@@ -59,8 +59,8 @@ fn the_save_is_hand_edited(world: &mut World) {
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
     text = text.replace(
-        "place: docks_shop\n    flags: []\n    busy: false\n    known_facts: []\n    sheet:",
-        "place: mira_rooms\n    flags: []\n    busy: false\n    known_facts: []\n    sheet:",
+        "place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    known_facts: []\n    sheet:",
+        "place: mira_rooms\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    known_facts: []\n    sheet:",
     );
     text = text.replace(
         "    actors:\n      - aldric\n      - pc_rowan\n",

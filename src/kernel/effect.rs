@@ -1,6 +1,7 @@
 use serde::ser::{Serialize, SerializeStruct, Serializer};
 
 use crate::intent::ViewerId;
+use crate::meter::MeterWrite;
 
 /// One effect. `class` is the payload. JSON for this value is written by the
 /// serializer below: `class`, `as`, `intent_id`, then the fields of `class`.
@@ -17,10 +18,10 @@ pub enum EffectClass {
         clock_id: String,
         delta: i64,
     },
-    Need {
+    Meter {
         actor_id: String,
         key: String,
-        delta: i64,
+        write: MeterWrite,
     },
     Stock {
         place: String,
@@ -55,11 +56,6 @@ pub enum EffectClass {
         to: String,
         heat: i64,
     },
-    Resource {
-        actor_id: String,
-        key: String,
-        delta: i64,
-    },
     Flag {
         actor_id: String,
         key: String,
@@ -92,14 +88,13 @@ impl EffectClass {
     pub fn name(&self) -> &'static str {
         match self {
             EffectClass::Clock { .. } => "clock",
-            EffectClass::Need { .. } => "need",
+            EffectClass::Meter { .. } => "meter",
             EffectClass::Stock { .. } => "stock",
             EffectClass::Location { .. } => "location",
             EffectClass::Relationship { .. } => "relationship",
             EffectClass::Reputation { .. } => "reputation",
             EffectClass::Memory { .. } => "memory",
             EffectClass::Rumor { .. } => "rumor",
-            EffectClass::Resource { .. } => "resource",
             EffectClass::Flag { .. } => "flag",
             EffectClass::Message { .. } => "message",
         }
@@ -132,12 +127,14 @@ impl Serialize for EffectPayload<'_> {
 fn payload_len(class: &EffectClass) -> usize {
     match class {
         EffectClass::Clock { .. } => 2,
-        EffectClass::Need { .. }
-        | EffectClass::Stock { .. }
+        EffectClass::Meter { write, .. } => match write {
+            MeterWrite::Snap => 3,
+            MeterWrite::Base(_) | MeterWrite::Offset(_) => 4,
+        },
+        EffectClass::Stock { .. }
         | EffectClass::Location { .. }
         | EffectClass::Relationship { .. }
         | EffectClass::Reputation { .. }
-        | EffectClass::Resource { .. }
         | EffectClass::Flag { .. } => 3,
         EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
         EffectClass::Rumor { .. } => 5,
@@ -154,19 +151,26 @@ where
             state.serialize_field("clock_id", clock_id)?;
             state.serialize_field("delta", delta)?;
         }
-        EffectClass::Need {
+        EffectClass::Meter {
             actor_id,
             key,
-            delta,
-        }
-        | EffectClass::Resource {
-            actor_id,
-            key,
-            delta,
+            write,
         } => {
             state.serialize_field("actor_id", actor_id)?;
             state.serialize_field("key", key)?;
-            state.serialize_field("delta", delta)?;
+            match write {
+                MeterWrite::Base(delta) => {
+                    state.serialize_field("write", "base")?;
+                    state.serialize_field("delta", delta)?;
+                }
+                MeterWrite::Offset(delta) => {
+                    state.serialize_field("write", "offset")?;
+                    state.serialize_field("delta", delta)?;
+                }
+                MeterWrite::Snap => {
+                    state.serialize_field("write", "snap")?;
+                }
+            }
         }
         EffectClass::Stock { place, sku, delta } => {
             state.serialize_field("place", place)?;

@@ -2,9 +2,9 @@ use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, ViewerId};
-use crate::inventory::{clamp_need, resource_next, stock_next};
 use crate::key::StateKey;
 use crate::limits::MINUTES_PER_DAY;
+use crate::meter::{self, MeterWrite};
 use crate::model::{MemoryLine, Message, Reputation};
 use crate::shard::Txn;
 
@@ -14,11 +14,11 @@ pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<()
     }
     match effect.class {
         EffectClass::Clock { clock_id, delta } => apply_clock(txn, &clock_id, delta),
-        EffectClass::Need {
+        EffectClass::Meter {
             actor_id,
             key,
-            delta,
-        } => apply_need(txn, &actor_id, &key, delta),
+            write,
+        } => apply_meter(txn, &actor_id, &key, write),
         EffectClass::Stock { place, sku, delta } => apply_stock(txn, intent, &place, &sku, delta),
         EffectClass::Location { actor_id, from, to } => {
             apply_location(txn, intent, &actor_id, &from, &to)
@@ -42,11 +42,6 @@ pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<()
             heat,
             ..
         } => apply_rumor(txn, &rumor_id, &fact_ids, &to, heat),
-        EffectClass::Resource {
-            actor_id,
-            key,
-            delta,
-        } => apply_resource(txn, &actor_id, &key, delta),
         EffectClass::Flag {
             actor_id,
             key,
@@ -92,33 +87,37 @@ fn apply_clock(txn: &mut Txn, clock_id: &str, delta: i64) -> Result<(), Reason> 
     Ok(())
 }
 
-fn apply_need(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Reason> {
-    let bound = txn
-        .canon()
-        .profile(actor_id)
-        .and_then(|profile| profile.needs.get(key))
-        .ok_or(Reason::UnknownKey)?;
-    let min = bound.min;
-    let max = bound.max;
-    let current = txn
+fn apply_meter(txn: &mut Txn, actor_id: &str, key: &str, write: MeterWrite) -> Result<(), Reason> {
+    let def = *txn.canon().meters.get(key).ok_or(Reason::UnknownKey)?;
+    let mut live = txn
         .now()
         .actors
         .get(actor_id)
-        .and_then(|actor| actor.needs())
-        .and_then(|needs| needs.get(key))
-        .copied()
-        .unwrap_or(0);
-    let next = clamp_need(current, delta, min, max)?;
-    if next != current {
-        txn.track(StateKey::ActorNeed(actor_id.to_string(), key.to_string()))?;
+        .ok_or(Reason::UnknownKey)?
+        .meters()
+        .get(key)
+        .cloned()
+        .ok_or(Reason::UnknownKey)?;
+    let changed = meter::write(&def, &mut live, write)?;
+    if changed {
+        txn.track(StateKey::ActorMeter(actor_id.to_string(), key.to_string()))?;
     }
-    txn.now_mut()
+    *txn.now_mut()
         .actors
         .get_mut(actor_id)
-        .and_then(|actor| actor.needs_mut())
         .ok_or(Reason::UnknownKey)?
-        .insert(key.to_string(), next);
+        .meters_mut()
+        .get_mut(key)
+        .ok_or(Reason::UnknownKey)? = live;
     Ok(())
+}
+
+fn stock_next(current: i64, delta: i64) -> Result<i64, Reason> {
+    let next = current.checked_add(delta).ok_or(Reason::OutOfRange)?;
+    if next < 0 {
+        return Err(Reason::OutOfRange);
+    }
+    Ok(next)
 }
 
 fn apply_stock(
@@ -382,37 +381,6 @@ fn apply_rumor(
         .find(|rumor| rumor.id == rumor_id)
         .ok_or(Reason::UnknownKey)?;
     rumor.known_by = next;
-    Ok(())
-}
-
-fn apply_resource(txn: &mut Txn, actor_id: &str, key: &str, delta: i64) -> Result<(), Reason> {
-    let actor = txn.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
-    let current = match actor {
-        crate::model::ActorLive::Npc { resources, .. } => {
-            if !txn
-                .canon()
-                .profile(actor_id)
-                .is_some_and(|profile| profile.resources.contains_key(key))
-            {
-                return Err(Reason::UnknownKey);
-            }
-            resources.get(key).copied().unwrap_or(0)
-        }
-        crate::model::ActorLive::Pc { .. } => return Err(Reason::NotInSpec),
-    };
-    let next = resource_next(current, delta)?;
-    if next != current {
-        txn.track(StateKey::ActorResource(
-            actor_id.to_string(),
-            key.to_string(),
-        ))?;
-    }
-    match txn.now_mut().actors.get_mut(actor_id) {
-        Some(crate::model::ActorLive::Npc { resources, .. }) => {
-            resources.insert(key.to_string(), next);
-        }
-        _ => return Err(Reason::UnknownKey),
-    }
     Ok(())
 }
 

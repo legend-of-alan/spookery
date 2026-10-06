@@ -13,9 +13,9 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 1. **Import boundary.** `spookery-kernel` and `spookery-tick` do not link a runtime, a database, or a model SDK.
 2. **`!Send` `Txn`.** One `std::thread` owns `Now`. The tick is not spawned on a runtime.
 3. **Atomic commit.** `now.yaml` is renamed last. A crash cannot apply a partial tick.
-4. **Closed effect, one apply.** Eleven effect classes. `apply_effect` is the only mutator of world numbers.
+4. **Closed effect, one apply.** Ten effect classes. `apply_effect` is the only mutator of world numbers.
 5. **Firewall.** `firewall::allows` is the visibility test. A hidden fact does not leak through place or cast prose.
-6. **Deterministic tick.** Selector bindings freeze before the apply loop. Replay does not re-walk the agenda and does not re-roll.
+6. **Deterministic tick.** Selector bindings freeze before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed.
 7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
 8. **Action-row loader.** A moves file is names and rows. Selectors are a closed enum. A new verb is a new row in YAML.
 9. **Seeded checks.** `die_face` is Blake2s. One copy, in `check.rs`. `difficulty` applies only when the row sets `check` and no opposing total applies.
@@ -33,7 +33,7 @@ The queue is a `Vec` of intents on the shard thread. It is ephemeral. A crash dr
 
 `Txn::begin` clones `Now` once into `staging`. That is the only clone. `commit` moves `staging` into `Shard.now` after `write_commit` returns. It does not clone again.
 
-`expand` takes `&Canon`, `&Now` (the staging borrow), and `&Intent`. It does not hold `Shard`. `apply_effect` takes `&mut Staging`. `Staging` borrows `Txn`'s staging, the typed key set, and the active intent, so it is `!Send`. The tick does not hold `&Shard` and `&mut Txn` in a way that aliases `Now`. Sheets and canon are cloned as `Arc` or read before the staging borrow. `stage_tick` receives `&Canon`, the PC sheets, `&mut Txn`, and the queue snapshot: the `Vec` of intents is moved out for the tick and put back only if the tick is abandoned. `Shard` fields are private.
+`expand` takes `&Canon`, `&Now` (the staging borrow), and `&Intent`. It does not hold `Shard`. `apply_effect` takes `&mut Staging`. `Staging` borrows `Txn`'s staging, the typed key set, and the active intent, so it is `!Send`. The tick does not hold `&Shard` and `&mut Txn` in a way that aliases `Now`. Checks read `current` off the pre-loop `frozen` snapshot, the same `Now` expand uses. They do not read live staging. Sheets remain the inventory file on `Shard`, read at queue time. `stage_tick` receives `&mut Txn` and the queue snapshot: the `Vec` of intents is moved out for the tick and put back only if the tick is abandoned. `Shard` fields are private.
 
 `append_session` takes the session lock and never a `Txn`. `commit_presence` takes the shard lock and never a `Txn`.
 
@@ -60,7 +60,7 @@ Tokio in the bin is the accept loop, keepalive, and scheduler sleep. Tokio in `s
 
 ## Effect envelope
 
-`Effect` is one struct. The class is the payload. There is no `inventory` or `xp` variant. Rows emit all eleven classes. There is no twelfth class.
+`Effect` is one struct. The class is the payload. Rows emit the ten classes below.
 
 ```rust
 pub struct Effect {
@@ -71,14 +71,13 @@ pub struct Effect {
 
 pub enum EffectClass {
     Clock { clock_id: String, delta: i64 },
-    Need { actor_id: String, key: String, delta: i64 },
+    Meter { actor_id: String, key: String, write: MeterWrite },
     Stock { place: String, sku: String, delta: i64 },
     Location { actor_id: String, from: String, to: String },
     Relationship { a: String, b: String, delta: i64 },
     Reputation { actor_id: String, faction: String, delta: i64 },
     Memory { actor_id: String, fact_ids: Vec<String>, tags: Vec<String>, text: Option<String> },
     Rumor { rumor_id: String, fact_ids: Vec<String>, from: String, to: String, heat: i64 },
-    Resource { actor_id: String, key: String, delta: i64 },
     Flag { actor_id: String, key: String, value: bool },
     Message { message_id: String, to: Vec<String>, place: Option<String>, fact_ids: Vec<String>, text: String },
 }
@@ -86,11 +85,11 @@ pub enum EffectClass {
 
 `ViewerId` is `Player` or `Npc`. There is no `Gm` variant. The JSON token is `player:{id}` or `npc:{id}`.
 
-JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `need`, `stock`, `location`, `relationship`, `reputation`, `memory`, `rumor`, `resource`, `flag`, or `message`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `now.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
+JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `meter`, `stock`, `location`, `relationship`, `reputation`, `memory`, `rumor`, `flag`, or `message`. `MeterWrite` is `Base(i64)`, `Offset(i64)`, or `Snap`. The wire writes `write` as `base`, `offset`, or `snap`, and writes `delta` only for `base` and `offset`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `now.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
 
 ## Apply
 
-`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. Needs clamp through the profile bounds. Stock and resources refuse a negative result. Relationship and reputation deltas outside `-1..=1` are `OUT_OF_RANGE`. Memory text longer than 240 characters is `SCHEMA`. Memory and rumor facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. Relationship and reputation keep the once-per-world-day `SKIPPED` no-op. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
+`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. A meter write clamps a sum that fits in `i64`. Stock refuses a negative result. Relationship and reputation deltas outside `-1..=1` are `OUT_OF_RANGE`. Memory text longer than 240 characters is `SCHEMA`. Memory and rumor facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. Relationship and reputation keep the once-per-world-day `SKIPPED` no-op. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
 
 The effect's viewer must be the active intent's actor. Failure is `VIEWER_MISMATCH`.
 
@@ -100,9 +99,7 @@ Location: `from` must equal the live place, and `to` must be in the profile rang
 
 Stock: a missing profile is `NO_PROFILE`. A place outside range or off the schedule graph, an absolute delta above `stock_rate`, or a negative result, is `OUT_OF_RANGE`.
 
-Need: a key that is not in the profile needs list is `UNKNOWN_KEY`. Clamp when a bound is present. The canon schema grows no new floor key.
-
-Resource: an unknown key on the NPC profile or the PC sheet is `UNKNOWN_KEY`. A result below 0 is `OUT_OF_RANGE`. PC resources stay on the PC sheet, not on the live PC record.
+Meter: `write` is `base`, `offset`, or `snap`. `base` adds the delta to `base` and clamps that base into `[min, base_cap]`, and keeps `offset`. `offset` adds the delta to `offset` and keeps `base`. `snap` sets the next pair to `(base, 0)`. The live pair is assigned only when `base` is inside `[min, base_cap]` and `base + offset` fits in `i64`. A sum that fits and passes `max` is clamped when `current` is read. `current` is `clamp(base + offset, min, max)`. It is not stored. An add that does not fit in `i64`, or a next pair that fails that check, is `OUT_OF_RANGE` and the record is unchanged. An unknown meter id is `UNKNOWN_KEY`. A PC and an NPC take the same write.
 
 ## Rows and selectors
 
@@ -158,8 +155,8 @@ Several YAML keys are one walk. Mixing a selector from a walk with a literal for
 | `SchedulePlace` | `profile.schedule`, `world_hour(now.world_time)` | File order of `schedule`. The winning row is the first row where `hour_in` holds | `Location.to` | If `start < end` then `start <= hour < end`. If `start > end` then `hour >= start` or `hour < end`. If `start == end`, the hour is not in the row. Travel is emitted when the travel pause lane is running, `row.place != actor.place`, and `row.place` is in range. |
 | `Token` | The intent token | n/a | `Location.to` when the token is `Place`; the named actor when the token is `Actor` | For player travel, `to` is the typed place. A `none` token where a template says `token` is `SCHEMA`. |
 | Location `from` | Live place of `intent.actor_id` | n/a | `Location.from`, `Location.actor_id` | `from` is the actor's live place. `actor_id` is the intent actor. `to` is the place argument. A missing actor is `UNKNOWN_KEY`. `from` is not a YAML field. |
-| `ScheduleRestDelta` | The winning row's `rest_delta` | Same winning row as `SchedulePlace` | `Need.delta` on key `rest`, actor the speaker | `None` means the selector does not resolve and the agenda entry is not taken. |
-| `FromWork` | `profile.work` | File order of `work.needs`, then file order of `work.resources` | Replaces the marker template with N classes. Each need is `Need` for the speaker. Each resource is `Resource` for the speaker. | Missing `work`, or both lists empty, resolves to zero classes. The intent can still apply as a yield. A `key` on the marker is `SCHEMA`. The walk does not filter to one key. |
+| `ScheduleRestDelta` | The winning row's `rest_delta` | Same winning row as `SchedulePlace` | One `Meter` for the speaker. The key is `rest`. The arm is the template's `base` or `offset`. | `None` means the selector does not resolve and the agenda entry is not taken. A template key other than `rest`, or `write: snap`, is `SCHEMA` at load. The number is not clamped at load. |
+| `FromWork` | `profile.work` | File order of the work list | Replaces the marker with N `Meter` classes for the speaker, one per work entry. | A missing or empty work list resolves to zero classes. The intent can still apply as a yield. A `key` or `write` on the marker is `SCHEMA`. The walk does not filter to one key. |
 | `FirstDrift` | Speaker's relationships, `now.world_time`, both actors' `busy` | Pairs collected, then sorted by the other actor id. First pair wins | `Relationship.a` is the speaker. `Relationship.b` is the other actor. | Speaker busy means no intent. Keep pairs where stance is not the target, `world_time` is at least 1440 minutes after `last_interaction_world_time`, the other actor exists, and the other is not busy. |
 | `TowardTarget` | That pair's stance and target | Same pair | `Relationship.delta` | `(target - stance)` clamped to `-1..=1`. Not a free delta. `apply_relationship` still returns `SKIPPED` when the once-per-world-day rule fails. |
 | `FirstKnownRumor` | `now.rumors`, speaker id, `budget.max_rumor_hops` | Rumors with `heat >= 1` whose `known_by` contains the speaker, sorted by id. First rumor that has a listener | `Rumor.rumor_id`, `Rumor.fact_ids` copied from that rumor, `Rumor.from` = speaker | If `max_rumor_hops == 0`, the walk fails. `fact_ids` is a copy, not a YAML list. `from` is the speaker, not a YAML field. |
@@ -175,7 +172,7 @@ Bindings and the outcome list are different steps.
 1. Before the apply loop, agenda selection and the player-queue snapshot resolve every selector walk against staging `Now` and store a bindings value on the candidate. That value holds the sku and rate, the schedule place, the live `from`, the work-block snapshot, the drift pair and clamped delta, the rumor id, the copied fact ids, the speaker, the listener, the heat, the note fields, and the clock id. A later intent in the same tick cannot change which sku or rumor was chosen. A walk that fails means that agenda entry is not a candidate. Player rows that use only literals and `Token` bind the token, and travel also binds the live `from`.
 2. Inside the per-candidate loop, `resolve_check` runs if the row has a `check`. An unknown id is `UNKNOWN_KEY`. Templates do not run. The die cursor does not move.
 3. After that roll, the selected templates are `effects`, plus `success` if the roll succeeded, plus `failure` if it failed. No roll means `effects` only. Those templates are filled from the frozen bindings, not by walking `Now` again. The result is a `Vec` of `EffectClass`.
-4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees, what the tick JSONL stores, and what replay wraps. Replay does not re-walk the agenda, does not re-run selector walks, and does not re-roll to pick `success` versus `failure`. It does call `apply_effect`, so a stored class still has to pass range, pause, owner, and firewall checks. It is not installed as a patch of `Now`.
+4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `run_recorded_tick` expands those intents again, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. Replay does not install the log as `Now`. The names `need` and `resource` are not variants.
 
 A vec built before the roll cannot be both the success list and the failure list. The pre-roll value is the bindings. The post-roll value is the effect vec. Agenda rows may have `success` and `failure`. Outcome lists are not limited to player rows.
 
@@ -205,7 +202,7 @@ pub enum Source {
 }
 ```
 
-Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay copies the stored id and those stored classes. It does not mint again.
+Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again.
 
 Priority, computed before the roll, is unchanged in order: player before NPC before system, then PC-owned clocks, claimed targets, notable tier, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the frozen clock id in the bindings when the clock walk resolved, otherwise a literal clock id on the template. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a frozen note's `to` hits `actors_present`. Notable tier is `Named`, `Major`, or `plot_relevant`.
 
@@ -250,7 +247,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 
 Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `DENIED_TOOL`, `COMMIT_CONFLICT`, `HAND_EDIT`, `LLM_DISABLED`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`, `SKIPPED`.
 
-`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is a new effect class at the parse boundary. `EffectClass` has eleven variants.
+`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`. `EffectClass` has ten variants.
 
 ## Commit
 
@@ -329,7 +326,6 @@ Still not built, and not implied by a missing sentence above:
 - An ack cursor, or a per-client outbound queue whose purpose is to make a host event start a host turn.
 - `apply_effect` or `patch_entity` on the sitting.
 - Studio tools that write `state/`.
-- An inventory, xp, or health effect class, or a new need floor in the canon schema.
 - Rewriting `.grok/skills/gm-docks`.
 - Changing the player wire kinds `refused`, `check`, and `say`.
 - WebSockets, HTTP, `--serve`, or a database.
@@ -348,10 +344,11 @@ The player line grammar does change. The check wire object does not. That split 
 | Speech copied into `known_facts` or a rumor | The tape is not an input to expand. No whisper. Inbound model text is not a field on `Intent`. |
 | Host digest reused as the player resume | `idle_digest` takes `DigestViewer::Host` or `DigestViewer::Player`. Different rows. |
 | Hand edit of `now.yaml` | `HAND_EDIT` until `spook migrate`. |
-| Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It wraps the stored post-roll classes and calls `apply_effect` on a temp copy. It does not re-walk the agenda or re-roll. Apply still refuses a paused, out-of-range, or illegal-knowledge class. |
+| Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It re-expands the recorded intents, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. |
 | Two ticks in flight | One lock around the tick run and `commit_turn`. The second caller gets `COMMIT_CONFLICT`. Tick code is synchronous on the shard thread. |
 | `patch_entity` writes canon and the live shard | Not a sitting tool. The studio list-only server does not write `state/`. A canon byte change mismatches `pack_rev` until migrate. |
-| New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has eleven variants. |
+| New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has ten variants. |
+| A meter whose stored pair is outside the definition | `SCHEMA` at load. Apply clamps when the sum fits in `i64`. `OUT_OF_RANGE` leaves the record unchanged when the sum does not. |
 | `perceive` with no `as`, or `as=gm` | `ViewerId` has no GM variant. Tick perceive rejects players. Sitting perceive rejects anything but `player:` and `npc:`. |
 | `places.actors` edited apart from `actors.place` | Load fails `SCHEMA`. Emit rebuilds occupancy from `actors.*.place`. |
 | `state/rumors.yaml` treated as live | Ignored as a source. Recovery and the next commit rewrite it from `now.rumors`. |

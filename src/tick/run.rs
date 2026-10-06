@@ -96,14 +96,7 @@ fn run_tick_with(
     let queued = shard.queued_intents().to_vec();
     let owns_commit = cause != Cause::Flush;
     shard.set_rolls(Vec::new());
-    let (record, notices) = stage_tick(
-        shard,
-        &mut txn,
-        queued,
-        now_wall,
-        owns_commit,
-        recorded.as_ref(),
-    )?;
+    let (record, notices) = stage_tick(&mut txn, queued, now_wall, owns_commit, recorded.as_ref())?;
     if cause == Cause::Flush {
         shard.set_pending(PendingCommit {
             now: txn.now().clone(),
@@ -124,7 +117,6 @@ fn run_tick_with(
 }
 
 fn stage_tick(
-    shard: &Shard,
     txn: &mut Txn,
     queued: Vec<Intent>,
     now_wall: &str,
@@ -229,7 +221,7 @@ fn stage_tick(
             let rng = blake2s_256(seed.as_bytes());
             let target = match supplied_target(
                 txn.canon(),
-                shard.sheets(),
+                &frozen,
                 &supply_from,
                 &intent,
                 &rng,
@@ -261,9 +253,20 @@ fn stage_tick(
                         );
                         continue;
                     };
+                    let Some(actor) = frozen.actors.get(&intent.actor_id) else {
+                        reject_check(
+                            &mut rejected,
+                            &mut notices,
+                            &intent,
+                            KernelReason::UnknownKey,
+                        );
+                        continue;
+                    };
                     match resolve_check(
                         check,
-                        shard.sheets(),
+                        &txn.canon().meters,
+                        &intent.actor_id,
+                        actor,
                         &viewer,
                         target,
                         &rng,
@@ -299,7 +302,23 @@ fn stage_tick(
             let seed = seed_preimage(&shard_id, tick_index);
             let rng = blake2s_256(seed.as_bytes());
             let mut cursor = 0usize;
-            if let Err(code) = resolve_check(check, shard.sheets(), &viewer, 0, &rng, &mut cursor) {
+            let Some(actor) = frozen.actors.get(&intent.actor_id) else {
+                rejected.push(Rejected {
+                    id: intent.id,
+                    reason: KernelReason::UnknownKey.jsonl_reason().to_string(),
+                });
+                continue;
+            };
+            if let Err(code) = resolve_check(
+                check,
+                &txn.canon().meters,
+                &intent.actor_id,
+                actor,
+                &viewer,
+                0,
+                &rng,
+                &mut cursor,
+            ) {
                 rejected.push(Rejected {
                     id: intent.id,
                     reason: code.jsonl_reason().to_string(),
@@ -424,7 +443,7 @@ fn stage_tick(
 /// The named actor's queued row, resolved once at target 0. Its total opposes this check.
 fn supplied_target(
     canon: &spookery_kernel::canon::Canon,
-    sheets: &BTreeMap<String, spookery_kernel::model::PcSheet>,
+    now: &spookery_kernel::model::Now,
     queued: &[Intent],
     intent: &Intent,
     rng: &[u8],
@@ -453,7 +472,20 @@ fn supplied_target(
         .checks
         .get(&check_id)
         .ok_or(KernelReason::UnknownKey)?;
-    let out = resolve_check(check, sheets, &viewer, 0, rng, die_cursor)?;
+    let actor = now
+        .actors
+        .get(&opposing.actor_id)
+        .ok_or(KernelReason::UnknownKey)?;
+    let out = resolve_check(
+        check,
+        &canon.meters,
+        &opposing.actor_id,
+        actor,
+        &viewer,
+        0,
+        rng,
+        die_cursor,
+    )?;
     let total = out.total;
     supplied.insert(opposing.id.clone(), out);
     Ok(Some(total))

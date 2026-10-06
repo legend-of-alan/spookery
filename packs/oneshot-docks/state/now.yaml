@@ -1,6 +1,6 @@
 schema: now/v0
 shard_id: docks-001
-pack_rev: blake2s:b5de347f22c8a25d73c54f51180cc4b0868fcdb234c713c4139d2ff2db12579d
+pack_rev: blake2s:fedaafe44662a0de11a2bab1ce68e6695048fc2f93ab90b7374f8a109ccbe07b
 state_rev: 0
 tick_index: 0
 world_time: 1080
@@ -40,9 +40,13 @@ actors:
     place: docks_shop
     flags: []
     busy: false
-    needs:
-      rest: 3
-    resources: {}
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
     relationships: {}
     reputation: {}
     known_facts: []
@@ -55,9 +59,13 @@ actors:
     place: docks_street
     flags: []
     busy: false
-    needs:
-      rest: 3
-    resources: {}
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
     relationships: {}
     reputation: {}
     known_facts: []
@@ -70,9 +78,13 @@ actors:
     place: mira_rooms
     flags: []
     busy: false
-    needs:
-      rest: 3
-    resources: {}
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
     relationships: {}
     reputation: {}
     known_facts:
@@ -86,6 +98,13 @@ actors:
     place: docks_shop
     flags: []
     busy: false
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
     known_facts: []
     sheet: state/actors/pc_rowan.yaml
 clocks:

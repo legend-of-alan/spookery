@@ -6,14 +6,15 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use spookery::seat::{
-    commit_queued, gm_tool, on_scheduled_wake, queue_wait, release_player_seat, seat_player,
-    turn, SocketEnd, Turn,
+    commit_queued, gm_tool, on_scheduled_wake, queue_wait, release_player_seat, seat_player, turn,
+    SocketEnd, Turn,
 };
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::check::CheckNotice;
 use spookery_kernel::codec::emit_now;
 use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::meter::MeterLive;
 use spookery_kernel::model::{
     ActorLive, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
@@ -23,6 +24,19 @@ use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack};
 use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
+
+fn meters(grit: i64) -> BTreeMap<String, MeterLive> {
+    BTreeMap::from([
+        (
+            "grit".to_string(),
+            MeterLive {
+                base: grit,
+                offset: 0,
+            },
+        ),
+        ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
+    ])
+}
 
 fn copy_dir(from: &Path, to: &Path) {
     super::support::copy_dir(from, to);
@@ -67,7 +81,8 @@ fn write_text(path: &Path, text: &str) {
 
 fn stamp_pack_rev(pack: &Path) {
     let now_path = pack.join("state/now.yaml");
-    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let mut now =
+        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
     fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
 }
@@ -155,14 +170,8 @@ fn shop_lives() {
         let shard = open(&pack);
         let mut now = shard.now().clone();
         drop(shard);
-        *now.actors
-            .get_mut("mira")
-            .unwrap()
-            .place_mut() = "docks_shop".to_string();
-        *now.actors
-            .get_mut("pc_rowan")
-            .unwrap()
-            .place_mut() = "docks_street".to_string();
+        *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
+        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         now.presence.humans = 0;
         now.presence.actors_present.clear();
         fs::write(pack.join("state/now.yaml"), emit_now(&now).unwrap()).unwrap();
@@ -176,14 +185,21 @@ fn shop_lives() {
         .unwrap();
     assert_eq!(rate, 4);
     assert_eq!(lamp_oil(&now_of(&pack)), 4);
-    assert_eq!(now_of(&pack).actors.get("mira").unwrap().place(), "docks_shop");
+    assert_eq!(
+        now_of(&pack).actors.get("mira").unwrap().place(),
+        "docks_shop"
+    );
     assert_eq!(
         now_of(&pack).actors.get("pc_rowan").unwrap().place(),
         "docks_street"
     );
     tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
-    assert_eq!(lamp_oil(&now), 8, "mira restocks lamp_oil by the docks_shop rate");
+    assert_eq!(
+        lamp_oil(&now),
+        8,
+        "mira restocks lamp_oil by the docks_shop rate"
+    );
     assert_eq!(now.actors.get("mira").unwrap().place(), "docks_shop");
     assert_ne!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     let _ = fs::remove_dir_all(&pack);
@@ -232,7 +248,7 @@ facts: []
 Rowan.
 ",
     );
-    for name in ["moves.yaml", "checks.yaml", "tick.yaml"] {
+    for name in ["moves.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
         fs::copy(rules.join(name), {
             let dest = pack.join("rules").join(name);
             fs::create_dir_all(dest.parent().unwrap()).unwrap();
@@ -246,11 +262,7 @@ Rowan.
 schema: sheet/v0
 id: pc_rowan
 template: cast/pc_rowan.md
-stats:
-  grit: 1
-resources: {}
 inventory: []
-flags: []
 ",
     );
     let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
@@ -271,6 +283,7 @@ flags: []
             place: "gate".to_string(),
             flags: Vec::new(),
             busy: false,
+            meters: meters(1),
             known_facts: Vec::new(),
             sheet: "state/actors/pc_rowan.yaml".to_string(),
         },
@@ -312,8 +325,14 @@ flags: []
     assert_eq!(now.world_time, 720);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(tick_names(&pack).len(), 12);
-    assert_eq!(fs::read(pack.join("world/places/gate.md")).unwrap(), place_before);
-    assert_eq!(fs::read(pack.join("cast/pc_rowan.md")).unwrap(), cast_before);
+    assert_eq!(
+        fs::read(pack.join("world/places/gate.md")).unwrap(),
+        place_before
+    );
+    assert_eq!(
+        fs::read(pack.join("cast/pc_rowan.md")).unwrap(),
+        cast_before
+    );
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -336,13 +355,23 @@ fn busy_skip() {
     assert_eq!(now.world_time, 365);
     assert_eq!(now.actors.get("mira").unwrap().place(), "docks_shop");
     assert_eq!(
-        now.actors.get("mira").unwrap().tick().unwrap().last_act_tick,
+        now.actors
+            .get("mira")
+            .unwrap()
+            .tick()
+            .unwrap()
+            .last_act_tick,
         0
     );
     assert_eq!(lamp_oil(now), 4);
     assert_eq!(now.actors.get("bram").unwrap().place(), "docks_shop");
     assert_eq!(
-        now.actors.get("bram").unwrap().tick().unwrap().last_act_tick,
+        now.actors
+            .get("bram")
+            .unwrap()
+            .tick()
+            .unwrap()
+            .last_act_tick,
         1
     );
     let _ = fs::remove_dir_all(&pack);
@@ -405,7 +434,10 @@ fn an_incomplete_transaction_is_discarded() {
     fs::write(txn.join("prev/now.yaml"), b"not-yaml\n").unwrap();
     let opened = open(&incomplete);
     assert_eq!(fs::read(&now_path).unwrap(), before);
-    assert_eq!(lamp_oil(opened.now()), lamp_oil(&spookery_kernel::codec::load_now(std::str::from_utf8(&before).unwrap()).unwrap()));
+    assert_eq!(
+        lamp_oil(opened.now()),
+        lamp_oil(&spookery_kernel::codec::load_now(std::str::from_utf8(&before).unwrap()).unwrap())
+    );
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&incomplete);
 }
@@ -432,7 +464,9 @@ fn the_same_revision_restores_the_previous_save() {
     assert_eq!(fs::read(&now_path).unwrap(), original);
     assert_eq!(
         lamp_oil(opened.now()),
-        lamp_oil(&spookery_kernel::codec::load_now(std::str::from_utf8(&original).unwrap()).unwrap())
+        lamp_oil(
+            &spookery_kernel::codec::load_now(std::str::from_utf8(&original).unwrap()).unwrap()
+        )
     );
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&same);
@@ -460,7 +494,10 @@ fn the_next_revision_keeps_the_new_save() {
     fs::create_dir_all(&log).unwrap();
     fs::write(
         log.join("tick-0001.jsonl"),
-        format!("{{\"tick_index\":1,\"state_rev_after\":{}}}\n", live.state_rev),
+        format!(
+            "{{\"tick_index\":1,\"state_rev_after\":{}}}\n",
+            live.state_rev
+        ),
     )
     .unwrap();
     fs::write(
@@ -517,7 +554,10 @@ fn replay_byte_compares_now() {
     assert_eq!(fs::read(temp.join("state/now.yaml")).unwrap(), golden);
     assert_ne!(temp, played);
     assert_eq!(fs::read(played.join("state/now.yaml")).unwrap(), golden);
-    assert_eq!(fs::read(played.join("state/log/tick-0020.jsonl")).unwrap(), source_log);
+    assert_eq!(
+        fs::read(played.join("state/log/tick-0020.jsonl")).unwrap(),
+        source_log
+    );
     let _ = fs::remove_dir_all(&start);
     let _ = fs::remove_dir_all(&played);
     let _ = fs::remove_dir_all(&temp);
@@ -593,8 +633,7 @@ tick:
                 place: "yard".to_string(),
                 flags: Vec::new(),
                 busy: false,
-                needs: BTreeMap::new(),
-                resources: BTreeMap::new(),
+                meters: meters(1),
                 relationships: BTreeMap::new(),
                 reputation: BTreeMap::new(),
                 known_facts: Vec::new(),
@@ -606,7 +645,7 @@ tick:
             },
         );
     }
-    for name in ["moves.yaml", "checks.yaml", "tick.yaml"] {
+    for name in ["moves.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
         let dest = pack.join("rules").join(name);
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
@@ -650,7 +689,10 @@ tick:
     tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 1);
-    assert_eq!(now.actors.values().filter(|actor| actor.is_npc()).count(), 50);
+    assert_eq!(
+        now.actors.values().filter(|actor| actor.is_npc()).count(),
+        50
+    );
     let acted = now
         .actors
         .values()
@@ -694,8 +736,14 @@ fn tool_scope() {
         .find(|fact| fact.id == "fact_ledger_short")
         .unwrap();
     assert_eq!(ledger.text, LEDGER);
-    assert!(!capped.unknown_mentioned.iter().any(|id| id == "fact_ledger_short"));
-    assert!(capped.unknown_mentioned.iter().any(|id| id == "fact_room_lamp"));
+    assert!(!capped
+        .unknown_mentioned
+        .iter()
+        .any(|id| id == "fact_ledger_short"));
+    assert!(capped
+        .unknown_mentioned
+        .iter()
+        .any(|id| id == "fact_room_lamp"));
     drop(shard);
     assert_eq!(snapshot(&pack), before);
     let _ = fs::remove_dir_all(&pack);
@@ -705,7 +753,10 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     if !dir.exists() {
         return;
     }
-    let mut entries: Vec<_> = fs::read_dir(dir).unwrap().map(|entry| entry.unwrap()).collect();
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| entry.unwrap())
+        .collect();
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         let path = entry.path();
@@ -726,17 +777,26 @@ fn strip_bodies_and_hidden_string_lint() {
     for path in &files {
         let text = fs::read_to_string(path).unwrap();
         let stripped = spookery_kernel::lint::strip_body(&text).unwrap();
-        assert!(!stripped.contains("Mira keeps the shop"), "{}", path.display());
+        assert!(
+            !stripped.contains("Mira keeps the shop"),
+            "{}",
+            path.display()
+        );
         assert!(!stripped.contains("Bram walks"), "{}", path.display());
         fs::write(path, stripped).unwrap();
     }
     let mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
     assert!(mira.contains(LEDGER), "frontmatter secret removed");
-    assert!(!fs::read_to_string(pack.join("cast/aldric.md")).unwrap().contains(LEDGER));
+    assert!(!fs::read_to_string(pack.join("cast/aldric.md"))
+        .unwrap()
+        .contains(LEDGER));
     stamp_pack_rev(&pack);
     open(&pack);
     tick_pack(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
-    let perceive = format!("{:?}", spookery_kernel::perceive(&open(&pack), "npc:aldric").unwrap());
+    let perceive = format!(
+        "{:?}",
+        spookery_kernel::perceive(&open(&pack), "npc:aldric").unwrap()
+    );
     assert!(!perceive.contains(LEDGER));
 
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
@@ -747,7 +807,9 @@ fn strip_bodies_and_hidden_string_lint() {
     body.push('\n');
     fs::write(owner.join("cast/mira.md"), body).unwrap();
     let hits = spookery_kernel::lint::lint(&owner).unwrap();
-    assert!(hits.iter().any(|hit| hit.path == "cast/mira.md" && hit.text == LEDGER));
+    assert!(hits
+        .iter()
+        .any(|hit| hit.path == "cast/mira.md" && hit.text == LEDGER));
     let place = temp_pack("lint-place");
     let mut body = fs::read_to_string(place.join("world/places/docks_shop.md")).unwrap();
     body.push_str(LEDGER);
@@ -789,14 +851,20 @@ fn import_boundary() {
             let bytes = fs::read(path).unwrap();
             for needle in needles {
                 let needle_bytes = needle.as_bytes();
-                if bytes.windows(needle_bytes.len()).any(|window| window == needle_bytes) {
+                if bytes
+                    .windows(needle_bytes.len())
+                    .any(|window| window == needle_bytes)
+                {
                     found.push(format!("{} contains {needle}", path.display()));
                 }
             }
         }
         found
     };
-    let kernel_hits = hits(&kernel_tick, &["rmcp", "tokio", "sqlx", "postgres", "redis"]);
+    let kernel_hits = hits(
+        &kernel_tick,
+        &["rmcp", "tokio", "sqlx", "postgres", "redis"],
+    );
     assert!(kernel_hits.is_empty(), "{}", kernel_hits.join("\n"));
     let mut src_files = Vec::new();
     files_under(&root.join("src"), &mut src_files);
@@ -905,17 +973,6 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
     fs::write(&path, next).unwrap();
 }
 
-fn set_grit(pack: &Path, grit: i64) {
-    if grit == 1 {
-        return;
-    }
-    let path = pack.join("state/actors/pc_rowan.yaml");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text.replacen("stats:\n  grit: 1\n", &format!("stats:\n  grit: {grit}\n"), 1);
-    assert_ne!(next, text, "grit was not patched");
-    fs::write(&path, next).unwrap();
-}
-
 fn play_mark(pack: &Path, line: &str) -> Now {
     let mut shard = open(pack);
     seat_player(&mut shard, "pc_rowan").unwrap();
@@ -927,34 +984,42 @@ fn play_mark(pack: &Path, line: &str) -> Now {
 }
 
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
-    for (label, grit, success) in [("effects-pass", 1, true), ("effects-fail", -20, false)] {
+    for (label, difficulty, success) in [("effects-pass", 0, true), ("effects-fail", 14, false)] {
         let pack = temp_pack(label);
         let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
-        moves.push_str(
-            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
-        );
+        moves.push_str(&format!(
+            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    difficulty: {difficulty}\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+        ));
         fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
         patch_mira_flags(&pack, "    - marked\n");
-        set_grit(&pack, grit);
         stamp_pack_rev(&pack);
         let now = play_mark(&pack, "mark mira");
         assert_eq!(now.world_time, 1085);
-        assert_eq!(flags_of(&now, "mira"), vec!["marked".to_string()], "{label} success {success}");
+        assert_eq!(
+            flags_of(&now, "mira"),
+            vec!["marked".to_string()],
+            "{label} success {success}"
+        );
         let tick = tick_value(&pack, "tick-0001.jsonl");
-        assert!(tick["tool_trace"].as_array().unwrap().iter().any(|name| name == "resolve_check"));
-        assert!(!fs::read_to_string(pack.join("state/log/tick-0001.jsonl")).unwrap().contains("faces"));
+        assert!(tick["tool_trace"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|name| name == "resolve_check"));
+        assert!(!fs::read_to_string(pack.join("state/log/tick-0001.jsonl"))
+            .unwrap()
+            .contains("faces"));
         let _ = fs::remove_dir_all(&pack);
     }
 
-    for (label, grit, flag) in [("lists-pass", 1, "marked"), ("lists-fail", -20, "missed")] {
+    for (label, difficulty, flag) in [("lists-pass", 0, "marked"), ("lists-fail", 14, "missed")] {
         let pack = temp_pack(label);
         let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
-        moves.push_str(
-            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    success:\n      - class: flag\n        key: marked\n        value: true\n    failure:\n      - class: flag\n        key: missed\n        value: true\n",
-        );
+        moves.push_str(&format!(
+            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    difficulty: {difficulty}\n    success:\n      - class: flag\n        key: marked\n        value: true\n    failure:\n      - class: flag\n        key: missed\n        value: true\n",
+        ));
         fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
         patch_mira_flags(&pack, "    - marked\n    - missed\n");
-        set_grit(&pack, grit);
         stamp_pack_rev(&pack);
         let now = play_mark(&pack, "mark mira");
         assert_eq!(flags_of(&now, "mira"), vec![flag.to_string()], "{label}");
@@ -988,21 +1053,19 @@ Nell keeps a guard up.
 schema: sheet/v0
 id: pc_nell
 template: cast/pc-nell.md
-stats:
-  grit: 100
-resources: {}
 inventory: []
-flags: []
 ",
     );
     let now_path = pack.join("state/now.yaml");
-    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let mut now =
+        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         ActorLive::Pc {
             place: "docks_shop".to_string(),
             flags: Vec::new(),
             busy: false,
+            meters: meters(100),
             known_facts: Vec::new(),
             sheet: "state/actors/pc_nell.yaml".to_string(),
         },
@@ -1040,7 +1103,11 @@ fn opposing_total_reused() {
                 "source": "player",
                 "move": "defend"
             });
-            let queued = gm_tool(&mut shard, "intent", Some(args.as_object().unwrap().clone()));
+            let queued = gm_tool(
+                &mut shard,
+                "intent",
+                Some(args.as_object().unwrap().clone()),
+            );
             assert!(queued.value.get("code").is_none(), "{}", queued.value);
         }
         let mark = turn(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
@@ -1095,7 +1162,11 @@ fn a_held_knife_still_runs_the_opposed_row() {
         "source": "player",
         "move": "defend"
     });
-    gm_tool(&mut shard, "intent", Some(args.as_object().unwrap().clone()));
+    gm_tool(
+        &mut shard,
+        "intent",
+        Some(args.as_object().unwrap().clone()),
+    );
     let queued = turn(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
     let Turn::Queued(_) = queued else {
         panic!("held mark committed before the round");
@@ -1103,15 +1174,16 @@ fn a_held_knife_still_runs_the_opposed_row() {
     assert!(commit_queued(&mut shard).unwrap());
     let rowan = rolled_stat(&shard.take_rolls(), 1);
     assert!(!rowan.success);
-    assert!(!fs::read_to_string(held.join("state/log/tick-0001.jsonl")).unwrap().contains("faces"));
+    assert!(!fs::read_to_string(held.join("state/log/tick-0001.jsonl"))
+        .unwrap()
+        .contains("faces"));
     let _ = fs::remove_dir_all(&held);
 }
 
 fn the_scheduler_does_not_spawn_a_tick() {
-    let source = fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/schedule.rs"),
-    )
-    .unwrap();
+    let source =
+        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/schedule.rs"))
+            .unwrap();
     assert!(
         source.contains("tokio::time::sleep"),
         "scheduler does not sleep on a Tokio timer"

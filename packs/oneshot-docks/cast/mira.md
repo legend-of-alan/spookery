@@ -25,15 +25,10 @@ tick:
   stock_rate:
     docks_shop:
       lamp_oil: 4
-  needs:
-    rest:
-      min: 0
-      max: 5
   work:
-    needs:
-      - key: rest
-        delta: 1
-    resources: []
+    - key: rest
+      write: base
+      delta: 1
   notes:
     - id: note_mira_door
       due_clock: shop_day

@@ -5,6 +5,7 @@ use serde_saphyr::SerializerOptions;
 use crate::effect::{Effect, EffectClass, EffectPayload};
 use crate::error::Reason;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use crate::meter::MeterWrite;
 use crate::model::{sort_unique, MemoryLine, Now};
 
 #[allow(non_snake_case)]
@@ -340,12 +341,25 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 delta: req_i64(object, "delta")?,
             })
         }
-        "need" => {
-            allow(object, &["actor_id", "key", "delta"])?;
-            Ok(EffectClass::Need {
-                actor_id: req_str(object, "actor_id")?,
-                key: req_str(object, "key")?,
-                delta: req_i64(object, "delta")?,
+        "meter" => {
+            allow(object, &["actor_id", "key", "write", "delta"])?;
+            let actor_id = req_str(object, "actor_id")?;
+            let key = req_str(object, "key")?;
+            let write = match object.get("write").and_then(Value::as_str) {
+                Some("base") => MeterWrite::Base(req_i64(object, "delta")?),
+                Some("offset") => MeterWrite::Offset(req_i64(object, "delta")?),
+                Some("snap") => {
+                    if object.contains_key("delta") {
+                        return Err(Reason::Schema);
+                    }
+                    MeterWrite::Snap
+                }
+                _ => return Err(Reason::Schema),
+            };
+            Ok(EffectClass::Meter {
+                actor_id,
+                key,
+                write,
             })
         }
         "stock" => {
@@ -399,14 +413,6 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 heat: req_i64(object, "heat")?,
             })
         }
-        "resource" => {
-            allow(object, &["actor_id", "key", "delta"])?;
-            Ok(EffectClass::Resource {
-                actor_id: req_str(object, "actor_id")?,
-                key: req_str(object, "key")?,
-                delta: req_i64(object, "delta")?,
-            })
-        }
         "flag" => {
             allow(object, &["actor_id", "key", "value"])?;
             Ok(EffectClass::Flag {
@@ -425,7 +431,7 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 text: req_str(object, "text")?,
             })
         }
-        _ => Err(Reason::Schema),
+        _ => Err(Reason::IllegalClass),
     }
 }
 
@@ -504,6 +510,7 @@ mod tests {
     }
 
     use crate::effect::EffectClass;
+    use crate::error::Reason;
     use crate::intent::ViewerId;
     use crate::model::MemoryLine;
 
@@ -539,15 +546,15 @@ mod tests {
             ),
             (
                 effect(
-                    EffectClass::Need {
-                        actor_id: "pc_rowan".to_string(),
+                    EffectClass::Meter {
+                        actor_id: "mira".to_string(),
                         key: "rest".to_string(),
-                        delta: -2,
+                        write: crate::meter::MeterWrite::Base(1),
                     },
-                    player("pc_rowan"),
+                    npc("mira"),
                     "i2",
                 ),
-                r#"{"class":"need","as":"player:pc_rowan","intent_id":"i2","actor_id":"pc_rowan","key":"rest","delta":-2}"#,
+                r#"{"class":"meter","as":"npc:mira","intent_id":"i2","actor_id":"mira","key":"rest","write":"base","delta":1}"#,
             ),
             (
                 effect(
@@ -639,15 +646,15 @@ mod tests {
             ),
             (
                 effect(
-                    EffectClass::Resource {
-                        actor_id: "mira".to_string(),
-                        key: "coin".to_string(),
-                        delta: 3,
+                    EffectClass::Meter {
+                        actor_id: "pc_rowan".to_string(),
+                        key: "grit".to_string(),
+                        write: crate::meter::MeterWrite::Snap,
                     },
-                    npc("mira"),
+                    player("pc_rowan"),
                     "i9",
                 ),
-                r#"{"class":"resource","as":"npc:mira","intent_id":"i9","actor_id":"mira","key":"coin","delta":3}"#,
+                r#"{"class":"meter","as":"player:pc_rowan","intent_id":"i9","actor_id":"pc_rowan","key":"grit","write":"snap"}"#,
             ),
             (
                 effect(
@@ -699,6 +706,42 @@ mod tests {
                 effect
             );
         }
+        for name in ["need", "resource", "inventory"] {
+            let value = serde_json::json!({
+                "class": name,
+                "as": "npc:mira",
+                "intent_id": "i",
+            });
+            assert_eq!(
+                super::parse_effect(&value).unwrap_err(),
+                Reason::IllegalClass
+            );
+        }
+        let snap_delta = serde_json::json!({
+            "class": "meter",
+            "as": "npc:mira",
+            "intent_id": "i",
+            "actor_id": "mira",
+            "key": "rest",
+            "write": "snap",
+            "delta": 1,
+        });
+        assert_eq!(
+            super::parse_effect(&snap_delta).unwrap_err(),
+            Reason::Schema
+        );
+        let missing_delta = serde_json::json!({
+            "class": "meter",
+            "as": "npc:mira",
+            "intent_id": "i",
+            "actor_id": "mira",
+            "key": "rest",
+            "write": "base",
+        });
+        assert_eq!(
+            super::parse_effect(&missing_delta).unwrap_err(),
+            Reason::Schema
+        );
     }
 
     #[test]

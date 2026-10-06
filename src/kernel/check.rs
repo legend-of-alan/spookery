@@ -4,7 +4,8 @@ use serde::Deserialize;
 
 use crate::error::Reason;
 use crate::intent::ViewerId;
-use crate::model::PcSheet;
+use crate::meter::{self, MeterDef};
+use crate::model::ActorLive;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CheckDef {
@@ -82,7 +83,9 @@ pub fn die_face(rng: &[u8], n: usize, sides: u32) -> Result<u32, Reason> {
 /// NPC viewers return `UNKNOWN_KEY` and do not advance `die_cursor`.
 pub fn resolve_check(
     check: &CheckDef,
-    sheets: &BTreeMap<String, PcSheet>,
+    defs: &BTreeMap<String, MeterDef>,
+    actor_id: &str,
+    actor: &ActorLive,
     viewer: &ViewerId,
     target: i64,
     rng: &[u8],
@@ -91,12 +94,12 @@ pub fn resolve_check(
     let ViewerId::Player(id) = viewer else {
         return Err(Reason::UnknownKey);
     };
-    let sheet = sheets.get(id).ok_or(Reason::UnknownKey)?;
-    let stat = sheet
-        .stats
-        .get(&check.stat)
-        .copied()
-        .ok_or(Reason::UnknownKey)?;
+    if id != actor_id {
+        return Err(Reason::UnknownKey);
+    }
+    let def = defs.get(&check.stat).ok_or(Reason::UnknownKey)?;
+    let live = actor.meters().get(&check.stat).ok_or(Reason::UnknownKey)?;
+    let stat = meter::current(def, live)?;
     let mut faces = Vec::with_capacity(check.dice_count as usize);
     for _ in 0..check.dice_count {
         let face = die_face(rng, *die_cursor, check.dice_sides)?;

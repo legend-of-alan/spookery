@@ -6,8 +6,7 @@ use std::fmt;
 pub enum StateKey {
     ActorPlace(String),
     ActorFlag(String, String),
-    ActorNeed(String, String),
-    ActorResource(String, String),
+    ActorMeter(String, String),
     ActorBusy(String),
     ActorKnownFact(String),
     TickLastAct(String),
@@ -27,8 +26,7 @@ impl fmt::Display for StateKey {
         match self {
             StateKey::ActorPlace(id) => write!(f, "actor_place {id}"),
             StateKey::ActorFlag(id, key) => write!(f, "actor_flag {id} {key}"),
-            StateKey::ActorNeed(id, key) => write!(f, "actor_need {id} {key}"),
-            StateKey::ActorResource(id, key) => write!(f, "actor_resource {id} {key}"),
+            StateKey::ActorMeter(id, key) => write!(f, "actor_meter {id} {key}"),
             StateKey::ActorBusy(id) => write!(f, "actor_busy {id}"),
             StateKey::ActorKnownFact(id) => write!(f, "actor_known_fact {id}"),
             StateKey::TickLastAct(id) => write!(f, "tick_last_act {id}"),

@@ -45,7 +45,7 @@ moves:
     token: none
     on: speaker
     effects:
-      - class: need
+      - class: meter
         delta: from_work
 
   - name: rest
@@ -53,8 +53,9 @@ moves:
     token: none
     on: speaker
     effects:
-      - class: need
+      - class: meter
         key: rest
+        write: base
         delta: schedule_rest
 
   - name: drift_relationship

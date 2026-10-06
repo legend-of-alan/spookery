@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::error::Reason;
+use crate::meter::{MeterWrite, WorkWrite};
 
 /// A listed move. `row` is set when the file carries a template list.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -95,7 +96,7 @@ pub enum MoveOn {
     Named,
 }
 
-/// One effect template. Flag, location, and resource keep the shapes the harness compares.
+/// One effect template. Flag and location keep the shapes the harness compares.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RowEffect {
     Flag {
@@ -106,17 +107,10 @@ pub enum RowEffect {
     LocationTo {
         to: Field,
     },
-    Resource {
-        key: String,
-        delta: i64,
-    },
+    Meter(MeterTemplate),
     Stock {
         place: Field,
         sku: Field,
-        delta: Field,
-    },
-    Need {
-        key: Option<String>,
         delta: Field,
     },
     Clock {
@@ -144,6 +138,22 @@ pub enum RowEffect {
         to: Selector,
         heat: Selector,
     },
+}
+
+/// A meter template after the loader accepts the row. `FromWork` and
+/// `ScheduleRest` are markers. `Literal` is a `WorkWrite`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MeterTemplate {
+    FromWork,
+    ScheduleRest { key: String, arm: MeterArm },
+    Literal(WorkWrite),
+}
+
+/// The arm on a `schedule_rest` template. The delta comes from the winning row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MeterArm {
+    Base,
+    Offset,
 }
 
 pub fn load_moves(text: &str) -> Result<BTreeMap<String, MoveDef>, Reason> {
@@ -276,20 +286,15 @@ fn outcome_templates(
     }
 }
 
-fn one_template(
-    token: MoveToken,
-    on: MoveOn,
-    effect: EffectTemplate,
-) -> Result<RowEffect, Reason> {
+fn one_template(token: MoveToken, on: MoveOn, effect: EffectTemplate) -> Result<RowEffect, Reason> {
     if !pair_ok(token, on) {
         return Err(Reason::Schema);
     }
     match effect.class.as_str() {
         "flag" => flag_template(token, on, &effect),
         "location" => location_template(token, &effect),
-        "resource" => resource_template(&effect),
+        "meter" => meter_template(&effect),
         "stock" => stock_template(&effect),
-        "need" => need_template(&effect),
         "clock" => clock_template(&effect),
         "message" => message_template(&effect),
         "relationship" => relationship_template(&effect),
@@ -309,7 +314,11 @@ fn pair_ok(token: MoveToken, on: MoveOn) -> bool {
     )
 }
 
-fn flag_template(token: MoveToken, on: MoveOn, effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+fn flag_template(
+    token: MoveToken,
+    on: MoveOn,
+    effect: &EffectTemplate,
+) -> Result<RowEffect, Reason> {
     only(effect, &["key", "value"])?;
     let flag_pair = matches!(
         (token, on),
@@ -356,15 +365,55 @@ fn location_template(token: MoveToken, effect: &EffectTemplate) -> Result<RowEff
     }
 }
 
-fn resource_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["key", "delta"])?;
-    let Some(key) = effect.key.clone() else {
-        return Err(Reason::Schema);
-    };
-    let Some(delta) = number_field(effect.delta.as_ref())? else {
-        return Err(Reason::Schema);
-    };
-    Ok(RowEffect::Resource { key, delta })
+fn meter_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
+    only(effect, &["key", "write", "delta"])?;
+    match effect.delta.as_ref() {
+        Some(DeltaField::Word(word)) => match Selector::parse(word) {
+            Some(Selector::FromWork) => {
+                if effect.key.is_some() || effect.write.is_some() {
+                    return Err(Reason::Schema);
+                }
+                Ok(RowEffect::Meter(MeterTemplate::FromWork))
+            }
+            Some(Selector::ScheduleRestDelta) => {
+                if effect.key.as_deref() != Some("rest") {
+                    return Err(Reason::Schema);
+                }
+                let arm = match effect.write.as_deref() {
+                    Some("base") => MeterArm::Base,
+                    Some("offset") => MeterArm::Offset,
+                    _ => return Err(Reason::Schema),
+                };
+                Ok(RowEffect::Meter(MeterTemplate::ScheduleRest {
+                    key: "rest".to_string(),
+                    arm,
+                }))
+            }
+            _ => Err(Reason::Schema),
+        },
+        Some(DeltaField::Int(delta)) => {
+            let key = effect.key.clone().ok_or(Reason::Schema)?;
+            let write = match effect.write.as_deref() {
+                Some("base") => MeterWrite::Base(*delta),
+                Some("offset") => MeterWrite::Offset(*delta),
+                _ => return Err(Reason::Schema),
+            };
+            Ok(RowEffect::Meter(MeterTemplate::Literal(WorkWrite {
+                key,
+                write,
+            })))
+        }
+        None => {
+            if effect.write.as_deref() != Some("snap") {
+                return Err(Reason::Schema);
+            }
+            let key = effect.key.clone().ok_or(Reason::Schema)?;
+            Ok(RowEffect::Meter(MeterTemplate::Literal(WorkWrite {
+                key,
+                write: MeterWrite::Snap,
+            })))
+        }
+    }
 }
 
 fn stock_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
@@ -382,36 +431,6 @@ fn stock_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
         return Err(Reason::Schema);
     }
     Ok(RowEffect::Stock { place, sku, delta })
-}
-
-fn need_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["key", "delta"])?;
-    let delta = required_delta(effect.delta.as_ref())?;
-    match delta {
-        Field::Selector(Selector::FromWork) => {
-            if effect.key.is_some() {
-                return Err(Reason::Schema);
-            }
-            Ok(RowEffect::Need {
-                key: None,
-                delta: Field::Selector(Selector::FromWork),
-            })
-        }
-        Field::Selector(Selector::ScheduleRestDelta) => {
-            if effect.key.as_deref() != Some("rest") {
-                return Err(Reason::Schema);
-            }
-            Ok(RowEffect::Need {
-                key: Some("rest".to_string()),
-                delta: Field::Selector(Selector::ScheduleRestDelta),
-            })
-        }
-        Field::Number(delta) => Ok(RowEffect::Need {
-            key: Some(effect.key.clone().ok_or(Reason::Schema)?),
-            delta: Field::Number(delta),
-        }),
-        _ => Err(Reason::Schema),
-    }
 }
 
 fn clock_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
@@ -476,7 +495,9 @@ fn rumor_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     let rumor = selector_word(effect.rumor.as_deref().ok_or(Reason::Schema)?)?;
     let to = selector_word(effect.to.as_deref().ok_or(Reason::Schema)?)?;
     let heat = selector_word(effect.heat.as_deref().ok_or(Reason::Schema)?)?;
-    if rumor != Selector::FirstKnownRumor || to != Selector::FirstListener || heat != Selector::KeepHeat
+    if rumor != Selector::FirstKnownRumor
+        || to != Selector::FirstListener
+        || heat != Selector::KeepHeat
     {
         return Err(Reason::Schema);
     }
@@ -486,6 +507,7 @@ fn rumor_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
 fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
     let present = [
         ("key", effect.key.is_some()),
+        ("write", effect.write.is_some()),
         ("value", effect.value.is_some()),
         ("delta", effect.delta.is_some()),
         ("to", effect.to.is_some()),
@@ -578,6 +600,8 @@ struct EffectTemplate {
     #[serde(default)]
     key: Option<String>,
     #[serde(default)]
+    write: Option<String>,
+    #[serde(default)]
     value: Option<bool>,
     #[serde(default)]
     delta: Option<DeltaField>,
@@ -617,8 +641,12 @@ mod tests {
     use std::fs;
     use std::path::Path;
 
-    use super::{load_moves, Audience, Field, MoveOn, MoveToken, RowEffect, Selector};
+    use super::{
+        load_moves, Audience, Field, MeterArm, MeterTemplate, MoveOn, MoveToken, RowEffect,
+        Selector,
+    };
     use crate::error::Reason;
+    use crate::meter::{MeterWrite, WorkWrite};
 
     fn schema(body: &str) -> Reason {
         let text = format!("schema: moves/v0\nmoves:\n{body}");
@@ -641,7 +669,13 @@ mod tests {
         assert_eq!(grit.audience, Some(Audience::Player));
         assert_eq!(moves.get("grit").unwrap().check.as_deref(), Some("grit"));
         assert_eq!(
-            moves.get("advance_clock").unwrap().row.as_ref().unwrap().audience,
+            moves
+                .get("advance_clock")
+                .unwrap()
+                .row
+                .as_ref()
+                .unwrap()
+                .audience,
             Some(Audience::Agenda)
         );
         assert!(moves.get("talk").is_none());
@@ -672,7 +706,7 @@ moves:
         place: here
         sku: first_rate
         delta: rate
-      - class: need
+      - class: meter
         delta: from_work
       - class: clock
         clock: first_owned
@@ -692,9 +726,6 @@ moves:
       - class: memory
         fact_ids: []
         tags: []
-      - class: resource
-        key: rest
-        delta: 1
       - class: flag
         key: marked
         value: true
@@ -705,8 +736,9 @@ moves:
     effects:
       - class: location
         to: schedule_place
-      - class: need
+      - class: meter
         key: rest
+        write: base
         delta: schedule_rest
   - name: step
     audience: player
@@ -720,8 +752,9 @@ moves:
     token: actor
     on: named
     success:
-      - class: resource
+      - class: meter
         key: hp
+        write: base
         delta: -1
     failure:
       - class: flag
@@ -745,14 +778,7 @@ moves:
                 delta: Field::Selector(Selector::Rate),
             }
         );
-        assert!(matches!(
-            &shelf.effects[1],
-            RowEffect::Need {
-                key: None,
-                delta: Field::Selector(Selector::FromWork),
-            }
-        ));
-        assert_eq!(shelf.effects.len(), 10);
+        assert_eq!(shelf.effects[1], RowEffect::Meter(MeterTemplate::FromWork));
         let night = moves.get("night").unwrap().row.as_ref().unwrap();
         assert_eq!(night.audience, Some(Audience::System));
         assert_eq!(
@@ -767,11 +793,18 @@ moves:
         let mark = moves.get("mark").unwrap().row.as_ref().unwrap();
         assert!(mark.effects.is_empty());
         assert_eq!(
+            night.effects[1],
+            RowEffect::Meter(MeterTemplate::ScheduleRest {
+                key: "rest".to_string(),
+                arm: MeterArm::Base,
+            })
+        );
+        assert_eq!(
             mark.success,
-            vec![RowEffect::Resource {
+            vec![RowEffect::Meter(MeterTemplate::Literal(WorkWrite {
                 key: "hp".to_string(),
-                delta: -1,
-            }]
+                write: MeterWrite::Base(-1),
+            }))]
         );
         assert_eq!(
             mark.failure,
@@ -831,6 +864,18 @@ moves:
         assert_eq!(
             schema(
                 "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: inventory\n        key: bag\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: player\n    token: none\n    on: speaker\n    effects:\n      - class: need\n        key: rest\n        delta: 1\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: mark\n    audience: player\n    token: none\n    on: speaker\n    effects:\n      - class: resource\n        key: rest\n        delta: 1\n"
             ),
             Reason::Schema
         );

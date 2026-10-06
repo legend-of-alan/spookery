@@ -1,8 +1,10 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::meter::MeterLive;
 use spookery_kernel::model::ActorLive;
 use spookery_kernel::Reason;
 
@@ -149,11 +151,7 @@ Nell keeps a guard up.
 schema: sheet/v0
 id: pc_nell
 template: cast/pc-nell.md
-stats:
-  grit: 100
-resources: {}
 inventory: []
-flags: []
 ",
     )
     .unwrap();
@@ -166,6 +164,16 @@ flags: []
             place: "docks_shop".to_string(),
             flags: Vec::new(),
             busy: false,
+            meters: BTreeMap::from([
+                (
+                    "grit".to_string(),
+                    MeterLive {
+                        base: 100,
+                        offset: 0,
+                    },
+                ),
+                ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
+            ]),
             known_facts: Vec::new(),
             sheet: "state/actors/pc_nell.yaml".to_string(),
         },

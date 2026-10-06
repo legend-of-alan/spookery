@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::meter::MeterLive;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Now {
@@ -62,8 +64,7 @@ pub enum ActorLive {
         place: String,
         flags: Vec<String>,
         busy: bool,
-        needs: BTreeMap<String, i64>,
-        resources: BTreeMap<String, i64>,
+        meters: BTreeMap<String, MeterLive>,
         relationships: BTreeMap<String, Relation>,
         reputation: BTreeMap<String, Reputation>,
         known_facts: Vec<String>,
@@ -74,6 +75,7 @@ pub enum ActorLive {
         place: String,
         flags: Vec<String>,
         busy: bool,
+        meters: BTreeMap<String, MeterLive>,
         known_facts: Vec<String>,
         sheet: String,
     },
@@ -144,24 +146,15 @@ impl ActorLive {
         }
     }
 
-    pub fn needs(&self) -> Option<&BTreeMap<String, i64>> {
+    pub fn meters(&self) -> &BTreeMap<String, MeterLive> {
         match self {
-            ActorLive::Npc { needs, .. } => Some(needs),
-            ActorLive::Pc { .. } => None,
+            ActorLive::Npc { meters, .. } | ActorLive::Pc { meters, .. } => meters,
         }
     }
 
-    pub fn needs_mut(&mut self) -> Option<&mut BTreeMap<String, i64>> {
+    pub fn meters_mut(&mut self) -> &mut BTreeMap<String, MeterLive> {
         match self {
-            ActorLive::Npc { needs, .. } => Some(needs),
-            ActorLive::Pc { .. } => None,
-        }
-    }
-
-    pub fn resources_mut(&mut self) -> Option<&mut BTreeMap<String, i64>> {
-        match self {
-            ActorLive::Npc { resources, .. } => Some(resources),
-            ActorLive::Pc { .. } => None,
+            ActorLive::Npc { meters, .. } | ActorLive::Pc { meters, .. } => meters,
         }
     }
 
@@ -247,10 +240,7 @@ pub struct PcSheet {
     pub schema: String,
     pub id: String,
     pub template: String,
-    pub stats: BTreeMap<String, i64>,
-    pub resources: BTreeMap<String, i64>,
     pub inventory: Vec<String>,
-    pub flags: Vec<String>,
 }
 
 pub fn sort_unique(items: &mut Vec<String>) {

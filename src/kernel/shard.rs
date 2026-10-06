@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::canon::{load_canon, pack_rev, Canon};
+use crate::canon::{bind_meters, load_canon, pack_rev, Canon};
 use crate::check::CheckNotice;
 use crate::codec::{emit_now, load_now};
 use crate::error::Reason;
@@ -305,7 +305,7 @@ pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
     let canon = Arc::new(load_canon(root)?);
     let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let now = load_now(now_text)?;
+    let mut now = load_now(now_text)?;
     let rev = pack_rev(root)?;
     if now.pack_rev != rev {
         return Err(Reason::PackRevMismatch);
@@ -314,6 +314,7 @@ pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
     if emitted.as_bytes() != now_bytes {
         return Err(Reason::HandEdit);
     }
+    bind_meters(&canon, &mut now)?;
     let mut sheets = BTreeMap::new();
     for (id, actor) in &now.actors {
         if let crate::model::ActorLive::Pc { sheet, .. } = actor {

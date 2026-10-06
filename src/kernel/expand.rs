@@ -3,8 +3,9 @@ use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::limits::world_hour;
+use crate::meter::{MeterWrite, WorkWrite};
 use crate::model::{Now, RunState};
-use crate::moves::{ActionRow, Field, MoveOn, RowEffect, Selector};
+use crate::moves::{ActionRow, Field, MeterArm, MeterTemplate, MoveOn, RowEffect, Selector};
 use crate::select::{first_drift, first_due_note, first_owned_clock, rumor_class, stock_walk};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
@@ -101,17 +102,10 @@ fn expand_template(
             };
             effects.push(location_effect(now, intent, &place)?);
         }
-        RowEffect::Resource { key, delta } => {
-            let actor_id = actor_of(row, intent)?;
-            effects.push(wrap(
-                viewer,
-                &intent.id,
-                EffectClass::Resource {
-                    actor_id,
-                    key: key.clone(),
-                    delta: *delta,
-                },
-            ));
+        RowEffect::Meter(template) => {
+            for class in meter_classes(canon, now, intent, row, template)? {
+                effects.push(wrap(viewer, &intent.id, class));
+            }
         }
         RowEffect::Stock { place, sku, delta } => {
             let (place, sku, delta) =
@@ -121,11 +115,6 @@ fn expand_template(
                 &intent.id,
                 EffectClass::Stock { place, sku, delta },
             ));
-        }
-        RowEffect::Need { key, delta } => {
-            for class in need_classes(canon, now, intent, row, key.as_deref(), delta)? {
-                effects.push(wrap(viewer, &intent.id, class));
-            }
         }
         RowEffect::Clock { clock, delta } => {
             let clock_id = match clock {
@@ -251,56 +240,50 @@ fn stock_fields(
     }
 }
 
-fn need_classes(
+fn meter_class(actor_id: &str, write: &WorkWrite) -> EffectClass {
+    EffectClass::Meter {
+        actor_id: actor_id.to_string(),
+        key: write.key.clone(),
+        write: write.write,
+    }
+}
+
+fn meter_classes(
     canon: &Canon,
     now: &Now,
     intent: &Intent,
     row: &ActionRow,
-    key: Option<&str>,
-    delta: &Field,
+    template: &MeterTemplate,
 ) -> Result<Vec<EffectClass>, Reason> {
-    match delta {
-        Field::Selector(Selector::FromWork) => Ok(from_work(canon, &intent.actor_id)),
-        Field::Selector(Selector::ScheduleRestDelta) => {
+    match template {
+        MeterTemplate::FromWork => Ok(from_work(canon, &intent.actor_id)),
+        MeterTemplate::ScheduleRest { arm, .. } => {
             let delta = schedule_rest(canon, now, &intent.actor_id).ok_or(Reason::UnknownKey)?;
-            Ok(vec![EffectClass::Need {
-                actor_id: intent.actor_id.clone(),
-                key: "rest".to_string(),
-                delta,
-            }])
+            let write = match arm {
+                MeterArm::Base => MeterWrite::Base(delta),
+                MeterArm::Offset => MeterWrite::Offset(delta),
+            };
+            Ok(vec![meter_class(
+                &intent.actor_id,
+                &WorkWrite {
+                    key: "rest".to_string(),
+                    write,
+                },
+            )])
         }
-        Field::Number(delta) => Ok(vec![EffectClass::Need {
-            actor_id: actor_of(row, intent)?,
-            key: key.unwrap_or("").to_string(),
-            delta: *delta,
-        }]),
-        _ => Err(Reason::Schema),
+        MeterTemplate::Literal(write) => Ok(vec![meter_class(&actor_of(row, intent)?, write)]),
     }
 }
 
 fn from_work(canon: &Canon, actor_id: &str) -> Vec<EffectClass> {
-    let Some(work) = canon
-        .profile(actor_id)
-        .and_then(|profile| profile.work.as_ref())
-    else {
+    let Some(profile) = canon.profile(actor_id) else {
         return Vec::new();
     };
-    let mut classes = Vec::new();
-    for item in &work.needs {
-        classes.push(EffectClass::Need {
-            actor_id: actor_id.to_string(),
-            key: item.key.clone(),
-            delta: item.delta,
-        });
-    }
-    for item in &work.resources {
-        classes.push(EffectClass::Resource {
-            actor_id: actor_id.to_string(),
-            key: item.key.clone(),
-            delta: item.delta,
-        });
-    }
-    classes
+    profile
+        .work
+        .iter()
+        .map(|write| meter_class(actor_id, write))
+        .collect()
 }
 
 fn schedule_rest(canon: &Canon, now: &Now, actor_id: &str) -> Option<i64> {
@@ -370,6 +353,7 @@ mod tests {
     use crate::effect::EffectClass;
     use crate::error::Reason;
     use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+    use crate::meter::MeterWrite;
     use crate::model::Clock;
     use crate::shard::open_shard;
 
@@ -434,7 +418,7 @@ mod tests {
         place: here
         sku: first_rate
         delta: rate
-      - class: need
+      - class: meter
         delta: from_work
       - class: clock
         clock: first_owned
@@ -463,9 +447,28 @@ mod tests {
     token: none
     on: speaker
     effects:
-      - class: need
+      - class: meter
         key: rest
+        write: base
         delta: 9223372036854775807
+  - name: cap
+    audience: player
+    token: none
+    on: speaker
+    effects:
+      - class: meter
+        key: rest
+        write: base
+        delta: 100
+  - name: creep
+    audience: player
+    token: none
+    on: speaker
+    effects:
+      - class: meter
+        key: rest
+        write: base
+        delta: 1
   - name: hold
     audience: player
     token: none
@@ -504,10 +507,10 @@ mod tests {
                     sku: "lamp_oil".to_string(),
                     delta: 4,
                 },
-                EffectClass::Need {
+                EffectClass::Meter {
                     actor_id: "mira".to_string(),
                     key: "rest".to_string(),
-                    delta: 1,
+                    write: MeterWrite::Base(1),
                 },
                 EffectClass::Clock {
                     clock_id: "shelf_count".to_string(),
@@ -536,7 +539,9 @@ mod tests {
             8,
             "stock range check accepted delta 4 against rate 4"
         );
-        assert_eq!(txn.now().actors["mira"].needs().unwrap()["rest"], 4);
+        let rest = &txn.now().actors["mira"].meters()["rest"];
+        assert_eq!(rest.base, 4);
+        assert_eq!(rest.offset, 0);
         assert_eq!(txn.now().clocks["shelf_count"].value, 1);
         assert_eq!(txn.now().messages[0].id, "note_mira_door");
 
@@ -581,7 +586,45 @@ mod tests {
             apply_effect(&mut need_txn, &overneed, need.into_iter().next().unwrap()).unwrap_err(),
             Reason::OutOfRange
         );
-        assert_eq!(need_txn.now().actors["mira"].needs().unwrap()["rest"], 3);
+        let held = &need_txn.now().actors["mira"].meters()["rest"];
+        assert_eq!(held.base, 3);
+        assert_eq!(held.offset, 0);
+
+        let mut cap_txn = crate::shard::Txn::begin(&shard);
+        let cap = intent("cap", Target::Empty);
+        let capped = expand_outcome(shard.canon(), shard.now(), &cap, None).unwrap();
+        apply_effect(&mut cap_txn, &cap, capped.into_iter().next().unwrap()).unwrap();
+        let capped_rest = &cap_txn.now().actors["mira"].meters()["rest"];
+        assert_eq!(capped_rest.base, 5);
+        assert_eq!(capped_rest.offset, 0);
+        assert!(cap_txn
+            .staged_paths()
+            .iter()
+            .any(|line| line == "actor_meter mira rest"));
+
+        let mut creep_txn = crate::shard::Txn::begin(&shard);
+        {
+            let live = creep_txn
+                .now_mut()
+                .actors
+                .get_mut("mira")
+                .unwrap()
+                .meters_mut()
+                .get_mut("rest")
+                .unwrap();
+            live.base = 5;
+            live.offset = 0;
+        }
+        let creep = intent("creep", Target::Empty);
+        let crept = expand_outcome(shard.canon(), shard.now(), &creep, None).unwrap();
+        apply_effect(&mut creep_txn, &creep, crept.into_iter().next().unwrap()).unwrap();
+        let crept_rest = &creep_txn.now().actors["mira"].meters()["rest"];
+        assert_eq!(crept_rest.base, 5);
+        assert_eq!(crept_rest.offset, 0);
+        assert!(creep_txn
+            .staged_paths()
+            .iter()
+            .all(|line| line != "actor_meter mira rest"));
 
         let hold = intent("hold", Target::Empty);
         let yielded = expand_outcome(shard.canon(), shard.now(), &hold, None).unwrap();

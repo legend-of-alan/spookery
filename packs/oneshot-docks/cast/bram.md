@@ -17,10 +17,6 @@ tick:
     - start: 18
       end: 6
       place: docks_street
-  needs:
-    rest:
-      min: 0
-      max: 5
   agenda:
     - row: travel_schedule
       pause: travel

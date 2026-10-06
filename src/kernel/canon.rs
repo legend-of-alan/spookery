@@ -8,7 +8,9 @@ use crate::check::{load_checks, CheckDef};
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::limits::{load_tick_rules, Budget};
-use crate::moves::{load_moves, Audience, MoveDef};
+use crate::meter::{self, MeterDef, MeterLive, MeterWrite, WorkWrite};
+use crate::model::Now;
+use crate::moves::{load_moves, Audience, MeterTemplate, MoveDef, RowEffect};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -22,6 +24,7 @@ pub struct Canon {
     pub facts: BTreeMap<String, FactCanon>,
     pub moves: BTreeMap<String, MoveDef>,
     pub checks: BTreeMap<String, CheckDef>,
+    pub meters: BTreeMap<String, MeterDef>,
     pub budget: Budget,
 }
 
@@ -69,10 +72,8 @@ pub struct TickProfile {
     pub range: Vec<String>,
     pub schedule: Vec<ScheduleRow>,
     pub stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
-    pub needs: BTreeMap<String, Bound>,
-    pub resources: BTreeMap<String, Bound>,
     pub flags: Vec<String>,
-    pub work: Option<WorkBlock>,
+    pub work: Vec<WorkWrite>,
     pub notes: Vec<NoteDef>,
     pub agenda: Vec<AgendaEntry>,
 }
@@ -96,24 +97,6 @@ pub struct ScheduleRow {
     pub place: String,
     pub activity: Option<String>,
     pub rest_delta: Option<i64>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Bound {
-    pub min: Option<i64>,
-    pub max: Option<i64>,
-}
-
-#[derive(Clone, Debug)]
-pub struct WorkBlock {
-    pub needs: Vec<WorkDelta>,
-    pub resources: Vec<WorkDelta>,
-}
-
-#[derive(Clone, Debug)]
-pub struct WorkDelta {
-    pub key: String,
-    pub delta: i64,
 }
 
 #[derive(Clone, Debug)]
@@ -306,7 +289,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
     }
     let moves = load_moves(&read_string(&root.join("rules/moves.yaml"))?)?;
     let checks = load_checks(&read_string(&root.join("rules/checks.yaml"))?)?;
+    let meters = load_meters(&read_string(&root.join("rules/meters.yaml"))?)?;
     require_known_checks(&moves, &checks)?;
+    require_meter_ids(&meters, &checks, &cast, &moves)?;
     require_agenda_rows(&cast, &moves)?;
     let budget = load_tick_rules(&read_string(&root.join("rules/tick.yaml"))?)?;
     Ok(Canon {
@@ -320,6 +305,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
         facts,
         moves,
         checks,
+        meters,
         budget,
     })
 }
@@ -395,51 +381,8 @@ fn validate_tick(file: TickFile) -> Result<TickProfile, Reason> {
             })
             .collect(),
         stock_rate: file.stock_rate,
-        needs: file
-            .needs
-            .into_iter()
-            .map(|(key, bound)| {
-                (
-                    key,
-                    Bound {
-                        min: bound.min,
-                        max: bound.max,
-                    },
-                )
-            })
-            .collect(),
-        resources: file
-            .resources
-            .into_iter()
-            .map(|(key, bound)| {
-                (
-                    key,
-                    Bound {
-                        min: bound.min,
-                        max: bound.max,
-                    },
-                )
-            })
-            .collect(),
         flags: file.flags,
-        work: file.work.map(|work| WorkBlock {
-            needs: work
-                .needs
-                .into_iter()
-                .map(|item| WorkDelta {
-                    key: item.key,
-                    delta: item.delta,
-                })
-                .collect(),
-            resources: work
-                .resources
-                .into_iter()
-                .map(|item| WorkDelta {
-                    key: item.key,
-                    delta: item.delta,
-                })
-                .collect(),
-        }),
+        work: work_of(file.work)?,
         notes: file
             .notes
             .into_iter()
@@ -493,6 +436,112 @@ fn agenda_of(entries: Vec<AgendaFile>) -> Result<Vec<AgendaEntry>, Reason> {
         });
     }
     Ok(agenda)
+}
+
+fn work_of(entries: Vec<WorkEntryFile>) -> Result<Vec<WorkWrite>, Reason> {
+    let mut work = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let write = match entry.write.as_str() {
+            "base" => MeterWrite::Base(entry.delta),
+            "offset" => MeterWrite::Offset(entry.delta),
+            _ => return Err(Reason::Schema),
+        };
+        work.push(WorkWrite {
+            key: entry.key,
+            write,
+        });
+    }
+    Ok(work)
+}
+
+pub fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Reason> {
+    let file: MetersFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
+    if file.schema != "meters/v0" {
+        return Err(Reason::Schema);
+    }
+    let mut meters = BTreeMap::new();
+    for entry in file.meters {
+        if entry.id.is_empty()
+            || entry.min > entry.base_cap
+            || entry.base_cap > entry.max
+            || !(entry.min..=entry.base_cap).contains(&entry.start)
+            || meters
+                .insert(
+                    entry.id,
+                    MeterDef {
+                        min: entry.min,
+                        base_cap: entry.base_cap,
+                        max: entry.max,
+                        start: entry.start,
+                    },
+                )
+                .is_some()
+        {
+            return Err(Reason::Schema);
+        }
+    }
+    Ok(meters)
+}
+
+/// Unknown ids and pairs `stored` rejects are `SCHEMA`. A defined id missing
+/// from a present map is filled from `start` with offset 0.
+pub fn bind_meters(canon: &Canon, now: &mut Now) -> Result<(), Reason> {
+    for actor in now.actors.values_mut() {
+        let live = actor.meters_mut();
+        if live.keys().any(|key| !canon.meters.contains_key(key)) {
+            return Err(Reason::Schema);
+        }
+        for (key, meter) in live.iter() {
+            let def = &canon.meters[key];
+            if !meter::stored(def, meter.base, meter.offset) {
+                return Err(Reason::Schema);
+            }
+        }
+        for (id, def) in &canon.meters {
+            live.entry(id.clone())
+                .or_insert_with(|| MeterLive::at_start(def));
+        }
+    }
+    Ok(())
+}
+
+fn require_meter_ids(
+    meters: &BTreeMap<String, MeterDef>,
+    checks: &BTreeMap<String, CheckDef>,
+    cast: &BTreeMap<String, CastCanon>,
+    moves: &BTreeMap<String, MoveDef>,
+) -> Result<(), Reason> {
+    for check in checks.values() {
+        if !meters.contains_key(&check.stat) {
+            return Err(Reason::Schema);
+        }
+    }
+    for profile in cast.values().filter_map(|cast| cast.tick.as_ref()) {
+        for entry in &profile.work {
+            if !meters.contains_key(&entry.key) || matches!(entry.write, MeterWrite::Snap) {
+                return Err(Reason::Schema);
+            }
+        }
+    }
+    for def in moves.values() {
+        let Some(row) = def.row.as_ref() else {
+            continue;
+        };
+        for effect in row.effects.iter().chain(&row.success).chain(&row.failure) {
+            let RowEffect::Meter(template) = effect else {
+                continue;
+            };
+            let key = match template {
+                MeterTemplate::FromWork => continue,
+                MeterTemplate::ScheduleRest { key, .. } => key,
+                MeterTemplate::Literal(write) => &write.key,
+            };
+            if !meters.contains_key(key) {
+                return Err(Reason::Schema);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn require_known_checks(
@@ -650,13 +699,9 @@ struct TickFile {
     #[serde(default)]
     stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
     #[serde(default)]
-    needs: BTreeMap<String, BoundFile>,
-    #[serde(default)]
-    resources: BTreeMap<String, BoundFile>,
-    #[serde(default)]
     flags: Vec<String>,
     #[serde(default)]
-    work: Option<WorkFile>,
+    work: Vec<WorkEntryFile>,
     #[serde(default)]
     notes: Vec<NoteFile>,
     #[serde(default)]
@@ -699,27 +744,27 @@ struct ScheduleFile {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct BoundFile {
-    #[serde(default)]
-    min: Option<i64>,
-    #[serde(default)]
-    max: Option<i64>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct WorkFile {
-    #[serde(default)]
-    needs: Vec<DeltaFile>,
-    #[serde(default)]
-    resources: Vec<DeltaFile>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct DeltaFile {
+struct WorkEntryFile {
     key: String,
+    write: String,
     delta: i64,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MetersFile {
+    schema: String,
+    meters: Vec<MeterEntryFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MeterEntryFile {
+    id: String,
+    min: i64,
+    base_cap: i64,
+    max: i64,
+    start: i64,
 }
 
 #[derive(Deserialize)]
@@ -737,6 +782,7 @@ struct NoteFile {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::Reason;
 
     #[test]
     fn docks_pack_rev_matches_now_yaml() {
@@ -748,5 +794,45 @@ mod tests {
             .find(|line| line.starts_with("pack_rev:"))
             .unwrap();
         assert_eq!(line, format!("pack_rev: {rev}"));
+    }
+
+    #[test]
+    fn load_meters_rejects_a_broken_inequality_a_duplicate_id_and_an_unknown_key() {
+        let broken = "\
+schema: meters/v0
+meters:
+  - id: grit
+    min: 2
+    base_cap: 1
+    max: 3
+    start: 1
+";
+        assert_eq!(load_meters(broken).unwrap_err(), Reason::Schema);
+        let duplicate = "\
+schema: meters/v0
+meters:
+  - id: grit
+    min: 0
+    base_cap: 1
+    max: 1
+    start: 1
+  - id: grit
+    min: 0
+    base_cap: 1
+    max: 1
+    start: 0
+";
+        assert_eq!(load_meters(duplicate).unwrap_err(), Reason::Schema);
+        let unknown = "\
+schema: meters/v0
+meters:
+  - id: grit
+    min: 0
+    base_cap: 1
+    max: 1
+    start: 1
+    kind: stat
+";
+        assert_eq!(load_meters(unknown).unwrap_err(), Reason::Schema);
     }
 }
