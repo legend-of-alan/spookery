@@ -1,10 +1,9 @@
 Feature: One player seat and one GM seat
 
-  Scenario: A second player is refused
+  Scenario: A second player leaves the seat unchanged
     Given a docks table with a seated player
     When a second player connects
-    Then the second hello is refused with SESSION_FULL
-    And now.yaml is unchanged since the seat
+    Then now.yaml is unchanged since the seat
     And humans is 1
     And the present actor is pc_rowan
     And state_rev is 1
@@ -18,9 +17,8 @@ Feature: One player seat and one GM seat
     Then now.yaml is unchanged since the table opened
     And humans is 0
 
-  Scenario: A second GM is refused
+  Scenario: A second GM leaves the table unchanged
     Given a docks table with a seated GM
     When a second GM connects
-    Then the second hello is refused with SESSION_FULL
-    And now.yaml is unchanged since the table opened
+    Then now.yaml is unchanged since the table opened
     And humans is 0

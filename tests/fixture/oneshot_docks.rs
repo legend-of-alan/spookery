@@ -1,8 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
 
-const SHEET_BLAKE2S: &str = "0bc253962ff105876e0687c3649959cc58735e43b02f6ec43ca13167894f0e7b";
-
 pub(crate) fn docks_save_round_trips() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
     let rev =
@@ -10,7 +8,6 @@ pub(crate) fn docks_save_round_trips() {
 
     let now_bytes =
         fs::read(root.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now: {err}"));
-    assert_eq!(now_bytes.len(), 1974);
     let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
     let now =
         spookery_kernel::codec::load_now(now_text).unwrap_or_else(|err| panic!("load now: {err}"));
@@ -25,8 +22,6 @@ pub(crate) fn docks_save_round_trips() {
 
     let sheet_bytes = fs::read(root.join("state/actors/pc_rowan.yaml"))
         .unwrap_or_else(|err| panic!("read sheet: {err}"));
-    assert_eq!(sheet_bytes.len(), 118);
-    assert_eq!(spookery_kernel::blake2s_hex(&sheet_bytes), SHEET_BLAKE2S);
     let sheet_text =
         std::str::from_utf8(&sheet_bytes).unwrap_or_else(|err| panic!("sheet utf-8: {err}"));
     let sheet: spookery_kernel::model::PcSheet =

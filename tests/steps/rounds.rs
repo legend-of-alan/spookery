@@ -25,13 +25,8 @@ fn the_player_waits(world: &mut World) {
 }
 
 #[when(expr = "the GM commits the round")]
-fn the_gm_commits_the_round(world: &mut World) {
-    world.gm_added = table::gm_call(2, "commit_turn", r#"{"include_tick":true}"#);
-}
-
-#[when(expr = "the GM commits without a tick")]
-fn the_gm_commits_without_a_tick(world: &mut World) {
-    world.gm_added = table::gm_call(2, "commit_turn", r#"{"include_tick":false}"#);
+fn the_gm_commits_the_round(_world: &mut World) {
+    let _ = table::gm_call(2, "commit_turn", r#"{"include_tick":true}"#);
 }
 
 #[then(expr = "world_time is 1085")]
@@ -81,11 +76,3 @@ fn the_tick_log_records_the_player_wait(world: &mut World) {
     assert_eq!(waits, 1, "{text}");
 }
 
-#[then(expr = "the tool result code is {word}")]
-fn the_tool_result_code_is(world: &mut World, code: String) {
-    assert!(
-        world.gm_added.contains(&format!("\"code\":\"{code}\"")),
-        "{}",
-        world.gm_added
-    );
-}

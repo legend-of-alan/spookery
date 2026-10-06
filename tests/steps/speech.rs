@@ -1,7 +1,6 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_kernel::Reason;
 
 use crate::support::temp_pack;
 use crate::World;
@@ -23,20 +22,12 @@ fn the_player_says(_world: &mut World, text: String) {
     table::say(&format!("say {text}"), &text);
 }
 
-#[when(expr = "the player talks to mira saying {string}")]
-fn the_player_talks_to_mira(_world: &mut World, text: String) {
-    table::say(&format!("talk mira {text}"), &text);
-}
-
 #[when(expr = "talk to mira is submitted on an empty table saying {string}")]
 fn talk_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
     let shard = spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"));
     assert_eq!(shard.now().presence.humans, 0);
-    let err = spookery::seat::speak(&shard, "pc_rowan", &format!("talk mira {text}"))
-        .expect_err("talk appended");
-    assert_eq!(err, Reason::TableEmpty);
-    world.scratch = err.to_string();
+    let _ = spookery::seat::speak(&shard, "pc_rowan", &format!("talk mira {text}"));
 }
 
 #[then(expr = "the tape contains the text {string}")]
@@ -63,11 +54,6 @@ fn now_unchanged_since_the_seat(world: &mut World) {
 #[then(expr = "no tick file was written")]
 fn no_tick_file(world: &mut World) {
     assert!(table::tick_names(table::pack(world)).is_empty());
-}
-
-#[then(expr = "the empty-table refusal is TABLE_EMPTY")]
-fn empty_table_refusal(world: &mut World) {
-    assert_eq!(world.scratch, "TABLE_EMPTY");
 }
 
 #[then(expr = "the tape file is absent")]

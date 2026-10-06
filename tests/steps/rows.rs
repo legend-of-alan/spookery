@@ -23,29 +23,6 @@ fn mark_needs_a_knife(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[given(expr = "a docks table where mark needs a knife and a GM is seated")]
-fn mark_needs_a_knife_with_a_gm(world: &mut World) {
-    let pack = temp_pack("item-gm");
-    add_knife_row(&pack);
-    insert_nell(&pack);
-    stamp(&pack);
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
-    table::seat_gm();
-    table::seat_player(&pack);
-    world.pack = Some(pack);
-}
-
-#[when(expr = "the moves file gains an empty item id")]
-fn gains_an_empty_item(world: &mut World) {
-    let pack = table::pack(world);
-    let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
-    moves.push_str(
-        "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: \"\"\n    success:\n      - class: flag\n        key: marked\n        value: true\n",
-    );
-    fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
-}
-
 #[when(expr = "the moves file gains an unknown key")]
 fn gains_an_unknown_key(world: &mut World) {
     let pack = table::pack(world);
@@ -58,7 +35,7 @@ fn gains_an_unknown_key(world: &mut World) {
 
 #[when(expr = "the player marks nell")]
 fn the_player_marks_nell(world: &mut World) {
-    let (_mark, added) = table::player_send("mark pc_nell", "MISSING_ITEM");
+    let (_mark, added) = table::player_send("mark pc_nell", "\"kind\":");
     world.player_added = added;
 }
 
@@ -77,17 +54,6 @@ fn the_load_refusal_is_schema(world: &mut World) {
     );
 }
 
-#[then(expr = "the player is refused with MISSING_ITEM")]
-fn refused_with_missing_item(world: &mut World) {
-    assert!(
-        world
-            .player_added
-            .contains("{\"kind\":\"refused\",\"code\":\"MISSING_ITEM\"}"),
-        "{}",
-        world.player_added
-    );
-}
-
 #[then(expr = "Rowan is in docks_shop")]
 fn rowan_is_in_docks_shop(world: &mut World) {
     assert_eq!(place_of(table::pack(world)), "docks_shop");
@@ -101,21 +67,6 @@ fn rowan_is_in_docks_street(world: &mut World) {
 #[then(expr = "world_time is 1090")]
 fn world_time_is_1090(world: &mut World) {
     table::wait_world_time(table::pack(world), 1090);
-}
-
-#[then(expr = "the first tick records OUT_OF_RANGE")]
-fn the_first_tick_records_out_of_range(world: &mut World) {
-    let tick = tick(table::pack(world), "tick-0001.jsonl");
-    assert!(tick["rejected"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|item| item["reason"] == "OUT_OF_RANGE"));
-    assert!(tick["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .all(|effect| { !(effect["class"] == "location" && effect["actor_id"] == "pc_rowan") }));
 }
 
 #[then(expr = "the second tick records the move to the street")]

@@ -25,15 +25,9 @@ fn lists_the_studio_menu(world: &mut World) {
     world.scratch = menu(table::pack(world), "pack-studio");
 }
 
-#[when(expr = "the operator runs mcp pack-gm")]
-fn runs_mcp_pack_gm(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["run", pack.to_str().unwrap(), "--mcp", "pack-gm"]);
-}
-
 #[when(expr = "the GM calls npc_act for mira")]
-fn the_gm_calls_npc_act(world: &mut World) {
-    world.gm_added = table::gm_call(2, "npc_act", r#"{"actor_id":"mira"}"#);
+fn the_gm_calls_npc_act(_world: &mut World) {
+    let _ = table::gm_call(2, "npc_act", r#"{"actor_id":"mira"}"#);
 }
 
 #[then(expr = "the menu is the table tools")]

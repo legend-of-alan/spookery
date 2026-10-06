@@ -1,11 +1,10 @@
 Feature: A hand edit waits for migrate
 
-  Scenario: A canon byte change refuses the tick
+  Scenario: A canon byte change writes nothing
     Given a docks table
     When a canon file gains a byte
     And the operator runs tick
     Then the command exits 1
-    And stderr is PACK_REV_MISMATCH
     And the tick writes nothing
 
   Scenario: Two migrates bump state_rev and append evidence

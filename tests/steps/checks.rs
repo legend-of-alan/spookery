@@ -31,7 +31,7 @@ fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
 }
 
 #[then(expr = "the GM sees the grit faces")]
-fn the_gm_sees_the_grit_faces(world: &mut World) {
+fn the_gm_sees_the_grit_faces(_world: &mut World) {
     let text = table::wait_gm("\"faces\"");
     let event = text
         .lines()
@@ -41,7 +41,6 @@ fn the_gm_sees_the_grit_faces(world: &mut World) {
     assert!(event.contains("\"faces\":["), "{event}");
     assert!(event.contains("\"stat\":1"), "{event}");
     assert!(event.contains("\"target\":0"), "{event}");
-    world.gm_added = event.to_string();
 }
 
 #[then(expr = "the player sees a check result without faces")]

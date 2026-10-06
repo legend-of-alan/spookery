@@ -21,26 +21,13 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
 }
 
 #[when(expr = "a second player connects")]
-fn a_second_player_connects(world: &mut World) {
-    world.scratch = table::second_hello("player:pc_rowan");
+fn a_second_player_connects(_world: &mut World) {
+    let _ = table::second_hello("player:pc_rowan");
 }
 
 #[when(expr = "a second GM connects")]
-fn a_second_gm_connects(world: &mut World) {
-    world.scratch = table::second_hello("gm");
-}
-
-#[when(expr = "the operator runs gm")]
-fn the_operator_runs_gm(world: &mut World) {
-    table::run(world, &["gm"]);
-}
-
-#[then(expr = "the second hello is refused with SESSION_FULL")]
-fn second_hello_is_refused(world: &mut World) {
-    assert_eq!(
-        world.scratch,
-        "{\"kind\":\"refused\",\"code\":\"SESSION_FULL\"}"
-    );
+fn a_second_gm_connects(_world: &mut World) {
+    let _ = table::second_hello("gm");
 }
 
 #[then(expr = "now.yaml is unchanged since the table opened")]

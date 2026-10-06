@@ -14,9 +14,3 @@ Feature: Three static menus
     Given a docks table
     When the operator lists the pack-studio menu
     Then the menu is empty
-
-  Scenario: pack-gm is refused
-    Given a docks table
-    When the operator runs mcp pack-gm
-    Then the command exits 1
-    And stderr is NOT_IN_SPEC

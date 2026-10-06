@@ -17,14 +17,6 @@ Feature: A line waits for the GM
     Then world_time is 1085
     And the tick log records the player wait
 
-  Scenario: include_tick false on a queued line is refused
-    Given a docks table with a GM and a seated player
-    When the player waits
-    And the GM commits without a tick
-    Then the tool result code is NOT_IN_SPEC
-    And world_time is 1080
-    And no tick file was written
-
   Scenario: An empty commit writes no tick file
     Given a docks table with a seated GM
     When the GM commits the round

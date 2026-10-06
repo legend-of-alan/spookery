@@ -5,3 +5,6 @@ Feature: The kernel does not link a runtime or a model client
 
   Scenario: Crate manifests do not name a model crate
     When the crate manifests are scanned
+
+  Scenario: The scheduler sleeps on the calling thread
+    When the scheduler source is scanned

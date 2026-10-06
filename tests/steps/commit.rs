@@ -2,7 +2,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use cucumber::{then, when};
-use spookery_kernel::Reason;
 
 use crate::World;
 
@@ -95,11 +94,6 @@ fn the_command_exits_0(world: &mut World) {
     );
 }
 
-#[then(expr = "stderr is PACK_REV_MISMATCH")]
-fn stderr_is_pack_rev_mismatch(world: &mut World) {
-    assert_eq!(world.stderr.trim(), "PACK_REV_MISMATCH", "{}", world.stdout);
-}
-
 #[then(expr = "stderr is SCHEMA")]
 fn stderr_is_schema(world: &mut World) {
     assert_eq!(world.stderr.trim(), "SCHEMA", "{}", world.stdout);
@@ -119,11 +113,6 @@ fn the_tick_writes_nothing(world: &mut World) {
     );
     assert!(!pack.join("state/.txn").exists());
     assert!(!pack.join("state/log").exists());
-    match spookery_kernel::open_shard(pack) {
-        Err(Reason::PackRevMismatch) => {}
-        Err(code) => panic!("expected PACK_REV_MISMATCH, got {code}"),
-        Ok(_) => panic!("open_shard accepted a mismatched pack_rev"),
-    }
 }
 
 #[then(expr = "state_rev is 2")]

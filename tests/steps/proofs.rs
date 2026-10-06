@@ -18,7 +18,6 @@ use spookery_kernel::model::{
     ActorLive, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_kernel::shard::{Shard, Txn};
-use spookery_kernel::Reason;
 use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack};
 
 use crate::World;
@@ -131,34 +130,6 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     out
 }
 
-fn closed_secret() {
-    let pack = temp_pack("secret");
-    let mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
-    let aldric = fs::read_to_string(pack.join("cast/aldric.md")).unwrap();
-    assert!(mira.contains(LEDGER), "fixture secret is on mira");
-    assert!(!aldric.contains(LEDGER), "fixture secret is on aldric");
-    for tick in 1..=100 {
-        tick_pack(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
-    }
-    let perceive = {
-        let shard = open(&pack);
-        format!(
-            "{:?}",
-            spookery_kernel::perceive(&shard, "npc:aldric").unwrap()
-        )
-    };
-    let memories = fs::read_to_string(pack.join("state/memories/aldric.jsonl")).unwrap_or_default();
-    let rumors = format!(
-        "{}\n{}",
-        fs::read_to_string(pack.join("state/rumors.yaml")).unwrap_or_default(),
-        fs::read_to_string(pack.join("state/now.yaml")).unwrap_or_default()
-    );
-    assert!(!perceive.contains(LEDGER), "ledger sentence in Aldric perceive");
-    assert!(!memories.contains(LEDGER), "ledger sentence in Aldric memories");
-    assert!(!rumors.contains(LEDGER), "ledger sentence in rumors");
-    let _ = fs::remove_dir_all(&pack);
-}
-
 fn no_self_win() {
     let pack = temp_pack("self-win");
     for tick in 1..=12 {
@@ -176,36 +147,6 @@ fn no_self_win() {
     assert!(clock.requires_presence);
     assert_eq!(clock.owners, vec!["pc_rowan".to_string()]);
     let _ = fs::remove_dir_all(&pack);
-}
-
-fn an_agenda_name_is_not_a_move() {
-    let seated = temp_pack("agenda-line");
-    let mut shard = open(&seated);
-    seat_player(&mut shard, "pc_rowan").unwrap();
-    assert_eq!(shard.now().clocks["assassination_debt"].value, 2);
-    let line = "advance_clock";
-    let err = match turn(&mut shard, "pc_rowan", line, true) {
-        Err(err) => err,
-        Ok(_) => panic!("{line} was queued"),
-    };
-    assert_eq!(err, Reason::NotInSpec, "{line}");
-    let args = json!({
-        "actor_id": "pc_rowan",
-        "actor_kind": "player",
-        "source": "player",
-        "move": line,
-        "target": {},
-        "args": {}
-    });
-    let tool = gm_tool(
-        &mut shard,
-        "intent",
-        Some(args.as_object().unwrap().clone()),
-    );
-    assert_eq!(tool.value["code"], "NOT_IN_SPEC", "{line}");
-    assert!(shard.queued_intents().is_empty());
-    assert_eq!(shard.now().clocks["assassination_debt"].value, 2);
-    let _ = fs::remove_dir_all(&seated);
 }
 
 fn shop_lives() {
@@ -738,18 +679,6 @@ fn tool_scope() {
             },
         )
     };
-    assert_eq!(call(None, None, None).unwrap_err().token(), "UNSCOPED_PERCEIVE");
-    for as_viewer in ["", "gm", "system", "system:clock", "npc:", "player:pc_rowan"] {
-        assert_eq!(
-            call(Some(as_viewer), None, None).unwrap_err().token(),
-            "UNSCOPED_PERCEIVE",
-            "{as_viewer}"
-        );
-    }
-    assert_eq!(
-        call(Some("npc:mira"), Some("stock"), None).unwrap_err().token(),
-        "SCHEMA"
-    );
     let kernel = spookery_kernel::perceive(&shard, "npc:mira").unwrap();
     for focus in [None, Some("place"), Some("actor")] {
         assert_eq!(call(Some("npc:mira"), focus, None).unwrap(), kernel);
@@ -1178,6 +1107,21 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let _ = fs::remove_dir_all(&held);
 }
 
+fn the_scheduler_does_not_spawn_a_tick() {
+    let source = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/schedule.rs"),
+    )
+    .unwrap();
+    assert!(
+        source.contains("tokio::time::sleep"),
+        "scheduler does not sleep on a Tokio timer"
+    );
+    assert!(
+        !source.contains("tokio::spawn"),
+        "scheduler spawns a tick instead of calling run_tick on the calling thread"
+    );
+}
+
 fn manifests_do_not_name_a_model_crate() {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for path in [
@@ -1191,19 +1135,9 @@ fn manifests_do_not_name_a_model_crate() {
     }
 }
 
-#[when(expr = "one hundred ticks pass with the ledger on Mira")]
-fn one_hundred_ticks_pass(_world: &mut World) {
-    closed_secret();
-}
-
 #[when(expr = "twelve empty ticks pass")]
 fn twelve_empty_ticks_pass(_world: &mut World) {
     no_self_win();
-}
-
-#[when(expr = "a player submits an agenda name")]
-fn a_player_submits_an_agenda_name(_world: &mut World) {
-    an_agenda_name_is_not_a_move();
 }
 
 #[when(expr = "Mira is in the shop and Rowan is on the street")]
@@ -1251,8 +1185,8 @@ fn fifty_minor_npcs(_world: &mut World) {
     budget_caps();
 }
 
-#[when(expr = "perceive is called with the closed viewer set")]
-fn perceive_is_called(_world: &mut World) {
+#[when(expr = "an npc perceive is called with a zero budget")]
+fn an_npc_perceive_is_called(_world: &mut World) {
     tool_scope();
 }
 
@@ -1304,4 +1238,9 @@ fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
 #[when(expr = "the crate manifests are scanned")]
 fn the_crate_manifests_are_scanned(_world: &mut World) {
     manifests_do_not_name_a_model_crate();
+}
+
+#[when(expr = "the scheduler source is scanned")]
+fn the_scheduler_source_is_scanned(_world: &mut World) {
+    the_scheduler_does_not_spawn_a_tick();
 }

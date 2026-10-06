@@ -12,31 +12,6 @@ fn run_bound_to(world: &mut World, addr: String) {
     table::run(world, &["run", pack.to_str().unwrap(), "--bind", &addr]);
 }
 
-#[when(expr = "the operator runs run with --as")]
-fn run_with_as(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(
-        world,
-        &["run", pack.to_str().unwrap(), "--as", "player:pc_rowan"],
-    );
-}
-
-#[when(expr = "the operator runs run with mcp and bind")]
-fn run_with_mcp_and_bind(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(
-        world,
-        &[
-            "run",
-            pack.to_str().unwrap(),
-            "--mcp",
-            "pack-table",
-            "--bind",
-            "127.0.0.1",
-        ],
-    );
-}
-
 #[when(expr = "the table listens on 127.0.0.1")]
 fn listens_on_default(world: &mut World) {
     table::listen(table::pack(world), "127.0.0.1", 9737);

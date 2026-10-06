@@ -41,20 +41,8 @@ mod proofs;
 #[path = "steps/fixtures.rs"]
 mod fixtures;
 
-#[path = "fixture/trace.rs"]
-mod trace;
-
-#[path = "fixture/canon_schemas.rs"]
-mod canon_schemas;
-
-#[path = "fixture/emitter_sample.rs"]
-mod emitter_sample;
-
 #[path = "fixture/oneshot_docks.rs"]
 mod oneshot_docks;
-
-#[path = "fixture/scheduler.rs"]
-mod scheduler;
 
 use std::process::Child;
 use std::sync::Mutex;
@@ -108,7 +96,6 @@ pub struct World {
     pub stderr: String,
     pub mark: usize,
     pub player_added: String,
-    pub gm_added: String,
     pub now_bytes: Vec<u8>,
 }
 

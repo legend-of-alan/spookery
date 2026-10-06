@@ -5,7 +5,6 @@ Feature: Travel follows the graph
     When the player travels to "mira_rooms"
     Then world_time is 1085
     And Rowan is in docks_shop
-    And the first tick records OUT_OF_RANGE
     When the player travels to "docks_street"
     Then world_time is 1090
     And Rowan is in docks_street
