@@ -41,6 +41,9 @@ mod proofs;
 #[path = "steps/fixtures.rs"]
 mod fixtures;
 
+#[path = "steps/host.rs"]
+mod host;
+
 #[path = "fixture/oneshot_docks.rs"]
 mod oneshot_docks;
 

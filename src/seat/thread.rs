@@ -207,9 +207,11 @@ fn on_msg(
             arguments,
             reply,
         } => {
-            let done = super::tools::gm_tool(shard, &name, arguments);
+            let mut done = super::tools::gm_tool(shard, &name, arguments);
             let notices = if done.ticked {
-                shard.take_rolls()
+                let notices = shard.take_rolls();
+                protocol::write_checks(&mut done.value, &notices);
+                notices
             } else {
                 Vec::new()
             };

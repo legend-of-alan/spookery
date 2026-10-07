@@ -43,14 +43,15 @@ Invariant, checked by a debug assert on the shard thread: `seats.player.is_some(
 
 ## Crate boundary
 
-Four crates. A one-crate collapse is not the layout. The bin and `spookery-mcp` are the only crates that link a runtime.
+Five crates. A one-crate collapse is not the layout. The bin, `spookery-mcp`, and `spookery-host` may link a runtime.
 
 | Crate | May link | Must not link |
 |---|---|---|
-| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, any model SDK, `spookery-tick`, `spookery-mcp` |
-| `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK |
-| `spookery-mcp` | `spookery-kernel`, `rmcp`, `tokio` | `spookery-tick`, `rmcp-macros`, any model SDK |
-| bin `spookery` | kernel, tick, mcp, `tokio`, `rmcp`, `socket2`, `serde_json` | Business rules that belong in the kernel. A second tick implementation. |
+| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, any model SDK, `spookery-tick`, `spookery-mcp`, `spookery-host` |
+| `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, `spookery-host` |
+| `spookery-mcp` | `spookery-kernel`, `rmcp`, `tokio` | `spookery-tick`, `spookery-host`, `rmcp-macros`, any model SDK |
+| `spookery-host` | an HTTP client, a runtime, `spookery-kernel` | `spookery-tick`, `spookery-mcp`, any model SDK |
+| bin `spookery` | kernel, tick, mcp, `spookery-host`, `tokio`, `rmcp`, `socket2`, `serde_json` | Business rules that belong in the kernel. A second tick implementation. |
 
 `serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. `src/kernel` and `src/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, or `redis`. `src/` must not contain `langchain`, `openai`, `anthropic`, `ollama`, or `reqwest`. A comment in kernel or tick source that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`.
 
@@ -275,6 +276,24 @@ A host monitor is not shard behavior.
 
 `idle_digest` takes a host viewer or a player viewer. The host sees effect rows and clocks. A player sees only their messages, allowed rumor facts, and owned clocks. `spook status` prints the host digest. Player resume is the player digest. The host digest is not a player resume, and it does not write the shard.
 
+## Host
+
+`spook host <pack>` sits the one GM seat and dials `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. `spook gm <pack> --stdio` stays the human bridge. One seat remains one seat. A second sitter gets the refusal the hello already returns, and the host exits.
+
+`spook host` with no pack, or with any extra argument, is `NOT_IN_SPEC` before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
+
+On start the host reads `XAI_API_KEY` and `SPOOK_GM_MODEL`. Either one missing: it writes that fact to stderr and exits 1 before it dials. `SPOOK_GM_URL` defaults to `https://api.x.ai/v1`. The key is not an argument and not a pack file.
+
+The host calls `pack_rev` and `load_canon` on the pack path. It does not call `open_shard`, `apply_effect`, or `write_commit`. After initialize it calls `session_status` with no arguments and compares `pack_rev`. A mismatch disconnects and exits 1. A match writes `listening` to stderr. stdout stays empty.
+
+A non-empty queue is committed once after the model's turn. Talk alone does not tick. If the model call fails, the host skips the model's says and intents and still commits a queue the player already filled. The seat stays up. A commit that rolled dice gets one say-only follow-up. That follow-up does not queue and does not commit. `commit_turn`'s result includes `checks` (`faces`, `stat`, `total`, `target`, `success`). The same roll notices are still sent as `check` events for the stdio bridge. The player wire stays `{"kind":"check","success":true|false}`. Faces stay off the player socket.
+
+An addressed actor who is not in the room gets one table say, `They are not here.`, and no model call. On an actor-addressed wake, a say is kept only when its address is `actor` and its actor id is the one who was addressed. On a table or place wake, a say is kept only when it is `table`, or `place` naming the speaker's place. A queued wake, or a sit wake for a non-empty queue, has no addressed actor. The host censuses the PC in `presence.actors_present` the way a table wake censuses the speaker, and keeps a say only when it is `table`, or `place` naming that PC's place. If that list has no PC, the host skips the model, submits no say, and still runs the commit step. One model reply may submit at most two says and one intent, after that rule. A say the rule rejects does not consume the cap. An intent whose move is not in the menu is dropped before the cap.
+
+Speech already on the tape at sit is not answered. High water starts at the current last seq. A queue that is already waiting still commits.
+
+The POST body is the bounded prompt: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up. A restart remembers nothing. A player view that is only a room census drops `known_facts`, `messages`, and `unknown_mentioned`. An NPC view keeps each fact's `id` and `text`. Every fact `body` is dropped. The prompt does not receive a canon or a cast body. The tape file stays on disk under the pack. The POST does not carry the tape file, `now.yaml`, or a cast file.
+
 ## Firewall, lint, and digest
 
 `allows` means the fact is known, or it is not hidden and it is on the viewer's place, or it is not hidden and it is on a co-located owner's cast or place. Hidden facts never leak through place or cast prose.
@@ -297,7 +316,7 @@ Still not built, and not implied by a missing sentence above:
 - Studio tools that write `state/`.
 - Rewriting `.grok/skills/gm-docks`.
 - Changing the player wire kinds `refused`, `check`, and `say`.
-- WebSockets, HTTP, `--serve`, or a database.
+- WebSockets, `--serve`, or a database.
 - A second spec, an archive copy of an older spec, or a banner that keeps the older text in the worktree. Tags stay. The files do not.
 - Publishing a crate named `spook`.
 
@@ -329,4 +348,4 @@ The player line grammar does change. The check wire object does not. That split 
 | Non-loopback bind, accounts, second GM | `NOT_IN_SPEC`, no account store, `SESSION_FULL`. |
 | Hidden fact in a perceive body | `allows` plus lint. |
 
-Privacy: the pack is local. There is no account, no connection secret, and no telemetry. The tape holds table speech on disk under the pack. That is the product log. It is not shipped anywhere.
+Privacy: the pack is local. There is no account, no connection secret, and no telemetry. The tape holds table speech on disk under the pack. That is the product log. The tape file stays on disk. `spook host` sends table text off the machine only as the body of its chat-completions POST: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up.

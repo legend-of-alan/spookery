@@ -32,15 +32,21 @@ fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
 
 #[then(expr = "the GM sees the grit faces")]
 fn the_gm_sees_the_grit_faces(_world: &mut World) {
-    let text = table::wait_gm("\"faces\"");
+    let text = table::wait_gm("\"kind\":\"check\"");
     let event = text
         .lines()
-        .find(|line| line.contains("\"faces\""))
+        .find(|line| line.contains("\"kind\":\"check\"") && line.contains("\"faces\""))
         .unwrap_or_else(|| panic!("{text}"));
-    assert!(event.contains("\"kind\":\"check\""), "{event}");
     assert!(event.contains("\"faces\":["), "{event}");
     assert!(event.contains("\"stat\":1"), "{event}");
     assert!(event.contains("\"target\":0"), "{event}");
+    let result = text
+        .lines()
+        .find(|line| line.contains("\"checks\"") && line.contains("\"faces\""))
+        .unwrap_or_else(|| panic!("tool result has no checks\n{text}"));
+    assert!(result.contains("\"faces\":["), "{result}");
+    assert!(result.contains("\"stat\":"), "{result}");
+    assert!(result.contains("\"success\":"), "{result}");
 }
 
 #[then(expr = "the player sees a check result without faces")]

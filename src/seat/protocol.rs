@@ -201,7 +201,37 @@ pub fn commit_turn(state_rev: u64, diff_summary: &[String], log_path: Option<&st
                 None => Value::Null,
             },
         ),
+        ("checks", Value::Array(Vec::new())),
     ])
+}
+
+pub fn write_checks(value: &mut Value, notices: &[spookery_kernel::check::CheckNotice]) {
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    object.insert("checks".to_string(), checks_array(notices));
+}
+
+fn checks_array(notices: &[spookery_kernel::check::CheckNotice]) -> Value {
+    use spookery_kernel::check::CheckNotice;
+    Value::Array(
+        notices
+            .iter()
+            .filter_map(|notice| match notice {
+                CheckNotice::Rolled { out, .. } => Some(obj([
+                    (
+                        "faces",
+                        Value::Array(out.faces.iter().copied().map(Value::from).collect()),
+                    ),
+                    ("stat", Value::from(out.stat)),
+                    ("total", Value::from(out.total)),
+                    ("target", Value::from(out.target)),
+                    ("success", Value::Bool(out.success)),
+                ])),
+                CheckNotice::Refused { .. } => None,
+            })
+            .collect(),
+    )
 }
 
 pub fn queued_ack(id: &str) -> Value {
