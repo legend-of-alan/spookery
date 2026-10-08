@@ -22,7 +22,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 10. **Eligibility and habits.** Both run before a kernel habit intent exists. An ineligible NPC produces no habit intent. A player-sourced intent is not a habit intent.
 11. **Failure tokens.** Each token has one meaning. `NOT_OWNER` and `LIVE_ONLY` are not tokens.
 12. **Speech versus queue.** Speech appends to the tape. It is not a row, it does not enter the intent queue, and it does not tick.
-13. **Seat law and profile split.** One player seat and one GM seat. Three static MCP profiles. `npc_act` does not call a model.
+13. **Seat law.** One player seat and one GM seat. The seat's `tools/list` is the menu. `npc_act` does not call a model.
 14. **Rounds.** With no GM, the runtime queues and commits one live tick. With a GM seated, the line waits for `commit_turn`.
 
 ## One writer
@@ -43,19 +43,20 @@ Invariant, checked by a debug assert on the shard thread: `seats.player.is_some(
 
 ## Crate boundary
 
-Five crates. A one-crate collapse is not the layout. The bin, `spookery-mcp`, and `spookery-host` may link a runtime.
+Six crates. A one-crate collapse is not the layout. The bin and `spookery-ai` may link a runtime.
 
 | Crate | May link | Must not link |
 |---|---|---|
-| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, any model SDK, `spookery-tick`, `spookery-mcp`, `spookery-host` |
-| `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, `spookery-host` |
-| `spookery-mcp` | `spookery-kernel`, `rmcp`, `tokio` | `spookery-tick`, `spookery-host`, `rmcp-macros`, any model SDK |
-| `spookery-host` | an HTTP client, a runtime, `spookery-kernel` | `spookery-tick`, `spookery-mcp`, any model SDK |
-| bin `spookery` | kernel, tick, mcp, `spookery-host`, `tokio`, `rmcp`, `socket2`, `serde_json` | Business rules that belong in the kernel. A second tick implementation. |
+| `spookery-protocol` | `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `spookery-cli`, `spookery-ai` |
+| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, any model SDK, `spookery-tick`, `spookery-protocol`, `spookery-cli`, `spookery-ai` |
+| `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, `spookery-protocol`, `spookery-cli`, `spookery-ai` |
+| `spookery-cli` | `spookery-protocol`, `spookery-kernel` | `spookery-ai`, `reqwest`, `rmcp`, `tokio` |
+| `spookery-ai` | `spookery-protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-tick`, `spookery-cli`, `rmcp`, any model SDK |
+| bin `spookery` | `spookery-kernel`, `spookery-tick`, `spookery-protocol`, `spookery-cli`, `spookery-ai`, `tokio`, `rmcp`, `socket2`, `serde_json` | `reqwest` by name. Seat code that calls into the CLI or the AI crate. Business rules that belong in the kernel. A second tick implementation. |
 
 `serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. `src/kernel` and `src/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, or `redis`. `src/` must not contain `langchain`, `openai`, `anthropic`, `ollama`, or `reqwest`. A comment in kernel or tick source that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`.
 
-Tokio in the bin is the accept loop, keepalive, and scheduler sleep. Tokio in `spookery-mcp` is the stdio runtime for `--mcp`, which is list-only. The tick function runs on the shard thread.
+Tokio in the bin is the accept loop, keepalive, and scheduler sleep. The tick function runs on the shard thread.
 
 `rulesets/` is an authoring template. The loader reads `pack/rules/` only.
 
@@ -254,21 +255,19 @@ With no GM, the runtime queues and commits one live tick of `live_minutes_per_ti
 
 One wake: the runtime sleeps `tick_every_real_seconds`, reset when a tick actually advanced, and posts a wake. The shard thread wakes the live shard. A second open of the pack on that wake is not the scheduler.
 
-Pack profiles stay three static lists: `pack-table`, `pack-tick`, and `pack-studio`. `pack-table` does not include `say`. Order stays the order of `TABLE_TOOLS`, `TICK_TOOLS`, and `STUDIO_TOOLS` in `src/mcp/profile.rs`.
+The seat's `tools/list` is the menu.
 
 Sitting perceive allows `player:` and `npc:`. Tick-profile perceive rejects a player viewer with `UNSCOPED_PERCEIVE`. A missing `as`, or `as=gm`, is `UNSCOPED_PERCEIVE`. They are two functions. Both call the perceive budget after the policy check. `firewall::allows` is the shared visibility test.
 
 `npc_act` on the sitting returns `LLM_DISABLED` and does not call a model. The other refuse-only GM names are not handlers. An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and `patch_entity` are not sitting handlers. Effects come from row expansion during the tick.
 
-`spook gm --stdio` remains the bridge. `spook gm` without `--stdio` is `NOT_IN_SPEC`. The stdin loop that accepts only `close` is not a ported behavior.
+`spook gm` is `NOT_IN_SPEC`.
 
 ## Loopback and one seat
 
 One seat. A second player or a second GM is `SESSION_FULL`.
 
-The bind does not grow past loopback. `--bind 127.0.0.1` and `--bind 127.0.0.1:<port>` are the only legal values. The default listen address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens. `--as`, and `--mcp` combined with `--bind`, are `NOT_IN_SPEC` before the pack opens. There is no account store.
-
-`--mcp` is list-only. It does not call `clear_crashed`, and it does not sit a GM.
+The bind does not grow past loopback. `--bind 127.0.0.1` and `--bind 127.0.0.1:<port>` are the only legal values. The default listen address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens. `--as` is `NOT_IN_SPEC` before the pack opens. There is no account store.
 
 ## Host monitor
 
@@ -278,15 +277,15 @@ A host monitor is not shard behavior.
 
 ## Host
 
-`spook host <pack>` sits the one GM seat and dials `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. `spook gm <pack> --stdio` stays the human bridge. One seat remains one seat. A second sitter gets the refusal the hello already returns, and the host exits.
+`spook ai-gm <pack>` sits the one GM seat and dials `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. One seat remains one seat. A second sitter gets the refusal the hello already returns, and the host exits.
 
-`spook host` with no pack, or with any extra argument, is `NOT_IN_SPEC` before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
+`spook ai-gm` with no pack, or with any extra argument, is `NOT_IN_SPEC` before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
 
 On start the host reads `XAI_API_KEY` and `SPOOK_GM_MODEL`. Either one missing: it writes that fact to stderr and exits 1 before it dials. `SPOOK_GM_URL` defaults to `https://api.x.ai/v1`. The key is not an argument and not a pack file.
 
 The host calls `pack_rev` and `load_canon` on the pack path. It does not call `open_shard`, `apply_effect`, or `write_commit`. After initialize it calls `session_status` with no arguments and compares `pack_rev`. A mismatch disconnects and exits 1. A match writes `listening` to stderr. stdout stays empty.
 
-A non-empty queue is committed once after the model's turn. Talk alone does not tick. If the model call fails, the host skips the model's says and intents and still commits a queue the player already filled. The seat stays up. A commit that rolled dice gets one say-only follow-up. That follow-up does not queue and does not commit. `commit_turn`'s result includes `checks` (`faces`, `stat`, `total`, `target`, `success`). The same roll notices are still sent as `check` events for the stdio bridge. The player wire stays `{"kind":"check","success":true|false}`. Faces stay off the player socket.
+A non-empty queue is committed once after the model's turn. Talk alone does not tick. If the model call fails, the host skips the model's says and intents and still commits a queue the player already filled. The seat stays up. A commit that rolled dice gets one say-only follow-up. That follow-up does not queue and does not commit. `commit_turn`'s result includes `checks` (`faces`, `stat`, `total`, `target`, `success`). The same roll notices are still sent as `check` events on the GM socket. The player wire stays `{"kind":"check","success":true|false}`. Faces stay off the player socket.
 
 An addressed actor who is not in the room gets one table say, `They are not here.`, and no model call. On an actor-addressed wake, a say is kept only when its address is `actor` and its actor id is the one who was addressed. On a table or place wake, a say is kept only when it is `table`, or `place` naming the speaker's place. A queued wake, or a sit wake for a non-empty queue, has no addressed actor. The host censuses the PC in `presence.actors_present` the way a table wake censuses the speaker, and keeps a say only when it is `table`, or `place` naming that PC's place. If that list has no PC, the host skips the model, submits no say, and still runs the commit step. One model reply may submit at most two says and one intent, after that rule. A say the rule rejects does not consume the cap. An intent whose move is not in the menu is dropped before the cap.
 
@@ -334,7 +333,7 @@ The player line grammar does change. The check wire object does not. That split 
 | Hand edit of `now.yaml` | `HAND_EDIT` until `spook migrate`. |
 | Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It re-expands the recorded intents, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. |
 | Two ticks in flight | One lock around the tick run and `commit_turn`. The second caller gets `COMMIT_CONFLICT`. Tick code is synchronous on the shard thread. |
-| `patch_entity` writes canon and the live shard | Not a sitting tool. The studio list-only server does not write `state/`. A canon byte change mismatches `pack_rev` until migrate. |
+| `patch_entity` writes canon and the live shard | Not a sitting tool. A canon byte change mismatches `pack_rev` until migrate. |
 | New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has ten variants. |
 | A meter whose stored pair is outside the definition | `SCHEMA` at load. Apply clamps when the sum fits in `i64`. `OUT_OF_RANGE` leaves the record unchanged when the sum does not. |
 | `perceive` with no `as`, or `as=gm` | `ViewerId` has no GM variant. Tick perceive rejects players. Sitting perceive rejects anything but `player:` and `npc:`. |
@@ -348,4 +347,4 @@ The player line grammar does change. The check wire object does not. That split 
 | Non-loopback bind, accounts, second GM | `NOT_IN_SPEC`, no account store, `SESSION_FULL`. |
 | Hidden fact in a perceive body | `allows` plus lint. |
 
-Privacy: the pack is local. There is no account, no connection secret, and no telemetry. The tape holds table speech on disk under the pack. That is the product log. The tape file stays on disk. `spook host` sends table text off the machine only as the body of its chat-completions POST: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up.
+Privacy: the pack is local. There is no account, no connection secret, and no telemetry. The tape holds table speech on disk under the pack. That is the product log. The tape file stays on disk. `spook ai-gm` sends table text off the machine only as the body of its chat-completions POST: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up.

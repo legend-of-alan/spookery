@@ -1,5 +1,3 @@
-mod play;
-
 use std::net::SocketAddr;
 use std::path::Path;
 
@@ -42,9 +40,6 @@ fn dispatch() -> Result<(), spookery::Error> {
     if args.first().is_some_and(|arg| arg == "play") {
         return from_cli(spookery_cli::play(&args[1..]));
     }
-    if args.first().is_some_and(|arg| arg == "gm") {
-        return play::gm(&args[1..]);
-    }
     if args.first().is_some_and(|arg| arg == "ai-gm") {
         if args.len() != 2 {
             return Err(spookery::Error::Reason(Reason::NotInSpec));
@@ -70,12 +65,6 @@ fn dispatch_run(args: &[String]) -> Result<(), spookery::Error> {
     }
     let pack = Path::new(&args[0]);
     let flags = parse_run_flags(&args[1..])?;
-    if let Some(profile) = flags.mcp {
-        let Some(profile) = spookery_mcp::parse_profile(profile) else {
-            return Err(spookery::Error::Reason(Reason::NotInSpec));
-        };
-        return spookery_mcp::serve(pack, profile).map_err(spookery::Error::Reason);
-    }
     let addr = match flags.bind {
         Some(addr) => parse_loopback(addr)?,
         None => SocketAddr::from(([127, 0, 0, 1], 9737)),
@@ -100,7 +89,6 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, spookery::Error> {
 }
 
 struct RunFlags<'a> {
-    mcp: Option<&'a str>,
     bind: Option<&'a str>,
 }
 
@@ -108,18 +96,10 @@ fn parse_run_flags(flags: &[String]) -> Result<RunFlags<'_>, spookery::Error> {
     if flags.iter().any(|flag| flag == "--as") {
         return Err(spookery::Error::Reason(Reason::NotInSpec));
     }
-    let mut mcp = None;
     let mut bind = None;
     let mut index = 0;
     while index < flags.len() {
         match flags[index].as_str() {
-            "--mcp" => {
-                if mcp.is_some() || index + 1 >= flags.len() {
-                    return Err(spookery::Error::Reason(Reason::NotInSpec));
-                }
-                mcp = Some(flags[index + 1].as_str());
-                index += 2;
-            }
             "--bind" => {
                 if bind.is_some() || index + 1 >= flags.len() {
                     return Err(spookery::Error::Reason(Reason::NotInSpec));
@@ -130,8 +110,5 @@ fn parse_run_flags(flags: &[String]) -> Result<RunFlags<'_>, spookery::Error> {
             _ => return Err(spookery::Error::Reason(Reason::NotInSpec)),
         }
     }
-    if mcp.is_some() && bind.is_some() {
-        return Err(spookery::Error::Reason(Reason::NotInSpec));
-    }
-    Ok(RunFlags { mcp, bind })
+    Ok(RunFlags { bind })
 }

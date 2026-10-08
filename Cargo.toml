@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [".", "src/kernel", "src/tick", "src/mcp", "ai", "protocol", "cli"]
+members = [".", "src/kernel", "src/tick", "ai", "protocol", "cli"]
 
 [workspace.package]
 version = "0.0.0"
@@ -27,7 +27,6 @@ path = "src/main.rs"
 spookery-ai = { path = "ai" }
 spookery-cli = { path = "cli" }
 spookery-kernel = { path = "src/kernel" }
-spookery-mcp = { path = "src/mcp" }
 spookery-protocol = { path = "protocol" }
 spookery-tick = { path = "src/tick" }
 rmcp = "0.8"

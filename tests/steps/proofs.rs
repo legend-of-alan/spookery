@@ -327,7 +327,10 @@ fn claimed_note_sorts_first() {
         .map(|intent| intent["move"].as_str().unwrap())
         .collect();
     assert_eq!(moves, vec!["leave_door_note", "wait"]);
-    assert_eq!(log["intents"][0]["args"]["to"][0].as_str(), Some("pc_rowan"));
+    assert_eq!(
+        log["intents"][0]["args"]["to"][0].as_str(),
+        Some("pc_rowan")
+    );
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -818,9 +821,9 @@ fn tool_scope() {
     let before = snapshot(&pack);
     let shard = open(&pack);
     let call = |as_viewer: Option<&str>, focus: Option<&str>, budget: Option<u64>| {
-        spookery_mcp::tick_tools::perceive(
+        spookery::tick_perceive::perceive(
             &shard,
-            &spookery_mcp::tick_tools::PerceiveIn {
+            &spookery::tick_perceive::PerceiveIn {
                 as_viewer: as_viewer.map(str::to_string),
                 focus: focus.map(str::to_string),
                 budget_tokens: budget,
@@ -850,6 +853,13 @@ fn tool_scope() {
         .unknown_mentioned
         .iter()
         .any(|id| id == "fact_room_lamp"));
+    let unscoped = spookery_kernel::Reason::UnscopedPerceive;
+    assert_eq!(
+        call(Some("player:rowan"), None, None).unwrap_err(),
+        unscoped
+    );
+    assert_eq!(call(None, None, None).unwrap_err(), unscoped);
+    assert_eq!(call(Some("gm"), None, None).unwrap_err(), unscoped);
     drop(shard);
     assert_eq!(snapshot(&pack), before);
     let _ = fs::remove_dir_all(&pack);
@@ -1300,7 +1310,6 @@ fn manifests_do_not_name_a_model_crate() {
     for path in [
         root.join("Cargo.toml"),
         root.join("src/kernel/Cargo.toml"),
-        root.join("src/mcp/Cargo.toml"),
         root.join("src/tick/Cargo.toml"),
     ] {
         let text = fs::read_to_string(&path).unwrap();
