@@ -142,9 +142,8 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 ### In
 
 - Pack schema (markdown / YAML)
-- Runtime CLI: load pack, MCP stdio, write `state/`
+- Runtime CLI: load a pack and write `state/`
 - Kernel: checks, resources, knowledge firewall
-- Table / tick MCP tool profiles (see §10)
 - Shard tick loop
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
 - Terminal play: one player seat and one GM seat
@@ -264,23 +263,9 @@ Graphics are not in this process. A future 2D client reads state and submits int
 
 ---
 
-## 10. MCP surface
+## 10. The menu
 
-Authors and the table do not share one grab-bag of tools. The product has three doors: table, tick, and studio. Do not dump CRUD.
-
-### 10.1 Table / live (`pack-table`)
-
-The door a seated table uses.
-
-### 10.2 Tick (`pack-tick`)
-
-The door the clock uses. It is not a studio, and it is not a second product.
-
-### 10.3 Studio (`pack-studio`)
-
-The door an author uses on the pack. It does not play the table.
-
-Tool names stay outcome-sized. The list does not grow because a model asked for REST. Descriptions say when to use a tool and what it changes. Order stays stable. A profile stays small enough that a model can choose.
+The seat's `tools/list` is the menu. Tool names stay outcome-sized. The list does not grow because a model asked for REST. Descriptions say when to use a tool and what it changes. Order stays stable.
 
 ---
 
@@ -324,7 +309,7 @@ Website is a skin. Do not start there. A prettier client does not make this the 
 
 A reviewer should treat the kernel as shipped only if all of these pass:
 
-1. Load a pack from a folder and speak MCP on stdio.
+1. Load a pack from a folder.
 2. One bundled one-shot pack plays in the CLI without editing code and is pleasant to leave running for a week. A host can tell the week happened. A player resume does not hand them off-screen stock. Walking to the shop is how they find the restock and the door note.
 3. A second author can add a move to the pack without a kernel change.
 
