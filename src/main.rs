@@ -40,7 +40,7 @@ fn dispatch() -> Result<(), spookery::Error> {
         return dispatch_run(&args[1..]);
     }
     if args.first().is_some_and(|arg| arg == "play") {
-        return play::play(&args[1..]);
+        return from_cli(spookery_cli::play(&args[1..]));
     }
     if args.first().is_some_and(|arg| arg == "gm") {
         return play::gm(&args[1..]);
@@ -55,6 +55,13 @@ fn dispatch() -> Result<(), spookery::Error> {
         return Ok(());
     }
     Err(spookery::Error::Reason(Reason::NotInSpec))
+}
+
+fn from_cli(result: Result<(), spookery_cli::Error>) -> Result<(), spookery::Error> {
+    result.map_err(|err| match err {
+        spookery_cli::Error::Reason(code) => spookery::Error::Reason(code),
+        spookery_cli::Error::Io(err) => spookery::Error::Io(err),
+    })
 }
 
 fn dispatch_run(args: &[String]) -> Result<(), spookery::Error> {

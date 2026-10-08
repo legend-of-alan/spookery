@@ -1932,6 +1932,7 @@ dependencies = [
  "serde_json",
  "socket2",
  "spookery-ai",
+ "spookery-cli",
  "spookery-kernel",
  "spookery-mcp",
  "spookery-protocol",
@@ -1945,6 +1946,14 @@ version = "0.0.0"
 dependencies = [
  "reqwest",
  "serde_json",
+ "spookery-kernel",
+ "spookery-protocol",
+]
+
+[[package]]
+name = "spookery-cli"
+version = "0.0.0"
+dependencies = [
  "spookery-kernel",
  "spookery-protocol",
 ]
