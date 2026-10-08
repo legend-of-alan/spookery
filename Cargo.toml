@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = [".", "src/kernel", "src/tick", "src/mcp", "host"]
+members = [".", "src/kernel", "src/tick", "src/mcp", "host", "protocol"]
 
 [workspace.package]
 version = "0.0.0"
