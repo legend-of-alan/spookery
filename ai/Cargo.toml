@@ -1,5 +1,5 @@
 [package]
-name = "spookery-host"
+name = "spookery-ai"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -10,3 +10,4 @@ license.workspace = true
 reqwest = { version = "0.12", features = ["blocking", "json"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 spookery-kernel = { path = "../src/kernel" }
+spookery-protocol = { path = "../protocol" }

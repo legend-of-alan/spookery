@@ -10,30 +10,30 @@ use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
 use serde_json::json;
-use spookery_host::{drive, parse_tool_line, CompleteError, Script, Seat, Watch};
+use spookery_ai::{drive, parse_tool_line, CompleteError, Script, Seat, Watch};
 
 use crate::support::{self, pack_arg, temp_pack};
 use crate::World;
 
 use super::table;
 
-#[when(expr = "the operator runs host with no pack")]
+#[when(expr = "the operator runs ai-gm with no pack")]
 fn the_operator_runs_host_with_no_pack(world: &mut World) {
-    table::run(world, &["host"]);
+    table::run(world, &["ai-gm"]);
 }
 
-#[when(expr = "the operator runs host with an extra argument")]
+#[when(expr = "the operator runs ai-gm with an extra argument")]
 fn the_operator_runs_host_with_an_extra_argument(world: &mut World) {
     let pack = pack_arg(table::pack(world));
-    table::run(world, &["host", &pack, "extra"]);
+    table::run(world, &["ai-gm", &pack, "extra"]);
 }
 
-#[when(expr = "the operator runs host with nothing listening")]
+#[when(expr = "the operator runs ai-gm with nothing listening")]
 fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
     let _port = hold_9737();
     let pack = pack_arg(table::pack(world));
     let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["host", &pack])
+        .args(["ai-gm", &pack])
         .env("XAI_API_KEY", "test-key")
         .env("SPOOK_GM_MODEL", "grok-test")
         .env_remove("SPOOK_GM_URL")
@@ -44,7 +44,7 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
-#[when(expr = "the operator runs host without the model setting")]
+#[when(expr = "the operator runs ai-gm without the model setting")]
 fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
     let listener =
         TcpListener::bind("127.0.0.1:9737").unwrap_or_else(|err| panic!("bind 9737: {err}"));
@@ -53,7 +53,7 @@ fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
         .unwrap_or_else(|err| panic!("nonblocking: {err}"));
     let pack = pack_arg(table::pack(world));
     let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["host", &pack])
+        .args(["ai-gm", &pack])
         .env("XAI_API_KEY", "test-key")
         .env_remove("SPOOK_GM_MODEL")
         .output()
@@ -70,7 +70,7 @@ fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
         TcpListener::bind("127.0.0.1:9737").unwrap_or_else(|err| panic!("bind 9737: {err}"));
     listener.set_nonblocking(true).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["host", &pack])
+        .args(["ai-gm", &pack])
         .env_remove("XAI_API_KEY")
         .env("SPOOK_GM_MODEL", "grok-test")
         .output()
@@ -165,7 +165,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     let mut server = support::spawn(&["run", &pack_arg, "--bind", "127.0.0.1:9737"]);
     wait_port(9737, &mut server);
     let mut host = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["host", &pack_arg])
+        .args(["ai-gm", &pack_arg])
         .env("XAI_API_KEY", "test-key")
         .env("SPOOK_GM_MODEL", "grok-test")
         .env("SPOOK_GM_URL", format!("http://127.0.0.1:{stub_port}"))
@@ -351,7 +351,7 @@ fn with_host(label: &str, body: impl FnOnce(&Path, u16, &Script, &Watch)) {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn stop_host(handle: thread::JoinHandle<Result<(), spookery_host::HostError>>) {
+fn stop_host(handle: thread::JoinHandle<Result<(), spookery_ai::HostError>>) {
     crate::with_live(|live| {
         live.server.take();
     });
@@ -363,7 +363,7 @@ fn start_after_gm(
     port: u16,
     script: &Script,
 ) -> (
-    thread::JoinHandle<Result<(), spookery_host::HostError>>,
+    thread::JoinHandle<Result<(), spookery_ai::HostError>>,
     Arc<Watch>,
 ) {
     let mut last = String::new();

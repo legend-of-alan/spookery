@@ -44,8 +44,14 @@ impl Seat {
             .set_nodelay(true)
             .map_err(|err| fail(err.to_string()))?;
         let read = write.try_clone().map_err(|err| fail(err.to_string()))?;
+        let hello = format!(
+            "{}{}{}",
+            spookery_protocol::GM_HELLO,
+            spookery_protocol::INITIALIZE_LINE,
+            spookery_protocol::INITIALIZED_LINE
+        );
         write
-            .write_all(b"gm\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"spook-host\",\"version\":\"0\"}}}\n{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n")
+            .write_all(hello.as_bytes())
             .map_err(|err| fail(err.to_string()))?;
         write.flush().map_err(|err| fail(err.to_string()))?;
         let shared = Arc::new(Shared {
@@ -80,13 +86,14 @@ impl Seat {
         if name == "commit_turn" {
             *self.shared.commit_id.lock().expect("commit id") = Some(id);
         }
-        let name = serde_json::to_string(name).map_err(|err| fail(err.to_string()))?;
-        let arguments = serde_json::to_string(&arguments).map_err(|err| fail(err.to_string()))?;
-        writeln!(
-            self.write,
-            "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":{name},\"arguments\":{arguments}}}}}"
-        )
-        .map_err(|err| fail(err.to_string()))?;
+        let line = spookery_protocol::write_tool_call(&spookery_protocol::ToolCall {
+            id,
+            name: name.to_string(),
+            arguments,
+        });
+        self.write
+            .write_all(line.as_bytes())
+            .map_err(|err| fail(err.to_string()))?;
         self.write.flush().map_err(|err| fail(err.to_string()))?;
         self.wait_id(id)
     }
@@ -142,15 +149,7 @@ impl Drop for Seat {
 }
 
 pub fn parse_tool_line(raw: &str) -> Result<CallOutcome, HostError> {
-    let value: Value = serde_json::from_str(raw).map_err(|_| fail(raw.to_string()))?;
-    let Some(result) = value.get("result") else {
-        return Err(fail(raw.to_string()));
-    };
-    let body = result
-        .get("structuredContent")
-        .or_else(|| result.get("structured_content"))
-        .cloned()
-        .unwrap_or(Value::Null);
+    let body = spookery_protocol::read_tool_result(raw).map_err(|_| fail(raw.to_string()))?;
     let refused = body.get("code").is_some();
     Ok(CallOutcome {
         raw: raw.to_string(),
@@ -180,59 +179,48 @@ fn read_loop(mut read: TcpStream, tx: mpsc::Sender<Incoming>, shared: Arc<Shared
 }
 
 fn classify(line: &str, shared: &Shared) -> Option<Incoming> {
-    let value: Value = match serde_json::from_str(line) {
-        Ok(value) => value,
+    let frame = match spookery_protocol::read_frame(line) {
+        Ok(frame) => frame,
         Err(_) => return Some(Incoming::Bad(line.to_string())),
     };
-    if let Some(id) = value.get("id").and_then(Value::as_u64) {
-        let commit = *shared.commit_id.lock().expect("commit id");
-        if commit == Some(id) {
-            shared.gen.fetch_add(1, Ordering::Release);
-            *shared.commit_id.lock().expect("commit id") = None;
-        }
-        return Some(Incoming::Result {
-            id,
-            raw: line.to_string(),
-        });
-    }
-    if value.get("method").and_then(Value::as_str) != Some("spook/event") {
-        return Some(Incoming::Bad(line.to_string()));
-    }
-    let Some(params) = value.get("params") else {
-        return Some(Incoming::Bad(line.to_string()));
-    };
-    let kind = params.get("kind").and_then(Value::as_str).unwrap_or("");
     let gen = shared.gen.load(Ordering::Acquire);
-    match kind {
-        "check" => None,
-        "say" => {
-            let from = params.get("from").and_then(Value::as_str).unwrap_or("");
-            let seq = params.get("seq").and_then(Value::as_u64).unwrap_or(0);
+    match frame {
+        spookery_protocol::Frame::Result { id } => {
+            let commit = *shared.commit_id.lock().expect("commit id");
+            if commit == Some(id) {
+                shared.gen.fetch_add(1, Ordering::Release);
+                *shared.commit_id.lock().expect("commit id") = None;
+            }
+            Some(Incoming::Result {
+                id,
+                raw: line.to_string(),
+            })
+        }
+        spookery_protocol::Frame::Say {
+            from,
+            seq,
+            address,
+            place,
+            actor,
+            text,
+        } => {
             let high = shared.high_water.load(Ordering::Acquire);
             if from.starts_with("player:") && seq > high {
                 Some(Incoming::Wake(Wake::Say {
-                    from: from.to_string(),
+                    from,
                     seq,
-                    address: params
-                        .get("address")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
-                    place: optional_string(params.get("place")),
-                    actor: optional_string(params.get("actor")),
-                    text: params
-                        .get("text")
-                        .and_then(Value::as_str)
-                        .unwrap_or("")
-                        .to_string(),
+                    address,
+                    place,
+                    actor,
+                    text,
                     gen,
                 }))
             } else {
                 None
             }
         }
-        "queued" => Some(Incoming::Wake(Wake::Queued { gen })),
-        _ => None,
+        spookery_protocol::Frame::Queued => Some(Incoming::Wake(Wake::Queued { gen })),
+        spookery_protocol::Frame::Dropped => None,
     }
 }
 

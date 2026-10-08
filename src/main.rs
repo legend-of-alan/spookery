@@ -45,11 +45,11 @@ fn dispatch() -> Result<(), spookery::Error> {
     if args.first().is_some_and(|arg| arg == "gm") {
         return play::gm(&args[1..]);
     }
-    if args.first().is_some_and(|arg| arg == "host") {
+    if args.first().is_some_and(|arg| arg == "ai-gm") {
         if args.len() != 2 {
             return Err(spookery::Error::Reason(Reason::NotInSpec));
         }
-        if spookery_host::sit(Path::new(&args[1])).is_err() {
+        if spookery_ai::sit(Path::new(&args[1])).is_err() {
             std::process::exit(1);
         }
         return Ok(());
