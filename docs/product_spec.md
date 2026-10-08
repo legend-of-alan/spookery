@@ -477,16 +477,17 @@ Later genre packs may override pause policy. The docks fixture does not.
 /src
   kernel/                  # spookery-kernel
   tick/                    # spookery-tick
-  mcp/                     # spookery-mcp
-  seat/                    # play door, in the bin
+  seat/                    # both seats, in the bin
   main.rs                  # spook
-/host                      # spookery-host, the GM seat that calls the model
+/protocol                  # spookery-protocol, the shared lines
+/cli                       # spookery-cli, spook play
+/ai                        # spookery-ai, spook ai-gm
 /tests
   promises.rs
   features/
 ```
 
-Language: Rust. Five crates: the bin plus kernel, tick, mcp, and host.
+Language: Rust. Six crates: the bin plus kernel, tick, protocol, cli, and ai.
 
 Agents implement from `docs/spec.md`. A human reviews. This file does not license a code change.
 
