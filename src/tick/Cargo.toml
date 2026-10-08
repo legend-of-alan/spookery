@@ -1,0 +1,13 @@
+[package]
+name = "spookery-tick"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+license.workspace = true
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+spookery-kernel = { path = "../kernel" }

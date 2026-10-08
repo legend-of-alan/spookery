@@ -1,0 +1,7 @@
+schema: checks/v0
+checks:
+  - id: grit
+    dice:
+      count: 2
+      sides: 6
+    stat: grit

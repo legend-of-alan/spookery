@@ -1,0 +1,133 @@
+schema: now/v0
+shard_id: docks-001
+pack_rev: blake2s:9c70dad6757c9789745493a94ba6ee36f3cd2674561de64683a91596136e2cad
+state_rev: 0
+tick_index: 0
+world_time: 1080
+last_tick_at: "2026-01-01T00:00:00Z"
+presence:
+  humans: 0
+  actors_present: []
+pause:
+  named_plot_clocks: paused
+places:
+  docks_shop:
+    stock:
+      lamp_oil: 4
+    hours: {}
+    notes: []
+    actors:
+      - aldric
+      - pc_rowan
+  docks_street:
+    stock: {}
+    hours: {}
+    notes: []
+    actors:
+      - bram
+  mira_rooms:
+    stock: {}
+    hours: {}
+    notes: []
+    actors:
+      - mira
+actors:
+  aldric:
+    kind: npc
+    place: docks_shop
+    flags: []
+    busy: false
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    inventory: []
+    relationships: {}
+    reputation: {}
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  bram:
+    kind: npc
+    place: docks_street
+    flags: []
+    busy: false
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    inventory: []
+    relationships: {}
+    reputation: {}
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  mira:
+    kind: npc
+    place: mira_rooms
+    flags: []
+    busy: false
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    inventory: []
+    relationships: {}
+    reputation: {}
+    known_facts:
+      - fact_ledger_short
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  pc_rowan:
+    kind: pc
+    place: docks_shop
+    flags: []
+    busy: false
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    inventory: []
+    known_facts: []
+clocks:
+  assassination_debt:
+    value: 2
+    max: 6
+    requires_presence: true
+    owners:
+      - pc_rowan
+    paused: true
+  shop_day:
+    value: 1
+    max: 1
+    requires_presence: false
+    owners:
+      - mira
+    paused: false
+rumors:
+  - id: r_184
+    fact_ids:
+      - fact_oil_on_shelf
+    origin: bram
+    heat: 1
+    known_by:
+      - bram
+messages: []

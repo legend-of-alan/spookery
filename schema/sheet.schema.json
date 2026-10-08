@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "CC BY 4.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "id", "template", "stats", "resources", "inventory", "flags"],
+  "properties": {
+    "schema": { "const": "sheet/v0" },
+    "id": { "type": "string" },
+    "template": { "type": "string" },
+    "stats": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": { "type": "integer" }
+    },
+    "inventory": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "flags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

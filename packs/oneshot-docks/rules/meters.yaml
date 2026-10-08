@@ -1,0 +1,12 @@
+schema: meters/v0
+meters:
+  - id: grit
+    min: 0
+    base_cap: 100
+    max: 110
+    start: 1
+  - id: rest
+    min: 0
+    base_cap: 5
+    max: 5
+    start: 3
