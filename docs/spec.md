@@ -47,7 +47,7 @@ Six crates. A one-crate collapse is not the layout. The bin and `spookery-ai` ma
 
 | Crate | May link | Must not link |
 |---|---|---|
-| `spookery-protocol` | `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `spookery-cli`, `spookery-ai` |
+| `spookery-protocol` | `serde`, `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `spookery-cli`, `spookery-ai` |
 | `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, any model SDK, `spookery-tick`, `spookery-protocol`, `spookery-cli`, `spookery-ai` |
 | `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, `spookery-protocol`, `spookery-cli`, `spookery-ai` |
 | `spookery-cli` | `spookery-protocol`, `spookery-kernel` | `spookery-ai`, `reqwest`, `rmcp`, `tokio` |
