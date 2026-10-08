@@ -27,6 +27,7 @@ path = "src/main.rs"
 spookery-host = { path = "host" }
 spookery-kernel = { path = "src/kernel" }
 spookery-mcp = { path = "src/mcp" }
+spookery-protocol = { path = "protocol" }
 spookery-tick = { path = "src/tick" }
 rmcp = "0.8"
 serde_json = { version = "1", features = ["preserve_order"] }

@@ -306,22 +306,10 @@ fn refused_tool(code: Reason) -> ToolResult {
 }
 
 fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
-    let arguments = arguments.unwrap_or_default();
-    let mut as_arg = None;
-    let mut budget = None;
-    for (key, value) in &arguments {
-        match key.as_str() {
-            "as" => as_arg = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
-            "focus" => match value.as_str() {
-                Some("place" | "actor") => {}
-                _ => return Err(Reason::Schema),
-            },
-            "budget_tokens" => budget = Some(value.as_u64().ok_or(Reason::Schema)?),
-            _ => return Err(Reason::Schema),
-        }
-    }
-    let as_arg = as_arg.ok_or(Reason::UnscopedPerceive)?;
-    let budget = usize::try_from(budget.unwrap_or(800)).map_err(|_| Reason::Schema)?;
+    let args =
+        spookery_protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
+    let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
     let view = perceive_budget(shard, &as_arg, budget)?;
     Ok(protocol::perceive_value(&view))
 }
@@ -345,66 +333,34 @@ fn session_status_tool(
 }
 
 fn status_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Reason> {
-    let Some(arguments) = arguments else {
-        return Ok(None);
-    };
-    if arguments.is_empty() {
-        return Ok(None);
-    }
-    if arguments.len() != 1 {
-        return Err(Reason::Schema);
-    }
-    let since = arguments.get("since").ok_or(Reason::Schema)?;
-    Ok(Some(since.as_u64().ok_or(Reason::Schema)?))
+    let args =
+        spookery_protocol::read_status_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    Ok(args.since)
 }
 
 fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Reason> {
-    let arguments = arguments.ok_or(Reason::Schema)?;
-    let mut include = None;
-    for (key, value) in &arguments {
-        match key.as_str() {
-            "include_tick" => {
-                include = Some(value.as_bool().ok_or(Reason::Schema)?);
-            }
-            "session_id" => {
-                if !value.is_string() {
-                    return Err(Reason::Schema);
-                }
-            }
-            _ => return Err(Reason::Schema),
-        }
-    }
-    include.ok_or(Reason::Schema)
+    let args =
+        spookery_protocol::read_commit_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    Ok(args.include_tick)
 }
 
 fn queue_tool_intent(
     shard: &mut Shard,
     arguments: Option<Map<String, Value>>,
 ) -> Result<QueuedNote, Reason> {
-    let arguments = arguments.ok_or(Reason::Schema)?;
-    let mut id = None;
-    let mut tick_index = None;
-    let mut actor_id = None;
-    let mut actor_kind = None;
-    let mut source = None;
-    let mut move_name = None;
-    let mut target = Target::Empty;
-    let mut args = IntentArgs::default();
-    let mut rationale = String::new();
-    for (key, value) in &arguments {
-        match key.as_str() {
-            "id" => id = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
-            "tick_index" => tick_index = Some(value.as_u64().ok_or(Reason::Schema)?),
-            "actor_id" => actor_id = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
-            "actor_kind" => actor_kind = Some(parse_kind(value.as_str().ok_or(Reason::Schema)?)?),
-            "source" => source = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
-            "move" => move_name = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
-            "target" => target = parse_target(value)?,
-            "args" => args = parse_args(value)?,
-            "rationale_code" => rationale = value.as_str().ok_or(Reason::Schema)?.to_string(),
-            _ => return Err(Reason::Schema),
-        }
-    }
+    let call =
+        spookery_protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let id = call.id;
+    let tick_index = call.tick_index;
+    let actor_id = call.actor_id;
+    let actor_kind = call.actor_kind.as_deref().map(parse_kind).transpose()?;
+    let source = call.source;
+    let move_name = call.move_name;
+    let target = kernel_target(call.target);
+    let args = IntentArgs {
+        message_to: call.message_to,
+    };
+    let rationale = call.rationale_code;
     if source.as_deref() != Some("player") {
         return Err(Reason::Schema);
     }
@@ -485,44 +441,12 @@ fn parse_kind(text: &str) -> Result<ActorKind, Reason> {
     }
 }
 
-fn parse_target(value: &Value) -> Result<Target, Reason> {
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    if object.is_empty() {
-        return Ok(Target::Empty);
+fn kernel_target(target: spookery_protocol::CallTarget) -> Target {
+    match target {
+        spookery_protocol::CallTarget::Empty => Target::Empty,
+        spookery_protocol::CallTarget::Place(id) => Target::Place(id),
+        spookery_protocol::CallTarget::Actor(id) => Target::Actor(id),
+        spookery_protocol::CallTarget::Clock(id) => Target::Clock(id),
+        spookery_protocol::CallTarget::Rumor(id) => Target::Rumor(id),
     }
-    if object.len() != 1 {
-        return Err(Reason::Schema);
-    }
-    if let Some(place) = object.get("place").and_then(Value::as_str) {
-        return Ok(Target::Place(place.to_string()));
-    }
-    if let Some(actor) = object.get("actor").and_then(Value::as_str) {
-        return Ok(Target::Actor(actor.to_string()));
-    }
-    if let Some(clock) = object.get("clock").and_then(Value::as_str) {
-        return Ok(Target::Clock(clock.to_string()));
-    }
-    if let Some(rumor) = object.get("rumor").and_then(Value::as_str) {
-        return Ok(Target::Rumor(rumor.to_string()));
-    }
-    Err(Reason::Schema)
-}
-
-fn parse_args(value: &Value) -> Result<IntentArgs, Reason> {
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    let mut args = IntentArgs::default();
-    for (key, item) in object {
-        match key.as_str() {
-            "to" => {
-                let values = item.as_array().ok_or(Reason::Schema)?;
-                let mut ids = Vec::new();
-                for value in values {
-                    ids.push(value.as_str().ok_or(Reason::Schema)?.to_string());
-                }
-                args.message_to = Some(ids);
-            }
-            _ => return Err(Reason::Schema),
-        }
-    }
-    Ok(args)
 }

@@ -66,35 +66,11 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
 pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
-    let arguments = arguments.ok_or(Reason::Schema)?;
-    let mut address = None;
-    let mut place = None;
-    let mut actor = None;
-    let mut text = None;
-    for (key, value) in &arguments {
-        match key.as_str() {
-            "from" => return Err(Reason::Schema),
-            "address" => address = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
-            "place" => {
-                place = match value {
-                    Value::Null => None,
-                    Value::String(text) => Some(text.clone()),
-                    _ => return Err(Reason::Schema),
-                };
-            }
-            "actor" => {
-                actor = match value {
-                    Value::Null => None,
-                    Value::String(text) => Some(text.clone()),
-                    _ => return Err(Reason::Schema),
-                };
-            }
-            "text" => text = Some(value.as_str().ok_or(Reason::Schema)?.to_string()),
-            _ => return Err(Reason::Schema),
-        }
-    }
-    let address = address.ok_or(Reason::Schema)?;
-    let text = one_line(&text.ok_or(Reason::Schema)?)?.to_string();
+    let call = spookery_protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let address = call.address;
+    let place = call.place;
+    let actor = call.actor;
+    let text = one_line(&call.text)?.to_string();
     let (place, actor) = match address.as_str() {
         "table" => {
             if place.is_some() || actor.is_some() {

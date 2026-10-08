@@ -1934,6 +1934,7 @@ dependencies = [
  "spookery-host",
  "spookery-kernel",
  "spookery-mcp",
+ "spookery-protocol",
  "spookery-tick",
  "tokio",
 ]

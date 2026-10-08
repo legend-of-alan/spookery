@@ -338,11 +338,7 @@ fn on_hello(
 }
 
 fn player_hello(line: &str) -> Option<&str> {
-    let id = line.strip_prefix("player:")?;
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        return None;
-    }
-    Some(id)
+    spookery_protocol::read_player_hello(line)
 }
 
 fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Reason> {
