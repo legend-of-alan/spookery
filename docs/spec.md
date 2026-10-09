@@ -311,7 +311,6 @@ Still not built, and not implied by a missing sentence above:
 - An ack cursor, or a per-client outbound queue whose purpose is to make a host event start a host turn.
 - `apply_effect` or `patch_entity` on the sitting.
 - Studio tools that write `state/`.
-- Rewriting `.grok/skills/gm-docks`.
 - Changing the player wire kinds `refused`, `check`, and `say`.
 - WebSockets, `--serve`, or a database.
 - A second spec, an archive copy of an older spec, or a banner that keeps the older text in the worktree. Tags stay. The files do not.
