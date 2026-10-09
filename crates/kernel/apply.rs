@@ -30,13 +30,6 @@ pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<()
             tags,
             text,
         } => apply_memory(txn, intent, &actor_id, fact_ids, tags, text),
-        EffectClass::Rumor {
-            rumor_id,
-            fact_ids,
-            to,
-            heat,
-            ..
-        } => apply_rumor(txn, &rumor_id, &fact_ids, &to, heat),
         EffectClass::Flag {
             actor_id,
             key,
@@ -243,54 +236,6 @@ fn apply_memory(
         tags,
         text,
     });
-    Ok(())
-}
-
-fn apply_rumor(
-    txn: &mut Txn,
-    rumor_id: &str,
-    fact_ids: &[String],
-    to: &str,
-    heat: i64,
-) -> Result<(), Reason> {
-    if !(1..=3).contains(&heat) {
-        return Err(Reason::OutOfRange);
-    }
-    let kind = match txn.now().actors.get(to) {
-        Some(actor) if actor.is_npc() => ActorKind::Npc,
-        Some(actor) if actor.is_pc() => ActorKind::Player,
-        _ => return Err(Reason::UnknownKey),
-    };
-    let viewer = ViewerId::from_kind(kind, to)?;
-    for fact in fact_ids {
-        if !allows(txn.canon(), txn.now(), &viewer, fact) {
-            return Err(Reason::IllegalKnowledge);
-        }
-    }
-    let known = txn
-        .now()
-        .rumors
-        .iter()
-        .find(|rumor| rumor.id == rumor_id)
-        .ok_or(Reason::UnknownKey)?
-        .known_by
-        .clone();
-    if known.iter().any(|id| id == to) {
-        return Ok(());
-    }
-    txn.bump_rumor()?;
-    let mut next = known;
-    next.push(to.to_string());
-    next.sort();
-    next.dedup();
-    txn.track(StateKey::Rumor(rumor_id.to_string()))?;
-    let rumor = txn
-        .now_mut()
-        .rumors
-        .iter_mut()
-        .find(|rumor| rumor.id == rumor_id)
-        .ok_or(Reason::UnknownKey)?;
-    rumor.known_by = next;
     Ok(())
 }
 

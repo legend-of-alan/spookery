@@ -39,13 +39,6 @@ pub enum EffectClass {
         tags: Vec<String>,
         text: Option<String>,
     },
-    Rumor {
-        rumor_id: String,
-        fact_ids: Vec<String>,
-        from: String,
-        to: String,
-        heat: i64,
-    },
     Flag {
         actor_id: String,
         key: String,
@@ -82,7 +75,6 @@ impl EffectClass {
             EffectClass::Stock { .. } => "stock",
             EffectClass::Location { .. } => "location",
             EffectClass::Memory { .. } => "memory",
-            EffectClass::Rumor { .. } => "rumor",
             EffectClass::Flag { .. } => "flag",
             EffectClass::Message { .. } => "message",
         }
@@ -121,7 +113,6 @@ fn payload_len(class: &EffectClass) -> usize {
         },
         EffectClass::Stock { .. } | EffectClass::Location { .. } | EffectClass::Flag { .. } => 3,
         EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
-        EffectClass::Rumor { .. } => 5,
         EffectClass::Message { place, .. } => 4 + usize::from(place.is_some()),
     }
 }
@@ -178,19 +169,6 @@ where
             if let Some(text) = text {
                 state.serialize_field("text", text)?;
             }
-        }
-        EffectClass::Rumor {
-            rumor_id,
-            fact_ids,
-            from,
-            to,
-            heat,
-        } => {
-            state.serialize_field("rumor_id", rumor_id)?;
-            state.serialize_field("fact_ids", fact_ids)?;
-            state.serialize_field("from", from)?;
-            state.serialize_field("to", to)?;
-            state.serialize_field("heat", heat)?;
         }
         EffectClass::Flag {
             actor_id,

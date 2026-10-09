@@ -19,7 +19,6 @@ pub struct Now {
     pub places: BTreeMap<String, PlaceLive>,
     pub actors: BTreeMap<String, ActorLive>,
     pub clocks: BTreeMap<String, Clock>,
-    pub rumors: Vec<Rumor>,
     pub messages: Vec<Message>,
 }
 
@@ -176,16 +175,6 @@ pub struct Clock {
     pub requires_presence: bool,
     pub owners: Vec<String>,
     pub paused: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Rumor {
-    pub id: String,
-    pub fact_ids: Vec<String>,
-    pub origin: String,
-    pub heat: i64,
-    pub known_by: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

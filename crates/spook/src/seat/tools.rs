@@ -432,6 +432,5 @@ fn kernel_target(target: crate::protocol::CallTarget) -> Target {
         crate::protocol::CallTarget::Place(id) => Target::Place(id),
         crate::protocol::CallTarget::Actor(id) => Target::Actor(id),
         crate::protocol::CallTarget::Clock(id) => Target::Clock(id),
-        crate::protocol::CallTarget::Rumor(id) => Target::Rumor(id),
     }
 }

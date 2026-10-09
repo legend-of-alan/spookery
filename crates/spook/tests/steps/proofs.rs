@@ -425,7 +425,6 @@ Rowan.
         places,
         actors,
         clocks: BTreeMap::new(),
-        rumors: Vec::new(),
         messages: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
@@ -787,7 +786,6 @@ tick:
         places,
         actors,
         clocks: BTreeMap::new(),
-        rumors: Vec::new(),
         messages: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());

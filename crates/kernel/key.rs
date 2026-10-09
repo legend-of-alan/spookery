@@ -15,7 +15,6 @@ pub enum StateKey {
     PlaceStock(String, String),
     ClockValue(String),
     ClockPaused(String),
-    Rumor(String),
     Message(String),
 }
 
@@ -33,7 +32,6 @@ impl fmt::Display for StateKey {
             StateKey::PlaceStock(place, sku) => write!(f, "place_stock {place} {sku}"),
             StateKey::ClockValue(id) => write!(f, "clock_value {id}"),
             StateKey::ClockPaused(id) => write!(f, "clock_paused {id}"),
-            StateKey::Rumor(id) => write!(f, "rumor {id}"),
             StateKey::Message(id) => write!(f, "message {id}"),
         }
     }

@@ -113,12 +113,4 @@ clocks:
     owners:
       - mira
     paused: false
-rumors:
-  - id: r_184
-    fact_ids:
-      - fact_oil_on_shelf
-    origin: bram
-    heat: 1
-    known_by:
-      - bram
 messages: []

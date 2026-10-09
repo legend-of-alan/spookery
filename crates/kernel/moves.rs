@@ -79,11 +79,6 @@ pub enum RowEffect {
         tags: Vec<String>,
         text: Option<String>,
     },
-    Rumor {
-        rumor: String,
-        to: String,
-        heat: i64,
-    },
 }
 
 pub fn load_moves(text: &str) -> Result<BTreeMap<String, MoveDef>, Reason> {
@@ -227,7 +222,6 @@ fn one_template(token: MoveToken, on: MoveOn, effect: EffectTemplate) -> Result<
         "clock" => clock_template(&effect),
         "message" => message_template(&effect),
         "memory" => memory_template(&effect),
-        "rumor" => rumor_template(&effect),
         _ => Err(Reason::Schema),
     }
 }
@@ -351,17 +345,6 @@ fn memory_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     })
 }
 
-fn rumor_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["rumor", "to", "heat"])?;
-    let rumor = literal_id(effect.rumor.as_deref())?;
-    let to = match effect.to.as_ref() {
-        Some(ToField::One(word)) => literal_id(Some(word))?,
-        _ => return Err(Reason::Schema),
-    };
-    let heat = effect.heat.ok_or(Reason::Schema)?;
-    Ok(RowEffect::Rumor { rumor, to, heat })
-}
-
 fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
     let present = [
         ("key", effect.key.is_some()),
@@ -376,8 +359,6 @@ fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
         ("fact_ids", effect.fact_ids.is_some()),
         ("tags", effect.tags.is_some()),
         ("text", effect.text.is_some()),
-        ("rumor", effect.rumor.is_some()),
-        ("heat", effect.heat.is_some()),
     ];
     if present
         .into_iter()
@@ -484,10 +465,6 @@ struct EffectTemplate {
     tags: Option<Vec<String>>,
     #[serde(default)]
     text: Option<String>,
-    #[serde(default)]
-    rumor: Option<String>,
-    #[serde(default)]
-    heat: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -561,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn a_row_names_eight_classes_literals_and_a_yield() {
+    fn a_row_names_seven_classes_literals_and_a_yield() {
         let moves = load_moves(
             r#"schema: moves/v0
 moves:
@@ -594,10 +571,6 @@ moves:
         place: docks_shop
         fact_ids: []
         text: Back at dusk.
-      - class: rumor
-        rumor: r_184
-        to: aldric
-        heat: 1
       - class: memory
         fact_ids: []
         tags: []
@@ -661,14 +634,6 @@ moves:
                 place: Some("docks_shop".to_string()),
                 fact_ids: Vec::new(),
                 text: "Back at dusk.".to_string(),
-            }
-        );
-        assert_eq!(
-            shelf.effects[4],
-            RowEffect::Rumor {
-                rumor: "r_184".to_string(),
-                to: "aldric".to_string(),
-                heat: 1,
             }
         );
         assert_eq!(
@@ -824,13 +789,7 @@ moves:
         );
         assert_eq!(
             schema(
-                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: first_known\n        to: aldric\n        heat: 1\n"
-            ),
-            Reason::Schema
-        );
-        assert_eq!(
-            schema(
-                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: r_184\n        to: aldric\n        heat: keep\n"
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: r_184\n        to: aldric\n        heat: 1\n"
             ),
             Reason::Schema
         );

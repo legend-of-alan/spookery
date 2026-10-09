@@ -84,7 +84,6 @@ pub enum Target {
     Place(String),
     Actor(String),
     Clock(String),
-    Rumor(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

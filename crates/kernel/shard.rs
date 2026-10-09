@@ -43,7 +43,6 @@ pub struct Txn {
     pub(crate) staging: Now,
     keys: BTreeSet<StateKey>,
     pub(crate) memories: Vec<MemoryLine>,
-    rumor_hops: u32,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
 }
@@ -102,7 +101,6 @@ impl Txn {
             staging: shard.now.clone(),
             keys: BTreeSet::new(),
             memories: Vec::new(),
-            rumor_hops: 0,
             memory_writes: 0,
             _nosend: PhantomData,
         }
@@ -259,14 +257,6 @@ impl Txn {
             return Err(Reason::Budget);
         }
         self.memory_writes += 1;
-        Ok(())
-    }
-
-    pub(crate) fn bump_rumor(&mut self) -> Result<(), Reason> {
-        if u64::from(self.rumor_hops) >= self.budget.max_rumor_hops {
-            return Err(Reason::Budget);
-        }
-        self.rumor_hops += 1;
         Ok(())
     }
 
