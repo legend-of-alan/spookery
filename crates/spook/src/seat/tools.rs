@@ -399,14 +399,16 @@ fn queue_tool_intent(
     }
     turn::push_intent(
         shard,
-        id.clone(),
-        &actor_id,
-        actor_kind,
-        &move_name,
-        target,
-        args,
-        rationale,
-        tick_index,
+        turn::IntentPush {
+            id: id.clone(),
+            actor_id: &actor_id,
+            actor_kind,
+            move_name: &move_name,
+            target,
+            args,
+            rationale_code: rationale,
+            tick_index,
+        },
     )?;
     Ok(QueuedNote {
         id,

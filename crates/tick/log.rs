@@ -6,45 +6,47 @@ pub struct Rejected {
     pub reason: String,
 }
 
-pub fn render_tick(
-    tick_index: u64,
-    state_rev_before: u64,
-    state_rev_after: u64,
-    world_time_before: u64,
-    world_time_after: u64,
-    presence_humans: u32,
-    seed: &str,
-    last_tick_at: &str,
-    intents: &[Intent],
-    rejected: &[Rejected],
-    effects: &[Effect],
-    tool_trace: &[String],
-) -> String {
+pub struct TickLine<'a> {
+    pub tick_index: u64,
+    pub state_rev_before: u64,
+    pub state_rev_after: u64,
+    pub world_time_before: u64,
+    pub world_time_after: u64,
+    pub presence_humans: u32,
+    pub seed: &'a str,
+    pub last_tick_at: &'a str,
+    pub intents: &'a [Intent],
+    pub rejected: &'a [Rejected],
+    pub effects: &'a [Effect],
+    pub tool_trace: &'a [String],
+}
+
+pub fn render_tick(line: &TickLine<'_>) -> String {
     let mut out = String::from("{");
-    push_key_u64(&mut out, "tick_index", tick_index, true);
-    push_key_u64(&mut out, "state_rev_before", state_rev_before, false);
-    push_key_u64(&mut out, "state_rev_after", state_rev_after, false);
-    push_key_u64(&mut out, "world_time_before", world_time_before, false);
-    push_key_u64(&mut out, "world_time_after", world_time_after, false);
+    push_key_u64(&mut out, "tick_index", line.tick_index, true);
+    push_key_u64(&mut out, "state_rev_before", line.state_rev_before, false);
+    push_key_u64(&mut out, "state_rev_after", line.state_rev_after, false);
+    push_key_u64(&mut out, "world_time_before", line.world_time_before, false);
+    push_key_u64(&mut out, "world_time_after", line.world_time_after, false);
     push_key_u64(
         &mut out,
         "presence_humans",
-        u64::from(presence_humans),
+        u64::from(line.presence_humans),
         false,
     );
     out.push_str(",\"seed\":");
-    push_string(&mut out, seed);
+    push_string(&mut out, line.seed);
     out.push_str(",\"last_tick_at\":");
-    push_string(&mut out, last_tick_at);
+    push_string(&mut out, line.last_tick_at);
     out.push_str(",\"intents\":[");
-    for (index, intent) in intents.iter().enumerate() {
+    for (index, intent) in line.intents.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
         push_intent(&mut out, intent);
     }
     out.push_str("],\"rejected\":[");
-    for (index, item) in rejected.iter().enumerate() {
+    for (index, item) in line.rejected.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
@@ -55,14 +57,14 @@ pub fn render_tick(
         out.push('}');
     }
     out.push_str("],\"effects\":[");
-    for (index, effect) in effects.iter().enumerate() {
+    for (index, effect) in line.effects.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
         push_effect(&mut out, effect);
     }
     out.push_str("],\"tool_trace\":[");
-    for (index, name) in tool_trace.iter().enumerate() {
+    for (index, name) in line.tool_trace.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
@@ -170,7 +172,7 @@ mod tests {
     use spookery_kernel::effect::{Effect, EffectClass};
     use spookery_kernel::intent::ViewerId;
 
-    use super::render_tick;
+    use super::{render_tick, TickLine};
 
     #[test]
     fn tick_line_embeds_the_flat_effect() {
@@ -183,20 +185,20 @@ mod tests {
             as_viewer: ViewerId::Npc("mira".to_string()),
             intent_id: "i".to_string(),
         };
-        let line = render_tick(
-            1,
-            0,
-            1,
-            0,
-            60,
-            0,
-            "seed",
-            "2026-01-01T00:00:00Z",
-            &[],
-            &[],
-            &[effect.clone()],
-            &[],
-        );
+        let line = render_tick(&TickLine {
+            tick_index: 1,
+            state_rev_before: 0,
+            state_rev_after: 1,
+            world_time_before: 0,
+            world_time_after: 60,
+            presence_humans: 0,
+            seed: "seed",
+            last_tick_at: "2026-01-01T00:00:00Z",
+            intents: &[],
+            rejected: &[],
+            effects: std::slice::from_ref(&effect),
+            tool_trace: &[],
+        });
         let encoded = spookery_kernel::codec::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
         assert!(!line.contains("\"payload\""));

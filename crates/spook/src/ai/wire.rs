@@ -102,13 +102,11 @@ impl Seat {
         if let Some(wake) = self.wakes.pop_front() {
             return Ok(Some(wake));
         }
-        loop {
-            match self.recv() {
-                Incoming::Wake(wake) => return Ok(Some(wake)),
-                Incoming::Result { raw, .. } => return Err(fail(raw)),
-                Incoming::Bad(line) => return Err(fail(line)),
-                Incoming::Eof => return Ok(None),
-            }
+        match self.recv() {
+            Incoming::Wake(wake) => Ok(Some(wake)),
+            Incoming::Result { raw, .. } => Err(fail(raw)),
+            Incoming::Bad(line) => Err(fail(line)),
+            Incoming::Eof => Ok(None),
         }
     }
 
@@ -167,13 +165,10 @@ fn read_loop(mut read: TcpStream, tx: mpsc::Sender<Incoming>, shared: Arc<Shared
                 return;
             }
         };
-        match classify(&line, &shared) {
-            Some(incoming) => {
-                if tx.send(incoming).is_err() {
-                    return;
-                }
+        if let Some(incoming) = classify(&line, &shared) {
+            if tx.send(incoming).is_err() {
+                return;
             }
-            None => {}
         }
     }
 }

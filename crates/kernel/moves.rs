@@ -588,11 +588,11 @@ mod tests {
                 .audience,
             Some(Audience::Habit)
         );
-        assert!(moves.get("talk").is_none());
-        assert!(moves.get("attempt").is_none());
-        assert!(moves.get("attack").is_none());
-        assert!(moves.get("give").is_none());
-        assert!(moves.get("take").is_none());
+        assert!(!moves.contains_key("talk"));
+        assert!(!moves.contains_key("attempt"));
+        assert!(!moves.contains_key("attack"));
+        assert!(!moves.contains_key("give"));
+        assert!(!moves.contains_key("take"));
         crate::canon::load_canon(&root).unwrap();
     }
 

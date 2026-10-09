@@ -31,7 +31,7 @@ pub(crate) fn fsync_dir(path: &Path) -> Result<(), Reason> {
             .open(path)
             .map_err(|_| Reason::CommitConflict)?;
         file.sync_all().map_err(|_| Reason::CommitConflict)?;
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(windows))]
     {
