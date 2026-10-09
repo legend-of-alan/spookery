@@ -5,7 +5,7 @@
 **Names:** Spookery (company), `spook` (CLI / runtime), pack (world format). The crate is `spookery`.
 **One-line pitch:** A runtime for private worlds you describe in text: agents may intend, only the tick may write, and the world keeps moving after everyone logs off.
 
-**Company one-liner:** Source-available kernel and pack format; paid always-on shards and conformance for authors who already write worlds with coding agents.
+**Company one-liner:** Open source (AGPL-3.0) kernel and CC BY 4.0 pack format; paid always-on shards and conformance for authors who already write worlds with coding agents.
 
 **Short pitch:** Friend-scale worlds as diffable packs. Models talk. The clock commits.
 
@@ -359,13 +359,13 @@ That is table stakes (character cards, Voyage NPCs, etc.). The business is the *
 
 ### 14.4 Paying wedge (one sentence)
 
-Engine source-available; **always-on shard + lint/conformance paid**; host pays, friends free; BYOK for the live GM agent; kernel idle included.
+Engine open source (AGPL-3.0); **always-on shard + lint/conformance paid**; host pays, friends free; BYOK for the live GM agent; kernel idle included.
 
 Starting price to learn from, not a freeze: **$9 per shard-month** (band $8–15). Price like always-on hosting plus lint, not like Voyage/Fables inference tables. Measure cost per idle shard-day before treating $9 as real. Studio seats come after shards, not before.
 
 ### 14.5 Who pays (in order of alignment)
 
-1. **Hosted playtest shards + conformance** — engine OSS or source-available; workspace, lint, always-on shard are paid (RPGJS / open-core pattern).
+1. **Hosted playtest shards + conformance** — engine open source (AGPL-3.0); workspace, lint, always-on shard are paid (RPGJS / open-core pattern).
 2. **Studio seats** — authors who already have packs.
 3. **B2B kernel** — platforms that do not want to rewrite isolation + commit. Assume Voyage/Craft will not be this buyer.
 4. **Pack registry** — tax verification (“this pack passed isolation on model X”), not creativity. Year-3. Nobody pays this until untrusted packs have burned someone.
@@ -480,8 +480,10 @@ Agents implement from `docs/spec.md`. A human reviews. This file does not licens
 
 ## 17. License
 
-- **Runtime license:** AGPL-3.0-or-later (network use must share). Alternative if AGPL blocks a specific B2B conversation: source-available with an explicit Commons Clause / “cannot offer competing hosted shards” rider — record the change; do not silently flip.
-- **Spec + official fixture text:** CC BY 4.0, so a second implementer can speak the pack.
+Decided October 9, 2026. legend-of-alan is the sole copyright holder and can offer separate commercial licenses.
+
+- **Engine:** open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. Network use must share the corresponding source. The alternative of a use restriction on competing hosted shards is dropped.
+- **Documentation, schemas, and packs:** CC BY 4.0, so a second implementer can speak the pack.
 - **Brand:** Spookery / `spook` / pack. Do not brand as D&D.
 - **Runtime language:** Rust.
 - **Fixture rules:** tiny original ruleset in §8.1. Not SRD/ORC.

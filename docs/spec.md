@@ -2,7 +2,7 @@
 
 This file is the only normative spec. A rule it does not state is unspecified.
 
-Spec text is CC BY 4.0. Runtime code under `/crates` is AGPL-3.0-or-later.
+The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. Documentation, schemas, and packs are CC BY 4.0.
 
 This spec records one writer, the crate boundary, the threat list, loopback and one seat, and the rule that a host monitor is not shard behavior.
 
