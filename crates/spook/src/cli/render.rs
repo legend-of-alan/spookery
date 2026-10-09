@@ -55,11 +55,46 @@ fn speaker(from: &str) -> String {
 }
 
 fn resume(text: &str) -> String {
-    let body = text.trim_end_matches(['\r', '\n']);
-    if body.is_empty() {
+    let lines = text
+        .lines()
+        .map(str::trim)
+        .filter(|row| !row.is_empty())
+        .map(resume_row)
+        .collect::<Vec<_>>();
+    if lines.is_empty() {
         "While you were away:".to_string()
     } else {
-        format!("While you were away:\n{body}")
+        format!("While you were away:\n{}", lines.join("\n"))
+    }
+}
+
+/// One player digest row as a sentence. A row this does not recognize is shown as it came.
+fn resume_row(row: &str) -> String {
+    let (kind, rest) = row.split_once(' ').unwrap_or((row, ""));
+    match kind {
+        "message" => match rest.split_once(' ') {
+            Some((_id, text)) if !text.trim().is_empty() => text.trim().to_string(),
+            _ => row.to_string(),
+        },
+        "rumor" => match rest.split_whitespace().collect::<Vec<_>>()[..] {
+            [_rumor, fact] => format!("You heard a rumor: {}.", humanize(fact)),
+            _ => row.to_string(),
+        },
+        "clock" => match rest.split_whitespace().collect::<Vec<_>>()[..] {
+            [id, value, max, state @ ("paused" | "running")] => {
+                match (value.parse(), max.parse()) {
+                    (Ok(value), Ok(max)) => clock_line(&ClockView {
+                        id: id.to_string(),
+                        value,
+                        max,
+                        paused: state == "paused",
+                    }),
+                    _ => row.to_string(),
+                }
+            }
+            _ => row.to_string(),
+        },
+        _ => row.to_string(),
     }
 }
 
@@ -255,6 +290,44 @@ mod tests {
                 text: String::new(),
             }),
             "While you were away:"
+        );
+    }
+
+    #[test]
+    fn a_resume_turns_digest_rows_into_sentences() {
+        let text = render(&PlayerMessage::Resume {
+            text: "\
+message note_mira_door Back at dusk. Oil on the shelf.
+rumor rumor_cellar fact_cellar_door
+clock assassination_debt 2 6 paused
+clock shop_day 1 1 running
+"
+            .to_string(),
+        });
+        assert_eq!(
+            text,
+            "\
+While you were away:
+Back at dusk. Oil on the shelf.
+You heard a rumor: Fact cellar door.
+Assassination debt: 2/6, paused
+Shop day: 1/1"
+        );
+        assert!(!text.contains("note_mira_door"), "{text}");
+        assert!(!text.contains("rumor_cellar"), "{text}");
+        assert!(!text.contains("assassination_debt"), "{text}");
+        assert!(!text.contains("running"), "{text}");
+        assert_readable(&text);
+    }
+
+    #[test]
+    fn a_resume_row_it_cannot_read_is_shown_as_it_came() {
+        let text = render(&PlayerMessage::Resume {
+            text: "clock broken two six paused\nmessage lonely_id\nweather fog\n".to_string(),
+        });
+        assert_eq!(
+            text,
+            "While you were away:\nclock broken two six paused\nmessage lonely_id\nweather fog"
         );
     }
 
