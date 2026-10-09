@@ -18,7 +18,8 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
-const RESUME: &str = "\
+/// The raw player digest after thirteen docks ticks: what `--raw` carries in the resume frame.
+pub(super) const RESUME: &str = "\
 message note_mira_door Back at dusk. Oil on the shelf.
 clock assassination_debt 2 6 paused
 ";
