@@ -1,10 +1,62 @@
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::PathBuf;
 
+use clap::{Parser, Subcommand};
 use spookery_kernel::Reason;
 
+/// One loopback table.
+#[derive(Parser)]
+#[command(name = "spook", version)]
+struct Cli {
+    /// Loopback address. `127.0.0.1` means port 9737.
+    #[arg(long, global = true, default_value = "127.0.0.1:9737")]
+    addr: String,
+
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Listen for the player seat and the GM seat.
+    Run {
+        /// Pack directory.
+        pack: PathBuf,
+    },
+    /// Sit the player seat.
+    Play {
+        /// Pack directory.
+        pack: PathBuf,
+        /// Actor to sit, as `player:<id>`.
+        #[arg(long = "as", value_name = "player:<id>")]
+        as_player: Option<String>,
+    },
+    /// Sit the GM seat and call the model.
+    #[command(name = "ai-gm")]
+    AiGm {
+        /// Pack directory.
+        pack: PathBuf,
+    },
+    /// Advance the pack one tick.
+    Tick {
+        /// Pack directory.
+        pack: PathBuf,
+    },
+    /// Print the host digest.
+    Status {
+        /// Pack directory.
+        pack: PathBuf,
+    },
+    /// Store the current canon hash in the save.
+    Migrate {
+        /// Pack directory.
+        pack: PathBuf,
+    },
+}
+
 fn main() {
-    if let Err(exit) = dispatch() {
+    let cli = Cli::parse();
+    if let Err(exit) = dispatch(cli) {
         match exit {
             spookery::Error::Reason(code) => eprintln!("{code}"),
             spookery::Error::Io(err) => eprintln!("{err}"),
@@ -13,43 +65,40 @@ fn main() {
     }
 }
 
-fn dispatch() -> Result<(), spookery::Error> {
-    let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.as_slice() == ["--version"] {
-        println!("{}", env!("CARGO_PKG_VERSION"));
-        return Ok(());
-    }
-    if args.len() == 2 && args[0] == "tick" {
-        return spookery_tick::tick_pack(Path::new(&args[1])).map_err(spookery::Error::Reason);
-    }
-    if args.len() == 2 && args[0] == "migrate" {
-        return spookery_kernel::commit::migrate_pack(Path::new(&args[1]))
-            .map_err(spookery::Error::Reason);
-    }
-    if args.len() == 2 && args[0] == "status" {
-        let shard =
-            spookery_kernel::open_shard(Path::new(&args[1])).map_err(spookery::Error::Reason)?;
-        let text = spookery_kernel::idle_digest(&shard, spookery_kernel::DigestViewer::Host)
-            .map_err(spookery::Error::Reason)?;
-        print!("{text}");
-        return Ok(());
-    }
-    if args.first().is_some_and(|arg| arg == "run") {
-        return dispatch_run(&args[1..]);
-    }
-    if args.first().is_some_and(|arg| arg == "play") {
-        return from_cli(spookery::cli::play(&args[1..]));
-    }
-    if args.first().is_some_and(|arg| arg == "ai-gm") {
-        if args.len() != 2 {
-            return Err(spookery::Error::Reason(Reason::NotInSpec));
+fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
+    match cli.command {
+        Command::Run { pack } => {
+            let addr = parse_loopback(&cli.addr)?;
+            spookery::seat::listen(&pack, addr)
         }
-        if spookery::ai::sit(Path::new(&args[1])).is_err() {
-            std::process::exit(1);
+        Command::Play { pack, as_player } => {
+            parse_loopback(&cli.addr)?;
+            let mut args = vec![pack.to_string_lossy().into_owned()];
+            if let Some(token) = as_player {
+                args.push("--as".to_string());
+                args.push(token);
+            }
+            from_cli(spookery::cli::play(&args))
         }
-        return Ok(());
+        Command::AiGm { pack } => {
+            parse_loopback(&cli.addr)?;
+            if spookery::ai::sit(&pack).is_err() {
+                std::process::exit(1);
+            }
+            Ok(())
+        }
+        Command::Tick { pack } => spookery_tick::tick_pack(&pack).map_err(spookery::Error::Reason),
+        Command::Status { pack } => {
+            let shard = spookery_kernel::open_shard(&pack).map_err(spookery::Error::Reason)?;
+            let text = spookery_kernel::idle_digest(&shard, spookery_kernel::DigestViewer::Host)
+                .map_err(spookery::Error::Reason)?;
+            print!("{text}");
+            Ok(())
+        }
+        Command::Migrate { pack } => {
+            spookery_kernel::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
+        }
     }
-    Err(spookery::Error::Reason(Reason::NotInSpec))
 }
 
 fn from_cli(result: Result<(), spookery::cli::Error>) -> Result<(), spookery::Error> {
@@ -57,19 +106,6 @@ fn from_cli(result: Result<(), spookery::cli::Error>) -> Result<(), spookery::Er
         spookery::cli::Error::Reason(code) => spookery::Error::Reason(code),
         spookery::cli::Error::Io(err) => spookery::Error::Io(err),
     })
-}
-
-fn dispatch_run(args: &[String]) -> Result<(), spookery::Error> {
-    if args.is_empty() {
-        return Err(spookery::Error::Reason(Reason::NotInSpec));
-    }
-    let pack = Path::new(&args[0]);
-    let flags = parse_run_flags(&args[1..])?;
-    let addr = match flags.bind {
-        Some(addr) => parse_loopback(addr)?,
-        None => SocketAddr::from(([127, 0, 0, 1], 9737)),
-    };
-    spookery::seat::listen(pack, addr)
 }
 
 fn parse_loopback(addr: &str) -> Result<SocketAddr, spookery::Error> {
@@ -88,27 +124,60 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, spookery::Error> {
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
-struct RunFlags<'a> {
-    bind: Option<&'a str>,
-}
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
 
-fn parse_run_flags(flags: &[String]) -> Result<RunFlags<'_>, spookery::Error> {
-    if flags.iter().any(|flag| flag == "--as") {
-        return Err(spookery::Error::Reason(Reason::NotInSpec));
+    use super::*;
+
+    #[test]
+    fn the_default_address_is_loopback_9737() {
+        let cli = Cli::try_parse_from(["spook", "tick", "pack"]).unwrap();
+        assert_eq!(cli.addr, "127.0.0.1:9737");
+        assert!(matches!(
+            parse_loopback("127.0.0.1"),
+            Ok(addr) if addr == SocketAddr::from(([127, 0, 0, 1], 9737))
+        ));
+        assert!(matches!(
+            parse_loopback(&cli.addr),
+            Ok(addr) if addr.port() == 9737
+        ));
     }
-    let mut bind = None;
-    let mut index = 0;
-    while index < flags.len() {
-        match flags[index].as_str() {
-            "--bind" => {
-                if bind.is_some() || index + 1 >= flags.len() {
-                    return Err(spookery::Error::Reason(Reason::NotInSpec));
-                }
-                bind = Some(flags[index + 1].as_str());
-                index += 2;
+
+    #[test]
+    fn a_subcommand_address_overrides_the_default() {
+        let after =
+            Cli::try_parse_from(["spook", "run", "--addr", "127.0.0.1:9800", "pack"]).unwrap();
+        assert_eq!(after.addr, "127.0.0.1:9800");
+        let before =
+            Cli::try_parse_from(["spook", "--addr", "127.0.0.1:9800", "run", "pack"]).unwrap();
+        assert_eq!(before.addr, "127.0.0.1:9800");
+        assert!(matches!(after.command, Command::Run { .. }));
+    }
+
+    #[test]
+    fn an_open_address_is_not_loopback() {
+        assert!(parse_loopback("0.0.0.0").is_err());
+        assert!(parse_loopback("10.0.0.8").is_err());
+        assert!(parse_loopback("localhost").is_err());
+        assert!(parse_loopback("127.0.0.1:").is_err());
+    }
+
+    #[test]
+    fn usage_is_not_an_engine_refusal() {
+        assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
+        assert!(Cli::try_parse_from(["spook", "gm"]).is_err());
+        assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
+        assert!(Cli::try_parse_from(["spook"]).is_err());
+        let play = Cli::try_parse_from(["spook", "play", "pack", "--as", "player:rowan"]).unwrap();
+        match play.command {
+            Command::Play { as_player, pack } => {
+                assert_eq!(as_player.as_deref(), Some("player:rowan"));
+                assert_eq!(pack, Path::new("pack"));
             }
-            _ => return Err(spookery::Error::Reason(Reason::NotInSpec)),
+            _ => panic!("play"),
         }
+        let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
+        assert!(matches!(host.command, Command::AiGm { .. }));
     }
-    Ok(RunFlags { bind })
 }
