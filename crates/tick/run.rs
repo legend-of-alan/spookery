@@ -3,7 +3,7 @@ use std::path::Path;
 
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::blake2s_256;
-use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut};
+use spookery_kernel::check::{resolve_check, CheckNotice, CheckOut, CheckRoll};
 use spookery_kernel::commit::tick_commit;
 use spookery_kernel::expand::expand_outcome;
 use spookery_kernel::habit::{allowed, kernel_intents_for_eligible_npcs, stamp_for_priority};
@@ -16,7 +16,7 @@ use spookery_kernel::Reason as KernelReason;
 
 use crate::advance::{pick_advance, plan_catchup};
 use crate::budget::prioritize;
-use crate::log::{render_tick, Rejected};
+use crate::log::{render_tick, Rejected, TickLine};
 use crate::seed::seed_preimage;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -265,16 +265,16 @@ fn stage_tick(
                         );
                         continue;
                     };
-                    match resolve_check(
+                    match resolve_check(CheckRoll {
                         check,
-                        &txn.canon().meters,
-                        &intent.actor_id,
+                        defs: &txn.canon().meters,
+                        actor_id: &intent.actor_id,
                         actor,
-                        &viewer,
+                        viewer: &viewer,
                         target,
-                        &rng,
-                        &mut die_cursor,
-                    ) {
+                        rng: &rng,
+                        die_cursor: &mut die_cursor,
+                    }) {
                         Ok(out) => {
                             if target == 0 {
                                 supplied.insert(intent.id.clone(), out.clone());
@@ -312,16 +312,16 @@ fn stage_tick(
                 });
                 continue;
             };
-            if let Err(code) = resolve_check(
+            if let Err(code) = resolve_check(CheckRoll {
                 check,
-                &txn.canon().meters,
-                &intent.actor_id,
+                defs: &txn.canon().meters,
+                actor_id: &intent.actor_id,
                 actor,
-                &viewer,
-                0,
-                &rng,
-                &mut cursor,
-            ) {
+                viewer: &viewer,
+                target: 0,
+                rng: &rng,
+                die_cursor: &mut cursor,
+            }) {
                 rejected.push(Rejected {
                     id: intent.id,
                     reason: code.jsonl_reason().to_string(),
@@ -426,20 +426,20 @@ fn stage_tick(
     if owns_commit {
         trace.push("tick_commit".to_string());
     }
-    let jsonl = render_tick(
+    let jsonl = render_tick(&TickLine {
         tick_index,
-        rev_before,
-        rev_before + 1,
-        world_before,
-        world_after,
-        humans,
-        &seed_preimage(&shard_id, tick_index),
-        now_wall,
-        &applied,
-        &rejected,
-        &effects_out,
-        &trace,
-    );
+        state_rev_before: rev_before,
+        state_rev_after: rev_before + 1,
+        world_time_before: world_before,
+        world_time_after: world_after,
+        presence_humans: humans,
+        seed: &seed_preimage(&shard_id, tick_index),
+        last_tick_at: now_wall,
+        intents: &applied,
+        rejected: &rejected,
+        effects: &effects_out,
+        tool_trace: &trace,
+    });
     Ok((jsonl, notices))
 }
 
@@ -479,16 +479,16 @@ fn supplied_target(
         .actors
         .get(&opposing.actor_id)
         .ok_or(KernelReason::UnknownKey)?;
-    let out = resolve_check(
+    let out = resolve_check(CheckRoll {
         check,
-        &canon.meters,
-        &opposing.actor_id,
+        defs: &canon.meters,
+        actor_id: &opposing.actor_id,
         actor,
-        &viewer,
-        0,
+        viewer: &viewer,
+        target: 0,
         rng,
         die_cursor,
-    )?;
+    })?;
     let total = out.total;
     supplied.insert(opposing.id.clone(), out);
     Ok(Some(total))

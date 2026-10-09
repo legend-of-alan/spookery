@@ -93,18 +93,10 @@ pub(super) fn print_host(shard: &Shard) {
     }
 }
 
+#[derive(Default)]
 struct Seats {
     player: Option<HeldPlayer>,
     gm: Option<GmSeat>,
-}
-
-impl Default for Seats {
-    fn default() -> Self {
-        Self {
-            player: None,
-            gm: None,
-        }
-    }
 }
 
 struct HeldPlayer {
@@ -370,10 +362,9 @@ fn on_player(
             .player
             .as_ref()
             .is_some_and(|player| player.conn == conn)
+            && drop_player(shard, seats, SocketEnd::Close)?
         {
-            if drop_player(shard, seats, SocketEnd::Close)? {
-                print_host(shard);
-            }
+            print_host(shard);
         }
         return Ok(PlayerReply::Hangup);
     }

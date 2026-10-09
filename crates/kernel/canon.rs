@@ -112,9 +112,7 @@ impl Canon {
     /// Check id named by a row. A move without `effects` is not a row.
     pub fn row_check(&self, move_name: &str) -> Option<String> {
         let def = self.moves.get(move_name)?;
-        if def.row.is_none() {
-            return None;
-        }
+        def.row.as_ref()?;
         def.check.clone()
     }
 }

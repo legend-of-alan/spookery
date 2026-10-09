@@ -80,30 +80,36 @@ pub fn die_face(rng: &[u8], n: usize, sides: u32) -> Result<u32, Reason> {
     Ok((word % sides) + 1)
 }
 
+pub struct CheckRoll<'a> {
+    pub check: &'a CheckDef,
+    pub defs: &'a BTreeMap<String, MeterDef>,
+    pub actor_id: &'a str,
+    pub actor: &'a ActorLive,
+    pub viewer: &'a ViewerId,
+    pub target: i64,
+    pub rng: &'a [u8],
+    pub die_cursor: &'a mut usize,
+}
+
 /// NPC viewers return `UNKNOWN_KEY` and do not advance `die_cursor`.
-pub fn resolve_check(
-    check: &CheckDef,
-    defs: &BTreeMap<String, MeterDef>,
-    actor_id: &str,
-    actor: &ActorLive,
-    viewer: &ViewerId,
-    target: i64,
-    rng: &[u8],
-    die_cursor: &mut usize,
-) -> Result<CheckOut, Reason> {
-    let ViewerId::Player(id) = viewer else {
+pub fn resolve_check(roll: CheckRoll<'_>) -> Result<CheckOut, Reason> {
+    let ViewerId::Player(id) = roll.viewer else {
         return Err(Reason::UnknownKey);
     };
-    if id != actor_id {
+    if id != roll.actor_id {
         return Err(Reason::UnknownKey);
     }
-    let def = defs.get(&check.stat).ok_or(Reason::UnknownKey)?;
-    let live = actor.meters().get(&check.stat).ok_or(Reason::UnknownKey)?;
+    let def = roll.defs.get(&roll.check.stat).ok_or(Reason::UnknownKey)?;
+    let live = roll
+        .actor
+        .meters()
+        .get(&roll.check.stat)
+        .ok_or(Reason::UnknownKey)?;
     let stat = meter::current(def, live)?;
-    let mut faces = Vec::with_capacity(check.dice_count as usize);
-    for _ in 0..check.dice_count {
-        let face = die_face(rng, *die_cursor, check.dice_sides)?;
-        *die_cursor += 1;
+    let mut faces = Vec::with_capacity(roll.check.dice_count as usize);
+    for _ in 0..roll.check.dice_count {
+        let face = die_face(roll.rng, *roll.die_cursor, roll.check.dice_sides)?;
+        *roll.die_cursor += 1;
         faces.push(face);
     }
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
@@ -111,8 +117,8 @@ pub fn resolve_check(
         faces,
         stat,
         total,
-        target,
-        success: total >= target,
+        target: roll.target,
+        success: total >= roll.target,
     })
 }
 
