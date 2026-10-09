@@ -80,12 +80,6 @@ pub(super) const GM_LIST: &[GmTool] = &[
         run: run_say,
     },
     GmTool {
-        name: "npc_act",
-        about: "npc_act returns LLM_DISABLED and calls no model.",
-        schema: empty_schema,
-        run: refuse_llm_disabled,
-    },
-    GmTool {
         name: "commit_turn",
         about: "commit_turn requires include_tick. session_id may be a string.",
         schema: commit_schema,
@@ -144,14 +138,6 @@ fn run_session_status(shard: &mut Shard, arguments: Option<Map<String, Value>>) 
 
 fn refuse_not_in_spec(_shard: &mut Shard, _arguments: Option<Map<String, Value>>) -> ToolResult {
     refused_tool(Reason::NotInSpec)
-}
-
-fn refuse_llm_disabled(_shard: &mut Shard, _arguments: Option<Map<String, Value>>) -> ToolResult {
-    refused_tool(Reason::LlmDisabled)
-}
-
-fn empty_schema() -> Map<String, Value> {
-    schema_object(serde_json::json!({ "type": "object" }))
 }
 
 fn say_schema() -> Map<String, Value> {
