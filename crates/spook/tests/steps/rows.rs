@@ -27,11 +27,48 @@ fn mark_needs_a_knife(world: &mut World) {
 
 #[when(expr = "the moves file gains an unknown key")]
 fn gains_an_unknown_key(world: &mut World) {
-    let pack = table::pack(world);
-    let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
-    moves.push_str(
+    append_moves(
+        world,
         "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n",
     );
+}
+
+#[when(expr = "the moves file gains a system audience")]
+fn gains_a_system_audience(world: &mut World) {
+    append_moves(
+        world,
+        "\n  - name: night\n    audience: system\n    token: none\n    on: speaker\n    effects: []\n",
+    );
+}
+
+#[when(expr = "the moves file gains a relationship row")]
+fn gains_a_relationship_row(world: &mut World) {
+    append_moves(
+        world,
+        "\n  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: relationship\n        to: bram\n        delta: -1\n",
+    );
+}
+
+#[when(expr = "the moves file gains a reputation row")]
+fn gains_a_reputation_row(world: &mut World) {
+    append_moves(
+        world,
+        "\n  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: reputation\n        faction: harbor\n        delta: 1\n",
+    );
+}
+
+#[when(expr = "the moves file gains a rumor row")]
+fn gains_a_rumor_row(world: &mut World) {
+    append_moves(
+        world,
+        "\n  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: r_184\n        to: aldric\n        heat: 1\n",
+    );
+}
+
+fn append_moves(world: &mut World, extra: &str) {
+    let pack = table::pack(world);
+    let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
+    moves.push_str(extra);
     fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
 }
 

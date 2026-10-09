@@ -86,7 +86,6 @@ fn refusal(code: &str) -> String {
         "NOT_IN_SPEC" => "The table does not understand that.",
         "SESSION_FULL" => "The table is full.",
         "MISSING_ITEM" => "You do not have that.",
-        "SKIPPED" => "That action was skipped.",
         _ => return format!("The table refused that. [{code}]"),
     };
     format!("{sentence} [{code}]")

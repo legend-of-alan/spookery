@@ -3,8 +3,6 @@ use std::path::Path;
 
 use crate::codec::{emit_effect_payload, parse_tick_effects};
 use crate::error::Reason;
-use crate::firewall::allows;
-use crate::intent::ViewerId;
 use crate::model::Clock;
 use crate::shard::Shard;
 
@@ -32,27 +30,6 @@ pub fn idle_digest(shard: &Shard, viewer: DigestViewer) -> Result<String, Reason
             messages.sort_by(|left, right| left.id.cmp(&right.id));
             for message in messages {
                 rows.push(format!("message {} {}", message.id, message.text));
-            }
-            let viewer = ViewerId::Player(id.clone());
-            let mut rumors: Vec<_> = shard
-                .now()
-                .rumors
-                .iter()
-                .filter(|rumor| rumor.known_by.iter().any(|known| known == &id))
-                .collect();
-            rumors.sort_by(|left, right| left.id.cmp(&right.id));
-            for rumor in rumors {
-                let mut facts: Vec<_> = rumor
-                    .fact_ids
-                    .iter()
-                    .filter(|fact| allows(shard.canon(), shard.now(), &viewer, fact))
-                    .cloned()
-                    .collect();
-                facts.sort();
-                facts.dedup();
-                for fact in facts {
-                    rows.push(format!("rumor {} {fact}", rumor.id));
-                }
             }
             for (clock_id, clock) in &shard.now().clocks {
                 if clock.owners.iter().any(|owner| owner == &id) {

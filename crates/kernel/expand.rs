@@ -35,7 +35,7 @@ pub fn expand_outcome(
 /// One effect per selected template. `effects` always. `success` or `failure` when that outcome was rolled.
 /// A flag's `speaker` is the acting actor and `named` is the typed id.
 /// A bare location template is the same effect as the travel arm: `to` is the typed place.
-/// Literals are copied here. A rumor row copies `fact_ids` from the named rumor.
+/// Literals are copied here.
 fn expand_row(
     now: &Now,
     intent: &Intent,
@@ -138,29 +138,6 @@ fn expand_template(
                 },
             ));
         }
-        RowEffect::Relationship { to, delta } => {
-            effects.push(wrap(
-                viewer,
-                &intent.id,
-                EffectClass::Relationship {
-                    a: intent.actor_id.clone(),
-                    b: to.clone(),
-                    delta: *delta,
-                },
-            ));
-        }
-        RowEffect::Reputation { faction, delta } => {
-            let actor_id = actor_of(row, intent)?;
-            effects.push(wrap(
-                viewer,
-                &intent.id,
-                EffectClass::Reputation {
-                    actor_id,
-                    faction: faction.clone(),
-                    delta: *delta,
-                },
-            ));
-        }
         RowEffect::Memory {
             fact_ids,
             tags,
@@ -175,25 +152,6 @@ fn expand_template(
                     fact_ids: fact_ids.clone(),
                     tags: tags.clone(),
                     text: text.clone(),
-                },
-            ));
-        }
-        RowEffect::Rumor { rumor, to, heat } => {
-            let fact_ids = now
-                .rumors
-                .iter()
-                .find(|record| record.id == *rumor)
-                .map(|record| record.fact_ids.clone())
-                .ok_or(Reason::UnknownKey)?;
-            effects.push(wrap(
-                viewer,
-                &intent.id,
-                EffectClass::Rumor {
-                    rumor_id: rumor.clone(),
-                    fact_ids,
-                    from: intent.actor_id.clone(),
-                    to: to.clone(),
-                    heat: *heat,
                 },
             ));
         }

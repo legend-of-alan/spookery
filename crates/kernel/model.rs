@@ -19,7 +19,6 @@ pub struct Now {
     pub places: BTreeMap<String, PlaceLive>,
     pub actors: BTreeMap<String, ActorLive>,
     pub clocks: BTreeMap<String, Clock>,
-    pub rumors: Vec<Rumor>,
     pub messages: Vec<Message>,
 }
 
@@ -48,7 +47,6 @@ pub struct PauseView {
 #[serde(deny_unknown_fields)]
 pub struct PlaceLive {
     pub stock: BTreeMap<String, i64>,
-    pub hours: BTreeMap<String, i64>,
     pub notes: Vec<String>,
     pub actors: Vec<String>,
 }
@@ -63,8 +61,6 @@ pub enum ActorLive {
         busy: bool,
         meters: BTreeMap<String, MeterLive>,
         inventory: Vec<String>,
-        relationships: BTreeMap<String, Relation>,
-        reputation: BTreeMap<String, Reputation>,
         known_facts: Vec<String>,
         tick: TickCounters,
     },
@@ -161,42 +157,6 @@ impl ActorLive {
             ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
         }
     }
-
-    pub fn relationships(&self) -> Option<&BTreeMap<String, Relation>> {
-        match self {
-            ActorLive::Npc { relationships, .. } => Some(relationships),
-            ActorLive::Pc { .. } => None,
-        }
-    }
-
-    pub fn relationships_mut(&mut self) -> Option<&mut BTreeMap<String, Relation>> {
-        match self {
-            ActorLive::Npc { relationships, .. } => Some(relationships),
-            ActorLive::Pc { .. } => None,
-        }
-    }
-
-    pub fn reputation_mut(&mut self) -> Option<&mut BTreeMap<String, Reputation>> {
-        match self {
-            ActorLive::Npc { reputation, .. } => Some(reputation),
-            ActorLive::Pc { .. } => None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Relation {
-    pub stance: i64,
-    pub target: i64,
-    pub last_interaction_world_time: u64,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Reputation {
-    pub value: i64,
-    pub last_world_time: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -215,16 +175,6 @@ pub struct Clock {
     pub requires_presence: bool,
     pub owners: Vec<String>,
     pub paused: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Rumor {
-    pub id: String,
-    pub fact_ids: Vec<String>,
-    pub origin: String,
-    pub heat: i64,
-    pub known_by: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

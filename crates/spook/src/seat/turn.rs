@@ -162,7 +162,7 @@ fn queue_row(
     let token = match &target {
         Target::Empty => "",
         Target::Actor(id) | Target::Place(id) => id.as_str(),
-        Target::Clock(_) | Target::Rumor(_) => return Err(Reason::Schema),
+        Target::Clock(_) => return Err(Reason::Schema),
     };
     let note = QueuedNote {
         id: player_line_id(shard, actor_id, &canonical_line(verb, token))?,

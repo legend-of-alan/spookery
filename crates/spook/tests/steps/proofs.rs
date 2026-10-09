@@ -391,7 +391,6 @@ Rowan.
         "gate".to_string(),
         PlaceLive {
             stock: BTreeMap::new(),
-            hours: BTreeMap::new(),
             notes: Vec::new(),
             actors: vec!["pc_rowan".to_string()],
         },
@@ -426,7 +425,6 @@ Rowan.
         places,
         actors,
         clocks: BTreeMap::new(),
-        rumors: Vec::new(),
         messages: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
@@ -740,8 +738,6 @@ tick:
                 busy: false,
                 meters: meters(1),
                 inventory: Vec::new(),
-                relationships: BTreeMap::new(),
-                reputation: BTreeMap::new(),
                 known_facts: Vec::new(),
                 tick: TickCounters {
                     last_act_tick: 0,
@@ -768,7 +764,6 @@ tick:
         "yard".to_string(),
         PlaceLive {
             stock: BTreeMap::new(),
-            hours: BTreeMap::new(),
             notes: Vec::new(),
             actors: Vec::new(),
         },
@@ -791,7 +786,6 @@ tick:
         places,
         actors,
         clocks: BTreeMap::new(),
-        rumors: Vec::new(),
         messages: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());

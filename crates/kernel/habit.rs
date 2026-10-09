@@ -43,11 +43,6 @@ pub fn allowed(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Reason> 
                 return Err(Reason::UnknownKey);
             }
         }
-        Target::Rumor(id) => {
-            if !now.rumors.iter().any(|rumor| rumor.id == *id) {
-                return Err(Reason::UnknownKey);
-            }
-        }
     }
     if intent.source == Source::Kernel && intent.actor_kind == ActorKind::Player {
         return Err(Reason::KernelOnPlayer);
@@ -166,12 +161,6 @@ fn stamp(intent: &mut Intent, effects: &[Effect]) {
             match &effect.class {
                 EffectClass::Location { to, .. } => {
                     intent.target = Target::Place(to.clone());
-                }
-                EffectClass::Relationship { b, .. } => {
-                    intent.target = Target::Actor(b.clone());
-                }
-                EffectClass::Rumor { rumor_id, .. } => {
-                    intent.target = Target::Rumor(rumor_id.clone());
                 }
                 EffectClass::Clock { clock_id, .. } => {
                     intent.target = Target::Clock(clock_id.clone());

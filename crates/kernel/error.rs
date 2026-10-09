@@ -1,6 +1,6 @@
 use std::fmt;
 
-/// Pinned failure tokens. JSONL lowers `BUDGET` and `SKIPPED` at the log edge.
+/// Pinned failure tokens. JSONL lowers `BUDGET` at the log edge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Reason {
     IllegalClass,
@@ -24,7 +24,6 @@ pub enum Reason {
     NotInSpec,
     SessionFull,
     MissingItem,
-    Skipped,
 }
 
 impl Reason {
@@ -51,15 +50,13 @@ impl Reason {
             Reason::NotInSpec => "NOT_IN_SPEC",
             Reason::SessionFull => "SESSION_FULL",
             Reason::MissingItem => "MISSING_ITEM",
-            Reason::Skipped => "SKIPPED",
         }
     }
 
-    /// JSONL `rejected.reason`. `budget` and `skipped` are lowercase words.
+    /// JSONL `rejected.reason`. `budget` is the lowercase word.
     pub fn jsonl_reason(self) -> &'static str {
         match self {
             Reason::Budget => "budget",
-            Reason::Skipped => "skipped",
             other => other.token(),
         }
     }

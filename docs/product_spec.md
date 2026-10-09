@@ -194,7 +194,6 @@ pack/
     actors/<pc-id>.yaml       # mutable PC sheets
     log/tick-NNNN.jsonl
     memories/<id>.jsonl
-    rumors.yaml
 ```
 
 **Canon** (`world/`, `cast/`, `rules/`) is the authored text.
@@ -207,7 +206,7 @@ NPC profile, as a product sketch:
 
 - identity, voice, goals, needs
 - what the table is allowed to know, and what it is not
-- relationships
+- relationships (parked in #36)
 - where an NPC works, when, and what the shop does
 
 Idle ticks are kernel-only. The world keeps moving after everyone logs off. The plot does not finish itself.

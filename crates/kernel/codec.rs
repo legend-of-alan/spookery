@@ -41,22 +41,6 @@ pub fn emit_now(now: &Now) -> Result<String, Reason> {
     Ok(one_trailing_lf(text))
 }
 
-pub fn emit_rumors(now: &Now) -> Result<String, Reason> {
-    let mut rumors = now.rumors.clone();
-    rumors.sort_by(|a, b| a.id.cmp(&b.id));
-    for rumor in &mut rumors {
-        let mut facts = rumor.fact_ids.clone();
-        sort_unique(&mut facts);
-        rumor.fact_ids = facts;
-        let mut known = rumor.known_by.clone();
-        sort_unique(&mut known);
-        rumor.known_by = known;
-    }
-    let text = serde_saphyr::to_string_with_options(&rumors, NOW_EMIT_OPTIONS())
-        .map_err(|_| Reason::Schema)?;
-    Ok(one_trailing_lf(text))
-}
-
 fn one_trailing_lf(mut text: String) -> String {
     while text.ends_with('\n') {
         text.pop();
@@ -67,11 +51,6 @@ fn one_trailing_lf(mut text: String) -> String {
 
 pub fn canonicalize(now: &mut Now) {
     sort_unique(&mut now.presence.actors_present);
-    now.rumors.sort_by(|a, b| a.id.cmp(&b.id));
-    for rumor in &mut now.rumors {
-        sort_unique(&mut rumor.fact_ids);
-        sort_unique(&mut rumor.known_by);
-    }
     now.messages.sort_by(|a, b| a.id.cmp(&b.id));
     for message in &mut now.messages {
         sort_unique(&mut message.to);
@@ -240,9 +219,6 @@ fn parse_target(value: &Value) -> Result<Target, Reason> {
     if let Some(clock) = object.get("clock").and_then(Value::as_str) {
         return Ok(Target::Clock(clock.to_string()));
     }
-    if let Some(rumor) = object.get("rumor").and_then(Value::as_str) {
-        return Ok(Target::Rumor(rumor.to_string()));
-    }
     Err(Reason::Schema)
 }
 
@@ -378,22 +354,6 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 to: req_str(object, "to")?,
             })
         }
-        "relationship" => {
-            allow(object, &["a", "b", "delta"])?;
-            Ok(EffectClass::Relationship {
-                a: req_str(object, "a")?,
-                b: req_str(object, "b")?,
-                delta: req_i64(object, "delta")?,
-            })
-        }
-        "reputation" => {
-            allow(object, &["actor_id", "faction", "delta"])?;
-            Ok(EffectClass::Reputation {
-                actor_id: req_str(object, "actor_id")?,
-                faction: req_str(object, "faction")?,
-                delta: req_i64(object, "delta")?,
-            })
-        }
         "memory" => {
             allow(object, &["actor_id", "fact_ids", "tags", "text"])?;
             Ok(EffectClass::Memory {
@@ -401,16 +361,6 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 fact_ids: req_strs(object, "fact_ids")?,
                 tags: req_strs(object, "tags")?,
                 text: opt_str(object, "text")?,
-            })
-        }
-        "rumor" => {
-            allow(object, &["rumor_id", "fact_ids", "from", "to", "heat"])?;
-            Ok(EffectClass::Rumor {
-                rumor_id: req_str(object, "rumor_id")?,
-                fact_ids: req_strs(object, "fact_ids")?,
-                from: req_str(object, "from")?,
-                to: req_str(object, "to")?,
-                heat: req_i64(object, "heat")?,
             })
         }
         "flag" => {
@@ -582,30 +532,6 @@ mod tests {
             ),
             (
                 effect(
-                    EffectClass::Relationship {
-                        a: "mira".to_string(),
-                        b: "bram".to_string(),
-                        delta: 1,
-                    },
-                    npc("mira"),
-                    "i5",
-                ),
-                r#"{"class":"relationship","as":"npc:mira","intent_id":"i5","a":"mira","b":"bram","delta":1}"#,
-            ),
-            (
-                effect(
-                    EffectClass::Reputation {
-                        actor_id: "mira".to_string(),
-                        faction: "dockers".to_string(),
-                        delta: -1,
-                    },
-                    npc("mira"),
-                    "i6",
-                ),
-                r#"{"class":"reputation","as":"npc:mira","intent_id":"i6","actor_id":"mira","faction":"dockers","delta":-1}"#,
-            ),
-            (
-                effect(
                     EffectClass::Memory {
                         actor_id: "mira".to_string(),
                         fact_ids: vec!["fact_a".to_string(), "fact_b".to_string()],
@@ -629,20 +555,6 @@ mod tests {
                     "i7b",
                 ),
                 r#"{"class":"memory","as":"npc:mira","intent_id":"i7b","actor_id":"mira","fact_ids":[],"tags":[]}"#,
-            ),
-            (
-                effect(
-                    EffectClass::Rumor {
-                        rumor_id: "r_184".to_string(),
-                        fact_ids: vec!["fact_oil_on_shelf".to_string()],
-                        from: "bram".to_string(),
-                        to: "aldric".to_string(),
-                        heat: 1,
-                    },
-                    npc("bram"),
-                    "i8",
-                ),
-                r#"{"class":"rumor","as":"npc:bram","intent_id":"i8","rumor_id":"r_184","fact_ids":["fact_oil_on_shelf"],"from":"bram","to":"aldric","heat":1}"#,
             ),
             (
                 effect(

@@ -233,7 +233,6 @@ pub enum CallTarget {
     Place(String),
     Actor(String),
     Clock(String),
-    Rumor(String),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -434,9 +433,6 @@ fn read_target(value: &Value) -> Result<CallTarget, Error> {
     }
     if let Some(clock) = object.get("clock").and_then(Value::as_str) {
         return Ok(CallTarget::Clock(clock.to_string()));
-    }
-    if let Some(rumor) = object.get("rumor").and_then(Value::as_str) {
-        return Ok(CallTarget::Rumor(rumor.to_string()));
     }
     Err(Error)
 }
