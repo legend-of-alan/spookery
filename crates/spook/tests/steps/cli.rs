@@ -109,6 +109,33 @@ fn play_shows_protocol_frames(world: &mut World) {
     assert!(stdout.contains('{'), "{stdout}");
 }
 
+#[then(expr = "play shows the door note and the debt clock as sentences")]
+fn play_shows_the_readable_resume(world: &mut World) {
+    let away = "\
+While you were away:
+Back at dusk. Oil on the shelf.
+Assassination debt: 2/6, paused
+";
+    wait_play(world, away);
+    let stdout = play_stdout(world);
+    assert!(!stdout.contains("note_mira_door"), "{stdout}");
+    assert!(!stdout.contains("clock assassination_debt"), "{stdout}");
+    assert!(!stdout.contains("message "), "{stdout}");
+}
+
+#[then(expr = "play shows the raw resume digest")]
+fn play_shows_the_raw_resume_digest(world: &mut World) {
+    wait_play(world, "\"kind\":\"perceive\"");
+    let stdout = play_stdout(world);
+    let resume = stdout
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|frame| frame["kind"] == "resume")
+        .unwrap_or_else(|| panic!("no resume frame\n{stdout}"));
+    assert_eq!(resume["text"], super::digest::RESUME, "{stdout}");
+    assert!(!stdout.contains("While you were away"), "{stdout}");
+}
+
 #[then(expr = "stderr shows {string}")]
 fn stderr_shows(world: &mut World, text: String) {
     assert_eq!(world.stderr.trim(), text, "{}", world.stderr);
