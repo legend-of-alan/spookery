@@ -391,7 +391,6 @@ Rowan.
         "gate".to_string(),
         PlaceLive {
             stock: BTreeMap::new(),
-            hours: BTreeMap::new(),
             notes: Vec::new(),
             actors: vec!["pc_rowan".to_string()],
         },
@@ -768,7 +767,6 @@ tick:
         "yard".to_string(),
         PlaceLive {
             stock: BTreeMap::new(),
-            hours: BTreeMap::new(),
             notes: Vec::new(),
             actors: Vec::new(),
         },

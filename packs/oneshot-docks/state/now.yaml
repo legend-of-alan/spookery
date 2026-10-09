@@ -14,20 +14,17 @@ places:
   docks_shop:
     stock:
       lamp_oil: 4
-    hours: {}
     notes: []
     actors:
       - aldric
       - pc_rowan
   docks_street:
     stock: {}
-    hours: {}
     notes: []
     actors:
       - bram
   mira_rooms:
     stock: {}
-    hours: {}
     notes: []
     actors:
       - mira

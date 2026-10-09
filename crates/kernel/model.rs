@@ -48,7 +48,6 @@ pub struct PauseView {
 #[serde(deny_unknown_fields)]
 pub struct PlaceLive {
     pub stock: BTreeMap<String, i64>,
-    pub hours: BTreeMap<String, i64>,
     pub notes: Vec<String>,
     pub actors: Vec<String>,
 }
