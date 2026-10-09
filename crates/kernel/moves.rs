@@ -31,7 +31,6 @@ pub struct ActionRow {
 pub enum Audience {
     Player,
     Habit,
-    System,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -140,7 +139,6 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     let audience = match entry.audience.as_deref() {
         Some("player") => Audience::Player,
         Some("habit") => Audience::Habit,
-        Some("system") => Audience::System,
         _ => return Err(Reason::Schema),
     };
     // `effects: []` with neither outcome list is a yield. An empty success or failure list is not.
@@ -647,7 +645,7 @@ moves:
         key: marked
         value: true
   - name: night
-    audience: system
+    audience: habit
     token: none
     on: speaker
     effects:
@@ -728,7 +726,7 @@ moves:
             })
         );
         let night = moves.get("night").unwrap().row.as_ref().unwrap();
-        assert_eq!(night.audience, Some(Audience::System));
+        assert_eq!(night.audience, Some(Audience::Habit));
         assert_eq!(
             night.effects[0],
             RowEffect::LocationTo {
@@ -820,6 +818,12 @@ moves:
         assert_eq!(
             schema(
                 "  - name: mark\n    audience: gm\n    token: none\n    on: speaker\n    effects: []\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
+                "  - name: night\n    audience: system\n    token: none\n    on: speaker\n    effects: []\n"
             ),
             Reason::Schema
         );

@@ -200,9 +200,6 @@ pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>) {
         let Some(audience) = row.audience else {
             continue;
         };
-        if audience == Audience::System {
-            continue;
-        }
         menu.push(MenuRow {
             name: name.clone(),
             audience: audience_name(audience).to_string(),
@@ -722,7 +719,6 @@ fn audience_name(audience: Audience) -> &'static str {
     match audience {
         Audience::Player => "player",
         Audience::Habit => "habit",
-        Audience::System => "system",
     }
 }
 
@@ -758,7 +754,6 @@ mod tests {
     use std::path::PathBuf;
 
     use spookery_kernel::canon::{load_canon, CastKind};
-    use spookery_kernel::moves::{ActionRow, Audience, MoveDef, MoveOn, MoveToken};
 
     use super::*;
 
@@ -977,24 +972,8 @@ mod tests {
     }
 
     #[test]
-    fn system_rows_are_omitted_and_kinds_are_kept() {
+    fn menu_rows_keep_player_and_habit_and_kinds() {
         let mut canon = docks();
-        canon.moves.insert(
-            "hidden_system".to_string(),
-            MoveDef {
-                check: None,
-                row: Some(ActionRow {
-                    token: MoveToken::None,
-                    on: MoveOn::Speaker,
-                    effects: Vec::new(),
-                    success: Vec::new(),
-                    failure: Vec::new(),
-                    item: None,
-                    audience: Some(Audience::System),
-                    difficulty: 0,
-                }),
-            },
-        );
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
         let (menu, kinds) = from_canon(&canon);
         assert!(menu.iter().all(|row| row.audience != "system"));
