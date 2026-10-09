@@ -13,7 +13,7 @@ pub enum Error {
     Io(io::Error),
 }
 
-pub fn play(pack: &Path, as_player: Option<&str>, addr: &str) -> Result<(), Error> {
+pub fn play(pack: &Path, as_player: Option<&str>, addr: &str, raw: bool) -> Result<(), Error> {
     let actor = match as_player {
         Some(token) => parse_player_as(token)?,
         None => start_pc(pack)?,
@@ -30,28 +30,18 @@ pub fn play(pack: &Path, as_player: Option<&str>, addr: &str) -> Result<(), Erro
             eprintln!("{}", Reason::NotInSpec);
             std::process::exit(1);
         };
-        if let Some(code) = refused_code(&line) {
-            eprintln!("{code}");
-            std::process::exit(1);
-        }
-        println!("{line}");
-        let _ = io::stdout().flush();
-        if is_perceive(&line) {
-            break;
+        match write_frame(&line, raw) {
+            FrameEffect::Refuse => std::process::exit(1),
+            FrameEffect::Perceive => break,
+            FrameEffect::Continue => {}
         }
     }
     let mut write_stream = reader.get_mut().try_clone().map_err(Error::Io)?;
     std::thread::spawn(move || loop {
         match read_line(&mut reader) {
-            Ok(Some(line)) => {
-                if let Some(code) = refused_code(&line) {
-                    eprintln!("{code}");
-                    let _ = io::stderr().flush();
-                    continue;
-                }
-                println!("{line}");
-                let _ = io::stdout().flush();
-            }
+            Ok(Some(line)) => match write_frame(&line, raw) {
+                FrameEffect::Refuse | FrameEffect::Continue | FrameEffect::Perceive => {}
+            },
             Ok(None) => std::process::exit(0),
             Err(Error::Io(err)) => {
                 eprintln!("{err}");
@@ -122,6 +112,66 @@ fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error>
         line.pop();
     }
     Ok(Some(line))
+}
+
+enum FrameEffect {
+    Continue,
+    Perceive,
+    Refuse,
+}
+
+fn write_frame(line: &str, raw: bool) -> FrameEffect {
+    if raw {
+        return write_raw(line);
+    }
+    write_readable(line)
+}
+
+fn write_raw(line: &str) -> FrameEffect {
+    if let Some(code) = refused_code(line) {
+        eprintln!("{code}");
+        let _ = io::stderr().flush();
+        return FrameEffect::Refuse;
+    }
+    println!("{line}");
+    let _ = io::stdout().flush();
+    if is_perceive(line) {
+        FrameEffect::Perceive
+    } else {
+        FrameEffect::Continue
+    }
+}
+
+fn write_readable(line: &str) -> FrameEffect {
+    let Ok(message) = crate::protocol::read_player(line) else {
+        eprintln!("{line}");
+        let _ = io::stderr().flush();
+        return FrameEffect::Continue;
+    };
+    let effect = frame_effect(&message);
+    let text = render::render(&message);
+    match effect {
+        FrameEffect::Refuse => {
+            eprintln!("{text}");
+            let _ = io::stderr().flush();
+        }
+        FrameEffect::Continue | FrameEffect::Perceive => {
+            println!("{text}");
+            let _ = io::stdout().flush();
+        }
+    }
+    effect
+}
+
+fn frame_effect(message: &PlayerMessage) -> FrameEffect {
+    match message {
+        PlayerMessage::Refused { .. } => FrameEffect::Refuse,
+        PlayerMessage::Perceive { .. } => FrameEffect::Perceive,
+        PlayerMessage::Say { .. }
+        | PlayerMessage::Queued { .. }
+        | PlayerMessage::Check { .. }
+        | PlayerMessage::Resume { .. } => FrameEffect::Continue,
+    }
 }
 
 fn refused_code(line: &str) -> Option<String> {

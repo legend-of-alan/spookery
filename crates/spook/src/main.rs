@@ -30,6 +30,9 @@ enum Command {
         /// Actor to sit, as `player:<id>`.
         #[arg(long = "as", value_name = "player:<id>")]
         as_player: Option<String>,
+        /// Print each protocol frame as one JSON line.
+        #[arg(long)]
+        raw: bool,
     },
     /// Sit the GM seat and call the model.
     #[command(name = "ai-gm")]
@@ -70,10 +73,15 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
         Command::Run { pack } => spookery::seat::listen(&pack, addr),
-        Command::Play { pack, as_player } => from_cli(spookery::cli::play(
+        Command::Play {
+            pack,
+            as_player,
+            raw,
+        } => from_cli(spookery::cli::play(
             &pack,
             as_player.as_deref(),
             &addr.to_string(),
+            raw,
         )),
         Command::AiGm { pack } => {
             if spookery::ai::sit(&pack, &addr.to_string()).is_err() {
@@ -182,12 +190,19 @@ mod tests {
         assert!(Cli::try_parse_from(["spook"]).is_err());
         let play = Cli::try_parse_from(["spook", "play", "pack", "--as", "player:rowan"]).unwrap();
         match play.command {
-            Command::Play { as_player, pack } => {
+            Command::Play {
+                as_player,
+                pack,
+                raw,
+            } => {
                 assert_eq!(as_player.as_deref(), Some("player:rowan"));
                 assert_eq!(pack, Path::new("pack"));
+                assert!(!raw);
             }
             _ => panic!("play"),
         }
+        let raw = Cli::try_parse_from(["spook", "play", "--raw", "pack"]).unwrap();
+        assert!(matches!(raw.command, Command::Play { raw: true, .. }));
         let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
         assert!(matches!(host.command, Command::AiGm { .. }));
     }
