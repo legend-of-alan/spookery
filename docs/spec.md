@@ -13,7 +13,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 1. **Import boundary.** `spookery-kernel` and `spookery-tick` do not link a runtime, a database, or a model SDK.
 2. **`!Send` `Txn`.** One `std::thread` owns `Now`. The tick is not spawned on a runtime.
 3. **Atomic commit.** `now.yaml` is renamed last. A crash cannot apply a partial tick.
-4. **Closed effect, one apply.** Ten effect classes. `apply_effect` is the only mutator of world numbers.
+4. **Closed effect, one apply.** Seven effect classes. `apply_effect` is the only mutator of world numbers.
 5. **Firewall.** `firewall::allows` is the visibility test. A hidden fact does not leak through place or cast prose.
 6. **Deterministic tick.** A row's literals are filled before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed.
 7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
@@ -60,7 +60,7 @@ Tokio in `spook` is the accept loop, keepalive, and scheduler sleep. The tick fu
 
 ## Effect envelope
 
-`Effect` is one struct. The class is the payload. Rows emit the ten classes below.
+`Effect` is one struct. The class is the payload. Rows emit the seven classes below.
 
 ```rust
 pub struct Effect {
@@ -74,10 +74,7 @@ pub enum EffectClass {
     Meter { actor_id: String, key: String, write: MeterWrite },
     Stock { place: String, sku: String, delta: i64 },
     Location { actor_id: String, from: String, to: String },
-    Relationship { a: String, b: String, delta: i64 },
-    Reputation { actor_id: String, faction: String, delta: i64 },
     Memory { actor_id: String, fact_ids: Vec<String>, tags: Vec<String>, text: Option<String> },
-    Rumor { rumor_id: String, fact_ids: Vec<String>, from: String, to: String, heat: i64 },
     Flag { actor_id: String, key: String, value: bool },
     Message { message_id: String, to: Vec<String>, place: Option<String>, fact_ids: Vec<String>, text: String },
 }
@@ -85,11 +82,11 @@ pub enum EffectClass {
 
 `ViewerId` is `Player` or `Npc`. There is no `Gm` variant. The JSON token is `player:{id}` or `npc:{id}`.
 
-JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `meter`, `stock`, `location`, `relationship`, `reputation`, `memory`, `rumor`, `flag`, or `message`. `MeterWrite` is `Base(i64)`, `Offset(i64)`, or `Snap`. The wire writes `write` as `base`, `offset`, or `snap`, and writes `delta` only for `base` and `offset`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `now.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
+JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `meter`, `stock`, `location`, `memory`, `flag`, or `message`. `MeterWrite` is `Base(i64)`, `Offset(i64)`, or `Snap`. The wire writes `write` as `base`, `offset`, or `snap`, and writes `delta` only for `base` and `offset`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `now.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
 
 ## Apply
 
-`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. A meter write clamps a sum that fits in `i64`. Stock refuses a negative result. Relationship and reputation deltas outside `-1..=1` are `OUT_OF_RANGE`. Memory text longer than 240 characters is `SCHEMA`. Memory and rumor facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. Relationship and reputation keep the once-per-world-day `SKIPPED` no-op. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
+`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. A meter write clamps a sum that fits in `i64`. Stock refuses a negative result. Memory text longer than 240 characters is `SCHEMA`. Memory facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
 
 The effect's viewer must be the active intent's actor. Failure is `VIEWER_MISMATCH`.
 
@@ -107,7 +104,7 @@ A moves file is still a name or a row. The schema version string stays `moves/v0
 
 A row has:
 
-- `audience`: `player`, `habit`, or `system`. Omitted audience is `SCHEMA`. A row is not implicitly player-facing.
+- `audience`: `player` or `habit`. Omitted audience, or `system`, is `SCHEMA`. A row is not implicitly player-facing.
 - one token: `none`, `actor`, or `place`
 - one subject: `speaker` or `named`
 - `effects`: templates that run on both outcomes
@@ -116,7 +113,7 @@ A row has:
 - optional `difficulty`: `i64`, default 0, used only when `check` is set and no opposing total applies
 - optional `item`: an actor inventory precondition
 
-`classify` queues a row only when `audience` is `player`. A `habit` or `system` name is `NOT_IN_SPEC` on a player line and is not queued. The GM intent tool queues a `player` row for a player or an NPC, and a `habit` row only when `actor_kind` is `npc`. A player actor queuing a habit row is `NOT_IN_SPEC`. `source` on that tool stays `player`. A cast habit that names a `player` or `system` row is `SCHEMA` at load. No call site resolves a `system` row. Empty-table gates still apply to a kernel habit intent. They do not apply to a player-sourced intent.
+`classify` queues a row only when `audience` is `player`. A `habit` name is `NOT_IN_SPEC` on a player line and is not queued. The GM intent tool queues a `player` row for a player or an NPC, and a `habit` row only when `actor_kind` is `npc`. A player actor queuing a habit row is `NOT_IN_SPEC`. `source` on that tool stays `player`. A cast habit that names a `player` row is `SCHEMA` at load. Empty-table gates still apply to a kernel habit intent. They do not apply to a player-sourced intent.
 
 Load rejects a duplicate name, an empty name, an empty `item`, the flag key `busy`, a row named `say`, an unknown class, a search word, a template whose keys do not match its class, and any unknown shape. `say` is the speech line, so that name is not a row. `travel` is not special-cased in Rust. A travel row is whatever templates it has, and `apply_location` enforces the range. The docks grit check is a `grit` row. `attempt grit 3` is not a special parser. The wire object `{"kind":"check","success":true|false}` does not change.
 
@@ -124,11 +121,11 @@ Load rejects a duplicate name, an empty name, an empty `item`, the flag key `bus
 
 **Fields.** A template field is a literal, except `to: token` on a player travel row. That token is the queued place. Search words (`here`, `first_rate`, `rate`, `first_drift`, `toward_target`, `first_known`, `first_listener`, `keep`, `first_due_note`, `first_owned`) are `SCHEMA` at load. There is no expression language. Adding a verb is a new row in YAML.
 
-Stock names `place`, `sku`, and `delta`. `apply_stock` still refuses a place outside range, an absolute delta above `stock_rate`, or a negative result. Relationship names `to` and `delta`. Rumor names `rumor`, `to`, and `heat`. Expand copies `fact_ids` from that rumor in `now.rumors`. A missing rumor is `UNKNOWN_KEY` and that habit row is not taken. Message names `id`, `to`, `place`, `fact_ids`, and `text`. Clock names `clock` and `delta`. Location `from` is the actor's live place and is not a YAML field. A meter template is a literal key and write. There is no stock maximum in the docks profile.
+Stock names `place`, `sku`, and `delta`. `apply_stock` still refuses a place outside range, an absolute delta above `stock_rate`, or a negative result. Message names `id`, `to`, `place`, `fact_ids`, and `text`. Clock names `clock` and `delta`. Location `from` is the actor's live place and is not a YAML field. A meter template is a literal key and write. There is no stock maximum in the docks profile.
 
 Bindings and the outcome list are different steps.
 
-1. Habit selection picks a row before the apply loop. Expand fills that row's literals against the staging `Now` it sees, including `fact_ids` copied from a named rumor and `from` taken from the actor's live place. A row that does not expand is not the kernel intent. Player travel binds the typed place.
+1. Habit selection picks a row before the apply loop. Expand fills that row's literals against the staging `Now` it sees, including `from` taken from the actor's live place. A row that does not expand is not the kernel intent. Player travel binds the typed place.
 2. Inside the per-candidate loop, `resolve_check` runs if the row has a `check`. An unknown id is `UNKNOWN_KEY`. Templates do not run. The die cursor does not move.
 3. After that roll, the selected templates are `effects`, plus `success` if the roll succeeded, plus `failure` if it failed. No roll means `effects` only. Those templates are filled from the row, not by choosing a new target. The result is a `Vec` of `EffectClass`.
 4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `run_recorded_tick` expands those intents again, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. Replay does not install the log as `Now`. The names `need` and `resource` are not variants.
@@ -175,7 +172,7 @@ A habit is on when every gate it sets is true. `runs_while_empty` is required. W
 
 An empty id, a duplicate id, an empty row list, a half-set hour pair, a half-set clock pair, or an hour outside `0..24` is `SCHEMA`. A habit row name that is not an `audience: habit` row is `SCHEMA`.
 
-`audience` is `player`, `habit`, or `system`. The player parser queues only `player`. Habit selection queues only `habit`. No call site resolves `system`.
+`audience` is `player` or `habit`. The player parser queues only `player`. Habit selection queues only `habit`.
 
 Eligibility runs first. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, and no PC may be in that place. The NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no habit intent. The shop stays still while a player stands in it because that NPC is not eligible. `allowed` checks those gates only for `source: kernel`. A player-sourced intent is not checked against the hour, the clock, `unless_message`, `runs_while_empty`, or eligibility. Apply still checks range, stock rate, the firewall, paused clocks, and the other effect rules.
 
@@ -210,7 +207,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 
 Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`.
 
-`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`. `EffectClass` has ten variants.
+`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`. `EffectClass` has seven variants.
 
 ## Commit
 
@@ -219,11 +216,11 @@ Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLED
 1. Copy each live target that already exists into `state/.txn/prev`, and fsync the copies and the `prev` directory.
 2. Create `state/.txn/COMPLETE`, and fsync the file and the `.txn` directory.
 3. Write each new body to a temp file, fsync, and fsync the parent.
-4. Rename side files first (`rumors.yaml`, `log/tick-NNNN.jsonl`, `memories/*.jsonl`).
+4. Rename side files first (`log/tick-NNNN.jsonl`, `memories/*.jsonl`).
 5. Rename `now.yaml` last.
 6. Fsync `state/`. Remove `.txn`. `state_rev` was incremented in memory before the bytes were emitted, and it hits disk only in that last rename.
 
-`recover` keeps three shapes. No `COMPLETE` means delete `.txn` and leave the live tree. `COMPLETE` and `live.state_rev == prev.state_rev` means restore `prev`. `COMPLETE` and `live.state_rev == prev + 1` means delete `.txn` and keep live. Then drop tick logs whose `state_rev_after` is above live, drop memory lines whose `tick_index` is not in a live log, and rewrite `rumors.yaml` from `now.rumors` when it differs. `rumors.yaml` is not a source. The next commit rewrites it from `now.rumors`.
+`recover` keeps three shapes. No `COMPLETE` means delete `.txn` and leave the live tree. `COMPLETE` and `live.state_rev == prev.state_rev` means restore `prev`. `COMPLETE` and `live.state_rev == prev + 1` means delete `.txn` and keep live. Then drop tick logs whose `state_rev_after` is above live, and drop memory lines whose `tick_index` is not in a live log.
 
 `commit_presence` writes `now.yaml` alone, through the same `write_commit`. Presence is `humans` and `actors_present` only. When those two fields are unchanged after canonicalize, it writes nothing and does not increment `state_rev`. When either field changes, it increments `state_rev` by 1 and then emits. It does not open a `Txn`, does not write a tick log, and does not advance clocks. A session id is not an input.
 
@@ -271,7 +268,7 @@ The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<
 
 A host monitor is not shard behavior.
 
-`idle_digest` takes a host viewer or a player viewer. The host sees effect rows and clocks. A player sees only their messages, allowed rumor facts, and owned clocks. `spook status` prints the host digest. Player resume is the player digest. The host digest is not a player resume, and it does not write the shard.
+`idle_digest` takes a host viewer or a player viewer. The host sees effect rows and clocks. A player sees only their messages and owned clocks. `spook status` prints the host digest. Player resume is the player digest. The host digest is not a player resume, and it does not write the shard.
 
 ## Host
 
@@ -325,17 +322,16 @@ The player line grammar does change. The check wire object does not. That split 
 | Client patches YAML | The play door queues an intent or appends speech. The CLI has no path that opens `now.yaml` for a client write. |
 | GM calls `apply_effect` | The tool is not a sitting handler. Effects come from expand inside a `Txn`. Only `tick_commit`, `commit_presence`, and `migrate_pack` rename files. |
 | A summarizer writes memories | No LLM crate. Memory lines are written inside the commit, from a `memory` effect, after `allows`. |
-| Speech copied into `known_facts` or a rumor | The tape is not an input to expand. No whisper. Inbound model text is not a field on `Intent`. |
+| Speech copied into `known_facts` | The tape is not an input to expand. No whisper. Inbound model text is not a field on `Intent`. |
 | Host digest reused as the player resume | `idle_digest` takes `DigestViewer::Host` or `DigestViewer::Player`. Different rows. |
 | Hand edit of `now.yaml` | `HAND_EDIT` until `spook migrate`. |
 | Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It re-expands the recorded intents, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. |
 | Two ticks in flight | One lock around the tick run and `commit_turn`. The second caller gets `COMMIT_CONFLICT`. Tick code is synchronous on the shard thread. |
 | `patch_entity` writes canon and the live shard | Not a sitting tool. A canon byte change mismatches `pack_rev` until migrate. |
-| New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has ten variants. |
+| New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has seven variants. |
 | A meter whose stored pair is outside the definition | `SCHEMA` at load. Apply clamps when the sum fits in `i64`. `OUT_OF_RANGE` leaves the record unchanged when the sum does not. |
 | `perceive` with no `as`, or `as=gm` | `ViewerId` has no GM variant. Sitting perceive rejects anything but `player:` and `npc:`. |
 | `places.actors` edited apart from `actors.place` | Load fails `SCHEMA`. Emit rebuilds occupancy from `actors.*.place`. |
-| `state/rumors.yaml` treated as live | Ignored as a source. Recovery and the next commit rewrite it from `now.rumors`. |
 | Feature `llm` | No such feature. |
 | Tokio task per shard inside the kernel | Kernel and tick cannot name the runtime. The scan stays. |
 | `rand::thread_rng` or a hand-rolled die | `die_face` is Blake2s. One copy, in `check.rs`. |
