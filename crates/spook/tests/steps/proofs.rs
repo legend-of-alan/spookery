@@ -931,49 +931,141 @@ fn strip_bodies_and_hidden_string_lint() {
     let _ = fs::remove_dir_all(&folded);
 }
 
-fn import_boundary() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let mut kernel_tick = Vec::new();
-    fn files_under(dir: &Path, out: &mut Vec<PathBuf>) {
-        for entry in fs::read_dir(dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                files_under(&path, out);
-            } else {
-                out.push(path);
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn files_under(dir: &Path, out: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files_under(&path, out);
+        } else {
+            out.push(path);
+        }
+    }
+}
+
+fn byte_hits(paths: &[PathBuf], needles: &[&str]) -> Vec<String> {
+    let mut found = Vec::new();
+    for path in paths {
+        let bytes = fs::read(path).unwrap();
+        for needle in needles {
+            let needle_bytes = needle.as_bytes();
+            if bytes
+                .windows(needle_bytes.len())
+                .any(|window| window == needle_bytes)
+            {
+                found.push(format!("{} contains {needle}", path.display()));
             }
         }
     }
-    files_under(&root.join("src/kernel"), &mut kernel_tick);
-    files_under(&root.join("src/tick"), &mut kernel_tick);
-    let hits = |paths: &[PathBuf], needles: &[&str]| -> Vec<String> {
-        let mut found = Vec::new();
-        for path in paths {
-            let bytes = fs::read(path).unwrap();
-            for needle in needles {
-                let needle_bytes = needle.as_bytes();
-                if bytes
-                    .windows(needle_bytes.len())
-                    .any(|window| window == needle_bytes)
-                {
-                    found.push(format!("{} contains {needle}", path.display()));
-                }
-            }
-        }
-        found
-    };
-    let kernel_hits = hits(
-        &kernel_tick,
-        &["rmcp", "tokio", "sqlx", "postgres", "redis"],
-    );
+    found
+}
+
+fn hits_under(dir: &Path, needles: &[&str]) -> Vec<String> {
+    let mut files = Vec::new();
+    files_under(dir, &mut files);
+    byte_hits(&files, needles)
+}
+
+const KERNEL_TICK_NEEDLES: &[&str] = &[
+    "tokio",
+    "rmcp",
+    "sqlx",
+    "postgres",
+    "redis",
+    "reqwest",
+    "langchain",
+    "openai",
+    "anthropic",
+    "ollama",
+];
+
+fn import_boundary() {
+    let root = workspace_root();
+    let spook_src = root.join("crates/spook/src");
+    let mut kernel_hits = hits_under(&root.join("crates/kernel"), KERNEL_TICK_NEEDLES);
+    kernel_hits.extend(hits_under(&root.join("crates/tick"), KERNEL_TICK_NEEDLES));
     assert!(kernel_hits.is_empty(), "{}", kernel_hits.join("\n"));
-    let mut src_files = Vec::new();
-    files_under(&root.join("src"), &mut src_files);
-    let src_hits = hits(
-        &src_files,
-        &["langchain", "openai", "anthropic", "ollama", "reqwest"],
+
+    let mut runtime = Vec::new();
+    files_under(&root.join("crates/kernel"), &mut runtime);
+    files_under(&root.join("crates/tick"), &mut runtime);
+    files_under(&spook_src, &mut runtime);
+    let ai = spook_src.join("ai");
+    let mut reqwest_hits = Vec::new();
+    for path in &runtime {
+        if path.starts_with(&ai) {
+            continue;
+        }
+        let bytes = fs::read(path).unwrap();
+        let needle = b"reqwest";
+        if bytes.windows(needle.len()).any(|window| window == needle) {
+            reqwest_hits.push(format!("{} contains reqwest", path.display()));
+        }
+    }
+    assert!(reqwest_hits.is_empty(), "{}", reqwest_hits.join("\n"));
+    let sdk_hits = byte_hits(&runtime, &["langchain", "openai", "anthropic", "ollama"]);
+    assert!(sdk_hits.is_empty(), "{}", sdk_hits.join("\n"));
+
+    let protocol_hits = hits_under(
+        &spook_src.join("protocol"),
+        &[
+            "tokio",
+            "rmcp",
+            "reqwest",
+            "spookery_kernel",
+            "crate::cli",
+            "crate::ai",
+        ],
     );
-    assert!(src_hits.is_empty(), "{}", src_hits.join("\n"));
+    assert!(protocol_hits.is_empty(), "{}", protocol_hits.join("\n"));
+    let cli_hits = hits_under(
+        &spook_src.join("cli"),
+        &["tokio", "rmcp", "reqwest", "crate::ai"],
+    );
+    assert!(cli_hits.is_empty(), "{}", cli_hits.join("\n"));
+    let ai_hits = hits_under(
+        &spook_src.join("ai"),
+        &["rmcp", "crate::cli", "spookery_tick"],
+    );
+    assert!(ai_hits.is_empty(), "{}", ai_hits.join("\n"));
+    let seat_hits = hits_under(&spook_src.join("seat"), &["crate::cli", "crate::ai"]);
+    assert!(seat_hits.is_empty(), "{}", seat_hits.join("\n"));
+}
+
+fn reqwest_in_kernel_or_tick_fails_the_scan() {
+    let kernel_hits = planted_boundary("reqwest\n", "fn clean() {}\n");
+    assert!(
+        kernel_hits.iter().any(|hit| hit.contains("reqwest")),
+        "kernel scan accepted reqwest"
+    );
+    let tick_hits = planted_boundary("fn clean() {}\n", "reqwest\n");
+    assert!(
+        tick_hits.iter().any(|hit| hit.contains("reqwest")),
+        "tick scan accepted reqwest"
+    );
+}
+
+fn planted_boundary(kernel_body: &str, tick_body: &str) -> Vec<String> {
+    let root = std::env::temp_dir().join(format!(
+        "spook-boundary-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("kernel")).unwrap();
+    fs::create_dir_all(root.join("tick")).unwrap();
+    fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();
+    fs::write(root.join("tick/lib.rs"), tick_body).unwrap();
+    let mut hits = hits_under(&root.join("kernel"), KERNEL_TICK_NEEDLES);
+    hits.extend(hits_under(&root.join("tick"), KERNEL_TICK_NEEDLES));
+    let _ = fs::remove_dir_all(&root);
+    hits
 }
 
 fn player_waits(tick: &Value) -> Vec<String> {
@@ -1291,14 +1383,21 @@ fn the_scheduler_does_not_spawn_a_tick() {
 }
 
 fn manifests_do_not_name_a_model_crate() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let root = workspace_root();
     for path in [
         root.join("Cargo.toml"),
-        root.join("src/kernel/Cargo.toml"),
-        root.join("src/tick/Cargo.toml"),
+        root.join("crates/kernel/Cargo.toml"),
+        root.join("crates/tick/Cargo.toml"),
+        root.join("crates/spook/Cargo.toml"),
     ] {
         let text = fs::read_to_string(&path).unwrap();
-        assert!(!text.contains("llm"), "{}", path.display());
+        for needle in ["llm", "langchain", "openai", "anthropic", "ollama"] {
+            assert!(
+                !text.contains(needle),
+                "{} contains {needle}",
+                path.display()
+            );
+        }
     }
 }
 
@@ -1390,6 +1489,11 @@ fn prose_is_stripped(_world: &mut World) {
 #[when(expr = "the kernel and tick sources are scanned")]
 fn the_kernel_and_tick_sources_are_scanned(_world: &mut World) {
     import_boundary();
+}
+
+#[when(expr = "reqwest is planted in kernel and tick")]
+fn reqwest_is_planted_in_kernel_and_tick(_world: &mut World) {
+    reqwest_in_kernel_or_tick_fails_the_scan();
 }
 
 #[when(expr = "a queued wait meets a wake and the seat drops")]
