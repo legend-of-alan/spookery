@@ -273,6 +273,16 @@ A host monitor is not shard behavior.
 
 `idle_digest` takes a host viewer or a player viewer. The host sees effect rows and clocks. A player sees only their messages, allowed rumor facts, and owned clocks. `spook status` prints the host digest. Player resume is the player digest. The host digest is not a player resume, and it does not write the shard.
 
+## Player client
+
+`spook play <pack>` sits the player seat and dials `--addr`. `--as player:<id>` picks the actor. Without it, the client sits the pack's start PC. The player socket wire is unchanged: the client only changes how it prints frames.
+
+By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.` or `Your roll failed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by the player digest rows as they came. Once #47 lands, those rows are readable sentences too. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: `npc:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
+
+`spook play --raw` prints each protocol frame as one JSON line on stdout, as the socket sent it. A `refused` frame prints only its token on stderr.
+
+A refusal before the first `perceive` exits 1. After the first `perceive`, a refusal is printed and play continues. stdin lines go to the socket unchanged.
+
 ## Host
 
 `spook ai-gm <pack>` sits the one GM seat and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. One seat remains one seat. A second sitter gets the refusal the hello already returns, and the host exits.
