@@ -455,7 +455,6 @@ Later genre packs may override pause policy. The docks fixture does not.
   spec.md                  # referee law
   README.md
   product_spec.md          # this file; business notes, not law
-/schema
 /packs
   oneshot-docks/           # official fixture
 /crates
@@ -482,7 +481,7 @@ Agents implement from `docs/spec.md`. A human reviews. This file does not licens
 ## 17. License
 
 - **Runtime license:** AGPL-3.0-or-later (network use must share). Alternative if AGPL blocks a specific B2B conversation: source-available with an explicit Commons Clause / “cannot offer competing hosted shards” rider — record the change; do not silently flip.
-- **Spec + schema + official fixture text:** CC BY 4.0, so a second implementer can speak the pack.
+- **Spec + official fixture text:** CC BY 4.0, so a second implementer can speak the pack.
 - **Brand:** Spookery / `spook` / pack. Do not brand as D&D.
 - **Runtime language:** Rust.
 - **Fixture rules:** tiny original ruleset in §8.1. Not SRD/ORC.
