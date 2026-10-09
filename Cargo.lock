@@ -1923,38 +1923,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "spookery"
+name = "spook"
 version = "0.0.0"
 dependencies = [
  "cucumber",
+ "reqwest",
  "rmcp",
+ "serde",
  "serde-saphyr",
  "serde_json",
  "socket2",
- "spookery-ai",
- "spookery-cli",
  "spookery-kernel",
- "spookery-protocol",
  "spookery-tick",
  "tokio",
-]
-
-[[package]]
-name = "spookery-ai"
-version = "0.0.0"
-dependencies = [
- "reqwest",
- "serde_json",
- "spookery-kernel",
- "spookery-protocol",
-]
-
-[[package]]
-name = "spookery-cli"
-version = "0.0.0"
-dependencies = [
- "spookery-kernel",
- "spookery-protocol",
 ]
 
 [[package]]
@@ -1964,14 +1945,6 @@ dependencies = [
  "blake2",
  "serde",
  "serde-saphyr",
- "serde_json",
-]
-
-[[package]]
-name = "spookery-protocol"
-version = "0.0.0"
-dependencies = [
- "serde",
  "serde_json",
 ]
 
