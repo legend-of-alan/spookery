@@ -6,6 +6,8 @@ use std::path::Path;
 use crate::protocol::PlayerMessage;
 use spookery_kernel::Reason;
 
+mod render;
+
 pub enum Error {
     Reason(Reason),
     Io(io::Error),
