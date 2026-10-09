@@ -3,7 +3,7 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::codec::{emit_rumors, load_now};
+use crate::codec::load_now;
 use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
 
@@ -96,24 +96,6 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
             if changed {
                 atomic_write(&path, kept.as_bytes())?;
             }
-        }
-    }
-
-    let rumors_path = state.join("rumors.yaml");
-    if rumors_path.is_file() {
-        let text = fs::read_to_string(&rumors_path).map_err(|_| Reason::Schema)?;
-        let parsed: Result<Vec<crate::model::Rumor>, _> = serde_saphyr::from_str(&text);
-        let differs = match parsed {
-            Ok(mut loaded) => {
-                loaded.sort_by(|a, b| a.id.cmp(&b.id));
-                let mut live = now.rumors.clone();
-                live.sort_by(|a, b| a.id.cmp(&b.id));
-                loaded != live
-            }
-            Err(_) => true,
-        };
-        if differs {
-            atomic_write(&rumors_path, emit_rumors(&now)?.as_bytes())?;
         }
     }
 

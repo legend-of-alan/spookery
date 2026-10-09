@@ -31,7 +31,6 @@ pub struct ActionRow {
 pub enum Audience {
     Player,
     Habit,
-    System,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -75,23 +74,10 @@ pub enum RowEffect {
         fact_ids: Vec<String>,
         text: String,
     },
-    Relationship {
-        to: String,
-        delta: i64,
-    },
-    Reputation {
-        faction: String,
-        delta: i64,
-    },
     Memory {
         fact_ids: Vec<String>,
         tags: Vec<String>,
         text: Option<String>,
-    },
-    Rumor {
-        rumor: String,
-        to: String,
-        heat: i64,
     },
 }
 
@@ -140,7 +126,6 @@ fn move_def(entry: MoveEntry) -> Result<(String, MoveDef), Reason> {
     let audience = match entry.audience.as_deref() {
         Some("player") => Audience::Player,
         Some("habit") => Audience::Habit,
-        Some("system") => Audience::System,
         _ => return Err(Reason::Schema),
     };
     // `effects: []` with neither outcome list is a yield. An empty success or failure list is not.
@@ -236,10 +221,7 @@ fn one_template(token: MoveToken, on: MoveOn, effect: EffectTemplate) -> Result<
         "stock" => stock_template(&effect),
         "clock" => clock_template(&effect),
         "message" => message_template(&effect),
-        "relationship" => relationship_template(&effect),
-        "reputation" => reputation_template(&effect),
         "memory" => memory_template(&effect),
-        "rumor" => rumor_template(&effect),
         _ => Err(Reason::Schema),
     }
 }
@@ -354,27 +336,6 @@ fn message_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     })
 }
 
-fn relationship_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["to", "delta"])?;
-    let to = match effect.to.as_ref() {
-        Some(ToField::One(word)) => literal_id(Some(word))?,
-        _ => return Err(Reason::Schema),
-    };
-    Ok(RowEffect::Relationship {
-        to,
-        delta: required_number(effect.delta.as_ref())?,
-    })
-}
-
-fn reputation_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["faction", "delta"])?;
-    let delta = required_number(effect.delta.as_ref())?;
-    Ok(RowEffect::Reputation {
-        faction: effect.faction.clone().ok_or(Reason::Schema)?,
-        delta,
-    })
-}
-
 fn memory_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
     only(effect, &["fact_ids", "tags", "text"])?;
     Ok(RowEffect::Memory {
@@ -382,17 +343,6 @@ fn memory_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
         tags: effect.tags.clone().ok_or(Reason::Schema)?,
         text: effect.text.clone(),
     })
-}
-
-fn rumor_template(effect: &EffectTemplate) -> Result<RowEffect, Reason> {
-    only(effect, &["rumor", "to", "heat"])?;
-    let rumor = literal_id(effect.rumor.as_deref())?;
-    let to = match effect.to.as_ref() {
-        Some(ToField::One(word)) => literal_id(Some(word))?,
-        _ => return Err(Reason::Schema),
-    };
-    let heat = effect.heat.ok_or(Reason::Schema)?;
-    Ok(RowEffect::Rumor { rumor, to, heat })
 }
 
 fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
@@ -406,12 +356,9 @@ fn only(effect: &EffectTemplate, allowed: &[&str]) -> Result<(), Reason> {
         ("sku", effect.sku.is_some()),
         ("clock", effect.clock.is_some()),
         ("id", effect.id.is_some()),
-        ("faction", effect.faction.is_some()),
         ("fact_ids", effect.fact_ids.is_some()),
         ("tags", effect.tags.is_some()),
         ("text", effect.text.is_some()),
-        ("rumor", effect.rumor.is_some()),
-        ("heat", effect.heat.is_some()),
     ];
     if present
         .into_iter()
@@ -513,17 +460,11 @@ struct EffectTemplate {
     #[serde(default)]
     id: Option<String>,
     #[serde(default)]
-    faction: Option<String>,
-    #[serde(default)]
     fact_ids: Option<Vec<String>>,
     #[serde(default)]
     tags: Option<Vec<String>>,
     #[serde(default)]
     text: Option<String>,
-    #[serde(default)]
-    rumor: Option<String>,
-    #[serde(default)]
-    heat: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -597,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn a_row_names_ten_classes_literals_and_a_yield() {
+    fn a_row_names_seven_classes_literals_and_a_yield() {
         let moves = load_moves(
             r#"schema: moves/v0
 moves:
@@ -630,16 +571,6 @@ moves:
         place: docks_shop
         fact_ids: []
         text: Back at dusk.
-      - class: relationship
-        to: bram
-        delta: -1
-      - class: rumor
-        rumor: r_184
-        to: aldric
-        heat: 1
-      - class: reputation
-        faction: harbor
-        delta: 1
       - class: memory
         fact_ids: []
         tags: []
@@ -647,7 +578,7 @@ moves:
         key: marked
         value: true
   - name: night
-    audience: system
+    audience: habit
     token: none
     on: speaker
     effects:
@@ -706,21 +637,6 @@ moves:
             }
         );
         assert_eq!(
-            shelf.effects[4],
-            RowEffect::Relationship {
-                to: "bram".to_string(),
-                delta: -1,
-            }
-        );
-        assert_eq!(
-            shelf.effects[5],
-            RowEffect::Rumor {
-                rumor: "r_184".to_string(),
-                to: "aldric".to_string(),
-                heat: 1,
-            }
-        );
-        assert_eq!(
             shelf.effects[1],
             RowEffect::Meter(WorkWrite {
                 key: "rest".to_string(),
@@ -728,7 +644,7 @@ moves:
             })
         );
         let night = moves.get("night").unwrap().row.as_ref().unwrap();
-        assert_eq!(night.audience, Some(Audience::System));
+        assert_eq!(night.audience, Some(Audience::Habit));
         assert_eq!(
             night.effects[0],
             RowEffect::LocationTo {
@@ -825,6 +741,12 @@ moves:
         );
         assert_eq!(
             schema(
+                "  - name: night\n    audience: system\n    token: none\n    on: speaker\n    effects: []\n"
+            ),
+            Reason::Schema
+        );
+        assert_eq!(
+            schema(
                 "  - name: mark\n    token: none\n    on: speaker\n    effects:\n      - class: inventory\n        key: bag\n"
             ),
             Reason::Schema
@@ -855,19 +777,19 @@ moves:
         );
         assert_eq!(
             schema(
-                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: relationship\n        to: first_drift\n        delta: -1\n"
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: relationship\n        to: bram\n        delta: -1\n"
             ),
             Reason::Schema
         );
         assert_eq!(
             schema(
-                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: first_known\n        to: aldric\n        heat: 1\n"
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: reputation\n        faction: harbor\n        delta: 1\n"
             ),
             Reason::Schema
         );
         assert_eq!(
             schema(
-                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: r_184\n        to: aldric\n        heat: keep\n"
+                "  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: r_184\n        to: aldric\n        heat: 1\n"
             ),
             Reason::Schema
         );

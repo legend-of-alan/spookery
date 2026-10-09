@@ -114,11 +114,6 @@ fn push_target(out: &mut String, target: &Target) {
             push_string(out, id);
             out.push('}');
         }
-        Target::Rumor(id) => {
-            out.push_str("{\"rumor\":");
-            push_string(out, id);
-            out.push('}');
-        }
     }
 }
 

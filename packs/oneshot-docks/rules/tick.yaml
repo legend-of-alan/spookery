@@ -4,7 +4,6 @@ max_npcs_acting: 8
 max_effects_per_intent: 4
 max_state_keys_mutated: 24
 max_memory_writes: 8
-max_rumor_hops: 2
 idle_acts_per_world_day: 3
 live_acts_per_world_hour: 6
 tick_every_real_seconds: 300

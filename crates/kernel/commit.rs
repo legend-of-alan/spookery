@@ -4,13 +4,11 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
-use crate::codec::{
-    canonicalize, emit_memory_line, emit_migrate_line, emit_now, emit_rumors, load_now,
-};
+use crate::codec::{canonicalize, emit_memory_line, emit_migrate_line, emit_now, load_now};
 use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
 use crate::lock::{lock_pack, lock_shard};
-use crate::model::{MemoryLine, Now, Presence};
+use crate::model::{MemoryLine, Presence};
 use crate::shard::{Shard, Txn};
 
 pub struct CommitOutcome {
@@ -31,7 +29,6 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
     let state = shard.root.join("state");
     let planned = plan_commit(
         &state,
-        &txn.staging,
         now_bytes,
         Some((tick_index, tick_jsonl.as_bytes())),
         &txn.memories,
@@ -78,7 +75,6 @@ pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Reason> {
     let state = shard.root.join("state");
     let planned = plan_commit(
         &state,
-        &now,
         now_bytes,
         Some((tick_index, pending.tick_jsonl.as_bytes())),
         &pending.memories,
@@ -112,7 +108,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     canonicalize(&mut now);
     let emitted = emit_now(&now)?.into_bytes();
     let state = root.join("state");
-    let planned = plan_commit(&state, &now, emitted, None, &[])?;
+    let planned = plan_commit(&state, emitted, None, &[])?;
     write_commit(&state, &planned)?;
     let line = format!(
         "{}\n",
@@ -145,22 +141,15 @@ fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
 
 fn plan_commit(
     state: &Path,
-    now: &Now,
     now_bytes: Vec<u8>,
     tick: Option<(u64, &[u8])>,
     memories: &[MemoryLine],
 ) -> Result<Vec<Planned>, Reason> {
-    let rumor_bytes = emit_rumors(now)?.into_bytes();
     let mut planned = Vec::new();
     planned.push(Planned {
         target: state.join("now.yaml"),
         bytes: now_bytes,
         is_now: true,
-    });
-    planned.push(Planned {
-        target: state.join("rumors.yaml"),
-        bytes: rumor_bytes,
-        is_now: false,
     });
     if let Some((tick_index, tick_jsonl)) = tick {
         planned.push(Planned {
