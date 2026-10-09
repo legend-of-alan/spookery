@@ -739,8 +739,6 @@ tick:
                 busy: false,
                 meters: meters(1),
                 inventory: Vec::new(),
-                relationships: BTreeMap::new(),
-                reputation: BTreeMap::new(),
                 known_facts: Vec::new(),
                 tick: TickCounters {
                     last_act_tick: 0,

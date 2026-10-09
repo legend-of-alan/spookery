@@ -167,9 +167,6 @@ fn stamp(intent: &mut Intent, effects: &[Effect]) {
                 EffectClass::Location { to, .. } => {
                     intent.target = Target::Place(to.clone());
                 }
-                EffectClass::Relationship { b, .. } => {
-                    intent.target = Target::Actor(b.clone());
-                }
                 EffectClass::Rumor { rumor_id, .. } => {
                     intent.target = Target::Rumor(rumor_id.clone());
                 }

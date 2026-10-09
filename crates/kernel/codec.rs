@@ -378,22 +378,6 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 to: req_str(object, "to")?,
             })
         }
-        "relationship" => {
-            allow(object, &["a", "b", "delta"])?;
-            Ok(EffectClass::Relationship {
-                a: req_str(object, "a")?,
-                b: req_str(object, "b")?,
-                delta: req_i64(object, "delta")?,
-            })
-        }
-        "reputation" => {
-            allow(object, &["actor_id", "faction", "delta"])?;
-            Ok(EffectClass::Reputation {
-                actor_id: req_str(object, "actor_id")?,
-                faction: req_str(object, "faction")?,
-                delta: req_i64(object, "delta")?,
-            })
-        }
         "memory" => {
             allow(object, &["actor_id", "fact_ids", "tags", "text"])?;
             Ok(EffectClass::Memory {
@@ -579,30 +563,6 @@ mod tests {
                     "i4",
                 ),
                 r#"{"class":"location","as":"npc:bram","intent_id":"i4","actor_id":"bram","from":"docks_street","to":"docks_shop"}"#,
-            ),
-            (
-                effect(
-                    EffectClass::Relationship {
-                        a: "mira".to_string(),
-                        b: "bram".to_string(),
-                        delta: 1,
-                    },
-                    npc("mira"),
-                    "i5",
-                ),
-                r#"{"class":"relationship","as":"npc:mira","intent_id":"i5","a":"mira","b":"bram","delta":1}"#,
-            ),
-            (
-                effect(
-                    EffectClass::Reputation {
-                        actor_id: "mira".to_string(),
-                        faction: "dockers".to_string(),
-                        delta: -1,
-                    },
-                    npc("mira"),
-                    "i6",
-                ),
-                r#"{"class":"reputation","as":"npc:mira","intent_id":"i6","actor_id":"mira","faction":"dockers","delta":-1}"#,
             ),
             (
                 effect(

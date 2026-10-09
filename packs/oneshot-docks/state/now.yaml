@@ -42,8 +42,6 @@ actors:
         base: 3
         offset: 0
     inventory: []
-    relationships: {}
-    reputation: {}
     known_facts: []
     tick:
       last_act_tick: 0
@@ -62,8 +60,6 @@ actors:
         base: 3
         offset: 0
     inventory: []
-    relationships: {}
-    reputation: {}
     known_facts: []
     tick:
       last_act_tick: 0
@@ -82,8 +78,6 @@ actors:
         base: 3
         offset: 0
     inventory: []
-    relationships: {}
-    reputation: {}
     known_facts:
       - fact_ledger_short
     tick:

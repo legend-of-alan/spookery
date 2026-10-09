@@ -3,9 +3,8 @@ use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, ViewerId};
 use crate::key::StateKey;
-use crate::limits::MINUTES_PER_DAY;
 use crate::meter::{self, MeterWrite};
-use crate::model::{MemoryLine, Message, Reputation};
+use crate::model::{MemoryLine, Message};
 use crate::shard::Txn;
 
 pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {
@@ -25,12 +24,6 @@ pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<()
         EffectClass::Location { actor_id, from, to } => {
             apply_location(txn, intent, &actor_id, &from, &to)
         }
-        EffectClass::Relationship { a, b, delta } => apply_relationship(txn, &a, &b, delta),
-        EffectClass::Reputation {
-            actor_id,
-            faction,
-            delta,
-        } => apply_reputation(txn, &actor_id, &faction, delta),
         EffectClass::Memory {
             actor_id,
             fact_ids,
@@ -198,94 +191,6 @@ fn apply_location(
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
         .place_mut() = to.to_string();
-    Ok(())
-}
-
-fn apply_relationship(txn: &mut Txn, a: &str, b: &str, delta: i64) -> Result<(), Reason> {
-    if !(-1..=1).contains(&delta) {
-        return Err(Reason::OutOfRange);
-    }
-    let world = txn.now().world_time;
-    let a_busy = txn.now().actors.get(a).ok_or(Reason::UnknownKey)?.busy();
-    let b_busy = txn.now().actors.get(b).ok_or(Reason::UnknownKey)?.busy();
-    let relation = txn
-        .now()
-        .actors
-        .get(a)
-        .and_then(|actor| actor.relationships())
-        .and_then(|relations| relations.get(b))
-        .ok_or(Reason::UnknownKey)?;
-    if a_busy
-        || b_busy
-        || world.saturating_sub(relation.last_interaction_world_time) < MINUTES_PER_DAY
-    {
-        return Err(Reason::Skipped);
-    }
-    let current_stance = relation.stance;
-    let current_at = relation.last_interaction_world_time;
-    let next_stance = current_stance
-        .checked_add(delta)
-        .ok_or(Reason::OutOfRange)?;
-    if next_stance != current_stance || world != current_at {
-        txn.track(StateKey::Relationship(a.to_string(), b.to_string()))?;
-    }
-    let relation = txn
-        .now_mut()
-        .actors
-        .get_mut(a)
-        .and_then(|actor| actor.relationships_mut())
-        .and_then(|relations| relations.get_mut(b))
-        .ok_or(Reason::UnknownKey)?;
-    relation.stance = next_stance;
-    relation.last_interaction_world_time = world;
-    Ok(())
-}
-
-fn apply_reputation(
-    txn: &mut Txn,
-    actor_id: &str,
-    faction: &str,
-    delta: i64,
-) -> Result<(), Reason> {
-    if !(-1..=1).contains(&delta) {
-        return Err(Reason::OutOfRange);
-    }
-    let world = txn.now().world_time;
-    let current = txn
-        .now()
-        .actors
-        .get(actor_id)
-        .and_then(|actor| match actor {
-            crate::model::ActorLive::Npc { reputation, .. } => reputation.get(faction),
-            crate::model::ActorLive::Pc { .. } => None,
-        });
-    if let Some(rep) = current {
-        if world.saturating_sub(rep.last_world_time) < MINUTES_PER_DAY {
-            return Err(Reason::Skipped);
-        }
-    }
-    let current_value = current.map(|rep| rep.value).unwrap_or(0);
-    let current_at = current.map(|rep| rep.last_world_time);
-    let next = current_value.checked_add(delta).ok_or(Reason::OutOfRange)?;
-    if next != current_value || current_at != Some(world) {
-        txn.track(StateKey::Reputation(
-            actor_id.to_string(),
-            faction.to_string(),
-        ))?;
-    }
-    let reputation = txn
-        .now_mut()
-        .actors
-        .get_mut(actor_id)
-        .and_then(|actor| actor.reputation_mut())
-        .ok_or(Reason::UnknownKey)?;
-    reputation.insert(
-        faction.to_string(),
-        Reputation {
-            value: next,
-            last_world_time: world,
-        },
-    );
     Ok(())
 }
 

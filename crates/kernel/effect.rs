@@ -33,16 +33,6 @@ pub enum EffectClass {
         from: String,
         to: String,
     },
-    Relationship {
-        a: String,
-        b: String,
-        delta: i64,
-    },
-    Reputation {
-        actor_id: String,
-        faction: String,
-        delta: i64,
-    },
     Memory {
         actor_id: String,
         fact_ids: Vec<String>,
@@ -91,8 +81,6 @@ impl EffectClass {
             EffectClass::Meter { .. } => "meter",
             EffectClass::Stock { .. } => "stock",
             EffectClass::Location { .. } => "location",
-            EffectClass::Relationship { .. } => "relationship",
-            EffectClass::Reputation { .. } => "reputation",
             EffectClass::Memory { .. } => "memory",
             EffectClass::Rumor { .. } => "rumor",
             EffectClass::Flag { .. } => "flag",
@@ -131,11 +119,7 @@ fn payload_len(class: &EffectClass) -> usize {
             MeterWrite::Snap => 3,
             MeterWrite::Base(_) | MeterWrite::Offset(_) => 4,
         },
-        EffectClass::Stock { .. }
-        | EffectClass::Location { .. }
-        | EffectClass::Relationship { .. }
-        | EffectClass::Reputation { .. }
-        | EffectClass::Flag { .. } => 3,
+        EffectClass::Stock { .. } | EffectClass::Location { .. } | EffectClass::Flag { .. } => 3,
         EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
         EffectClass::Rumor { .. } => 5,
         EffectClass::Message { place, .. } => 4 + usize::from(place.is_some()),
@@ -181,20 +165,6 @@ where
             state.serialize_field("actor_id", actor_id)?;
             state.serialize_field("from", from)?;
             state.serialize_field("to", to)?;
-        }
-        EffectClass::Relationship { a, b, delta } => {
-            state.serialize_field("a", a)?;
-            state.serialize_field("b", b)?;
-            state.serialize_field("delta", delta)?;
-        }
-        EffectClass::Reputation {
-            actor_id,
-            faction,
-            delta,
-        } => {
-            state.serialize_field("actor_id", actor_id)?;
-            state.serialize_field("faction", faction)?;
-            state.serialize_field("delta", delta)?;
         }
         EffectClass::Memory {
             actor_id,

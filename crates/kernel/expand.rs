@@ -138,29 +138,6 @@ fn expand_template(
                 },
             ));
         }
-        RowEffect::Relationship { to, delta } => {
-            effects.push(wrap(
-                viewer,
-                &intent.id,
-                EffectClass::Relationship {
-                    a: intent.actor_id.clone(),
-                    b: to.clone(),
-                    delta: *delta,
-                },
-            ));
-        }
-        RowEffect::Reputation { faction, delta } => {
-            let actor_id = actor_of(row, intent)?;
-            effects.push(wrap(
-                viewer,
-                &intent.id,
-                EffectClass::Reputation {
-                    actor_id,
-                    faction: faction.clone(),
-                    delta: *delta,
-                },
-            ));
-        }
         RowEffect::Memory {
             fact_ids,
             tags,
