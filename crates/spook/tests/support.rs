@@ -41,6 +41,7 @@ pub fn spook(args: &[&str]) -> std::process::Output {
         .unwrap_or_else(|err| panic!("spawn spook: {err}"))
 }
 
+#[derive(Debug)]
 pub struct Proc {
     pub child: Child,
     pub stdin: Option<ChildStdin>,
