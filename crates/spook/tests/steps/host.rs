@@ -256,7 +256,10 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     play_in.flush().unwrap();
     wait_posts(&posts, 2);
     table::wait_world_time(&pack, 1085);
-    let place = table::now_of(&pack)
+    // The server still holds this pack. open_shard runs recover and can collide with its commit.
+    let text = fs::read_to_string(pack.join("state/now.yaml")).unwrap();
+    let place = spookery_kernel::codec::load_now(&text)
+        .unwrap()
         .actors
         .get("pc_rowan")
         .map(|actor| actor.place().to_string());
