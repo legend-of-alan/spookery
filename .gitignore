@@ -12,3 +12,6 @@
 
 # Point-in-time notes
 /reports/
+
+# Editor multi-root workspace files
+*.code-workspace
