@@ -34,11 +34,11 @@ pub(crate) fn fail(message: impl Into<String>) -> HostError {
     HostError { message }
 }
 
-/// Sit the GM seat on `127.0.0.1:9737` and call the model.
+/// Sit the GM seat on `addr` and call the model.
 ///
 /// A missing `XAI_API_KEY` or `SPOOK_GM_MODEL` is reported before the dial.
-pub fn sit(pack: &Path) -> Result<(), HostError> {
+pub fn sit(pack: &Path, addr: &str) -> Result<(), HostError> {
     let env = http::require_env()?;
     let mut model = http::HttpModel::new(env)?;
-    drive(pack, "127.0.0.1:9737", &mut model, &Watch::default())
+    drive(pack, addr, &mut model, &Watch::default())
 }

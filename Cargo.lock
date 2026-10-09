@@ -1926,6 +1926,7 @@ dependencies = [
 name = "spook"
 version = "0.0.0"
 dependencies = [
+ "clap",
  "cucumber",
  "reqwest",
  "rmcp",

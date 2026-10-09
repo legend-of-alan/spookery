@@ -23,6 +23,9 @@ mod rounds;
 #[path = "steps/checks.rs"]
 mod checks;
 
+#[path = "steps/cli.rs"]
+mod cli;
+
 #[path = "steps/rows.rs"]
 mod rows;
 

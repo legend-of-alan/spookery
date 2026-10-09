@@ -76,7 +76,7 @@ pub fn tick_names(pack: &Path) -> Vec<String> {
 
 pub fn listen(pack: &Path, bind: &str, port: u16) {
     let pack_arg = support::pack_arg(pack);
-    let mut server = support::spawn(&["run", &pack_arg, "--bind", bind]);
+    let mut server = support::spawn(&["run", &pack_arg, "--addr", bind]);
     wait_listen(port, &mut server);
     let opened_now =
         fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
@@ -199,6 +199,7 @@ pub fn free_port() -> u16 {
             .unwrap_or_else(|err| panic!("local_addr: {err}"))
             .port();
         drop(listener);
+        // The documented default is 127.0.0.1:9737. A free-port scenario asserts it was not chosen.
         if port != 9737 {
             return port;
         }
