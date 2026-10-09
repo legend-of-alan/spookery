@@ -110,7 +110,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 | Term | Meaning |
 |---|---|
-| **Spookery** | Company and house name. Crate / package names use `spookery`, not `spook` |
+| **Spookery** | Company and house name. The library is `spookery`. The package and the binary are `spook` |
 | **Pack** | A folder of text that *is* the world: canon + rules + current state. `world/` is the canon-places subtree inside a pack |
 | **Runtime / `spook`** | Process that loads a pack and is the only writer of `state/`. The binary is `spook` |
 | **Kernel** | Code that decides legality, checks, and knowledge |
@@ -458,20 +458,22 @@ Later genre packs may override pause policy. The docks fixture does not.
 /schema
 /packs
   oneshot-docks/           # official fixture
-/src
+/crates
   kernel/                  # spookery-kernel
   tick/                    # spookery-tick
-  seat/                    # both seats, in the bin
-  main.rs                  # spook
-/protocol                  # spookery-protocol, the shared lines
-/cli                       # spookery-cli, spook play
-/ai                        # spookery-ai, spook ai-gm
-/tests
-  promises.rs
-  features/
+  spook/                   # package spook, binary spook, library spookery
+    src/
+      main.rs              # spook
+      seat/                # both seats
+      protocol/            # shared lines
+      cli/                 # spook play
+      ai/                  # spook ai-gm
+    tests/
+      promises.rs
+      features/
 ```
 
-Language: Rust. Six crates: the bin plus kernel, tick, protocol, cli, and ai.
+Language: Rust. Three crates: spookery-kernel, spookery-tick, and spook.
 
 Agents implement from `docs/spec.md`. A human reviews. This file does not license a code change.
 
