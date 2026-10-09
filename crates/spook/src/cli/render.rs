@@ -76,10 +76,6 @@ fn resume_row(row: &str) -> String {
             Some((_id, text)) if !text.trim().is_empty() => text.trim().to_string(),
             _ => row.to_string(),
         },
-        "rumor" => match rest.split_whitespace().collect::<Vec<_>>()[..] {
-            [_rumor, fact] => format!("You heard a rumor: {}.", humanize(fact)),
-            _ => row.to_string(),
-        },
         "clock" => match rest.split_whitespace().collect::<Vec<_>>()[..] {
             [id, value, max, state @ ("paused" | "running")] => {
                 match (value.parse(), max.parse()) {
@@ -297,7 +293,6 @@ mod tests {
         let text = render(&PlayerMessage::Resume {
             text: "\
 message note_mira_door Back at dusk. Oil on the shelf.
-rumor rumor_cellar fact_cellar_door
 clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 "
@@ -308,12 +303,10 @@ clock shop_day 1 1 running
             "\
 While you were away:
 Back at dusk. Oil on the shelf.
-You heard a rumor: Fact cellar door.
 Assassination debt: 2/6, paused
 Shop day: 1/1"
         );
         assert!(!text.contains("note_mira_door"), "{text}");
-        assert!(!text.contains("rumor_cellar"), "{text}");
         assert!(!text.contains("assassination_debt"), "{text}");
         assert!(!text.contains("running"), "{text}");
         assert_readable(&text);
