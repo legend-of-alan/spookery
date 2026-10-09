@@ -72,17 +72,16 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             spookery::seat::listen(&pack, addr)
         }
         Command::Play { pack, as_player } => {
-            parse_loopback(&cli.addr)?;
-            let mut args = vec![pack.to_string_lossy().into_owned()];
-            if let Some(token) = as_player {
-                args.push("--as".to_string());
-                args.push(token);
-            }
-            from_cli(spookery::cli::play(&args))
+            let addr = parse_loopback(&cli.addr)?;
+            from_cli(spookery::cli::play(
+                &pack,
+                as_player.as_deref(),
+                &addr.to_string(),
+            ))
         }
         Command::AiGm { pack } => {
-            parse_loopback(&cli.addr)?;
-            if spookery::ai::sit(&pack).is_err() {
+            let addr = parse_loopback(&cli.addr)?;
+            if spookery::ai::sit(&pack, &addr.to_string()).is_err() {
                 std::process::exit(1);
             }
             Ok(())
