@@ -355,10 +355,6 @@ fn stage_tick(
                     trace.push("apply_effect".to_string());
                     effects_out.push(effect);
                 }
-                Err(KernelReason::Skipped) => rejected.push(Rejected {
-                    id: intent.id.clone(),
-                    reason: KernelReason::Skipped.jsonl_reason().to_string(),
-                }),
                 Err(KernelReason::Budget) => {
                     budget_stop = true;
                     if accepted == 0 {

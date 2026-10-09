@@ -187,7 +187,7 @@ Kernel habits do not emit speech. A player world line while `humans == 0` is ref
 
 ## Failure tokens
 
-`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET` and `SKIPPED`, plus the log word `empty_perceive`. The CLI prints the token and exits 1 for an engine refusal. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`.
+`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET`, plus the log word `empty_perceive`. The CLI prints the token and exits 1 for an engine refusal. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`.
 
 `#[from]` is not used on `Reason`. I/O in the kernel collapses to `COMMIT_CONFLICT` or `SCHEMA`, so `Reason` does not wrap `std::io::Error`. The bin has its own error with `Reason` and `Io` variants. `#[from]` is used there, and only there. Tick functions return `kernel::Reason`. A tick-cause value is not an error.
 
@@ -208,7 +208,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 
 `NOT_OWNER` and `LIVE_ONLY` are not variants. Nothing emits them.
 
-Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`, `SKIPPED`.
+Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`.
 
 `NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`. `EffectClass` has ten variants.
 
@@ -299,7 +299,7 @@ The POST body is the bounded prompt: the last 16 says this process has handled, 
 
 Load fails with `SCHEMA` if `places.actors` is edited apart from `actors.place`. Emit rebuilds occupancy from `actors.*.place`.
 
-Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","success":true|false}` or `{"kind":"refused","code":"..."}`. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` and `SKIPPED` lowercased, `empty_perceive` as that word, every other token uppercase.
+Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","success":true|false}` or `{"kind":"refused","code":"..."}`. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` lowercased, `empty_perceive` as that word, every other token uppercase.
 
 ## Non-goals
 
