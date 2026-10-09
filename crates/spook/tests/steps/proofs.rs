@@ -811,8 +811,8 @@ tick:
         .as_array()
         .unwrap()
         .len();
-    assert!(acted >= 1 && acted <= 8, "acted {acted}");
-    assert!(applied >= 1 && applied <= 12, "applied {applied}");
+    assert!((1..=8).contains(&acted), "acted {acted}");
+    assert!((1..=12).contains(&applied), "applied {applied}");
     let _ = fs::remove_dir_all(&pack);
 }
 

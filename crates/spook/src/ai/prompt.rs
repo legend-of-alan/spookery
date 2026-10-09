@@ -289,7 +289,6 @@ pub fn prepare_with(
         Wake::Say {
             from,
             address,
-            place,
             actor,
             ..
         } if address == "actor" => {
@@ -547,12 +546,12 @@ fn accept_intent(intent: &IntentDraft, menu: &[MenuRow]) -> bool {
     let Some(row) = menu.iter().find(|row| row.name == intent.move_name) else {
         return false;
     };
-    match (row.token.as_str(), &intent.target) {
-        ("none", TargetDraft::Empty) => true,
-        ("place", TargetDraft::Place(_)) => true,
-        ("actor", TargetDraft::Actor(_)) => true,
-        _ => false,
-    }
+    matches!(
+        (row.token.as_str(), &intent.target),
+        ("none", TargetDraft::Empty)
+            | ("place", TargetDraft::Place(_))
+            | ("actor", TargetDraft::Actor(_))
+    )
 }
 
 fn parse_says(value: &Value) -> Option<Vec<OutgoingSay>> {

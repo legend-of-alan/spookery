@@ -57,16 +57,16 @@ pub fn drive<M: Model>(
     let mut buffer = Vec::new();
     if !status.queued.is_empty() {
         watch.busy.store(true, Ordering::Release);
-        run_turn(
-            &mut seat,
-            &menu,
-            &kinds,
-            &mut buffer,
-            &mut high,
-            Wake::Sit,
+        run_turn(TurnIn {
+            seat: &mut seat,
+            menu: &menu,
+            kinds: &kinds,
+            buffer: &mut buffer,
+            high: &mut high,
+            wake: Wake::Sit,
             model,
             watch,
-        )?;
+        })?;
         watch.busy.store(false, Ordering::Release);
     }
     loop {
@@ -74,30 +74,42 @@ pub fn drive<M: Model>(
             return Ok(());
         };
         watch.busy.store(true, Ordering::Release);
-        run_turn(
-            &mut seat,
-            &menu,
-            &kinds,
-            &mut buffer,
-            &mut high,
+        run_turn(TurnIn {
+            seat: &mut seat,
+            menu: &menu,
+            kinds: &kinds,
+            buffer: &mut buffer,
+            high: &mut high,
             wake,
             model,
             watch,
-        )?;
+        })?;
         watch.busy.store(false, Ordering::Release);
     }
 }
 
-fn run_turn<M: Model>(
-    seat: &mut Seat,
-    menu: &[MenuRow],
-    kinds: &std::collections::BTreeMap<String, CastKind>,
-    buffer: &mut Vec<HandledSay>,
-    high: &mut u64,
+struct TurnIn<'a, M: Model> {
+    seat: &'a mut Seat,
+    menu: &'a [MenuRow],
+    kinds: &'a std::collections::BTreeMap<String, CastKind>,
+    buffer: &'a mut Vec<HandledSay>,
+    high: &'a mut u64,
     wake: Wake,
-    model: &mut M,
-    watch: &Watch,
-) -> Result<(), HostError> {
+    model: &'a mut M,
+    watch: &'a Watch,
+}
+
+fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
+    let TurnIn {
+        seat,
+        menu,
+        kinds,
+        buffer,
+        high,
+        wake,
+        model,
+        watch,
+    } = turn;
     let status = call_status(seat, Some(*high))?;
     let mut seat_err = None;
     let prepared = prepare_with(kinds, &wake, &status.present, &mut |viewer| match perceive(

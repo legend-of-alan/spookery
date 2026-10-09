@@ -47,11 +47,8 @@ pub(super) async fn serve(
         tx: tx.clone(),
         after_tx,
     };
-    match host.serve((read_half, writer)).await {
-        Ok(running) => {
-            let _ = running.waiting().await;
-        }
-        Err(_) => {}
+    if let Ok(running) = host.serve((read_half, writer)).await {
+        let _ = running.waiting().await;
     }
     listen::report_fault(&tx, conn, SocketEnd::Eof).await;
     let _ = writer_task.await;

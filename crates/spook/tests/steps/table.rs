@@ -44,7 +44,7 @@ pub fn files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
     out
 }
 
-pub fn pack<'a>(world: &'a World) -> &'a Path {
+pub fn pack(world: &World) -> &Path {
     world
         .pack
         .as_deref()
@@ -185,7 +185,7 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
 pub fn second_hello(line: &str) -> String {
     let port = crate::with_live(|live| live.port);
     let mut stream = connect(port);
-    write!(stream, "{line}\n").unwrap_or_else(|err| panic!("write: {err}"));
+    writeln!(stream, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
     stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     read_line(&mut stream)
 }

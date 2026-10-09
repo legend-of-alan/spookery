@@ -171,14 +171,16 @@ fn queue_row(
     };
     push_intent(
         shard,
-        note.id.clone(),
-        actor_id,
-        ActorKind::Player,
-        verb,
-        target,
-        IntentArgs::default(),
-        String::new(),
-        None,
+        IntentPush {
+            id: note.id.clone(),
+            actor_id,
+            actor_kind: ActorKind::Player,
+            move_name: verb,
+            target,
+            args: IntentArgs::default(),
+            rationale_code: String::new(),
+            tick_index: None,
+        },
     )?;
     Ok(note)
 }
@@ -232,18 +234,19 @@ impl QueuedNote {
     }
 }
 
-pub(super) fn push_intent(
-    shard: &mut Shard,
-    id: String,
-    actor_id: &str,
-    actor_kind: ActorKind,
-    move_name: &str,
-    target: Target,
-    args: IntentArgs,
-    rationale_code: String,
-    tick_index: Option<u64>,
-) -> Result<(), Reason> {
-    let tick_index = match tick_index {
+pub(super) struct IntentPush<'a> {
+    pub id: String,
+    pub actor_id: &'a str,
+    pub actor_kind: ActorKind,
+    pub move_name: &'a str,
+    pub target: Target,
+    pub args: IntentArgs,
+    pub rationale_code: String,
+    pub tick_index: Option<u64>,
+}
+
+pub(super) fn push_intent(shard: &mut Shard, intent: IntentPush<'_>) -> Result<(), Reason> {
+    let tick_index = match intent.tick_index {
         Some(tick_index) => tick_index,
         None => shard
             .now()
@@ -252,15 +255,15 @@ pub(super) fn push_intent(
             .ok_or(Reason::Schema)?,
     };
     shard.queue_intent(Intent {
-        id,
+        id: intent.id,
         tick_index,
-        actor_id: actor_id.to_string(),
-        actor_kind,
+        actor_id: intent.actor_id.to_string(),
+        actor_kind: intent.actor_kind,
         source: Source::Player,
-        move_name: move_name.to_string(),
-        target,
-        args,
-        rationale_code,
+        move_name: intent.move_name.to_string(),
+        target: intent.target,
+        args: intent.args,
+        rationale_code: intent.rationale_code,
     });
     Ok(())
 }
