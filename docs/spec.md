@@ -58,8 +58,6 @@ Six crates. A one-crate collapse is not the layout. The bin and `spookery-ai` ma
 
 Tokio in the bin is the accept loop, keepalive, and scheduler sleep. The tick function runs on the shard thread.
 
-`rulesets/` is an authoring template. The loader reads `pack/rules/` only.
-
 ## Effect envelope
 
 `Effect` is one struct. The class is the payload. Rows emit the ten classes below.

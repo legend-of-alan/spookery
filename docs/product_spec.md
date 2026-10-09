@@ -456,7 +456,6 @@ Later genre packs may override pause policy. The docks fixture does not.
   README.md
   product_spec.md          # this file; business notes, not law
 /schema
-/rulesets                  # authoring templates
 /packs
   oneshot-docks/           # official fixture
 /src
