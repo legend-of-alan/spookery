@@ -265,7 +265,7 @@ An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and 
 
 One seat. A second player or a second GM is `SESSION_FULL`.
 
-The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `run`, `play`, and `ai-gm` share `--addr`. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens. There is no account store.
+The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 
 ## Host monitor
 

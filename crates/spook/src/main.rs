@@ -66,21 +66,16 @@ fn main() {
 }
 
 fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
+    // `--addr` is global: every command refuses an open host before any pack opens.
+    let addr = parse_loopback(&cli.addr)?;
     match cli.command {
-        Command::Run { pack } => {
-            let addr = parse_loopback(&cli.addr)?;
-            spookery::seat::listen(&pack, addr)
-        }
-        Command::Play { pack, as_player } => {
-            let addr = parse_loopback(&cli.addr)?;
-            from_cli(spookery::cli::play(
-                &pack,
-                as_player.as_deref(),
-                &addr.to_string(),
-            ))
-        }
+        Command::Run { pack } => spookery::seat::listen(&pack, addr),
+        Command::Play { pack, as_player } => from_cli(spookery::cli::play(
+            &pack,
+            as_player.as_deref(),
+            &addr.to_string(),
+        )),
         Command::AiGm { pack } => {
-            let addr = parse_loopback(&cli.addr)?;
             if spookery::ai::sit(&pack, &addr.to_string()).is_err() {
                 std::process::exit(1);
             }
@@ -160,6 +155,23 @@ mod tests {
         assert!(parse_loopback("10.0.0.8").is_err());
         assert!(parse_loopback("localhost").is_err());
         assert!(parse_loopback("127.0.0.1:").is_err());
+    }
+
+    #[test]
+    fn every_command_refuses_an_open_address_before_the_pack_opens() {
+        for command in ["run", "play", "ai-gm", "tick", "status", "migrate"] {
+            for addr in ["0.0.0.0", "10.0.0.1:9737"] {
+                let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
+                    .unwrap();
+                assert!(
+                    matches!(
+                        dispatch(cli),
+                        Err(spookery::Error::Reason(Reason::NotInSpec))
+                    ),
+                    "{command} --addr {addr}"
+                );
+            }
+        }
     }
 
     #[test]
