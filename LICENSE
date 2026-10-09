@@ -1,3 +1,17 @@
+Copyright (C) 2026 legend-of-alan
+
+legend-of-alan is the sole copyright holder.
+
+The engine is open source (AGPL-3.0). Runtime code, the tests of that
+code, and repository tooling and scripts are licensed under the GNU
+Affero General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any
+later version (AGPL-3.0-or-later). The terms of that license follow.
+
+Documentation, schemas, and packs are licensed under Creative Commons
+Attribution 4.0 International (CC BY 4.0). The terms are in
+LICENSE-CC-BY-4.0.
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 
