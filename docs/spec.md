@@ -22,7 +22,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 10. **Eligibility and habits.** Both run before a kernel habit intent exists. An ineligible NPC produces no habit intent. A player-sourced intent is not a habit intent.
 11. **Failure tokens.** Each token has one meaning. `NOT_OWNER` and `LIVE_ONLY` are not tokens.
 12. **Speech versus queue.** Speech appends to the tape. It is not a row, it does not enter the intent queue, and it does not tick.
-13. **Seat law.** One player seat and one GM seat. The seat's `tools/list` is the menu. `npc_act` does not call a model.
+13. **Seat law.** One player seat and one GM seat. The seat's `tools/list` is the menu.
 14. **Rounds.** With no GM, the runtime queues and commits one live tick. With a GM seated, the line waits for `commit_turn`.
 
 ## One writer
@@ -208,7 +208,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 
 `NOT_OWNER` and `LIVE_ONLY` are not variants. Nothing emits them.
 
-Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `DENIED_TOOL`, `COMMIT_CONFLICT`, `HAND_EDIT`, `LLM_DISABLED`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`, `SKIPPED`.
+Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `DENIED_TOOL`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`, `SKIPPED`.
 
 `NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`. `EffectClass` has ten variants.
 
@@ -257,7 +257,7 @@ The seat's `tools/list` is the menu.
 
 Sitting perceive allows `player:` and `npc:`. A missing `as`, or `as=gm`, is `UNSCOPED_PERCEIVE`. Perceive calls the perceive budget after that check. `firewall::allows` is the shared visibility test.
 
-`npc_act` on the sitting returns `LLM_DISABLED` and does not call a model. The other refuse-only GM names are not handlers. An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and `patch_entity` are not sitting handlers. Effects come from row expansion during the tick.
+An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and `patch_entity` are not sitting handlers. Effects come from row expansion during the tick.
 
 `spook gm` is `NOT_IN_SPEC`.
 
@@ -305,7 +305,7 @@ Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check
 
 Still not built, and not implied by a missing sentence above:
 
-- A model call inside `npc_act`, a cargo feature named `llm`, or an NPC `from` on the tape.
+- A cargo feature named `llm`, or an NPC `from` on the tape.
 - Parsing speech into `known_facts`, or a whisper that grants a fact.
 - A non-loopback bind, accounts, or a second GM.
 - An ack cursor, or a per-client outbound queue whose purpose is to make a host event start a host turn.
@@ -325,7 +325,7 @@ The player line grammar does change. The check wire object does not. That split 
 |---|---|
 | Client patches YAML | The play door queues an intent or appends speech. The CLI has no path that opens `now.yaml` for a client write. |
 | GM calls `apply_effect` | The tool is not a sitting handler. Effects come from expand inside a `Txn`. Only `tick_commit`, `commit_presence`, and `migrate_pack` rename files. |
-| `npc_act` or a summarizer writes memories | No LLM crate. `npc_act` returns `LLM_DISABLED`. Memory lines are written inside the commit, from a `memory` effect, after `allows`. |
+| A summarizer writes memories | No LLM crate. Memory lines are written inside the commit, from a `memory` effect, after `allows`. |
 | Speech copied into `known_facts` or a rumor | The tape is not an input to expand. No whisper. Inbound model text is not a field on `Intent`. |
 | Host digest reused as the player resume | `idle_digest` takes `DigestViewer::Host` or `DigestViewer::Player`. Different rows. |
 | Hand edit of `now.yaml` | `HAND_EDIT` until `spook migrate`. |

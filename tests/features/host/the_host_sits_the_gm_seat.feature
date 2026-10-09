@@ -27,7 +27,7 @@ Feature: The host sits the GM seat
 
   Scenario: The host seat submits a say and reports a refused call
     Given a docks table with a seated player
-    When the host seat says good evening and calls npc_act
+    When the host seat says good evening and calls an unknown tool
     Then the player saw a say from the host
     And the tape from is gm
     And the host call was refused

@@ -95,7 +95,7 @@ fn the_listener_accepted_no_connection(world: &mut World) {
     assert!(world.stdout.is_empty(), "{}", world.stdout);
 }
 
-#[when(expr = "the host seat says good evening and calls npc_act")]
+#[when(expr = "the host seat says good evening and calls an unknown tool")]
 fn the_host_seat_says(world: &mut World) {
     let port = crate::with_live(|live| live.port);
     let mark = table::player_len();
@@ -111,7 +111,7 @@ fn the_host_seat_says(world: &mut World) {
     world.player_added = table::wait_player_from(mark, "{\"kind\":\"say\"");
     world.scratch = say.raw;
     let refused = seat
-        .call("npc_act", json!({"actor_id": "mira"}))
+        .call("not_in_spec", json!({}))
         .unwrap_or_else(|err| panic!("{err}"));
     world.stdout = if refused.refused && refused.body.get("code").is_some() {
         "refused".to_string()
