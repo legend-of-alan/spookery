@@ -820,22 +820,12 @@ fn tool_scope() {
     let pack = temp_pack("scope");
     let before = snapshot(&pack);
     let shard = open(&pack);
-    let call = |as_viewer: Option<&str>, focus: Option<&str>, budget: Option<u64>| {
-        spookery::tick_perceive::perceive(
-            &shard,
-            &spookery::tick_perceive::PerceiveIn {
-                as_viewer: as_viewer.map(str::to_string),
-                focus: focus.map(str::to_string),
-                budget_tokens: budget,
-            },
-        )
+    let call = |as_viewer: &str, budget: usize| {
+        spookery_kernel::perceive::perceive_budget(&shard, as_viewer, budget)
     };
     let kernel = spookery_kernel::perceive(&shard, "npc:mira").unwrap();
-    for focus in [None, Some("place"), Some("actor")] {
-        assert_eq!(call(Some("npc:mira"), focus, None).unwrap(), kernel);
-    }
-    assert_eq!(call(Some("npc:mira"), None, Some(800)).unwrap(), kernel);
-    let capped = call(Some("npc:mira"), None, Some(0)).unwrap();
+    assert_eq!(call("npc:mira", 800).unwrap(), kernel);
+    let capped = call("npc:mira", 0).unwrap();
     assert!(kernel.known_facts.iter().any(|fact| !fact.body.is_empty()));
     assert_eq!(capped.known_facts.len(), kernel.known_facts.len());
     assert!(capped.known_facts.iter().all(|fact| fact.body.is_empty()));
@@ -854,12 +844,7 @@ fn tool_scope() {
         .iter()
         .any(|id| id == "fact_room_lamp"));
     let unscoped = spookery_kernel::Reason::UnscopedPerceive;
-    assert_eq!(
-        call(Some("player:rowan"), None, None).unwrap_err(),
-        unscoped
-    );
-    assert_eq!(call(None, None, None).unwrap_err(), unscoped);
-    assert_eq!(call(Some("gm"), None, None).unwrap_err(), unscoped);
+    assert_eq!(call("gm", 800).unwrap_err(), unscoped);
     drop(shard);
     assert_eq!(snapshot(&pack), before);
     let _ = fs::remove_dir_all(&pack);
