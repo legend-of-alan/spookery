@@ -1,17 +1,19 @@
 Feature: The host sits the GM seat
 
-  Scenario: Host without a pack is not in spec
+  Scenario: Host without a pack is a usage error
     When the operator runs ai-gm with no pack
-    Then the command exits 1
-    And stderr is NOT_IN_SPEC
+    Then the command exits 2
+    And stderr shows usage
     And stdout is empty
+    And nothing was dialed
 
-  Scenario: Host with an extra argument is not in spec
+  Scenario: Host with an extra argument is a usage error
     Given a docks table
     When the operator runs ai-gm with an extra argument
-    Then the command exits 1
-    And stderr is NOT_IN_SPEC
+    Then the command exits 2
+    And stderr shows usage
     And stdout is empty
+    And nothing was dialed
 
   Scenario: Host with nothing listening leaves the pack
     Given a docks table
@@ -23,7 +25,7 @@ Feature: The host sits the GM seat
     Given a docks table
     When the operator runs ai-gm without the model setting
     Then the command exits 1
-    And the listener on 9737 accepted no connection
+    And the listener accepted no connection
 
   Scenario: The host seat submits a say and reports a refused call
     Given a docks table with a seated player
@@ -37,3 +39,8 @@ Feature: The host sits the GM seat
 
   Scenario: Play, host, and a stub share one speech turn and one travel turn
     When play and host and a stub run a speech turn and a travel turn
+
+  Scenario: The host dials the given address
+    Given a docks table
+    When the host is pointed at a free loopback address
+    Then the host dialed that address

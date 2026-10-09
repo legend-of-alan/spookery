@@ -6,15 +6,10 @@ use crate::World;
 
 use super::table;
 
-#[when(expr = "the operator runs run bound to {string}")]
-fn run_bound_to(world: &mut World, addr: String) {
+#[when(expr = "the operator runs {word} bound to {string}")]
+fn command_bound_to(world: &mut World, command: String, addr: String) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["run", pack.to_str().unwrap(), "--bind", &addr]);
-}
-
-#[when(expr = "the table listens on 127.0.0.1")]
-fn listens_on_default(world: &mut World) {
-    table::listen(table::pack(world), "127.0.0.1", 9737);
+    table::run(world, &[&command, pack.to_str().unwrap(), "--addr", &addr]);
 }
 
 #[when(expr = "the table listens on a free loopback port")]

@@ -11,19 +11,12 @@ pub enum Error {
     Io(io::Error),
 }
 
-pub fn play(args: &[String]) -> Result<(), Error> {
-    if args.is_empty() {
-        return Err(Error::Reason(Reason::NotInSpec));
-    }
-    let pack = Path::new(&args[0]);
-    let actor = if args.len() == 1 {
-        start_pc(pack)?
-    } else if args.len() == 3 && args[1] == "--as" {
-        parse_player_as(&args[2])?
-    } else {
-        return Err(Error::Reason(Reason::NotInSpec));
+pub fn play(pack: &Path, as_player: Option<&str>, addr: &str) -> Result<(), Error> {
+    let actor = match as_player {
+        Some(token) => parse_player_as(token)?,
+        None => start_pc(pack)?,
     };
-    let mut stream = TcpStream::connect("127.0.0.1:9737").map_err(Error::Io)?;
+    let mut stream = TcpStream::connect(addr).map_err(Error::Io)?;
     stream.set_nodelay(true).map_err(Error::Io)?;
     stream
         .write_all(crate::protocol::write_player_hello(&actor).as_bytes())

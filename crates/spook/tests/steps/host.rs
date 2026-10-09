@@ -19,21 +19,24 @@ use super::table;
 
 #[when(expr = "the operator runs ai-gm with no pack")]
 fn the_operator_runs_host_with_no_pack(world: &mut World) {
-    table::run(world, &["ai-gm"]);
+    let addr = arm_listener();
+    table::run(world, &["ai-gm", "--addr", &addr]);
 }
 
 #[when(expr = "the operator runs ai-gm with an extra argument")]
 fn the_operator_runs_host_with_an_extra_argument(world: &mut World) {
+    let addr = arm_listener();
     let pack = pack_arg(table::pack(world));
-    table::run(world, &["ai-gm", &pack, "extra"]);
+    table::run(world, &["ai-gm", &pack, "extra", "--addr", &addr]);
 }
 
 #[when(expr = "the operator runs ai-gm with nothing listening")]
 fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
-    let _port = hold_9737();
+    let port = table::free_port();
+    let addr = format!("127.0.0.1:{port}");
     let pack = pack_arg(table::pack(world));
     let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["ai-gm", &pack])
+        .args(["ai-gm", &pack, "--addr", &addr])
         .env("XAI_API_KEY", "test-key")
         .env("SPOOK_GM_MODEL", "grok-test")
         .env_remove("SPOOK_GM_URL")
@@ -46,14 +49,17 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
 
 #[when(expr = "the operator runs ai-gm without the model setting")]
 fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
-    let listener =
-        TcpListener::bind("127.0.0.1:9737").unwrap_or_else(|err| panic!("bind 9737: {err}"));
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
     listener
         .set_nonblocking(true)
         .unwrap_or_else(|err| panic!("nonblocking: {err}"));
+    let addr = listener
+        .local_addr()
+        .unwrap_or_else(|err| panic!("local_addr: {err}"))
+        .to_string();
     let pack = pack_arg(table::pack(world));
     let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["ai-gm", &pack])
+        .args(["ai-gm", &pack, "--addr", &addr])
         .env("XAI_API_KEY", "test-key")
         .env_remove("SPOOK_GM_MODEL")
         .output()
@@ -63,14 +69,10 @@ fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     match listener.accept() {
         Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
-        other => panic!("9737 accepted a connection: {other:?}"),
+        other => panic!("listener accepted a connection: {other:?}"),
     }
-    drop(listener);
-    let listener =
-        TcpListener::bind("127.0.0.1:9737").unwrap_or_else(|err| panic!("bind 9737: {err}"));
-    listener.set_nonblocking(true).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["ai-gm", &pack])
+        .args(["ai-gm", &pack, "--addr", &addr])
         .env_remove("XAI_API_KEY")
         .env("SPOOK_GM_MODEL", "grok-test")
         .output()
@@ -80,11 +82,11 @@ fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
     assert!(stderr.contains("XAI_API_KEY is unset"), "{stderr}");
     match listener.accept() {
         Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
-        other => panic!("9737 accepted a connection: {other:?}"),
+        other => panic!("listener accepted a connection: {other:?}"),
     }
 }
 
-#[then(expr = "the listener on 9737 accepted no connection")]
+#[then(expr = "the listener accepted no connection")]
 fn the_listener_accepted_no_connection(world: &mut World) {
     assert_eq!(world.code, Some(1), "{}", world.stderr);
     assert!(
@@ -93,6 +95,64 @@ fn the_listener_accepted_no_connection(world: &mut World) {
         world.stderr
     );
     assert!(world.stdout.is_empty(), "{}", world.stdout);
+}
+
+#[then(expr = "nothing was dialed")]
+fn nothing_was_dialed(_world: &mut World) {
+    let listener = LISTENER
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .take()
+        .unwrap_or_else(|| panic!("no listener"));
+    match listener.accept() {
+        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
+        other => panic!("ai-gm dialed: {other:?}"),
+    }
+}
+
+#[when(expr = "the host is pointed at a free loopback address")]
+fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    listener
+        .set_nonblocking(true)
+        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
+    let addr = listener
+        .local_addr()
+        .unwrap_or_else(|err| panic!("local_addr: {err}"))
+        .to_string();
+    let pack = pack_arg(table::pack(world));
+    let child = Command::new(env!("CARGO_BIN_EXE_spook"))
+        .args(["ai-gm", &pack, "--addr", &addr])
+        .env("XAI_API_KEY", "test-key")
+        .env("SPOOK_GM_MODEL", "grok-test")
+        .env_remove("SPOOK_GM_URL")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn host: {err}"));
+    crate::track_child(child);
+    let start = Instant::now();
+    loop {
+        match listener.accept() {
+            Ok(_) => {
+                world.scratch = "dialed".to_string();
+                return;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("ai-gm did not dial {addr}");
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(err) => panic!("accept: {err}"),
+        }
+    }
+}
+
+#[then(expr = "the host dialed that address")]
+fn the_host_dialed_that_address(world: &mut World) {
+    assert_eq!(world.scratch, "dialed");
 }
 
 #[when(expr = "the host seat says good evening and calls an unknown tool")]
@@ -152,8 +212,6 @@ fn the_scripted_host_plays_the_turn_checks(_world: &mut World) {
 
 #[when(expr = "play and host and a stub run a speech turn and a travel turn")]
 fn play_and_host_and_a_stub(_world: &mut World) {
-    let _gate = hold_9737();
-    thread::sleep(Duration::from_millis(100));
     let pack = temp_pack("host-stub");
     let aldric = pack.join("cast/aldric.md");
     let mut body = fs::read_to_string(&aldric).unwrap();
@@ -162,10 +220,12 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     spookery_kernel::commit::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     let (stub_port, posts) = stub_server();
     let pack_arg = pack_arg(&pack);
-    let mut server = support::spawn(&["run", &pack_arg, "--bind", "127.0.0.1:9737"]);
-    wait_port(9737, &mut server);
+    let port = table::free_port();
+    let addr = format!("127.0.0.1:{port}");
+    let mut server = support::spawn(&["run", &pack_arg, "--addr", &addr]);
+    wait_port(port, &mut server);
     let mut host = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["ai-gm", &pack_arg])
+        .args(["ai-gm", &pack_arg, "--addr", &addr])
         .env("XAI_API_KEY", "test-key")
         .env("SPOOK_GM_MODEL", "grok-test")
         .env("SPOOK_GM_URL", format!("http://127.0.0.1:{stub_port}"))
@@ -182,7 +242,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     drain(host_err, Arc::clone(&host_stderr));
     crate::track_child(host);
     wait_text(&host_stderr, "listening");
-    let mut play = support::spawn(&["play", &pack_arg]);
+    let mut play = support::spawn(&["play", &pack_arg, "--addr", &addr]);
     wait_text(&play.stdout, "\"kind\":\"perceive\"");
     let mut play_in = play.stdin.take().unwrap();
     writeln!(play_in, "say hello").unwrap();
@@ -196,7 +256,10 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     play_in.flush().unwrap();
     wait_posts(&posts, 2);
     table::wait_world_time(&pack, 1085);
-    let place = table::now_of(&pack)
+    // The server still holds this pack. open_shard runs recover and can collide with its commit.
+    let text = fs::read_to_string(pack.join("state/now.yaml")).unwrap();
+    let place = spookery_kernel::codec::load_now(&text)
+        .unwrap()
         .actors
         .get("pc_rowan")
         .map(|actor| actor.place().to_string());
@@ -458,14 +521,19 @@ fn tape_text(pack: &Path) -> String {
     fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap_or_default()
 }
 
-fn hold_9737() -> TcpListener {
-    match TcpListener::bind("127.0.0.1:9737") {
-        Ok(listener) => {
-            drop(listener);
-            TcpListener::bind("127.0.0.1:0").unwrap()
-        }
-        Err(err) => panic!("9737 is in use: {err}"),
-    }
+static LISTENER: Mutex<Option<TcpListener>> = Mutex::new(None);
+
+fn arm_listener() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    listener
+        .set_nonblocking(true)
+        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
+    let addr = listener
+        .local_addr()
+        .unwrap_or_else(|err| panic!("local_addr: {err}"))
+        .to_string();
+    *LISTENER.lock().unwrap_or_else(|err| err.into_inner()) = Some(listener);
+    addr
 }
 
 fn wait_port(port: u16, server: &mut support::Proc) {
@@ -482,7 +550,7 @@ fn wait_port(port: u16, server: &mut support::Proc) {
             );
         }
         if start.elapsed() > Duration::from_secs(10) {
-            panic!("9737 did not open");
+            panic!("listener did not open");
         }
         thread::sleep(Duration::from_millis(20));
     }
