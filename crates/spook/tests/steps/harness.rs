@@ -36,5 +36,9 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
         .pack
         .as_ref()
         .unwrap_or_else(|| panic!("no docks table"));
-    assert_eq!(table::files(pack), world.before, "status wrote the pack");
+    assert_eq!(
+        table::files(pack),
+        world.before,
+        "the command wrote the pack"
+    );
 }

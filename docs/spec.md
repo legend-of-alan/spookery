@@ -187,7 +187,7 @@ Kernel habits do not emit speech. A player world line while `humans == 0` is ref
 
 ## Failure tokens
 
-`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET` and `SKIPPED`, plus the log word `empty_perceive`. The CLI prints the token and exits 1. The player socket sends `{"kind":"refused","code":...}`.
+`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET` and `SKIPPED`, plus the log word `empty_perceive`. The CLI prints the token and exits 1 for an engine refusal. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`.
 
 `#[from]` is not used on `Reason`. I/O in the kernel collapses to `COMMIT_CONFLICT` or `SCHEMA`, so `Reason` does not wrap `std::io::Error`. The bin has its own error with `Reason` and `Io` variants. `#[from]` is used there, and only there. Tick functions return `kernel::Reason`. A tick-cause value is not an error.
 
@@ -259,13 +259,13 @@ Sitting perceive allows `player:` and `npc:`. A missing `as`, or `as=gm`, is `UN
 
 An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and `patch_entity` are not sitting handlers. Effects come from row expansion during the tick.
 
-`spook gm` is `NOT_IN_SPEC`.
+`spook gm` is an unknown subcommand.
 
 ## Loopback and one seat
 
 One seat. A second player or a second GM is `SESSION_FULL`.
 
-The bind does not grow past loopback. `--bind 127.0.0.1` and `--bind 127.0.0.1:<port>` are the only legal values. The default listen address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens. `--as` is `NOT_IN_SPEC` before the pack opens. There is no account store.
+The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 
 ## Host monitor
 
@@ -275,9 +275,9 @@ A host monitor is not shard behavior.
 
 ## Host
 
-`spook ai-gm <pack>` sits the one GM seat and dials `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. One seat remains one seat. A second sitter gets the refusal the hello already returns, and the host exits.
+`spook ai-gm <pack>` sits the one GM seat and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. One seat remains one seat. A second sitter gets the refusal the hello already returns, and the host exits.
 
-`spook ai-gm` with no pack, or with any extra argument, is `NOT_IN_SPEC` before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
+`spook ai-gm` with no pack, or with any extra argument, is a usage error before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
 
 On start the host reads `XAI_API_KEY` and `SPOOK_GM_MODEL`. Either one missing: it writes that fact to stderr and exits 1 before it dials. `SPOOK_GM_URL` defaults to `https://api.x.ai/v1`. The key is not an argument and not a pack file.
 

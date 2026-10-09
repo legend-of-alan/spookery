@@ -218,9 +218,10 @@ mod tests {
         let saved_model = std::env::var("SPOOK_GM_MODEL").ok();
         std::env::remove_var("XAI_API_KEY");
         std::env::set_var("SPOOK_GM_MODEL", "grok-test");
-        let listener = std::net::TcpListener::bind("127.0.0.1:9737").expect("bind 9737");
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         listener.set_nonblocking(true).unwrap();
-        let err = crate::ai::sit(std::path::Path::new(".")).expect_err("missing key");
+        let addr = listener.local_addr().unwrap().to_string();
+        let err = crate::ai::sit(std::path::Path::new("."), &addr).expect_err("missing key");
         assert!(err.message.contains("XAI_API_KEY"), "{}", err.message);
         match listener.accept() {
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -228,7 +229,7 @@ mod tests {
         }
         std::env::set_var("XAI_API_KEY", "test-key");
         std::env::remove_var("SPOOK_GM_MODEL");
-        let err = crate::ai::sit(std::path::Path::new(".")).expect_err("missing model");
+        let err = crate::ai::sit(std::path::Path::new("."), &addr).expect_err("missing model");
         assert!(err.message.contains("SPOOK_GM_MODEL"), "{}", err.message);
         match listener.accept() {
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
