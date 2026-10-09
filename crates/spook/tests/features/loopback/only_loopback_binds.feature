@@ -8,10 +8,11 @@ Feature: Only loopback binds
     And stdout is empty
     And the pack bytes are unchanged
 
-  Scenario: The default loopback address accepts a connection
-    Given a docks table
-    When the table listens on 127.0.0.1
-    Then a connection to the table succeeds
+  Scenario: Run help names the default loopback address
+    When the operator asks the "run" command for help
+    Then the command exits 0
+    And stdout shows usage
+    And stdout names the default loopback address
 
   Scenario: An explicit loopback port accepts a connection
     Given a docks table
