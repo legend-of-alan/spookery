@@ -26,3 +26,16 @@ Feature: Play shows readable text
     Given a docks table
     When play joins the table with raw frames
     Then play shows protocol frames
+
+  Scenario: The resume shows the door note and the debt clock as sentences
+    Given a docks table
+    When thirteen ticks pass
+    And play joins the table on a free loopback address
+    Then play shows the door note and the debt clock as sentences
+    And play shows no protocol JSON
+
+  Scenario: Raw play keeps the resume as the raw digest
+    Given a docks table
+    When thirteen ticks pass
+    And play joins the table with raw frames
+    Then play shows the raw resume digest
