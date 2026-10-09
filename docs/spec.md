@@ -2,7 +2,7 @@
 
 This file is the only normative spec. A rule it does not state is unspecified.
 
-Spec text is CC BY 4.0. Runtime code under `/src` is AGPL-3.0-or-later.
+Spec text is CC BY 4.0. Runtime code under `/crates` is AGPL-3.0-or-later.
 
 This spec records one writer, the crate boundary, the threat list, loopback and one seat, and the rule that a host monitor is not shard behavior.
 
@@ -27,7 +27,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 
 ## One writer
 
-The shard thread is the only writer of `Now` and of `Seats`. One `std::thread` owns `Now`. `Txn` stays `!Send`, with `PhantomData<Rc<()>>` as in `src/kernel/shard.rs`. No `tokio::spawn` of a tick.
+The shard thread is the only writer of `Now` and of `Seats`. One `std::thread` owns `Now`. `Txn` stays `!Send`, with `PhantomData<Rc<()>>` as in `crates/kernel/shard.rs`. No `tokio::spawn` of a tick.
 
 The queue is a `Vec` of intents on the shard thread. It is ephemeral. A crash drops every uncommitted line. A crash cannot apply a partial tick. The queue is not a field of `now.yaml`. It is not a side file that recovery has to remember.
 
@@ -43,20 +43,20 @@ Invariant, checked by a debug assert on the shard thread: `seats.player.is_some(
 
 ## Crate boundary
 
-Six crates. A one-crate collapse is not the layout. The bin and `spookery-ai` may link a runtime.
+Three crates, all under `crates/`. `crates/kernel` is `spookery-kernel`. `crates/tick` is `spookery-tick`. `crates/spook` is package `spook`, library `spookery`, binary `spook`. Protocol, the player client, and the model client are modules of that library: `protocol`, `cli`, and `ai`. A one-crate collapse is not the layout. The `spook` package may link a runtime. The `ai` module may link an HTTP client.
 
-| Crate | May link | Must not link |
+| Crate or module | May link | Must not link |
 |---|---|---|
-| `spookery-protocol` | `serde`, `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `spookery-cli`, `spookery-ai` |
-| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, any model SDK, `spookery-tick`, `spookery-protocol`, `spookery-cli`, `spookery-ai` |
-| `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, `spookery-protocol`, `spookery-cli`, `spookery-ai` |
-| `spookery-cli` | `spookery-protocol`, `spookery-kernel` | `spookery-ai`, `reqwest`, `rmcp`, `tokio` |
-| `spookery-ai` | `spookery-protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-tick`, `spookery-cli`, `rmcp`, any model SDK |
-| bin `spookery` | `spookery-kernel`, `spookery-tick`, `spookery-protocol`, `spookery-cli`, `spookery-ai`, `tokio`, `rmcp`, `socket2`, `serde_json` | `reqwest` by name. Seat code that calls into the CLI or the AI crate. Business rules that belong in the kernel. A second tick implementation. |
+| `protocol` | `serde`, `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `cli`, `ai` |
+| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, `reqwest`, any model SDK, `spookery-tick`, the `spook` crate |
+| `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `reqwest`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, the `spook` crate |
+| `cli` | `protocol`, `spookery-kernel` | `ai`, `reqwest`, `rmcp`, `tokio` |
+| `ai` | `protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-tick`, `cli`, `rmcp`, any model SDK |
+| bin `spook` | `spookery-kernel`, `spookery-tick`, `tokio`, `rmcp`, `socket2`, `serde_json`, and its `protocol`, `cli`, and `ai` modules | `reqwest` outside `crates/spook/src/ai/`. Seat code that calls `cli` or `ai`. Business rules that belong in the kernel. A second tick implementation. |
 
-`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. `src/kernel` and `src/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, or `redis`. `src/` must not contain `langchain`, `openai`, `anthropic`, `ollama`, or `reqwest`. A comment in kernel or tick source that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`.
+`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. It reads every runtime file under `crates/kernel`, `crates/tick`, and `crates/spook/src`. `crates/kernel` and `crates/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, `redis`, `reqwest`, `langchain`, `openai`, `anthropic`, or `ollama`. `reqwest` may appear only under `crates/spook/src/ai/`. `protocol` must not contain `tokio`, `rmcp`, `reqwest`, `spookery_kernel`, `crate::cli`, or `crate::ai`. `cli` must not contain `tokio`, `rmcp`, `reqwest`, or `crate::ai`. `ai` must not contain `rmcp`, `crate::cli`, or `spookery_tick`. `seat` must not contain `crate::cli` or `crate::ai`. A comment in a scanned file that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`. An optional cargo feature may be named `ai`.
 
-Tokio in the bin is the accept loop, keepalive, and scheduler sleep. The tick function runs on the shard thread.
+Tokio in `spook` is the accept loop, keepalive, and scheduler sleep. The tick function runs on the shard thread.
 
 ## Effect envelope
 
