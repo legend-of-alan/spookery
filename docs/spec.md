@@ -255,7 +255,7 @@ One wake: the runtime sleeps `tick_every_real_seconds`, reset when a tick actual
 
 The seat's `tools/list` is the menu.
 
-Sitting perceive allows `player:` and `npc:`. Tick-profile perceive rejects a player viewer with `UNSCOPED_PERCEIVE`. A missing `as`, or `as=gm`, is `UNSCOPED_PERCEIVE`. They are two functions. Both call the perceive budget after the policy check. `firewall::allows` is the shared visibility test.
+Sitting perceive allows `player:` and `npc:`. A missing `as`, or `as=gm`, is `UNSCOPED_PERCEIVE`. Perceive calls the perceive budget after that check. `firewall::allows` is the shared visibility test.
 
 `npc_act` on the sitting returns `LLM_DISABLED` and does not call a model. The other refuse-only GM names are not handlers. An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and `patch_entity` are not sitting handlers. Effects come from row expansion during the tick.
 
@@ -334,7 +334,7 @@ The player line grammar does change. The check wire object does not. That split 
 | `patch_entity` writes canon and the live shard | Not a sitting tool. A canon byte change mismatches `pack_rev` until migrate. |
 | New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has ten variants. |
 | A meter whose stored pair is outside the definition | `SCHEMA` at load. Apply clamps when the sum fits in `i64`. `OUT_OF_RANGE` leaves the record unchanged when the sum does not. |
-| `perceive` with no `as`, or `as=gm` | `ViewerId` has no GM variant. Tick perceive rejects players. Sitting perceive rejects anything but `player:` and `npc:`. |
+| `perceive` with no `as`, or `as=gm` | `ViewerId` has no GM variant. Sitting perceive rejects anything but `player:` and `npc:`. |
 | `places.actors` edited apart from `actors.place` | Load fails `SCHEMA`. Emit rebuilds occupancy from `actors.*.place`. |
 | `state/rumors.yaml` treated as live | Ignored as a source. Recovery and the next commit rewrite it from `now.rumors`. |
 | Feature `llm` | No such feature. |
