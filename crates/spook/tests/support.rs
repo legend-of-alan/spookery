@@ -30,7 +30,7 @@ pub fn temp_pack(label: &str) -> PathBuf {
             .as_nanos()
     ));
     let _ = fs::remove_dir_all(&pack);
-    copy_dir(&manifest.join("packs/oneshot-docks"), &pack);
+    copy_dir(&manifest.join("../../packs/oneshot-docks"), &pack);
     pack
 }
 

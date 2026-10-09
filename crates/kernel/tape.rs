@@ -26,10 +26,7 @@ pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u
         .truncate(false)
         .open(&path)
         .map_err(|_| Reason::CommitConflict)?;
-    let len = file
-        .metadata()
-        .map_err(|_| Reason::CommitConflict)?
-        .len();
+    let len = file.metadata().map_err(|_| Reason::CommitConflict)?.len();
     if len > MAX_TAPE_BYTES {
         return Err(Reason::OutOfRange);
     }

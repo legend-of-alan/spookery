@@ -4,14 +4,14 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use serde_json::json;
 use spookery_kernel::canon::{self, CastKind};
 
-use crate::fail;
-use crate::model::{CompleteError, CompletionRequest, Model};
-use crate::prompt::{
+use crate::ai::fail;
+use crate::ai::model::{CompleteError, CompletionRequest, Model};
+use crate::ai::prompt::{
     from_canon, keep, parse_actions, prepare_with, push_handled, render, HandledSay, Kept, MenuRow,
     OutgoingSay, Prepared, PromptSide, Wake,
 };
-use crate::wire::{self, Seat, Status};
-use crate::HostError;
+use crate::ai::wire::{self, Seat, Status};
+use crate::ai::HostError;
 
 pub struct Watch {
     pub listening: AtomicBool,
@@ -206,7 +206,7 @@ fn run_turn<M: Model>(
 fn kept_actions(
     body: Option<String>,
     says_only: bool,
-    rule: &crate::prompt::Rule,
+    rule: &crate::ai::prompt::Rule,
     menu: &[MenuRow],
 ) -> Option<Kept> {
     let Some(text) = body else {

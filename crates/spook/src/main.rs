@@ -38,13 +38,13 @@ fn dispatch() -> Result<(), spookery::Error> {
         return dispatch_run(&args[1..]);
     }
     if args.first().is_some_and(|arg| arg == "play") {
-        return from_cli(spookery_cli::play(&args[1..]));
+        return from_cli(spookery::cli::play(&args[1..]));
     }
     if args.first().is_some_and(|arg| arg == "ai-gm") {
         if args.len() != 2 {
             return Err(spookery::Error::Reason(Reason::NotInSpec));
         }
-        if spookery_ai::sit(Path::new(&args[1])).is_err() {
+        if spookery::ai::sit(Path::new(&args[1])).is_err() {
             std::process::exit(1);
         }
         return Ok(());
@@ -52,10 +52,10 @@ fn dispatch() -> Result<(), spookery::Error> {
     Err(spookery::Error::Reason(Reason::NotInSpec))
 }
 
-fn from_cli(result: Result<(), spookery_cli::Error>) -> Result<(), spookery::Error> {
+fn from_cli(result: Result<(), spookery::cli::Error>) -> Result<(), spookery::Error> {
     result.map_err(|err| match err {
-        spookery_cli::Error::Reason(code) => spookery::Error::Reason(code),
-        spookery_cli::Error::Io(err) => spookery::Error::Io(err),
+        spookery::cli::Error::Reason(code) => spookery::Error::Reason(code),
+        spookery::cli::Error::Io(err) => spookery::Error::Io(err),
     })
 }
 

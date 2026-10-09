@@ -293,7 +293,7 @@ fn refused_tool(code: Reason) -> ToolResult {
 
 fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
     let args =
-        spookery_protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+        crate::protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
     let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
     let view = perceive_budget(shard, &as_arg, budget)?;
@@ -319,14 +319,12 @@ fn session_status_tool(
 }
 
 fn status_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Reason> {
-    let args =
-        spookery_protocol::read_status_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let args = crate::protocol::read_status_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     Ok(args.since)
 }
 
 fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Reason> {
-    let args =
-        spookery_protocol::read_commit_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let args = crate::protocol::read_commit_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     Ok(args.include_tick)
 }
 
@@ -334,8 +332,7 @@ fn queue_tool_intent(
     shard: &mut Shard,
     arguments: Option<Map<String, Value>>,
 ) -> Result<QueuedNote, Reason> {
-    let call =
-        spookery_protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let call = crate::protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let id = call.id;
     let tick_index = call.tick_index;
     let actor_id = call.actor_id;
@@ -427,12 +424,12 @@ fn parse_kind(text: &str) -> Result<ActorKind, Reason> {
     }
 }
 
-fn kernel_target(target: spookery_protocol::CallTarget) -> Target {
+fn kernel_target(target: crate::protocol::CallTarget) -> Target {
     match target {
-        spookery_protocol::CallTarget::Empty => Target::Empty,
-        spookery_protocol::CallTarget::Place(id) => Target::Place(id),
-        spookery_protocol::CallTarget::Actor(id) => Target::Actor(id),
-        spookery_protocol::CallTarget::Clock(id) => Target::Clock(id),
-        spookery_protocol::CallTarget::Rumor(id) => Target::Rumor(id),
+        crate::protocol::CallTarget::Empty => Target::Empty,
+        crate::protocol::CallTarget::Place(id) => Target::Place(id),
+        crate::protocol::CallTarget::Actor(id) => Target::Actor(id),
+        crate::protocol::CallTarget::Clock(id) => Target::Clock(id),
+        crate::protocol::CallTarget::Rumor(id) => Target::Rumor(id),
     }
 }

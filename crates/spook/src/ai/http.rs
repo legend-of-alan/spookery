@@ -2,9 +2,9 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::fail;
-use crate::model::{CompleteError, CompletionRequest, Model};
-use crate::HostError;
+use crate::ai::fail;
+use crate::ai::model::{CompleteError, CompletionRequest, Model};
+use crate::ai::HostError;
 
 pub struct Env {
     key: String,
@@ -220,7 +220,7 @@ mod tests {
         std::env::set_var("SPOOK_GM_MODEL", "grok-test");
         let listener = std::net::TcpListener::bind("127.0.0.1:9737").expect("bind 9737");
         listener.set_nonblocking(true).unwrap();
-        let err = crate::sit(std::path::Path::new(".")).expect_err("missing key");
+        let err = crate::ai::sit(std::path::Path::new(".")).expect_err("missing key");
         assert!(err.message.contains("XAI_API_KEY"), "{}", err.message);
         match listener.accept() {
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
@@ -228,7 +228,7 @@ mod tests {
         }
         std::env::set_var("XAI_API_KEY", "test-key");
         std::env::remove_var("SPOOK_GM_MODEL");
-        let err = crate::sit(std::path::Path::new(".")).expect_err("missing model");
+        let err = crate::ai::sit(std::path::Path::new(".")).expect_err("missing model");
         assert!(err.message.contains("SPOOK_GM_MODEL"), "{}", err.message);
         match listener.accept() {
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}

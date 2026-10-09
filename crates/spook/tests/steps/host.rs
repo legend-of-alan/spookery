@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
 use serde_json::json;
-use spookery_ai::{drive, parse_tool_line, CompleteError, Script, Seat, Watch};
+use spookery::ai::{drive, parse_tool_line, CompleteError, Script, Seat, Watch};
 
 use crate::support::{self, pack_arg, temp_pack};
 use crate::World;
@@ -351,7 +351,7 @@ fn with_host(label: &str, body: impl FnOnce(&Path, u16, &Script, &Watch)) {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn stop_host(handle: thread::JoinHandle<Result<(), spookery_ai::HostError>>) {
+fn stop_host(handle: thread::JoinHandle<Result<(), spookery::ai::HostError>>) {
     crate::with_live(|live| {
         live.server.take();
     });
@@ -363,7 +363,7 @@ fn start_after_gm(
     port: u16,
     script: &Script,
 ) -> (
-    thread::JoinHandle<Result<(), spookery_ai::HostError>>,
+    thread::JoinHandle<Result<(), spookery::ai::HostError>>,
     Arc<Watch>,
 ) {
     let mut last = String::new();

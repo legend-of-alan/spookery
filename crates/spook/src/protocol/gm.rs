@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::Error;
+use crate::protocol::Error;
 
 pub const GM_HELLO: &str = "gm\n";
 

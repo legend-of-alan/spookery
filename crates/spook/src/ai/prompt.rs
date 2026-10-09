@@ -764,7 +764,7 @@ mod tests {
     use super::*;
 
     fn docks() -> Canon {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../packs/oneshot-docks");
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         load_canon(&path).expect("docks canon")
     }
 

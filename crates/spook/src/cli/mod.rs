@@ -3,8 +3,8 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::Path;
 
+use crate::protocol::PlayerMessage;
 use spookery_kernel::Reason;
-use spookery_protocol::PlayerMessage;
 
 pub enum Error {
     Reason(Reason),
@@ -26,7 +26,7 @@ pub fn play(args: &[String]) -> Result<(), Error> {
     let mut stream = TcpStream::connect("127.0.0.1:9737").map_err(Error::Io)?;
     stream.set_nodelay(true).map_err(Error::Io)?;
     stream
-        .write_all(spookery_protocol::write_player_hello(&actor).as_bytes())
+        .write_all(crate::protocol::write_player_hello(&actor).as_bytes())
         .map_err(Error::Io)?;
     stream.flush().map_err(Error::Io)?;
     let mut reader = BufReader::new(stream);
@@ -130,7 +130,7 @@ fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error>
 }
 
 fn refused_code(line: &str) -> Option<String> {
-    match spookery_protocol::read_player(line) {
+    match crate::protocol::read_player(line) {
         Ok(PlayerMessage::Refused { code }) => Some(code),
         _ => None,
     }
@@ -138,7 +138,7 @@ fn refused_code(line: &str) -> Option<String> {
 
 fn is_perceive(line: &str) -> bool {
     matches!(
-        spookery_protocol::read_player(line),
+        crate::protocol::read_player(line),
         Ok(PlayerMessage::Perceive { .. })
     )
 }

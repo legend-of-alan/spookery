@@ -1,16 +1,16 @@
 //! Player lines, tape objects, `spook/event` frames, and tool results.
 //! A tape line this parser cannot read is `SCHEMA` for the whole read.
 
+use crate::protocol::{
+    ClockView as WireClock, CommitBody, FactNote, GmSay, KnownFact as WireFact, PlayerMessage,
+    QueueRow, Roll, SessionStatus, StatusPause, StatusPresence, StockView as WireStock,
+};
 use serde_json::Value;
 use spookery_kernel::check::{CheckNotice, CheckOut};
 use spookery_kernel::intent::Intent;
 use spookery_kernel::model::{Message, Now, RunState};
 use spookery_kernel::perceive::{ClockView, KnownFact, Perceive, StockView};
 use spookery_kernel::Reason;
-use spookery_protocol::{
-    ClockView as WireClock, CommitBody, FactNote, GmSay, KnownFact as WireFact, PlayerMessage,
-    QueueRow, Roll, SessionStatus, StatusPause, StatusPresence, StockView as WireStock,
-};
 
 pub struct TapeLine {
     pub seq: u64,
@@ -84,7 +84,7 @@ pub fn tape_body(tape: &TapeLine) -> String {
 }
 
 pub fn player_say_line(tape: &TapeLine) -> String {
-    spookery_protocol::write_player(&PlayerMessage::Say {
+    crate::protocol::write_player(&PlayerMessage::Say {
         from: tape.from.clone(),
         address: tape.address.clone(),
         text: tape.text.clone(),
@@ -96,39 +96,39 @@ pub fn say_value(tape: &TapeLine) -> Value {
 }
 
 pub fn say_event(tape: &TapeLine) -> Vec<u8> {
-    spookery_protocol::write_say_event(&gm_say(tape))
+    crate::protocol::write_say_event(&gm_say(tape))
 }
 
 pub fn player_queued_line(id: &str) -> String {
-    spookery_protocol::write_player(&PlayerMessage::Queued { id: id.to_string() })
+    crate::protocol::write_player(&PlayerMessage::Queued { id: id.to_string() })
 }
 
 pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
-    spookery_protocol::write_queued_event(id, actor_id, move_name)
+    crate::protocol::write_queued_event(id, actor_id, move_name)
 }
 
 pub fn player_check_line(success: bool) -> String {
-    spookery_protocol::write_player(&PlayerMessage::Check { success })
+    crate::protocol::write_player(&PlayerMessage::Check { success })
 }
 
 pub fn check_event(out: &CheckOut) -> Vec<u8> {
-    spookery_protocol::write_check_event(&roll_of(out))
+    crate::protocol::write_check_event(&roll_of(out))
 }
 
 pub fn player_resume_line(text: &str) -> String {
-    spookery_protocol::write_player(&PlayerMessage::Resume {
+    crate::protocol::write_player(&PlayerMessage::Resume {
         text: text.to_string(),
     })
 }
 
 pub fn player_refused_line(code: &str) -> String {
-    spookery_protocol::write_player(&PlayerMessage::Refused {
+    crate::protocol::write_player(&PlayerMessage::Refused {
         code: code.to_string(),
     })
 }
 
 pub fn player_perceive_line(view: &Perceive) -> String {
-    spookery_protocol::write_player(&player_view(view))
+    crate::protocol::write_player(&player_view(view))
 }
 
 pub fn perceive_value(view: &Perceive) -> Value {
@@ -153,15 +153,15 @@ pub fn write_checks(value: &mut Value, notices: &[CheckNotice]) {
             CheckNotice::Refused { .. } => None,
         })
         .collect::<Vec<_>>();
-    spookery_protocol::set_checks(value, &rolls);
+    crate::protocol::set_checks(value, &rolls);
 }
 
 pub fn queued_ack(id: &str) -> Value {
-    spookery_protocol::queued_ack(id)
+    crate::protocol::queued_ack(id)
 }
 
 pub fn code_result(code: &str) -> Value {
-    spookery_protocol::code_result(code)
+    crate::protocol::code_result(code)
 }
 
 pub fn session_status(

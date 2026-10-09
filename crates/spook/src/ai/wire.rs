@@ -6,9 +6,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
-use crate::fail;
-use crate::prompt::Wake;
-use crate::HostError;
+use crate::ai::fail;
+use crate::ai::prompt::Wake;
+use crate::ai::HostError;
 
 pub struct CallOutcome {
     pub raw: String,
@@ -46,9 +46,9 @@ impl Seat {
         let read = write.try_clone().map_err(|err| fail(err.to_string()))?;
         let hello = format!(
             "{}{}{}",
-            spookery_protocol::GM_HELLO,
-            spookery_protocol::INITIALIZE_LINE,
-            spookery_protocol::INITIALIZED_LINE
+            crate::protocol::GM_HELLO,
+            crate::protocol::INITIALIZE_LINE,
+            crate::protocol::INITIALIZED_LINE
         );
         write
             .write_all(hello.as_bytes())
@@ -86,7 +86,7 @@ impl Seat {
         if name == "commit_turn" {
             *self.shared.commit_id.lock().expect("commit id") = Some(id);
         }
-        let line = spookery_protocol::write_tool_call(&spookery_protocol::ToolCall {
+        let line = crate::protocol::write_tool_call(&crate::protocol::ToolCall {
             id,
             name: name.to_string(),
             arguments,
@@ -149,7 +149,7 @@ impl Drop for Seat {
 }
 
 pub fn parse_tool_line(raw: &str) -> Result<CallOutcome, HostError> {
-    let body = spookery_protocol::read_tool_result(raw).map_err(|_| fail(raw.to_string()))?;
+    let body = crate::protocol::read_tool_result(raw).map_err(|_| fail(raw.to_string()))?;
     let refused = body.get("code").is_some();
     Ok(CallOutcome {
         raw: raw.to_string(),
@@ -179,13 +179,13 @@ fn read_loop(mut read: TcpStream, tx: mpsc::Sender<Incoming>, shared: Arc<Shared
 }
 
 fn classify(line: &str, shared: &Shared) -> Option<Incoming> {
-    let frame = match spookery_protocol::read_frame(line) {
+    let frame = match crate::protocol::read_frame(line) {
         Ok(frame) => frame,
         Err(_) => return Some(Incoming::Bad(line.to_string())),
     };
     let gen = shared.gen.load(Ordering::Acquire);
     match frame {
-        spookery_protocol::Frame::Result { id } => {
+        crate::protocol::Frame::Result { id } => {
             let commit = *shared.commit_id.lock().expect("commit id");
             if commit == Some(id) {
                 shared.gen.fetch_add(1, Ordering::Release);
@@ -196,7 +196,7 @@ fn classify(line: &str, shared: &Shared) -> Option<Incoming> {
                 raw: line.to_string(),
             })
         }
-        spookery_protocol::Frame::Say {
+        crate::protocol::Frame::Say {
             from,
             seq,
             address,
@@ -219,8 +219,8 @@ fn classify(line: &str, shared: &Shared) -> Option<Incoming> {
                 None
             }
         }
-        spookery_protocol::Frame::Queued => Some(Incoming::Wake(Wake::Queued { gen })),
-        spookery_protocol::Frame::Dropped => None,
+        crate::protocol::Frame::Queued => Some(Incoming::Wake(Wake::Queued { gen })),
+        crate::protocol::Frame::Dropped => None,
     }
 }
 
@@ -264,7 +264,7 @@ pub fn status_fields(body: &Value) -> Option<Status> {
         .as_array()?
         .iter()
         .map(|item| {
-            Some(crate::prompt::QueueItem {
+            Some(crate::ai::prompt::QueueItem {
                 id: item.get("id")?.as_str()?.to_string(),
                 actor_id: item.get("actor_id")?.as_str()?.to_string(),
                 move_name: item.get("move")?.as_str()?.to_string(),
@@ -292,12 +292,12 @@ pub struct Status {
     pub pack_rev: String,
     pub last_seq: u64,
     pub present: Vec<String>,
-    pub queued: Vec<crate::prompt::QueueItem>,
-    pub events: Vec<crate::prompt::HandledSay>,
+    pub queued: Vec<crate::ai::prompt::QueueItem>,
+    pub events: Vec<crate::ai::prompt::HandledSay>,
 }
 
-fn say_from_event(value: &Value) -> Option<crate::prompt::HandledSay> {
-    Some(crate::prompt::HandledSay {
+fn say_from_event(value: &Value) -> Option<crate::ai::prompt::HandledSay> {
+    Some(crate::ai::prompt::HandledSay {
         seq: value.get("seq").and_then(Value::as_u64),
         from: value.get("from")?.as_str()?.to_string(),
         address: value.get("address")?.as_str()?.to_string(),
@@ -315,7 +315,7 @@ fn string_list(value: &Value) -> Option<Vec<String>> {
         .collect()
 }
 
-pub fn rolls_of(body: &Value) -> Vec<crate::prompt::Roll> {
+pub fn rolls_of(body: &Value) -> Vec<crate::ai::prompt::Roll> {
     let Some(checks) = body.get("checks").and_then(Value::as_array) else {
         return Vec::new();
     };
@@ -337,7 +337,7 @@ pub fn rolls_of(body: &Value) -> Vec<crate::prompt::Roll> {
         let Some(success) = item.get("success").and_then(Value::as_bool) else {
             continue;
         };
-        out.push(crate::prompt::Roll {
+        out.push(crate::ai::prompt::Roll {
             faces,
             stat,
             total,

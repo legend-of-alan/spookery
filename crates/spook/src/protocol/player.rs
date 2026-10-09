@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::Error;
+use crate::protocol::Error;
 
 /// A line on the player socket. No GM field, and no roll faces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

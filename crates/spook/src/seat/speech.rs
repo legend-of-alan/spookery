@@ -66,7 +66,7 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
 pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
-    let call = spookery_protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let call = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let address = call.address;
     let place = call.place;
     let actor = call.actor;

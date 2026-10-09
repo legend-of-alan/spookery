@@ -57,7 +57,7 @@ fn temp_pack(label: &str) -> PathBuf {
     let pack = scratch(label);
     let _ = fs::remove_dir_all(&pack);
     copy_dir(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks"),
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks"),
         &pack,
     );
     pack
@@ -338,7 +338,7 @@ fn catchup_cap() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = scratch("catchup");
     let _ = fs::remove_dir_all(&pack);
-    let rules = manifest.join("packs/oneshot-docks/rules");
+    let rules = manifest.join("../../packs/oneshot-docks/rules");
     write_text(
         &pack.join("pack.yaml"),
         "\
@@ -653,7 +653,7 @@ fn replay_byte_compares_now() {
     let _ = fs::remove_dir_all(&start);
     let _ = fs::remove_dir_all(&played);
     copy_dir(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks"),
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks"),
         &start,
     );
     copy_dir(&start, &played);
@@ -679,7 +679,7 @@ fn budget_caps() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = scratch("budget");
     let _ = fs::remove_dir_all(&pack);
-    let rules = manifest.join("packs/oneshot-docks/rules");
+    let rules = manifest.join("../../packs/oneshot-docks/rules");
     write_text(
         &pack.join("pack.yaml"),
         "\
@@ -900,7 +900,7 @@ fn strip_bodies_and_hidden_string_lint() {
     );
     assert!(!perceive.contains(LEDGER));
 
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
+    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
     assert!(spookery_kernel::lint::lint(&fixture).unwrap().is_empty());
     let owner = temp_pack("lint-owner");
     let mut body = fs::read_to_string(owner.join("cast/mira.md")).unwrap();

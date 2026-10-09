@@ -75,4 +75,3 @@ fn the_tick_log_records_the_player_wait(world: &mut World) {
         .count();
     assert_eq!(waits, 1, "{text}");
 }
-

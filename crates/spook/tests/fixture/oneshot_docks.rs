@@ -2,7 +2,7 @@ use std::fs;
 use std::path::PathBuf;
 
 pub(crate) fn docks_save_round_trips() {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
     let rev =
         spookery_kernel::canon::pack_rev(&root).unwrap_or_else(|err| panic!("pack_rev: {err}"));
 

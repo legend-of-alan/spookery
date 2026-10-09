@@ -8,7 +8,7 @@ use crate::World;
 use super::table;
 
 fn docks_rev() -> String {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("packs/oneshot-docks");
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
     spookery_kernel::canon::pack_rev(&root).unwrap()
 }
 
