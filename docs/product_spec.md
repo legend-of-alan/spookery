@@ -83,9 +83,11 @@ Primary user is **not** “D&D players at large.”
 | Priority | User | Job |
 |---|---|---|
 | 1 | Engine / tool builders, including us | Run and extend packs |
-| 2 | World authors (agent-native first) | Write a folder, press Play, invite 2–8 friends, leave it ticking |
+| 2 | World authors (agent-native first) | Write a folder, press Play, sit one GM (you or an AI) and up to three players, leave it ticking |
 | 3 | Coding agents (Claude Code, Codex, etc.) | Edit packs and call MCP tools |
 | 4 | Players in those worlds | Type what they do; do not see YAML |
+
+Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor). The format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint (`spook check` is not built yet, #24; `spook check --json` is not built yet, #26; generated schemas are not built yet, #29).
 
 Anti-users: AAA MMO players, people who want a visual VTT on day one, people who want “ChatGPT with a tavern skin,” people shopping for a Friday-night AI RPG to replace Voyage.
 
@@ -158,7 +160,8 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - Kernel: checks, resources, knowledge firewall
 - Shard tick loop
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
-- Terminal play: one player seat and one GM seat
+- Terminal play: the target is one GM seat and up to three player seats (#28). Today's seat law is still one player seat.
+- Rules primitives able to express a 5e-style game in a pack, with no 5e-specific code and no SRD text. The sample pack is not built yet (#25)
 - Conformance tests
 
 ### Out of scope
@@ -170,7 +173,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - Visual VTT, battle maps
 - LLM on idle ticks
 - Marketplace, accounts, billing UI (price the shard on paper; do not build the store)
-- Multi-ruleset soup (no Fate + COC + 5e on day one)
+- Bundled multi-system content (Fate, COC, and 5e together) and SRD text
 - Using the word “D&D” as product branding (SRD/ORC or original rules only)
 - A web door, or any bind that is not loopback
 
@@ -227,9 +230,9 @@ Idle ticks are kernel-only. The world keeps moving after everyone logs off. The 
 
 The bundled one-shot (`packs/oneshot-docks/`) ships a **tiny original** ruleset, not an SRD or ORC subset.
 
-Why: the work is proving a referee and a pack, not shipping a well-known game. The product does not brand as D&D. An SRD subset pulls in license text, skill lists, and combat gravity the docks fixture does not need. A second author adds a move in the pack, not by reading 5e.
+Why: the work is proving a referee and a pack, not shipping a well-known game. The product does not brand as D&D. An SRD subset pulls in license text, skill lists, and combat gravity the docks fixture does not need. A second author adds a move in the pack. The rules primitives must express a 5e-style game, with no 5e-specific code and no SRD text (#25).
 
-Do not import ability-score blocks, spell lists, or XP.
+The docks fixture does not import ability-score blocks, spell lists, or XP.
 
 An SRD/ORC **pack** may exist later as a different `rules/` folder. The runtime does not load two rulesets at once.
 
