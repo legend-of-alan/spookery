@@ -77,6 +77,7 @@ impl Reason {
             "SCHEMA" => Reason::Schema,
             "NOT_IN_SPEC" => Reason::NotInSpec,
             "SESSION_FULL" => Reason::SessionFull,
+            "SEAT_TAKEN" => Reason::SeatTaken,
             "MISSING_ITEM" => Reason::MissingItem,
             _ => return None,
         })
@@ -98,3 +99,71 @@ impl fmt::Display for Reason {
 }
 
 impl std::error::Error for Reason {}
+
+#[cfg(test)]
+mod tests {
+    use super::Reason;
+
+    const ALL: [Reason; 22] = [
+        Reason::IllegalClass,
+        Reason::IllegalKnowledge,
+        Reason::OutOfRange,
+        Reason::Budget,
+        Reason::PausedClock,
+        Reason::UnknownKey,
+        Reason::ViewerMismatch,
+        Reason::KernelOnPlayer,
+        Reason::Ineligible,
+        Reason::NoProfile,
+        Reason::ActorMismatch,
+        Reason::TableEmpty,
+        Reason::PackRevMismatch,
+        Reason::UnknownMove,
+        Reason::UnscopedPerceive,
+        Reason::CommitConflict,
+        Reason::HandEdit,
+        Reason::Schema,
+        Reason::NotInSpec,
+        Reason::SessionFull,
+        Reason::SeatTaken,
+        Reason::MissingItem,
+    ];
+
+    /// A new variant fails to compile here until it is added to `ALL`.
+    fn listed(reason: Reason) -> bool {
+        match reason {
+            Reason::IllegalClass
+            | Reason::IllegalKnowledge
+            | Reason::OutOfRange
+            | Reason::Budget
+            | Reason::PausedClock
+            | Reason::UnknownKey
+            | Reason::ViewerMismatch
+            | Reason::KernelOnPlayer
+            | Reason::Ineligible
+            | Reason::NoProfile
+            | Reason::ActorMismatch
+            | Reason::TableEmpty
+            | Reason::PackRevMismatch
+            | Reason::UnknownMove
+            | Reason::UnscopedPerceive
+            | Reason::CommitConflict
+            | Reason::HandEdit
+            | Reason::Schema
+            | Reason::NotInSpec
+            | Reason::SessionFull
+            | Reason::SeatTaken
+            | Reason::MissingItem => ALL.contains(&reason),
+        }
+    }
+
+    #[test]
+    fn every_token_round_trips() {
+        for reason in ALL {
+            assert!(listed(reason));
+            assert_eq!(Reason::from_token(reason.token()), Some(reason));
+        }
+        assert_eq!(Reason::from_token("SEAT_TAKEN"), Some(Reason::SeatTaken));
+        assert_eq!(Reason::from_token("seat_taken"), None);
+    }
+}
