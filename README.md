@@ -1,6 +1,6 @@
 # Spookery
 
-Spookery is a generic RPG referee engine. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and one player walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. The crate version is `0.0.0`, there are no releases, and this tree is pre-v0.1.
+Spookery is a generic RPG referee engine. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and up to three players walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. The crate version is `0.0.0`, there are no releases, and this tree is pre-v0.1.
 
 ## Build from source
 
@@ -43,7 +43,16 @@ Terminal 2:
 spook play /tmp/docks
 ```
 
-You sit the pack's start character. The client prints readable text. This is the opening of a session, then one line of speech:
+You sit the pack's start character, `pc_rowan`. `--as player:<id>` sits that character instead. The docks pack has three: `pc_rowan` in the shop, and `pc_harbormouse` and `pc_wren` on the street.
+
+```sh
+spook play /tmp/docks --as player:pc_harbormouse
+spook play /tmp/docks --as player:pc_wren
+```
+
+A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
+
+The client prints readable text. This is the opening of a session, then one line of speech:
 
 ```text
 While you were away:
@@ -74,7 +83,7 @@ grit
 
 The first word is the verb. `say` plus the words after it is speech at the table, and it does not tick. `travel` takes one place id. `travel docks_street` leaves the shop for the street, and the client prints `You are in Docks street.` `wait` and `grit` take no further words. `grit` is the pack's check, 2d6 plus the grit meter. The client prints `Your roll succeeded.` or `Your roll failed.`
 
-With no GM seated, `travel`, `wait`, and `grit` each commit one tick by themselves. Nothing narrates, and the line is not held for someone else to commit. The table is one player seat and one GM seat. A second `spook play`, while the first is still sitting, exits 1 and prints `The table is full. [SESSION_FULL]`.
+With no GM seated, `travel`, `wait`, and `grit` each commit one tick by themselves. Nothing narrates, and the line is not held for someone else to commit. Each seated player does that on their own line. With a GM seated, the lines wait, and one commit plays them in the order they were queued.
 
 `--addr` sets the loopback address for every command. The default is `127.0.0.1:9737`. Passing `127.0.0.1` alone means that same port. Any other host is refused before the pack opens.
 

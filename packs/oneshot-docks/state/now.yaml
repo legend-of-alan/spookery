@@ -1,6 +1,6 @@
 schema: now
 shard_id: docks-001
-pack_rev: blake2s:0d453a6bb039ba1edefb62df639758fd01241a8dbd64744ab91c3ed1604b5aa2
+pack_rev: blake2s:50e42acd28a9eb8f5046e2aea9d3117222d8777a3c1343e50af8252ae6d867b6
 state_rev: 0
 tick_index: 0
 world_time: 1080
@@ -23,6 +23,8 @@ places:
     notes: []
     actors:
       - bram
+      - pc_harbormouse
+      - pc_wren
   mira_rooms:
     stock: {}
     notes: []
@@ -84,9 +86,37 @@ actors:
       last_act_tick: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
+  pc_harbormouse:
+    kind: pc
+    place: docks_street
+    flags: []
+    busy: false
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    inventory: []
+    known_facts: []
   pc_rowan:
     kind: pc
     place: docks_shop
+    flags: []
+    busy: false
+    meters:
+      grit:
+        base: 1
+        offset: 0
+      rest:
+        base: 3
+        offset: 0
+    inventory: []
+    known_facts: []
+  pc_wren:
+    kind: pc
+    place: docks_street
     flags: []
     busy: false
     meters:

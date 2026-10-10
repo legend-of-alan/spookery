@@ -10,10 +10,17 @@ use spookery_kernel::model::Now;
 use crate::support::{self, Proc};
 use crate::World;
 
+pub struct Seated {
+    pub actor_id: String,
+    pub write: TcpStream,
+    pub text: Arc<Mutex<String>>,
+}
+
 pub struct Live {
     pub port: u16,
     pub player_write: Option<TcpStream>,
     pub player_text: Arc<Mutex<String>>,
+    pub players: Vec<Seated>,
     pub gm_write: Option<TcpStream>,
     pub gm_text: Arc<Mutex<String>>,
     pub opened_now: Vec<u8>,
@@ -84,6 +91,7 @@ pub fn listen(pack: &Path, bind: &str, port: u16) {
         port,
         player_write: None,
         player_text: Arc::new(Mutex::new(String::new())),
+        players: Vec::new(),
         gm_write: None,
         gm_text: Arc::new(Mutex::new(String::new())),
         opened_now: opened_now.clone(),
@@ -94,14 +102,29 @@ pub fn listen(pack: &Path, bind: &str, port: u16) {
 }
 
 pub fn seat_player(pack: &Path) {
+    seat_actor(pack, "pc_rowan");
+}
+
+pub fn seat_actor(pack: &Path, actor_id: &str) {
     let port = crate::with_live(|live| live.port);
-    let (write, text) = connect_player(port);
+    let (write, text) = connect_actor(port, actor_id);
     let seated_now =
         fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
     let seated_rev = now_of(pack).state_rev;
     crate::with_live(|live| {
-        live.player_write = Some(write);
-        live.player_text = text;
+        if live.player_write.is_none() {
+            live.player_write = Some(
+                write
+                    .try_clone()
+                    .unwrap_or_else(|err| panic!("clone player: {err}")),
+            );
+            live.player_text = Arc::clone(&text);
+        }
+        live.players.push(Seated {
+            actor_id: actor_id.to_string(),
+            write,
+            text,
+        });
         live.seated_now = seated_now;
         live.seated_rev = seated_rev;
     });
@@ -182,6 +205,76 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
     }
 }
 
+pub fn gm_text() -> String {
+    let slot = crate::with_live(|live| Arc::clone(&live.gm_text));
+    support::text_of(&slot)
+}
+
+pub fn actor_text(actor_id: &str) -> String {
+    let slot = crate::with_live(|live| {
+        Arc::clone(
+            &live
+                .players
+                .iter()
+                .find(|player| player.actor_id == actor_id)
+                .unwrap_or_else(|| panic!("no seat for {actor_id}"))
+                .text,
+        )
+    });
+    support::text_of(&slot)
+}
+
+pub fn actor_send(actor_id: &str, line: &str, needle: &str) -> String {
+    let (slot, mark) = crate::with_live(|live| {
+        let player = live
+            .players
+            .iter_mut()
+            .find(|player| player.actor_id == actor_id)
+            .unwrap_or_else(|| panic!("no seat for {actor_id}"));
+        let mark = support::text_of(&player.text).len();
+        writeln!(player.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
+        player
+            .write
+            .flush()
+            .unwrap_or_else(|err| panic!("flush: {err}"));
+        (Arc::clone(&player.text), mark)
+    });
+    wait_suffix(&slot, mark, needle)
+}
+
+pub fn close_actor(actor_id: &str) {
+    crate::with_live(|live| {
+        let player = live
+            .players
+            .iter_mut()
+            .find(|player| player.actor_id == actor_id)
+            .unwrap_or_else(|| panic!("no seat for {actor_id}"));
+        writeln!(player.write, "close").unwrap_or_else(|err| panic!("close: {err}"));
+        player
+            .write
+            .flush()
+            .unwrap_or_else(|err| panic!("flush: {err}"));
+    });
+}
+
+pub fn wait_humans(pack: &Path, expected: u32) {
+    let start = Instant::now();
+    let path = pack.join("state/now.yaml");
+    loop {
+        if let Ok(text) = fs::read_to_string(&path) {
+            if let Ok(now) = spookery_kernel::codec::load_now(&text) {
+                if now.presence.humans == expected {
+                    return;
+                }
+            }
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("humans did not become {expected}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 pub fn second_hello(line: &str) -> String {
     let port = crate::with_live(|live| live.port);
     let mut stream = connect(port);
@@ -255,10 +348,10 @@ fn connect(port: u16) -> TcpStream {
     }
 }
 
-fn connect_player(port: u16) -> (TcpStream, Arc<Mutex<String>>) {
+fn connect_actor(port: u16, actor_id: &str) -> (TcpStream, Arc<Mutex<String>>) {
     let mut stream = connect(port);
     let text = spawn_reader(&stream);
-    writeln!(stream, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
+    writeln!(stream, "player:{actor_id}").unwrap_or_else(|err| panic!("hello: {err}"));
     stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     wait_text(&text, "\"kind\":\"perceive\"");
     (stream, text)

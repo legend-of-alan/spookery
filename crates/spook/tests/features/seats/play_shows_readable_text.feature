@@ -18,7 +18,7 @@ Feature: Play shows readable text
     Given a docks table with a seated player
     When another play joins that table
     Then the command exits 1
-    And stderr shows "The table is full. [SESSION_FULL]"
+    And stderr shows "That character is already taken. [SEAT_TAKEN]"
     And stderr has no protocol JSON
     And stdout is empty
 

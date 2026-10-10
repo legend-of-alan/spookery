@@ -101,6 +101,7 @@ pub struct World {
     pub player_added: String,
     pub now_bytes: Vec<u8>,
     pub play: Option<support::Proc>,
+    pub plays: Vec<support::Proc>,
 }
 
 #[tokio::main]

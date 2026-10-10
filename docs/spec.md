@@ -11,12 +11,12 @@ The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and 
 No releases yet. No compatibility guarantees.
 
 - A generic RPG referee engine. Authors write a pack and host it like a private server.
-- One GM seat (AI or human) and 1 to 3 player seats. A 4th player gets `SESSION_FULL`. That seat model is not built yet (#28). Today's seat law (rule 13) is still one player seat and one GM seat until #28 lands.
+- One GM seat (AI or human) and 1 to 3 player seats. Each player sits a distinct pack PC. A 4th player gets `SESSION_FULL`. A hello for a PC another seat holds gets `SEAT_TAKEN`. That seat model is built.
 - Players walk around and take basic actions.
 - Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor), so the format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint (`spook check`, `spook check --json`, and generated schemas later). `spook check` is not built yet (#24). `spook check --json` is not built yet (#26). Generated schemas are not built yet (#29).
 - The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. The 5e-style sample pack is not built yet (#25).
 
-This spec records one writer, the crate boundary, the threat list, loopback and one seat, and the rule that a host monitor is not shard behavior.
+This spec records one writer, the crate boundary, the threat list, loopback and the seat cap, and the rule that a host monitor is not shard behavior.
 
 ## Referee rules
 
@@ -34,8 +34,8 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 10. **Eligibility and habits.** Both run before a kernel habit intent exists. An ineligible NPC produces no habit intent. A player-sourced intent is not a habit intent.
 11. **Failure tokens.** Each token has one meaning. `NOT_OWNER` and `LIVE_ONLY` are not tokens.
 12. **Speech versus queue.** Speech appends to the tape. It is not a row, it does not enter the intent queue, and it does not tick.
-13. **Seat law.** One player seat and one GM seat. The seat's `tools/list` is the menu.
-14. **Rounds.** With no GM, the runtime queues and commits one live tick. With a GM seated, the line waits for `commit_turn`.
+13. **Seat law.** One GM seat and up to three player seats. Each player seat holds a distinct pack PC. The cap of three is the engine's, not a pack setting. A fourth player hello is `SESSION_FULL`, checked before any other player-hello refusal. A hello for a PC another seat holds is `SEAT_TAKEN`. A second GM is `SESSION_FULL`. The seat's `tools/list` is the menu.
+14. **Rounds.** With no GM, each player line queues and commits its own tick. With a GM seated, every player's lines queue, and one `commit_turn` commits them in queue order.
 
 ## One writer
 
@@ -49,9 +49,9 @@ The queue is a `Vec` of intents on the shard thread. It is ephemeral. A crash dr
 
 `append_session` takes the session lock and never a `Txn`. `commit_presence` takes the shard lock and never a `Txn`.
 
-`Seats` is the set of live socket senders plus a process-local session counter. It is not a second presence document. The durable source of who is at the table is `Now.presence`, and that struct is only `humans` and `actors_present`. Session ids are not in it. The shard thread is the only writer of both `Seats` and `Now`. A player hello or drop that changes `humans` or `actors_present` calls `commit_presence` before the handler returns. A GM hello does not change those fields and does not write `now.yaml`.
+`Seats` is one GM seat and up to three player seats, plus a process-local session counter. Each player seat is one live socket bound to one pack PC. The cap of three is a constant in the seat code. It is not a pack setting. `Seats` is not a second presence document. The durable source of who is at the table is `Now.presence`, and that struct is only `humans` and `actors_present`. Session ids are not in it. The shard thread is the only writer of both `Seats` and `Now`. A player hello or drop that changes `humans` or `actors_present` calls `commit_presence` once before the handler returns. A drop releases only that seat. A GM hello does not change those fields and does not write `now.yaml`.
 
-Invariant, checked by a debug assert on the shard thread: `seats.player.is_some()` iff `presence.actors_present` contains the seated PC and `presence.humans` is 1. The assert is debug-only. It is not a library `unwrap`. Startup repair is `clear_crashed`. `listen` binds, then the shard thread opens the shard and, if `humans != 0` or `actors_present` is non-empty while `Seats` is empty, `commit_presence` writes zeros.
+Invariant, checked by a debug assert on the shard thread: `presence.humans` equals the number of held player seats, and `presence.actors_present` is exactly the set of those PCs. The assert is debug-only. It is not a library `unwrap`. Startup repair is `clear_crashed`. `listen` binds, then the shard thread opens the shard and, if `humans != 0` or `actors_present` is non-empty while `Seats` is empty, `commit_presence` writes zeros.
 
 ## Crate boundary
 
@@ -217,7 +217,9 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 
 `NOT_OWNER` and `LIVE_ONLY` are not variants. Nothing emits them.
 
-Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `MISSING_ITEM`.
+Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `SEAT_TAKEN`, `MISSING_ITEM`.
+
+`SEAT_TAKEN` is a hello for a PC another player seat already holds. `SESSION_FULL` is a fourth player hello, or a second GM. The fourth-player check runs before the held-PC check.
 
 `NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`. `EffectClass` has seven variants.
 
@@ -270,9 +272,9 @@ An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and 
 
 `spook gm` is an unknown subcommand.
 
-## Loopback and one seat
+## Loopback
 
-One seat. A second player or a second GM is `SESSION_FULL`.
+A fourth player hello is `SESSION_FULL`. A hello for a PC another seat holds is `SEAT_TAKEN`. A second GM is `SESSION_FULL`.
 
 The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 
@@ -284,9 +286,9 @@ A host monitor is not shard behavior.
 
 ## Player client
 
-`spook play <pack>` sits the player seat and dials `--addr`. `--as player:<id>` picks the actor. Without it, the client sits the pack's start PC. The player socket wire is unchanged: the client only changes how it prints frames.
+`spook play <pack>` sits a player seat and dials `--addr`. `--as player:<id>` picks the actor. Without it, the client sits the pack's start PC. Each client holds one distinct PC. The player socket wire is unchanged: the client only changes how it prints frames.
 
-By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.` or `Your roll failed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: `npc:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
+By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.` or `Your roll failed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]` or `That character is already taken. [SEAT_TAKEN]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: `npc:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
 
 `spook play --raw` prints each protocol frame as one JSON line on stdout, as the socket sent it. A `refused` frame prints only its token on stderr.
 
@@ -294,7 +296,7 @@ A refusal before the first `perceive` exits 1. After the first `perceive`, a ref
 
 ## Host
 
-`spook ai-gm <pack>` sits the one GM seat and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. One seat remains one seat. A second sitter gets the refusal the hello already returns, and the host exits.
+`spook ai-gm <pack>` sits the one GM seat and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. A second GM gets the refusal the hello already returns, and the host exits.
 
 `spook ai-gm` with no pack, or with any extra argument, is a usage error before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
 
@@ -359,7 +361,7 @@ The player line grammar does change. The check wire object does not. That split 
 | `rand::thread_rng` or a hand-rolled die | `die_face` is Blake2s. One copy, in `check.rs`. |
 | Markdown body used as a stock count or a hidden fact | `strip_body` and `lint`. |
 | A second snapshot beside `now.yaml` | Forbidden. One emit path. |
-| Non-loopback bind, accounts, second GM | `NOT_IN_SPEC`, no account store, `SESSION_FULL`. |
+| Non-loopback bind, accounts, second GM, fourth player, held PC | `NOT_IN_SPEC` for a non-loopback bind. No account store. `SESSION_FULL` for a second GM or a fourth player. `SEAT_TAKEN` for a held PC. |
 | Hidden fact in a perceive body | `allows` plus lint. |
 
 Privacy: the pack is local. There is no account, no connection secret, and no telemetry. The tape holds table speech on disk under the pack. That is the product log. The tape file stays on disk. `spook ai-gm` sends table text off the machine only as the body of its chat-completions POST: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up.
