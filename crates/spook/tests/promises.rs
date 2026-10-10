@@ -26,6 +26,9 @@ mod checks;
 #[path = "steps/cli.rs"]
 mod cli;
 
+#[path = "steps/check.rs"]
+mod check;
+
 #[path = "steps/rows.rs"]
 mod rows;
 

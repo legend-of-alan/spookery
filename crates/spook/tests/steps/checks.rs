@@ -356,7 +356,7 @@ fn stamp(pack: &Path) {
     let mut now = spookery_kernel::codec::load_now(
         &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
     )
-    .unwrap_or_else(|err| panic!("load now: {err}"));
+    .unwrap_or_else(|err| panic!("load now: {err:?}"));
     now.pack_rev =
         spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
     fs::write(

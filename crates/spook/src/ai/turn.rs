@@ -38,7 +38,8 @@ pub fn drive<M: Model>(
     watch: &Watch,
 ) -> Result<(), HostError> {
     let (menu, kinds) = {
-        let canon = canon::load_canon(pack).map_err(|err| fail(err.to_string()))?;
+        let canon = canon::load_canon(pack)
+            .map_err(|err| fail(spookery_kernel::reason_of(err).to_string()))?;
         from_canon(&canon)
     };
     let rev = canon::pack_rev(pack).map_err(|err| fail(err.to_string()))?;

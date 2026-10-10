@@ -419,7 +419,7 @@ fn seat_three(pack: &std::path::Path) {
 fn read_now(pack: &std::path::Path) -> spookery_kernel::model::Now {
     let text = fs::read_to_string(pack.join("state/now.yaml"))
         .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
-    spookery_kernel::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err}"))
+    spookery_kernel::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err:?}"))
 }
 
 fn store_now(pack: &std::path::Path, mut now: spookery_kernel::model::Now) {

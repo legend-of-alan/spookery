@@ -1,7 +1,8 @@
 use std::fs;
 use std::path::Path;
 
-use crate::canon::load_canon;
+use crate::canon::{load_canon, Canon};
+use crate::diagnostic::{reason_of, schema, Diagnostic};
 use crate::error::Reason;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -13,7 +14,45 @@ pub struct LintHit {
 /// Hidden fact texts found as case-sensitive substrings of a Markdown body.
 /// An empty vec is a clean pack.
 pub fn lint(root: &Path) -> Result<Vec<LintHit>, Reason> {
-    let canon = load_canon(root)?;
+    let canon = load_canon(root).map_err(reason_of)?;
+    let (leaks, problems) = scan(root, &canon);
+    if !problems.is_empty() {
+        return Err(reason_of(problems));
+    }
+    Ok(leaks
+        .into_iter()
+        .map(|leak| LintHit {
+            path: leak.path,
+            text: leak.text,
+        })
+        .collect())
+}
+
+/// Hidden-fact sentences found in Markdown bodies, plus files the scan could not read.
+pub fn body_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
+    let (leaks, mut problems) = scan(root, canon);
+    for leak in leaks {
+        let mut diag = Diagnostic::new(
+            &leak.path,
+            "HIDDEN_FACT_IN_BODY",
+            &format!("hidden fact '{}' is in the body", leak.text),
+            "remove that sentence from the prose, or set hidden: false",
+        );
+        if let Some(line) = leak.line {
+            diag = diag.at_line(line, None);
+        }
+        problems.push(diag);
+    }
+    problems
+}
+
+struct Leak {
+    path: String,
+    line: Option<u32>,
+    text: String,
+}
+
+fn scan(root: &Path, canon: &Canon) -> (Vec<Leak>, Vec<Diagnostic>) {
     let mut needles: Vec<String> = canon
         .facts
         .values()
@@ -24,22 +63,53 @@ pub fn lint(root: &Path) -> Result<Vec<LintHit>, Reason> {
     needles.dedup();
 
     let mut files = Vec::new();
-    collect_markdown(root, root, &mut files)?;
+    let mut problems = Vec::new();
+    if let Err(reason) = collect_markdown(root, root, &mut files) {
+        problems.push(
+            schema(
+                "pack",
+                "a Markdown file could not be read",
+                "check that cast/ and world/ are readable UTF-8",
+            )
+            .with_path(reason.token()),
+        );
+    }
     files.sort_by(|left, right| left.0.cmp(&right.0));
 
-    let mut hits = Vec::new();
+    let mut leaks = Vec::new();
     for (rel, text) in files {
-        let body = markdown_body(&text)?;
-        for needle in &needles {
-            if body.contains(needle) {
-                hits.push(LintHit {
-                    path: rel.clone(),
-                    text: needle.clone(),
-                });
+        let body = match markdown_body(&text) {
+            Ok(body) => body,
+            Err(_) => {
+                problems.push(
+                    schema(
+                        &rel,
+                        "this Markdown file has no frontmatter fence",
+                        "wrap the header in --- lines",
+                    )
+                    .at_line(1, Some(1)),
+                );
+                continue;
             }
+        };
+        let body_at = text.find(body).unwrap_or(0);
+        let base = text[..body_at].chars().filter(|ch| *ch == '\n').count() as u32;
+        for needle in &needles {
+            if !body.contains(needle) {
+                continue;
+            }
+            let line = body
+                .lines()
+                .position(|line| line.contains(needle))
+                .map(|index| base + index as u32 + 1);
+            leaks.push(Leak {
+                path: rel.clone(),
+                line,
+                text: needle.clone(),
+            });
         }
     }
-    Ok(hits)
+    (leaks, problems)
 }
 
 fn collect_markdown(

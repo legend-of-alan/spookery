@@ -8,6 +8,7 @@ use std::sync::Arc;
 use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
 use crate::check::CheckNotice;
 use crate::codec::{emit_now, load_now};
+use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::StateKey;
@@ -287,20 +288,16 @@ pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
         return Err(Reason::NotInSpec);
     }
     recover(root)?;
-    let canon = Arc::new(load_canon(root)?);
+    let canon = Arc::new(load_canon(root).map_err(reason_of)?);
     let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_now(now_text)?;
-    let rev = pack_rev(root)?;
-    if now.pack_rev != rev {
-        return Err(Reason::PackRevMismatch);
+    let mut now = load_now(now_text).map_err(reason_of)?;
+    let problems = save_problems(root, &now, &now_bytes);
+    if !problems.is_empty() {
+        return Err(reason_of(problems));
     }
-    let emitted = emit_now(&now)?;
-    if emitted.as_bytes() != now_bytes {
-        return Err(Reason::HandEdit);
-    }
-    bind_meters(&canon, &mut now)?;
-    bind_inventory(&now)?;
+    bind_meters(&canon, &mut now).map_err(reason_of)?;
+    bind_inventory(&now).map_err(reason_of)?;
     Ok(Shard {
         root: root.to_path_buf(),
         canon,
@@ -309,4 +306,143 @@ pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
         pending: None,
         rolls: Vec::new(),
     })
+}
+
+/// Read the pack and report every loader and lint problem. Writes nothing.
+pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let canon = match load_canon(root) {
+        Ok(canon) => Some(canon),
+        Err(more) => {
+            diags.extend(more);
+            None
+        }
+    };
+    let now_path = root.join("state/now.yaml");
+    let loaded = if now_path.is_file() {
+        match fs::read(&now_path) {
+            Ok(bytes) => match std::str::from_utf8(&bytes) {
+                Ok(text) => match load_now(text) {
+                    Ok(now) => Some((bytes, now)),
+                    Err(more) => {
+                        diags.extend(more);
+                        None
+                    }
+                },
+                Err(_) => {
+                    diags.push(
+                        schema(
+                            "state/now.yaml",
+                            "this file is not UTF-8 text",
+                            "save it as UTF-8",
+                        )
+                        .with_path("schema"),
+                    );
+                    None
+                }
+            },
+            Err(_) => {
+                diags.push(
+                    coded(
+                        "state/now.yaml",
+                        Reason::Schema,
+                        "state/now.yaml could not be read",
+                        "check that the file is readable",
+                    )
+                    .with_path("schema"),
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+    if let Some((bytes, now)) = &loaded {
+        diags.extend(save_problems(root, now, bytes));
+        if let Some(canon) = &canon {
+            let mut copy = now.clone();
+            if let Err(more) = bind_meters(canon, &mut copy) {
+                diags.extend(more);
+            }
+            if let Err(more) = bind_inventory(&copy) {
+                diags.extend(more);
+            }
+        }
+    }
+    if let Some(canon) = &canon {
+        diags.extend(crate::lint::body_leaks(root, canon));
+    }
+    diags
+}
+
+fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    match pack_rev(root) {
+        Ok(rev) if now.pack_rev != rev => {
+            let mut diag = coded(
+                "state/now.yaml",
+                Reason::PackRevMismatch,
+                "pack_rev does not match the canon hash",
+                "run spook migrate to store the current hash",
+            )
+            .with_path("pack_rev");
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                if let Some((line, column)) = locate_nth(text, "pack_rev:", 0) {
+                    diag = diag.at_line(line, Some(column));
+                }
+            }
+            diags.push(diag);
+        }
+        Ok(_) => {}
+        Err(_) => diags.push(
+            coded(
+                "state/now.yaml",
+                Reason::Schema,
+                "the canon files could not be hashed",
+                "check that world/, cast/, and rules/ are readable",
+            )
+            .with_path("pack_rev"),
+        ),
+    }
+    match emit_now(now) {
+        Ok(emitted) if emitted.as_bytes() != bytes => {
+            let line = std::str::from_utf8(bytes)
+                .ok()
+                .and_then(|live| first_diff_line(live, &emitted));
+            let mut diag = coded(
+                "state/now.yaml",
+                Reason::HandEdit,
+                "this save does not match the canonical text",
+                "run spook migrate to keep the edit, or restore the file",
+            );
+            diag = match line {
+                Some(line) => diag.at_line(line, None),
+                None => diag.with_path("now"),
+            };
+            diags.push(diag);
+        }
+        Ok(_) => {}
+        Err(_) => diags.push(
+            coded(
+                "state/now.yaml",
+                Reason::Schema,
+                "the save could not be written back as YAML",
+                "fix the values so they match the now format",
+            )
+            .with_path("now"),
+        ),
+    }
+    diags
+}
+
+fn first_diff_line(live: &str, emitted: &str) -> Option<u32> {
+    for (index, (left, right)) in live.lines().zip(emitted.lines()).enumerate() {
+        if left != right {
+            return Some(index as u32 + 1);
+        }
+    }
+    if live.lines().count() != emitted.lines().count() {
+        return Some(live.lines().count().min(emitted.lines().count()) as u32 + 1);
+    }
+    None
 }

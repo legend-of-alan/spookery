@@ -95,10 +95,10 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     }
     let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_now(now_text)?;
-    let canon = crate::canon::load_canon(root)?;
-    crate::canon::bind_meters(&canon, &mut now)?;
-    crate::canon::bind_inventory(&now)?;
+    let mut now = load_now(now_text).map_err(crate::diagnostic::reason_of)?;
+    let canon = crate::canon::load_canon(root).map_err(crate::diagnostic::reason_of)?;
+    crate::canon::bind_meters(&canon, &mut now).map_err(crate::diagnostic::reason_of)?;
+    crate::canon::bind_inventory(&now).map_err(crate::diagnostic::reason_of)?;
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;

@@ -55,6 +55,11 @@ enum Command {
         /// Pack directory.
         pack: PathBuf,
     },
+    /// Report pack problems and write nothing.
+    Check {
+        /// Pack directory.
+        pack: PathBuf,
+    },
 }
 
 fn main() {
@@ -99,6 +104,18 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         }
         Command::Migrate { pack } => {
             spookery_kernel::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
+        }
+        Command::Check { pack } => {
+            let found = spookery_kernel::check_pack(&pack);
+            if found.is_empty() {
+                println!("no problems");
+                Ok(())
+            } else {
+                for item in &found {
+                    eprintln!("{}", item.report_line());
+                }
+                std::process::exit(1);
+            }
         }
     }
 }
@@ -167,7 +184,7 @@ mod tests {
 
     #[test]
     fn every_command_refuses_an_open_address_before_the_pack_opens() {
-        for command in ["run", "play", "ai-gm", "tick", "status", "migrate"] {
+        for command in ["run", "play", "ai-gm", "tick", "status", "migrate", "check"] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
                 let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
                     .unwrap();

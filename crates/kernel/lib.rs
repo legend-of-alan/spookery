@@ -3,6 +3,7 @@ pub mod canon;
 pub mod check;
 pub mod codec;
 pub mod commit;
+pub mod diagnostic;
 pub mod digest;
 pub(crate) mod durable;
 pub mod effect;
@@ -29,8 +30,9 @@ pub mod shard;
 pub mod tape;
 
 pub use check::die_face;
+pub use diagnostic::{first_reason, reason_of, Diagnostic};
 pub use digest::{idle_digest, DigestViewer};
 pub use error::Reason;
 pub use hash::{blake2s_256, blake2s_hex};
 pub use perceive::perceive;
-pub use shard::open_shard;
+pub use shard::{check_pack, open_shard};
