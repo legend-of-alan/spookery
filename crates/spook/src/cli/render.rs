@@ -94,7 +94,7 @@ fn resume_row(row: &str) -> String {
     }
 }
 
-fn refusal(code: &str) -> String {
+pub(crate) fn refusal(code: &str) -> String {
     let sentence = match code {
         "ILLEGAL_CLASS" => "That action is not allowed.",
         "ILLEGAL_KNOWLEDGE" => "You cannot know that.",
@@ -204,9 +204,12 @@ fn is_self(id: &str, viewer: &str) -> bool {
     }
 }
 
-/// `docks_shop` becomes "Docks shop". Role prefixes such as `npc:` are not part of the name.
-fn humanize(id: &str) -> String {
-    let bare = id.strip_prefix("npc:").unwrap_or(id);
+/// `docks_shop` becomes "Docks shop". `npc:` and `player:` are not part of the name.
+pub(crate) fn humanize(id: &str) -> String {
+    let bare = id
+        .strip_prefix("player:")
+        .or_else(|| id.strip_prefix("npc:"))
+        .unwrap_or(id);
     let spaced = bare.replace('_', " ");
     let mut chars = spaced.chars();
     let Some(first) = chars.next() else {
@@ -225,6 +228,13 @@ mod tests {
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
         assert!(!text.contains("\"kind\""), "{text}");
+    }
+
+    #[test]
+    fn a_player_prefix_is_not_part_of_the_name() {
+        assert_eq!(humanize("player:pc_rowan"), "Pc rowan");
+        assert_eq!(humanize("npc:mira"), "Mira");
+        assert_eq!(humanize("docks_shop"), "Docks shop");
     }
 
     #[test]

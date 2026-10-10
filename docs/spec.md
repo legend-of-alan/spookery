@@ -274,7 +274,21 @@ Sitting perceive allows `player:` and `npc:`. A missing `as`, or `as=gm`, is `UN
 
 An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and `patch_entity` are not sitting handlers. Effects come from row expansion during the tick.
 
-`spook gm` is an unknown subcommand.
+## Human GM
+
+`spook gm <pack>` sits the GM seat and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. `spook gm` and `spook ai-gm` are two clients of the same single GM seat. A second GM is `SESSION_FULL`.
+
+`spook gm` with no pack, or with any extra argument, is a usage error before a dial. A refused hello prints a sentence and the token on stderr and exits 1. `SESSION_FULL` prints `The table is full. [SESSION_FULL]`. A shard that is not listening exits 1 and leaves the pack bytes as they were.
+
+stdin is one command per line, and each command calls one seat tool. An empty line sends nothing. An unknown command prints the command list and sends nothing.
+
+`status` calls `session_status`. It prints `Seated: <names>` or `Seated: nobody`, then `Queue:` and one `<name>: <move>` line per queued row, or `Queue: empty`. `look <actor>` calls `perceive` and prints that view the way `spook play` prints a perceive. The actor is `player:<id>`, `npc:<id>`, or a pack id. A pack PC is `player`. A pack NPC is `npc`. An id listed in `actors_present` is `player`. An actor the client cannot place prints `That is not in the world. [UNKNOWN_KEY]` and sends nothing. `say <text>` speaks to the table. `say @<place> <text>` speaks to that place. `say #<actor> <text>` speaks to that actor. The say tool sends no `from`, so the GM speaks as the GM. `queue <actor> <move> [target]` calls `intent` with `source` `player` and that actor's kind. When the move's token is `actor`, the target object is an actor. Any other typed target is a place. `commit` calls `commit_turn` with `include_tick` true. It prints `Changed:` and one line per diff summary, or `Nothing changed.`, then a roll line for each check on the result. `help` prints the commands. `quit` leaves the seat.
+
+Events print as they arrive, as text, with no protocol JSON. A say is `<name>: <text>`. A queued line is `<name> queued: <move>`. A check is `Roll: <faces>, +<stat> = <total> vs <target>, success`, or `failure` when the roll failed. Faces are joined with ` + `. A negative stat keeps its minus sign. The line uses the faces, stat, total, target, and success carried on the check event. A check already printed from `commit` is not printed again. Names drop a leading `player:` or `npc:` prefix, turn `_` into a space, and capitalize the first letter, so `player:pc_rowan` prints `Pc rowan`. The speaker `gm` prints `GM`.
+
+A tool refusal prints a sentence and the token on stderr, using the same sentences as `spook play`, and the client stays up.
+
+`spook gm --raw` prints each socket frame as one JSON line on stdout. A refusal prints that line and its token on stderr.
 
 `spook check <pack>` reads the pack and prints one line per problem. It loads `pack.yaml`, `world/`, `cast/`, `rules/*`, and `state/now.yaml` when that file is present, compares `pack_rev` with the canon hash, and scans Markdown bodies for hidden-fact text. It does not take the lock, bind a port, recover a transaction, or write under the pack. A clean pack prints `no problems` on stdout and exits 0. Any problem exits 1. Problems go to stderr as `file:line: message (CODE)` when a line is known, or `file: path: message (CODE)` when the location is a key path such as `moves[2].audience`. A missing file uses the key path `schema`. The message is plain English and says how to fix the problem. The code in parentheses is one of the codes in the table below. `run`, `tick`, `status`, and `migrate` still print only the token.
 
@@ -292,7 +306,7 @@ The codes `spook check` can emit are stable. The message and the hint may change
 
 ## Loopback
 
-A fourth player hello is `SESSION_FULL`. A hello for a PC another seat holds is `SEAT_TAKEN`. A second GM is `SESSION_FULL`.
+A fourth player hello is `SESSION_FULL`. A hello for a PC another seat holds is `SEAT_TAKEN`. A second GM is `SESSION_FULL`. A refused hello gets one refusal line. The seat then closes its write side and reads and discards whatever the client already sent, until the client hangs up or 2 seconds pass, so a client that sent more than its hello still gets the refusal.
 
 The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 
@@ -306,7 +320,7 @@ A host monitor is not shard behavior.
 
 `spook play <pack>` sits a player seat and dials `--addr`. `--as player:<id>` picks the actor. Without it, the client sits the pack's start PC. Each client holds one distinct PC. The player socket wire is unchanged: the client only changes how it prints frames.
 
-By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.` or `Your roll failed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]` or `That character is already taken. [SEAT_TAKEN]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: `npc:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
+By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.` or `Your roll failed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]` or `That character is already taken. [SEAT_TAKEN]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: a leading `npc:` or `player:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
 
 `spook play --raw` prints each protocol frame as one JSON line on stdout, as the socket sent it. A `refused` frame prints only its token on stderr.
 
@@ -314,7 +328,7 @@ A refusal before the first `perceive` exits 1. After the first `perceive`, a ref
 
 ## Host
 
-`spook ai-gm <pack>` sits the one GM seat and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. A second GM gets the refusal the hello already returns, and the host exits.
+`spook ai-gm <pack>` sits the single GM seat, the same seat as `spook gm`, and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. A second GM gets the refusal the hello already returns, and the host exits.
 
 `spook ai-gm` with no pack, or with any extra argument, is a usage error before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
 

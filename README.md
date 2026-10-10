@@ -125,7 +125,13 @@ spook ai-gm /tmp/docks
 
 ### Human GM
 
-A human GM client is coming. Tracked in [issue #13](https://github.com/legend-of-alan/spookery/issues/13).
+`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first.
+
+```sh
+spook gm /tmp/docks
+```
+
+Type `help` for the seat commands. `spook gm --raw` prints each socket frame as one JSON line.
 
 ### Coding agent
 

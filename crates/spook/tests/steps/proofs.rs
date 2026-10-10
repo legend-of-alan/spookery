@@ -1020,6 +1020,11 @@ fn import_boundary() {
         &["tokio", "rmcp", "reqwest", "crate::ai"],
     );
     assert!(cli_hits.is_empty(), "{}", cli_hits.join("\n"));
+    let gm_client_hits = hits_under(
+        &spook_src.join("gm_client"),
+        &["tokio", "rmcp", "reqwest", "crate::ai", "crate::cli"],
+    );
+    assert!(gm_client_hits.is_empty(), "{}", gm_client_hits.join("\n"));
     let ai_hits = hits_under(
         &spook_src.join("ai"),
         &["rmcp", "crate::cli", "spookery_tick"],

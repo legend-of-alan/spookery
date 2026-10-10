@@ -34,6 +34,14 @@ enum Command {
         #[arg(long)]
         raw: bool,
     },
+    /// Sit the GM seat.
+    Gm {
+        /// Pack directory.
+        pack: PathBuf,
+        /// Print each protocol frame as one JSON line.
+        #[arg(long)]
+        raw: bool,
+    },
     /// Sit the GM seat and call the model.
     #[command(name = "ai-gm")]
     AiGm {
@@ -91,6 +99,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             &addr.to_string(),
             raw,
         )),
+        Command::Gm { pack, raw } => from_cli(spookery::cli::gm(&pack, &addr.to_string(), raw)),
         Command::AiGm { pack } => {
             if spookery::ai::sit(&pack, &addr.to_string()).is_err() {
                 std::process::exit(1);
@@ -199,7 +208,9 @@ mod tests {
 
     #[test]
     fn every_command_refuses_an_open_address_before_the_pack_opens() {
-        for command in ["run", "play", "ai-gm", "tick", "status", "migrate", "check"] {
+        for command in [
+            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check",
+        ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
                 let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
                     .unwrap();
@@ -218,6 +229,10 @@ mod tests {
     fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
         assert!(Cli::try_parse_from(["spook", "gm"]).is_err());
+        let gm = Cli::try_parse_from(["spook", "gm", "pack"]).unwrap();
+        assert!(matches!(gm.command, Command::Gm { raw: false, .. }));
+        let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw", "pack"]).unwrap();
+        assert!(matches!(gm_raw.command, Command::Gm { raw: true, .. }));
         assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
         let play = Cli::try_parse_from(["spook", "play", "pack", "--as", "player:rowan"]).unwrap();

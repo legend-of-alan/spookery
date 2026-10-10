@@ -1,14 +1,10 @@
 use serde_json::Value;
 use std::collections::VecDeque;
-use std::io::{Read, Write};
-use std::net::{Shutdown, TcpStream};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{mpsc, Arc, Mutex};
-use std::thread;
 
 use crate::ai::fail;
 use crate::ai::prompt::Wake;
 use crate::ai::HostError;
+use crate::gm_client::{self, EventBody, Incoming};
 
 pub struct CallOutcome {
     pub raw: String,
@@ -16,103 +12,71 @@ pub struct CallOutcome {
     pub refused: bool,
 }
 
-enum Incoming {
-    Result { id: u64, raw: String },
-    Wake(Wake),
-    Bad(String),
-    Eof,
-}
-
-struct Shared {
-    high_water: AtomicU64,
-    gen: AtomicU64,
-    commit_id: Mutex<Option<u64>>,
-}
-
 pub struct Seat {
-    write: TcpStream,
-    incoming: mpsc::Receiver<Incoming>,
+    client: gm_client::Client,
     wakes: VecDeque<Wake>,
-    next_id: u64,
-    shared: Arc<Shared>,
+    /// Say events at or below this seq are not a wake. Starts closed.
+    high_water: u64,
+    /// Advances when a `commit_turn` result arrives, before later events.
+    gen: u64,
 }
 
 impl Seat {
     pub fn connect(addr: &str) -> Result<Self, HostError> {
-        let mut write = TcpStream::connect(addr).map_err(|err| fail(err.to_string()))?;
-        write
-            .set_nodelay(true)
-            .map_err(|err| fail(err.to_string()))?;
-        let read = write.try_clone().map_err(|err| fail(err.to_string()))?;
-        let hello = format!(
-            "{}{}{}",
-            crate::protocol::GM_HELLO,
-            crate::protocol::INITIALIZE_LINE,
-            crate::protocol::INITIALIZED_LINE
-        );
-        write
-            .write_all(hello.as_bytes())
-            .map_err(|err| fail(err.to_string()))?;
-        write.flush().map_err(|err| fail(err.to_string()))?;
-        let shared = Arc::new(Shared {
-            high_water: AtomicU64::new(u64::MAX),
-            gen: AtomicU64::new(0),
-            commit_id: Mutex::new(None),
-        });
-        let (tx, incoming) = mpsc::channel();
-        let shared_read = Arc::clone(&shared);
-        thread::spawn(move || read_loop(read, tx, shared_read));
-        let mut seat = Seat {
-            write,
-            incoming,
+        let client = gm_client::Client::connect(addr).map_err(host_err)?;
+        Ok(Seat {
+            client,
             wakes: VecDeque::new(),
-            next_id: 2,
-            shared,
-        };
-        let hello = seat.wait_id(1)?;
-        if hello.refused {
-            return Err(fail(hello.raw));
-        }
-        Ok(seat)
+            high_water: u64::MAX,
+            gen: 0,
+        })
     }
 
-    pub fn set_high_water(&self, seq: u64) {
-        self.shared.high_water.store(seq, Ordering::Release);
+    pub fn set_high_water(&mut self, seq: u64) {
+        self.high_water = seq;
     }
 
     pub fn call(&mut self, name: &str, arguments: Value) -> Result<CallOutcome, HostError> {
-        let id = self.next_id;
-        self.next_id = self.next_id.saturating_add(1);
-        if name == "commit_turn" {
-            *self.shared.commit_id.lock().expect("commit id") = Some(id);
+        let commit = name == "commit_turn";
+        let outcome = self.client.call(name, arguments).map_err(host_err)?;
+        // Lines already on the socket are folded in before the commit generation
+        // moves, which is the order the seat used to stamp them.
+        let events = self.client.take_events();
+        self.absorb(events);
+        if commit {
+            self.gen = self.gen.wrapping_add(1);
         }
-        let line = crate::protocol::write_tool_call(&crate::protocol::ToolCall {
-            id,
-            name: name.to_string(),
-            arguments,
-        });
-        self.write
-            .write_all(line.as_bytes())
-            .map_err(|err| fail(err.to_string()))?;
-        self.write.flush().map_err(|err| fail(err.to_string()))?;
-        self.wait_id(id)
+        Ok(CallOutcome {
+            raw: outcome.raw,
+            body: outcome.body,
+            refused: outcome.refused,
+        })
     }
 
     pub fn next_wake(&mut self) -> Result<Option<Wake>, HostError> {
         if let Some(wake) = self.wakes.pop_front() {
             return Ok(Some(wake));
         }
-        match self.recv() {
-            Incoming::Wake(wake) => Ok(Some(wake)),
-            Incoming::Result { raw, .. } => Err(fail(raw)),
-            Incoming::Bad(line) => Err(fail(line)),
-            Incoming::Eof => Ok(None),
+        loop {
+            match self.client.next_incoming() {
+                Incoming::Event(event) => {
+                    if let Some(wake) = self.classify(event.body) {
+                        return Ok(Some(wake));
+                    }
+                }
+                Incoming::Result { raw, .. }
+                | Incoming::Bad(raw)
+                | Incoming::Refused { raw, .. } => {
+                    return Err(fail(raw));
+                }
+                Incoming::Eof => return Ok(None),
+            }
         }
     }
 
     /// Drop say wakes already covered by `high`, and queued wakes from before a commit.
     pub fn retain_pending(&mut self, high: u64, committed: bool) {
-        let gen = self.shared.gen.load(Ordering::Acquire);
+        let gen = self.gen;
         self.wakes.retain(|wake| match wake {
             Wake::Say { seq, .. } => *seq > high,
             Wake::Queued { gen: arrived } => !committed || *arrived >= gen,
@@ -120,29 +84,51 @@ impl Seat {
         });
     }
 
-    fn wait_id(&mut self, id: u64) -> Result<CallOutcome, HostError> {
-        loop {
-            match self.recv() {
-                Incoming::Result { id: got, raw } if got == id => return parse_tool_line(&raw),
-                Incoming::Result { raw, .. } => return Err(fail(raw)),
-                Incoming::Wake(wake) => self.wakes.push_back(wake),
-                Incoming::Bad(line) => return Err(fail(line)),
-                Incoming::Eof => return Err(fail("seat closed".to_string())),
+    fn absorb(&mut self, events: Vec<gm_client::Event>) {
+        for event in events {
+            if let Some(wake) = self.classify(event.body) {
+                self.wakes.push_back(wake);
             }
         }
     }
 
-    fn recv(&mut self) -> Incoming {
-        match self.incoming.recv() {
-            Ok(incoming) => incoming,
-            Err(_) => Incoming::Eof,
+    fn classify(&self, body: EventBody) -> Option<Wake> {
+        let gen = self.gen;
+        match body {
+            EventBody::Say {
+                from,
+                seq,
+                address,
+                place,
+                actor,
+                text,
+            } => {
+                if from.starts_with("player:") && seq > self.high_water {
+                    Some(Wake::Say {
+                        from,
+                        seq,
+                        address,
+                        place,
+                        actor,
+                        text,
+                        gen,
+                    })
+                } else {
+                    None
+                }
+            }
+            EventBody::Queued { .. } => Some(Wake::Queued { gen }),
+            EventBody::Check { .. } => None,
         }
     }
 }
 
-impl Drop for Seat {
-    fn drop(&mut self) {
-        let _ = self.write.shutdown(Shutdown::Both);
+fn host_err(err: gm_client::Error) -> HostError {
+    match err {
+        gm_client::Error::Io(err) => fail(err.to_string()),
+        gm_client::Error::Closed => fail("seat closed".to_string()),
+        gm_client::Error::Bad(line) => fail(line),
+        gm_client::Error::Refused { raw, .. } => fail(raw),
     }
 }
 
@@ -154,102 +140,6 @@ pub fn parse_tool_line(raw: &str) -> Result<CallOutcome, HostError> {
         body,
         refused,
     })
-}
-
-fn read_loop(mut read: TcpStream, tx: mpsc::Sender<Incoming>, shared: Arc<Shared>) {
-    loop {
-        let line = match read_line(&mut read) {
-            Ok(Some(line)) => line,
-            Ok(None) | Err(_) => {
-                let _ = tx.send(Incoming::Eof);
-                return;
-            }
-        };
-        if let Some(incoming) = classify(&line, &shared) {
-            if tx.send(incoming).is_err() {
-                return;
-            }
-        }
-    }
-}
-
-fn classify(line: &str, shared: &Shared) -> Option<Incoming> {
-    let frame = match crate::protocol::read_frame(line) {
-        Ok(frame) => frame,
-        Err(_) => return Some(Incoming::Bad(line.to_string())),
-    };
-    let gen = shared.gen.load(Ordering::Acquire);
-    match frame {
-        crate::protocol::Frame::Result { id } => {
-            let commit = *shared.commit_id.lock().expect("commit id");
-            if commit == Some(id) {
-                shared.gen.fetch_add(1, Ordering::Release);
-                *shared.commit_id.lock().expect("commit id") = None;
-            }
-            Some(Incoming::Result {
-                id,
-                raw: line.to_string(),
-            })
-        }
-        crate::protocol::Frame::Say {
-            from,
-            seq,
-            address,
-            place,
-            actor,
-            text,
-        } => {
-            let high = shared.high_water.load(Ordering::Acquire);
-            if from.starts_with("player:") && seq > high {
-                Some(Incoming::Wake(Wake::Say {
-                    from,
-                    seq,
-                    address,
-                    place,
-                    actor,
-                    text,
-                    gen,
-                }))
-            } else {
-                None
-            }
-        }
-        crate::protocol::Frame::Queued => Some(Incoming::Wake(Wake::Queued { gen })),
-        crate::protocol::Frame::Dropped => None,
-    }
-}
-
-fn optional_string(value: Option<&Value>) -> Option<String> {
-    match value {
-        Some(Value::String(text)) if !text.is_empty() => Some(text.clone()),
-        _ => None,
-    }
-}
-
-fn read_line(read: &mut TcpStream) -> std::io::Result<Option<String>> {
-    let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
-    loop {
-        match read.read(&mut byte) {
-            Ok(0) => {
-                if buf.is_empty() {
-                    return Ok(None);
-                }
-                break;
-            }
-            Ok(_) => {
-                if byte[0] == b'\n' {
-                    break;
-                }
-                buf.push(byte[0]);
-            }
-            Err(err) => return Err(err),
-        }
-    }
-    if buf.last() == Some(&b'\r') {
-        buf.pop();
-    }
-    Ok(Some(String::from_utf8_lossy(&buf).into_owned()))
 }
 
 pub fn status_fields(body: &Value) -> Option<Status> {
@@ -300,6 +190,13 @@ fn say_from_event(value: &Value) -> Option<crate::ai::prompt::HandledSay> {
         actor: optional_string(value.get("actor")),
         text: value.get("text")?.as_str()?.to_string(),
     })
+}
+
+fn optional_string(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::String(text)) if !text.is_empty() => Some(text.clone()),
+        _ => None,
+    }
 }
 
 fn string_list(value: &Value) -> Option<Vec<String>> {

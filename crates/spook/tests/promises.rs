@@ -47,6 +47,9 @@ mod fixtures;
 #[path = "steps/host.rs"]
 mod host;
 
+#[path = "steps/gm.rs"]
+mod gm;
+
 #[path = "fixture/oneshot_docks.rs"]
 mod oneshot_docks;
 
@@ -105,6 +108,7 @@ pub struct World {
     pub now_bytes: Vec<u8>,
     pub play: Option<support::Proc>,
     pub plays: Vec<support::Proc>,
+    pub gm: Option<support::Proc>,
 }
 
 #[tokio::main]
