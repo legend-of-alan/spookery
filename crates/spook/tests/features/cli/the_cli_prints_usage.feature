@@ -20,6 +20,7 @@ Feature: The CLI prints usage
       | tick    |
       | status  |
       | migrate |
+      | check   |
 
   Scenario: A mistyped command is a usage error
     When the operator runs the arguments "rnu" and "x"

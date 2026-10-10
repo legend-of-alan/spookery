@@ -25,6 +25,7 @@ Feature: Only loopback binds
       | status  | 0.0.0.0       |
       | status  | 10.0.0.1:9737 |
       | migrate | 0.0.0.0       |
+      | check   | 0.0.0.0       |
       | migrate | 10.0.0.1:9737 |
 
   Scenario: Run help names the default loopback address
