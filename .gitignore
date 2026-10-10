@@ -15,3 +15,11 @@
 
 # Editor multi-root workspace files
 *.code-workspace
+
+# Personal Grok dev-workflow skills (kept per machine, not shipped)
+/.grok/skills/review-impl/
+/.grok/skills/review-plan/
+/.grok/skills/spec-test-sync/
+
+# Private planning notes read by those skills
+/plans/
