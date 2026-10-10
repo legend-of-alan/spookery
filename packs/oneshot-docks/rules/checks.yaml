@@ -1,4 +1,4 @@
-schema: checks/v0
+schema: checks
 checks:
   - id: grit
     dice:

@@ -1,4 +1,4 @@
-schema: meters/v0
+schema: meters
 meters:
   - id: grit
     min: 0

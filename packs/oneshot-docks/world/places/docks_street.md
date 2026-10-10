@@ -1,5 +1,5 @@
 ---
-schema: place/v0
+schema: place
 id: docks_street
 facts:
   - id: fact_street_quiet

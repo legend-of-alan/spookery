@@ -1,5 +1,5 @@
 ---
-schema: cast/v0
+schema: cast
 id: mira
 kind: npc
 facts:

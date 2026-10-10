@@ -1,5 +1,5 @@
 ---
-schema: cast/v0
+schema: cast
 id: pc_harbormouse
 kind: pc_template
 facts: []

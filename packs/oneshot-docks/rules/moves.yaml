@@ -1,4 +1,4 @@
-schema: moves/v0
+schema: moves
 moves:
   - name: wait
     audience: player

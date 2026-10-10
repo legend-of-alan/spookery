@@ -1,4 +1,4 @@
-schema: tick/v0
+schema: tick
 max_intents_applied: 12
 max_npcs_acting: 8
 max_effects_per_intent: 4
