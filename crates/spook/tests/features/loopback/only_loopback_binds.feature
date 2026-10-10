@@ -19,6 +19,7 @@ Feature: Only loopback binds
     Examples:
       | command | addr          |
       | play    | 0.0.0.0       |
+      | gm      | 0.0.0.0       |
       | ai-gm   | 0.0.0.0       |
       | tick    | 0.0.0.0       |
       | tick    | 10.0.0.1:9737 |

@@ -16,6 +16,7 @@ Feature: The CLI prints usage
       | command |
       | run     |
       | play    |
+      | gm      |
       | ai-gm   |
       | tick    |
       | status  |
