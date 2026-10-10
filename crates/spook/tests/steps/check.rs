@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
+use std::process::Command;
 
 use cucumber::{then, when};
 use serde_json::Value;
@@ -191,8 +192,8 @@ fn the_worked_example_row_is_appended(world: &mut World) {
     fs::write(path, text).unwrap();
 }
 
-#[then(expr = "no file under .grok contains an absolute path")]
-fn no_file_under_grok_contains_an_absolute_path(world: &mut World) {
+#[then(expr = "no tracked file under .grok contains an absolute path")]
+fn no_tracked_file_under_grok_contains_an_absolute_path(world: &mut World) {
     let hits = absolute_path_hits();
     world.scratch = hits.join("\n");
     assert!(world.scratch.is_empty(), "{}", world.scratch);
@@ -247,30 +248,30 @@ fn worked_example_row() -> String {
     row
 }
 
+/// Files git tracks under `.grok`. Ignored local skills stay out of this scan.
 fn absolute_path_hits() -> Vec<String> {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let root = repo.join(".grok");
+    let output = Command::new("git")
+        .args(["ls-files", "-z", "--", ".grok"])
+        .current_dir(&repo)
+        .output()
+        .unwrap_or_else(|err| panic!("git ls-files: {err}"));
+    assert!(
+        output.status.success(),
+        "git ls-files: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let mut hits = Vec::new();
-    let mut pending = vec![root];
-    while let Some(dir) = pending.pop() {
-        let entries = match fs::read_dir(&dir) {
-            Ok(entries) => entries,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(err) => panic!("read {}: {err}", dir.display()),
-        };
-        for entry in entries {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                pending.push(path);
-                continue;
-            }
-            let text = fs::read_to_string(&path)
-                .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-            for (index, line) in text.lines().enumerate() {
-                if has_absolute_path(line) {
-                    let shown = path.strip_prefix(&repo).unwrap_or(&path);
-                    hits.push(format!("{}:{}", shown.display(), index + 1));
-                }
+    for rel in output.stdout.split(|byte| *byte == 0) {
+        if rel.is_empty() {
+            continue;
+        }
+        let rel = std::str::from_utf8(rel).unwrap_or_else(|err| panic!("git path: {err}"));
+        let text =
+            fs::read_to_string(repo.join(rel)).unwrap_or_else(|err| panic!("read {rel}: {err}"));
+        for (index, line) in text.lines().enumerate() {
+            if has_absolute_path(line) {
+                hits.push(format!("{rel}:{}", index + 1));
             }
         }
     }
