@@ -144,7 +144,7 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
         HelloReply::Refused(line) => {
             drop(out_tx);
             drop(out_rx);
-            let _ = write_bytes(&mut stream, line.as_bytes()).await;
+            refuse(&mut stream, line.as_bytes()).await;
         }
         HelloReply::Player => {
             let (mut read_half, write_half) = stream.into_split();
@@ -251,4 +251,38 @@ async fn write_bytes(stream: &mut tokio::net::TcpStream, bytes: &[u8]) -> io::Re
     stream.write_all(bytes).await?;
     stream.flush().await?;
     Ok(())
+}
+
+/// How long a refused socket waits for its client to hang up.
+const REFUSE_DRAIN: Duration = Duration::from_secs(2);
+
+/// Most bytes a refused socket reads before it closes anyway.
+const REFUSE_DRAIN_BYTES: usize = 64 * 1024;
+
+/// Sends the refusal so it always arrives, then closes.
+///
+/// A client may pipeline lines after its hello, as the GM hello does with
+/// `initialize`. Closing a socket that still holds unread bytes sends RST on
+/// Windows, and the client's stack then drops the refusal it already got. So
+/// the seat sends FIN after the refusal and reads until the client hangs up,
+/// for at most `REFUSE_DRAIN` and `REFUSE_DRAIN_BYTES`.
+async fn refuse(stream: &mut tokio::net::TcpStream, line: &[u8]) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    if write_bytes(stream, line).await.is_err() {
+        return;
+    }
+    if stream.shutdown().await.is_err() {
+        return;
+    }
+    let drain = async {
+        let mut buf = [0u8; 4096];
+        let mut seen = 0usize;
+        while seen < REFUSE_DRAIN_BYTES {
+            match stream.read(&mut buf).await {
+                Ok(0) | Err(_) => return,
+                Ok(n) => seen = seen.saturating_add(n),
+            }
+        }
+    };
+    let _ = tokio::time::timeout(REFUSE_DRAIN, drain).await;
 }

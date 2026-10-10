@@ -306,7 +306,7 @@ The codes `spook check` can emit are stable. The message and the hint may change
 
 ## Loopback
 
-A fourth player hello is `SESSION_FULL`. A hello for a PC another seat holds is `SEAT_TAKEN`. A second GM is `SESSION_FULL`.
+A fourth player hello is `SESSION_FULL`. A hello for a PC another seat holds is `SEAT_TAKEN`. A second GM is `SESSION_FULL`. A refused hello gets one refusal line. The seat then closes its write side and reads and discards whatever the client already sent, until the client hangs up or 2 seconds pass, so a client that sent more than its hello still gets the refusal.
 
 The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 
