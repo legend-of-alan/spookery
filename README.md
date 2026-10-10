@@ -27,7 +27,7 @@ cp -r packs/oneshot-docks /tmp/docks
 export PATH="$PWD/target/release:$PATH"
 ```
 
-Run that `export` in each terminal. `spook --help` lists the commands and the flags.
+Run that `export` in each terminal. `spook --help` lists the commands and the flags. `spook check /tmp/docks` prints any pack problem in plain English and writes nothing.
 
 Terminal 1, from the repository root:
 

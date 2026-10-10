@@ -13,7 +13,7 @@ No releases yet. No compatibility guarantees.
 - A generic RPG referee engine. Authors write a pack and host it like a private server.
 - One GM seat (AI or human) and 1 to 3 player seats. Each player sits a distinct pack PC. A 4th player gets `SESSION_FULL`. A hello for a PC another seat holds gets `SEAT_TAKEN`. That seat model is built.
 - Players walk around and take basic actions.
-- Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor), so the format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint (`spook check`, `spook check --json`, and generated schemas later). `spook check` is not built yet (#24). `spook check --json` is not built yet (#26). Generated schemas are not built yet (#29).
+- Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor), so the format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint. `spook check <pack>` prints those. `spook check --json` is not built yet (#26). Generated schemas are not built yet (#29).
 - The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. The 5e-style sample pack is not built yet (#25).
 
 This spec records one writer, the crate boundary, the threat list, loopback and the seat cap, and the rule that a host monitor is not shard behavior.
@@ -174,7 +174,7 @@ Kernel candidates and player candidates in the tick are an `Intent` plus binding
 
 Priority, computed before the roll, is player before NPC before system, then PC-owned clocks, claimed targets, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the clock id on the expanded effect. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a message's `to` hits `actors_present`.
 
-Library paths return `Result`. The CLI prints `Reason::token()` and exits 1.
+Library paths return `Result`. `run`, `tick`, `status`, and `migrate` print `Reason::token()` and exit 1. `spook check` prints one diagnostic line per problem.
 
 ## Habits
 
@@ -196,7 +196,7 @@ Kernel habits do not emit speech. A player world line while `humans == 0` is ref
 
 ## Failure tokens
 
-`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET`, plus the log word `empty_perceive`. The CLI prints the token and exits 1 for an engine refusal. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`.
+`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET`, plus the log word `empty_perceive`. `run`, `tick`, `status`, and `migrate` print the token and exit 1 for an engine refusal. `spook check` prints the diagnostic line instead of the bare token. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`.
 
 `#[from]` is not used on `Reason`. I/O in the kernel collapses to `COMMIT_CONFLICT` or `SCHEMA`, so `Reason` does not wrap `std::io::Error`. The bin has its own error with `Reason` and `Io` variants. `#[from]` is used there, and only there. Tick functions return `kernel::Reason`. A tick-cause value is not an error.
 
@@ -271,6 +271,8 @@ Sitting perceive allows `player:` and `npc:`. A missing `as`, or `as=gm`, is `UN
 An unknown sitting tool is `NOT_IN_SPEC` and writes nothing. `apply_effect` and `patch_entity` are not sitting handlers. Effects come from row expansion during the tick.
 
 `spook gm` is an unknown subcommand.
+
+`spook check <pack>` reads the pack and prints one line per problem. It loads `pack.yaml`, `world/`, `cast/`, `rules/*`, and `state/now.yaml` when that file is present, compares `pack_rev` with the canon hash, and scans Markdown bodies for hidden-fact text. It does not take the lock, bind a port, recover a transaction, or write under the pack. A clean pack prints `no problems` on stdout and exits 0. Any problem exits 1. Problems go to stderr as `file:line: message (CODE)` when a line is known, or `file: path: message (CODE)` when the location is a key path such as `moves[2].audience`. A missing file uses the key path `schema`. The message is plain English and says how to fix the problem. The code in parentheses is the loader `Reason` token (`SCHEMA`, `NOT_IN_SPEC`, `PACK_REV_MISMATCH`, `HAND_EDIT`, and the other tokens) or `HIDDEN_FACT_IN_BODY` for a hidden fact found in a body. `run`, `tick`, `status`, and `migrate` still print only the token.
 
 ## Loopback
 
