@@ -1,5 +1,5 @@
 ---
-schema: place/v0
+schema: place
 id: docks_shop
 facts:
   - id: fact_oil_on_shelf

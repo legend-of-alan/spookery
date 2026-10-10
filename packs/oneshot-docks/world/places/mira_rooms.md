@@ -1,5 +1,5 @@
 ---
-schema: place/v0
+schema: place
 id: mira_rooms
 facts:
   - id: fact_room_lamp

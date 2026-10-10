@@ -10,6 +10,7 @@ pub(crate) mod eligibility;
 pub mod error;
 pub mod expand;
 pub(crate) mod firewall;
+pub(crate) mod format;
 pub mod habit;
 pub(crate) mod hash;
 pub mod ids;

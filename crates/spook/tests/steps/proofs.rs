@@ -342,7 +342,7 @@ fn catchup_cap() {
     write_text(
         &pack.join("pack.yaml"),
         "\
-schema: pack/v0
+schema: pack
 id: ex
 title: Ex
 system: ex
@@ -355,7 +355,7 @@ start:
         &pack.join("world/places/gate.md"),
         "\
 ---
-schema: place/v0
+schema: place
 id: gate
 facts:
   - id: fact_gate
@@ -369,7 +369,7 @@ A gate.
         &pack.join("cast/pc_rowan.md"),
         "\
 ---
-schema: cast/v0
+schema: cast
 id: pc_rowan
 kind: pc_template
 facts: []
@@ -408,7 +408,7 @@ Rowan.
         },
     );
     let now = Now {
-        schema: "now/v0".to_string(),
+        schema: "now".to_string(),
         shard_id: "ex".to_string(),
         pack_rev: rev,
         state_rev: 0,
@@ -681,7 +681,7 @@ fn budget_caps() {
     write_text(
         &pack.join("pack.yaml"),
         "\
-schema: pack/v0
+schema: pack
 id: crowd
 title: Crowd
 system: crowd
@@ -694,7 +694,7 @@ start:
         &pack.join("world/places/yard.md"),
         "\
 ---
-schema: place/v0
+schema: place
 id: yard
 facts:
   - id: fact_yard
@@ -712,7 +712,7 @@ A yard.
             &format!(
                 "\
 ---
-schema: cast/v0
+schema: cast
 id: {id}
 kind: npc
 facts: []
@@ -769,7 +769,7 @@ tick:
         },
     );
     let now = Now {
-        schema: "now/v0".to_string(),
+        schema: "now".to_string(),
         shard_id: "crowd".to_string(),
         pack_rev: rev,
         state_rev: 0,
@@ -1220,7 +1220,7 @@ fn insert_nell(pack: &Path) {
         &pack.join("cast/pc-nell.md"),
         "\
 ---
-schema: cast/v0
+schema: cast
 id: pc_nell
 kind: pc_template
 facts: []

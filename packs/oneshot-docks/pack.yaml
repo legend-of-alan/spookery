@@ -1,4 +1,4 @@
-schema: pack/v0
+schema: pack
 id: docks-001
 title: Oneshot Docks
 system: oneshot-docks

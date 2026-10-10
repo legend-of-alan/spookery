@@ -25,8 +25,9 @@ pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
 }
 
 pub fn load_now(text: &str) -> Result<Now, Reason> {
+    crate::format::require_tag(text, crate::format::NOW)?;
     let now: Now = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
-    if now.schema != "now/v0" {
+    if now.schema != crate::format::NOW {
         return Err(Reason::Schema);
     }
     check_occupancy(&now)?;
@@ -35,6 +36,7 @@ pub fn load_now(text: &str) -> Result<Now, Reason> {
 
 pub fn emit_now(now: &Now) -> Result<String, Reason> {
     let mut canonical = now.clone();
+    canonical.schema = crate::format::NOW.to_string();
     canonicalize(&mut canonical);
     let text = serde_saphyr::to_string_with_options(&canonical, NOW_EMIT_OPTIONS())
         .map_err(|_| Reason::Schema)?;
@@ -457,6 +459,52 @@ mod tests {
         let now = load_now(&original).unwrap();
         let emitted = emit_now(&now).unwrap();
         assert_eq!(emitted, original);
+    }
+
+    fn now_text(tag: &str) -> String {
+        format!(
+            "\
+schema: {tag}
+shard_id: ex
+pack_rev: blake2s:00
+state_rev: 0
+tick_index: 0
+world_time: 0
+last_tick_at: \"2026-01-01T00:00:00Z\"
+presence:
+  humans: 0
+  actors_present: []
+pause:
+  named_plot_clocks: paused
+places:
+  gate:
+    stock: {{}}
+    notes: []
+    actors: []
+actors: {{}}
+clocks: {{}}
+messages: []
+"
+        )
+    }
+
+    #[test]
+    fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
+        assert!(load_now(&now_text("now")).is_ok());
+        assert_eq!(
+            load_now(&now_text(concat!("now/", "v0"))).unwrap_err(),
+            Reason::Schema
+        );
+        assert_eq!(load_now(&now_text("bogus")).unwrap_err(), Reason::Schema);
+    }
+
+    #[test]
+    fn emit_now_writes_the_now_tag() {
+        let mut now = load_now(&now_text("now")).unwrap();
+        now.schema = concat!("now/", "v0").to_string();
+        let emitted = emit_now(&now).unwrap();
+        assert!(emitted.starts_with("schema: now\n"), "{emitted}");
+        assert_eq!(load_now(&emitted).unwrap().schema, "now");
     }
 
     use crate::effect::EffectClass;
