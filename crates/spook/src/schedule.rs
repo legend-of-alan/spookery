@@ -1,22 +1,8 @@
-use std::path::Path;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::shard::{open_shard, Shard};
+use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
 use spookery_tick::{plan_catchup, run_catchup, run_tick, Cause};
-
-pub async fn run_wake(pack: &Path) -> Result<(), Reason> {
-    let mut shard = open_shard(pack)?;
-    let seconds = shard.budget().tick_every_real_seconds;
-    tokio::time::sleep(Duration::from_secs(seconds)).await;
-    wake_shard(&mut shard)
-}
-
-pub async fn run_scheduler(pack: &Path) -> Result<(), Reason> {
-    loop {
-        run_wake(pack).await?;
-    }
-}
 
 pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_tick_at, SystemTime::now())
@@ -26,6 +12,8 @@ pub fn wall_now() -> Result<String, Reason> {
     format_utc(SystemTime::now())
 }
 
+/// Test support: a UTC stamp `seconds` in the past. Not part of the API.
+#[doc(hidden)]
 pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)

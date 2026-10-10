@@ -18,7 +18,6 @@ pub struct Budget {
     pub tick_every_real_seconds: u64,
     /// Empty-table wakes. `false` leaves an empty table still.
     pub idle_ticking: bool,
-    pub live_tick_every_real_seconds: u64,
     pub idle_minutes_per_tick: u64,
     pub live_minutes_per_tick: u64,
     pub idle_catchup_max_ticks: u64,
@@ -51,7 +50,6 @@ impl Budget {
             live_acts_per_world_hour: 6,
             tick_every_real_seconds: 300,
             idle_ticking: true,
-            live_tick_every_real_seconds: 60,
             idle_minutes_per_tick: 60,
             live_minutes_per_tick: 5,
             idle_catchup_max_ticks: 12,
@@ -137,13 +135,6 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         &mut diags,
     );
     let idle_ticking = take_idle(text, file.idle, &mut diags);
-    let live_tick_every_real_seconds = take(
-        text,
-        "live_tick_every_real_seconds",
-        file.live_tick_every_real_seconds,
-        defaults.live_tick_every_real_seconds,
-        &mut diags,
-    );
     let idle_minutes_per_tick = take_positive(
         text,
         "idle_minutes_per_tick",
@@ -185,7 +176,6 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         live_acts_per_world_hour,
         tick_every_real_seconds,
         idle_ticking,
-        live_tick_every_real_seconds,
         idle_minutes_per_tick,
         live_minutes_per_tick,
         idle_catchup_max_ticks,
@@ -283,7 +273,6 @@ struct TickFile {
     tick_every_real_seconds: Option<i64>,
     #[serde(default, deserialize_with = "read_idle_word")]
     idle: Option<String>,
-    live_tick_every_real_seconds: Option<i64>,
     idle_minutes_per_tick: Option<i64>,
     live_minutes_per_tick: Option<i64>,
     idle_catchup_max_ticks: Option<i64>,

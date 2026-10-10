@@ -9,5 +9,5 @@ Feature: The kernel does not link a runtime or a model client
   Scenario: Crate manifests do not name a model crate
     When the crate manifests are scanned
 
-  Scenario: The scheduler sleeps on the calling thread
+  Scenario: The idle timer sleeps on Tokio and the shard thread runs the tick
     When the scheduler source is scanned
