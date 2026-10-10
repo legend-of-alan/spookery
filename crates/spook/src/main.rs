@@ -57,6 +57,9 @@ enum Command {
     },
     /// Report pack problems and write nothing.
     Check {
+        /// Print problems as one JSON array on stdout.
+        #[arg(long)]
+        json: bool,
         /// Pack directory.
         pack: PathBuf,
     },
@@ -105,15 +108,27 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         Command::Migrate { pack } => {
             spookery_kernel::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
         }
-        Command::Check { pack } => {
-            let found = spookery_kernel::check_pack(&pack);
-            if found.is_empty() {
+        Command::Check { pack, json } => {
+            let mut found = spookery_kernel::check_pack(&pack);
+            if json {
+                found.sort_by(|left, right| {
+                    left.file
+                        .cmp(&right.file)
+                        .then(left.line.cmp(&right.line))
+                        .then(left.path.cmp(&right.path))
+                });
+                let text = serde_json::to_string(&found).expect("diagnostic json");
+                println!("{text}");
+            } else if found.is_empty() {
                 println!("no problems");
-                Ok(())
             } else {
                 for item in &found {
                     eprintln!("{}", item.report_line());
                 }
+            }
+            if found.is_empty() {
+                Ok(())
+            } else {
                 std::process::exit(1);
             }
         }

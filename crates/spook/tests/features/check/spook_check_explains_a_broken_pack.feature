@@ -42,3 +42,52 @@ Feature: spook check explains a broken pack
     And the report names "cast/mira.md"
     And stdout is empty
     And the pack bytes are unchanged
+
+  Scenario: A clean pack prints an empty JSON array
+    Given a docks table
+    When the operator runs spook check --json
+    Then the check exits 0
+    And stdout says "[]"
+    And stderr is empty
+    And the pack bytes are unchanged
+
+  Scenario: A broken pack prints JSON diagnostics
+    Given a docks table
+    When the copy is broken by "missing meters"
+    And the operator runs spook check --json
+    Then the check exits 1
+    And stdout is a JSON array of diagnostics
+    And a JSON diagnostic has code "NOT_IN_SPEC" file "rules/meters.yaml" path "schema" and null line and column
+    And stderr is empty
+    And the pack bytes are unchanged
+
+  Scenario: JSON diagnostics stay in the same order
+    Given a docks table
+    When the copy is broken by "no audience"
+    And the copy is broken by "unknown place in a range"
+    And the operator runs spook check --json
+    Then the check exits 1
+    And stdout is a JSON array of diagnostics
+    And the JSON diagnostics are ordered by file, line, and path
+    When the operator runs spook check --json again
+    Then stdout matches the earlier JSON
+    And stderr is empty
+    And the pack bytes are unchanged
+
+  Scenario: The authoring example move passes check
+    Given a docks table
+    When the worked example row is appended to the moves file
+    And the operator runs spook check --json
+    Then the check exits 1
+    And stdout is a JSON array of diagnostics
+    And the JSON array is one diagnostic code "PACK_REV_MISMATCH" file "state/now.yaml" path "pack_rev"
+    When the operator runs migrate
+    Then the command exits 0
+    And stderr is empty
+    When the operator runs spook check --json
+    Then the check exits 0
+    And stdout says "[]"
+    And stderr is empty
+
+  Scenario: No tracked file under .grok uses an absolute path
+    Then no tracked file under .grok contains an absolute path
