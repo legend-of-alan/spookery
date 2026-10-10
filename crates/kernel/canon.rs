@@ -146,10 +146,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
         }
         let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
         let (yaml, body) = split_frontmatter(text)?;
-        let file: PlaceFile = serde_saphyr::from_str(yaml).map_err(|_| Reason::Schema)?;
-        if file.schema != "place/v0" || file.id.is_empty() {
-            return Err(Reason::Schema);
-        }
+        let file = load_place(yaml)?;
         for fact in file.facts {
             insert_fact(&mut facts, fact, &file.id)?;
         }
@@ -175,10 +172,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Reason> {
         }
         let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
         let (yaml, body) = split_frontmatter(text)?;
-        let file: CastFile = serde_saphyr::from_str(yaml).map_err(|_| Reason::Schema)?;
-        if file.schema != "cast/v0" || file.id.is_empty() {
-            return Err(Reason::Schema);
-        }
+        let file = load_cast(yaml)?;
         for fact in &file.facts {
             insert_fact(
                 &mut facts,
@@ -323,8 +317,9 @@ fn habits_of(entries: Vec<HabitFile>) -> Result<Vec<Habit>, Reason> {
 }
 
 pub fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Reason> {
+    crate::format::require_tag(text, crate::format::METERS)?;
     let file: MetersFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
-    if file.schema != "meters/v0" {
+    if file.schema != crate::format::METERS {
         return Err(Reason::Schema);
     }
     let mut meters = BTreeMap::new();
@@ -450,8 +445,31 @@ fn read_pack(path: &Path) -> Result<PackFile, Reason> {
     if !path.is_file() {
         return Err(Reason::NotInSpec);
     }
-    let file: PackFile = serde_saphyr::from_str(&read_string(path)?).map_err(|_| Reason::Schema)?;
-    if file.schema != "pack/v0" || file.id.is_empty() {
+    load_pack(&read_string(path)?)
+}
+
+fn load_pack(text: &str) -> Result<PackFile, Reason> {
+    crate::format::require_tag(text, crate::format::PACK)?;
+    let file: PackFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
+    if file.schema != crate::format::PACK || file.id.is_empty() {
+        return Err(Reason::Schema);
+    }
+    Ok(file)
+}
+
+fn load_place(yaml: &str) -> Result<PlaceFile, Reason> {
+    crate::format::require_tag(yaml, crate::format::PLACE)?;
+    let file: PlaceFile = serde_saphyr::from_str(yaml).map_err(|_| Reason::Schema)?;
+    if file.schema != crate::format::PLACE || file.id.is_empty() {
+        return Err(Reason::Schema);
+    }
+    Ok(file)
+}
+
+fn load_cast(yaml: &str) -> Result<CastFile, Reason> {
+    crate::format::require_tag(yaml, crate::format::CAST)?;
+    let file: CastFile = serde_saphyr::from_str(yaml).map_err(|_| Reason::Schema)?;
+    if file.schema != crate::format::CAST || file.id.is_empty() {
         return Err(Reason::Schema);
     }
     Ok(file)
@@ -659,5 +677,52 @@ meters:
     kind: stat
 ";
         assert_eq!(load_meters(unknown).unwrap_err(), Reason::Schema);
+    }
+
+    fn rejects(load: fn(&str) -> Result<(), Reason>, good: &str, old: &str, body: &str) {
+        let text = |tag: &str| format!("schema: {tag}\n{body}");
+        assert!(load(&text(good)).is_ok());
+        assert_eq!(load(&text(old)).unwrap_err(), Reason::Schema);
+        assert_eq!(load(&text("bogus")).unwrap_err(), Reason::Schema);
+    }
+
+    #[test]
+    fn load_place_rejects_an_unknown_tag_and_the_old_versioned_tag() {
+        rejects(
+            |text| load_place(text).map(|_| ()),
+            "place",
+            concat!("place/", "v0"),
+            "id: gate\nfacts: []\n",
+        );
+    }
+
+    #[test]
+    fn load_cast_rejects_an_unknown_tag_and_the_old_versioned_tag() {
+        rejects(
+            |text| load_cast(text).map(|_| ()),
+            "cast",
+            concat!("cast/", "v0"),
+            "id: mira\nkind: npc\nfacts: []\n",
+        );
+    }
+
+    #[test]
+    fn load_pack_rejects_an_unknown_tag_and_the_old_versioned_tag() {
+        rejects(
+            |text| load_pack(text).map(|_| ()),
+            "pack",
+            concat!("pack/", "v0"),
+            "id: ex\ntitle: Ex\nsystem: ex\nstart:\n  place: gate\n  pc: pc_rowan\n",
+        );
+    }
+
+    #[test]
+    fn load_meters_rejects_an_unknown_tag_and_the_old_versioned_tag() {
+        rejects(
+            |text| load_meters(text).map(|_| ()),
+            "meters",
+            concat!("meters/", "v0"),
+            "meters: []\n",
+        );
     }
 }

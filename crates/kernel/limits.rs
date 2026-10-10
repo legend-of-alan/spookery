@@ -59,8 +59,9 @@ impl Budget {
 }
 
 pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
+    crate::format::require_tag(text, crate::format::TICK)?;
     let file: TickFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
-    if file.schema != "tick/v0" {
+    if file.schema != crate::format::TICK {
         return Err(Reason::Schema);
     }
     let defaults = Budget::defaults();
@@ -131,4 +132,24 @@ struct TickFile {
 #[serde(deny_unknown_fields)]
 struct PauseFile {
     named_plot_clocks: PausePolicy,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_tick_rules;
+    use crate::error::Reason;
+
+    fn text(tag: &str) -> String {
+        format!("schema: {tag}\npause:\n  named_plot_clocks: pause_when_empty\n")
+    }
+
+    #[test]
+    fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
+        assert!(load_tick_rules(&text("tick")).is_ok());
+        assert_eq!(
+            load_tick_rules(&text(concat!("tick/", "v0"))).unwrap_err(),
+            Reason::Schema
+        );
+        assert_eq!(load_tick_rules(&text("bogus")).unwrap_err(), Reason::Schema);
+    }
 }

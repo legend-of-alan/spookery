@@ -82,8 +82,9 @@ pub enum RowEffect {
 }
 
 pub fn load_moves(text: &str) -> Result<BTreeMap<String, MoveDef>, Reason> {
+    crate::format::require_tag(text, crate::format::MOVES)?;
     let file: MovesFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
-    if file.schema != "moves/v0" {
+    if file.schema != crate::format::MOVES {
         return Err(Reason::Schema);
     }
     let mut moves = BTreeMap::new();
@@ -492,6 +493,17 @@ mod tests {
     fn schema(body: &str) -> Reason {
         let text = format!("schema: moves/v0\nmoves:\n{body}");
         load_moves(&text).expect_err("schema")
+    }
+
+    #[test]
+    fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
+        let text = |tag: &str| format!("schema: {tag}\nmoves: []\n");
+        assert!(load_moves(&text("moves")).is_ok());
+        assert_eq!(
+            load_moves(&text(concat!("moves/", "v0"))).unwrap_err(),
+            Reason::Schema
+        );
+        assert_eq!(load_moves(&text("bogus")).unwrap_err(), Reason::Schema);
     }
 
     #[test]

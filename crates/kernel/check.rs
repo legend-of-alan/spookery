@@ -41,8 +41,9 @@ impl CheckNotice {
 }
 
 pub fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Reason> {
+    crate::format::require_tag(text, crate::format::CHECKS)?;
     let file: ChecksFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
-    if file.schema != "checks/v0" {
+    if file.schema != crate::format::CHECKS {
         return Err(Reason::Schema);
     }
     let mut checks = BTreeMap::new();
@@ -142,4 +143,24 @@ struct CheckEntry {
 struct Dice {
     count: u32,
     sides: u32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::load_checks;
+    use crate::error::Reason;
+
+    fn text(tag: &str) -> String {
+        format!("schema: {tag}\nchecks: []\n")
+    }
+
+    #[test]
+    fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
+        assert!(load_checks(&text("checks")).is_ok());
+        assert_eq!(
+            load_checks(&text(concat!("checks/", "v0"))).unwrap_err(),
+            Reason::Schema
+        );
+        assert_eq!(load_checks(&text("bogus")).unwrap_err(), Reason::Schema);
+    }
 }
