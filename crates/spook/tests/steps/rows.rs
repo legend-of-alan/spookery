@@ -167,7 +167,7 @@ fn insert_nell(pack: &Path) {
         pack.join("cast/pc-nell.md"),
         "\
 ---
-schema: cast/v0
+schema: cast
 id: pc_nell
 kind: pc_template
 facts: []

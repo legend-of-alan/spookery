@@ -642,7 +642,7 @@ mod tests {
     #[test]
     fn load_meters_rejects_a_broken_inequality_a_duplicate_id_and_an_unknown_key() {
         let broken = "\
-schema: meters/v0
+schema: meters
 meters:
   - id: grit
     min: 2
@@ -652,7 +652,7 @@ meters:
 ";
         assert_eq!(load_meters(broken).unwrap_err(), Reason::Schema);
         let duplicate = "\
-schema: meters/v0
+schema: meters
 meters:
   - id: grit
     min: 0
@@ -667,7 +667,7 @@ meters:
 ";
         assert_eq!(load_meters(duplicate).unwrap_err(), Reason::Schema);
         let unknown = "\
-schema: meters/v0
+schema: meters
 meters:
   - id: grit
     min: 0
