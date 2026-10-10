@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::mpsc;
@@ -63,7 +64,7 @@ pub fn sit(pack: &Path, addr: &str, raw: bool) -> Result<(), super::Error> {
         client,
         canon,
         raw,
-        skip_checks: false,
+        printed_checks: PrintedChecks::default(),
     };
     if raw && !session.client.opened_line().is_empty() {
         emit(session.client.opened_line());
@@ -109,7 +110,35 @@ struct Session {
     client: Client,
     canon: Canon,
     raw: bool,
-    skip_checks: bool,
+    printed_checks: PrintedChecks,
+}
+
+/// Check lines `commit` already printed, in the order their check events
+/// follow the result on the socket. Each matching event is skipped once, so a
+/// later check still prints.
+#[derive(Debug, Default)]
+struct PrintedChecks(VecDeque<String>);
+
+impl PrintedChecks {
+    /// The check lines one commit result printed. Replaces any older lines.
+    fn printed(&mut self, lines: Vec<String>) {
+        self.0 = lines.into();
+    }
+
+    /// True when `line` is the next check event of the last commit.
+    fn skip(&mut self, line: &str) -> bool {
+        if self.0.front().map(String::as_str) == Some(line) {
+            self.0.pop_front();
+            return true;
+        }
+        self.0.clear();
+        false
+    }
+
+    /// A later result came in, so the last commit's events were all read.
+    fn clear(&mut self) {
+        self.0.clear();
+    }
 }
 
 impl Session {
@@ -219,12 +248,12 @@ impl Session {
         }
         emit(&render_diff(&outcome.body));
         let checks = render_checks(&outcome.body);
-        if !checks.is_empty() {
-            for line in &checks {
-                emit(line);
-            }
-            self.skip_checks = true;
+        for line in &checks {
+            emit(line);
         }
+        // The seat writes this commit's check events right after its result,
+        // so each one is skipped once and later checks still print.
+        self.printed_checks.printed(checks);
         self.show_ready();
     }
 
@@ -274,6 +303,8 @@ impl Session {
         for event in &events {
             self.show_event(event);
         }
+        // Every check event of the previous commit came before this result.
+        self.printed_checks.clear();
     }
 
     fn show_ready(&mut self) {
@@ -306,10 +337,11 @@ impl Session {
             emit(&event.raw);
             return;
         }
-        if self.skip_checks && matches!(event.body, EventBody::Check { .. }) {
+        let line = render_event(&event.body);
+        if matches!(event.body, EventBody::Check { .. }) && self.printed_checks.skip(&line) {
             return;
         }
-        emit(&render_event(&event.body));
+        emit(&line);
     }
 
     fn show_tool_refusal(&self, outcome: &ToolResult) {
@@ -682,6 +714,47 @@ fn split_word(text: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_commit_skips_its_own_check_events_once() {
+        let roll = render_check(&[4, 2], 1, 7, 0, true);
+        let mut printed = PrintedChecks::default();
+        printed.printed(vec![roll.clone()]);
+        assert!(printed.skip(&roll));
+        // A later check with the same faces is a new roll and still prints.
+        assert!(!printed.skip(&roll));
+        assert!(!printed.skip(&roll));
+    }
+
+    #[test]
+    fn checks_after_a_new_result_are_not_skipped() {
+        let roll = render_check(&[3, 3], 0, 6, 0, true);
+        let mut printed = PrintedChecks::default();
+        printed.printed(vec![roll.clone()]);
+        printed.clear();
+        assert!(!printed.skip(&roll));
+    }
+
+    #[test]
+    fn a_check_that_is_not_next_ends_the_skip() {
+        let first = render_check(&[1, 1], 0, 2, 7, false);
+        let second = render_check(&[6, 6], 0, 12, 7, true);
+        let mut printed = PrintedChecks::default();
+        printed.printed(vec![first.clone(), second.clone()]);
+        assert!(!printed.skip(&second));
+        assert!(!printed.skip(&first));
+    }
+
+    #[test]
+    fn a_commit_with_two_checks_skips_both_in_order() {
+        let first = render_check(&[1, 2], 0, 3, 7, false);
+        let second = render_check(&[5, 6], 0, 11, 7, true);
+        let mut printed = PrintedChecks::default();
+        printed.printed(vec![first.clone(), second.clone()]);
+        assert!(printed.skip(&first));
+        assert!(printed.skip(&second));
+        assert!(!printed.skip(&first));
+    }
 
     fn command(line: &str) -> Command {
         match parse_command(line) {

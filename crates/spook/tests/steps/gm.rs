@@ -50,6 +50,17 @@ fn the_gm_queues_restock_and_commits(world: &mut World) {
     write_gm(world, "commit");
 }
 
+#[when(expr = "the GM queues Rowan's grit and commits")]
+fn the_gm_queues_grit_and_commits(world: &mut World) {
+    let before = count_gm(world, "Queue:");
+    write_gm(world, "queue pc_rowan grit");
+    write_gm(world, "commit");
+    // The status result follows every check event of that commit on the
+    // socket, so its Queue line means the client has read them all.
+    write_gm(world, "status");
+    wait_gm_count(world, "Queue:", before + 1);
+}
+
 #[when(expr = "each player queues a wait")]
 fn each_player_queues_a_wait(world: &mut World) {
     write_play(
@@ -99,6 +110,13 @@ fn gm_with_nothing_listening(world: &mut World) {
 #[then(expr = "the GM shows {string}")]
 fn the_gm_shows(world: &mut World, text: String) {
     wait_gm(world, &text);
+}
+
+#[then(expr = "the GM shows {int} rolls")]
+fn the_gm_shows_rolls(world: &mut World, rolls: usize) {
+    let stdout = gm_stdout(world);
+    let shown = stdout.matches("Roll: ").count();
+    assert_eq!(shown, rolls, "{stdout}");
 }
 
 #[then(expr = "the GM shows protocol JSON")]
@@ -258,6 +276,25 @@ fn write_gm(world: &mut World, line: &str) {
 fn wait_gm(world: &mut World, needle: &str) {
     let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
     wait_proc(gm, needle);
+}
+
+fn count_gm(world: &mut World, needle: &str) -> usize {
+    gm_stdout(world).matches(needle).count()
+}
+
+fn wait_gm_count(world: &mut World, needle: &str, count: usize) {
+    let start = Instant::now();
+    loop {
+        let stdout = gm_stdout(world);
+        if stdout.matches(needle).count() >= count {
+            return;
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            let stderr = gm_stderr(world);
+            panic!("missing {count} x {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 fn wait_proc(proc: &mut Proc, needle: &str) {
