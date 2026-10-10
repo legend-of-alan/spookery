@@ -116,6 +116,7 @@ fn refusal(code: &str) -> String {
         "SCHEMA" => "That line is not valid.",
         "NOT_IN_SPEC" => "The table does not understand that.",
         "SESSION_FULL" => "The table is full.",
+        "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
         _ => return format!("The table refused that. [{code}]"),
     };
@@ -330,6 +331,11 @@ Shop day: 1/1"
         });
         assert_eq!(full, "The table is full. [SESSION_FULL]");
         assert_readable(&full);
+        let taken = render(&PlayerMessage::Refused {
+            code: "SEAT_TAKEN".to_string(),
+        });
+        assert_eq!(taken, "That character is already taken. [SEAT_TAKEN]");
+        assert_readable(&taken);
 
         let unknown = render(&PlayerMessage::Refused {
             code: "NEW_CODE".to_string(),

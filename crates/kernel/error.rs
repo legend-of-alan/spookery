@@ -23,6 +23,7 @@ pub enum Reason {
     Schema,
     NotInSpec,
     SessionFull,
+    SeatTaken,
     MissingItem,
 }
 
@@ -49,6 +50,7 @@ impl Reason {
             Reason::Schema => "SCHEMA",
             Reason::NotInSpec => "NOT_IN_SPEC",
             Reason::SessionFull => "SESSION_FULL",
+            Reason::SeatTaken => "SEAT_TAKEN",
             Reason::MissingItem => "MISSING_ITEM",
         }
     }
