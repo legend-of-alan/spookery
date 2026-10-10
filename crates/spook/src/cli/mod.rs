@@ -74,8 +74,10 @@ fn parse_player_as(token: &str) -> Result<String, Error> {
 fn start_pc(pack: &Path) -> Result<String, Error> {
     let id = match spookery_kernel::canon::load_canon(pack) {
         Ok(canon) => canon.start_pc,
-        Err(Reason::NotInSpec) => pack_pc_line(pack)?,
-        Err(code) => return Err(Error::Reason(code)),
+        Err(errors) => match spookery_kernel::first_reason(&errors) {
+            Reason::NotInSpec => pack_pc_line(pack)?,
+            code => return Err(Error::Reason(code)),
+        },
     };
     if id.is_empty() || id.chars().any(char::is_whitespace) {
         return Err(Error::Reason(Reason::Schema));

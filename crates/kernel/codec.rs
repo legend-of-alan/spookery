@@ -2,6 +2,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use serde_saphyr::SerializerOptions;
 
+use crate::diagnostic::{parse_file, schema, tag_diagnostic, Diagnostic};
 use crate::effect::{Effect, EffectClass, EffectPayload};
 use crate::error::Reason;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
@@ -24,14 +25,29 @@ pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
     }
 }
 
-pub fn load_now(text: &str) -> Result<Now, Reason> {
-    crate::format::require_tag(text, crate::format::NOW)?;
-    let now: Now = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
-    if now.schema != crate::format::NOW {
-        return Err(Reason::Schema);
+pub fn load_now(text: &str) -> Result<Now, Vec<Diagnostic>> {
+    const FILE: &str = "state/now.yaml";
+    if let Some(diag) = tag_diagnostic(text, crate::format::NOW, FILE, 0) {
+        return Err(vec![diag]);
     }
-    check_occupancy(&now)?;
-    Ok(now)
+    let now: Now = parse_file(FILE, text, 0)?;
+    let mut diags = Vec::new();
+    if now.schema != crate::format::NOW {
+        diags.push(
+            schema(
+                FILE,
+                &format!("schema is '{}', which this file does not use", now.schema),
+                "write 'schema: now' with no version suffix",
+            )
+            .with_path("schema"),
+        );
+    }
+    diags.extend(occupancy_problems(&now));
+    if diags.is_empty() {
+        Ok(now)
+    } else {
+        Err(diags)
+    }
 }
 
 pub fn emit_now(now: &Now) -> Result<String, Reason> {
@@ -89,11 +105,24 @@ fn rebuilt_occupancy(now: &Now) -> std::collections::BTreeMap<String, Vec<String
     out
 }
 
-fn check_occupancy(now: &Now) -> Result<(), Reason> {
-    for actor in now.actors.values() {
-        if !now.places.contains_key(actor.place()) {
-            return Err(Reason::Schema);
+fn occupancy_problems(now: &Now) -> Vec<Diagnostic> {
+    const FILE: &str = "state/now.yaml";
+    let mut diags = Vec::new();
+    for (id, actor) in &now.actors {
+        if now.places.contains_key(actor.place()) {
+            continue;
         }
+        diags.push(
+            schema(
+                FILE,
+                &format!(
+                    "actor '{id}' is in place '{}', which is not in places",
+                    actor.place()
+                ),
+                "add the place or move the actor",
+            )
+            .with_path(format!("actors.{id}.place")),
+        );
     }
     let expected = rebuilt_occupancy(now);
     for (place_id, place) in &now.places {
@@ -101,10 +130,19 @@ fn check_occupancy(now: &Now) -> Result<(), Reason> {
         listed.sort();
         let got = expected.get(place_id).map(Vec::as_slice).unwrap_or(&[]);
         if listed != got {
-            return Err(Reason::Schema);
+            diags.push(
+                schema(
+                    FILE,
+                    &format!(
+                        "place '{place_id}' lists actors that do not match where the actors stand"
+                    ),
+                    "list the actors whose place is this one, or run spook migrate",
+                )
+                .with_path(format!("places.{place_id}.actors")),
+            );
         }
     }
-    Ok(())
+    diags
 }
 
 /// Flat effect object. Key order is `class`, `as`, `intent_id`, then payload fields.
@@ -491,11 +529,12 @@ messages: []
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
         assert!(load_now(&now_text("now")).is_ok());
-        assert_eq!(
-            load_now(&now_text(concat!("now/", "v0"))).unwrap_err(),
-            Reason::Schema
-        );
-        assert_eq!(load_now(&now_text("bogus")).unwrap_err(), Reason::Schema);
+        let old = load_now(&now_text(concat!("now/", "v0"))).unwrap_err();
+        assert!(old[0].message.contains("no version"), "{old:?}");
+        assert_eq!(crate::diagnostic::reason_of(old), Reason::Schema);
+        let bogus = load_now(&now_text("bogus")).unwrap_err();
+        assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
+        assert_eq!(crate::diagnostic::reason_of(bogus), Reason::Schema);
     }
 
     #[test]

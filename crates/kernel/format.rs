@@ -1,7 +1,5 @@
 //! Format tags. One const per file. No version until the format is frozen.
 
-use crate::error::Reason;
-
 pub const PACK: &str = "pack";
 pub const PLACE: &str = "place";
 pub const CAST: &str = "cast";
@@ -11,26 +9,26 @@ pub const CHECKS: &str = "checks";
 pub const TICK: &str = "tick";
 pub const NOW: &str = "now";
 
-/// `SCHEMA` unless the first YAML key is `expected`. The rest of the text is not parsed.
-pub fn require_tag(text: &str, expected: &str) -> Result<(), Reason> {
-    if schema_tag(text) == Some(expected) {
-        Ok(())
-    } else {
-        Err(Reason::Schema)
-    }
+pub(crate) struct FoundSchema<'a> {
+    pub line: u32,
+    pub value: &'a str,
 }
 
-fn schema_tag(text: &str) -> Option<&str> {
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') {
+/// The first `schema` key, with its 1-based line. Comments and blank lines are skipped.
+pub(crate) fn find_schema(text: &str) -> Option<FoundSchema<'_>> {
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let value = unquote(line.strip_prefix("schema:")?.trim());
+        let value = unquote(trimmed.strip_prefix("schema:")?.trim());
         if value.is_empty() {
             return None;
         }
-        return Some(value);
+        return Some(FoundSchema {
+            line: index as u32 + 1,
+            value,
+        });
     }
     None
 }

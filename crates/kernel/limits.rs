@@ -1,6 +1,8 @@
 use serde::Deserialize;
 
-use crate::error::Reason;
+use crate::diagnostic::{locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};
+
+const TICK_FILE: &str = "rules/tick.yaml";
 
 pub const MINUTES_PER_DAY: u64 = 1440;
 
@@ -58,53 +60,160 @@ impl Budget {
     }
 }
 
-pub fn load_tick_rules(text: &str) -> Result<Budget, Reason> {
-    crate::format::require_tag(text, crate::format::TICK)?;
-    let file: TickFile = serde_saphyr::from_str(text).map_err(|_| Reason::Schema)?;
+pub fn load_tick_rules(text: &str) -> Result<Budget, Vec<Diagnostic>> {
+    if let Some(diag) = tag_diagnostic(text, crate::format::TICK, TICK_FILE, 0) {
+        return Err(vec![diag]);
+    }
+    let file: TickFile = parse_file(TICK_FILE, text, 0)?;
+    let mut diags = Vec::new();
     if file.schema != crate::format::TICK {
-        return Err(Reason::Schema);
+        diags.push(
+            schema(
+                TICK_FILE,
+                &format!("schema is '{}', which this file does not use", file.schema),
+                "write 'schema: tick' with no version suffix",
+            )
+            .with_path("schema"),
+        );
     }
     let defaults = Budget::defaults();
+    let max_intents_applied = take(
+        text,
+        "max_intents_applied",
+        file.max_intents_applied,
+        defaults.max_intents_applied,
+        &mut diags,
+    );
+    let max_npcs_acting = take(
+        text,
+        "max_npcs_acting",
+        file.max_npcs_acting,
+        defaults.max_npcs_acting,
+        &mut diags,
+    );
+    let max_effects_per_intent = take(
+        text,
+        "max_effects_per_intent",
+        file.max_effects_per_intent,
+        defaults.max_effects_per_intent,
+        &mut diags,
+    );
+    let max_state_keys_mutated = take(
+        text,
+        "max_state_keys_mutated",
+        file.max_state_keys_mutated,
+        defaults.max_state_keys_mutated,
+        &mut diags,
+    );
+    let max_memory_writes = take(
+        text,
+        "max_memory_writes",
+        file.max_memory_writes,
+        defaults.max_memory_writes,
+        &mut diags,
+    );
+    let idle_acts_per_world_day = take(
+        text,
+        "idle_acts_per_world_day",
+        file.idle_acts_per_world_day,
+        defaults.idle_acts_per_world_day,
+        &mut diags,
+    );
+    let live_acts_per_world_hour = take(
+        text,
+        "live_acts_per_world_hour",
+        file.live_acts_per_world_hour,
+        defaults.live_acts_per_world_hour,
+        &mut diags,
+    );
+    let tick_every_real_seconds = take(
+        text,
+        "tick_every_real_seconds",
+        file.tick_every_real_seconds,
+        defaults.tick_every_real_seconds,
+        &mut diags,
+    );
+    let live_tick_every_real_seconds = take(
+        text,
+        "live_tick_every_real_seconds",
+        file.live_tick_every_real_seconds,
+        defaults.live_tick_every_real_seconds,
+        &mut diags,
+    );
+    let idle_minutes_per_tick = take(
+        text,
+        "idle_minutes_per_tick",
+        file.idle_minutes_per_tick,
+        defaults.idle_minutes_per_tick,
+        &mut diags,
+    );
+    let live_minutes_per_tick = take(
+        text,
+        "live_minutes_per_tick",
+        file.live_minutes_per_tick,
+        defaults.live_minutes_per_tick,
+        &mut diags,
+    );
+    let idle_catchup_max_ticks = take(
+        text,
+        "idle_catchup_max_ticks",
+        file.idle_catchup_max_ticks,
+        defaults.idle_catchup_max_ticks,
+        &mut diags,
+    );
+    let idle_max_world_hours_per_real_hour = take(
+        text,
+        "idle_max_world_hours_per_real_hour",
+        file.idle_max_world_hours_per_real_hour,
+        defaults.idle_max_world_hours_per_real_hour,
+        &mut diags,
+    );
+    if !diags.is_empty() {
+        return Err(diags);
+    }
     Ok(Budget {
-        max_intents_applied: take(file.max_intents_applied, defaults.max_intents_applied)?,
-        max_npcs_acting: take(file.max_npcs_acting, defaults.max_npcs_acting)?,
-        max_effects_per_intent: take(file.max_effects_per_intent, defaults.max_effects_per_intent)?,
-        max_state_keys_mutated: take(file.max_state_keys_mutated, defaults.max_state_keys_mutated)?,
-        max_memory_writes: take(file.max_memory_writes, defaults.max_memory_writes)?,
-        idle_acts_per_world_day: take(
-            file.idle_acts_per_world_day,
-            defaults.idle_acts_per_world_day,
-        )?,
-        live_acts_per_world_hour: take(
-            file.live_acts_per_world_hour,
-            defaults.live_acts_per_world_hour,
-        )?,
-        tick_every_real_seconds: take(
-            file.tick_every_real_seconds,
-            defaults.tick_every_real_seconds,
-        )?,
-        live_tick_every_real_seconds: take(
-            file.live_tick_every_real_seconds,
-            defaults.live_tick_every_real_seconds,
-        )?,
-        idle_minutes_per_tick: take(file.idle_minutes_per_tick, defaults.idle_minutes_per_tick)?,
-        live_minutes_per_tick: take(file.live_minutes_per_tick, defaults.live_minutes_per_tick)?,
-        idle_catchup_max_ticks: take(file.idle_catchup_max_ticks, defaults.idle_catchup_max_ticks)?,
-        idle_max_world_hours_per_real_hour: take(
-            file.idle_max_world_hours_per_real_hour,
-            defaults.idle_max_world_hours_per_real_hour,
-        )?,
+        max_intents_applied,
+        max_npcs_acting,
+        max_effects_per_intent,
+        max_state_keys_mutated,
+        max_memory_writes,
+        idle_acts_per_world_day,
+        live_acts_per_world_hour,
+        tick_every_real_seconds,
+        live_tick_every_real_seconds,
+        idle_minutes_per_tick,
+        live_minutes_per_tick,
+        idle_catchup_max_ticks,
+        idle_max_world_hours_per_real_hour,
         pause: PausePolicies {
             named_plot_clocks: file.pause.named_plot_clocks,
         },
     })
 }
 
-fn take(value: Option<i64>, default: u64) -> Result<u64, Reason> {
+fn take(
+    text: &str,
+    field: &str,
+    value: Option<i64>,
+    default: u64,
+    diags: &mut Vec<Diagnostic>,
+) -> u64 {
     match value {
-        None => Ok(default),
-        Some(n) if n >= 0 => Ok(n as u64),
-        Some(_) => Err(Reason::Schema),
+        None => default,
+        Some(n) if n >= 0 => n as u64,
+        Some(n) => {
+            let mut diag = schema(
+                TICK_FILE,
+                &format!("{field} is {n}, which is below zero"),
+                "use a number that is zero or greater",
+            )
+            .with_path(field);
+            if let Some((line, column)) = locate_nth(text, &format!("{field}:"), 0) {
+                diag = diag.at_line(line, Some(column));
+            }
+            diags.push(diag);
+            default
+        }
     }
 }
 
@@ -145,11 +254,25 @@ mod tests {
 
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
+        use crate::diagnostic::reason_of;
         assert!(load_tick_rules(&text("tick")).is_ok());
-        assert_eq!(
-            load_tick_rules(&text(concat!("tick/", "v0"))).unwrap_err(),
-            Reason::Schema
-        );
-        assert_eq!(load_tick_rules(&text("bogus")).unwrap_err(), Reason::Schema);
+        let old = load_tick_rules(&text(concat!("tick/", "v0"))).unwrap_err();
+        assert!(old[0].message.contains("no version"), "{old:?}");
+        assert_eq!(reason_of(old), Reason::Schema);
+        let bogus = load_tick_rules(&text("bogus")).unwrap_err();
+        assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
+        assert_eq!(reason_of(bogus), Reason::Schema);
+    }
+
+    #[test]
+    fn a_negative_budget_names_the_field() {
+        let text = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_ticks: -3\n";
+        let err = load_tick_rules(text).unwrap_err();
+        assert!(err
+            .iter()
+            .any(|diag| diag.message.contains("max_npcs_acting") && diag.line.is_some()));
+        assert!(err
+            .iter()
+            .any(|diag| diag.message.contains("idle_catchup_max_ticks")));
     }
 }

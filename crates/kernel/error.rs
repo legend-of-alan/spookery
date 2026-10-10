@@ -55,6 +55,33 @@ impl Reason {
         }
     }
 
+    pub fn from_token(token: &str) -> Option<Self> {
+        Some(match token {
+            "ILLEGAL_CLASS" => Reason::IllegalClass,
+            "ILLEGAL_KNOWLEDGE" => Reason::IllegalKnowledge,
+            "OUT_OF_RANGE" => Reason::OutOfRange,
+            "BUDGET" => Reason::Budget,
+            "PAUSED_CLOCK" => Reason::PausedClock,
+            "UNKNOWN_KEY" => Reason::UnknownKey,
+            "VIEWER_MISMATCH" => Reason::ViewerMismatch,
+            "KERNEL_ON_PLAYER" => Reason::KernelOnPlayer,
+            "INELIGIBLE" => Reason::Ineligible,
+            "NO_PROFILE" => Reason::NoProfile,
+            "ACTOR_MISMATCH" => Reason::ActorMismatch,
+            "TABLE_EMPTY" => Reason::TableEmpty,
+            "PACK_REV_MISMATCH" => Reason::PackRevMismatch,
+            "UNKNOWN_MOVE" => Reason::UnknownMove,
+            "UNSCOPED_PERCEIVE" => Reason::UnscopedPerceive,
+            "COMMIT_CONFLICT" => Reason::CommitConflict,
+            "HAND_EDIT" => Reason::HandEdit,
+            "SCHEMA" => Reason::Schema,
+            "NOT_IN_SPEC" => Reason::NotInSpec,
+            "SESSION_FULL" => Reason::SessionFull,
+            "MISSING_ITEM" => Reason::MissingItem,
+            _ => return None,
+        })
+    }
+
     /// JSONL `rejected.reason`. `budget` is the lowercase word.
     pub fn jsonl_reason(self) -> &'static str {
         match self {

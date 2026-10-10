@@ -18,10 +18,12 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
             if !prev_now.is_file() {
                 return Err(Reason::Schema);
             }
-            let prev = load_now(&fs::read_to_string(&prev_now).map_err(|_| Reason::Schema)?)?;
+            let prev = load_now(&fs::read_to_string(&prev_now).map_err(|_| Reason::Schema)?)
+                .map_err(crate::diagnostic::reason_of)?;
             let live = load_now(
                 &fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?,
-            )?;
+            )
+            .map_err(crate::diagnostic::reason_of)?;
             if live.state_rev == prev.state_rev.saturating_add(1)
                 && live.state_rev != prev.state_rev
             {
@@ -35,8 +37,8 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
         }
     }
 
-    let now =
-        load_now(&fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?)?;
+    let now = load_now(&fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?)
+        .map_err(crate::diagnostic::reason_of)?;
     let log_dir = state.join("log");
     let mut live_ticks = BTreeSet::new();
     if log_dir.is_dir() {
