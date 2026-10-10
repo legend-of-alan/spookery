@@ -30,7 +30,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 6. **Deterministic tick.** A row's literals are filled before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed.
 7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
 8. **Action-row loader.** A moves file is names and rows. A field is a literal, or the player token on a player row. A new verb is a new row in YAML.
-9. **Seeded checks.** `die_face` is Blake2s. One copy, in `check.rs`. `difficulty` applies only when the row sets `check` and no opposing total applies.
+9. **Seeded checks.** `die_face` is Blake2s. One copy, in `check.rs`. The intent's own actor resolves the check, PC or NPC. Another actor does not. `difficulty` applies only when the row sets `check` and no opposing total applies.
 10. **Eligibility and habits.** Both run before a kernel habit intent exists. An ineligible NPC produces no habit intent. A player-sourced intent is not a habit intent.
 11. **Failure tokens.** Each token has one meaning. `NOT_OWNER` and `LIVE_ONLY` are not tokens.
 12. **Speech versus queue.** Speech appends to the tape. It is not a row, it does not enter the intent queue, and it does not tick.
@@ -138,7 +138,7 @@ Stock names `place`, `sku`, and `delta`. `apply_stock` still refuses a place out
 Bindings and the outcome list are different steps.
 
 1. Habit selection picks a row before the apply loop. Expand fills that row's literals against the staging `Now` it sees, including `from` taken from the actor's live place. A row that does not expand is not the kernel intent. Player travel binds the typed place.
-2. Inside the per-candidate loop, `resolve_check` runs if the row has a `check`. An unknown id is `UNKNOWN_KEY`. Templates do not run. The die cursor does not move.
+2. Inside the per-candidate loop, `resolve_check` runs if the row has a `check`. The viewer is that intent's actor. A PC or an NPC may roll for themselves. A viewer who is not the actor is `UNKNOWN_KEY`. An unknown id is `UNKNOWN_KEY`. Templates do not run. The die cursor does not move.
 3. After that roll, the selected templates are `effects`, plus `success` if the roll succeeded, plus `failure` if it failed. No roll means `effects` only. Those templates are filled from the row, not by choosing a new target. The result is a `Vec` of `EffectClass`.
 4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `run_recorded_tick` expands those intents again, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. Replay does not install the log as `Now`. The names `need` and `resource` are not variants.
 
@@ -318,7 +318,7 @@ The POST body is the bounded prompt: the last 16 says this process has handled, 
 
 Load fails with `SCHEMA` if `places.actors` is edited apart from `actors.place`. Emit rebuilds occupancy from `actors.*.place`.
 
-Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","success":true|false}` or `{"kind":"refused","code":"..."}`. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` lowercased, `empty_perceive` as that word, every other token uppercase.
+Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","success":true|false}` or `{"kind":"refused","code":"..."}` for that player's own roll. An NPC's roll sends no player frame. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` lowercased, `empty_perceive` as that word, every other token uppercase.
 
 ## Non-goals
 
