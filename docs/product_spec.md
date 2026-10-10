@@ -17,6 +17,18 @@
 
 ---
 
+## Vision (Oct 8, 2026)
+
+No releases yet. No compatibility guarantees.
+
+- A generic RPG referee engine. Authors write a pack and host it like a private server.
+- One GM seat (AI or human) and 1 to 3 player seats. A 4th player gets `SESSION_FULL`. That seat model is not built yet (#28). Today's seat law (rule 13) is still one player seat and one GM seat until #28 lands.
+- Players walk around and take basic actions.
+- Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor), so the format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint (`spook check`, `spook check --json`, and generated schemas later). `spook check` is not built yet (#24). `spook check --json` is not built yet (#26). Generated schemas are not built yet (#29).
+- The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. The 5e-style sample pack is not built yet (#25).
+
+---
+
 ## 1. What we are building
 
 An **engine and toolchain**, not a single game.
