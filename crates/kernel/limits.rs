@@ -328,6 +328,15 @@ mod tests {
     }
 
     #[test]
+    fn the_removed_live_tick_key_is_refused() {
+        use crate::diagnostic::reason_of;
+        let mut stale = text("tick");
+        stale.push_str("live_tick_every_real_seconds: 60\n");
+        let err = load_tick_rules(&stale).unwrap_err();
+        assert_eq!(reason_of(err), Reason::Schema);
+    }
+
+    #[test]
     fn idle_defaults_to_on_and_off_is_loaded() {
         let on = load_tick_rules(&text("tick")).unwrap();
         assert!(on.idle_ticking);

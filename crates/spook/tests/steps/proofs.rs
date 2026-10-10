@@ -1515,10 +1515,15 @@ fn the_scheduler_does_not_spawn_a_tick() {
         "wake_shard is not a plain function run on the shard thread"
     );
     assert!(
-        !schedule.contains("tokio::spawn")
-            && !listen.contains("tokio::spawn(async move { run_tick"),
-        "a tick is spawned instead of run on the shard thread"
+        !schedule.contains("tokio"),
+        "schedule.rs reaches for the Tokio runtime"
     );
+    for needle in ["run_tick", "run_catchup", "wake_shard", "schedule::"] {
+        assert!(
+            !listen.contains(needle),
+            "the async listener calls {needle} instead of posting a wake to the shard thread"
+        );
+    }
 }
 
 fn manifests_do_not_name_a_model_crate() {
