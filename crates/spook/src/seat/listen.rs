@@ -23,7 +23,9 @@ pub fn listen(pack: &Path, addr: SocketAddr) -> Result<(), Error> {
     if thread::clear_crashed(&mut shard).map_err(Error::Reason)? {
         thread::print_host(&shard);
     }
-    let idle = shard.budget().tick_every_real_seconds;
+    // Keepalive stays the pack interval. The idle switch does not change it.
+    let keepalive_secs = shard.budget().tick_every_real_seconds;
+    let arm_idle_timer = shard.budget().idle_ticking;
     let (tx, rx) = std::sync::mpsc::channel();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -39,7 +41,7 @@ pub fn listen(pack: &Path, addr: SocketAddr) -> Result<(), Error> {
         flag.store(true, Ordering::Release);
         let mut next_conn = 1u64;
         while let Ok((stream, _)) = listener.accept() {
-            if tune(&stream, idle).is_err() || stream.set_nonblocking(true).is_err() {
+            if tune(&stream, keepalive_secs).is_err() || stream.set_nonblocking(true).is_err() {
                 continue;
             }
             let id = next_conn;
@@ -60,25 +62,29 @@ pub fn listen(pack: &Path, addr: SocketAddr) -> Result<(), Error> {
     while !started.load(Ordering::Acquire) {
         std::thread::yield_now();
     }
-    let tx_timer = tx.clone();
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
-    handle.spawn(async move {
-        let mut restart_rx = restart_rx;
-        loop {
-            tokio::select! {
-                _ = tokio::time::sleep(Duration::from_secs(idle)) => {
-                    if tx_timer.send(Msg::Wake).is_err() {
-                        break;
+    if arm_idle_timer {
+        let tx_timer = tx.clone();
+        handle.spawn(async move {
+            let mut restart_rx = restart_rx;
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
+                        if tx_timer.send(Msg::Wake).is_err() {
+                            break;
+                        }
                     }
-                }
-                changed = restart_rx.changed() => {
-                    if changed.is_err() {
-                        break;
+                    changed = restart_rx.changed() => {
+                        if changed.is_err() {
+                            break;
+                        }
                     }
                 }
             }
-        }
-    });
+        });
+    } else {
+        drop(restart_rx);
+    }
     let tx_stdin = tx.clone();
     std::thread::spawn(move || {
         for line in io::stdin().lines() {
@@ -96,10 +102,10 @@ pub fn listen(pack: &Path, addr: SocketAddr) -> Result<(), Error> {
     thread::serve(shard, rx, &restart_tx)
 }
 
-fn tune(stream: &std::net::TcpStream, idle_secs: u64) -> io::Result<()> {
+fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
     stream.set_nodelay(true)?;
     let keepalive = socket2::TcpKeepalive::new()
-        .with_time(Duration::from_secs(idle_secs))
+        .with_time(Duration::from_secs(keepalive_secs))
         .with_interval(Duration::from_secs(1))
         .with_retries(3);
     socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)

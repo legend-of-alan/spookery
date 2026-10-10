@@ -103,7 +103,7 @@ spook migrate /tmp/docks
 
 Leave the GM seat empty. Speech is stored on the tape and does not advance time. Each player move is committed as its own tick, and world numbers change only inside that tick. There is no narration and no model call.
 
-With both seats empty, the server still wakes on the pack's real-time interval. In the docks pack that interval is `tick_every_real_seconds: 300`. While a player is sitting, that wake does not tick.
+With both seats empty, the server still wakes on the pack's real-time interval. In the docks pack that interval is `tick_every_real_seconds: 300`. While a player is sitting, that wake does not tick. A pack sets `idle: off` in `rules/tick.yaml` to leave that empty table still.
 
 ### Model GM
 

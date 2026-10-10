@@ -192,6 +192,10 @@ NPC perceive includes `habits`, the ids that are on for that NPC, in file order.
 
 `tick.yaml` pause is `named_plot_clocks`. `now.pause` stores that one view. Plot clocks with `requires_presence` are paused while `humans == 0` and the policy is `pause_when_empty`.
 
+`tick.yaml` may set `idle` to `on` or `off`. Omitted means `on`. Any other value is `SCHEMA`. `on` wakes an empty table. `off` leaves an empty table still: the runtime does not arm the wake timer, a wake does not tick, and a later wake or a reopen does not catch up. `last_tick_at` and `world_time` stay unchanged while the table is empty. Seated play does not read `idle`. With no GM, a player line commits its own tick. With a GM, `commit_turn` commits the queue. `spook tick` is a manual tick and does not read `idle`. Turning `idle` back to `on` after a long `off` period applies the same catch-up cap as any other long absence.
+
+The empty-table knobs sit beside `idle`. `tick_every_real_seconds` is the real seconds between wakes. `idle_minutes_per_tick` is the world minutes one empty tick advances. `idle_catchup_max_ticks` caps how many ticks a catch-up writes. `idle_max_world_hours_per_real_hour` caps world hours gained per real hour of absence. `idle_acts_per_world_day` caps habit acts on an empty day. `tick_every_real_seconds: 0` and `idle_minutes_per_tick: 0` are `SCHEMA`. A seated catch-up is one tick.
+
 Kernel habits do not emit speech. A player world line while `humans == 0` is refused at queue time with `TABLE_EMPTY`. A five-name denylist is not part of habit selection.
 
 ## Failure tokens
@@ -262,9 +266,9 @@ The GM tool is the same act. `address` is `table`, `place`, or `actor`. `place` 
 
 With no GM, the runtime queues and commits one live tick of `live_minutes_per_tick` (default 5). With a GM seated, the line waits. `commit_turn` requires `include_tick: true`. An empty queue is a no-op and writes no tick file. `include_tick: false` with a non-empty queue is `NOT_IN_SPEC`.
 
-One wake: the runtime sleeps `tick_every_real_seconds`, reset when a tick actually advanced, and posts a wake. The shard thread wakes the live shard. A second open of the pack on that wake is not the scheduler.
+One wake: when `idle` is `on` (the default), the runtime sleeps `tick_every_real_seconds`, reset when a tick actually advanced, and posts a wake. The shard thread wakes the live shard. A second open of the pack on that wake is not the scheduler. When `idle` is `off`, that timer is not armed, an empty table does not tick, and it does not catch up on a later wake or a reopen. `last_tick_at` and `world_time` stay unchanged while the table is empty. Turning `idle` back to `on` after a long `off` period applies the existing catch-up cap. A seated table still commits its own ticks, and `spook tick` still ticks.
 
-The seat's `tools/list` is the menu.
+The seat's `tools/list` is the menu. Player input is the move menu plus `say`, with no AI parsing in v1 (see #54).
 
 Sitting perceive allows `player:` and `npc:`. A missing `as`, or `as=gm`, is `UNSCOPED_PERCEIVE`. Perceive calls the perceive budget after that check. `firewall::allows` is the shared visibility test.
 

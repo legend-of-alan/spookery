@@ -16,6 +16,8 @@ pub struct Budget {
     pub idle_acts_per_world_day: u64,
     pub live_acts_per_world_hour: u64,
     pub tick_every_real_seconds: u64,
+    /// Empty-table wakes. `false` leaves an empty table still.
+    pub idle_ticking: bool,
     pub live_tick_every_real_seconds: u64,
     pub idle_minutes_per_tick: u64,
     pub live_minutes_per_tick: u64,
@@ -48,6 +50,7 @@ impl Budget {
             idle_acts_per_world_day: 3,
             live_acts_per_world_hour: 6,
             tick_every_real_seconds: 300,
+            idle_ticking: true,
             live_tick_every_real_seconds: 60,
             idle_minutes_per_tick: 60,
             live_minutes_per_tick: 5,
@@ -126,13 +129,14 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         defaults.live_acts_per_world_hour,
         &mut diags,
     );
-    let tick_every_real_seconds = take(
+    let tick_every_real_seconds = take_positive(
         text,
         "tick_every_real_seconds",
         file.tick_every_real_seconds,
         defaults.tick_every_real_seconds,
         &mut diags,
     );
+    let idle_ticking = take_idle(text, file.idle, &mut diags);
     let live_tick_every_real_seconds = take(
         text,
         "live_tick_every_real_seconds",
@@ -140,7 +144,7 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         defaults.live_tick_every_real_seconds,
         &mut diags,
     );
-    let idle_minutes_per_tick = take(
+    let idle_minutes_per_tick = take_positive(
         text,
         "idle_minutes_per_tick",
         file.idle_minutes_per_tick,
@@ -180,6 +184,7 @@ pub fn load_tick_rules(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         idle_acts_per_world_day,
         live_acts_per_world_hour,
         tick_every_real_seconds,
+        idle_ticking,
         live_tick_every_real_seconds,
         idle_minutes_per_tick,
         live_minutes_per_tick,
@@ -217,6 +222,53 @@ fn take(
     }
 }
 
+fn take_positive(
+    text: &str,
+    field: &str,
+    value: Option<i64>,
+    default: u64,
+    diags: &mut Vec<Diagnostic>,
+) -> u64 {
+    match value {
+        None => default,
+        Some(n) if n > 0 => n as u64,
+        Some(n) => {
+            let problem = if n < 0 {
+                format!("{field} is {n}, which is below zero")
+            } else {
+                format!("{field} is 0, which is not a positive interval")
+            };
+            let mut diag =
+                schema(TICK_FILE, &problem, "use a number greater than zero").with_path(field);
+            if let Some((line, column)) = locate_nth(text, &format!("{field}:"), 0) {
+                diag = diag.at_line(line, Some(column));
+            }
+            diags.push(diag);
+            default
+        }
+    }
+}
+
+fn take_idle(text: &str, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
+    match value.as_deref() {
+        None | Some("on") => true,
+        Some("off") => false,
+        Some(other) => {
+            let mut diag = schema(
+                TICK_FILE,
+                &format!("idle is '{other}', which is not on or off"),
+                "write idle: on or idle: off",
+            )
+            .with_path("idle");
+            if let Some((line, column)) = locate_nth(text, "idle:", 0) {
+                diag = diag.at_line(line, Some(column));
+            }
+            diags.push(diag);
+            true
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TickFile {
@@ -229,6 +281,8 @@ struct TickFile {
     idle_acts_per_world_day: Option<i64>,
     live_acts_per_world_hour: Option<i64>,
     tick_every_real_seconds: Option<i64>,
+    #[serde(default, deserialize_with = "read_idle_word")]
+    idle: Option<String>,
     live_tick_every_real_seconds: Option<i64>,
     idle_minutes_per_tick: Option<i64>,
     live_minutes_per_tick: Option<i64>,
@@ -241,6 +295,14 @@ struct TickFile {
 #[serde(deny_unknown_fields)]
 struct PauseFile {
     named_plot_clocks: PausePolicy,
+}
+
+fn read_idle_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let word = String::deserialize(deserializer)?;
+    Ok(Some(word))
 }
 
 #[cfg(test)]
@@ -274,5 +336,61 @@ mod tests {
         assert!(err
             .iter()
             .any(|diag| diag.message.contains("idle_catchup_max_ticks")));
+    }
+
+    #[test]
+    fn idle_defaults_to_on_and_off_is_loaded() {
+        let on = load_tick_rules(&text("tick")).unwrap();
+        assert!(on.idle_ticking);
+        let mut explicit = text("tick");
+        explicit.push_str("idle: on\n");
+        assert!(load_tick_rules(&explicit).unwrap().idle_ticking);
+        let mut off = text("tick");
+        off.push_str("idle: off\n");
+        assert!(!load_tick_rules(&off).unwrap().idle_ticking);
+    }
+
+    #[test]
+    fn docks_tick_rules_leave_idle_on() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packs/oneshot-docks/rules/tick.yaml");
+        let text = std::fs::read_to_string(path).unwrap();
+        let budget = load_tick_rules(&text).unwrap();
+        assert!(budget.idle_ticking);
+        assert_eq!(budget.tick_every_real_seconds, 300);
+        assert_eq!(budget.idle_minutes_per_tick, 60);
+    }
+
+    #[test]
+    fn a_bad_idle_word_and_a_zero_interval_are_schema() {
+        use crate::diagnostic::reason_of;
+        let mut maybe = text("tick");
+        maybe.push_str("idle: maybe\n");
+        let err = load_tick_rules(&maybe).unwrap_err();
+        assert_eq!(reason_of(err.clone()), Reason::Schema);
+        assert_eq!(err[0].file, "rules/tick.yaml");
+        assert!(err[0].line.is_some(), "{err:?}");
+        assert!(err[0].message.contains("maybe"), "{err:?}");
+        assert!(err[0].message.contains("on or off"), "{err:?}");
+
+        let zero = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\ntick_every_real_seconds: 0\n";
+        let err = load_tick_rules(zero).unwrap_err();
+        assert_eq!(err[0].code, "SCHEMA");
+        assert!(err[0].line.is_some(), "{err:?}");
+        assert!(
+            err[0].message.contains("tick_every_real_seconds"),
+            "{err:?}"
+        );
+        assert!(err[0].message.contains('0'), "{err:?}");
+
+        let minutes = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle_minutes_per_tick: 0\n";
+        let err = load_tick_rules(minutes).unwrap_err();
+        assert_eq!(err[0].code, "SCHEMA");
+        assert!(err[0].line.is_some(), "{err:?}");
+        assert!(err[0].message.contains("idle_minutes_per_tick"), "{err:?}");
+
+        let empty = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle:\n";
+        let err = load_tick_rules(empty).unwrap_err();
+        assert_eq!(reason_of(err), Reason::Schema);
     }
 }

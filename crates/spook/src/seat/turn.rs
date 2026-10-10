@@ -66,6 +66,9 @@ pub fn on_scheduled_wake(
     if player_held || gm_held {
         return Ok(false);
     }
+    if !shard.budget().idle_ticking {
+        return Ok(false);
+    }
     let every = shard.budget().tick_every_real_seconds;
     if seconds_since(&shard.now().last_tick_at)? < every {
         return Ok(false);
