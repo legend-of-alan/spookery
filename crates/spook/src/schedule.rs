@@ -26,7 +26,18 @@ pub fn wall_now() -> Result<String, Reason> {
     format_utc(SystemTime::now())
 }
 
+pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|_| Reason::Schema)?
+        .as_secs();
+    format_utc(UNIX_EPOCH + Duration::from_secs(now.saturating_sub(seconds)))
+}
+
 pub fn wake_shard(shard: &mut Shard) -> Result<(), Reason> {
+    if !shard.budget().idle_ticking && shard.now().presence.humans == 0 {
+        return Ok(());
+    }
     let now = SystemTime::now();
     let elapsed = elapsed_secs(&shard.now().last_tick_at, now)?;
     let wall = format_utc(now)?;
