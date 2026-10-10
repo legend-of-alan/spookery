@@ -14,7 +14,7 @@ cargo build --release
 
 The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`.
 
-Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools.
+Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools. On Windows, check the repository out with LF line endings (`core.autocrlf` false). A CRLF checkout rewrites the pack, and `spook run` then exits 1 with `PACK_REV_MISMATCH`. CI sets `core.autocrlf` false before checkout.
 
 CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Rust 1.89.0. That workflow does not install extra packages. The GitHub Ubuntu image already includes `pkg-config` and `libssl-dev`. A minimal Linux install does not.
 
