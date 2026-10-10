@@ -1142,6 +1142,130 @@ fn early_wake_does_not_tick_again() {
     let _ = fs::remove_dir_all(&early);
 }
 
+fn write_idle(pack: &Path, value: &str) {
+    let path = pack.join("rules/tick.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    assert!(!text.contains("\nidle:"), "tick.yaml already sets idle");
+    let next = text.replacen(
+        "schema: tick\n",
+        &format!("schema: tick\nidle: {value}\n"),
+        1,
+    );
+    assert_ne!(next, text, "tick.yaml has no schema line");
+    fs::write(&path, next).unwrap();
+    stamp_pack_rev(pack);
+}
+
+fn idle_off_past_due_wake_writes_nothing() {
+    let pack = temp_pack("idle-off-due");
+    write_idle(&pack, "off");
+    let (world_time, state_rev, tick_index, stamp) = {
+        let shard = open(&pack);
+        let every = shard.budget().tick_every_real_seconds;
+        assert!(
+            every > 0 && every + 60 < 3600,
+            "interval {every} is not inside one hour"
+        );
+        assert!(!shard.budget().idle_ticking);
+        let stamp = spookery::schedule::wall_ago(every + 60).unwrap();
+        let mut now = shard.now().clone();
+        let world_time = now.world_time;
+        let state_rev = now.state_rev;
+        let tick_index = now.tick_index;
+        drop(shard);
+        now.last_tick_at = stamp.clone();
+        save_now(&pack, &now);
+        (world_time, state_rev, tick_index, stamp)
+    };
+    let mut shard = open(&pack);
+    let elapsed = spookery::schedule::seconds_since(&stamp).unwrap();
+    assert!(elapsed >= shard.budget().tick_every_real_seconds);
+    assert!(elapsed < 3600);
+    assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert_eq!(shard.now().world_time, world_time);
+    assert_eq!(shard.now().last_tick_at, stamp);
+    assert_eq!(shard.now().state_rev, state_rev);
+    assert_eq!(shard.now().tick_index, tick_index);
+    drop(shard);
+    let saved = now_of(&pack);
+    assert_eq!(saved.world_time, world_time);
+    assert_eq!(saved.last_tick_at, stamp);
+    assert_eq!(saved.state_rev, state_rev);
+    assert!(tick_names(&pack).is_empty());
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn idle_off_long_absence_writes_no_catchup() {
+    let pack = temp_pack("idle-off-absence");
+    write_idle(&pack, "off");
+    let mut shard = open(&pack);
+    let world_time = shard.now().world_time;
+    let last = shard.now().last_tick_at.clone();
+    let state_rev = shard.now().state_rev;
+    let tick_index = shard.now().tick_index;
+    assert!(spookery::schedule::seconds_since(&last).unwrap() >= 3600);
+    assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert_eq!(shard.now().world_time, world_time);
+    assert_eq!(shard.now().last_tick_at, last);
+    assert_eq!(shard.now().tick_index, tick_index);
+    drop(shard);
+    let saved = now_of(&pack);
+    assert_eq!(saved.world_time, world_time);
+    assert_eq!(saved.last_tick_at, last);
+    assert_eq!(saved.state_rev, state_rev);
+    assert!(tick_names(&pack).is_empty());
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn idle_off_seated_line_and_spook_tick_still_advance() {
+    let pack = temp_pack("idle-off-play");
+    write_idle(&pack, "off");
+    let mut shard = open(&pack);
+    seat_player(&mut shard, "pc_rowan").unwrap();
+    let played = turn(&mut shard, "pc_rowan", "wait", false).unwrap();
+    let Turn::Committed { advanced, .. } = played else {
+        panic!("wait stayed queued");
+    };
+    assert!(advanced);
+    assert_eq!(shard.now().world_time, 1085);
+    assert_eq!(shard.now().tick_index, 1);
+    drop(shard);
+    assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
+    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    let now = now_of(&pack);
+    assert_eq!(now.tick_index, 2);
+    assert_eq!(now.world_time, 1090);
+    assert_eq!(
+        tick_names(&pack),
+        vec!["tick-0001.jsonl".to_string(), "tick-0002.jsonl".to_string()]
+    );
+    let _ = fs::remove_dir_all(&pack);
+}
+
+fn idle_off_commit_turn_still_commits() {
+    let pack = temp_pack("idle-off-commit");
+    write_idle(&pack, "off");
+    let mut shard = open(&pack);
+    seat_player(&mut shard, "pc_rowan").unwrap();
+    let queued = turn(&mut shard, "pc_rowan", "wait", true).unwrap();
+    let Turn::Queued(_) = queued else {
+        panic!("wait committed with a GM seated");
+    };
+    assert_eq!(shard.now().world_time, 1080);
+    assert!(tick_names(&pack).is_empty());
+    let done = gm_tool(
+        &mut shard,
+        "commit_turn",
+        Some(json!({ "include_tick": true }).as_object().unwrap().clone()),
+    );
+    assert!(done.value.get("code").is_none(), "{}", done.value);
+    assert!(done.ticked);
+    assert_eq!(shard.now().world_time, 1085);
+    assert_eq!(shard.now().tick_index, 1);
+    assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
+    let _ = fs::remove_dir_all(&pack);
+}
+
 fn a_due_wake_applies_the_queued_wait() {
     let due = temp_pack("due-wake");
     let mut shard = open(&due);
@@ -1526,6 +1650,26 @@ fn a_committed_wait_wakes_early(_world: &mut World) {
 #[when(expr = "a queued wait is due")]
 fn a_queued_wait_is_due(_world: &mut World) {
     a_due_wake_applies_the_queued_wait();
+}
+
+#[when(expr = "idle is off and a past-due wake arrives")]
+fn idle_is_off_and_a_past_due_wake_arrives(_world: &mut World) {
+    idle_off_past_due_wake_writes_nothing();
+}
+
+#[when(expr = "idle is off and a long absence wakes")]
+fn idle_is_off_and_a_long_absence_wakes(_world: &mut World) {
+    idle_off_long_absence_writes_no_catchup();
+}
+
+#[when(expr = "idle is off and a player waits and spook tick runs")]
+fn idle_is_off_and_a_player_waits(_world: &mut World) {
+    idle_off_seated_line_and_spook_tick_still_advance();
+}
+
+#[when(expr = "idle is off and the GM commits a queued wait")]
+fn idle_is_off_and_the_gm_commits(_world: &mut World) {
+    idle_off_commit_turn_still_commits();
 }
 
 #[when(expr = "effect rows and outcome lists are played")]

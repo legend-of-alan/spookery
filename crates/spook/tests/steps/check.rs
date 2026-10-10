@@ -122,6 +122,21 @@ fn break_pack(pack: &std::path::Path, fault: &str) {
             "    - docks_street\n",
             "    - nowhere\n",
         ),
+        "idle maybe" => replace_file(
+            &pack.join("rules/tick.yaml"),
+            "schema: tick\n",
+            "schema: tick\nidle: maybe\n",
+        ),
+        "zero tick interval" => replace_file(
+            &pack.join("rules/tick.yaml"),
+            "tick_every_real_seconds: 300\n",
+            "tick_every_real_seconds: 0\n",
+        ),
+        "zero idle minutes" => replace_file(
+            &pack.join("rules/tick.yaml"),
+            "idle_minutes_per_tick: 60\n",
+            "idle_minutes_per_tick: 0\n",
+        ),
         other => panic!("unknown fault {other}"),
     }
 }
