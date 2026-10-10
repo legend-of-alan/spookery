@@ -1500,17 +1500,30 @@ fn a_held_knife_still_runs_the_opposed_row() {
 }
 
 fn the_scheduler_does_not_spawn_a_tick() {
-    let source =
-        fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/schedule.rs"))
-            .unwrap();
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let listen = fs::read_to_string(src.join("seat/listen.rs")).unwrap();
+    let timer = listen
+        .find("tokio::time::sleep")
+        .unwrap_or_else(|| panic!("the idle timer does not sleep on a Tokio timer"));
     assert!(
-        source.contains("tokio::time::sleep"),
-        "scheduler does not sleep on a Tokio timer"
+        listen[timer..].contains("send(Msg::Wake)"),
+        "the idle timer does not post a wake to the shard thread"
+    );
+    let schedule = fs::read_to_string(src.join("schedule.rs")).unwrap();
+    assert!(
+        schedule.contains("pub fn wake_shard(") && !schedule.contains("async fn"),
+        "wake_shard is not a plain function run on the shard thread"
     );
     assert!(
-        !source.contains("tokio::spawn"),
-        "scheduler spawns a tick instead of calling run_tick on the calling thread"
+        !schedule.contains("tokio"),
+        "schedule.rs reaches for the Tokio runtime"
     );
+    for needle in ["run_tick", "run_catchup", "wake_shard", "schedule::"] {
+        assert!(
+            !listen.contains(needle),
+            "the async listener calls {needle} instead of posting a wake to the shard thread"
+        );
+    }
 }
 
 fn manifests_do_not_name_a_model_crate() {

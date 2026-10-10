@@ -7,7 +7,6 @@ max_memory_writes: 8
 idle_acts_per_world_day: 3
 live_acts_per_world_hour: 6
 tick_every_real_seconds: 300
-live_tick_every_real_seconds: 60
 idle_minutes_per_tick: 60
 live_minutes_per_tick: 5
 idle_catchup_max_ticks: 12
