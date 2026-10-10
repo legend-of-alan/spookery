@@ -58,11 +58,23 @@ pub fn pack(world: &World) -> &Path {
         .unwrap_or_else(|| panic!("no docks table"))
 }
 
+/// Read `state/now.yaml` without opening the shard. `open_shard` runs
+/// recovery, which writes, and races a live server mid-commit. The server
+/// replaces now.yaml by atomic rename, so a read is always whole. Windows
+/// can briefly refuse to open a file mid-rename, so a failed read retries.
 pub fn now_of(pack: &Path) -> Now {
-    spookery_kernel::open_shard(pack)
-        .unwrap_or_else(|err| panic!("open_shard: {err}"))
-        .now()
-        .clone()
+    let path = pack.join("state/now.yaml");
+    let start = Instant::now();
+    let text = loop {
+        match fs::read_to_string(&path) {
+            Ok(text) => break text,
+            Err(err) if start.elapsed() > Duration::from_secs(2) => {
+                panic!("read now.yaml: {err}")
+            }
+            Err(_) => std::thread::sleep(Duration::from_millis(10)),
+        }
+    };
+    spookery_kernel::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err:?}"))
 }
 
 pub fn tick_names(pack: &Path) -> Vec<String> {
