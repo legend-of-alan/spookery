@@ -28,7 +28,12 @@ fn priority_key(
     };
     let pc_clock = if targets_pc_clock(now, intent) { 0 } else { 1 };
     let claimed = if claimed(now, intent) { 0 } else { 1 };
-    let shuffle = shuffle_key(shard_id, tick_index, &intent.actor_id);
+    // Player lines that share a priority keep the queue order. NPC ties still shuffle.
+    let shuffle = if intent.actor_kind == ActorKind::Player {
+        [0u8; 32]
+    } else {
+        shuffle_key(shard_id, tick_index, &intent.actor_id)
+    };
     (kind, pc_clock, claimed, shuffle)
 }
 

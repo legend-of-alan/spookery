@@ -19,9 +19,24 @@ pub enum SocketEnd {
     Close,
 }
 
+/// Engine cap. A pack may define more PCs than this.
+const MAX_PLAYER_SEATS: usize = 3;
+
 pub fn seat_player(shard: &mut Shard, actor_id: &str) -> Result<String, Reason> {
-    hold_player(shard, actor_id)?;
-    Ok("s1".to_string())
+    if !is_live_pc(shard, actor_id) {
+        return Err(Reason::Schema);
+    }
+    let mut ids = shard.now().presence.actors_present.clone();
+    if ids.len() >= MAX_PLAYER_SEATS {
+        return Err(Reason::SessionFull);
+    }
+    if ids.iter().any(|id| id == actor_id) {
+        return Err(Reason::SeatTaken);
+    }
+    ids.push(actor_id.to_string());
+    let session = format!("s{}", ids.len());
+    commit_held(shard, &ids)?;
+    Ok(session)
 }
 
 pub fn release_player_seat(
@@ -40,10 +55,27 @@ pub fn release_player_seat(
     if session_id.is_empty() {
         return Err(Reason::Schema);
     }
-    let mut presence = shard.now().presence.clone();
-    presence.humans = 0;
-    presence.actors_present.retain(|id| id != actor_id);
-    commit_presence(shard, presence)
+    let mut ids = shard.now().presence.actors_present.clone();
+    ids.retain(|id| id != actor_id);
+    commit_held(shard, &ids)
+}
+
+fn commit_held(shard: &mut Shard, ids: &[String]) -> Result<bool, Reason> {
+    commit_presence(
+        shard,
+        Presence {
+            humans: u32::try_from(ids.len()).map_err(|_| Reason::Schema)?,
+            actors_present: ids.to_vec(),
+        },
+    )
+}
+
+fn is_live_pc(shard: &Shard, actor_id: &str) -> bool {
+    shard
+        .now()
+        .actors
+        .get(actor_id)
+        .is_some_and(ActorLive::is_pc)
 }
 
 pub(super) fn clear_crashed(shard: &mut Shard) -> Result<bool, Reason> {
@@ -93,10 +125,85 @@ pub(super) fn print_host(shard: &Shard) {
     }
 }
 
-#[derive(Default)]
 struct Seats {
-    player: Option<HeldPlayer>,
+    players: PlayerSeats,
     gm: Option<GmSeat>,
+}
+
+struct PlayerSeats {
+    slots: [Option<HeldPlayer>; MAX_PLAYER_SEATS],
+}
+
+impl Default for Seats {
+    fn default() -> Self {
+        Self {
+            players: PlayerSeats {
+                slots: [None, None, None],
+            },
+            gm: None,
+        }
+    }
+}
+
+impl PlayerSeats {
+    fn len(&self) -> usize {
+        self.slots.iter().flatten().count()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn is_full(&self) -> bool {
+        self.len() == MAX_PLAYER_SEATS
+    }
+
+    fn holds(&self, actor_id: &str) -> bool {
+        self.slots
+            .iter()
+            .flatten()
+            .any(|player| player.actor_id == actor_id)
+    }
+
+    fn actor_ids(&self) -> Vec<String> {
+        self.slots
+            .iter()
+            .flatten()
+            .map(|player| player.actor_id.clone())
+            .collect()
+    }
+
+    fn conns(&self) -> Vec<u64> {
+        self.slots
+            .iter()
+            .flatten()
+            .map(|player| player.conn)
+            .collect()
+    }
+
+    fn by_conn(&self, conn: u64) -> Option<&HeldPlayer> {
+        self.slots
+            .iter()
+            .flatten()
+            .find(|player| player.conn == conn)
+    }
+
+    fn sit(&mut self, player: HeldPlayer) -> Result<(), Reason> {
+        let Some(slot) = self.slots.iter_mut().find(|slot| slot.is_none()) else {
+            return Err(Reason::SessionFull);
+        };
+        *slot = Some(player);
+        Ok(())
+    }
+
+    fn take_conn(&mut self, conn: u64) -> Option<HeldPlayer> {
+        for slot in &mut self.slots {
+            if slot.as_ref().is_some_and(|player| player.conn == conn) {
+                return slot.take();
+            }
+        }
+        None
+    }
 }
 
 struct HeldPlayer {
@@ -154,24 +261,6 @@ pub(super) enum PlayerReply {
     Hangup,
 }
 
-fn hold_player(shard: &mut Shard, actor_id: &str) -> Result<(), Reason> {
-    if !shard
-        .now()
-        .actors
-        .get(actor_id)
-        .is_some_and(ActorLive::is_pc)
-    {
-        return Err(Reason::Schema);
-    }
-    let mut presence = shard.now().presence.clone();
-    presence.humans = 1;
-    if !presence.actors_present.iter().any(|id| id == actor_id) {
-        presence.actors_present.push(actor_id.to_string());
-    }
-    commit_presence(shard, presence)?;
-    Ok(())
-}
-
 fn on_msg(
     shard: &mut Shard,
     seats: &mut Seats,
@@ -208,7 +297,7 @@ fn on_msg(
                 Vec::new()
             };
             if done.ticked {
-                refresh_player(shard, seats, &notices);
+                refresh_players(shard, seats, &notices);
                 print_host(shard);
             }
             if let Some(tape) = &done.tape {
@@ -221,11 +310,7 @@ fn on_msg(
                 }
             }
             if let Some((recipients, line)) = &done.player_line {
-                if let Some(player) = &seats.player {
-                    if recipients.iter().any(|id| id == &player.actor_id) {
-                        let _ = player.out.send(line.clone());
-                    }
-                }
+                send_recipients(seats, recipients, line.clone());
             }
             let mut after = done.after;
             after.extend(turn::gm_check_frames(&notices));
@@ -238,7 +323,7 @@ fn on_msg(
             });
         }
         Msg::Wake => {
-            if turn::on_scheduled_wake(shard, seats.player.is_some(), seats.gm.is_some())? {
+            if turn::on_scheduled_wake(shard, !seats.players.is_empty(), seats.gm.is_some())? {
                 bump_sleep(restart);
             }
         }
@@ -254,20 +339,24 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
     let _ = restart.send(next);
 }
 
-fn refresh_player(shard: &Shard, seats: &Seats, notices: &[spookery_kernel::check::CheckNotice]) {
-    let Some(player) = &seats.player else {
-        return;
-    };
-    let mut out = turn::player_notice_lines(notices, &player.actor_id);
-    if let Ok(text) = player_refresh(shard, &player.actor_id) {
-        out.push_str(&text);
-        let _ = player.out.send(out.into_bytes());
+fn refresh_players(shard: &Shard, seats: &Seats, notices: &[spookery_kernel::check::CheckNotice]) {
+    for player in seats.players.slots.iter().flatten() {
+        match player_refresh(shard, &player.actor_id) {
+            Ok(text) => {
+                let mut out = turn::player_notice_lines(notices, &player.actor_id);
+                out.push_str(&text);
+                let _ = player.out.send(out.into_bytes());
+            }
+            Err(code) => {
+                let _ = player.out.send(refused_line(code).into_bytes());
+            }
+        }
     }
 }
 
 fn shutdown(shard: &mut Shard, seats: &mut Seats) -> ! {
-    if seats.player.is_some() {
-        match drop_player(shard, seats, SocketEnd::Eof) {
+    for conn in seats.players.conns() {
+        match drop_conn(shard, seats, conn, SocketEnd::Eof) {
             Ok(true) => print_host(shard),
             Ok(false) => {}
             Err(code) => {
@@ -296,15 +385,20 @@ fn on_hello(
         return Ok(HelloReply::Gm);
     }
     if let Some(id) = player_hello(line) {
-        if seats.player.is_some() {
+        if seats.players.is_full() {
             return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
-        if !shard.now().actors.get(id).is_some_and(ActorLive::is_pc) {
+        if seats.players.holds(id) {
+            return Ok(HelloReply::Refused(refused_line(Reason::SeatTaken)));
+        }
+        if !is_live_pc(shard, id) {
             return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
         }
         let session_id = format!("s{next_session}");
         *next_session = next_session.checked_add(1).ok_or(Reason::Schema)?;
-        if let Err(code) = hold_player(shard, id) {
+        let mut ids = seats.players.actor_ids();
+        ids.push(id.to_string());
+        if let Err(code) = commit_held(shard, &ids) {
             return Ok(HelloReply::Refused(refused_line(code)));
         }
         let bytes = match welcome(shard, id) {
@@ -317,12 +411,17 @@ fn on_hello(
             }
         };
         let _ = out.send(bytes);
-        seats.player = Some(HeldPlayer {
+        if let Err(code) = seats.players.sit(HeldPlayer {
             conn,
             actor_id: id.to_string(),
-            session_id,
+            session_id: session_id.clone(),
             out,
-        });
+        }) {
+            if release_player_seat(shard, &session_id, id, SocketEnd::Close)? {
+                print_host(shard);
+            }
+            return Ok(HelloReply::Refused(refused_line(code)));
+        }
         print_host(shard);
         return Ok(HelloReply::Player);
     }
@@ -358,20 +457,14 @@ fn on_player(
     line: &str,
 ) -> Result<PlayerReply, Reason> {
     if is_close(line) {
-        if seats
-            .player
-            .as_ref()
-            .is_some_and(|player| player.conn == conn)
-            && drop_player(shard, seats, SocketEnd::Close)?
-        {
+        if drop_conn(shard, seats, conn, SocketEnd::Close)? {
             print_host(shard);
         }
         return Ok(PlayerReply::Hangup);
     }
     let Some(actor_id) = seats
-        .player
-        .as_ref()
-        .filter(|player| player.conn == conn)
+        .players
+        .by_conn(conn)
         .map(|player| player.actor_id.clone())
     else {
         return Ok(PlayerReply::Hangup);
@@ -384,7 +477,7 @@ fn on_player(
                 if let Some(gm) = &seats.gm {
                     let _ = gm.out.send(spoken.gm_event);
                 }
-                send_player(seats, conn, spoken.player_event.into_bytes());
+                send_recipients(seats, &spoken.recipients, spoken.player_event.into_bytes());
                 Ok(PlayerReply::Done)
             }
             Err(code) => {
@@ -421,14 +514,7 @@ fn on_mechanical(
                 bump_sleep(restart);
             }
             print_host(shard);
-            match player_refresh(shard, actor_id) {
-                Ok(refresh) => {
-                    let mut bytes = turn::player_notice_lines(&notices, actor_id);
-                    bytes.push_str(&refresh);
-                    send_player(seats, conn, bytes.into_bytes());
-                }
-                Err(code) => send_player(seats, conn, refused_line(code).into_bytes()),
-            }
+            refresh_players(shard, seats, &notices);
         }
         Err(code) => send_player(seats, conn, refused_line(code).into_bytes()),
     }
@@ -436,8 +522,16 @@ fn on_mechanical(
 }
 
 fn send_player(seats: &Seats, conn: u64, bytes: Vec<u8>) {
-    if let Some(player) = seats.player.as_ref().filter(|player| player.conn == conn) {
+    if let Some(player) = seats.players.by_conn(conn) {
         let _ = player.out.send(bytes);
+    }
+}
+
+fn send_recipients(seats: &Seats, recipients: &[String], line: Vec<u8>) {
+    for player in seats.players.slots.iter().flatten() {
+        if recipients.iter().any(|id| id == &player.actor_id) {
+            let _ = player.out.send(line.clone());
+        }
     }
 }
 
@@ -448,8 +542,13 @@ fn is_close(line: &str) -> bool {
     }
 }
 
-fn drop_player(shard: &mut Shard, seats: &mut Seats, end: SocketEnd) -> Result<bool, Reason> {
-    let Some(player) = seats.player.take() else {
+fn drop_conn(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    conn: u64,
+    end: SocketEnd,
+) -> Result<bool, Reason> {
+    let Some(player) = seats.players.take_conn(conn) else {
         return Ok(false);
     };
     release_player_seat(shard, &player.session_id, &player.actor_id, end)
@@ -462,12 +561,8 @@ fn on_fault(
     end: SocketEnd,
     ack: tokio::sync::oneshot::Sender<()>,
 ) -> Result<(), Reason> {
-    let result = if seats
-        .player
-        .as_ref()
-        .is_some_and(|player| player.conn == conn)
-    {
-        match drop_player(shard, seats, end) {
+    let result = if seats.players.by_conn(conn).is_some() {
+        match drop_conn(shard, seats, conn, end) {
             Ok(true) => {
                 print_host(shard);
                 Ok(())
@@ -490,24 +585,11 @@ fn refused_line(code: Reason) -> String {
 }
 
 fn debug_seats(seats: &Seats, shard: &Shard) {
-    debug_assert_eq!(seats.player.is_some(), shard.now().presence.humans == 1);
-    if let Some(player) = &seats.player {
-        debug_assert!(shard
-            .now()
-            .presence
-            .actors_present
-            .iter()
-            .any(|id| id == &player.actor_id));
-    } else {
-        let start = shard.canon().start_pc.as_str();
-        debug_assert!(
-            shard.now().presence.humans != 1
-                || shard
-                    .now()
-                    .presence
-                    .actors_present
-                    .iter()
-                    .all(|id| id != start)
-        );
-    }
+    let mut held = seats.players.actor_ids();
+    held.sort();
+    let presence = &shard.now().presence;
+    debug_assert_eq!(presence.humans as usize, held.len());
+    let mut present = presence.actors_present.clone();
+    present.sort();
+    debug_assert_eq!(present, held);
 }
