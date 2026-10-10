@@ -75,3 +75,6 @@ Feature: One GM seat and up to three player seats
     Given a docks table
     When three play clients sit on a free port
     Then each play client shows its first perceive
+
+  Scenario: A reseated player never reuses a held session id
+    When two players sit, one drops, and that PC sits again

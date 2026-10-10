@@ -34,9 +34,10 @@ pub fn seat_player(shard: &mut Shard, actor_id: &str) -> Result<String, Reason> 
         return Err(Reason::SeatTaken);
     }
     ids.push(actor_id.to_string());
-    let session = format!("s{}", ids.len());
     commit_held(shard, &ids)?;
-    Ok(session)
+    // Seating always changes presence, so `state_rev` has just moved and
+    // never repeats. A seat count would reuse an id after a drop.
+    Ok(format!("s{}", shard.now().state_rev))
 }
 
 pub fn release_player_seat(
