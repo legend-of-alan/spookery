@@ -92,12 +92,10 @@ pub struct CheckRoll<'a> {
     pub die_cursor: &'a mut usize,
 }
 
-/// NPC viewers return `UNKNOWN_KEY` and do not advance `die_cursor`.
+/// The viewer must be the actor. A PC or an NPC may roll for themselves.
+/// A different viewer is `UNKNOWN_KEY` and does not advance `die_cursor`.
 pub fn resolve_check(roll: CheckRoll<'_>) -> Result<CheckOut, Reason> {
-    let ViewerId::Player(id) = roll.viewer else {
-        return Err(Reason::UnknownKey);
-    };
-    if id != roll.actor_id {
+    if roll.viewer.actor_id() != roll.actor_id {
         return Err(Reason::UnknownKey);
     }
     let def = roll.defs.get(&roll.check.stat).ok_or(Reason::UnknownKey)?;
@@ -147,8 +145,220 @@ struct Dice {
 
 #[cfg(test)]
 mod tests {
-    use super::load_checks;
+    use std::collections::BTreeMap;
+
+    use super::{load_checks, resolve_check, CheckDef, CheckOut, CheckRoll};
     use crate::error::Reason;
+    use crate::intent::ViewerId;
+    use crate::meter::{MeterDef, MeterLive};
+    use crate::model::{ActorLive, TickCounters};
+
+    fn grit_def() -> MeterDef {
+        MeterDef {
+            min: 0,
+            base_cap: 100,
+            max: 110,
+            start: 1,
+        }
+    }
+
+    fn npc() -> ActorLive {
+        ActorLive::Npc {
+            place: "mira_rooms".to_string(),
+            flags: Vec::new(),
+            busy: false,
+            meters: BTreeMap::from([("grit".to_string(), MeterLive { base: 1, offset: 0 })]),
+            inventory: Vec::new(),
+            known_facts: Vec::new(),
+            tick: TickCounters {
+                last_act_tick: 0,
+                idle_acts_today: 0,
+                live_acts_this_hour: 0,
+            },
+        }
+    }
+
+    fn check() -> CheckDef {
+        CheckDef {
+            dice_count: 2,
+            dice_sides: 6,
+            stat: "grit".to_string(),
+        }
+    }
+
+    /// Face is `(word % 6) + 1`. Word 5 is a 6. Word 0 is a 1.
+    fn rng_of(words: &[u32]) -> [u8; 32] {
+        let mut rng = [0u8; 32];
+        for (index, word) in words.iter().enumerate() {
+            let start = index * 4;
+            rng[start..start + 4].copy_from_slice(&word.to_le_bytes());
+        }
+        rng
+    }
+
+    fn roll(
+        viewer: &ViewerId,
+        actor_id: &str,
+        target: i64,
+        rng: &[u8],
+        die_cursor: &mut usize,
+    ) -> Result<CheckOut, Reason> {
+        let actor = npc();
+        let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
+        let check = check();
+        resolve_check(CheckRoll {
+            check: &check,
+            defs: &defs,
+            actor_id,
+            actor: &actor,
+            viewer,
+            target,
+            rng,
+            die_cursor,
+        })
+    }
+
+    #[test]
+    fn an_npc_succeeds_its_own_check() {
+        let rng = rng_of(&[5, 5]);
+        let mut cursor = 0usize;
+        let out = roll(
+            &ViewerId::Npc("mira".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut cursor,
+        )
+        .unwrap();
+        assert_eq!(out.faces, vec![6, 6]);
+        assert_eq!(out.stat, 1);
+        assert_eq!(out.total, 13);
+        assert_eq!(out.target, 9);
+        assert!(out.success);
+        assert_eq!(cursor, 2);
+    }
+
+    #[test]
+    fn an_npc_fails_its_own_check() {
+        let rng = rng_of(&[0, 0]);
+        let mut cursor = 0usize;
+        let out = roll(
+            &ViewerId::Npc("mira".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut cursor,
+        )
+        .unwrap();
+        assert_eq!(out.faces, vec![1, 1]);
+        assert_eq!(out.total, 3);
+        assert!(!out.success);
+        assert_eq!(cursor, 2);
+    }
+
+    #[test]
+    fn a_player_rolling_for_another_actor_is_refused() {
+        let rng = rng_of(&[5, 5]);
+        let mut cursor = 0usize;
+        let refused = roll(
+            &ViewerId::Player("pc_rowan".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut cursor,
+        );
+        assert_eq!(refused, Err(Reason::UnknownKey));
+        assert_eq!(cursor, 0);
+    }
+
+    #[test]
+    fn an_npc_rolling_for_another_actor_is_refused() {
+        let rng = rng_of(&[5, 5]);
+        let mut cursor = 0usize;
+        let refused = roll(
+            &ViewerId::Npc("bram".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut cursor,
+        );
+        assert_eq!(refused, Err(Reason::UnknownKey));
+        assert_eq!(cursor, 0);
+    }
+
+    #[test]
+    fn the_die_cursor_advances_only_on_a_real_roll() {
+        // Words 5, 5, 5, 0. A refusal that moved the cursor would read the last two as 1, 1.
+        let rng = rng_of(&[5, 5, 5, 0]);
+        let mut cursor = 0usize;
+        let first = roll(
+            &ViewerId::Npc("mira".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut cursor,
+        )
+        .unwrap();
+        assert_eq!(first.faces, vec![6, 6]);
+        assert_eq!(cursor, 2);
+        let refused = roll(
+            &ViewerId::Player("pc_rowan".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut cursor,
+        );
+        assert_eq!(refused, Err(Reason::UnknownKey));
+        assert_eq!(cursor, 2);
+        let second = roll(
+            &ViewerId::Npc("mira".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut cursor,
+        )
+        .unwrap();
+        assert_eq!(second.faces, vec![6, 1]);
+        assert_eq!(cursor, 4);
+    }
+
+    #[test]
+    fn the_same_seed_resolves_the_same_check() {
+        let rng = rng_of(&[5, 0]);
+        let mut first_cursor = 0usize;
+        let mut second_cursor = 0usize;
+        let mut player_cursor = 0usize;
+        let first = roll(
+            &ViewerId::Npc("mira".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut first_cursor,
+        )
+        .unwrap();
+        let second = roll(
+            &ViewerId::Npc("mira".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut second_cursor,
+        )
+        .unwrap();
+        let player = roll(
+            &ViewerId::Player("mira".to_string()),
+            "mira",
+            9,
+            &rng,
+            &mut player_cursor,
+        )
+        .unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first, player);
+        assert_eq!(first.faces, vec![6, 1]);
+        assert_eq!(first_cursor, 2);
+        assert_eq!(second_cursor, 2);
+        assert_eq!(player_cursor, 2);
+    }
 
     fn text(tag: &str) -> String {
         format!("schema: {tag}\nchecks: []\n")

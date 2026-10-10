@@ -1,8 +1,87 @@
-use cucumber::{then, when};
+use std::fs;
+use std::path::{Path, PathBuf};
 
+use cucumber::{given, then, when};
+use serde_json::Value;
+
+use crate::support::{self, temp_pack};
 use crate::World;
 
 use super::table;
+
+// Docks grit is 2d6 plus a meter of 1, so the total is 3..=13.
+const NOTICE_ROWS: &str = "
+  - name: notice_sure
+    audience: player
+    token: none
+    on: speaker
+    check: grit
+    difficulty: 3
+    success:
+      - class: flag
+        key: braced
+        value: true
+    failure:
+      - class: flag
+        key: slipped
+        value: true
+  - name: notice_hard
+    audience: player
+    token: none
+    on: speaker
+    check: grit
+    difficulty: 14
+    success:
+      - class: flag
+        key: braced
+        value: true
+    failure:
+      - class: flag
+        key: slipped
+        value: true
+";
+
+const BRACE_ROW: &str = "
+  - name: brace
+    audience: habit
+    token: none
+    on: speaker
+    check: grit
+    difficulty: 14
+    success:
+      - class: flag
+        key: braced
+        value: true
+    failure:
+      - class: flag
+        key: slipped
+        value: true
+";
+
+const OPPOSE_ROWS: &str = "
+  - name: mark
+    audience: player
+    token: actor
+    on: named
+    check: grit
+    success:
+      - class: flag
+        key: marked
+        value: true
+    failure:
+      - class: flag
+        key: missed
+        value: true
+  - name: defend
+    audience: player
+    token: none
+    on: speaker
+    check: grit
+    success:
+      - class: flag
+        key: guarded
+        value: true
+";
 
 #[when(expr = "the player rolls grit")]
 fn the_player_rolls_grit(world: &mut World) {
@@ -58,4 +137,341 @@ fn the_player_sees_a_check_result_without_faces(world: &mut World) {
         "{added}"
     );
     assert!(!added.contains("\"faces\""), "{added}");
+}
+
+#[given(expr = "a docks table where Mira can notice")]
+fn a_docks_table_where_mira_can_notice(world: &mut World) {
+    let pack = temp_pack("npc-notice");
+    world.pack = Some(pack.clone());
+    append_moves(&pack, NOTICE_ROWS);
+    insert_flags(&pack, "    - braced\n    - slipped\n");
+    stamp(&pack);
+    listen_both(&pack);
+    world.scratch = snapshot_of(&pack).display().to_string();
+    world.mark = table::player_len();
+}
+
+#[given(expr = "a docks table where Mira can oppose a mark")]
+fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
+    let pack = temp_pack("npc-oppose");
+    world.pack = Some(pack.clone());
+    append_moves(&pack, OPPOSE_ROWS);
+    insert_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
+    set_mira_grit(&pack, 100);
+    stamp(&pack);
+    listen_both(&pack);
+    world.scratch = snapshot_of(&pack).display().to_string();
+}
+
+#[when(expr = "the GM queues Mira's sure notice")]
+fn the_gm_queues_miras_sure_notice(_world: &mut World) {
+    queue_mira("notice_sure");
+}
+
+#[when(expr = "the GM queues Mira's hard notice")]
+fn the_gm_queues_miras_hard_notice(_world: &mut World) {
+    queue_mira("notice_hard");
+}
+
+#[when(expr = "the GM queues Mira's defense")]
+fn the_gm_queues_miras_defense(_world: &mut World) {
+    queue_mira("defend");
+}
+
+#[when(expr = "the player marks Mira")]
+fn the_player_marks_mira(world: &mut World) {
+    let (mark, added) = table::player_send("mark mira", "\"kind\":");
+    world.mark = mark;
+    world.player_added = added;
+}
+
+#[when(expr = "a kernel habit rolls a check for Mira")]
+fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
+    let pack = temp_pack("npc-habit");
+    world.pack = Some(pack.clone());
+    append_moves(&pack, BRACE_ROW);
+    insert_flags(&pack, "    - braced\n    - slipped\n");
+    insert_brace_habit(&pack);
+    stamp(&pack);
+    let before = snapshot_of(&pack);
+    spookery_tick::tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    world.scratch = before.display().to_string();
+}
+
+#[when(expr = "the player names another PC")]
+fn the_player_names_another_pc(world: &mut World) {
+    let (mark, added) = table::player_send("player:pc_nell grit", "\"kind\":\"refused\"");
+    world.mark = mark;
+    world.player_added = added;
+}
+
+#[then(expr = "Mira is braced")]
+fn mira_is_braced(world: &mut World) {
+    assert_eq!(flags_of(world, "mira"), vec!["braced".to_string()]);
+}
+
+#[then(expr = "Mira slipped")]
+fn mira_slipped(world: &mut World) {
+    assert_eq!(flags_of(world, "mira"), vec!["slipped".to_string()]);
+}
+
+#[then(expr = "Mira guarded and the mark missed")]
+fn mira_guarded_and_the_mark_missed(world: &mut World) {
+    assert_eq!(
+        flags_of(world, "mira"),
+        vec!["guarded".to_string(), "missed".to_string()]
+    );
+}
+
+#[then(expr = "the GM sees Mira's sure notice")]
+fn the_gm_sees_miras_sure_notice(_world: &mut World) {
+    assert_one_roll(1, 3, true);
+}
+
+#[then(expr = "the GM sees Mira's failed notice")]
+fn the_gm_sees_miras_failed_notice(_world: &mut World) {
+    assert_one_roll(1, 14, false);
+}
+
+#[then(expr = "the player sees no check frame")]
+fn the_player_sees_no_check_frame(world: &mut World) {
+    let added = table::wait_player_from(world.mark, "\"kind\":\"perceive\"");
+    assert!(!added.contains("\"kind\":\"check\""), "{added}");
+}
+
+#[then(expr = "the player sees only their own check")]
+fn the_player_sees_only_their_own_check(world: &mut World) {
+    let added = table::wait_player_from(world.mark, "{\"kind\":\"check\",\"success\":false}");
+    assert_eq!(added.matches("\"kind\":\"check\"").count(), 1, "{added}");
+    assert!(!added.contains("\"faces\""), "{added}");
+}
+
+#[then(expr = "the GM sees both rolls")]
+fn the_gm_sees_both_rolls(_world: &mut World) {
+    let text = table::wait_gm("\"kind\":\"check\"");
+    let events = check_events(&text);
+    assert_eq!(events.len(), 2, "{text}");
+    assert_opposed(&events);
+    assert_opposed(&commit_checks(&text));
+}
+
+#[then(expr = "the tick log records Mira's kernel brace")]
+fn the_tick_log_records_miras_kernel_brace(world: &mut World) {
+    let tick = tick_json(world);
+    let hits: Vec<_> = tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|intent| {
+            intent["move"] == "brace"
+                && intent["source"] == "kernel"
+                && intent["actor_id"] == "mira"
+                && intent["actor_kind"] == "npc"
+        })
+        .collect();
+    assert_eq!(hits.len(), 1, "{tick}");
+    assert!(tick["rejected"].as_array().unwrap().is_empty(), "{tick}");
+}
+
+#[then(expr = "replaying the tick reproduces the save")]
+fn replaying_the_tick_reproduces_the_save(world: &mut World) {
+    let played = table::pack(world);
+    let start = PathBuf::from(&world.scratch);
+    let golden = fs::read(played.join("state/now.yaml"))
+        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let temp = spookery_tick::replay_recorded(played, &start)
+        .unwrap_or_else(|err| panic!("replay: {err}"));
+    assert_ne!(temp, played);
+    assert_eq!(
+        fs::read(temp.join("state/now.yaml")).unwrap_or_else(|err| panic!("read replay: {err}")),
+        golden
+    );
+    assert_eq!(
+        fs::read(played.join("state/now.yaml")).unwrap_or_else(|err| panic!("read played: {err}")),
+        golden
+    );
+    let _ = fs::remove_dir_all(&temp);
+    let _ = fs::remove_dir_all(&start);
+}
+
+fn listen_both(pack: &Path) {
+    let port = table::free_port();
+    table::listen(pack, &format!("127.0.0.1:{port}"), port);
+    table::seat_gm();
+    table::seat_player(pack);
+}
+
+fn queue_mira(move_name: &str) {
+    let args = format!(
+        r#"{{"actor_id":"mira","actor_kind":"npc","source":"player","move":"{move_name}"}}"#
+    );
+    let text = table::gm_call(4, "intent", &args);
+    assert!(text.contains("\"queued\""), "{text}");
+    assert!(!text.contains("UNKNOWN_KEY"), "{text}");
+}
+
+fn append_moves(pack: &Path, extra: &str) {
+    let path = pack.join("rules/moves.yaml");
+    let mut moves = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read moves: {err}"));
+    moves.push_str(extra);
+    fs::write(&path, moves).unwrap_or_else(|err| panic!("write moves: {err}"));
+}
+
+fn insert_flags(pack: &Path, flags: &str) {
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
+    let next = text.replacen(
+        "tick:\n  eligible: true\n",
+        &format!("tick:\n  eligible: true\n  flags:\n{flags}"),
+        1,
+    );
+    assert_ne!(next, text, "mira flags were not inserted");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
+}
+
+fn insert_brace_habit(pack: &Path) {
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
+    let next = text.replacen(
+        "  habits:\n    - id: door_note\n",
+        "  habits:\n    - id: brace\n      runs_while_empty: true\n      rows:\n        - brace\n    - id: door_note\n",
+        1,
+    );
+    assert_ne!(next, text, "mira habit was not inserted");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
+}
+
+fn set_mira_grit(pack: &Path, base: i64) {
+    let path = pack.join("state/now.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
+    let from = "  mira:\n    kind: npc\n    place: mira_rooms\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n";
+    let to = format!("  mira:\n    kind: npc\n    place: mira_rooms\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: {base}\n");
+    let next = text.replacen(from, &to, 1);
+    assert_ne!(next, text, "mira grit was not changed");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
+}
+
+fn stamp(pack: &Path) {
+    let now_path = pack.join("state/now.yaml");
+    let mut now = spookery_kernel::codec::load_now(
+        &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
+    )
+    .unwrap_or_else(|err| panic!("load now: {err}"));
+    now.pack_rev =
+        spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
+    fs::write(
+        &now_path,
+        spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}")),
+    )
+    .unwrap_or_else(|err| panic!("write now: {err}"));
+}
+
+fn snapshot_of(pack: &Path) -> PathBuf {
+    let dest = std::env::temp_dir().join(format!(
+        "spook-before-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&dest);
+    support::copy_dir(pack, &dest);
+    dest
+}
+
+fn flags_of(world: &World, id: &str) -> Vec<String> {
+    let mut flags = match table::now_of(table::pack(world)).actors.get(id) {
+        Some(spookery_kernel::model::ActorLive::Npc { flags, .. })
+        | Some(spookery_kernel::model::ActorLive::Pc { flags, .. }) => flags.clone(),
+        _ => panic!("{id} missing"),
+    };
+    flags.sort();
+    flags
+}
+
+fn tick_json(world: &World) -> Value {
+    let text = fs::read_to_string(table::pack(world).join("state/log/tick-0001.jsonl"))
+        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
+}
+
+fn assert_one_roll(stat: i64, target: i64, success: bool) {
+    let text = table::wait_gm("\"kind\":\"check\"");
+    let events = check_events(&text);
+    assert_eq!(events.len(), 1, "{text}");
+    assert_roll(&events[0], stat, target, success);
+    let checks = commit_checks(&text);
+    assert_eq!(checks.len(), 1, "{text}");
+    assert_roll(&checks[0], stat, target, success);
+}
+
+fn assert_opposed(rolls: &[Value]) {
+    assert_eq!(rolls.len(), 2, "{rolls:?}");
+    let npc = rolls
+        .iter()
+        .find(|roll| roll["stat"].as_i64() == Some(100))
+        .unwrap_or_else(|| panic!("{rolls:?}"));
+    let pc = rolls
+        .iter()
+        .find(|roll| roll["stat"].as_i64() == Some(1))
+        .unwrap_or_else(|| panic!("{rolls:?}"));
+    let npc_total = npc["total"].as_i64().unwrap_or_else(|| panic!("{npc}"));
+    assert_roll(npc, 100, 0, true);
+    assert_roll(pc, 1, npc_total, false);
+    assert!(npc_total >= 102, "{npc}");
+}
+
+fn assert_roll(roll: &Value, stat: i64, target: i64, success: bool) {
+    let faces = roll["faces"].as_array().unwrap_or_else(|| panic!("{roll}"));
+    assert_eq!(faces.len(), 2, "{roll}");
+    let face_sum: i64 = faces
+        .iter()
+        .map(|face| face.as_i64().unwrap_or_else(|| panic!("{roll}")))
+        .sum();
+    assert_eq!(roll["stat"].as_i64(), Some(stat), "{roll}");
+    assert_eq!(roll["total"].as_i64(), Some(face_sum + stat), "{roll}");
+    assert_eq!(roll["target"].as_i64(), Some(target), "{roll}");
+    assert_eq!(roll["success"].as_bool(), Some(success), "{roll}");
+}
+
+fn check_events(text: &str) -> Vec<Value> {
+    let mut events = Vec::new();
+    for line in text.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(params) = value.get("params") else {
+            continue;
+        };
+        if params.get("kind").and_then(Value::as_str) == Some("check") {
+            events.push(params.clone());
+        }
+    }
+    events
+}
+
+fn commit_checks(text: &str) -> Vec<Value> {
+    for line in text.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if let Some(checks) = find_checks(&value) {
+            return checks;
+        }
+    }
+    panic!("tool result has no checks\n{text}");
+}
+
+fn find_checks(value: &Value) -> Option<Vec<Value>> {
+    if let Some(checks) = value.get("checks").and_then(Value::as_array) {
+        if checks.iter().any(|roll| roll.get("faces").is_some()) {
+            return Some(checks.clone());
+        }
+    }
+    match value {
+        Value::Object(map) => map.values().find_map(find_checks),
+        Value::Array(items) => items.iter().find_map(find_checks),
+        Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => None,
+    }
 }
