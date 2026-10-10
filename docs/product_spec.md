@@ -215,6 +215,8 @@ pack/
 **State** is what the runtime keeps while the world runs.
 A permanent change to the authored world waits for a person. Players do not rewrite `cast/` during play.
 
+Format tags carry no version until the format is frozen and a compatibility promise is made. The tags are `pack`, `place`, `cast`, `meters`, `moves`, `checks`, `tick`, and `now`.
+
 Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. Player characters start from a template in `cast/`. The live sheet is the runtime's.
 
 NPC profile, as a product sketch:

@@ -112,7 +112,7 @@ Meter: `write` is `base`, `offset`, or `snap`. `base` adds the delta to `base` a
 
 ## Rows and habits
 
-A moves file is still a name or a row. The schema version string stays `moves/v0`. New fields are optional. A misspelled field is rejected because unknown fields are denied.
+A moves file is still a name or a row. The tag is `moves`. New fields are optional. A misspelled field is rejected because unknown fields are denied.
 
 A row has:
 
