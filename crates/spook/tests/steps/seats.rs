@@ -21,13 +21,13 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
 }
 
 #[when(expr = "a second player connects")]
-fn a_second_player_connects(_world: &mut World) {
-    let _ = table::second_hello("player:pc_rowan");
+fn a_second_player_connects(world: &mut World) {
+    world.scratch = table::second_hello("player:pc_rowan");
 }
 
 #[when(expr = "a second GM connects")]
-fn a_second_gm_connects(_world: &mut World) {
-    let _ = table::second_hello("gm");
+fn a_second_gm_connects(world: &mut World) {
+    world.scratch = table::second_hello("gm");
 }
 
 #[then(expr = "now.yaml is unchanged since the table opened")]
@@ -90,4 +90,383 @@ fn stderr_is_not_in_spec(world: &mut World) {
 #[then(expr = "stdout is empty")]
 fn stdout_is_empty(world: &mut World) {
     assert!(world.stdout.is_empty(), "{}", world.stdout);
+}
+
+const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
+const HIDDEN_FACT: &str = "fact_wren_channel";
+
+#[when(expr = "three players and a GM sit")]
+fn three_players_and_a_gm_sit(world: &mut World) {
+    listen_pack(world);
+    table::seat_gm();
+    seat_three(table::pack(world));
+}
+
+#[given(expr = "a docks table whose pack defines four PCs")]
+fn a_docks_table_whose_pack_defines_four_pcs(world: &mut World) {
+    let pack = crate::support::temp_pack("four-pcs");
+    let cast = "\
+---
+schema: cast
+id: pc_lark
+kind: pc_template
+facts: []
+tick:
+  eligible: false
+  range:
+    - docks_shop
+    - docks_street
+---
+Lark watches the street from a dry doorway.
+";
+    fs::write(pack.join("cast/pc-lark.md"), cast).unwrap_or_else(|err| panic!("cast: {err}"));
+    let mut now = read_now(&pack);
+    let mut actor = now
+        .actors
+        .get("pc_rowan")
+        .unwrap_or_else(|| panic!("pc_rowan"))
+        .clone();
+    *actor.place_mut() = "docks_street".to_string();
+    now.actors.insert("pc_lark".to_string(), actor);
+    store_now(&pack, now);
+    spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
+    world.pack = Some(pack);
+}
+
+#[when(expr = "three players sit")]
+fn three_players_sit(world: &mut World) {
+    listen_pack(world);
+    seat_three(table::pack(world));
+}
+
+#[when(expr = "a fourth player connects")]
+fn a_fourth_player_connects(world: &mut World) {
+    world.scratch = table::second_hello("player:pc_lark");
+}
+
+#[then(expr = "the hello is refused with {string}")]
+fn the_hello_is_refused_with(world: &mut World, code: String) {
+    let needle = format!("\"code\":\"{code}\"");
+    assert!(
+        world.scratch.contains(&needle),
+        "hello reply:\n{}",
+        world.scratch
+    );
+}
+
+#[then(expr = "humans is 3")]
+fn humans_is_3(world: &mut World) {
+    assert_eq!(table::now_of(table::pack(world)).presence.humans, 3);
+}
+
+#[then(expr = "humans is 2")]
+fn humans_is_2(world: &mut World) {
+    assert_eq!(table::now_of(table::pack(world)).presence.humans, 2);
+}
+
+#[then(expr = "the present actors are the three docks PCs")]
+fn the_present_actors_are_the_three_docks_pcs(world: &mut World) {
+    assert_eq!(
+        table::now_of(table::pack(world)).presence.actors_present,
+        DOCKS_PCS.map(str::to_string).to_vec()
+    );
+}
+
+#[given(expr = "a one-player docks table")]
+fn a_one_player_docks_table(world: &mut World) {
+    let pack = crate::support::temp_pack("one-pc");
+    fs::remove_file(pack.join("cast/pc-harbormouse.md"))
+        .unwrap_or_else(|err| panic!("remove harbormouse: {err}"));
+    fs::remove_file(pack.join("cast/pc-wren.md"))
+        .unwrap_or_else(|err| panic!("remove wren: {err}"));
+    let mut now = read_now(&pack);
+    now.actors.remove("pc_harbormouse");
+    now.actors.remove("pc_wren");
+    store_now(&pack, now);
+    spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
+    let port = table::free_port();
+    let bind = format!("127.0.0.1:{port}");
+    table::listen(&pack, &bind, port);
+    table::seat_actor(&pack, "pc_rowan");
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a docks table with three seated players")]
+fn a_docks_table_with_three_seated_players(world: &mut World) {
+    let pack = crate::support::temp_pack("three-players");
+    let port = table::free_port();
+    let bind = format!("127.0.0.1:{port}");
+    table::listen(&pack, &bind, port);
+    seat_three(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "the first player drops")]
+fn the_first_player_drops(world: &mut World) {
+    table::close_actor("pc_rowan");
+    table::wait_humans(table::pack(world), 2);
+}
+
+#[then(expr = "the present actors are pc_harbormouse and pc_wren")]
+fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
+    assert_eq!(
+        table::now_of(table::pack(world)).presence.actors_present,
+        vec!["pc_harbormouse".to_string(), "pc_wren".to_string()]
+    );
+}
+
+#[given(expr = "a docks table where one PC knows a hidden fact")]
+fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
+    let pack = crate::support::temp_pack("hidden-fact");
+    let path = pack.join("cast/pc-wren.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read cast: {err}"));
+    let text = text.replace(
+        "facts: []\n",
+        "facts:\n  - id: fact_wren_channel\n    text: The tide chart marks a private channel.\n    hidden: true\n",
+    );
+    fs::write(&path, text).unwrap_or_else(|err| panic!("write cast: {err}"));
+    let mut now = read_now(&pack);
+    now.actors
+        .get_mut("pc_wren")
+        .unwrap_or_else(|| panic!("pc_wren"))
+        .known_facts_mut()
+        .push(HIDDEN_FACT.to_string());
+    store_now(&pack, now);
+    spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
+    world.pack = Some(pack);
+}
+
+#[then(expr = "only that PC's perceive shows the hidden fact")]
+fn only_that_pcs_perceive_shows_the_hidden_fact(_world: &mut World) {
+    let wren = table::actor_text("pc_wren");
+    assert!(wren.contains(HIDDEN_FACT), "{wren}");
+    for id in ["pc_rowan", "pc_harbormouse"] {
+        let text = table::actor_text(id);
+        assert!(!text.contains(HIDDEN_FACT), "{id}\n{text}");
+    }
+}
+
+#[given(expr = "a docks table with a GM and two seated players")]
+fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
+    let pack = crate::support::temp_pack("two-queue");
+    let port = table::free_port();
+    let bind = format!("127.0.0.1:{port}");
+    table::listen(&pack, &bind, port);
+    table::seat_gm();
+    table::seat_actor(&pack, "pc_rowan");
+    table::seat_actor(&pack, "pc_harbormouse");
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a docks table with two seated players")]
+fn a_docks_table_with_two_seated_players(world: &mut World) {
+    let pack = crate::support::temp_pack("two-live");
+    let port = table::free_port();
+    let bind = format!("127.0.0.1:{port}");
+    table::listen(&pack, &bind, port);
+    table::seat_actor(&pack, "pc_rowan");
+    table::seat_actor(&pack, "pc_harbormouse");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "both players wait")]
+fn both_players_wait(world: &mut World) {
+    let ids = crate::with_live(|live| {
+        live.players
+            .iter()
+            .map(|player| player.actor_id.clone())
+            .collect::<Vec<_>>()
+    });
+    assert_eq!(ids.len(), 2, "{ids:?}");
+    for id in ids {
+        world.player_added = table::actor_send(&id, "wait", "\"kind\":");
+    }
+}
+
+#[then(expr = "both lines are queued for the GM")]
+fn both_lines_are_queued_for_the_gm(_world: &mut World) {
+    let text = table::gm_text();
+    assert!(text.contains("\"kind\":\"queued\""), "{text}");
+    assert!(text.contains("\"actor_id\":\"pc_rowan\""), "{text}");
+    assert!(text.contains("\"actor_id\":\"pc_harbormouse\""), "{text}");
+    assert!(text.contains("\"move\":\"wait\""), "{text}");
+}
+
+#[then(expr = "session status lists both queued lines")]
+fn session_status_lists_both_queued_lines(_world: &mut World) {
+    let text = table::gm_call(4, "session_status", "{}");
+    for id in ["pc_rowan", "pc_harbormouse"] {
+        assert!(text.contains(id), "{text}");
+    }
+    assert!(
+        text.matches("wait").count() >= 2,
+        "queue did not list both waits\n{text}"
+    );
+}
+
+#[then(expr = "the tick log records both waits")]
+fn the_tick_log_records_both_waits(world: &mut World) {
+    let actors = player_waits(table::pack(world), "tick-0001.jsonl");
+    assert_eq!(
+        actors,
+        vec!["pc_rowan".to_string(), "pc_harbormouse".to_string()]
+    );
+}
+
+#[then(expr = "each wait committed its own tick")]
+fn each_wait_committed_its_own_tick(world: &mut World) {
+    let pack = table::pack(world);
+    table::wait_world_time(pack, 1090);
+    assert_eq!(table::now_of(pack).tick_index, 2);
+    assert_eq!(
+        table::tick_names(pack),
+        vec!["tick-0001.jsonl".to_string(), "tick-0002.jsonl".to_string()]
+    );
+    assert_eq!(
+        player_waits(pack, "tick-0001.jsonl"),
+        vec!["pc_rowan".to_string()]
+    );
+    assert_eq!(
+        player_waits(pack, "tick-0002.jsonl"),
+        vec!["pc_harbormouse".to_string()]
+    );
+}
+
+#[given(expr = "a docks table with two PCs in the shop")]
+fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
+    let pack = crate::support::temp_pack("two-shop");
+    let mut now = read_now(&pack);
+    *now.actors
+        .get_mut("pc_harbormouse")
+        .unwrap_or_else(|| panic!("pc_harbormouse"))
+        .place_mut() = "docks_shop".to_string();
+    store_now(&pack, now);
+    let port = table::free_port();
+    let bind = format!("127.0.0.1:{port}");
+    table::listen(&pack, &bind, port);
+    seat_three(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "the shop player speaks to the place")]
+fn the_shop_player_speaks_to_the_place(_world: &mut World) {
+    let _ = table::actor_send(
+        "pc_rowan",
+        "say place the blue rope is tied",
+        "the blue rope is tied",
+    );
+    let start = std::time::Instant::now();
+    loop {
+        if table::actor_text("pc_harbormouse").contains("the blue rope is tied") {
+            return;
+        }
+        if start.elapsed() > std::time::Duration::from_secs(5) {
+            panic!(
+                "harbormouse missed the place say\n{}",
+                table::actor_text("pc_harbormouse")
+            );
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+}
+
+#[then(expr = "only the shop players receive the say")]
+fn only_the_shop_players_receive_the_say(_world: &mut World) {
+    assert!(table::actor_text("pc_rowan").contains("the blue rope is tied"));
+    assert!(table::actor_text("pc_harbormouse").contains("the blue rope is tied"));
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    let wren = table::actor_text("pc_wren");
+    assert!(!wren.contains("the blue rope is tied"), "{wren}");
+}
+
+#[when(expr = "three play clients sit on a free port")]
+fn three_play_clients_sit_on_a_free_port(world: &mut World) {
+    let port = table::free_port();
+    assert_ne!(port, 9737);
+    let addr = format!("127.0.0.1:{port}");
+    let pack = table::pack(world).to_path_buf();
+    table::listen(&pack, &addr, port);
+    let pack_arg = crate::support::pack_arg(&pack);
+    for id in DOCKS_PCS {
+        let as_arg = format!("player:{id}");
+        world.plays.push(crate::support::spawn(&[
+            "play", &pack_arg, "--addr", &addr, "--as", &as_arg,
+        ]));
+    }
+}
+
+#[then(expr = "each play client shows its first perceive")]
+fn each_play_client_shows_its_first_perceive(world: &mut World) {
+    assert_eq!(world.plays.len(), 3);
+    for play in &mut world.plays {
+        wait_play_proc(play, "You are in");
+    }
+}
+
+fn listen_pack(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let port = table::free_port();
+    let bind = format!("127.0.0.1:{port}");
+    table::listen(&pack, &bind, port);
+}
+
+fn seat_three(pack: &std::path::Path) {
+    for id in ["pc_rowan", "pc_harbormouse", "pc_wren"] {
+        table::seat_actor(pack, id);
+    }
+}
+
+fn read_now(pack: &std::path::Path) -> spookery_kernel::model::Now {
+    let text = fs::read_to_string(pack.join("state/now.yaml"))
+        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    spookery_kernel::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err}"))
+}
+
+fn store_now(pack: &std::path::Path, mut now: spookery_kernel::model::Now) {
+    now.pack_rev =
+        spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
+    let text = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}"));
+    fs::write(pack.join("state/now.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
+}
+
+fn player_waits(pack: &std::path::Path, name: &str) -> Vec<String> {
+    let text = fs::read_to_string(pack.join("state/log").join(name))
+        .unwrap_or_else(|err| panic!("read {name}: {err}"));
+    let tick: serde_json::Value =
+        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
+    tick["intents"]
+        .as_array()
+        .unwrap_or_else(|| panic!("intents"))
+        .iter()
+        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
+        .map(|intent| {
+            intent["actor_id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("actor_id"))
+                .to_string()
+        })
+        .collect()
+}
+
+fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
+    let start = std::time::Instant::now();
+    loop {
+        let stdout = crate::support::text_of(&play.stdout);
+        if stdout.contains(needle) {
+            return;
+        }
+        if let Some(status) = play
+            .child
+            .try_wait()
+            .unwrap_or_else(|err| panic!("try_wait: {err}"))
+        {
+            let stderr = crate::support::text_of(&play.stderr);
+            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        if start.elapsed() > std::time::Duration::from_secs(8) {
+            let stderr = crate::support::text_of(&play.stderr);
+            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
