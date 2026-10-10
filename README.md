@@ -1,0 +1,141 @@
+# Spookery
+
+Spookery is a generic RPG referee engine. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and one player walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. The crate version is `0.0.0`, there are no releases, and this tree is pre-v0.1.
+
+## Build from source
+
+Install Rust 1.89 or newer with [rustup](https://rustup.rs). The workspace `rust-version` is 1.89. CI pins 1.89.0.
+
+From the repository root:
+
+```sh
+cargo build --release
+```
+
+The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`.
+
+Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools. On Windows, check the repository out with LF line endings (`core.autocrlf` false). A CRLF checkout rewrites the pack, and `spook run` then exits 1 with `PACK_REV_MISMATCH`. CI sets `core.autocrlf` false before checkout.
+
+CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Rust 1.89.0. That workflow does not install extra packages. The GitHub Ubuntu image already includes `pkg-config` and `libssl-dev`. A minimal Linux install does not.
+
+## Quick start
+
+The docks pack is `packs/oneshot-docks`. Copy it first. `spook run` writes the save into the pack you pass (`state/`: the snapshot, the tape, and lock files). A copy leaves the fixture in the repo alone.
+
+```sh
+cp -r packs/oneshot-docks /tmp/docks
+export PATH="$PWD/target/release:$PATH"
+```
+
+Run that `export` in each terminal. `spook --help` lists the commands and the flags.
+
+Terminal 1, from the repository root:
+
+```sh
+spook run /tmp/docks
+```
+
+The process stays in the foreground and listens on `127.0.0.1:9737`. It prints nothing while it waits. When the player sits, and again when a tick commits, it prints the host digest. Type `stop` to shut it down.
+
+Terminal 2:
+
+```sh
+spook play /tmp/docks
+```
+
+You sit the pack's start character. The client prints readable text. This is the opening of a session, then one line of speech:
+
+```text
+While you were away:
+Assassination debt: 2/6, paused
+You are in Docks shop.
+
+Here: Aldric, You
+
+You know:
+Oil is on the shelf.
+
+Clocks:
+Assassination debt: 2/6, paused
+
+Stock:
+Lamp oil: 4
+You: The lamp is out.
+```
+
+Lines to type:
+
+```text
+say The lamp is out.
+travel docks_street
+wait
+grit
+```
+
+The first word is the verb. `say` plus the words after it is speech at the table, and it does not tick. `travel` takes one place id. `travel docks_street` leaves the shop for the street, and the client prints `You are in Docks street.` `wait` and `grit` take no further words. `grit` is the pack's check, 2d6 plus the grit meter. The client prints `Your roll succeeded.` or `Your roll failed.`
+
+With no GM seated, `travel`, `wait`, and `grit` each commit one tick by themselves. Nothing narrates, and the line is not held for someone else to commit. The table is one player seat and one GM seat. A second `spook play`, while the first is still sitting, exits 1 and prints `The table is full. [SESSION_FULL]`.
+
+`--addr` sets the loopback address for every command. The default is `127.0.0.1:9737`. Passing `127.0.0.1` alone means that same port. Any other host is refused before the pack opens.
+
+`status` prints the host digest and does not write the pack. `tick` and `migrate` write `state/`. Stop `spook run` before those two, because the server keeps the save in memory.
+
+```sh
+spook status /tmp/docks
+spook tick /tmp/docks
+spook migrate /tmp/docks
+```
+
+`tick` advances the pack one tick and prints nothing when it succeeds. `migrate` stores the current canon hash in the save and bumps the save counter. It also prints nothing when it succeeds.
+
+## Game master
+
+### No GM
+
+Leave the GM seat empty. Speech is stored on the tape and does not advance time. Each player move is committed as its own tick, and world numbers change only inside that tick. There is no narration and no model call.
+
+With both seats empty, the server still wakes on the pack's real-time interval. In the docks pack that interval is `tick_every_real_seconds: 300`. While a player is sitting, that wake does not tick.
+
+### Model GM
+
+`spook ai-gm` sits the GM seat and calls a chat-completions endpoint. It does not start the server or the player. Start `spook run` first.
+
+Three environment variables, and no others:
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `XAI_API_KEY` | yes | Bearer token. Read from the environment, never from the pack. |
+| `SPOOK_GM_MODEL` | yes | Model name sent in the request. |
+| `SPOOK_GM_URL` | no | Origin of the endpoint. The default is `https://api.x.ai/v1`. Any OpenAI-compatible chat completions URL works. The client posts to `{url}/chat/completions`. |
+
+A missing `XAI_API_KEY` or `SPOOK_GM_MODEL` is printed on stderr and the process exits 1 before it dials. Then:
+
+```sh
+spook ai-gm /tmp/docks
+```
+
+### Human GM
+
+A human GM client is coming. Tracked in [issue #13](https://github.com/legend-of-alan/spookery/issues/13).
+
+### Coding agent
+
+Coming. Tracked in [issue #11](https://github.com/legend-of-alan/spookery/issues/11). The GM seat already speaks MCP over the loopback TCP port that `spook run` opens. Grok Build, Claude Code, and Cursor still have no stdio or HTTP transport into that seat. Which transport to add is an open decision.
+
+## Privacy
+
+`spook ai-gm` sends table text to the host in `SPOOK_GM_URL`. When that variable is unset, the host is `https://api.x.ai/v1`. The API key is the bearer token from `XAI_API_KEY` in the environment. The pack does not hold the key.
+
+The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt does not include a cast body, `now.yaml`, or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
+
+## Docs
+
+- [docs/spec.md](docs/spec.md) is the normative spec. A rule it does not state is unspecified.
+- [docs/product_spec.md](docs/product_spec.md) is product notes. Where it disagrees with the spec, the spec wins.
+- [LICENSE](LICENSE)
+
+## License
+
+The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. Documentation, schemas, and packs are CC BY 4.0.
+
+The terms are in [LICENSE](LICENSE) and [LICENSE-CC-BY-4.0](LICENSE-CC-BY-4.0).
