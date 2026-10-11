@@ -135,7 +135,15 @@ Type `help` for the seat commands. `spook gm --raw` prints each socket frame as 
 
 ### Coding agent
 
-Coming. Tracked in [issue #11](https://github.com/legend-of-alan/spookery/issues/11). The GM seat already speaks MCP over the loopback TCP port that `spook run` opens. Grok Build, Claude Code, and Cursor still have no stdio or HTTP transport into that seat. Which transport to add is an open decision.
+`spook mcp` is the stdio door. It does not start the server and it does not take a pack. Start `spook run` first. Grok Build, Claude Code, and Cursor each register that command as an MCP server:
+
+```sh
+spook mcp --addr 127.0.0.1:9737
+```
+
+The same seat is also at `http://127.0.0.1:<port>/mcp` when the server is started with `--mcp-http 127.0.0.1:<port>`. That port is not the game port. Both stay on loopback.
+
+The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_turn`. A client may ignore `spook/event` notifications. `session_status` with `since` returns the speech it missed.
 
 ## Privacy
 
