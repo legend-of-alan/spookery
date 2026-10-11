@@ -1,7 +1,7 @@
 use std::io;
 use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
@@ -10,6 +10,7 @@ use spookery_kernel::shard::open_shard;
 use spookery_kernel::Reason;
 
 use super::gm;
+use super::http;
 use super::thread::{self, HelloReply, Msg, PlayerReply, SocketEnd};
 
 pub enum Error {
@@ -17,7 +18,15 @@ pub enum Error {
     Io(io::Error),
 }
 
-pub fn listen(pack: &Path, addr: SocketAddr) -> Result<(), Error> {
+pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Result<(), Error> {
+    let http_listener = match mcp_http {
+        Some(http_addr) => {
+            let listener = TcpListener::bind(http_addr).map_err(Error::Io)?;
+            listener.set_nonblocking(true).map_err(Error::Io)?;
+            Some(listener)
+        }
+        None => None,
+    };
     let listener = TcpListener::bind(addr).map_err(Error::Io)?;
     let mut shard = open_shard(pack).map_err(Error::Reason)?;
     if thread::clear_crashed(&mut shard).map_err(Error::Reason)? {
@@ -37,15 +46,15 @@ pub fn listen(pack: &Path, addr: SocketAddr) -> Result<(), Error> {
     let flag = Arc::clone(&started);
     let tx_accept = tx.clone();
     let accept_handle = handle.clone();
+    let next_conn = Arc::new(AtomicU64::new(1));
+    let ids = Arc::clone(&next_conn);
     std::thread::spawn(move || {
         flag.store(true, Ordering::Release);
-        let mut next_conn = 1u64;
         while let Ok((stream, _)) = listener.accept() {
             if tune(&stream, keepalive_secs).is_err() || stream.set_nonblocking(true).is_err() {
                 continue;
             }
-            let id = next_conn;
-            next_conn = next_conn.wrapping_add(1);
+            let id = ids.fetch_add(1, Ordering::Relaxed);
             let tx_conn = tx_accept.clone();
             let stream = {
                 let _entered = accept_handle.enter();
@@ -61,6 +70,17 @@ pub fn listen(pack: &Path, addr: SocketAddr) -> Result<(), Error> {
     });
     while !started.load(Ordering::Acquire) {
         std::thread::yield_now();
+    }
+    if let Some(std_listener) = http_listener {
+        let listener = {
+            let _entered = handle.enter();
+            tokio::net::TcpListener::from_std(std_listener).map_err(Error::Io)?
+        };
+        let tx_http = tx.clone();
+        let ids = Arc::clone(&next_conn);
+        handle.spawn(async move {
+            http::serve(listener, tx_http, ids).await;
+        });
     }
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if arm_idle_timer {

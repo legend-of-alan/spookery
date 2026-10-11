@@ -22,6 +22,9 @@ enum Command {
     Run {
         /// Pack directory.
         pack: PathBuf,
+        /// Loopback streamable HTTP for one coding agent.
+        #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
+        mcp_http: Option<String>,
     },
     /// Sit the player seat.
     Play {
@@ -63,6 +66,8 @@ enum Command {
         /// Pack directory.
         pack: PathBuf,
     },
+    /// Relay the GM seat to a coding agent on stdio.
+    Mcp,
     /// Report pack problems and write nothing.
     Check {
         /// Print problems as one JSON array on stdout.
@@ -88,7 +93,13 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
     // `--addr` is global: every command refuses an open host before any pack opens.
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
-        Command::Run { pack } => spookery::seat::listen(&pack, addr),
+        Command::Run { pack, mcp_http } => {
+            let http = match mcp_http {
+                Some(text) => Some(parse_loopback(&text)?),
+                None => None,
+            };
+            spookery::seat::listen(&pack, addr, http)
+        }
         Command::Play {
             pack,
             as_player,
@@ -117,6 +128,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         Command::Migrate { pack } => {
             spookery_kernel::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
         }
+        Command::Mcp => spookery::mcp::bridge(addr),
         Command::Check { pack, json } => {
             let mut found = spookery_kernel::check_pack(&pack);
             if json {
@@ -235,6 +247,30 @@ mod tests {
         assert!(matches!(gm_raw.command, Command::Gm { raw: true, .. }));
         assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
+        assert!(Cli::try_parse_from(["spook", "mcp", "pack"]).is_err());
+        let mcp = Cli::try_parse_from(["spook", "mcp"]).unwrap();
+        assert!(matches!(mcp.command, Command::Mcp));
+        assert_eq!(mcp.addr, "127.0.0.1:9737");
+        let open = Cli::try_parse_from(["spook", "mcp", "--addr", "0.0.0.0"]).unwrap();
+        assert!(matches!(
+            dispatch(open),
+            Err(spookery::Error::Reason(Reason::NotInSpec))
+        ));
+        let http = Cli::try_parse_from(["spook", "run", "--mcp-http", "0.0.0.0:9", "no-such-pack"])
+            .unwrap();
+        assert!(matches!(
+            dispatch(http),
+            Err(spookery::Error::Reason(Reason::NotInSpec))
+        ));
+        let http_loopback =
+            Cli::try_parse_from(["spook", "run", "--mcp-http", "127.0.0.1:9801", "pack"]).unwrap();
+        assert!(matches!(
+            http_loopback.command,
+            Command::Run {
+                mcp_http: Some(text),
+                ..
+            } if text == "127.0.0.1:9801"
+        ));
         let play = Cli::try_parse_from(["spook", "play", "pack", "--as", "player:rowan"]).unwrap();
         match play.command {
             Command::Play {
