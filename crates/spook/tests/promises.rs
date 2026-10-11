@@ -47,6 +47,9 @@ mod fixtures;
 #[path = "steps/host.rs"]
 mod host;
 
+#[path = "steps/mcp.rs"]
+mod mcp;
+
 #[path = "steps/gm.rs"]
 mod gm;
 

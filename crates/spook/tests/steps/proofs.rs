@@ -1032,6 +1032,11 @@ fn import_boundary() {
     assert!(ai_hits.is_empty(), "{}", ai_hits.join("\n"));
     let seat_hits = hits_under(&spook_src.join("seat"), &["crate::cli", "crate::ai"]);
     assert!(seat_hits.is_empty(), "{}", seat_hits.join("\n"));
+    let mcp_hits = byte_hits(
+        &[spook_src.join("mcp.rs")],
+        &["reqwest", "crate::ai", "crate::cli"],
+    );
+    assert!(mcp_hits.is_empty(), "{}", mcp_hits.join("\n"));
 }
 
 fn reqwest_in_kernel_or_tick_fails_the_scan() {

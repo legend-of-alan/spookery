@@ -1,0 +1,381 @@
+use std::io::{Read, Write};
+use std::net::TcpStream;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use cucumber::{then, when};
+use rmcp::model::{
+    CallToolRequestParams, CallToolResult, ClientCapabilities, Implementation, ProtocolVersion,
+};
+use rmcp::transport::{StreamableHttpClientTransport, TokioChildProcess};
+use rmcp::ServiceExt;
+use serde_json::{json, Map, Value};
+use tokio::process::Command;
+
+use crate::support::{self, Proc};
+use crate::World;
+
+use super::table;
+
+#[when(expr = "a coding agent calls the GM tools over the stdio bridge")]
+fn agent_calls_over_stdio(world: &mut World) {
+    let port = table::free_port();
+    let addr = format!("127.0.0.1:{port}");
+    table::listen(table::pack(world), &addr, port);
+    block_on(exercise_bridge(&addr));
+}
+
+#[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
+fn agent_calls_over_http(world: &mut World) {
+    let (_tcp, http) = listen_http(table::pack(world));
+    block_on(exercise_http(http));
+}
+
+#[when(expr = "the GM seat is held and another agent opens the bridge")]
+fn second_bridge(world: &mut World) {
+    let port = table::free_port();
+    let addr = format!("127.0.0.1:{port}");
+    table::listen(table::pack(world), &addr, port);
+    table::seat_gm();
+    table::run(world, &["mcp", "--addr", &addr]);
+}
+
+#[when(expr = "the GM seat is held and another agent opens HTTP")]
+fn second_http(world: &mut World) {
+    let (_tcp, http) = listen_http(table::pack(world));
+    let refusal = block_on(async move {
+        let first = connect_http(http)
+            .await
+            .unwrap_or_else(|err| panic!("first HTTP GM: {err}"));
+        let status = call(&first, "session_status", None).await;
+        assert_sat(&status, "session_status");
+        let raw = http_post(http, None);
+        if connect_http(http).await.is_ok() {
+            panic!("a second HTTP GM sat\n{raw}");
+        }
+        let _ = first.cancel().await;
+        raw
+    });
+    world.stderr = refusal;
+    world.stdout.clear();
+}
+
+#[when(expr = "the operator runs with an open MCP HTTP address")]
+fn open_http_address(world: &mut World) {
+    let pack = support::pack_arg(table::pack(world));
+    table::run(world, &["run", &pack, "--mcp-http", "0.0.0.0:9"]);
+}
+
+#[when(expr = "the operator runs mcp bound to an open address")]
+fn open_bridge_address(world: &mut World) {
+    table::run(world, &["mcp", "--addr", "0.0.0.0"]);
+}
+
+#[when(expr = "the operator runs mcp with nothing listening")]
+fn bridge_with_nothing_listening(world: &mut World) {
+    let port = table::free_port();
+    let addr = format!("127.0.0.1:{port}");
+    table::run(world, &["mcp", "--addr", &addr]);
+}
+
+#[when(expr = "an HTTP request arrives with a public Origin")]
+fn public_origin(world: &mut World) {
+    let (_tcp, http) = listen_http(table::pack(world));
+    world.scratch = http_post(http, Some("https://evil.example"));
+}
+
+#[then(expr = "the response is forbidden")]
+fn the_response_is_forbidden(world: &mut World) {
+    let status = world
+        .scratch
+        .lines()
+        .next()
+        .unwrap_or_else(|| panic!("no HTTP status\n{}", world.scratch));
+    assert!(
+        status.contains(" 403 "),
+        "status: {status}\n{}",
+        world.scratch
+    );
+}
+
+#[then(expr = "a GM hello still sits")]
+fn a_gm_hello_still_sits(_world: &mut World) {
+    table::seat_gm();
+}
+
+#[when(expr = "an HTTP GM session ends")]
+fn http_session_ends(world: &mut World) {
+    let (_tcp, http) = listen_http(table::pack(world));
+    world.mark = usize::from(http);
+    block_on(async move {
+        let running = connect_http(http)
+            .await
+            .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
+        let status = call(&running, "session_status", None).await;
+        assert_sat(&status, "session_status");
+        running
+            .cancel()
+            .await
+            .unwrap_or_else(|err| panic!("close HTTP session: {err}"));
+    });
+}
+
+#[then(expr = "another GM can sit over HTTP")]
+fn another_gm_can_sit(world: &mut World) {
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
+    block_on(async move {
+        let start = Instant::now();
+        loop {
+            match connect_http(http).await {
+                Ok(running) => {
+                    let status = call(&running, "session_status", None).await;
+                    assert_sat(&status, "session_status");
+                    let _ = running.cancel().await;
+                    return;
+                }
+                Err(err) if start.elapsed() > Duration::from_secs(5) => {
+                    panic!("the next GM did not sit: {err}");
+                }
+                Err(_) => tokio::time::sleep(Duration::from_millis(50)).await,
+            }
+        }
+    });
+}
+
+#[then(expr = "world time moved forward")]
+fn world_time_moved_forward(world: &mut World) {
+    let now = table::now_of(table::pack(world));
+    assert!(now.world_time > 1080, "world_time {}", now.world_time);
+}
+
+#[then(expr = "the refusal names SESSION_FULL")]
+fn the_refusal_names_session_full(world: &mut World) {
+    assert!(world.stderr.contains("SESSION_FULL"), "{}", world.stderr);
+    assert!(world.stdout.is_empty(), "{}", world.stdout);
+}
+
+#[when(expr = "a coding agent says good evening over the bridge")]
+fn agent_says_over_the_bridge(world: &mut World) {
+    let port = crate::with_live(|live| live.port);
+    let addr = format!("127.0.0.1:{port}");
+    let mark = table::player_len();
+    block_on(async move {
+        let running = connect_bridge(&addr)
+            .await
+            .unwrap_or_else(|err| panic!("bridge: {err}"));
+        let said = call(
+            &running,
+            "say",
+            Some(json!({"address": "table", "text": "good evening"})),
+        )
+        .await;
+        assert_sat(&said, "say");
+        let _ = running.cancel().await;
+    });
+    world.player_added = table::wait_player_from(mark, "{\"kind\":\"say\"");
+}
+
+fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async move {
+            tokio::time::timeout(Duration::from_secs(20), work)
+                .await
+                .unwrap_or_else(|_| panic!("the agent timed out"))
+        })
+    })
+}
+
+async fn exercise_bridge(addr: &str) {
+    let running = connect_bridge(addr)
+        .await
+        .unwrap_or_else(|err| panic!("bridge: {err}"));
+    exercise(&running).await;
+    let _ = running.cancel().await;
+}
+
+async fn exercise_http(port: u16) {
+    let running = connect_http(port)
+        .await
+        .unwrap_or_else(|err| panic!("HTTP: {err}"));
+    exercise(&running).await;
+    let _ = running.cancel().await;
+}
+
+async fn exercise(running: &impl ToolClient) {
+    for (name, arguments) in [
+        ("session_status", None),
+        ("perceive", Some(json!({"as": "player:pc_rowan"}))),
+        (
+            "intent",
+            Some(json!({
+                "actor_id": "pc_rowan",
+                "actor_kind": "player",
+                "source": "player",
+                "move": "wait"
+            })),
+        ),
+        (
+            "say",
+            Some(json!({"address": "table", "text": "good evening"})),
+        ),
+        ("commit_turn", Some(json!({"include_tick": true}))),
+    ] {
+        let result = call(running, name, arguments).await;
+        assert_sat(&result, name);
+    }
+}
+
+trait ToolClient {
+    fn call_tool(
+        &self,
+        params: CallToolRequestParams,
+    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::ServiceError>> + Send;
+}
+
+impl<S> ToolClient for rmcp::service::RunningService<rmcp::RoleClient, S>
+where
+    S: rmcp::Service<rmcp::RoleClient> + Send + Sync,
+{
+    fn call_tool(
+        &self,
+        params: CallToolRequestParams,
+    ) -> impl std::future::Future<Output = Result<CallToolResult, rmcp::ServiceError>> + Send {
+        rmcp::service::RunningService::call_tool(self, params)
+    }
+}
+
+async fn call(running: &impl ToolClient, name: &str, arguments: Option<Value>) -> CallToolResult {
+    let params = match arguments {
+        Some(value) => CallToolRequestParams::new(name.to_string()).with_arguments(object(value)),
+        None => CallToolRequestParams::new(name.to_string()),
+    };
+    running
+        .call_tool(params)
+        .await
+        .unwrap_or_else(|err| panic!("{name}: {err}"))
+}
+
+fn object(value: Value) -> Map<String, Value> {
+    value
+        .as_object()
+        .unwrap_or_else(|| panic!("arguments are not an object: {value}"))
+        .clone()
+}
+
+fn assert_sat(result: &CallToolResult, name: &str) {
+    let body = result.structured_content.clone().unwrap_or(Value::Null);
+    assert!(body.get("code").is_none(), "{name} was refused: {body}");
+    assert_ne!(result.is_error, Some(true), "{name}: {body}");
+}
+
+fn client_config() -> rmcp::model::ClientConfig {
+    rmcp::model::ClientConfig::new(
+        ClientCapabilities::default(),
+        Implementation::new("spook-promises", "0"),
+    )
+    .with_protocol_version(ProtocolVersion::V_2024_11_05)
+}
+
+async fn connect_bridge(
+    addr: &str,
+) -> Result<
+    rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
+    rmcp::service::ClientInitializeError,
+> {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command.arg("mcp").arg("--addr").arg(addr);
+    let transport =
+        TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn mcp: {err}"));
+    client_config().serve(transport).await
+}
+
+async fn connect_http(
+    port: u16,
+) -> Result<
+    rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
+    rmcp::service::ClientInitializeError,
+> {
+    let transport = StreamableHttpClientTransport::from_uri(format!("http://127.0.0.1:{port}/mcp"));
+    client_config().serve(transport).await
+}
+
+fn listen_http(pack: &std::path::Path) -> (u16, u16) {
+    let tcp = table::free_port();
+    let http = loop {
+        let port = table::free_port();
+        if port != tcp {
+            break port;
+        }
+    };
+    let pack_arg = support::pack_arg(pack);
+    let addr = format!("127.0.0.1:{tcp}");
+    let http_addr = format!("127.0.0.1:{http}");
+    let mut server = support::spawn(&["run", &pack_arg, "--addr", &addr, "--mcp-http", &http_addr]);
+    wait_port(tcp, &mut server);
+    wait_port(http, &mut server);
+    let opened_now = std::fs::read(pack.join("state/now.yaml"))
+        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    crate::set_live(table::Live {
+        port: tcp,
+        player_write: None,
+        player_text: Arc::new(std::sync::Mutex::new(String::new())),
+        players: Vec::new(),
+        gm_write: None,
+        gm_text: Arc::new(std::sync::Mutex::new(String::new())),
+        opened_now: opened_now.clone(),
+        seated_now: opened_now,
+        seated_rev: 0,
+        server: Some(server),
+    });
+    (tcp, http)
+}
+
+fn wait_port(port: u16, server: &mut Proc) {
+    let start = Instant::now();
+    let addr = format!("127.0.0.1:{port}");
+    loop {
+        if TcpStream::connect(&addr).is_ok() {
+            return;
+        }
+        if let Some(status) = server
+            .child
+            .try_wait()
+            .unwrap_or_else(|err| panic!("wait: {err}"))
+        {
+            panic!(
+                "spook run exited {status} before {addr} listened\nstderr:\n{}",
+                support::text_of(&server.stderr)
+            );
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!(
+                "{addr} did not listen\nstderr:\n{}",
+                support::text_of(&server.stderr)
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn http_post(port: u16, origin: Option<&str>) -> String {
+    let body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"probe\",\"version\":\"0\"}}}";
+    let origin = match origin {
+        Some(origin) => format!("Origin: {origin}\r\n"),
+        None => String::new(),
+    };
+    let request = format!(
+        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n{origin}Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let mut stream =
+        TcpStream::connect(("127.0.0.1", port)).unwrap_or_else(|err| panic!("connect HTTP: {err}"));
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap_or_else(|err| panic!("timeout: {err}"));
+    stream
+        .write_all(request.as_bytes())
+        .unwrap_or_else(|err| panic!("write HTTP: {err}"));
+    let mut buf = String::new();
+    let _ = stream.read_to_string(&mut buf);
+    buf
+}
