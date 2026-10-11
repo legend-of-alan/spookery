@@ -14,7 +14,7 @@ No releases yet. No compatibility guarantees.
 - One GM seat (AI or human) and 1 to 3 player seats. Each player sits a distinct pack PC. A 4th player gets `SESSION_FULL`. A hello for a PC another seat holds gets `SEAT_TAKEN`. That seat model is built.
 - Players walk around and take basic actions.
 - Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor), so the format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint. `spook check <pack>` prints those in plain text. `spook check --json <pack>` prints the same diagnostics as one JSON array. Generated schemas are not built yet (#29).
-- The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. The 5e-style sample pack is not built yet (#25).
+- The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. `packs/sample-d20` is that sample. It plays a fixed-damage fight against a literal difficulty. It does not yet express a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, a condition when hit points reach zero, or consume an item (drink checks for the tonic but never uses it up, so it heals forever).
 
 This spec records one writer, the crate boundary, the threat list, loopback and the seat cap, and the rule that a host monitor is not shard behavior.
 

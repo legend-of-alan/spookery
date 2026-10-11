@@ -1,0 +1,121 @@
+schema: now
+shard_id: sample-d20
+pack_rev: blake2s:6fc95a2fd7e29ccece9c02b54a2ece6ba2f1482a24caef85b3a8787835c4a4a5
+state_rev: 0
+tick_index: 0
+world_time: 1080
+last_tick_at: "2026-01-01T00:00:00Z"
+presence:
+  humans: 0
+  actors_present: []
+pause:
+  named_plot_clocks: paused
+places:
+  gate_yard:
+    stock: {}
+    notes: []
+    actors:
+      - npc_briar
+      - pc_lark
+  loft:
+    stock: {}
+    notes: []
+    actors: []
+  mill_lane:
+    stock: {}
+    notes: []
+    actors:
+      - npc_oden
+      - pc_nell
+actors:
+  npc_briar:
+    kind: npc
+    place: gate_yard
+    flags: []
+    busy: false
+    meters:
+      defense:
+        base: 14
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 2
+        offset: 0
+    inventory: []
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  npc_oden:
+    kind: npc
+    place: mill_lane
+    flags: []
+    busy: false
+    meters:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 1
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
+    inventory: []
+    known_facts: []
+    tick:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
+  pc_lark:
+    kind: pc
+    place: gate_yard
+    flags: []
+    busy: false
+    meters:
+      defense:
+        base: 11
+        offset: 0
+      grace:
+        base: 3
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 40
+        offset: 0
+    inventory:
+      - tonic
+    known_facts: []
+  pc_nell:
+    kind: pc
+    place: mill_lane
+    flags: []
+    busy: false
+    meters:
+      defense:
+        base: 10
+        offset: 0
+      grace:
+        base: 2
+        offset: 0
+      hp:
+        base: 8
+        offset: 0
+      might:
+        base: 1
+        offset: 0
+    inventory: []
+    known_facts: []
+clocks: {}
+messages: []

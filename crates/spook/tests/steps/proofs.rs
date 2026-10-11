@@ -1037,6 +1037,94 @@ fn import_boundary() {
     assert!(mcp_hits.is_empty(), "{}", mcp_hits.join("\n"));
 }
 
+fn five_e_words_under(dir: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    files_under(dir, &mut files);
+    let mut hits = Vec::new();
+    for path in files {
+        let bytes = fs::read(&path).unwrap();
+        for word in [b"5e".as_slice(), b"d&d", b"srd"] {
+            if contains_word(&bytes, word) {
+                let label = String::from_utf8_lossy(word);
+                hits.push(format!("{} contains {label}", path.display()));
+            }
+        }
+    }
+    hits
+}
+
+fn contains_word(hay: &[u8], needle: &[u8]) -> bool {
+    if needle.is_empty() || hay.len() < needle.len() {
+        return false;
+    }
+    let last = hay.len() - needle.len();
+    for index in 0..=last {
+        if !hay[index..index + needle.len()].eq_ignore_ascii_case(needle) {
+            continue;
+        }
+        let before = index == 0 || !is_word_byte(hay[index - 1]);
+        let after_at = index + needle.len();
+        let after = after_at == hay.len() || !is_word_byte(hay[after_at]);
+        if before && after {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_word_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
+}
+
+fn no_five_e_words_in_kernel_or_tick() {
+    let root = workspace_root();
+    let mut hits = five_e_words_under(&root.join("crates/kernel"));
+    hits.extend(five_e_words_under(&root.join("crates/tick")));
+    assert!(hits.is_empty(), "{}", hits.join("\n"));
+}
+
+fn planted_five_e_word_fails_the_scan() {
+    let kernel_hits = planted_five_e("5e\n", "fn clean() {}\n");
+    assert!(
+        kernel_hits.iter().any(|hit| hit.contains("5e")),
+        "kernel scan accepted a 5e word"
+    );
+    let tick_hits = planted_five_e("fn clean() {}\n", "5e\n");
+    assert!(
+        tick_hits.iter().any(|hit| hit.contains("5e")),
+        "tick scan accepted a 5e word"
+    );
+    let digest = planted_five_e(
+        "daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819\n",
+        "fn clean() {}\n",
+    );
+    assert!(
+        digest.is_empty(),
+        "a hex digest counted as a 5e word: {}",
+        digest.join("\n")
+    );
+}
+
+fn planted_five_e(kernel_body: &str, tick_body: &str) -> Vec<String> {
+    let root = std::env::temp_dir().join(format!(
+        "spook-five-e-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&root);
+    fs::create_dir_all(root.join("kernel")).unwrap();
+    fs::create_dir_all(root.join("tick")).unwrap();
+    fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();
+    fs::write(root.join("tick/lib.rs"), tick_body).unwrap();
+    let mut hits = five_e_words_under(&root.join("kernel"));
+    hits.extend(five_e_words_under(&root.join("tick")));
+    let _ = fs::remove_dir_all(&root);
+    hits
+}
+
 fn reqwest_in_kernel_or_tick_fails_the_scan() {
     let kernel_hits = planted_boundary("reqwest\n", "fn clean() {}\n");
     assert!(
@@ -1646,6 +1734,16 @@ fn the_kernel_and_tick_sources_are_scanned(_world: &mut World) {
 #[when(expr = "reqwest is planted in kernel and tick")]
 fn reqwest_is_planted_in_kernel_and_tick(_world: &mut World) {
     reqwest_in_kernel_or_tick_fails_the_scan();
+}
+
+#[when(expr = "the kernel and tick sources are scanned for a game-words ban")]
+fn the_kernel_and_tick_sources_are_scanned_for_a_game_words_ban(_world: &mut World) {
+    no_five_e_words_in_kernel_or_tick();
+}
+
+#[when(expr = "a 5e word is planted in kernel and tick")]
+fn a_five_e_word_is_planted_in_kernel_and_tick(_world: &mut World) {
+    planted_five_e_word_fails_the_scan();
 }
 
 #[when(expr = "a queued wait meets a wake and the seat drops")]
