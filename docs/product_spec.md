@@ -471,21 +471,27 @@ Later genre packs may override pause policy. The docks fixture does not.
 ## 16. Repo layout
 
 ```text
+/README.md                 # how to build and play
 /docs
   spec.md                  # referee law
-  README.md
+  README.md                # points at spec.md
   product_spec.md          # this file; business notes, not law
 /packs
   oneshot-docks/           # official fixture
+/.grok
+  skills/author-pack/      # pack-authoring skill
 /crates
   kernel/                  # spookery-kernel
   tick/                    # spookery-tick
   spook/                   # package spook, binary spook, library spookery
     src/
       main.rs              # spook
+      mcp.rs               # stdio door, spook mcp
+      schedule.rs          # when the shard wakes
+      gm_client/           # shared GM-seat client
       seat/                # both seats
       protocol/            # shared lines
-      cli/                 # spook play
+      cli/                 # spook play and spook gm
       ai/                  # spook ai-gm
     tests/
       promises.rs
