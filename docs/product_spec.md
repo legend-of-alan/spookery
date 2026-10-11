@@ -157,7 +157,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 - Pack schema (markdown / YAML)
 - Runtime CLI: load a pack and write `state/`
-- Kernel: checks, resources, knowledge firewall
+- Kernel: checks, meters, habits, knowledge firewall
 - Shard tick loop
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
 - Terminal play: one GM seat and up to three player seats. A fourth player gets `SESSION_FULL`. A held character gets `SEAT_TAKEN`. Built.
@@ -225,7 +225,7 @@ Authors write YAML and Markdown. Markdown bodies are flavor for people reading t
 
 NPC profile, as a product sketch:
 
-- identity, voice, goals, needs
+- identity, voice, goals, meters, habits
 - what the table is allowed to know, and what it is not
 - relationships (parked in #36)
 - where an NPC works, when, and what the shop does
