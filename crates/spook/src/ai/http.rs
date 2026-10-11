@@ -12,62 +12,178 @@ pub struct Env {
     url: String,
 }
 
+/// Fixed bounds for one model call. Production uses 60s total, 10s to connect,
+/// and one retry after 2s. Tests pass a shorter total through `with_limits`.
+pub struct Limits {
+    pub total: Duration,
+    pub connect: Duration,
+    pub backoff: Duration,
+}
+
+impl Limits {
+    pub const fn production() -> Self {
+        Self {
+            total: Duration::from_secs(60),
+            connect: Duration::from_secs(10),
+            backoff: Duration::from_secs(2),
+        }
+    }
+}
+
 pub struct HttpModel {
     env: Env,
     client: reqwest::blocking::Client,
+    limits: Limits,
 }
 
 pub fn require_env() -> Result<Env, HostError> {
-    let key = match std::env::var("XAI_API_KEY") {
-        Ok(value) => value,
-        Err(_) => return Err(fail("XAI_API_KEY is unset")),
-    };
-    let model = match std::env::var("SPOOK_GM_MODEL") {
-        Ok(value) => value,
-        Err(_) => return Err(fail("SPOOK_GM_MODEL is unset")),
-    };
-    let url = std::env::var("SPOOK_GM_URL").unwrap_or_else(|_| "https://api.x.ai/v1".to_string());
-    Ok(Env {
-        key,
-        model,
-        url: url.trim_end_matches('/').to_string(),
-    })
+    let key = env_var("SPOOK_GM_KEY")?;
+    let url = env_var("SPOOK_GM_URL")?;
+    let model = env_var("SPOOK_GM_MODEL")?;
+    Ok(Env::new(key, url, model))
+}
+
+fn env_var(name: &str) -> Result<String, HostError> {
+    match std::env::var(name) {
+        Ok(value) => Ok(value),
+        Err(_) => Err(fail(format!("{name} is unset"))),
+    }
+}
+
+impl Env {
+    pub fn new(key: impl Into<String>, url: impl Into<String>, model: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            model: model.into(),
+            url: trim_url(&url.into()),
+        }
+    }
+}
+
+fn trim_url(url: &str) -> String {
+    url.trim_end_matches('/').to_string()
 }
 
 impl HttpModel {
     pub fn new(env: Env) -> Result<Self, HostError> {
+        Self::with_limits(env, Limits::production())
+    }
+
+    pub fn with_limits(env: Env, limits: Limits) -> Result<Self, HostError> {
         let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(3600))
+            .timeout(limits.total)
+            .connect_timeout(limits.connect)
             .build()
             .map_err(|err| fail(err.to_string()))?;
-        Ok(Self { env, client })
+        Ok(Self {
+            env,
+            client,
+            limits,
+        })
     }
 }
 
-impl Model for HttpModel {
-    fn complete(&mut self, request: &CompletionRequest) -> Result<Option<String>, CompleteError> {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RetryClass {
+    Timeout,
+    Connect,
+    Status(u16),
+    Other,
+}
+
+fn should_retry(class: RetryClass) -> bool {
+    match class {
+        RetryClass::Timeout | RetryClass::Connect => true,
+        RetryClass::Status(code) => matches!(code, 429 | 500..=599),
+        RetryClass::Other => false,
+    }
+}
+
+fn class_of(err: &reqwest::Error) -> RetryClass {
+    if err.is_timeout() {
+        RetryClass::Timeout
+    } else if err.is_connect() {
+        RetryClass::Connect
+    } else {
+        RetryClass::Other
+    }
+}
+
+fn failure_message(class: RetryClass, total: Duration, detail: &str) -> CompleteError {
+    let message = match class {
+        RetryClass::Timeout => format!("model call timed out after {}s", total.as_secs()),
+        RetryClass::Connect => "model call failed to connect".to_string(),
+        RetryClass::Status(code) => format!("model call returned {code}"),
+        RetryClass::Other => format!("model call failed: {detail}"),
+    };
+    CompleteError::Transport(message)
+}
+
+struct Tried {
+    retry: bool,
+    result: Result<Option<String>, CompleteError>,
+}
+
+impl HttpModel {
+    fn attempt(&self, request: &CompletionRequest) -> Tried {
         let body = chat_body(&self.env.model, &request.prompt, request.says_only);
         let url = format!("{}/chat/completions", self.env.url);
-        let response = self
+        let response = match self
             .client
             .post(url)
             .bearer_auth(&self.env.key)
             .json(&body)
             .send()
-            .map_err(|err| CompleteError::Transport(err.to_string()))?;
+        {
+            Ok(response) => response,
+            Err(err) => {
+                let class = class_of(&err);
+                return Tried {
+                    retry: should_retry(class),
+                    result: Err(failure_message(class, self.limits.total, &err.to_string())),
+                };
+            }
+        };
         let status = response.status();
-        let text = response
-            .text()
-            .map_err(|err| CompleteError::Transport(err.to_string()))?;
         if !status.is_success() {
-            return Err(CompleteError::Transport(format!("{status} {text}")));
+            let code = status.as_u16();
+            let class = RetryClass::Status(code);
+            let _ = response.text();
+            return Tried {
+                retry: should_retry(class),
+                result: Err(failure_message(class, self.limits.total, "")),
+            };
         }
-        interpret_completion(&text)
+        let text = match response.text() {
+            Ok(text) => text,
+            Err(err) => {
+                let class = class_of(&err);
+                return Tried {
+                    retry: should_retry(class),
+                    result: Err(failure_message(class, self.limits.total, &err.to_string())),
+                };
+            }
+        };
+        Tried {
+            retry: false,
+            result: interpret_completion(&text),
+        }
     }
 }
 
-/// Chat-completions body. Fields follow the xAI chat-completions quickstart
-/// (`messages`, `model`, `stream`) plus one function, `act`.
+impl Model for HttpModel {
+    fn complete(&mut self, request: &CompletionRequest) -> Result<Option<String>, CompleteError> {
+        let first = self.attempt(request);
+        if !first.retry {
+            return first.result;
+        }
+        std::thread::sleep(self.limits.backoff);
+        self.attempt(request).result
+    }
+}
+
+/// Chat-completions body. The fields are `messages`, `model`, and `stream`,
+/// plus one function, `act`.
 pub fn chat_body(model: &str, prompt: &str, says_only: bool) -> Value {
     json!({
         "messages": [
@@ -212,31 +328,127 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_key_does_not_dial() {
+    fn each_missing_setting_is_named_and_does_not_dial() {
         let _guard = ENV.lock().unwrap_or_else(|err| err.into_inner());
-        let saved_key = std::env::var("XAI_API_KEY").ok();
-        let saved_model = std::env::var("SPOOK_GM_MODEL").ok();
-        std::env::remove_var("XAI_API_KEY");
-        std::env::set_var("SPOOK_GM_MODEL", "grok-test");
+        let saved = save_settings();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         listener.set_nonblocking(true).unwrap();
         let addr = listener.local_addr().unwrap().to_string();
-        let err = crate::ai::sit(std::path::Path::new("."), &addr).expect_err("missing key");
-        assert!(err.message.contains("XAI_API_KEY"), "{}", err.message);
-        match listener.accept() {
-            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
-            other => panic!("listener saw a connection: {other:?}"),
+        for missing in ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"] {
+            clear_settings();
+            for name in ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"] {
+                if name != missing {
+                    std::env::set_var(
+                        name,
+                        if name == "SPOOK_GM_URL" {
+                            "http://127.0.0.1:9"
+                        } else {
+                            "set"
+                        },
+                    );
+                }
+            }
+            let err = crate::ai::sit(std::path::Path::new("."), &addr).expect_err(missing);
+            assert!(
+                err.message.contains(&format!("{missing} is unset")),
+                "{}",
+                err.message
+            );
+            match listener.accept() {
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
+                other => panic!("listener saw a connection: {other:?}"),
+            }
         }
-        std::env::set_var("XAI_API_KEY", "test-key");
-        std::env::remove_var("SPOOK_GM_MODEL");
-        let err = crate::ai::sit(std::path::Path::new("."), &addr).expect_err("missing model");
-        assert!(err.message.contains("SPOOK_GM_MODEL"), "{}", err.message);
-        match listener.accept() {
-            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
-            other => panic!("listener saw a connection: {other:?}"),
+        clear_settings();
+        let err = match require_env() {
+            Ok(_) => panic!("all missing should fail"),
+            Err(err) => err,
+        };
+        assert!(
+            err.message.contains("SPOOK_GM_KEY is unset"),
+            "{}",
+            err.message
+        );
+        restore_settings(saved);
+    }
+
+    #[test]
+    fn a_trailing_slash_is_trimmed() {
+        let _guard = ENV.lock().unwrap_or_else(|err| err.into_inner());
+        let saved = save_settings();
+        clear_settings();
+        std::env::set_var("SPOOK_GM_KEY", "test-key");
+        std::env::set_var("SPOOK_GM_URL", "http://127.0.0.1:9/");
+        std::env::set_var("SPOOK_GM_MODEL", "test-model");
+        let env = require_env().expect("settings present");
+        assert_eq!(env.key, "test-key");
+        assert_eq!(env.url, "http://127.0.0.1:9");
+        assert_eq!(env.model, "test-model");
+        restore_settings(saved);
+    }
+
+    #[test]
+    fn production_limits_are_sixty_ten_and_two() {
+        let model = HttpModel::new(Env::new("k", "http://127.0.0.1:9", "m")).expect("client");
+        assert_eq!(model.limits.total, Duration::from_secs(60));
+        assert_eq!(model.limits.connect, Duration::from_secs(10));
+        assert_eq!(model.limits.backoff, Duration::from_secs(2));
+    }
+
+    #[test]
+    fn retry_classifier_retries_timeout_connect_429_and_5xx_only() {
+        assert!(should_retry(RetryClass::Timeout));
+        assert!(should_retry(RetryClass::Connect));
+        assert!(should_retry(RetryClass::Status(429)));
+        assert!(should_retry(RetryClass::Status(500)));
+        assert!(should_retry(RetryClass::Status(503)));
+        assert!(should_retry(RetryClass::Status(599)));
+        assert!(!should_retry(RetryClass::Status(400)));
+        assert!(!should_retry(RetryClass::Status(401)));
+        assert!(!should_retry(RetryClass::Status(404)));
+        assert!(!should_retry(RetryClass::Status(418)));
+        assert!(!should_retry(RetryClass::Other));
+        assert_eq!(
+            line(RetryClass::Timeout, 60),
+            "model call timed out after 60s"
+        );
+        assert_eq!(
+            line(RetryClass::Timeout, 1),
+            "model call timed out after 1s"
+        );
+        assert_eq!(
+            line(RetryClass::Connect, 60),
+            "model call failed to connect"
+        );
+        assert_eq!(line(RetryClass::Status(401), 60), "model call returned 401");
+        assert_eq!(line(RetryClass::Status(429), 60), "model call returned 429");
+        assert_eq!(line(RetryClass::Status(500), 60), "model call returned 500");
+    }
+
+    fn line(class: RetryClass, secs: u64) -> String {
+        match failure_message(class, Duration::from_secs(secs), "detail") {
+            CompleteError::Transport(message) => message,
+            CompleteError::EmptyParse(message) => message,
         }
-        restore("XAI_API_KEY", saved_key);
-        restore("SPOOK_GM_MODEL", saved_model);
+    }
+
+    fn clear_settings() {
+        for name in ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"] {
+            std::env::remove_var(name);
+        }
+    }
+
+    fn save_settings() -> Vec<(String, Option<String>)> {
+        ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"]
+            .into_iter()
+            .map(|name| (name.to_string(), std::env::var(name).ok()))
+            .collect()
+    }
+
+    fn restore_settings(saved: Vec<(String, Option<String>)>) {
+        for (name, value) in saved {
+            restore(&name, value);
+        }
     }
 
     fn restore(name: &str, value: Option<String>) {

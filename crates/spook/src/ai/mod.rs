@@ -6,6 +6,7 @@ mod wire;
 
 use std::path::Path;
 
+pub use http::{Env, HttpModel, Limits};
 pub use model::{CompleteError, CompletionRequest, Model, Script};
 pub use prompt::{
     from_canon, keep, parse_actions, prepare, render, HandledSay, MenuRow, OutgoingSay, Prepared,
@@ -36,7 +37,7 @@ pub(crate) fn fail(message: impl Into<String>) -> HostError {
 
 /// Sit the GM seat on `addr` and call the model.
 ///
-/// A missing `XAI_API_KEY` or `SPOOK_GM_MODEL` is reported before the dial.
+/// A missing `SPOOK_GM_KEY`, `SPOOK_GM_URL`, or `SPOOK_GM_MODEL` is reported before the dial.
 pub fn sit(pack: &Path, addr: &str) -> Result<(), HostError> {
     let env = http::require_env()?;
     let mut model = http::HttpModel::new(env)?;
