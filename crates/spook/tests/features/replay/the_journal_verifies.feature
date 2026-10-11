@@ -74,3 +74,13 @@ Feature: The journal verifies
     Then the command exits 0
     And stdout shows the final state_rev
     And stderr is empty
+
+  Scenario: Verify from a pre-tick copy
+    Given a docks table
+    When the pack is copied before the tick
+    And the operator runs tick
+    And the replay base is removed
+    And the operator runs verify from that copy
+    Then the command exits 0
+    And stdout says "verified 1 records, state_rev 1"
+    And stderr is empty

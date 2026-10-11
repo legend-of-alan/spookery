@@ -19,6 +19,37 @@ fn the_operator_runs_replay(world: &mut World) {
     table::run(world, &["replay", pack.to_str().unwrap()]);
 }
 
+#[when(expr = "the pack is copied before the tick")]
+fn the_pack_is_copied_before_the_tick(world: &mut World) {
+    let pack = table::pack(world);
+    let dest = std::env::temp_dir().join(format!(
+        "spook-from-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&dest);
+    crate::support::copy_dir(pack, &dest);
+    world.scratch = dest.display().to_string();
+}
+
+#[when(expr = "the replay base is removed")]
+fn the_replay_base_is_removed(world: &mut World) {
+    let path = table::pack(world).join("state/log/base.yaml");
+    assert!(path.is_file(), "no replay base at {}", path.display());
+    fs::remove_file(&path).unwrap_or_else(|err| panic!("remove base: {err}"));
+}
+
+#[when(expr = "the operator runs verify from that copy")]
+fn the_operator_runs_verify_from_that_copy(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let from = world.scratch.clone();
+    table::run(world, &["verify", pack.to_str().unwrap(), "--from", &from]);
+    let _ = fs::remove_dir_all(&from);
+}
+
 #[when(expr = "the operator runs {int} ticks")]
 fn the_operator_runs_n_ticks(world: &mut World, count: usize) {
     let pack = table::pack(world).to_path_buf();
