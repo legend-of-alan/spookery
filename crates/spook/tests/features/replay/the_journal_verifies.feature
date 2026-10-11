@@ -84,3 +84,9 @@ Feature: The journal verifies
     Then the command exits 0
     And stdout says "verified 1 records, state_rev 1"
     And stderr is empty
+
+  Scenario: An empty directory is not a pack
+    Given an empty directory
+    When the operator runs verify
+    Then the command exits 1
+    And stderr is NOT_IN_SPEC

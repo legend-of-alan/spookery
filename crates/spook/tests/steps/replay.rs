@@ -1,11 +1,26 @@
 use std::fs;
 
-use cucumber::{then, when};
+use cucumber::{given, then, when};
 use serde_json::Value;
 
 use crate::World;
 
 use super::table;
+
+#[given(expr = "an empty directory")]
+fn an_empty_directory(world: &mut World) {
+    let dir = std::env::temp_dir().join(format!(
+        "spook-empty-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("mkdir {}: {err}", dir.display()));
+    world.pack = Some(dir);
+}
 
 #[when(expr = "the operator runs verify")]
 fn the_operator_runs_verify(world: &mut World) {
