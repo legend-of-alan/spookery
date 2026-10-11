@@ -1,75 +1,646 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::codec::{parse_recorded_line, RecordedLine};
-use spookery_kernel::shard::open_shard;
+use spookery_kernel::canon::{bind_inventory, bind_meters, pack_rev};
+use spookery_kernel::codec::{canonicalize, emit_now, load_now, parse_recorded_line};
+use spookery_kernel::commit::replay_write_now;
+use spookery_kernel::diagnostic::reason_of;
+use spookery_kernel::journal::{
+    self, hash_now, JournalEntry, MigrateRecord, PresenceRecord, TickRecord,
+};
+use spookery_kernel::model::Now;
+use spookery_kernel::shard::{open_replay_shard, Shard};
 use spookery_kernel::Reason;
 
 use crate::run::{run_recorded_tick, RecordedTick};
 use crate::seed::seed_preimage;
 
-pub fn replay_recorded(source: &Path, snapshot: &Path) -> Result<PathBuf, Reason> {
-    let temp = std::env::temp_dir().join(format!("spook-replay-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&temp);
-    copy_dir(snapshot, &temp)?;
-    let mut lines = read_tick_lines(source)?;
-    lines.sort_by_key(|line| line.tick_index);
-    let mut shard = open_shard(&temp)?;
-    for line in lines {
-        if shard.now().tick_index + 1 != line.tick_index {
-            return Err(Reason::Schema);
-        }
-        let seed = seed_preimage(&shard.now().shard_id, line.tick_index);
-        if line.seed != seed {
-            return Err(Reason::Schema);
-        }
-        let wall = line.last_tick_at.clone();
-        let rev_after = line.state_rev_after;
-        run_recorded_tick(
-            &mut shard,
-            &wall,
-            RecordedTick {
-                intents: line.intents,
-                presence_humans: line.presence_humans,
-            },
-        )?;
-        if shard.now().state_rev != rev_after {
-            return Err(Reason::Schema);
-        }
-    }
-    Ok(temp)
+#[derive(Debug)]
+pub struct ReplayReport {
+    pub state_rev: u64,
+    pub applied: u64,
+    pub now_yaml: Vec<u8>,
 }
 
-fn read_tick_lines(source: &Path) -> Result<Vec<RecordedLine>, Reason> {
-    let dir = source.join("state/log");
-    if !dir.is_dir() {
-        return Ok(Vec::new());
+#[derive(Debug)]
+pub struct VerifyReport {
+    pub state_rev: u64,
+    pub applied: u64,
+}
+
+#[derive(Debug)]
+pub struct ReplayDivergence {
+    pub state_rev: u64,
+    pub kind: String,
+    pub tick_index: Option<u64>,
+    pub detail: String,
+    pub replayed: Option<Vec<u8>>,
+}
+
+impl std::fmt::Display for ReplayDivergence {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.tick_index {
+            Some(tick) => write!(
+                f,
+                "state_rev {} {} {}: {}",
+                self.state_rev, self.kind, tick, self.detail
+            ),
+            None => write!(
+                f,
+                "state_rev {} {}: {}",
+                self.state_rev, self.kind, self.detail
+            ),
+        }
     }
-    let mut lines = Vec::new();
-    for entry in fs::read_dir(&dir).map_err(|_| Reason::Schema)? {
-        let entry = entry.map_err(|_| Reason::Schema)?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if !(name.starts_with("tick-") && name.ends_with(".jsonl")) {
+}
+
+impl std::error::Error for ReplayDivergence {}
+
+#[derive(Debug)]
+pub enum ReplayError {
+    Reason(Reason),
+    Diverged(ReplayDivergence),
+}
+
+impl std::fmt::Display for ReplayError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Reason(reason) => write!(f, "{reason}"),
+            Self::Diverged(diverged) => write!(f, "{diverged}"),
+        }
+    }
+}
+
+impl std::error::Error for ReplayError {}
+
+#[derive(Debug)]
+pub enum VerifyError {
+    Replay(ReplayError),
+    Mismatch {
+        diverged: ReplayDivergence,
+        line_no: u32,
+        line: String,
+    },
+}
+
+impl std::fmt::Display for VerifyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Replay(err) => write!(f, "{err}"),
+            Self::Mismatch {
+                diverged,
+                line_no,
+                line,
+            } => write!(f, "{diverged}\nnow.yaml:{line_no}: {line}"),
+        }
+    }
+}
+
+impl std::error::Error for VerifyError {}
+
+/// Replay the journal. `from` is a directory whose `state/now.yaml` replaces the base.
+/// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
+pub fn replay_journal(
+    pack: &Path,
+    from: Option<&Path>,
+    until: Option<u64>,
+) -> Result<ReplayReport, ReplayError> {
+    if !pack.join("pack.yaml").is_file() || !pack.join("state/now.yaml").is_file() {
+        return Err(ReplayError::Reason(Reason::NotInSpec));
+    }
+    let records = journal::load_journal(pack).map_err(|fault| {
+        ReplayError::Diverged(diverge(
+            0,
+            "journal",
+            None,
+            format!("{}: {}", fault.file, fault.detail),
+            None,
+        ))
+    })?;
+    let base_path = pack.join("state").join(journal::base_rel());
+    let base_bytes = if let Some(from) = from {
+        read_from_now(from)?
+    } else if base_path.is_file() {
+        fs::read(&base_path).map_err(|_| ReplayError::Reason(Reason::Schema))?
+    } else if records.is_empty() {
+        let now_yaml = fs::read(pack.join("state/now.yaml"))
+            .map_err(|_| ReplayError::Reason(Reason::NotInSpec))?;
+        return Ok(ReplayReport {
+            state_rev: state_rev_of(&now_yaml)?,
+            applied: 0,
+            now_yaml,
+        });
+    } else {
+        return Err(ReplayError::Diverged(diverge(
+            0,
+            "base",
+            None,
+            "missing base.yaml".to_string(),
+            None,
+        )));
+    };
+    let base_rev = state_rev_of(&base_bytes)?;
+    let cap = until.unwrap_or_else(|| {
+        records
+            .iter()
+            .map(JournalEntry::state_rev_after)
+            .filter(|rev| until_allows(*rev, until))
+            .max()
+            .unwrap_or(base_rev)
+    });
+    check_sequence(&records, cap, base_rev, from.is_none(), &base_bytes)?;
+    let mut applied = 0u64;
+    let needs_apply = records.iter().any(|entry| {
+        let rev = entry.state_rev_after();
+        rev > base_rev && rev <= cap
+    });
+    if !needs_apply {
+        return Ok(ReplayReport {
+            state_rev: base_rev,
+            applied: 0,
+            now_yaml: base_bytes,
+        });
+    }
+    let temp = TempDir::new();
+    copy_dir(pack, &temp.0)?;
+    let _ = fs::remove_dir_all(temp.0.join("state/.txn"));
+    fs::write(temp.0.join("state/now.yaml"), &base_bytes)
+        .map_err(|_| ReplayError::Reason(Reason::Schema))?;
+    let mut shard = open_replay_shard(&temp.0).map_err(ReplayError::Reason)?;
+    for entry in &records {
+        let rev = entry.state_rev_after();
+        if rev > cap {
+            break;
+        }
+        if rev <= base_rev {
             continue;
         }
-        let text = fs::read_to_string(entry.path()).map_err(|_| Reason::Schema)?;
-        lines.push(parse_recorded_line(&text)?);
+        apply(&mut shard, entry)?;
+        applied += 1;
     }
-    Ok(lines)
+    let now_yaml =
+        fs::read(temp.0.join("state/now.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))?;
+    Ok(ReplayReport {
+        state_rev: state_rev_of(&now_yaml)?,
+        applied,
+        now_yaml,
+    })
 }
 
-fn copy_dir(from: &Path, to: &Path) -> Result<(), Reason> {
-    fs::create_dir_all(to).map_err(|_| Reason::Schema)?;
-    for entry in fs::read_dir(from).map_err(|_| Reason::Schema)? {
-        let entry = entry.map_err(|_| Reason::Schema)?;
+/// Read `now.yaml` once, replay up to that `state_rev`, and byte-compare.
+pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, VerifyError> {
+    if !pack.join("pack.yaml").is_file() || !pack.join("state/now.yaml").is_file() {
+        return Err(VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)));
+    }
+    let live = fs::read(pack.join("state/now.yaml"))
+        .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
+    let until = state_rev_of(&live).map_err(VerifyError::Replay)?;
+    if from.is_none() && !pack.join("state").join(journal::base_rel()).is_file() {
+        match journal::load_journal(pack) {
+            Ok(records) if records.is_empty() => {
+                return Ok(VerifyReport {
+                    state_rev: until,
+                    applied: 0,
+                });
+            }
+            Ok(_) => {}
+            Err(fault) => {
+                return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
+                    0,
+                    "journal",
+                    None,
+                    format!("{}: {}", fault.file, fault.detail),
+                    None,
+                ))));
+            }
+        }
+    }
+    let report = match replay_journal(pack, from, Some(until)) {
+        Ok(report) => report,
+        Err(ReplayError::Diverged(diverged)) => return Err(with_diff(diverged, &live)),
+        Err(err) => return Err(VerifyError::Replay(err)),
+    };
+    if report.now_yaml != live {
+        let diverged = diverge(
+            report.state_rev,
+            "save",
+            None,
+            "now.yaml differed".to_string(),
+            Some(report.now_yaml.clone()),
+        );
+        return Err(with_diff(diverged, &live));
+    }
+    Ok(VerifyReport {
+        state_rev: report.state_rev,
+        applied: report.applied,
+    })
+}
+
+fn until_allows(rev: u64, until: Option<u64>) -> bool {
+    until.is_none_or(|cap| rev <= cap)
+}
+
+fn check_sequence(
+    records: &[JournalEntry],
+    cap: u64,
+    base_rev: u64,
+    engine_base: bool,
+    base_bytes: &[u8],
+) -> Result<(), ReplayError> {
+    let mut expected = 1u64;
+    for entry in records {
+        let rev = entry.state_rev_after();
+        if rev > cap {
+            break;
+        }
+        if rev != expected {
+            return Err(ReplayError::Diverged(diverge(
+                expected,
+                "missing",
+                None,
+                "no journal record".to_string(),
+                Some(base_bytes.to_vec()),
+            )));
+        }
+        if entry.state_rev_before().saturating_add(1) != rev {
+            return Err(ReplayError::Diverged(diverge(
+                rev,
+                entry.kind_name(),
+                entry.tick_index(),
+                "state_rev differed".to_string(),
+                Some(base_bytes.to_vec()),
+            )));
+        }
+        if engine_base && rev == base_rev {
+            check_mark(entry, base_bytes)?;
+        }
+        expected += 1;
+    }
+    if cap > 0 && expected.saturating_sub(1) != cap {
+        return Err(ReplayError::Diverged(diverge(
+            expected,
+            "missing",
+            None,
+            "no journal record".to_string(),
+            Some(base_bytes.to_vec()),
+        )));
+    }
+    Ok(())
+}
+
+fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError> {
+    let JournalEntry::Migrate(record) = entry else {
+        return Err(ReplayError::Diverged(diverge(
+            entry.state_rev_after(),
+            entry.kind_name(),
+            entry.tick_index(),
+            "base mark is not a migrate".to_string(),
+            Some(base_bytes.to_vec()),
+        )));
+    };
+    if record.now_hash != hash_now(base_bytes) {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "migrate",
+            None,
+            "now_hash differed".to_string(),
+            Some(base_bytes.to_vec()),
+        )));
+    }
+    let base_now = load_base(base_bytes)?;
+    if record.pack_rev_after != base_now.pack_rev {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "migrate",
+            None,
+            "pack_rev differed".to_string(),
+            Some(base_bytes.to_vec()),
+        )));
+    }
+    Ok(())
+}
+
+fn apply(shard: &mut Shard, entry: &JournalEntry) -> Result<(), ReplayError> {
+    match entry {
+        JournalEntry::Tick(record) => apply_tick(shard, record),
+        JournalEntry::Presence(record) => apply_presence(shard, record),
+        JournalEntry::Migrate(record) => apply_migrate(shard, record),
+    }
+}
+
+fn apply_tick(shard: &mut Shard, record: &TickRecord) -> Result<(), ReplayError> {
+    let line = parse_recorded_line(&record.text).map_err(|_| {
+        ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            "the tick record could not be parsed".to_string(),
+            None,
+        ))
+    })?;
+    if shard.now().tick_index + 1 != line.tick_index {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            "tick_index differed".to_string(),
+            None,
+        )));
+    }
+    let seed = seed_preimage(&shard.now().shard_id, line.tick_index);
+    if line.seed != seed {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            "seed differed".to_string(),
+            None,
+        )));
+    }
+    let wall = line.last_tick_at.clone();
+    run_recorded_tick(
+        shard,
+        &wall,
+        RecordedTick {
+            intents: line.intents,
+            presence_humans: line.presence_humans,
+        },
+    )
+    .map_err(|code| {
+        ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            code.token().to_string(),
+            read_now(shard),
+        ))
+    })?;
+    if shard.now().state_rev != record.state_rev_after {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            "state_rev differed".to_string(),
+            read_now(shard),
+        )));
+    }
+    let written = read_now_bytes(shard)?;
+    if hash_now(&written) != record.now_hash {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            "now_hash differed".to_string(),
+            Some(written),
+        )));
+    }
+    Ok(())
+}
+
+fn apply_presence(shard: &mut Shard, record: &PresenceRecord) -> Result<(), ReplayError> {
+    let mut next = shard.now().clone();
+    next.presence.humans = record.humans;
+    next.presence.actors_present = record.actors_present.clone();
+    canonicalize(&mut next);
+    next.state_rev = record.state_rev_after;
+    let bytes = emit_now(&next).map_err(ReplayError::Reason)?.into_bytes();
+    if hash_now(&bytes) != record.now_hash {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "presence",
+            None,
+            "now_hash differed".to_string(),
+            Some(bytes),
+        )));
+    }
+    replay_write_now(shard, next).map_err(ReplayError::Reason)
+}
+
+fn apply_migrate(shard: &mut Shard, record: &MigrateRecord) -> Result<(), ReplayError> {
+    let mut next = shard.now().clone();
+    if next.pack_rev != record.pack_rev_before {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "migrate",
+            None,
+            "pack_rev differed".to_string(),
+            None,
+        )));
+    }
+    bind_meters(shard.canon(), &mut next).map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
+    bind_inventory(&next).map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
+    let computed = pack_rev(shard.root()).map_err(ReplayError::Reason)?;
+    if computed != record.pack_rev_after {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "migrate",
+            None,
+            "pack_rev differed".to_string(),
+            None,
+        )));
+    }
+    next.pack_rev = record.pack_rev_after.clone();
+    next.state_rev = record.state_rev_after;
+    canonicalize(&mut next);
+    let bytes = emit_now(&next).map_err(ReplayError::Reason)?.into_bytes();
+    if hash_now(&bytes) != record.now_hash {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "migrate",
+            None,
+            "now_hash differed".to_string(),
+            Some(bytes),
+        )));
+    }
+    replay_write_now(shard, next).map_err(ReplayError::Reason)
+}
+
+fn read_from_now(from: &Path) -> Result<Vec<u8>, ReplayError> {
+    let path = from.join("state/now.yaml");
+    if !path.is_file() {
+        return Err(ReplayError::Reason(Reason::NotInSpec));
+    }
+    fs::read(&path).map_err(|_| ReplayError::Reason(Reason::NotInSpec))
+}
+
+fn load_base(bytes: &[u8]) -> Result<Now, ReplayError> {
+    let text = std::str::from_utf8(bytes).map_err(|_| ReplayError::Reason(Reason::Schema))?;
+    load_now(text).map_err(|diag| ReplayError::Reason(reason_of(diag)))
+}
+
+fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {
+    Ok(load_base(bytes)?.state_rev)
+}
+
+fn read_now_bytes(shard: &Shard) -> Result<Vec<u8>, ReplayError> {
+    fs::read(shard.root().join("state/now.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))
+}
+
+fn read_now(shard: &Shard) -> Option<Vec<u8>> {
+    fs::read(shard.root().join("state/now.yaml")).ok()
+}
+
+fn diverge(
+    state_rev: u64,
+    kind: &str,
+    tick_index: Option<u64>,
+    detail: String,
+    replayed: Option<Vec<u8>>,
+) -> ReplayDivergence {
+    ReplayDivergence {
+        state_rev,
+        kind: kind.to_string(),
+        tick_index,
+        detail,
+        replayed,
+    }
+}
+
+fn with_diff(diverged: ReplayDivergence, live: &[u8]) -> VerifyError {
+    let diff = diverged.replayed.as_deref().and_then(|replayed| {
+        let live_text = std::str::from_utf8(live).ok()?;
+        let replayed_text = std::str::from_utf8(replayed).ok()?;
+        first_diff_line(live_text, replayed_text)
+    });
+    match diff {
+        Some((line_no, line)) => VerifyError::Mismatch {
+            diverged,
+            line_no,
+            line,
+        },
+        None => VerifyError::Replay(ReplayError::Diverged(diverged)),
+    }
+}
+
+fn first_diff_line(live: &str, replayed: &str) -> Option<(u32, String)> {
+    for (index, (left, right)) in live.lines().zip(replayed.lines()).enumerate() {
+        if left != right {
+            return Some(((index + 1) as u32, left.to_string()));
+        }
+    }
+    let live_count = live.lines().count();
+    let replay_count = replayed.lines().count();
+    if live_count != replay_count {
+        let number = live_count.min(replay_count) + 1;
+        let line = live
+            .lines()
+            .nth(number - 1)
+            .or_else(|| replayed.lines().nth(number - 1))
+            .unwrap_or("")
+            .to_string();
+        return Some((number as u32, line));
+    }
+    if live.as_bytes() != replayed.as_bytes() {
+        return Some((1, live.lines().next().unwrap_or("").to_string()));
+    }
+    None
+}
+
+struct TempDir(PathBuf);
+
+impl TempDir {
+    fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let n = NEXT.fetch_add(1, Ordering::Relaxed);
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_nanos())
+            .unwrap_or(0);
+        let path =
+            std::env::temp_dir().join(format!("spook-replay-{}-{n}-{nanos}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        Self(path)
+    }
+}
+
+impl Drop for TempDir {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn copy_dir(from: &Path, to: &Path) -> Result<(), ReplayError> {
+    fs::create_dir_all(to).map_err(|_| ReplayError::Reason(Reason::Schema))?;
+    for entry in fs::read_dir(from).map_err(|_| ReplayError::Reason(Reason::Schema))? {
+        let entry = entry.map_err(|_| ReplayError::Reason(Reason::Schema))?;
         let dest = to.join(entry.file_name());
-        let file_type = entry.file_type().map_err(|_| Reason::Schema)?;
+        let file_type = entry
+            .file_type()
+            .map_err(|_| ReplayError::Reason(Reason::Schema))?;
         if file_type.is_dir() {
             copy_dir(&entry.path(), &dest)?;
         } else {
-            fs::copy(entry.path(), &dest).map_err(|_| Reason::Schema)?;
+            fs::copy(entry.path(), &dest).map_err(|_| ReplayError::Reason(Reason::Schema))?;
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use super::{replay_journal, verify_pack};
+    use crate::tick_pack;
+
+    #[test]
+    fn two_replays_in_one_process_do_not_collide() {
+        let pack = temp_docks("replay-collide");
+        tick_pack(&pack).unwrap();
+        let left = replay_journal(&pack, None, None).unwrap();
+        let right = replay_journal(&pack, None, None).unwrap();
+        assert_eq!(left.now_yaml, right.now_yaml);
+        assert_eq!(left.applied, 1);
+        assert_eq!(right.applied, 1);
+        assert_eq!(left.state_rev, 1);
+        let _ = fs::remove_dir_all(&pack);
+    }
+
+    #[test]
+    fn verify_names_a_tick_whose_hash_no_longer_matches() {
+        let pack = temp_docks("replay-tamper");
+        tick_pack(&pack).unwrap();
+        let path = pack.join("state/log/tick-0001.jsonl");
+        let text = fs::read_to_string(&path).unwrap();
+        let swapped = text.replacen("\"now_hash\":\"blake2s:", "\"now_hash\":\"blake2s:00", 1);
+        assert_ne!(swapped, text);
+        fs::write(&path, swapped).unwrap();
+        let err = verify_pack(&pack, None).unwrap_err();
+        let message = err.to_string();
+        assert!(message.contains("state_rev 1"), "{message}");
+        assert!(message.contains("tick 1"), "{message}");
+        assert!(message.contains("now_hash differed"), "{message}");
+        let _ = fs::remove_dir_all(&pack);
+    }
+
+    fn temp_docks(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "spook-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        copy_tree(&source, &root);
+        root
+    }
+
+    fn copy_tree(from: &Path, to: &Path) {
+        fs::create_dir_all(to).unwrap();
+        for entry in fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let dest = to.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_tree(&entry.path(), &dest);
+            } else {
+                fs::copy(entry.path(), dest).unwrap();
+            }
+        }
+    }
 }

@@ -254,6 +254,17 @@ pub fn actor_send(actor_id: &str, line: &str, needle: &str) -> String {
     wait_suffix(&slot, mark, needle)
 }
 
+pub fn stop_server() {
+    crate::with_live(|live| {
+        live.players.clear();
+        live.player_write.take();
+        live.gm_write.take();
+        if let Some(server) = live.server.take() {
+            drop(server);
+        }
+    });
+}
+
 pub fn close_actor(actor_id: &str) {
     crate::with_live(|live| {
         let player = live

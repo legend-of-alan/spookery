@@ -68,6 +68,22 @@ enum Command {
     },
     /// Relay the GM seat to a coding agent on stdio.
     Mcp,
+    /// Replay the journal and print the final state_rev.
+    Replay {
+        /// Pack directory.
+        pack: PathBuf,
+        /// Directory whose `state/now.yaml` is the replay base.
+        #[arg(long)]
+        from: Option<PathBuf>,
+    },
+    /// Replay the journal and byte-compare `now.yaml`.
+    Verify {
+        /// Pack directory.
+        pack: PathBuf,
+        /// Directory whose `state/now.yaml` is the replay base.
+        #[arg(long)]
+        from: Option<PathBuf>,
+    },
     /// Report pack problems and write nothing.
     Check {
         /// Print problems as one JSON array on stdout.
@@ -129,6 +145,33 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             spookery_kernel::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
         }
         Command::Mcp => spookery::mcp::bridge(addr),
+        Command::Replay { pack, from } => {
+            match spookery_tick::replay_journal(&pack, from.as_deref(), None) {
+                Ok(report) => {
+                    println!("state_rev {}, {} records", report.state_rev, report.applied);
+                    Ok(())
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Command::Verify { pack, from } => {
+            match spookery_tick::verify_pack(&pack, from.as_deref()) {
+                Ok(report) => {
+                    println!(
+                        "verified {} records, state_rev {}",
+                        report.applied, report.state_rev
+                    );
+                    Ok(())
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    std::process::exit(1);
+                }
+            }
+        }
         Command::Check { pack, json } => {
             let mut found = spookery_kernel::check_pack(&pack);
             if json {
@@ -221,7 +264,7 @@ mod tests {
     #[test]
     fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
-            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check",
+            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "replay", "verify",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
                 let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
@@ -288,5 +331,15 @@ mod tests {
         assert!(matches!(raw.command, Command::Play { raw: true, .. }));
         let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
         assert!(matches!(host.command, Command::AiGm { .. }));
+        let replay = Cli::try_parse_from(["spook", "replay", "pack", "--from", "snap"]).unwrap();
+        assert!(matches!(
+            replay.command,
+            Command::Replay { from: Some(path), .. } if path == Path::new("snap")
+        ));
+        let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();
+        assert!(matches!(
+            verify.command,
+            Command::Verify { from: Some(path), .. } if path == Path::new("snap")
+        ));
     }
 }

@@ -16,6 +16,7 @@ pub mod habit;
 pub(crate) mod hash;
 pub mod ids;
 pub mod intent;
+pub mod journal;
 pub(crate) mod key;
 pub mod limits;
 pub mod lint;
