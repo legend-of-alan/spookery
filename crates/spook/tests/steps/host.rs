@@ -3,14 +3,16 @@ use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
 use serde_json::json;
-use spookery::ai::{drive, parse_tool_line, CompleteError, Script, Seat, Watch};
+use spookery::ai::{
+    drive, parse_tool_line, CompleteError, Env, HttpModel, Limits, Script, Seat, Watch,
+};
 
 use crate::support::{self, pack_arg, temp_pack};
 use crate::World;
@@ -35,11 +37,10 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
     let port = table::free_port();
     let addr = format!("127.0.0.1:{port}");
     let pack = pack_arg(table::pack(world));
-    let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["ai-gm", &pack, "--addr", &addr])
-        .env("XAI_API_KEY", "test-key")
-        .env("SPOOK_GM_MODEL", "grok-test")
-        .env_remove("SPOOK_GM_URL")
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command.args(["ai-gm", &pack, "--addr", &addr]);
+    apply_model_env(&mut command, None);
+    let output = command
         .output()
         .unwrap_or_else(|err| panic!("spawn host: {err}"));
     world.code = output.status.code();
@@ -47,8 +48,8 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
-#[when(expr = "the operator runs ai-gm without the model setting")]
-fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
+#[when(expr = "the operator runs ai-gm without {string}")]
+fn the_operator_runs_host_without(world: &mut World, name: String) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
     listener
         .set_nonblocking(true)
@@ -58,43 +59,35 @@ fn the_operator_runs_host_without_the_model_setting(world: &mut World) {
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
         .to_string();
     let pack = pack_arg(table::pack(world));
-    let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["ai-gm", &pack, "--addr", &addr])
-        .env("XAI_API_KEY", "test-key")
-        .env_remove("SPOOK_GM_MODEL")
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command.args(["ai-gm", &pack, "--addr", &addr]);
+    apply_model_env(&mut command, Some(&name));
+    let output = command
         .output()
         .unwrap_or_else(|err| panic!("spawn host: {err}"));
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
     match listener.accept() {
-        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
-        other => panic!("listener accepted a connection: {other:?}"),
-    }
-    let output = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["ai-gm", &pack, "--addr", &addr])
-        .env_remove("XAI_API_KEY")
-        .env("SPOOK_GM_MODEL", "grok-test")
-        .output()
-        .unwrap_or_else(|err| panic!("spawn host: {err}"));
-    assert_eq!(output.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("XAI_API_KEY is unset"), "{stderr}");
-    match listener.accept() {
-        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
+        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+            world.scratch = "quiet".to_string();
+        }
         other => panic!("listener accepted a connection: {other:?}"),
     }
 }
 
-#[then(expr = "the listener accepted no connection")]
-fn the_listener_accepted_no_connection(world: &mut World) {
-    assert_eq!(world.code, Some(1), "{}", world.stderr);
+#[then(expr = "stderr names {string} as unset")]
+fn stderr_names_as_unset(world: &mut World, name: String) {
     assert!(
-        world.stderr.contains("SPOOK_GM_MODEL is unset"),
+        world.stderr.contains(&format!("{name} is unset")),
         "{}",
         world.stderr
     );
-    assert!(world.stdout.is_empty(), "{}", world.stdout);
+}
+
+#[then(expr = "the listener accepted no connection")]
+fn the_listener_accepted_no_connection(world: &mut World) {
+    assert_eq!(world.scratch, "quiet", "{}", world.stderr);
 }
 
 #[then(expr = "nothing was dialed")]
@@ -121,12 +114,12 @@ fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
         .to_string();
     let pack = pack_arg(table::pack(world));
-    let child = Command::new(env!("CARGO_BIN_EXE_spook"))
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command
         .args(["ai-gm", &pack, "--addr", &addr])
-        .env("XAI_API_KEY", "test-key")
-        .env("SPOOK_GM_MODEL", "grok-test")
-        .env_remove("SPOOK_GM_URL")
-        .stdin(Stdio::null())
+        .stdin(Stdio::null());
+    apply_model_env(&mut command, None);
+    let child = command
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
@@ -224,12 +217,13 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     let addr = format!("127.0.0.1:{port}");
     let mut server = support::spawn(&["run", &pack_arg, "--addr", &addr]);
     wait_port(port, &mut server);
-    let mut host = Command::new(env!("CARGO_BIN_EXE_spook"))
+    let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
+    host_cmd
         .args(["ai-gm", &pack_arg, "--addr", &addr])
-        .env("XAI_API_KEY", "test-key")
-        .env("SPOOK_GM_MODEL", "grok-test")
+        .stdin(Stdio::null());
+    apply_model_env(&mut host_cmd, None);
+    let mut host = host_cmd
         .env("SPOOK_GM_URL", format!("http://127.0.0.1:{stub_port}"))
-        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -252,6 +246,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     let first = posts.lock().unwrap()[0].clone();
     assert!(first.contains("act"), "{first}");
     assert!(!first.contains("CASTBODYONLY-FIXTURE"), "{first}");
+    assert_chat_post(&first);
     writeln!(play_in, "travel docks_street").unwrap();
     play_in.flush().unwrap();
     wait_posts(&posts, 2);
@@ -267,6 +262,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     let second = posts.lock().unwrap()[1].clone();
     assert!(second.contains("act"), "{second}");
     assert!(!second.contains("CASTBODYONLY-FIXTURE"), "{second}");
+    assert_chat_post(&second);
     thread::sleep(Duration::from_millis(200));
     assert_eq!(world_time(&pack), 1085, "travel ticked twice");
     assert!(
@@ -556,6 +552,342 @@ fn wait_port(port: u16, server: &mut support::Proc) {
     }
 }
 
+const SAY_ARGUMENTS: &str =
+    r#"{"says":[{"address":"table","text":"STUB-SAY-FIXTURE"}],"intents":[]}"#;
+
+#[when(expr = "a hung model call meets a queued player line")]
+fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
+    let (pack, port, sit) = queued_travel("host-hang");
+    let (stub, hits) = hang_server();
+    let (handle, watch) = drive_when_free(
+        &pack,
+        port,
+        stub,
+        Duration::from_secs(1),
+        Duration::from_secs(2),
+    );
+    let started = Instant::now();
+    let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
+    let elapsed = started.elapsed();
+    let up = watch.listening.load(Ordering::Acquire) && !handle.is_finished();
+    let connections = hits.load(Ordering::Acquire);
+    stop_host(handle);
+    let _ = fs::remove_dir_all(&pack);
+    world.stdout = if advanced {
+        "advanced".to_string()
+    } else {
+        "stuck".to_string()
+    };
+    world.stderr = if up {
+        "up".to_string()
+    } else {
+        "down".to_string()
+    };
+    world.mark = elapsed.as_millis() as usize;
+    world.scratch = connections.to_string();
+}
+
+#[when(expr = "a model answers 500 once and then a say")]
+fn a_model_answers_500_once_and_then_a_say(world: &mut World) {
+    status_turn(
+        world,
+        "host-retry",
+        vec![
+            (500, "{\"error\":\"busy\"}".to_string()),
+            (200, act_reply(SAY_ARGUMENTS)),
+        ],
+    );
+}
+
+#[when(expr = "a model answers 401")]
+fn a_model_answers_401(world: &mut World) {
+    status_turn(
+        world,
+        "host-unauthorized",
+        vec![(401, "{\"error\":\"no\"}".to_string())],
+    );
+}
+
+#[then(expr = "the queued line committed one tick")]
+fn the_queued_line_committed_one_tick(world: &mut World) {
+    assert_eq!(world.stdout, "advanced", "{}", world.scratch);
+}
+
+#[then(expr = "the hung call finished within one retry")]
+fn the_hung_call_finished_within_one_retry(world: &mut World) {
+    assert_eq!(world.scratch, "2", "connections");
+    assert!(
+        world.mark > 3_000 && world.mark < 5_000,
+        "elapsed {} ms",
+        world.mark
+    );
+}
+
+#[then(expr = "the seat stayed up")]
+fn the_seat_stayed_up(world: &mut World) {
+    assert_eq!(world.stderr, "up");
+}
+
+#[then(expr = "the stub saw {int} model posts")]
+#[then(expr = "the stub saw {int} model post")]
+fn the_stub_saw_model_posts(world: &mut World, count: usize) {
+    assert_eq!(world.mark, count, "{}", world.scratch);
+}
+
+#[then(expr = "the model's say landed")]
+fn the_models_say_landed(world: &mut World) {
+    assert_eq!(world.scratch, "said");
+}
+
+#[then(expr = "the model's say did not land")]
+fn the_models_say_did_not_land(world: &mut World) {
+    assert_eq!(world.scratch, "silent");
+}
+
+fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
+    let (pack, port, sit) = queued_travel(label);
+    let (stub, posts) = scripted_stub(replies);
+    let (handle, _watch) = drive_when_free(
+        &pack,
+        port,
+        stub,
+        Duration::from_secs(5),
+        Duration::from_millis(50),
+    );
+    let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
+    let tape = tape_text(&pack);
+    let recorded = posts.lock().unwrap().clone();
+    for post in &recorded {
+        assert_chat_post(post);
+    }
+    stop_host(handle);
+    let _ = fs::remove_dir_all(&pack);
+    world.stdout = if advanced {
+        "advanced".to_string()
+    } else {
+        "stuck".to_string()
+    };
+    world.mark = recorded.len();
+    world.scratch = if tape.contains("STUB-SAY-FIXTURE") {
+        "said".to_string()
+    } else {
+        "silent".to_string()
+    };
+}
+
+fn queued_travel(label: &str) -> (std::path::PathBuf, u16, u64) {
+    let pack = temp_pack(label);
+    let port = table::free_port();
+    let bind = format!("127.0.0.1:{port}");
+    table::listen(&pack, &bind, port);
+    table::seat_gm();
+    table::seat_player(&pack);
+    let sit = world_time(&pack);
+    table::player_send("travel docks_street", "\"kind\":\"queued\"");
+    assert_eq!(world_time(&pack), sit, "travel committed before the host");
+    crate::with_live(|live| {
+        if let Some(stream) = live.gm_write.as_mut() {
+            let _ = stream.shutdown(Shutdown::Both);
+        }
+        live.gm_write.take();
+    });
+    (pack, port, sit)
+}
+
+fn drive_when_free(
+    pack: &Path,
+    port: u16,
+    stub: u16,
+    total: Duration,
+    backoff: Duration,
+) -> (
+    thread::JoinHandle<Result<(), spookery::ai::HostError>>,
+    Arc<Watch>,
+) {
+    let mut last = String::new();
+    for _ in 0..40 {
+        let (handle, watch) = spawn_model(pack, port, stub, total, backoff);
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_millis(500) {
+            if watch.listening.load(Ordering::Acquire) {
+                return (handle, watch);
+            }
+            if handle.is_finished() {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
+        if watch.listening.load(Ordering::Acquire) {
+            return (handle, watch);
+        }
+        if !handle.is_finished() {
+            let start = Instant::now();
+            while !handle.is_finished() && start.elapsed() < Duration::from_secs(2) {
+                if watch.listening.load(Ordering::Acquire) {
+                    return (handle, watch);
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+        }
+        if watch.listening.load(Ordering::Acquire) {
+            return (handle, watch);
+        }
+        if !handle.is_finished() {
+            return (handle, watch);
+        }
+        match handle.join() {
+            Ok(Err(err)) => last = err.message,
+            Ok(Ok(())) => last = "host exited".to_string(),
+            Err(_) => last = "host thread panicked".to_string(),
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    panic!("host did not listen: {last}");
+}
+
+fn http_model(port: u16, total: Duration, backoff: Duration) -> HttpModel {
+    HttpModel::with_limits(
+        Env::new("test-key", format!("http://127.0.0.1:{port}"), "grok-test"),
+        Limits {
+            total,
+            connect: Duration::from_secs(1),
+            backoff,
+        },
+    )
+    .unwrap_or_else(|err| panic!("{err}"))
+}
+
+fn spawn_model(
+    pack: &Path,
+    port: u16,
+    stub: u16,
+    total: Duration,
+    backoff: Duration,
+) -> (
+    thread::JoinHandle<Result<(), spookery::ai::HostError>>,
+    Arc<Watch>,
+) {
+    let watch = Arc::new(Watch::default());
+    let watch_bg = Arc::clone(&watch);
+    let pack_bg = pack.to_path_buf();
+    let addr = format!("127.0.0.1:{port}");
+    // The blocking client owns a runtime. Build and drop it off the cucumber thread.
+    let handle = thread::spawn(move || {
+        let mut model = http_model(stub, total, backoff);
+        drive(&pack_bg, &addr, &mut model, &watch_bg)
+    });
+    (handle, watch)
+}
+
+fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
+    let start = Instant::now();
+    let path = pack.join("state/now.yaml");
+    while start.elapsed() < bound {
+        if let Ok(text) = fs::read_to_string(&path) {
+            if let Ok(now) = spookery_kernel::codec::load_now(&text) {
+                if now.world_time == expected {
+                    return true;
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    false
+}
+
+fn hang_server() -> (u16, Arc<AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    let port = listener
+        .local_addr()
+        .unwrap_or_else(|err| panic!("local_addr: {err}"))
+        .port();
+    let hits = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&hits);
+    thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else {
+                break;
+            };
+            count.fetch_add(1, Ordering::SeqCst);
+            let _ = read_http(&mut stream);
+            let _ = stream.set_read_timeout(None);
+            let mut buf = [0u8; 8];
+            loop {
+                match stream.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(_) => {}
+                }
+            }
+        }
+    });
+    (port, hits)
+}
+
+fn scripted_stub(replies: Vec<(u16, String)>) -> (u16, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    let port = listener
+        .local_addr()
+        .unwrap_or_else(|err| panic!("local_addr: {err}"))
+        .port();
+    let posts = Arc::new(Mutex::new(Vec::new()));
+    let slot = Arc::clone(&posts);
+    thread::spawn(move || {
+        let mut replies = replies;
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else {
+                break;
+            };
+            let body = read_http(&mut stream);
+            slot.lock().unwrap().push(body);
+            let (status, resp) = if replies.is_empty() {
+                (500, "{}".to_string())
+            } else {
+                replies.remove(0)
+            };
+            let reason = if status == 200 { "OK" } else { "Error" };
+            let header = format!(
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                resp.len()
+            );
+            let _ = stream.write_all(header.as_bytes());
+            let _ = stream.write_all(resp.as_bytes());
+        }
+    });
+    (port, posts)
+}
+
+fn act_reply(arguments: &str) -> String {
+    let arguments =
+        serde_json::to_string(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
+    format!(
+        "{{\"id\":\"stub\",\"object\":\"chat.completion\",\"choices\":[{{\"index\":0,\"message\":{{\"role\":\"assistant\",\"content\":\"prose\",\"tool_calls\":[{{\"id\":\"call_1\",\"type\":\"function\",\"function\":{{\"name\":\"act\",\"arguments\":{arguments}}}}}]}}}}]}}"
+    )
+}
+
+fn apply_model_env(command: &mut Command, missing: Option<&str>) {
+    for (name, value) in [
+        ("SPOOK_GM_KEY", "test-key"),
+        ("SPOOK_GM_URL", "http://127.0.0.1:9"),
+        ("SPOOK_GM_MODEL", "grok-test"),
+    ] {
+        if missing == Some(name) {
+            command.env_remove(name);
+        } else {
+            command.env(name, value);
+        }
+    }
+}
+
+fn assert_chat_post(raw: &str) {
+    let head = raw.split("\r\n\r\n").next().unwrap_or(raw);
+    assert!(head.starts_with("POST /chat/completions "), "{head}");
+    assert!(
+        head.to_ascii_lowercase()
+            .contains("authorization: bearer test-key"),
+        "{head}"
+    );
+}
+
 fn stub_server() -> (u16, Arc<Mutex<Vec<String>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -609,7 +941,7 @@ fn read_http(stream: &mut TcpStream) -> String {
             Ok(_) => buf.push(byte[0]),
         }
     }
-    String::from_utf8_lossy(&buf[header_len..]).into_owned()
+    String::from_utf8_lossy(&buf).into_owned()
 }
 
 fn wait_posts(posts: &Mutex<Vec<String>>, count: usize) {
