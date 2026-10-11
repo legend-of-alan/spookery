@@ -20,6 +20,9 @@ mod loopback;
 #[path = "steps/rounds.rs"]
 mod rounds;
 
+#[path = "steps/replay.rs"]
+mod replay;
+
 #[path = "steps/checks.rs"]
 mod checks;
 
