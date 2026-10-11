@@ -53,6 +53,9 @@ mod mcp;
 #[path = "steps/gm.rs"]
 mod gm;
 
+#[path = "steps/sample.rs"]
+mod sample;
+
 #[path = "fixture/oneshot_docks.rs"]
 mod oneshot_docks;
 
