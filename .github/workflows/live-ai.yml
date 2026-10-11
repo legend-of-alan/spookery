@@ -5,7 +5,8 @@ name: Live AI
 #
 # - ollama: a tiny local model on the runner. No key, no cost. Runs on PRs and
 #   main pushes that touch the model host, and on demand.
-# - xai: the same round against api.x.ai with the SPOOK_GM_KEY repo secret.
+# - xai: the same round against api.x.ai with the XAI_API_KEY repo secret
+#   (passed to spook as SPOOK_GM_KEY).
 #   Weekly and on demand only, never on PRs. Skips with a notice when the
 #   secret is not set. The model defaults to XAI_DEFAULT_MODEL below and can be
 #   overridden with the SPOOK_XAI_MODEL repo variable.
@@ -99,18 +100,18 @@ jobs:
         run: tail -n 100 "$RUNNER_TEMP/ollama.log" || true
 
   xai:
-    name: xai (${{ github.event_name }})
+    name: xai
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Check for the SPOOK_GM_KEY secret
+      - name: Check for the XAI_API_KEY secret
         id: key
         env:
-          SPOOK_GM_KEY: ${{ secrets.SPOOK_GM_KEY }}
+          SPOOK_GM_KEY: ${{ secrets.XAI_API_KEY }}
         run: |
           if [ -z "$SPOOK_GM_KEY" ]; then
-            echo "::notice title=xAI round skipped::The SPOOK_GM_KEY repo secret is not set. Add it to run the xAI round."
+            echo "::notice title=xAI round skipped::The XAI_API_KEY repo secret is not set. Add it to run the xAI round."
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
@@ -128,7 +129,7 @@ jobs:
       - name: Play one round against xAI
         if: steps.key.outputs.present == 'true'
         env:
-          SPOOK_GM_KEY: ${{ secrets.SPOOK_GM_KEY }}
+          SPOOK_GM_KEY: ${{ secrets.XAI_API_KEY }}
           SPOOK_GM_URL: https://api.x.ai/v1
           SPOOK_GM_MODEL: ${{ vars.SPOOK_XAI_MODEL || env.XAI_DEFAULT_MODEL }}
         run: cargo test -p spook --test live_round --locked -- --ignored --nocapture
