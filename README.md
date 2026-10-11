@@ -133,7 +133,7 @@ SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.
   cargo test -p spook --test live_round --locked -- --ignored --nocapture
 ```
 
-The `Live AI` workflow runs it against Ollama on pull requests that touch the model host.
+The `Live AI` workflow runs it against Ollama on pull requests that touch the model host. It also runs it against xAI weekly and on demand, never on pull requests, with the `SPOOK_GM_KEY` repo secret. Without that secret the xAI job skips with a notice. The xAI model is `grok-4.20-0309-non-reasoning` unless the `SPOOK_XAI_MODEL` repo variable names another.
 
 ### Human GM
 
