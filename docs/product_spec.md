@@ -198,18 +198,22 @@ pack/
   world/
     places/<id>.md            # YAML frontmatter + optional prose
   cast/
-    <npc>.md                  # starting NPC profile (canon)
-    <pc-template>.md          # starting PC template (canon)
+    <npc>.md                  # kind npc (canon)
+    <pc>.md                   # kind pc_template (canon)
   rules/
     checks.yaml
+    meters.yaml
     moves.yaml
     tick.yaml
   state/
-    now.yaml                  # live world, kept by the runtime
-    actors/<pc-id>.yaml       # mutable PC sheets
-    log/tick-NNNN.jsonl
-    memories/<id>.jsonl
+    now.yaml                  # live world; each PC is an actor here
+    log/session.jsonl         # tape, runtime-created
+    log/studio.jsonl          # migrate record, runtime-created
+    log/tick-NNNN.jsonl       # one file per committed tick, runtime-created
+    memories/<id>.jsonl       # runtime-created
 ```
+
+The runtime creates `state/.tick.lock` and `state/.session.lock`.
 
 **Canon** (`world/`, `cast/`, `rules/`) is the authored text.
 **State** is what the runtime keeps while the world runs.
@@ -217,7 +221,7 @@ A permanent change to the authored world waits for a person. Players do not rewr
 
 Format tags carry no version until the format is frozen and a compatibility promise is made. The tags are `pack`, `place`, `cast`, `meters`, `moves`, `checks`, `tick`, and `now`.
 
-Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. Player characters start from a template in `cast/`. The live sheet is the runtime's.
+Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. A PC is a `pc_template` cast file plus a live actor in `state/now.yaml`.
 
 NPC profile, as a product sketch:
 
