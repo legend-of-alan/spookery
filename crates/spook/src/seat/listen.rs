@@ -11,7 +11,7 @@ use spookery_kernel::Reason;
 
 use super::gm;
 use super::http;
-use super::thread::{self, HelloReply, Msg, PlayerReply, SocketEnd};
+use super::thread::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};
 
 pub enum Error {
     Reason(Reason),
@@ -221,7 +221,7 @@ pub(super) async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
         .send(Msg::Fault {
             conn,
             end,
-            ack: ack_tx,
+            ack: Ack::Task(ack_tx),
         })
         .is_err()
     {

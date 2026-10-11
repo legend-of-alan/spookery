@@ -141,7 +141,7 @@ Type `help` for the seat commands. `spook gm --raw` prints each socket frame as 
 spook mcp --addr 127.0.0.1:9737
 ```
 
-The same seat is also at `http://127.0.0.1:<port>/mcp` when the server is started with `--mcp-http 127.0.0.1:<port>`. That port is not the game port. Both stay on loopback.
+The same seat is also at `http://127.0.0.1:<port>/mcp` when the server is started with `--mcp-http 127.0.0.1:<port>`. That port is not the game port. Both stay on loopback. Point your agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:<port>/mcp` gets a 403.
 
 The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_turn`. A client may ignore `spook/event` notifications. `session_status` with `since` returns the speech it missed.
 

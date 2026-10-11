@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, CustomNotification,
@@ -15,8 +15,11 @@ use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 
 use super::listen;
-use super::thread::{HelloReply, Msg, SocketEnd, ToolReply};
+use super::thread::{Ack, HelloReply, Msg, SocketEnd, ToolReply};
 use super::tools;
+
+/// How long releasing an HTTP GM seat waits for the shard thread's ack.
+const RELEASE_WAIT: Duration = Duration::from_secs(2);
 
 struct HttpSeat {
     conn: u64,
@@ -256,29 +259,30 @@ impl GmHost {
         if !http.held.swap(false, Ordering::AcqRel) {
             return;
         }
-        let (ack_tx, mut ack_rx) = tokio::sync::oneshot::channel();
+        let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
         if self
             .tx
             .send(Msg::Fault {
                 conn: http.conn,
                 end: SocketEnd::Close,
-                ack: ack_tx,
+                ack: Ack::Thread(ack_tx),
             })
             .is_err()
         {
             return;
         }
-        let start = Instant::now();
-        loop {
-            match ack_rx.try_recv() {
-                Ok(()) | Err(tokio::sync::oneshot::error::TryRecvError::Closed) => return,
-                Err(tokio::sync::oneshot::error::TryRecvError::Empty) => {
-                    if start.elapsed() > Duration::from_secs(2) {
-                        return;
-                    }
-                    std::thread::sleep(Duration::from_millis(1));
-                }
+        // Wait until the shard thread has freed the seat, for at most RELEASE_WAIT.
+        // A dropped sender (the shard thread is gone) ends the wait at once.
+        // This runs from Drop, often on a tokio worker, so on the multi-thread
+        // runtime the wait is moved off the worker with block_in_place.
+        let wait = move || {
+            let _ = ack_rx.recv_timeout(RELEASE_WAIT);
+        };
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
+                tokio::task::block_in_place(wait);
             }
+            _ => wait(),
         }
     }
 }
