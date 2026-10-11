@@ -7,8 +7,9 @@ use crate::canon::pack_rev;
 use crate::codec::{canonicalize, emit_memory_line, emit_migrate_line, emit_now, load_now};
 use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
+use crate::journal::{self, hash_now};
 use crate::lock::{lock_pack, lock_shard};
-use crate::model::{MemoryLine, Presence};
+use crate::model::{MemoryLine, Now, Presence};
 use crate::shard::{Shard, Txn};
 
 pub struct CommitOutcome {
@@ -25,14 +26,17 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
         .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut txn.staging);
     let now_bytes = emit_now(&txn.staging)?.into_bytes();
+    let stamped = journal::stamp_now_hash(tick_jsonl, &now_bytes)?;
     let tick_index = txn.staging.tick_index;
     let state = shard.root.join("state");
-    let planned = plan_commit(
+    let pre = read_pre_now(&state)?;
+    let mut planned = plan_commit(
         &state,
-        now_bytes,
-        Some((tick_index, tick_jsonl.as_bytes())),
+        now_bytes.clone(),
+        Some((tick_index, stamped.as_bytes())),
         &txn.memories,
     )?;
+    push_base(&mut planned, &state, &pre, &now_bytes, false);
     write_commit(&state, &planned)?;
     shard.now = txn.staging;
     Ok(())
@@ -48,17 +52,34 @@ pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Re
         return Ok(false);
     }
     let _lock = lock_shard(shard)?;
+    let state_rev_before = next.state_rev;
     next.state_rev = next
         .state_rev
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
     let now_bytes = emit_now(&next)?.into_bytes();
     let state = shard.root.join("state");
-    let planned = vec![Planned {
+    let pre = read_pre_now(&state)?;
+    let record = journal::emit_presence(
+        state_rev_before,
+        next.state_rev,
+        next.presence.humans,
+        &next.presence.actors_present,
+        &hash_now(&now_bytes),
+    );
+    let mut planned = vec![Planned {
         target: state.join("now.yaml"),
-        bytes: now_bytes,
+        bytes: now_bytes.clone(),
         is_now: true,
     }];
+    push_base(&mut planned, &state, &pre, &now_bytes, false);
+    planned.push(Planned {
+        target: state
+            .join("log")
+            .join(journal::presence_file(next.state_rev)),
+        bytes: record.into_bytes(),
+        is_now: false,
+    });
     write_commit(&state, &planned)?;
     shard.now = next;
     Ok(true)
@@ -70,15 +91,18 @@ pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Reason> {
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
     let now_bytes = emit_now(&now)?.into_bytes();
+    let stamped = journal::stamp_now_hash(&pending.tick_jsonl, &now_bytes)?;
     let tick_index = pending.tick_index;
     let log_path = format!("state/log/tick-{tick_index:04}.jsonl");
     let state = shard.root.join("state");
-    let planned = plan_commit(
+    let pre = read_pre_now(&state)?;
+    let mut planned = plan_commit(
         &state,
-        now_bytes,
-        Some((tick_index, pending.tick_jsonl.as_bytes())),
+        now_bytes.clone(),
+        Some((tick_index, stamped.as_bytes())),
         &pending.memories,
     )?;
+    push_base(&mut planned, &state, &pre, &now_bytes, false);
     write_commit(&state, &planned)?;
     shard.now = now;
     shard.queue.clear();
@@ -108,7 +132,20 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     canonicalize(&mut now);
     let emitted = emit_now(&now)?.into_bytes();
     let state = root.join("state");
-    let planned = plan_commit(&state, emitted, None, &[])?;
+    let record = journal::emit_migrate(
+        &pack_rev_before,
+        &now.pack_rev,
+        state_rev_before,
+        now.state_rev,
+        &hash_now(&emitted),
+    );
+    let mut planned = plan_commit(&state, emitted.clone(), None, &[])?;
+    push_base(&mut planned, &state, &now_bytes, &emitted, true);
+    planned.push(Planned {
+        target: state.join("log").join(journal::migrate_file(now.state_rev)),
+        bytes: record.into_bytes(),
+        is_now: false,
+    });
     write_commit(&state, &planned)?;
     let line = format!(
         "{}\n",
@@ -137,6 +174,41 @@ fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
     file.sync_all().map_err(|_| Reason::CommitConflict)?;
     fsync_dir(&log_dir)?;
     Ok(())
+}
+
+/// Replay writes `now.yaml` on a temp pack and does not append a journal record.
+pub fn replay_write_now(shard: &mut Shard, now: Now) -> Result<(), Reason> {
+    let now_bytes = emit_now(&now)?.into_bytes();
+    let state = shard.root.join("state");
+    let planned = vec![Planned {
+        target: state.join("now.yaml"),
+        bytes: now_bytes,
+        is_now: true,
+    }];
+    write_commit(&state, &planned)?;
+    shard.now = now;
+    Ok(())
+}
+
+fn read_pre_now(state: &Path) -> Result<Vec<u8>, Reason> {
+    fs::read(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)
+}
+
+/// The first commit stores the pre-commit save. Migrate stores the post-migrate save.
+fn push_base(planned: &mut Vec<Planned>, state: &Path, pre: &[u8], post: &[u8], migrate: bool) {
+    let target = state.join(journal::base_rel());
+    let bytes = if migrate {
+        post.to_vec()
+    } else if target.is_file() {
+        return;
+    } else {
+        pre.to_vec()
+    };
+    planned.push(Planned {
+        target,
+        bytes,
+        is_now: false,
+    });
 }
 
 fn plan_commit(
