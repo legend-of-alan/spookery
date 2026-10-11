@@ -11,7 +11,8 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::ai::{
-    drive, parse_tool_line, CompleteError, Env, HttpModel, Limits, Script, Seat, Watch,
+    drive, parse_tool_line, CompleteError, CompletionRequest, Env, HttpModel, Limits, Model,
+    Script, Seat, Watch,
 };
 
 use crate::support::{self, pack_arg, temp_pack};
@@ -604,8 +605,42 @@ fn a_model_answers_401(world: &mut World) {
     status_turn(
         world,
         "host-unauthorized",
-        vec![(401, "{\"error\":\"no\"}".to_string())],
+        vec![(401, UNAUTHORIZED_BODY.to_string())],
     );
+    world.stderr = direct_error(vec![(401, UNAUTHORIZED_BODY.to_string())]);
+}
+
+/// A provider 401 body that echoes the key back, the way some providers do.
+const UNAUTHORIZED_BODY: &str =
+    "{\"error\":{\"message\":\"Incorrect API key provided: test-key\",\n \"code\":\"invalid_api_key\"}}";
+
+/// One call straight through the HTTP model against a scripted stub, returning
+/// the error line the host would print.
+fn direct_error(replies: Vec<(u16, String)>) -> String {
+    let (stub, _posts) = scripted_stub(replies);
+    thread::spawn(move || {
+        let mut model = http_model(stub, Duration::from_secs(5), Duration::from_millis(50));
+        let request = CompletionRequest {
+            prompt: "the table is quiet".to_string(),
+            says_only: false,
+        };
+        match model.complete(&request) {
+            Ok(reply) => panic!("expected an error, got {reply:?}"),
+            Err(err) => err.to_string(),
+        }
+    })
+    .join()
+    .unwrap_or_else(|_| panic!("direct call panicked"))
+}
+
+#[then(expr = "the error line shows the provider's text without the key")]
+fn the_error_line_shows_the_providers_text_without_the_key(world: &mut World) {
+    let line = &world.stderr;
+    assert!(line.starts_with("model call returned 401: "), "{line}");
+    assert!(line.contains("Incorrect API key provided"), "{line}");
+    assert!(line.contains("invalid_api_key"), "{line}");
+    assert!(!line.contains("test-key"), "{line}");
+    assert!(!line.contains('\n'), "{line}");
 }
 
 #[then(expr = "the queued line committed one tick")]

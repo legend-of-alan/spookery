@@ -113,10 +113,36 @@ fn failure_message(class: RetryClass, total: Duration, detail: &str) -> Complete
     let message = match class {
         RetryClass::Timeout => format!("model call timed out after {}s", total.as_secs()),
         RetryClass::Connect => "model call failed to connect".to_string(),
-        RetryClass::Status(code) => format!("model call returned {code}"),
+        RetryClass::Status(code) if detail.is_empty() => format!("model call returned {code}"),
+        RetryClass::Status(code) => format!("model call returned {code}: {detail}"),
         RetryClass::Other => format!("model call failed: {detail}"),
     };
     CompleteError::Transport(message)
+}
+
+/// Longest provider error text kept on the error line, in characters.
+const DETAIL_CHARS: usize = 200;
+
+/// The provider's error body as one short line. The key is replaced before the
+/// cut so no part of it can survive, and control characters and runs of
+/// whitespace collapse to single spaces.
+fn provider_detail(body: &str, key: &str) -> String {
+    let redacted = if key.is_empty() {
+        body.to_string()
+    } else {
+        body.replace(key, "[key]")
+    };
+    let line = redacted
+        .split(|c: char| c.is_whitespace() || c.is_control())
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if line.chars().count() <= DETAIL_CHARS {
+        return line;
+    }
+    let mut cut: String = line.chars().take(DETAIL_CHARS).collect();
+    cut.push_str("...");
+    cut
 }
 
 struct Tried {
@@ -148,10 +174,11 @@ impl HttpModel {
         if !status.is_success() {
             let code = status.as_u16();
             let class = RetryClass::Status(code);
-            let _ = response.text();
+            let body = response.text().unwrap_or_default();
+            let detail = provider_detail(&body, &self.env.key);
             return Tried {
                 retry: should_retry(class),
-                result: Err(failure_message(class, self.limits.total, "")),
+                result: Err(failure_message(class, self.limits.total, &detail)),
             };
         }
         let text = match response.text() {
@@ -425,8 +452,37 @@ mod tests {
         assert_eq!(line(RetryClass::Status(500), 60), "model call returned 500");
     }
 
+    #[test]
+    fn provider_detail_is_one_short_line_without_the_key() {
+        let key = "xai-SECRETKEY123";
+        let body = format!("{{\"error\":\n  \"Incorrect API key provided: {key}\"\r\n}}");
+        let detail = provider_detail(&body, key);
+        assert_eq!(
+            detail,
+            "{\"error\": \"Incorrect API key provided: [key]\" }"
+        );
+        let long = format!("{}{key}{}", "a".repeat(195), "b".repeat(300));
+        let detail = provider_detail(&long, key);
+        assert!(!detail.contains("xai-"), "{detail}");
+        assert!(!detail.contains('\n'), "{detail}");
+        assert_eq!(detail.chars().count(), DETAIL_CHARS + 3, "{detail}");
+        assert!(detail.ends_with("..."), "{detail}");
+        assert_eq!(provider_detail("", key), "");
+        assert_eq!(
+            match failure_message(RetryClass::Status(401), Duration::from_secs(60), "bad key") {
+                CompleteError::Transport(message) => message,
+                CompleteError::EmptyParse(message) => message,
+            },
+            "model call returned 401: bad key"
+        );
+    }
+
     fn line(class: RetryClass, secs: u64) -> String {
-        match failure_message(class, Duration::from_secs(secs), "detail") {
+        let detail = match class {
+            RetryClass::Status(_) => "",
+            _ => "detail",
+        };
+        match failure_message(class, Duration::from_secs(secs), detail) {
             CompleteError::Transport(message) => message,
             CompleteError::EmptyParse(message) => message,
         }

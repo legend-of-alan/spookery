@@ -123,6 +123,8 @@ A missing variable is printed on stderr as `<NAME> is unset` and the process exi
 spook ai-gm /tmp/docks
 ```
 
+When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
+
 ### Human GM
 
 `spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first.

@@ -52,6 +52,7 @@ Feature: The host sits the GM seat
     Then the stub saw 1 model post
     And the model's say did not land
     And the queued line committed one tick
+    And the error line shows the provider's text without the key
 
   Scenario: The host seat submits a say and reports a refused call
     Given a docks table with a seated player
