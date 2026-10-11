@@ -38,8 +38,8 @@ A row in `rules/moves.yaml` has:
 - `token`, required: `none`, `actor`, or `place`.
 - `on`, required: `speaker` or `named`.
 - The legal pairs are `none` with `speaker`, `actor` with `named`, and `place` with `speaker`.
-- `effects`: templates that run on both outcomes. `effects: []` with no `success` and no `failure` is a yield. `wait` is a yield.
-- `success` and `failure`: optional lists for that outcome. An empty list is rejected.
+- `effects`: templates that run on every outcome. `effects: []` with no `success`, `partial`, or `failure` is a yield. `wait` is a yield.
+- `success`, `partial`, and `failure`: optional lists for that outcome. `failure` is the miss list. An empty list is rejected. `partial_at` is an absolute total strictly below `difficulty`, and it requires `check` plus a `partial` list. A row without `partial_at` stays success or miss.
 - `check`: optional id that must exist in `rules/checks.yaml`.
 - `difficulty`: optional integer. The default is 0. It is used when `check` is set.
 - `item`: optional id of an item the actor already holds. An empty id is rejected.
