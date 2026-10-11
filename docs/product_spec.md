@@ -84,7 +84,7 @@ Primary user is **not** “D&D players at large.”
 |---|---|---|
 | 1 | Engine / tool builders, including us | Run and extend packs |
 | 2 | World authors (agent-native first) | Write a folder, press Play, sit one GM (you or an AI) and up to three players, leave it ticking |
-| 3 | Coding agents (Claude Code, Codex, etc.) | Edit packs and call MCP tools |
+| 3 | Coding agents (Claude Code, Codex, etc.) | Edit packs and call MCP tools. Register `spook mcp --addr 127.0.0.1:<port>` as a stdio MCP server, or use `http://127.0.0.1:<port>/mcp` with `spook run --mcp-http`. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM |
 | 4 | Players in those worlds | Type what they do; do not see YAML |
 
 Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor). The format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint (`spook check` is not built yet, #24; `spook check --json` is not built yet, #26; generated schemas are not built yet, #29).
@@ -131,11 +131,11 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 | **Tick** | One serialized step of the shard clock |
 | **Intent** | Proposed move from a player, NPC agent, or kernel scheduler |
 | **Effect** | Validated state mutation produced from an intent |
-| **GM** | Game Master — the storyteller. In this system usually an **agent** that calls MCP, not the runtime |
+| **GM** | Game Master — the storyteller. In this system usually an **agent** that calls MCP, not the runtime. `spook ai-gm` is the shipped model GM; a coding agent on the one GM seat playtests and authors |
 | **Shard** | A running pack with durable `state/`, zero humans allowed |
 | **Session** | A presence window on a shard (people are typed in) |
 | **Play door** | Human client on the CLI, over loopback |
-| **Agent door** | MCP tools |
+| **Agent door** | MCP tools. Register `spook mcp --addr 127.0.0.1:<port>` as a stdio MCP server, or use `http://127.0.0.1:<port>/mcp` with `spook run --mcp-http` |
 | **Canon** | Immutable-at-runtime files under `world/`, `cast/`, `rules/` |
 | **Wedge** | First paid offer: always-on shard + lint/conformance, host pays |
 
@@ -157,7 +157,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 
 - Pack schema (markdown / YAML)
 - Runtime CLI: load a pack and write `state/`
-- Kernel: checks, resources, knowledge firewall
+- Kernel: checks, meters, habits, knowledge firewall
 - Shard tick loop
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
 - Terminal play: one GM seat and up to three player seats. A fourth player gets `SESSION_FULL`. A held character gets `SEAT_TAKEN`. Built.
@@ -198,18 +198,22 @@ pack/
   world/
     places/<id>.md            # YAML frontmatter + optional prose
   cast/
-    <npc>.md                  # starting NPC profile (canon)
-    <pc-template>.md          # starting PC template (canon)
+    <npc>.md                  # kind npc (canon)
+    <pc>.md                   # kind pc_template (canon)
   rules/
     checks.yaml
+    meters.yaml
     moves.yaml
     tick.yaml
   state/
-    now.yaml                  # live world, kept by the runtime
-    actors/<pc-id>.yaml       # mutable PC sheets
-    log/tick-NNNN.jsonl
-    memories/<id>.jsonl
+    now.yaml                  # live world; each PC is an actor here
+    log/session.jsonl         # tape, runtime-created
+    log/studio.jsonl          # migrate record, runtime-created
+    log/tick-NNNN.jsonl       # one file per committed tick, runtime-created
+    memories/<id>.jsonl       # runtime-created
 ```
+
+The runtime creates `state/.tick.lock` and `state/.session.lock`.
 
 **Canon** (`world/`, `cast/`, `rules/`) is the authored text.
 **State** is what the runtime keeps while the world runs.
@@ -217,11 +221,11 @@ A permanent change to the authored world waits for a person. Players do not rewr
 
 Format tags carry no version until the format is frozen and a compatibility promise is made. The tags are `pack`, `place`, `cast`, `meters`, `moves`, `checks`, `tick`, and `now`.
 
-Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. Player characters start from a template in `cast/`. The live sheet is the runtime's.
+Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. A PC is a `pc_template` cast file plus a live actor in `state/now.yaml`.
 
 NPC profile, as a product sketch:
 
-- identity, voice, goals, needs
+- identity, voice, goals, meters, habits
 - what the table is allowed to know, and what it is not
 - relationships (parked in #36)
 - where an NPC works, when, and what the shop does
@@ -263,7 +267,7 @@ The fixture is a world a host can leave running and a player can return to. The 
 ```
 
 **Play door:** human intents (“I search the desk”).
-**Agent door:** MCP.
+**Agent door:** MCP. Register `spook mcp --addr 127.0.0.1:<port>` as a stdio MCP server, or use `http://127.0.0.1:<port>/mcp` with `spook run --mcp-http`. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM.
 
 Deployment:
 
@@ -366,7 +370,7 @@ Do not pitch “format other software can run” as the year-0 offer. That is ye
 - Groups still cannot schedule human GMs reliably.
 - Hosted AI tables already charge ~$20–40/month with friends-play-free — willingness to pay for a *table* is proven. Willingness to pay for a *format* is not. Do not confuse them.
 - The crowded layer is *chat*. The thin layer is *a runnable, honest referee*.
-- Coding agents need schemas and tools, not another GUI. MCP + pack is the 2026 distribution channel for engine work.
+- Coding agents need schemas and tools, not another GUI. MCP + pack is the 2026 distribution channel for engine work. Register `spook mcp --addr 127.0.0.1:<port>` as a stdio MCP server, or use `http://127.0.0.1:<port>/mcp` with `spook run --mcp-http`. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM.
 - Memory and longevity are the unsolved axes in the 2026 field. The refusals aim there on purpose.
 
 ### 14.3 Why “AI NPCs from profiles” is not the business
@@ -467,21 +471,27 @@ Later genre packs may override pause policy. The docks fixture does not.
 ## 16. Repo layout
 
 ```text
+/README.md                 # how to build and play
 /docs
   spec.md                  # referee law
-  README.md
+  README.md                # points at spec.md
   product_spec.md          # this file; business notes, not law
 /packs
   oneshot-docks/           # official fixture
+/.grok
+  skills/author-pack/      # pack-authoring skill
 /crates
   kernel/                  # spookery-kernel
   tick/                    # spookery-tick
   spook/                   # package spook, binary spook, library spookery
     src/
       main.rs              # spook
+      mcp.rs               # stdio door, spook mcp
+      schedule.rs          # when the shard wakes
+      gm_client/           # shared GM-seat client
       seat/                # both seats
       protocol/            # shared lines
-      cli/                 # spook play
+      cli/                 # spook play and spook gm
       ai/                  # spook ai-gm
     tests/
       promises.rs
