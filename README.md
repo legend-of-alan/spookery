@@ -22,6 +22,9 @@ CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest
 
 The docks pack is `packs/oneshot-docks`. Copy it first. `spook run` writes the save into the pack you pass (`state/`: the snapshot, the tape, and lock files). A copy leaves the fixture in the repo alone.
 
+The fight pack is `packs/sample-d20`. Copy it before you host it, the same way as the docks pack.
+`spook play` sits `pc_lark`. Type `strike npc_briar` to attack, `drink` while you carry a tonic, `travel mill_lane` to leave the yard, and `wait` to pass the turn.
+
 ```sh
 cp -r packs/oneshot-docks /tmp/docks
 export PATH="$PWD/target/release:$PATH"
