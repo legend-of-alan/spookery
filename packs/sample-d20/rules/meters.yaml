@@ -1,0 +1,22 @@
+schema: meters
+meters:
+  - id: defense
+    min: 0
+    base_cap: 20
+    max: 25
+    start: 10
+  - id: grace
+    min: 0
+    base_cap: 10
+    max: 12
+    start: 1
+  - id: hp
+    min: 0
+    base_cap: 12
+    max: 16
+    start: 8
+  - id: might
+    min: 0
+    base_cap: 40
+    max: 45
+    start: 1

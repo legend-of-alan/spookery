@@ -1,0 +1,60 @@
+schema: moves
+moves:
+  - name: wait
+    audience: player
+    token: none
+    on: speaker
+    effects: []
+
+  - name: travel
+    audience: player
+    token: place
+    on: speaker
+    effects:
+      - class: location
+        to: token
+
+  # The difficulty is a fixed number. It does not read the target's defense.
+  # partial_at is wide enough that a low, middle, or high might lands in one band
+  # on every face of the d20. A hit writes a fixed hp loss. A graze writes a smaller one.
+  - name: strike
+    audience: player
+    token: actor
+    on: named
+    check: strike
+    difficulty: 41
+    partial_at: 21
+    success:
+      - class: meter
+        key: hp
+        write: offset
+        delta: -4
+    partial:
+      - class: meter
+        key: hp
+        write: offset
+        delta: -1
+
+  - name: drink
+    audience: player
+    token: none
+    on: speaker
+    item: tonic
+    effects:
+      - class: meter
+        key: hp
+        write: offset
+        delta: 4
+
+  - name: watch_the_gate
+    audience: habit
+    token: none
+    on: speaker
+    effects:
+      - class: message
+        id: note_gate_watch
+        to:
+          - pc_lark
+        place: gate_yard
+        fact_ids: []
+        text: The yard stays watched.

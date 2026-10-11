@@ -1,0 +1,7 @@
+schema: pack
+id: sample-d20
+title: Gate Yard
+system: sample-d20
+start:
+  place: gate_yard
+  pc: pc_lark
