@@ -288,18 +288,13 @@ fn replaying_the_tick_reproduces_the_save(world: &mut World) {
     let start = PathBuf::from(&world.scratch);
     let golden = fs::read(played.join("state/now.yaml"))
         .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
-    let temp = spookery_tick::replay_recorded(played, &start)
+    let report = spookery_tick::replay_journal(played, Some(&start), None)
         .unwrap_or_else(|err| panic!("replay: {err}"));
-    assert_ne!(temp, played);
-    assert_eq!(
-        fs::read(temp.join("state/now.yaml")).unwrap_or_else(|err| panic!("read replay: {err}")),
-        golden
-    );
+    assert_eq!(report.now_yaml, golden);
     assert_eq!(
         fs::read(played.join("state/now.yaml")).unwrap_or_else(|err| panic!("read played: {err}")),
         golden
     );
-    let _ = fs::remove_dir_all(&temp);
     let _ = fs::remove_dir_all(&start);
 }
 

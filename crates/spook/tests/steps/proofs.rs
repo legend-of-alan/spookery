@@ -19,7 +19,7 @@ use spookery_kernel::model::{
     ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_kernel::shard::{Shard, Txn};
-use spookery_tick::{replay_recorded, run_catchup, run_tick, tick_pack};
+use spookery_tick::{replay_journal, run_catchup, run_tick, tick_pack};
 
 use crate::World;
 
@@ -660,9 +660,8 @@ fn replay_byte_compares_now() {
     }
     let golden = fs::read(played.join("state/now.yaml")).unwrap();
     let source_log = fs::read(played.join("state/log/tick-0020.jsonl")).unwrap();
-    let temp = replay_recorded(&played, &start).unwrap();
-    assert_eq!(fs::read(temp.join("state/now.yaml")).unwrap(), golden);
-    assert_ne!(temp, played);
+    let report = replay_journal(&played, Some(&start), None).unwrap();
+    assert_eq!(report.now_yaml, golden);
     assert_eq!(fs::read(played.join("state/now.yaml")).unwrap(), golden);
     assert_eq!(
         fs::read(played.join("state/log/tick-0020.jsonl")).unwrap(),
@@ -670,7 +669,6 @@ fn replay_byte_compares_now() {
     );
     let _ = fs::remove_dir_all(&start);
     let _ = fs::remove_dir_all(&played);
-    let _ = fs::remove_dir_all(&temp);
 }
 
 fn budget_caps() {

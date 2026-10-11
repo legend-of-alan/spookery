@@ -308,6 +308,35 @@ pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
     })
 }
 
+/// Open a temp pack for replay. A base from before migrate may not match `pack_rev`.
+pub fn open_replay_shard(root: &Path) -> Result<Shard, Reason> {
+    if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
+        return Err(Reason::NotInSpec);
+    }
+    recover(root)?;
+    let canon = Arc::new(load_canon(root).map_err(reason_of)?);
+    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
+    let mut now = load_now(now_text).map_err(reason_of)?;
+    let problems: Vec<_> = save_problems(root, &now, &now_bytes)
+        .into_iter()
+        .filter(|diag| diag.code != Reason::PackRevMismatch.token())
+        .collect();
+    if !problems.is_empty() {
+        return Err(reason_of(problems));
+    }
+    bind_meters(&canon, &mut now).map_err(reason_of)?;
+    bind_inventory(&now).map_err(reason_of)?;
+    Ok(Shard {
+        root: root.to_path_buf(),
+        canon,
+        now,
+        queue: Vec::new(),
+        pending: None,
+        rolls: Vec::new(),
+    })
+}
+
 /// Read the pack and report every loader and lint problem. Writes nothing.
 pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
