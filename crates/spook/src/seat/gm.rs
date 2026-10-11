@@ -4,8 +4,8 @@ use std::sync::mpsc::Sender;
 use std::task::{Context, Poll};
 
 use rmcp::model::{
-    CallToolRequestParam, CallToolResult, ListToolsResult, PaginatedRequestParam, ServerInfo, Tool,
-    ToolsCapability,
+    CallToolRequestParams, CallToolResponse, CallToolResult, ListToolsResult,
+    PaginatedRequestParams, ServerConfig, Tool, ToolsCapability,
 };
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
@@ -105,15 +105,15 @@ impl tokio::io::AsyncWrite for LineWriter {
 }
 
 impl ServerHandler for GmHost {
-    fn get_info(&self) -> ServerInfo {
-        let mut info = ServerInfo::default();
-        info.capabilities.tools = Some(ToolsCapability { list_changed: None });
+    fn get_info(&self) -> ServerConfig {
+        let mut info = ServerConfig::default();
+        info.capabilities.tools = Some(ToolsCapability::default());
         info
     }
 
     fn list_tools(
         &self,
-        _request: Option<PaginatedRequestParam>,
+        _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
         let tools = tools::GM_LIST
@@ -131,9 +131,9 @@ impl ServerHandler for GmHost {
 
     fn call_tool(
         &self,
-        request: CallToolRequestParam,
+        request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> impl std::future::Future<Output = Result<CallToolResult, McpError>> + Send + '_ {
+    ) -> impl std::future::Future<Output = Result<CallToolResponse, McpError>> + Send + '_ {
         let tx = self.tx.clone();
         let after_tx = self.after_tx.clone();
         let name = request.name.into_owned();
@@ -152,7 +152,7 @@ impl ServerHandler for GmHost {
             for frame in after {
                 let _ = after_tx.send(frame);
             }
-            Ok(CallToolResult::structured(value))
+            Ok(CallToolResult::structured(value).into())
         }
     }
 }
