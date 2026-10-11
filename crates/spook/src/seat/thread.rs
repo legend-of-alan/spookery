@@ -234,7 +234,7 @@ pub(super) enum Msg {
     Fault {
         conn: u64,
         end: SocketEnd,
-        ack: tokio::sync::oneshot::Sender<()>,
+        ack: Ack,
     },
     Tool {
         name: String,
@@ -244,6 +244,27 @@ pub(super) enum Msg {
     Wake,
     Stdin(String),
     StdinEof,
+}
+
+/// The shard thread answers a fault once the seat is released.
+/// An async caller awaits `Task`. A caller that must wait from a plain `Drop`
+/// uses `Thread` and blocks on it with a timeout.
+pub(super) enum Ack {
+    Task(tokio::sync::oneshot::Sender<()>),
+    Thread(std::sync::mpsc::SyncSender<()>),
+}
+
+impl Ack {
+    fn send(self) {
+        match self {
+            Ack::Task(tx) => {
+                let _ = tx.send(());
+            }
+            Ack::Thread(tx) => {
+                let _ = tx.try_send(());
+            }
+        }
+    }
 }
 
 pub(super) struct ToolReply {
@@ -562,7 +583,7 @@ fn on_fault(
     seats: &mut Seats,
     conn: u64,
     end: SocketEnd,
-    ack: tokio::sync::oneshot::Sender<()>,
+    ack: Ack,
 ) -> Result<(), Reason> {
     let result = if seats.players.by_conn(conn).is_some() {
         match drop_conn(shard, seats, conn, end) {
@@ -579,7 +600,7 @@ fn on_fault(
     } else {
         Ok(())
     };
-    let _ = ack.send(());
+    ack.send();
     result
 }
 

@@ -51,6 +51,39 @@ Feature: Coding agents reach the GM seat
     Then the response is forbidden
     And a GM hello still sits
 
+  Scenario Outline: A GM on one door keeps the seat from a GM on another
+    Given a docks table
+    When a GM holds the seat over <holder>
+    And another GM tries to sit over <newcomer>
+    Then the newcomer is told the table is full
+    When the GM over <holder> leaves
+    Then a GM can sit over <newcomer>
+
+    Examples:
+      | holder     | newcomer   |
+      | HTTP       | TCP        |
+      | HTTP       | the bridge |
+      | TCP        | HTTP       |
+      | the bridge | HTTP       |
+      | TCP        | the bridge |
+      | the bridge | TCP        |
+
+  Scenario Outline: A Host other than 127.0.0.1 does not take the GM seat
+    Given a docks table
+    When an HTTP request arrives with Host <host>
+    Then the response is forbidden
+    And a GM hello still sits
+
+    Examples:
+      | host         |
+      | localhost    |
+      | evil.example |
+
+  Scenario: A Host of 127.0.0.1 is accepted
+    Given a docks table
+    When an HTTP request arrives with Host 127.0.0.1
+    Then the response is accepted
+
   Scenario: Closing the HTTP session frees the GM seat
     Given a docks table
     When an HTTP GM session ends

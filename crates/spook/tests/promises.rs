@@ -91,6 +91,7 @@ pub fn with_live<T>(body: impl FnOnce(&mut table::Live) -> T) -> T {
 }
 
 fn drop_runtime() {
+    mcp::drop_holder();
     drop(lock(&LIVE).take());
     for mut child in lock(&CHILDREN).drain(..) {
         let _ = child.kill();
