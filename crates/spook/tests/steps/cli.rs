@@ -60,6 +60,17 @@ fn play_joins_the_table_with_raw_frames(world: &mut World) {
     join_play(world, true);
 }
 
+#[when(expr = "play types {string}")]
+fn play_types(world: &mut World, line: String) {
+    let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+    let stdin = play
+        .stdin
+        .as_mut()
+        .unwrap_or_else(|| panic!("play stdin is closed"));
+    writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("type: {err}"));
+    stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+}
+
 #[when(expr = "play says {string}")]
 fn play_says(world: &mut World, text: String) {
     let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));

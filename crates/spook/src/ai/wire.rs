@@ -226,15 +226,18 @@ pub fn rolls_of(body: &Value) -> Vec<crate::ai::prompt::Roll> {
         let Some(target) = item.get("target").and_then(Value::as_i64) else {
             continue;
         };
-        let Some(success) = item.get("success").and_then(Value::as_bool) else {
+        let Some(outcome) = item.get("outcome").and_then(Value::as_str) else {
             continue;
         };
+        if !matches!(outcome, "success" | "partial" | "miss") {
+            continue;
+        }
         out.push(crate::ai::prompt::Roll {
             faces,
             stat,
             total,
             target,
-            success,
+            outcome: outcome.to_string(),
         });
     }
     out

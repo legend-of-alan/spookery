@@ -550,8 +550,17 @@ fn check_line(item: &Value) -> Option<String> {
         item.get("stat")?.as_i64()?,
         item.get("total")?.as_i64()?,
         item.get("target")?.as_i64()?,
-        item.get("success")?.as_bool()?,
+        check_word(item.get("outcome")?)?,
     ))
+}
+
+fn check_word(value: &Value) -> Option<&'static str> {
+    match value.as_str()? {
+        "success" => Some("success"),
+        "partial" => Some("partial"),
+        "miss" => Some("miss"),
+        _ => None,
+    }
 }
 
 pub fn actor_name(id: &str) -> String {
@@ -575,12 +584,12 @@ pub fn render_event(body: &EventBody) -> String {
             stat,
             total,
             target,
-            success,
-        } => render_check(faces, *stat, *total, *target, *success),
+            outcome,
+        } => render_check(faces, *stat, *total, *target, outcome.as_str()),
     }
 }
 
-pub fn render_check(faces: &[u64], stat: i64, total: i64, target: i64, success: bool) -> String {
+pub fn render_check(faces: &[u64], stat: i64, total: i64, target: i64, outcome: &str) -> String {
     let dice = faces
         .iter()
         .map(u64::to_string)
@@ -591,7 +600,6 @@ pub fn render_check(faces: &[u64], stat: i64, total: i64, target: i64, success: 
     } else {
         stat.to_string()
     };
-    let outcome = if success { "success" } else { "failure" };
     if dice.is_empty() {
         format!("Roll: {sign} = {total} vs {target}, {outcome}")
     } else {
@@ -714,10 +722,11 @@ fn split_word(text: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::Outcome;
 
     #[test]
     fn a_commit_skips_its_own_check_events_once() {
-        let roll = render_check(&[4, 2], 1, 7, 0, true);
+        let roll = render_check(&[4, 2], 1, 7, 0, "success");
         let mut printed = PrintedChecks::default();
         printed.printed(vec![roll.clone()]);
         assert!(printed.skip(&roll));
@@ -728,7 +737,7 @@ mod tests {
 
     #[test]
     fn checks_after_a_new_result_are_not_skipped() {
-        let roll = render_check(&[3, 3], 0, 6, 0, true);
+        let roll = render_check(&[3, 3], 0, 6, 0, "success");
         let mut printed = PrintedChecks::default();
         printed.printed(vec![roll.clone()]);
         printed.clear();
@@ -737,8 +746,8 @@ mod tests {
 
     #[test]
     fn a_check_that_is_not_next_ends_the_skip() {
-        let first = render_check(&[1, 1], 0, 2, 7, false);
-        let second = render_check(&[6, 6], 0, 12, 7, true);
+        let first = render_check(&[1, 1], 0, 2, 7, "miss");
+        let second = render_check(&[6, 6], 0, 12, 7, "success");
         let mut printed = PrintedChecks::default();
         printed.printed(vec![first.clone(), second.clone()]);
         assert!(!printed.skip(&second));
@@ -747,8 +756,8 @@ mod tests {
 
     #[test]
     fn a_commit_with_two_checks_skips_both_in_order() {
-        let first = render_check(&[1, 2], 0, 3, 7, false);
-        let second = render_check(&[5, 6], 0, 11, 7, true);
+        let first = render_check(&[1, 2], 0, 3, 7, "miss");
+        let second = render_check(&[5, 6], 0, 11, 7, "success");
         let mut printed = PrintedChecks::default();
         printed.printed(vec![first.clone(), second.clone()]);
         assert!(printed.skip(&first));
@@ -885,18 +894,27 @@ mod tests {
             stat: 1,
             total: 7,
             target: 0,
-            success: true,
+            outcome: Outcome::Success,
         });
         assert_eq!(success, "Roll: 4 + 2, +1 = 7 vs 0, success");
+
+        let partial = render_event(&EventBody::Check {
+            faces: vec![3, 3],
+            stat: 1,
+            total: 7,
+            target: 10,
+            outcome: Outcome::Partial,
+        });
+        assert_eq!(partial, "Roll: 3 + 3, +1 = 7 vs 10, partial");
 
         let failure = render_event(&EventBody::Check {
             faces: vec![1],
             stat: -2,
             total: -1,
             target: 3,
-            success: false,
+            outcome: Outcome::Miss,
         });
-        assert_eq!(failure, "Roll: 1, -2 = -1 vs 3, failure");
+        assert_eq!(failure, "Roll: 1, -2 = -1 vs 3, miss");
         assert!(!failure.contains('{'));
     }
 

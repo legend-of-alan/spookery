@@ -1,4 +1,4 @@
-use crate::protocol::{ClockView, FactNote, KnownFact, PlayerMessage, StockView};
+use crate::protocol::{ClockView, FactNote, KnownFact, Outcome, PlayerMessage, StockView};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -9,13 +9,11 @@ pub fn render(message: &PlayerMessage) -> String {
             text,
         } => format!("{}: {text}", speaker(from)),
         PlayerMessage::Queued { id: _ } => "Your action is queued.".to_string(),
-        PlayerMessage::Check { success } => {
-            if *success {
-                "Your roll succeeded.".to_string()
-            } else {
-                "Your roll failed.".to_string()
-            }
-        }
+        PlayerMessage::Check { outcome } => match outcome {
+            Outcome::Success => "Your roll succeeded.".to_string(),
+            Outcome::Partial => "Your roll partly succeeded.".to_string(),
+            Outcome::Miss => "Your roll missed.".to_string(),
+        },
         PlayerMessage::Resume { text } => resume(text),
         PlayerMessage::Refused { code } => refusal(code),
         PlayerMessage::Perceive {
@@ -276,12 +274,21 @@ mod tests {
 
     #[test]
     fn a_check_is_a_short_sentence() {
-        let yes = render(&PlayerMessage::Check { success: true });
-        let no = render(&PlayerMessage::Check { success: false });
+        let yes = render(&PlayerMessage::Check {
+            outcome: crate::protocol::Outcome::Success,
+        });
+        let partial = render(&PlayerMessage::Check {
+            outcome: crate::protocol::Outcome::Partial,
+        });
+        let miss = render(&PlayerMessage::Check {
+            outcome: crate::protocol::Outcome::Miss,
+        });
         assert_eq!(yes, "Your roll succeeded.");
-        assert_eq!(no, "Your roll failed.");
+        assert_eq!(partial, "Your roll partly succeeded.");
+        assert_eq!(miss, "Your roll missed.");
         assert_readable(&yes);
-        assert_readable(&no);
+        assert_readable(&partial);
+        assert_readable(&miss);
     }
 
     #[test]
