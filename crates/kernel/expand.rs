@@ -1,4 +1,5 @@
 use crate::canon::Canon;
+use crate::check::Outcome;
 use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
@@ -10,13 +11,13 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
     expand_outcome(canon, now, intent, None)
 }
 
-/// `outcome` selects `success` (`Some(true)`) or `failure` (`Some(false)`).
+/// `outcome` selects `success`, `partial`, or `failure` (the miss list).
 /// `None` means the row did not roll. `effects` is included either way.
 pub fn expand_outcome(
     canon: &Canon,
     now: &Now,
     intent: &Intent,
-    outcome: Option<bool>,
+    outcome: Option<Outcome>,
 ) -> Result<Vec<Effect>, Reason> {
     if let Some(row) = canon
         .moves
@@ -32,7 +33,7 @@ pub fn expand_outcome(
     }
 }
 
-/// One effect per selected template. `effects` always. `success` or `failure` when that outcome was rolled.
+/// One effect per selected template. `effects` always. One outcome list when a roll happened.
 /// A flag's `speaker` is the acting actor and `named` is the typed id.
 /// A bare location template is the same effect as the travel arm: `to` is the typed place.
 /// Literals are copied here.
@@ -40,15 +41,20 @@ fn expand_row(
     now: &Now,
     intent: &Intent,
     row: &ActionRow,
-    outcome: Option<bool>,
+    outcome: Option<Outcome>,
 ) -> Result<Vec<Effect>, Reason> {
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    let mut selected =
-        Vec::with_capacity(row.effects.len() + row.success.len().max(row.failure.len()));
+    let band = row
+        .success
+        .len()
+        .max(row.partial.len())
+        .max(row.failure.len());
+    let mut selected = Vec::with_capacity(row.effects.len() + band);
     selected.extend(row.effects.iter());
     match outcome {
-        Some(true) => selected.extend(row.success.iter()),
-        Some(false) => selected.extend(row.failure.iter()),
+        Some(Outcome::Success) => selected.extend(row.success.iter()),
+        Some(Outcome::Partial) => selected.extend(row.partial.iter()),
+        Some(Outcome::Miss) => selected.extend(row.failure.iter()),
         None => {}
     }
     let mut effects = Vec::with_capacity(selected.len());

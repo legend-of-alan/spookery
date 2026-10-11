@@ -222,7 +222,7 @@ fn stage_tick(
             trace.push("resolve_check".to_string());
             let seed = seed_preimage(&shard_id, tick_index);
             let rng = blake2s_256(seed.as_bytes());
-            let target = match supplied_target(
+            let opposed = match supplied_target(
                 txn.canon(),
                 &frozen,
                 &supply_from,
@@ -231,14 +231,20 @@ fn stage_tick(
                 &mut die_cursor,
                 &mut supplied,
             ) {
-                Ok(opposed) => {
-                    opposed.unwrap_or_else(|| txn.canon().row_difficulty(&intent.move_name))
-                }
+                Ok(total) => total,
                 Err(code) => {
                     reject_check(&mut rejected, &mut notices, &intent, code);
                     continue;
                 }
             };
+            // An opposing total replaces the row's difficulty, so the roll stays binary.
+            // `partial_at` is only meaningful next to that row's own difficulty.
+            let partial_at = if opposed.is_some() {
+                None
+            } else {
+                txn.canon().row_partial_at(&intent.move_name)
+            };
+            let target = opposed.unwrap_or_else(|| txn.canon().row_difficulty(&intent.move_name));
             let cached = if target == 0 {
                 supplied.get(&intent.id).cloned()
             } else {
@@ -272,6 +278,7 @@ fn stage_tick(
                         actor,
                         viewer: &viewer,
                         target,
+                        partial_at,
                         rng: &rng,
                         die_cursor: &mut die_cursor,
                     }) {
@@ -319,6 +326,7 @@ fn stage_tick(
                 actor,
                 viewer: &viewer,
                 target: 0,
+                partial_at: None,
                 rng: &rng,
                 die_cursor: &mut cursor,
             }) {
@@ -329,7 +337,7 @@ fn stage_tick(
                 continue;
             }
         }
-        let outcome = rolled.as_ref().map(|out| out.success);
+        let outcome = rolled.as_ref().map(|out| out.outcome);
         let expanded = match expand_outcome(txn.canon(), &frozen, &intent, outcome) {
             Ok(effects) => effects,
             Err(code) => {
@@ -482,6 +490,7 @@ fn supplied_target(
         actor,
         viewer: &viewer,
         target: 0,
+        partial_at: None,
         rng,
         die_cursor,
     })?;

@@ -14,19 +14,22 @@ pub struct MoveDef {
     pub row: Option<ActionRow>,
 }
 
-/// One action row. `effects` runs on both outcomes. `success` and `failure` run on that outcome.
-/// An empty `effects` list with neither outcome list is a yield.
+/// One action row. `effects` runs on every outcome. `success`, `partial`, and `failure` run on that outcome.
+/// `failure` is the miss list. An empty `effects` list with no outcome list is a yield.
 /// A row's `audience` is required. `item`, when set, must already be on the actor.
+/// `partial_at` is an absolute total, strictly below `difficulty`, and only with `check` and `partial`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ActionRow {
     pub token: MoveToken,
     pub on: MoveOn,
     pub effects: Vec<RowEffect>,
     pub success: Vec<RowEffect>,
+    pub partial: Vec<RowEffect>,
     pub failure: Vec<RowEffect>,
     pub item: Option<String>,
     pub audience: Option<Audience>,
     pub difficulty: i64,
+    pub partial_at: Option<i64>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,10 +159,12 @@ fn move_def(
         || entry.on.is_some()
         || entry.effects.is_some()
         || entry.success.is_some()
+        || entry.partial.is_some()
         || entry.failure.is_some()
         || entry.item.is_some()
         || entry.audience.is_some()
-        || entry.difficulty.is_some();
+        || entry.difficulty.is_some()
+        || entry.partial_at.is_some();
     if !started {
         return if diags.is_empty() {
             Ok((
@@ -209,9 +214,10 @@ fn move_def(
             None
         }
     };
-    // `effects: []` with neither outcome list is a yield. An empty success or failure list is not.
+    // `effects: []` with no outcome list is a yield. An empty success, partial, or failure list is not.
     let yield_row = entry.effects.as_ref().is_some_and(Vec::is_empty)
         && entry.success.is_none()
+        && entry.partial.is_none()
         && entry.failure.is_none();
     if entry.effects.as_ref().is_some_and(Vec::is_empty) && !yield_row {
         diags.push(row_problem(
@@ -243,6 +249,17 @@ fn move_def(
             "add an effect or remove failure",
         ));
     }
+    if entry.partial.as_ref().is_some_and(Vec::is_empty) {
+        diags.push(row_problem(
+            text,
+            index,
+            "partial:",
+            &format!("moves[{index}].partial"),
+            &format!("row '{name}' has an empty partial list"),
+            "add an effect or remove partial",
+        ));
+    }
+    partial_band(text, index, &name, &entry, &mut diags);
     let token = match entry.token.as_deref() {
         Some("none") => Some(MoveToken::None),
         Some("actor") => Some(MoveToken::Actor),
@@ -296,7 +313,7 @@ fn move_def(
             None
         }
     };
-    let (effects, success, failure) = match (token, on) {
+    let (effects, success, partial, failure) = match (token, on) {
         (Some(token), Some(on)) if pair_ok(token, on) => {
             parse_lists(text, index, token, on, &mut entry, &mut diags)
         }
@@ -313,13 +330,14 @@ fn move_def(
                 ),
                 "use none with speaker, actor with named, or place with speaker",
             ));
-            (Vec::new(), Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new())
         }
-        _ => (Vec::new(), Vec::new(), Vec::new()),
+        _ => (Vec::new(), Vec::new(), Vec::new(), Vec::new()),
     };
     if !yield_row
         && effects.is_empty()
         && success.is_empty()
+        && partial.is_empty()
         && failure.is_empty()
         && diags.is_empty()
     {
@@ -351,10 +369,12 @@ fn move_def(
                 on,
                 effects,
                 success,
+                partial,
                 failure,
                 item: entry.item,
                 audience: Some(audience),
                 difficulty: entry.difficulty.unwrap_or(0),
+                partial_at: entry.partial_at,
             }),
         },
     ))
@@ -367,7 +387,12 @@ fn parse_lists(
     on: MoveOn,
     entry: &mut MoveEntry,
     diags: &mut Vec<Diagnostic>,
-) -> (Vec<RowEffect>, Vec<RowEffect>, Vec<RowEffect>) {
+) -> (
+    Vec<RowEffect>,
+    Vec<RowEffect>,
+    Vec<RowEffect>,
+    Vec<RowEffect>,
+) {
     let effects = match entry.effects.take() {
         Some(items) if !items.is_empty() => {
             match templates_for(text, index, "effects", token, on, items) {
@@ -404,7 +429,74 @@ fn parse_lists(
         }
         _ => Vec::new(),
     };
-    (effects, success, failure)
+    let partial = match entry.partial.take() {
+        Some(items) if !items.is_empty() => {
+            match outcome_templates(text, index, "partial", token, on, items) {
+                Ok(parsed) => parsed,
+                Err(more) => {
+                    diags.extend(more);
+                    Vec::new()
+                }
+            }
+        }
+        _ => Vec::new(),
+    };
+    (effects, success, partial, failure)
+}
+
+fn partial_band(
+    text: &str,
+    index: usize,
+    name: &str,
+    entry: &MoveEntry,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let listed = entry
+        .partial
+        .as_ref()
+        .is_some_and(|items| !items.is_empty());
+    match entry.partial_at {
+        Some(_) if !listed => diags.push(row_problem(
+            text,
+            index,
+            "partial_at:",
+            &format!("moves[{index}].partial_at"),
+            &format!("row '{name}' sets partial_at without a partial list"),
+            "add a partial list, or remove partial_at",
+        )),
+        None if listed => diags.push(row_problem(
+            text,
+            index,
+            "partial:",
+            &format!("moves[{index}].partial"),
+            &format!("row '{name}' has a partial list without partial_at"),
+            "set partial_at below difficulty, or remove partial",
+        )),
+        _ => {}
+    }
+    let Some(band) = entry.partial_at else {
+        return;
+    };
+    if entry.check.is_none() {
+        diags.push(row_problem(
+            text,
+            index,
+            "partial_at:",
+            &format!("moves[{index}].partial_at"),
+            &format!("row '{name}' sets partial_at without a check"),
+            "name a check, or remove partial_at",
+        ));
+    }
+    if band >= entry.difficulty.unwrap_or(0) {
+        diags.push(row_problem(
+            text,
+            index,
+            "partial_at:",
+            &format!("moves[{index}].partial_at"),
+            &format!("row '{name}' sets partial_at at or above difficulty"),
+            "set partial_at below difficulty",
+        ));
+    }
 }
 
 fn row_problem(
@@ -812,6 +904,8 @@ struct MoveEntry {
     #[serde(default)]
     success: Option<Vec<EffectTemplate>>,
     #[serde(default)]
+    partial: Option<Vec<EffectTemplate>>,
+    #[serde(default)]
     failure: Option<Vec<EffectTemplate>>,
     #[serde(default)]
     item: Option<String>,
@@ -819,6 +913,8 @@ struct MoveEntry {
     audience: Option<String>,
     #[serde(default)]
     difficulty: Option<i64>,
+    #[serde(default)]
+    partial_at: Option<i64>,
 }
 
 #[derive(Deserialize)]
@@ -939,12 +1035,16 @@ mod tests {
         let travel = moves.get("travel").unwrap().row.as_ref().unwrap();
         assert_eq!(travel.audience, Some(Audience::Player));
         assert_eq!(travel.difficulty, 0);
+        assert!(travel.partial.is_empty());
+        assert_eq!(travel.partial_at, None);
         assert_eq!(travel.effects, vec![RowEffect::Location]);
         let wait = moves.get("wait").unwrap().row.as_ref().unwrap();
         assert_eq!(wait.audience, Some(Audience::Player));
         assert!(wait.effects.is_empty());
         let grit = moves.get("grit").unwrap().row.as_ref().unwrap();
         assert_eq!(grit.audience, Some(Audience::Player));
+        assert_eq!(grit.partial_at, None);
+        assert!(grit.partial.is_empty());
         assert_eq!(moves.get("grit").unwrap().check.as_deref(), Some("grit"));
         assert_eq!(
             moves
@@ -1272,5 +1372,81 @@ moves:
             ),
             Reason::Schema
         );
+    }
+
+    #[test]
+    fn a_three_band_row_loads_and_a_broken_band_is_schema() {
+        let moves = load_moves(
+            r#"schema: moves
+moves:
+  - name: press
+    audience: player
+    token: none
+    on: speaker
+    check: grit
+    difficulty: 10
+    partial_at: 7
+    effects:
+      - class: flag
+        key: touched
+        value: true
+    success:
+      - class: flag
+        key: clean
+        value: true
+    partial:
+      - class: flag
+        key: halfway
+        value: true
+    failure:
+      - class: flag
+        key: missed
+        value: true
+"#,
+        )
+        .unwrap();
+        let press = moves.get("press").unwrap().row.as_ref().unwrap();
+        assert_eq!(press.partial_at, Some(7));
+        assert_eq!(press.difficulty, 10);
+        assert_eq!(press.effects.len(), 1);
+        assert_eq!(press.success.len(), 1);
+        assert_eq!(press.partial.len(), 1);
+        assert_eq!(press.failure.len(), 1);
+
+        let cases = [
+            (
+                "  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial_at: 7\n    effects:\n      - class: flag\n        key: touched\n        value: true\n",
+                "moves[0].partial_at",
+                "without a partial list",
+            ),
+            (
+                "  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n",
+                "moves[0].partial",
+                "without partial_at",
+            ),
+            (
+                "  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial_at: 10\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n",
+                "moves[0].partial_at",
+                "at or above difficulty",
+            ),
+            (
+                "  - name: press\n    audience: player\n    token: none\n    on: speaker\n    difficulty: 10\n    partial_at: 7\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n",
+                "moves[0].partial_at",
+                "without a check",
+            ),
+        ];
+        for (body, path, phrase) in cases {
+            let text = format!("schema: moves\nmoves:\n{body}");
+            let err = load_moves(&text).unwrap_err();
+            assert!(
+                err.iter().any(|diag| {
+                    diag.path.as_deref() == Some(path)
+                        && diag.message.contains(phrase)
+                        && diag.line.is_some()
+                }),
+                "{phrase}: {err:?}"
+            );
+            assert_eq!(reason_of(err), Reason::Schema);
+        }
     }
 }

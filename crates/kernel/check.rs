@@ -17,13 +17,44 @@ pub struct CheckDef {
     pub stat: String,
 }
 
+/// One roll's band. A row without `partial_at` is `Success` or `Miss`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Outcome {
+    Success,
+    Partial,
+    Miss,
+}
+
+impl Outcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Partial => "partial",
+            Self::Miss => "miss",
+        }
+    }
+}
+
+/// `total` against `target`, with an optional lower band.
+/// `total >= target` is success. `partial_at <= total < target` is partial.
+/// Anything lower, and any binary roll, is a miss.
+pub fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outcome {
+    if total >= target {
+        Outcome::Success
+    } else if partial_at.is_some_and(|band| total >= band) {
+        Outcome::Partial
+    } else {
+        Outcome::Miss
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CheckOut {
     pub faces: Vec<u32>,
     pub stat: i64,
     pub total: i64,
     pub target: i64,
-    pub success: bool,
+    pub outcome: Outcome,
 }
 
 /// A check the tick resolved. Not stored in `Now` or the tick JSONL.
@@ -171,6 +202,9 @@ pub struct CheckRoll<'a> {
     pub actor: &'a ActorLive,
     pub viewer: &'a ViewerId,
     pub target: i64,
+    /// `None` keeps the roll binary. An opposing total passes `None`, because
+    /// `partial_at` belongs to the row's own difficulty.
+    pub partial_at: Option<i64>,
     pub rng: &'a [u8],
     pub die_cursor: &'a mut usize,
 }
@@ -200,7 +234,7 @@ pub fn resolve_check(roll: CheckRoll<'_>) -> Result<CheckOut, Reason> {
         stat,
         total,
         target: roll.target,
-        success: total >= roll.target,
+        outcome: classify(total, roll.target, roll.partial_at),
     })
 }
 
@@ -230,7 +264,7 @@ struct Dice {
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{load_checks, resolve_check, CheckDef, CheckOut, CheckRoll};
+    use super::{classify, load_checks, resolve_check, CheckDef, CheckOut, CheckRoll, Outcome};
     use crate::error::Reason;
     use crate::intent::ViewerId;
     use crate::meter::{MeterDef, MeterLive};
@@ -296,9 +330,30 @@ mod tests {
             actor: &actor,
             viewer,
             target,
+            partial_at: None,
             rng,
             die_cursor,
         })
+    }
+
+    fn roll_band(target: i64, partial_at: Option<i64>, words: &[u32]) -> CheckOut {
+        let rng = rng_of(words);
+        let mut cursor = 0usize;
+        let actor = npc();
+        let defs = BTreeMap::from([("grit".to_string(), grit_def())]);
+        let check = check();
+        resolve_check(CheckRoll {
+            check: &check,
+            defs: &defs,
+            actor_id: "mira",
+            actor: &actor,
+            viewer: &ViewerId::Npc("mira".to_string()),
+            target,
+            partial_at,
+            rng: &rng,
+            die_cursor: &mut cursor,
+        })
+        .unwrap()
     }
 
     #[test]
@@ -317,7 +372,7 @@ mod tests {
         assert_eq!(out.stat, 1);
         assert_eq!(out.total, 13);
         assert_eq!(out.target, 9);
-        assert!(out.success);
+        assert_eq!(out.outcome, Outcome::Success);
         assert_eq!(cursor, 2);
     }
 
@@ -335,7 +390,7 @@ mod tests {
         .unwrap();
         assert_eq!(out.faces, vec![1, 1]);
         assert_eq!(out.total, 3);
-        assert!(!out.success);
+        assert_eq!(out.outcome, Outcome::Miss);
         assert_eq!(cursor, 2);
     }
 
@@ -441,6 +496,47 @@ mod tests {
         assert_eq!(first_cursor, 2);
         assert_eq!(second_cursor, 2);
         assert_eq!(player_cursor, 2);
+    }
+
+    #[test]
+    fn classification_meets_every_threshold() {
+        let success = Outcome::Success;
+        let partial = Outcome::Partial;
+        let miss = Outcome::Miss;
+        let cases = [
+            (10, 10, None, success),
+            (9, 10, None, miss),
+            (11, 10, None, success),
+            (10, 10, Some(7), success),
+            (9, 10, Some(7), partial),
+            (7, 10, Some(7), partial),
+            (6, 10, Some(7), miss),
+            (11, 10, Some(7), success),
+            (0, 0, None, success),
+            (0, 0, Some(-1), success),
+            (-1, 0, Some(-1), partial),
+            (-2, 0, Some(-1), miss),
+        ];
+        for (total, target, partial_at, expected) in cases {
+            assert_eq!(
+                classify(total, target, partial_at),
+                expected,
+                "{total} vs {target} band {partial_at:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_band_changes_the_same_faces() {
+        let binary = roll_band(9, None, &[0, 0]);
+        let band = roll_band(9, Some(3), &[0, 0]);
+        assert_eq!(binary.faces, vec![1, 1]);
+        assert_eq!(binary.total, 3);
+        assert_eq!(binary.outcome, Outcome::Miss);
+        assert_eq!(band.outcome, Outcome::Partial);
+        let made = roll_band(9, Some(3), &[5, 5]);
+        assert_eq!(made.total, 13);
+        assert_eq!(made.outcome, Outcome::Success);
     }
 
     fn text(tag: &str) -> String {
