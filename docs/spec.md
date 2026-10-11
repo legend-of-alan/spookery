@@ -64,9 +64,10 @@ Three crates, all under `crates/`. `crates/kernel` is `spookery-kernel`. `crates
 | `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `reqwest`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, the `spook` crate |
 | `cli` | `protocol`, `spookery-kernel` | `ai`, `reqwest`, `rmcp`, `tokio` |
 | `ai` | `protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-tick`, `cli`, `rmcp`, any model SDK |
-| bin `spook` | `spookery-kernel`, `spookery-tick`, `tokio`, `rmcp`, `socket2`, `serde_json`, and its `protocol`, `cli`, and `ai` modules | `reqwest` outside `crates/spook/src/ai/`. Seat code that calls `cli` or `ai`. Business rules that belong in the kernel. A second tick implementation. |
+| `mcp` | `tokio`, `serde_json` | `reqwest`, `cli`, `ai` |
+| bin `spook` | `spookery-kernel`, `spookery-tick`, `tokio`, `rmcp`, `socket2`, `serde_json`, and its `protocol`, `cli`, `ai`, and `mcp` modules | `reqwest` outside `crates/spook/src/ai/`. Seat code that calls `cli` or `ai`. Business rules that belong in the kernel. A second tick implementation. |
 
-`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. It reads every runtime file under `crates/kernel`, `crates/tick`, and `crates/spook/src`. `crates/kernel` and `crates/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, `redis`, `reqwest`, `langchain`, `openai`, `anthropic`, or `ollama`. `reqwest` may appear only under `crates/spook/src/ai/`. `protocol` must not contain `tokio`, `rmcp`, `reqwest`, `spookery_kernel`, `crate::cli`, or `crate::ai`. `cli` must not contain `tokio`, `rmcp`, `reqwest`, or `crate::ai`. `ai` must not contain `rmcp`, `crate::cli`, or `spookery_tick`. `seat` must not contain `crate::cli` or `crate::ai`. A comment in a scanned file that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`. An optional cargo feature may be named `ai`.
+`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. It reads every runtime file under `crates/kernel`, `crates/tick`, and `crates/spook/src`. `crates/kernel` and `crates/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, `redis`, `reqwest`, `langchain`, `openai`, `anthropic`, or `ollama`. `reqwest` may appear only under `crates/spook/src/ai/`. `protocol` must not contain `tokio`, `rmcp`, `reqwest`, `spookery_kernel`, `crate::cli`, or `crate::ai`. `cli` must not contain `tokio`, `rmcp`, `reqwest`, or `crate::ai`. `ai` must not contain `rmcp`, `crate::cli`, or `spookery_tick`. `seat` must not contain `crate::cli` or `crate::ai`. `mcp` must not contain `reqwest`, `crate::cli`, or `crate::ai`. A comment in a scanned file that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`. An optional cargo feature may be named `ai`.
 
 Tokio in `spook` is the accept loop, keepalive, and scheduler sleep. The tick function runs on the shard thread.
 
@@ -311,6 +312,10 @@ A fourth player hello is `SESSION_FULL`. A hello for a PC another seat holds is 
 
 The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 
+One GM seat has three doors. `spook gm` and `spook ai-gm` dial the TCP listener and send `gm`. `spook mcp` is the stdio door for a coding agent: it takes no pack, dials `--addr`, sends `gm`, and copies bytes between its stdio and that socket. After the hello the socket is newline-delimited JSON-RPC, the same framing as MCP stdio. A refused hello prints a sentence and the token on stderr, writes nothing to stdout, and exits 1. `SESSION_FULL` prints `The table is full. [SESSION_FULL]`. A shard that is not listening exits 1. Stdout carries protocol bytes only.
+
+`spook run --mcp-http 127.0.0.1:<port>` opens the third door, a streamable HTTP endpoint at `/mcp` on its own port. The flag is off unless it is set. The address uses the same loopback parser as `--addr`, so any other host is `NOT_IN_SPEC` before the pack opens. Initialize on that endpoint claims the same GM seat through the same hello path. A second GM, whether it arrives on HTTP, on the TCP hello, or through `spook mcp`, is `SESSION_FULL`, and on HTTP that refusal is a JSON-RPC error whose message contains the token. HTTP DELETE, or the session ending, releases the seat. A request whose `Host` is not `127.0.0.1` is refused with 403. A request whose `Origin` header is present and is not `http://127.0.0.1` is refused with 403. A missing `Origin` is accepted. There is still no auth. A POST body larger than 1 MiB is refused. `spook/event` notifications may be ignored by a generic client. `session_status` with `since` is the pull path.
+
 ## Host monitor
 
 A host monitor is not shard behavior.
@@ -329,7 +334,7 @@ A refusal before the first `perceive` exits 1. After the first `perceive`, a ref
 
 ## Host
 
-`spook ai-gm <pack>` sits the single GM seat, the same seat as `spook gm`, and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. A second GM gets the refusal the hello already returns, and the host exits.
+`spook ai-gm <pack>` sits the single GM seat, the same seat as `spook gm`, and dials `--addr`, which defaults to `127.0.0.1:9737`. It starts neither `spook run` nor `spook play`. It stays a TCP client. It does not speak MCP stdio. A second GM, on that TCP seat, on `spook mcp`, or on `--mcp-http`, gets the refusal the hello already returns, and the host exits. `spook run` is the only listener. `--mcp-http` is an extra loopback port on that same process, not a second server.
 
 `spook ai-gm` with no pack, or with any extra argument, is a usage error before a dial. A refused hello exits 1. A shard that is not listening exits 1 and leaves the pack bytes as they were.
 

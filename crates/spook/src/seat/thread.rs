@@ -277,7 +277,9 @@ fn on_msg(
             reply,
         } => {
             let answer = on_hello(shard, seats, next_session, conn, &line, out)?;
-            let _ = reply.send(answer);
+            if reply.send(answer).is_err() && seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
+                seats.gm = None;
+            }
         }
         Msg::Player { conn, line, reply } => {
             let answer = on_player(shard, seats, restart, conn, &line)?;
