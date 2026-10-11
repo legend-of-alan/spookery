@@ -125,6 +125,16 @@ spook ai-gm /tmp/docks
 
 When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
 
+`crates/spook/tests/live_round.rs` plays one real round against whatever provider those three variables name: it hosts a copy of the docks pack, sits `spook ai-gm`, queues one player move, and passes when every model call returns 2xx and the move commits a tick. It is ignored by default. With [Ollama](https://ollama.com) running locally:
+
+```sh
+ollama pull qwen2.5:0.5b
+SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b \
+  cargo test -p spook --test live_round --locked -- --ignored --nocapture
+```
+
+The `Live AI` workflow runs it against Ollama on pull requests that touch the model host.
+
 ### Human GM
 
 `spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first.

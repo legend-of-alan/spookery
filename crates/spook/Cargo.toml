@@ -40,3 +40,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "ti
 name = "promises"
 path = "tests/promises.rs"
 harness = false
+
+[[test]]
+name = "live_round"
+path = "tests/live_round.rs"

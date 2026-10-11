@@ -1,0 +1,92 @@
+name: Live AI
+
+# Plays one real `spook ai-gm` round against live chat-completions providers.
+# The round itself is crates/spook/tests/live_round.rs (ignored by default).
+#
+# - ollama: a tiny local model on the runner. No key, no cost. Runs on PRs and
+#   main pushes that touch the model host, and on demand.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - crates/spook/src/ai/**
+      - crates/spook/src/gm_client/**
+      - crates/spook/src/protocol/gm.rs
+      - crates/spook/tests/live_round.rs
+      - .github/workflows/live-ai.yml
+  push:
+    branches: [main]
+    paths:
+      - crates/spook/src/ai/**
+      - crates/spook/src/gm_client/**
+      - crates/spook/src/protocol/gm.rs
+      - crates/spook/tests/live_round.rs
+      - .github/workflows/live-ai.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  OLLAMA_VERSION: v0.40.3
+  OLLAMA_MODEL: qwen2.5:0.5b
+
+jobs:
+  ollama:
+    name: ollama (${{ github.event_name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: dtolnay/rust-toolchain@1.89.0
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build the live round
+        run: cargo test -p spook --test live_round --locked --no-run
+
+      - name: Cache Ollama and the model
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.ollama-bin
+            ~/.ollama/models
+          key: ollama-${{ env.OLLAMA_VERSION }}-${{ env.OLLAMA_MODEL }}
+
+      - name: Install Ollama (CPU only)
+        run: |
+          if [ ! -x ~/.ollama-bin/bin/ollama ]; then
+            mkdir -p ~/.ollama-bin
+            curl -fsSL "https://github.com/ollama/ollama/releases/download/${OLLAMA_VERSION}/ollama-linux-amd64.tar.zst" \
+              | zstd -dc \
+              | tar -x -C ~/.ollama-bin --exclude='*cuda*' --exclude='*vulkan*' --exclude='*mlx*' --exclude='*rocm*'
+          fi
+          ~/.ollama-bin/bin/ollama --version || true
+
+      - name: Start Ollama and pull the model
+        run: |
+          nohup ~/.ollama-bin/bin/ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:11434/api/version && break
+            sleep 1
+          done
+          ~/.ollama-bin/bin/ollama pull "$OLLAMA_MODEL" 2>&1 | tail -n 2
+          ~/.ollama-bin/bin/ollama list
+
+      - name: Play one round against Ollama
+        env:
+          SPOOK_GM_KEY: ollama
+          SPOOK_GM_URL: http://127.0.0.1:11434/v1
+          SPOOK_GM_MODEL: ${{ env.OLLAMA_MODEL }}
+        run: cargo test -p spook --test live_round --locked -- --ignored --nocapture
+
+      - name: Ollama log
+        if: failure()
+        run: tail -n 100 "$RUNNER_TEMP/ollama.log" || true
+
