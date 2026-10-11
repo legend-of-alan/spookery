@@ -27,7 +27,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 3. **Atomic commit.** `now.yaml` is renamed last. A crash cannot apply a partial tick.
 4. **Closed effect, one apply.** Seven effect classes. `apply_effect` is the only mutator of world numbers.
 5. **Firewall.** `firewall::allows` is the visibility test. A hidden fact does not leak through place or cast prose.
-6. **Deterministic tick.** A row's literals are filled before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed.
+6. **Deterministic tick.** A row's literals are filled before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed. It also replays every journaled commit since the base: a presence commit restores that presence, and a migrate commit restores `pack_rev`.
 7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
 8. **Action-row loader.** A moves file is names and rows. A field is a literal, or the player token on a player row. A new verb is a new row in YAML.
 9. **Seeded checks.** `die_face` is Blake2s. One copy, in `check.rs`. The intent's own actor resolves the check, PC or NPC. Another actor does not. `difficulty` applies only when the row sets `check` and no opposing total applies. The total is `success` when it reaches the target, `partial` when the row sets `partial_at` and the total reaches that threshold but not the target, and `miss` otherwise. A row without `partial_at` is `success` or `miss`. An opposing total replaces `difficulty`, and that roll stays `success` or `miss` even when the row sets `partial_at`, because `partial_at` is compared with the row's own `difficulty`.
@@ -142,7 +142,7 @@ Bindings and the outcome list are different steps.
 1. Habit selection picks a row before the apply loop. Expand fills that row's literals against the staging `Now` it sees, including `from` taken from the actor's live place. A row that does not expand is not the kernel intent. Player travel binds the typed place.
 2. Inside the per-candidate loop, `resolve_check` runs if the row has a `check`. The viewer is that intent's actor. A PC or an NPC may roll for themselves. A viewer who is not the actor is `UNKNOWN_KEY`. An unknown id is `UNKNOWN_KEY`. Templates do not run. The die cursor does not move.
 3. After that roll, the selected templates are `effects`, plus `success` on success, `partial` on partial, and `failure` on miss. No roll means `effects` only. Those templates are filled from the row, not by choosing a new target. The result is a `Vec` of `EffectClass`.
-4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `run_recorded_tick` expands those intents again, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. Replay does not install the log as `Now`. The names `need` and `resource` are not variants.
+4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `run_recorded_tick` expands those intents again, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. Replay does not install the log as `Now`. A presence record restores `presence` and `state_rev`. A migrate record restores `pack_rev` and `state_rev`. Replay applies those commits. It does not install them as effects. The names `need` and `resource` are not variants.
 
 A vec built before the roll cannot be the success list, the partial list, and the failure list at once. The post-roll value is the effect vec. Habit rows may have `success`, `partial`, and `failure`. Outcome lists are not limited to player rows.
 
@@ -172,11 +172,11 @@ pub enum Source {
 }
 ```
 
-Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again.
+Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again. It also applies presence and migrate records as their commits.
 
 Priority, computed before the roll, is player before NPC before system, then PC-owned clocks, claimed targets, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the clock id on the expanded effect. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a message's `to` hits `actors_present`.
 
-Library paths return `Result`. `run`, `tick`, `status`, and `migrate` print `Reason::token()` and exit 1. `spook check` prints one diagnostic line per problem, or one JSON array when `--json` is set.
+Library paths return `Result`. `run`, `tick`, `status`, and `migrate` print `Reason::token()` and exit 1. `spook check` prints one diagnostic line per problem, or one JSON array when `--json` is set. `spook replay` and `spook verify` print their own lines.
 
 ## Habits
 
@@ -236,19 +236,23 @@ Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLED
 1. Copy each live target that already exists into `state/.txn/prev`, and fsync the copies and the `prev` directory.
 2. Create `state/.txn/COMPLETE`, and fsync the file and the `.txn` directory.
 3. Write each new body to a temp file, fsync, and fsync the parent.
-4. Rename side files first (`log/tick-NNNN.jsonl`, `memories/*.jsonl`).
+4. Rename side files first (`log/tick-NNNN.jsonl`, `log/presence-NNNN.json`, `log/migrate-NNNN.json`, `log/base.yaml`, `memories/*.jsonl`).
 5. Rename `now.yaml` last.
 6. Fsync `state/`. Remove `.txn`. `state_rev` was incremented in memory before the bytes were emitted, and it hits disk only in that last rename.
 
-`recover` keeps three shapes. No `COMPLETE` means delete `.txn` and leave the live tree. `COMPLETE` and `live.state_rev == prev.state_rev` means restore `prev`. `COMPLETE` and `live.state_rev == prev + 1` means delete `.txn` and keep live. Then drop tick logs whose `state_rev_after` is above live, and drop memory lines whose `tick_index` is not in a live log.
+Every commit that writes `now.yaml` also writes one journal record in that same plan. A tick writes `log/tick-NNNN.jsonl`. A presence change writes `log/presence-NNNN.json` with the new presence and the `state_rev` after the commit. A migrate writes `log/migrate-NNNN.json` with `pack_rev` before and after and the `state_rev` after the commit. `NNNN` on a tick file is the tick index. `NNNN` on a presence or migrate file is the `state_rev` after the commit. Each record carries `now_hash`, the Blake2s of the `now.yaml` bytes that commit wrote. `now.yaml` is still renamed last, so a crash cannot leave it ahead of its record.
 
-`commit_presence` writes `now.yaml` alone, through the same `write_commit`. Presence is `humans` and `actors_present` only. When those two fields are unchanged after canonicalize, it writes nothing and does not increment `state_rev`. When either field changes, it increments `state_rev` by 1 and then emits. It does not open a `Txn`, does not write a tick log, and does not advance clocks. A session id is not an input.
+The first commit on a pack with no `log/base.yaml` writes that file in the same plan. Its bytes are the pre-commit `now.yaml`. `migrate` writes `log/base.yaml` again, in the same plan, as the post-migrate `now.yaml`, and the migrate record marks that point. Older records stay on disk. Replay from the base applies only the records after it, because those older ticks do not replay against the new canon. `state/log/base.yaml` is replay input. Nothing reads it as the live save. `emit_now` is still the only path that produces `now.yaml`.
 
-`migrate_pack` is the only writer that changes `pack_rev`. It goes through `write_commit` and appends one studio line. A hand edit of `now.yaml` that is not `spook migrate` remains `HAND_EDIT` on the next tick. Studio tools do not write `state/`.
+`recover` keeps three shapes. No `COMPLETE` means delete `.txn` and leave the live tree. `COMPLETE` and `live.state_rev == prev.state_rev` means restore `prev`. `COMPLETE` and `live.state_rev == prev + 1` means delete `.txn` and keep live. Then drop journal records whose `state_rev_after` is above live, drop `base.yaml` when its `state_rev` is above the live save, and drop memory lines whose `tick_index` is not in a live log.
 
-`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Txn` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev` and stock at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `now.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `now.yaml` and deletes a tick log and a memory line that do not belong to it.
+`commit_presence` writes `now.yaml` through the same `write_commit`, with the presence journal record in that plan. Presence is `humans` and `actors_present` only. When those two fields are unchanged after canonicalize, it writes nothing and does not increment `state_rev`. When either field changes, it increments `state_rev` by 1 and then emits. It does not open a `Txn`, does not write a tick log, and does not advance clocks. A session id is not an input.
 
-Replay byte-compares `now.yaml` produced by this kernel. It does not pin a frozen docks hash.
+`migrate_pack` is the only writer that changes `pack_rev`. It goes through `write_commit`, writes the migrate journal record and the new base in that plan, and then appends one studio line. Replay does not read the studio line. A hand edit of `now.yaml` that is not `spook migrate` remains `HAND_EDIT` on the next tick. Studio tools do not write `state/`.
+
+`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Txn` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev` and stock at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `now.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `now.yaml` and deletes a journal record and a memory line that do not belong to it.
+
+Replay byte-compares `now.yaml` produced by this kernel, for every journaled commit since the base. It does not pin a frozen docks hash. A pack that has never committed has no base and no journal. `spook verify` then compares `now.yaml` to itself and reports zero records.
 
 ## Speech
 
@@ -305,6 +309,8 @@ The codes `spook check` can emit are stable. The message and the hint may change
 | `PACK_REV_MISMATCH` | `pack_rev` is not the hash of `world/`, `cast/`, and `rules/`. |
 | `HAND_EDIT` | `state/now.yaml` is not the canonical save text. |
 | `HIDDEN_FACT_IN_BODY` | A hidden fact's text appears in a Markdown body. |
+
+`spook replay <pack>` replays the journal from `state/log/base.yaml` into a temp directory, deletes that directory, and prints `state_rev <r>, <n> records`. `spook verify <pack>` reads `now.yaml` once, replays the journal up to that `state_rev`, and byte-compares. Later records are ignored. A match prints `verified <n> records, state_rev <r>` and exits 0. A mismatch exits 1 and prints the first divergent record and the first differing `now.yaml` line. `--from <dir>` uses that directory's `state/now.yaml` as the base instead. Both commands write nothing under the pack, take no lock, and bind no port. A pack that has never committed has no journal and no base. Verify treats `now.yaml` as its own base, so the check passes with zero records.
 
 ## Loopback
 
@@ -387,7 +393,7 @@ The player line grammar does change. The check wire object does not. That split 
 | Speech copied into `known_facts` | The tape is not an input to expand. No whisper. Inbound model text is not a field on `Intent`. |
 | Host digest reused as the player resume | `idle_digest` takes `DigestViewer::Host` or `DigestViewer::Player`. Different rows. |
 | Hand edit of `now.yaml` | `HAND_EDIT` until `spook migrate`. |
-| Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It re-expands the recorded intents, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. |
+| Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It re-expands the recorded intents, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. A presence record restores presence. A migrate record restores `pack_rev`. Neither is an effect list. |
 | Two ticks in flight | One lock around the tick run and `commit_turn`. The second caller gets `COMMIT_CONFLICT`. Tick code is synchronous on the shard thread. |
 | `patch_entity` writes canon and the live shard | Not a sitting tool. A canon byte change mismatches `pack_rev` until migrate. |
 | New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has seven variants. |
@@ -398,7 +404,7 @@ The player line grammar does change. The check wire object does not. That split 
 | Tokio task per shard inside the kernel | Kernel and tick cannot name the runtime. The scan stays. |
 | `rand::thread_rng` or a hand-rolled die | `die_face` is Blake2s. One copy, in `check.rs`. |
 | Markdown body used as a stock count or a hidden fact | `strip_body` and `lint`. |
-| A second snapshot beside `now.yaml` | Forbidden. One emit path. |
+| A second snapshot beside `now.yaml` | `state/log/base.yaml` is replay input written in the commit. It is never read as the live save. One emit path still writes `now.yaml`. |
 | Non-loopback bind, accounts, second GM, fourth player, held PC | `NOT_IN_SPEC` for a non-loopback bind. No account store. `SESSION_FULL` for a second GM or a fourth player. `SEAT_TAKEN` for a held PC. |
 | Hidden fact in a perceive body | `allows` plus lint. |
 

@@ -97,6 +97,18 @@ spook migrate /tmp/docks
 
 `tick` advances the pack one tick and prints nothing when it succeeds. `migrate` stores the current canon hash in the save and bumps the save counter. It also prints nothing when it succeeds.
 
+## Prove the log
+
+Each commit that changes the save appends one journal record under `state/log`, and the first commit stores a replay base there. `spook replay` replays that journal and prints the final save counter. `spook verify` replays it and checks the save byte for byte. Neither command writes the pack, takes the lock, or binds a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
+
+```sh
+spook tick /tmp/docks
+spook replay /tmp/docks
+spook verify /tmp/docks
+```
+
+`replay` prints `state_rev <r>, <n> records`. `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`.
+
 ## Game master
 
 ### No GM
