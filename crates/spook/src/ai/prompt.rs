@@ -35,7 +35,7 @@ pub struct Roll {
     pub stat: i64,
     pub total: i64,
     pub target: i64,
-    pub success: bool,
+    pub outcome: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -711,7 +711,7 @@ fn roll_value(roll: &Roll) -> Value {
         ("stat", Value::from(roll.stat)),
         ("total", Value::from(roll.total)),
         ("target", Value::from(roll.target)),
-        ("success", Value::Bool(roll.success)),
+        ("outcome", json_str(&roll.outcome)),
     ])
 }
 

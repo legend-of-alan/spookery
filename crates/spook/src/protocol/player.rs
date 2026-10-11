@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::Error;
+use crate::protocol::{Error, Outcome};
 
 /// A line on the player socket. No GM field, and no roll faces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,7 +15,7 @@ pub enum PlayerMessage {
         id: String,
     },
     Check {
-        success: bool,
+        outcome: Outcome,
     },
     Resume {
         text: String,
@@ -120,9 +120,26 @@ mod tests {
 
     #[test]
     fn a_check_line_has_no_faces() {
-        let line = write_player(&PlayerMessage::Check { success: true });
-        assert_eq!(line, "{\"kind\":\"check\",\"success\":true}\n");
-        assert!(read_player(r#"{"kind":"check","success":true,"faces":[1]}"#).is_err());
+        let line = write_player(&PlayerMessage::Check {
+            outcome: Outcome::Success,
+        });
+        assert_eq!(line, "{\"kind\":\"check\",\"outcome\":\"success\"}\n");
+        assert_eq!(
+            read_player(&line).unwrap(),
+            PlayerMessage::Check {
+                outcome: Outcome::Success,
+            }
+        );
+        let partial = write_player(&PlayerMessage::Check {
+            outcome: Outcome::Partial,
+        });
+        assert_eq!(partial, "{\"kind\":\"check\",\"outcome\":\"partial\"}\n");
+        let miss = write_player(&PlayerMessage::Check {
+            outcome: Outcome::Miss,
+        });
+        assert_eq!(miss, "{\"kind\":\"check\",\"outcome\":\"miss\"}\n");
+        assert!(read_player(r#"{"kind":"check","outcome":"success","faces":[1]}"#).is_err());
+        assert!(read_player(r#"{"kind":"check","success":true}"#).is_err());
     }
 
     #[test]

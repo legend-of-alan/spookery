@@ -10,7 +10,7 @@ use spookery::seat::{
     SocketEnd, Turn,
 };
 use spookery_kernel::apply::apply_effect;
-use spookery_kernel::check::CheckNotice;
+use spookery_kernel::check::{CheckNotice, Outcome};
 use spookery_kernel::codec::emit_now;
 use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
@@ -1444,16 +1444,16 @@ fn opposing_total_reused() {
         if opposed {
             let nell = rolled_stat(&notices, 100);
             assert_eq!(nell.target, 0);
-            assert!(nell.success);
+            assert_eq!(nell.outcome, Outcome::Success);
             assert!(nell.total >= 102, "{nell:?}");
             assert_eq!(rowan.target, nell.total);
-            assert!(!rowan.success);
+            assert_eq!(rowan.outcome, Outcome::Miss);
             let mut flags = flags_of(shard.now(), "pc_nell");
             flags.sort();
             assert_eq!(flags, vec!["guarded".to_string(), "missed".to_string()]);
         } else {
             assert_eq!(rowan.target, 0);
-            assert!(rowan.success);
+            assert_eq!(rowan.outcome, Outcome::Success);
             assert_eq!(flags_of(shard.now(), "pc_nell"), vec!["marked".to_string()]);
         }
         let _ = fs::remove_dir_all(&pack);
@@ -1497,7 +1497,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     };
     assert!(commit_queued(&mut shard).unwrap());
     let rowan = rolled_stat(&shard.take_rolls(), 1);
-    assert!(!rowan.success);
+    assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(!fs::read_to_string(held.join("state/log/tick-0001.jsonl"))
         .unwrap()
         .contains("faces"));

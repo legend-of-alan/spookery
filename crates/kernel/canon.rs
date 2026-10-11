@@ -112,6 +112,14 @@ impl Canon {
             .unwrap_or(0)
     }
 
+    /// Lower band on a row. `None` keeps that roll binary.
+    pub fn row_partial_at(&self, move_name: &str) -> Option<i64> {
+        self.moves
+            .get(move_name)
+            .and_then(|def| def.row.as_ref())
+            .and_then(|row| row.partial_at)
+    }
+
     /// Check id named by a row. A move without `effects` is not a row.
     pub fn row_check(&self, move_name: &str) -> Option<String> {
         let def = self.moves.get(move_name)?;
@@ -898,7 +906,13 @@ fn unknown_meters(
         let Some(row) = def.row.as_ref() else {
             continue;
         };
-        for effect in row.effects.iter().chain(&row.success).chain(&row.failure) {
+        for effect in row
+            .effects
+            .iter()
+            .chain(&row.success)
+            .chain(&row.partial)
+            .chain(&row.failure)
+        {
             let RowEffect::Meter(write) = effect else {
                 continue;
             };

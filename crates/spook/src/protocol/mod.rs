@@ -1,6 +1,27 @@
 mod gm;
 mod player;
 
+use serde::{Deserialize, Serialize};
+
+/// A check band on the player wire, the GM wire, and `commit_turn` checks.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Outcome {
+    Success,
+    Partial,
+    Miss,
+}
+
+impl Outcome {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Success => "success",
+            Self::Partial => "partial",
+            Self::Miss => "miss",
+        }
+    }
+}
+
 pub use gm::{
     code_result, queued_ack, read_commit_args, read_frame, read_intent_args, read_perceive_args,
     read_say_args, read_status_args, read_tool_call, read_tool_result, set_checks,

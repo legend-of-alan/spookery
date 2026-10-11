@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::protocol::Error;
+use crate::protocol::{Error, Outcome};
 
 pub const GM_HELLO: &str = "gm\n";
 
@@ -346,7 +346,7 @@ pub struct Roll {
     pub stat: i64,
     pub total: i64,
     pub target: i64,
-    pub success: bool,
+    pub outcome: Outcome,
 }
 
 pub fn set_checks(value: &mut Value, rolls: &[Roll]) {
@@ -405,7 +405,7 @@ pub fn write_check_event(roll: &Roll) -> Vec<u8> {
         "stat": roll.stat,
         "total": roll.total,
         "target": roll.target,
-        "success": roll.success,
+        "outcome": roll.outcome.as_str(),
     }))
 }
 

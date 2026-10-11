@@ -56,7 +56,7 @@ pub enum EventBody {
         stat: i64,
         total: i64,
         target: i64,
-        success: bool,
+        outcome: crate::protocol::Outcome,
     },
 }
 
@@ -300,8 +300,17 @@ fn parse_check(params: &Value) -> Option<EventBody> {
         stat: params.get("stat")?.as_i64()?,
         total: params.get("total")?.as_i64()?,
         target: params.get("target")?.as_i64()?,
-        success: params.get("success")?.as_bool()?,
+        outcome: check_outcome(params.get("outcome")?)?,
     })
+}
+
+fn check_outcome(value: &Value) -> Option<crate::protocol::Outcome> {
+    match value.as_str()? {
+        "success" => Some(crate::protocol::Outcome::Success),
+        "partial" => Some(crate::protocol::Outcome::Partial),
+        "miss" => Some(crate::protocol::Outcome::Miss),
+        _ => None,
+    }
 }
 
 fn text_field(params: &Value, key: &str) -> String {
@@ -402,7 +411,7 @@ mod tests {
             stat: 1,
             total: 7,
             target: 0,
-            success: true,
+            outcome: crate::protocol::Outcome::Success,
         }))
         .unwrap();
         let Incoming::Event(event) = classify_line(line.trim_end()).unwrap() else {
@@ -415,7 +424,7 @@ mod tests {
                 stat: 1,
                 total: 7,
                 target: 0,
-                success: true,
+                outcome: crate::protocol::Outcome::Success,
             }
         );
     }

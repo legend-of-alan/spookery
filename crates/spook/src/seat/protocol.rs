@@ -2,8 +2,9 @@
 //! A tape line this parser cannot read is `SCHEMA` for the whole read.
 
 use crate::protocol::{
-    ClockView as WireClock, CommitBody, FactNote, GmSay, KnownFact as WireFact, PlayerMessage,
-    QueueRow, Roll, SessionStatus, StatusPause, StatusPresence, StockView as WireStock,
+    ClockView as WireClock, CommitBody, FactNote, GmSay, KnownFact as WireFact, Outcome,
+    PlayerMessage, QueueRow, Roll, SessionStatus, StatusPause, StatusPresence,
+    StockView as WireStock,
 };
 use serde_json::Value;
 use spookery_kernel::check::{CheckNotice, CheckOut};
@@ -107,8 +108,18 @@ pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
     crate::protocol::write_queued_event(id, actor_id, move_name)
 }
 
-pub fn player_check_line(success: bool) -> String {
-    crate::protocol::write_player(&PlayerMessage::Check { success })
+pub fn player_check_line(outcome: spookery_kernel::check::Outcome) -> String {
+    crate::protocol::write_player(&PlayerMessage::Check {
+        outcome: wire_outcome(outcome),
+    })
+}
+
+fn wire_outcome(outcome: spookery_kernel::check::Outcome) -> Outcome {
+    match outcome {
+        spookery_kernel::check::Outcome::Success => Outcome::Success,
+        spookery_kernel::check::Outcome::Partial => Outcome::Partial,
+        spookery_kernel::check::Outcome::Miss => Outcome::Miss,
+    }
 }
 
 pub fn check_event(out: &CheckOut) -> Vec<u8> {
@@ -263,7 +274,7 @@ fn roll_of(out: &CheckOut) -> Roll {
         stat: out.stat,
         total: out.total,
         target: out.target,
-        success: out.success,
+        outcome: wire_outcome(out.outcome),
     }
 }
 

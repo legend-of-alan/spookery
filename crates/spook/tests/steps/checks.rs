@@ -93,9 +93,14 @@ fn the_player_rolls_grit(world: &mut World) {
 #[then(expr = "the player sees a check success")]
 fn the_player_sees_a_check_success(world: &mut World) {
     world.player_added =
-        table::wait_player_from(world.mark, "{\"kind\":\"check\",\"success\":true}");
+        table::wait_player_from(world.mark, "{\"kind\":\"check\",\"outcome\":\"success\"}");
     assert!(
         !world.player_added.contains("\"faces\""),
+        "{}",
+        world.player_added
+    );
+    assert!(
+        !world.player_added.contains("\"success\":"),
         "{}",
         world.player_added
     );
@@ -125,17 +130,20 @@ fn the_gm_sees_the_grit_faces(_world: &mut World) {
         .unwrap_or_else(|| panic!("tool result has no checks\n{text}"));
     assert!(result.contains("\"faces\":["), "{result}");
     assert!(result.contains("\"stat\":"), "{result}");
-    assert!(result.contains("\"success\":"), "{result}");
+    assert!(result.contains("\"outcome\":"), "{result}");
+    assert!(!result.contains("\"success\":"), "{result}");
 }
 
 #[then(expr = "the player sees a check result without faces")]
 fn the_player_sees_a_check_result_without_faces(world: &mut World) {
-    let added = table::wait_player_from(world.mark, "{\"kind\":\"check\",\"success\":");
+    let added = table::wait_player_from(world.mark, "{\"kind\":\"check\",\"outcome\":");
     assert!(
-        added.contains("{\"kind\":\"check\",\"success\":true}")
-            || added.contains("{\"kind\":\"check\",\"success\":false}"),
+        added.contains("{\"kind\":\"check\",\"outcome\":\"success\"}")
+            || added.contains("{\"kind\":\"check\",\"outcome\":\"partial\"}")
+            || added.contains("{\"kind\":\"check\",\"outcome\":\"miss\"}"),
         "{added}"
     );
+    assert!(!added.contains("\"success\":"), "{added}");
     assert!(!added.contains("\"faces\""), "{added}");
 }
 
@@ -225,12 +233,12 @@ fn mira_guarded_and_the_mark_missed(world: &mut World) {
 
 #[then(expr = "the GM sees Mira's sure notice")]
 fn the_gm_sees_miras_sure_notice(_world: &mut World) {
-    assert_one_roll(1, 3, true);
+    assert_one_roll(1, 3, "success");
 }
 
 #[then(expr = "the GM sees Mira's failed notice")]
 fn the_gm_sees_miras_failed_notice(_world: &mut World) {
-    assert_one_roll(1, 14, false);
+    assert_one_roll(1, 14, "miss");
 }
 
 #[then(expr = "the player sees no check frame")]
@@ -241,9 +249,10 @@ fn the_player_sees_no_check_frame(world: &mut World) {
 
 #[then(expr = "the player sees only their own check")]
 fn the_player_sees_only_their_own_check(world: &mut World) {
-    let added = table::wait_player_from(world.mark, "{\"kind\":\"check\",\"success\":false}");
+    let added = table::wait_player_from(world.mark, "{\"kind\":\"check\",\"outcome\":\"miss\"}");
     assert_eq!(added.matches("\"kind\":\"check\"").count(), 1, "{added}");
     assert!(!added.contains("\"faces\""), "{added}");
+    assert!(!added.contains("\"success\":"), "{added}");
 }
 
 #[then(expr = "the GM sees both rolls")]
@@ -396,14 +405,14 @@ fn tick_json(world: &World) -> Value {
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }
 
-fn assert_one_roll(stat: i64, target: i64, success: bool) {
+fn assert_one_roll(stat: i64, target: i64, outcome: &str) {
     let text = table::wait_gm("\"kind\":\"check\"");
     let events = check_events(&text);
     assert_eq!(events.len(), 1, "{text}");
-    assert_roll(&events[0], stat, target, success);
+    assert_roll(&events[0], stat, target, outcome);
     let checks = commit_checks(&text);
     assert_eq!(checks.len(), 1, "{text}");
-    assert_roll(&checks[0], stat, target, success);
+    assert_roll(&checks[0], stat, target, outcome);
 }
 
 fn assert_opposed(rolls: &[Value]) {
@@ -417,12 +426,12 @@ fn assert_opposed(rolls: &[Value]) {
         .find(|roll| roll["stat"].as_i64() == Some(1))
         .unwrap_or_else(|| panic!("{rolls:?}"));
     let npc_total = npc["total"].as_i64().unwrap_or_else(|| panic!("{npc}"));
-    assert_roll(npc, 100, 0, true);
-    assert_roll(pc, 1, npc_total, false);
+    assert_roll(npc, 100, 0, "success");
+    assert_roll(pc, 1, npc_total, "miss");
     assert!(npc_total >= 102, "{npc}");
 }
 
-fn assert_roll(roll: &Value, stat: i64, target: i64, success: bool) {
+fn assert_roll(roll: &Value, stat: i64, target: i64, outcome: &str) {
     let faces = roll["faces"].as_array().unwrap_or_else(|| panic!("{roll}"));
     assert_eq!(faces.len(), 2, "{roll}");
     let face_sum: i64 = faces
@@ -432,7 +441,8 @@ fn assert_roll(roll: &Value, stat: i64, target: i64, success: bool) {
     assert_eq!(roll["stat"].as_i64(), Some(stat), "{roll}");
     assert_eq!(roll["total"].as_i64(), Some(face_sum + stat), "{roll}");
     assert_eq!(roll["target"].as_i64(), Some(target), "{roll}");
-    assert_eq!(roll["success"].as_bool(), Some(success), "{roll}");
+    assert_eq!(roll["outcome"].as_str(), Some(outcome), "{roll}");
+    assert!(roll.get("success").is_none(), "{roll}");
 }
 
 fn check_events(text: &str) -> Vec<Value> {
@@ -474,4 +484,326 @@ fn find_checks(value: &Value) -> Option<Vec<Value>> {
         Value::Array(items) => items.iter().find_map(find_checks),
         Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => None,
     }
+}
+
+const PRESS_ROW: &str = "
+  - name: press
+    audience: player
+    token: actor
+    on: named
+    check: band
+    difficulty: 10
+    partial_at: 7
+    effects:
+      - class: flag
+        key: touched
+        value: true
+    success:
+      - class: flag
+        key: clean
+        value: true
+    partial:
+      - class: flag
+        key: halfway
+        value: true
+    failure:
+      - class: flag
+        key: missed
+        value: true
+";
+
+const NOTICE_PARTIAL: &str = "
+  - name: notice_partial
+    audience: player
+    token: none
+    on: speaker
+    check: band
+    difficulty: 10
+    partial_at: 7
+    effects:
+      - class: flag
+        key: touched
+        value: true
+    success:
+      - class: flag
+        key: clean
+        value: true
+    partial:
+      - class: flag
+        key: halfway
+        value: true
+    failure:
+      - class: flag
+        key: missed
+        value: true
+";
+
+const DEFEND_ROW: &str = "
+  - name: defend
+    audience: player
+    token: none
+    on: speaker
+    check: grit
+    success:
+      - class: flag
+        key: guarded
+        value: true
+";
+
+const BAND_CHECK: &str = "
+  - id: band
+    dice:
+      count: 1
+      sides: 1
+    stat: grit
+";
+
+const PRESS_FLAGS: &str =
+    "    - touched\n    - clean\n    - halfway\n    - missed\n    - guarded\n";
+
+#[given(expr = "a docks table where press grit base is {int}")]
+fn a_docks_table_where_press_grit_base_is(world: &mut World, base: usize) {
+    prepare_press(world, base as i64, true);
+}
+
+#[given(expr = "a docks copy where press grit base is {int}")]
+fn a_docks_copy_where_press_grit_base_is(world: &mut World, base: usize) {
+    prepare_press(world, base as i64, false);
+}
+
+#[given(expr = "a docks table where Mira opposes a three-band press")]
+fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
+    let pack = temp_pack("press-oppose");
+    world.pack = Some(pack.clone());
+    append_moves(&pack, PRESS_ROW);
+    append_moves(&pack, DEFEND_ROW);
+    append_check(&pack, BAND_CHECK);
+    insert_flags(&pack, PRESS_FLAGS);
+    set_rowan_grit(&pack, 6);
+    set_mira_grit(&pack, 100);
+    stamp(&pack);
+    listen_both(&pack);
+    world.scratch = snapshot_of(&pack).display().to_string();
+}
+
+#[given(expr = "a docks table where Mira can partly notice")]
+fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
+    let pack = temp_pack("press-notice");
+    world.pack = Some(pack.clone());
+    append_moves(&pack, NOTICE_PARTIAL);
+    append_check(&pack, BAND_CHECK);
+    insert_flags(&pack, PRESS_FLAGS);
+    set_mira_grit(&pack, 6);
+    stamp(&pack);
+    listen_both(&pack);
+    world.scratch = snapshot_of(&pack).display().to_string();
+    world.mark = table::player_len();
+}
+
+#[when(expr = "the player presses Mira")]
+fn the_player_presses_mira(world: &mut World) {
+    let (mark, added) = table::player_send("press mira", "\"kind\":");
+    world.mark = mark;
+    world.player_added = added;
+}
+
+#[when(expr = "the GM queues Mira's partial notice")]
+fn the_gm_queues_miras_partial_notice(_world: &mut World) {
+    queue_mira("notice_partial");
+}
+
+#[when(expr = "the moves file gains {string}")]
+fn the_moves_file_gains(world: &mut World, fault: String) {
+    let row = match fault.as_str() {
+        "partial_at without partial" => {
+            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial_at: 7\n    effects:\n      - class: flag\n        key: touched\n        value: true\n"
+        }
+        "partial without partial_at" => {
+            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n"
+        }
+        "partial_at above difficulty" => {
+            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial_at: 10\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n"
+        }
+        "partial_at without a check" => {
+            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    difficulty: 10\n    partial_at: 7\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n"
+        }
+        other => panic!("unknown partial fault {other}"),
+    };
+    let pack = table::pack(world).to_path_buf();
+    append_moves(&pack, row);
+    stamp(&pack);
+}
+
+#[then(expr = "Mira is touched and clean")]
+fn mira_is_touched_and_clean(world: &mut World) {
+    assert_eq!(
+        flags_of(world, "mira"),
+        vec!["clean".to_string(), "touched".to_string()]
+    );
+}
+
+#[then(expr = "Mira is touched and halfway")]
+fn mira_is_touched_and_halfway(world: &mut World) {
+    assert_eq!(
+        flags_of(world, "mira"),
+        vec!["halfway".to_string(), "touched".to_string()]
+    );
+}
+
+#[then(expr = "Mira is touched and missed")]
+fn mira_is_touched_and_missed(world: &mut World) {
+    assert_eq!(
+        flags_of(world, "mira"),
+        vec!["missed".to_string(), "touched".to_string()]
+    );
+}
+
+#[then(expr = "Mira guarded and the press missed")]
+fn mira_guarded_and_the_press_missed(world: &mut World) {
+    assert_eq!(
+        flags_of(world, "mira"),
+        vec![
+            "guarded".to_string(),
+            "missed".to_string(),
+            "touched".to_string()
+        ]
+    );
+}
+
+#[then(expr = "the player sees outcome {string} and no faces")]
+fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
+    let needle = format!("{{\"kind\":\"check\",\"outcome\":\"{outcome}\"}}");
+    let added = table::wait_player_from(world.mark, &needle);
+    world.player_added = added;
+    assert!(
+        !world.player_added.contains("\"faces\""),
+        "{}",
+        world.player_added
+    );
+    assert!(
+        !world.player_added.contains("\"success\":"),
+        "{}",
+        world.player_added
+    );
+    assert_eq!(
+        world.player_added.matches("\"kind\":\"check\"").count(),
+        1,
+        "{}",
+        world.player_added
+    );
+}
+
+#[then(expr = "the GM sees outcome {string} and the faces")]
+fn the_gm_sees_outcome_and_the_faces(_world: &mut World, outcome: String) {
+    let text = table::wait_gm("\"kind\":\"check\"");
+    let events = check_events(&text);
+    assert_eq!(events.len(), 1, "{text}");
+    assert_outcome_faces(&events[0], &outcome);
+    let checks = commit_checks(&text);
+    assert_eq!(checks.len(), 1, "{text}");
+    assert_outcome_faces(&checks[0], &outcome);
+}
+
+#[then(expr = "the check outcome is not {string}")]
+fn the_check_outcome_is_not(world: &mut World, outcome: String) {
+    let word = format!("\"outcome\":\"{outcome}\"");
+    assert!(
+        !world.player_added.contains(&word),
+        "{}",
+        world.player_added
+    );
+    let text = table::wait_gm("\"kind\":\"check\"");
+    assert!(!text.contains(&word), "{text}");
+}
+
+#[then(expr = "the GM sees a binary opposed press")]
+fn the_gm_sees_a_binary_opposed_press(_world: &mut World) {
+    let text = table::wait_gm("\"kind\":\"check\"");
+    assert_binary_opposed(&check_events(&text));
+    assert_binary_opposed(&commit_checks(&text));
+}
+
+fn prepare_press(world: &mut World, base: i64, sit: bool) {
+    let pack = temp_pack("press");
+    world.pack = Some(pack.clone());
+    append_moves(&pack, PRESS_ROW);
+    append_check(&pack, BAND_CHECK);
+    insert_flags(&pack, PRESS_FLAGS);
+    set_rowan_grit(&pack, base);
+    stamp(&pack);
+    if sit {
+        listen_both(&pack);
+        world.scratch = snapshot_of(&pack).display().to_string();
+    }
+}
+
+fn append_check(pack: &Path, extra: &str) {
+    let path = pack.join("rules/checks.yaml");
+    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read checks: {err}"));
+    text.push_str(extra);
+    fs::write(&path, text).unwrap_or_else(|err| panic!("write checks: {err}"));
+}
+
+fn set_rowan_grit(pack: &Path, base: i64) {
+    let path = pack.join("state/now.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
+    let from = "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n";
+    let to = format!("  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: {base}\n");
+    let next = text.replacen(from, &to, 1);
+    assert_ne!(next, text, "rowan grit was not changed");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
+}
+
+fn assert_outcome_faces(roll: &Value, outcome: &str) {
+    let faces = roll["faces"].as_array().unwrap_or_else(|| panic!("{roll}"));
+    assert!(!faces.is_empty(), "{roll}");
+    assert_eq!(roll["outcome"].as_str(), Some(outcome), "{roll}");
+    assert!(roll.get("stat").and_then(Value::as_i64).is_some(), "{roll}");
+    assert!(
+        roll.get("total").and_then(Value::as_i64).is_some(),
+        "{roll}"
+    );
+    assert!(
+        roll.get("target").and_then(Value::as_i64).is_some(),
+        "{roll}"
+    );
+    assert!(roll.get("success").is_none(), "{roll}");
+    if faces.len() == 1 {
+        assert_eq!(faces[0].as_i64(), Some(1), "{roll}");
+        let stat = roll["stat"].as_i64().unwrap_or_else(|| panic!("{roll}"));
+        assert_eq!(roll["total"].as_i64(), Some(stat + 1), "{roll}");
+        assert_eq!(roll["target"].as_i64(), Some(10), "{roll}");
+    }
+}
+
+fn assert_binary_opposed(rolls: &[Value]) {
+    assert_eq!(rolls.len(), 2, "{rolls:?}");
+    let npc = rolls
+        .iter()
+        .find(|roll| roll["stat"].as_i64() == Some(100))
+        .unwrap_or_else(|| panic!("{rolls:?}"));
+    let pc = rolls
+        .iter()
+        .find(|roll| roll["stat"].as_i64() == Some(6))
+        .unwrap_or_else(|| panic!("{rolls:?}"));
+    let npc_total = npc["total"].as_i64().unwrap_or_else(|| panic!("{npc}"));
+    assert_eq!(npc["outcome"].as_str(), Some("success"), "{npc}");
+    assert_eq!(npc["target"].as_i64(), Some(0), "{npc}");
+    assert!(
+        npc["faces"]
+            .as_array()
+            .is_some_and(|faces| !faces.is_empty()),
+        "{npc}"
+    );
+    assert_eq!(pc["outcome"].as_str(), Some("miss"), "{pc}");
+    assert_eq!(pc["target"].as_i64(), Some(npc_total), "{pc}");
+    assert!(npc_total >= 102, "{npc}");
+    assert!(
+        rolls.iter().all(|roll| roll["outcome"] != "partial"),
+        "{rolls:?}"
+    );
+    assert!(
+        rolls.iter().all(|roll| roll.get("success").is_none()),
+        "{rolls:?}"
+    );
 }

@@ -86,7 +86,7 @@ pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
         }
         match notice {
             CheckNotice::Rolled { out: rolled, .. } => {
-                out.push_str(&protocol::player_check_line(rolled.success))
+                out.push_str(&protocol::player_check_line(rolled.outcome))
             }
             CheckNotice::Refused { code, .. } => {
                 out.push_str(&protocol::player_refused_line(code.token()))
