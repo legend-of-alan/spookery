@@ -29,6 +29,13 @@ Feature: spook new makes a pack
     And the operator runs tick on that untouched pack
     Then the keeper habit has set tended
 
+  Scenario: The first-pack guide passes check
+    When the operator runs spook new in a fresh directory
+    And the first-pack guide steps are applied in order
+    Then the check exits 0
+    And stdout says "[]"
+    And stderr is empty
+
   Scenario: spook new writes nothing outside the directory
     When the operator runs spook new beside a marker file
     Then the command exits 0
