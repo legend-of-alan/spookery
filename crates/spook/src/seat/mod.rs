@@ -2,7 +2,7 @@ mod gm;
 mod http;
 mod line;
 mod listen;
-mod protocol;
+pub(crate) mod protocol;
 mod speech;
 mod thread;
 mod tools;

@@ -56,6 +56,9 @@ mod mcp;
 #[path = "steps/gm.rs"]
 mod gm;
 
+#[path = "steps/audit.rs"]
+mod audit;
+
 #[path = "steps/sample.rs"]
 mod sample;
 

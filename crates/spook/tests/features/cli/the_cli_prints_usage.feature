@@ -24,6 +24,7 @@ Feature: The CLI prints usage
       | check   |
       | replay  |
       | verify  |
+      | audit   |
 
   Scenario: A mistyped command is a usage error
     When the operator runs the arguments "rnu" and "x"

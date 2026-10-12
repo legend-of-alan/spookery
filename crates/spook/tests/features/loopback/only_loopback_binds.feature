@@ -29,6 +29,7 @@ Feature: Only loopback binds
       | check   | 0.0.0.0       |
       | replay  | 0.0.0.0       |
       | verify  | 10.0.0.1:9737 |
+      | audit   | 0.0.0.0       |
       | migrate | 10.0.0.1:9737 |
 
   Scenario: Run help names the default loopback address
