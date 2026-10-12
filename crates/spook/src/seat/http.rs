@@ -6,11 +6,10 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use super::gm;
+use super::limits::GM_LINE_CAP;
 use super::thread::Msg;
 
-/// One mebibyte. The seat tape has the same cap.
-const BODY_CAP: usize = 1024 * 1024;
-
+// The HTTP body cap matches a GM TCP line. The seat tape has the same cap.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
     tx: Sender<Msg>,
@@ -32,6 +31,6 @@ fn http_config() -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(["127.0.0.1"])
         .with_allowed_origins(["http://127.0.0.1:*"]);
-    config.max_request_body_bytes = BODY_CAP;
+    config.max_request_body_bytes = GM_LINE_CAP;
     config
 }
