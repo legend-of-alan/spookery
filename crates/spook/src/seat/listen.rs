@@ -1,7 +1,7 @@
 use std::io;
 use std::net::{SocketAddr, TcpListener};
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
@@ -201,22 +201,24 @@ async fn player_session(
     tx: Sender<Msg>,
     conn: u64,
     out_tx: super::limits::OutTx,
-    out_rx: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    out_rx: tokio::sync::mpsc::Receiver<super::limits::Outbound>,
     mut cancel_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     let (read_half, write_half) = stream.into_split();
     let mut reader =
         tokio::io::BufReader::with_capacity(super::limits::PLAYER_LINE_CAP + 1, read_half);
-    let flushed = std::sync::Arc::new(AtomicUsize::new(0));
     let writer = tokio::spawn(super::limits::write_frames(
         write_half,
         out_rx,
         cancel_rx.clone(),
-        std::sync::Arc::clone(&flushed),
     ));
     let mut bucket =
         super::limits::TokenBucket::new(super::limits::RATE_PER_SEC, super::limits::BURST);
     loop {
+        // Wait before reading so a full window slows the sender. The line is kept.
+        if !super::limits::wait_turn(&mut bucket, &mut cancel_rx).await {
+            break;
+        }
         let read = super::limits::read_capped_line(&mut reader, super::limits::PLAYER_LINE_CAP);
         tokio::pin!(read);
         let line = tokio::select! {
@@ -231,13 +233,7 @@ async fn player_session(
         };
         match line {
             Ok(Some(line)) => {
-                if !bucket.allow(std::time::Instant::now()) {
-                    if out_tx.try_send(refused_frame(Reason::RateLimited)).is_err() {
-                        report_fault(&tx, conn, SocketEnd::Write).await;
-                        break;
-                    }
-                    continue;
-                }
+                let _ = bucket.allow(std::time::Instant::now());
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 if tx
                     .send(Msg::Player {
@@ -259,15 +255,13 @@ async fn player_session(
                 break;
             }
             Err(super::limits::LineFail::TooLong) => {
-                let seen = flushed.load(Ordering::Acquire);
-                if out_tx.try_send(refused_frame(Reason::LineTooLong)).is_ok() {
-                    super::limits::wait_flushed(&flushed, seen).await;
-                }
+                super::limits::send_last(&out_tx, refused_frame(Reason::LineTooLong)).await;
                 report_fault(&tx, conn, SocketEnd::Close).await;
                 break;
             }
             Err(super::limits::LineFail::BadUtf8) => {
-                if out_tx.try_send(refused_frame(Reason::Schema)).is_err() {
+                let _ = bucket.allow(std::time::Instant::now());
+                if !super::limits::try_frame(&out_tx, refused_frame(Reason::Schema)) {
                     report_fault(&tx, conn, SocketEnd::Write).await;
                     break;
                 }

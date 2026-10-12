@@ -393,7 +393,7 @@ fn refresh_players(
             }
             Err(code) => refused_line(code).into_bytes(),
         };
-        if player.out.try_send(bytes).is_err() {
+        if !super::limits::try_frame(&player.out, bytes) {
             failed.push(player.conn);
         }
     }
@@ -462,7 +462,7 @@ fn on_hello(
                 return Ok(HelloReply::Refused(refused_line(code)));
             }
         };
-        if out.try_send(bytes).is_err() {
+        if !super::limits::try_frame(&out, bytes) {
             if release_player_seat(shard, &session_id, id, SocketEnd::Write)? {
                 print_host(shard);
             }
@@ -588,7 +588,7 @@ fn send_player(
     bytes: Vec<u8>,
 ) -> Result<(), Reason> {
     let failed = match seats.players.by_conn(conn) {
-        Some(player) => player.out.try_send(bytes).is_err(),
+        Some(player) => !super::limits::try_frame(&player.out, bytes),
         None => false,
     };
     if failed && drop_conn(shard, seats, conn, SocketEnd::Write)? {
@@ -599,7 +599,7 @@ fn send_player(
 
 fn send_gm(seats: &mut Seats, frame: Vec<u8>) {
     let failed = match seats.gm.as_ref() {
-        Some(gm) => gm.out.try_send(frame).is_err(),
+        Some(gm) => !super::limits::try_frame(&gm.out, frame),
         None => false,
     };
     if failed {
@@ -616,7 +616,7 @@ fn send_recipients(
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
         if recipients.iter().any(|id| id == &player.actor_id)
-            && player.out.try_send(line.clone()).is_err()
+            && !super::limits::try_frame(&player.out, line.clone())
         {
             failed.push(player.conn);
         }

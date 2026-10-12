@@ -30,7 +30,6 @@ tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", 
 
 [dev-dependencies]
 cucumber = "=0.23.0"
-socket2 = { version = "0.6", features = ["all"] }
 rmcp = { version = "3.5.1", default-features = false, features = ["client", "transport-child-process", "transport-streamable-http-client-reqwest"] }
 serde-saphyr = "=1.3.0"
 serde_json = "1"

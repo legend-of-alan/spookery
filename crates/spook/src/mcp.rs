@@ -9,8 +9,8 @@ use crate::Error;
 /// Dial the running GM seat and copy bytes between stdio and that socket.
 ///
 /// The seat speaks newline-delimited JSON-RPC after `gm`, the same framing as
-/// MCP stdio, so this is a byte relay. A refused hello is a sentence on stderr
-/// and nothing on stdout.
+/// MCP stdio, so this is a byte relay. A refusal, on the hello or later, is a
+/// sentence on stderr and is not written to stdout.
 pub fn bridge(addr: SocketAddr) -> Result<(), Error> {
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -24,30 +24,32 @@ async fn relay(addr: SocketAddr) -> Result<(), Error> {
     stream.set_nodelay(true).map_err(Error::Io)?;
     stream.write_all(b"gm\n").await.map_err(Error::Io)?;
     stream.flush().await.map_err(Error::Io)?;
-    let (mut read, mut write) = stream.into_split();
+    let (read_half, mut write) = stream.into_split();
+    let mut read = tokio::io::BufReader::new(read_half);
     let to_socket = tokio::spawn(async move {
         let mut stdin = tokio::io::stdin();
         let _ = tokio::io::copy(&mut stdin, &mut write).await;
         let _ = write.shutdown().await;
     });
-    let first = match read_line(&mut read).await {
-        Ok(Some(line)) => line,
-        Ok(None) => exit_closed(),
-        Err(err) => return Err(Error::Io(err)),
-    };
-    if let Some(code) = refused_code(&first) {
-        exit_refused(&code);
-    }
     let mut stdout = tokio::io::stdout();
-    stdout
-        .write_all(first.as_bytes())
-        .await
-        .map_err(Error::Io)?;
-    stdout.write_all(b"\n").await.map_err(Error::Io)?;
-    let copied = tokio::io::copy(&mut read, &mut stdout).await;
+    let mut saw_line = false;
+    loop {
+        let line = match read_line(&mut read).await {
+            Ok(Some(line)) => line,
+            Ok(None) if saw_line => break,
+            Ok(None) => exit_closed(),
+            Err(err) => return Err(Error::Io(err)),
+        };
+        saw_line = true;
+        if let Some(code) = refused_code(&line) {
+            let _ = stdout.flush().await;
+            exit_refused(&code);
+        }
+        stdout.write_all(line.as_bytes()).await.map_err(Error::Io)?;
+        stdout.write_all(b"\n").await.map_err(Error::Io)?;
+    }
     let _ = stdout.flush().await;
     let _ = to_socket.await;
-    copied.map_err(Error::Io)?;
     Ok(())
 }
 
@@ -61,7 +63,6 @@ fn exit_refused(code: &str) -> ! {
     let sentence = match code {
         "SESSION_FULL" => "The table is full.",
         "LINE_TOO_LONG" => "That line is too long.",
-        "RATE_LIMITED" => "Slow down.",
         _ => "The table refused that.",
     };
     eprintln!("{sentence} [{code}]");

@@ -213,42 +213,16 @@ fn one_player_sends_200_lines(world: &mut World) {
     let other_at = Instant::now();
     let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
     let other_ms = other_at.elapsed().as_millis();
-    let text = crate::with_live(|live| {
-        Arc::clone(
-            &live
-                .players
-                .iter()
-                .find(|player| player.actor_id == "pc_rowan")
-                .unwrap_or_else(|| panic!("no rowan"))
-                .text,
-        )
-    });
+    // Past the burst means a later line was kept. A drop would stop at 11 ticks.
     let deadline = Instant::now() + Duration::from_secs(8);
-    let mut stable = Instant::now();
-    let mut last_ticks = before;
-    loop {
-        let ticks = table::tick_names(&pack).len();
-        if ticks != last_ticks {
-            last_ticks = ticks;
-            stable = Instant::now();
-        }
-        let saw = support::text_of(&text).contains("RATE_LIMITED");
-        if saw && stable.elapsed() > Duration::from_millis(300) {
-            break;
-        }
-        if Instant::now() > deadline {
-            break;
+    let ticks = loop {
+        let ticks = table::tick_names(&pack).len().saturating_sub(before);
+        if ticks >= 12 || Instant::now() > deadline {
+            break ticks;
         }
         std::thread::sleep(Duration::from_millis(20));
-    }
-    let ticks = table::tick_names(&pack).len().saturating_sub(before);
-    world.player_added = support::text_of(&text);
+    };
     world.scratch = format!("{ticks} {} {other_ms}", started.elapsed().as_millis());
-}
-
-#[then(expr = "that player sees {string}")]
-fn that_player_sees(world: &mut World, code: String) {
-    assert!(world.player_added.contains(&code), "{}", world.player_added);
 }
 
 #[then(expr = "the committed ticks stay within the rate allowance")]
@@ -264,10 +238,11 @@ fn ticks_stay_within_the_allowance(world: &mut World) {
         .unwrap_or("0")
         .parse()
         .unwrap_or_else(|_| panic!("{}", world.scratch));
-    // Burst 10, then 5 lines per second, plus one line from the other player and one for rounding.
+    // Burst 10, then 5 lines per second, plus the other player's line and rounding.
+    // 12 means a line past the burst was kept. 200 would mean the flood was not paced.
     let allowance = 10.0 + 5.0 * (elapsed_ms / 1000.0) + 2.0;
     assert!(
-        ticks <= allowance && ticks < 200.0,
+        ticks >= 12.0 && ticks <= allowance && ticks < 200.0,
         "ticks {ticks} allowance {allowance} ({})",
         world.scratch
     );

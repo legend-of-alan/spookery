@@ -8,7 +8,7 @@
 
 use std::io;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -35,18 +35,36 @@ const HELLO_LIMIT: Duration = Duration::from_secs(10);
 /// Millitokens per line. Refill uses this scale so the bucket stays integer.
 const SCALE: u128 = 1000;
 
-pub(super) type OutTx = tokio::sync::mpsc::Sender<Vec<u8>>;
+pub(super) enum Outbound {
+    Frame(Vec<u8>),
+    /// Flushed, then acknowledged, then the writer shuts the socket down.
+    Last(Vec<u8>, tokio::sync::oneshot::Sender<()>),
+}
+
+pub(super) type OutTx = tokio::sync::mpsc::Sender<Outbound>;
 pub(super) type CancelTx = tokio::sync::watch::Sender<bool>;
 
 pub(super) fn outbound() -> (
     OutTx,
-    tokio::sync::mpsc::Receiver<Vec<u8>>,
+    tokio::sync::mpsc::Receiver<Outbound>,
     CancelTx,
     tokio::sync::watch::Receiver<bool>,
 ) {
     let (tx, rx) = tokio::sync::mpsc::channel(OUTBOUND_FRAMES);
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
     (tx, rx, cancel_tx, cancel_rx)
+}
+
+pub(super) fn try_frame(tx: &OutTx, bytes: Vec<u8>) -> bool {
+    tx.try_send(Outbound::Frame(bytes)).is_ok()
+}
+
+/// Queues the closing frame and waits until the writer has flushed it.
+pub(super) async fn send_last(tx: &OutTx, frame: Vec<u8>) {
+    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+    if tx.try_send(Outbound::Last(frame, ack_tx)).is_ok() {
+        let _ = ack_rx.await;
+    }
 }
 
 /// Tests set `SPOOK_HELLO_TIMEOUT_MS`. Any other value is the 10 second limit.
@@ -267,9 +285,8 @@ impl<R: AsyncRead + Unpin> AsyncRead for CappedLineRead<R> {
             return Poll::Ready(Ok(()));
         }
         let before = buf.filled().len();
-        let mut tmp = vec![0u8; want];
         let n = {
-            let mut limited = ReadBuf::new(&mut tmp);
+            let mut limited = buf.take(want);
             match Pin::new(&mut this.inner).poll_read(cx, &mut limited) {
                 Poll::Pending => return Poll::Pending,
                 Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
@@ -279,7 +296,8 @@ impl<R: AsyncRead + Unpin> AsyncRead for CappedLineRead<R> {
         if n == 0 {
             return Poll::Ready(Ok(()));
         }
-        buf.initialize_unfilled_to(n).copy_from_slice(&tmp[..n]);
+        // SAFETY: `take` aliases this tail, and the inner read initialized `n` bytes there.
+        unsafe { buf.assume_init(n) };
         buf.advance(n);
         let new = &buf.filled()[before..];
         let mut count = this.since_nl;
@@ -313,7 +331,7 @@ fn line_too_long() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "line too long")
 }
 
-/// One token per accepted line. A refusal leaves the bucket unchanged.
+/// One token per line that is read. An empty bucket spends nothing.
 pub(super) struct TokenBucket {
     rate_per_sec: u128,
     burst: u128,
@@ -332,11 +350,9 @@ impl TokenBucket {
         }
     }
 
+    /// Spends one token when one is available.
     pub(super) fn allow(&mut self, now: Instant) -> bool {
-        let elapsed = now.saturating_duration_since(self.updated);
-        self.updated = now;
-        let refill = elapsed.as_nanos().saturating_mul(self.rate_per_sec * SCALE) / 1_000_000_000;
-        self.tokens = self.tokens.saturating_add(refill).min(self.burst * SCALE);
+        self.refill(now);
         if self.tokens >= SCALE {
             self.tokens -= SCALE;
             true
@@ -344,13 +360,72 @@ impl TokenBucket {
             false
         }
     }
+
+    /// How long until one line token is available. Zero means one is ready.
+    pub(super) fn until_token(&mut self, now: Instant) -> Duration {
+        self.refill(now);
+        if self.tokens >= SCALE {
+            return Duration::ZERO;
+        }
+        if self.rate_per_sec == 0 {
+            return Duration::from_secs(60);
+        }
+        let need = SCALE - self.tokens;
+        let per_ns = self.rate_per_sec.saturating_mul(SCALE);
+        let need_ns = need.saturating_mul(1_000_000_000).div_ceil(per_ns);
+        let residual = now.saturating_duration_since(self.updated).as_nanos();
+        let ns = need_ns.saturating_sub(residual);
+        Duration::from_nanos(u64::try_from(ns).unwrap_or(u64::MAX))
+    }
+
+    fn refill(&mut self, now: Instant) {
+        let cap = self.burst.saturating_mul(SCALE);
+        if self.rate_per_sec == 0 || self.tokens >= cap {
+            self.updated = now;
+            return;
+        }
+        let elapsed_ns = now.saturating_duration_since(self.updated).as_nanos();
+        let per_ns = self.rate_per_sec.saturating_mul(SCALE);
+        let refill = elapsed_ns.saturating_mul(per_ns) / 1_000_000_000;
+        if refill == 0 {
+            return;
+        }
+        let added = refill.min(cap - self.tokens);
+        let consumed_ns = added.saturating_mul(1_000_000_000) / per_ns;
+        self.tokens = self.tokens.saturating_add(added);
+        self.updated += Duration::from_nanos(u64::try_from(consumed_ns).unwrap_or(u64::MAX));
+    }
+}
+
+/// Waits until a line token is ready. False means the seat was dropped.
+pub(super) async fn wait_turn(
+    bucket: &mut TokenBucket,
+    cancel: &mut tokio::sync::watch::Receiver<bool>,
+) -> bool {
+    loop {
+        if *cancel.borrow() {
+            return false;
+        }
+        let delay = bucket.until_token(Instant::now());
+        if delay.is_zero() {
+            return true;
+        }
+        tokio::select! {
+            biased;
+            changed = cancel.changed() => {
+                if changed.is_err() || *cancel.borrow() {
+                    return false;
+                }
+            }
+            _ = tokio::time::sleep(delay) => {}
+        }
+    }
 }
 
 pub(super) async fn write_frames<W>(
     mut write: W,
-    mut frames: tokio::sync::mpsc::Receiver<Vec<u8>>,
+    mut frames: tokio::sync::mpsc::Receiver<Outbound>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
-    flushed: Arc<AtomicUsize>,
 ) where
     W: AsyncWrite + Unpin,
 {
@@ -369,19 +444,28 @@ pub(super) async fn write_frames<W>(
         let Some(frame) = frame else {
             break;
         };
-        let pending = write_all_flush(&mut write, &frame);
-        tokio::pin!(pending);
-        tokio::select! {
-            result = &mut pending => {
-                if result.is_err() {
-                    break;
+        match frame {
+            Outbound::Frame(bytes) => {
+                let pending = write_all_flush(&mut write, &bytes);
+                tokio::pin!(pending);
+                tokio::select! {
+                    biased;
+                    result = &mut pending => {
+                        if result.is_err() {
+                            break;
+                        }
+                    }
+                    changed = cancel.changed() => {
+                        if changed.is_err() || *cancel.borrow() {
+                            break;
+                        }
+                    }
                 }
-                flushed.fetch_add(1, Ordering::Release);
             }
-            changed = cancel.changed() => {
-                if changed.is_err() || *cancel.borrow() {
-                    break;
-                }
+            Outbound::Last(bytes, ack) => {
+                let _ = write_all_flush(&mut write, &bytes).await;
+                let _ = ack.send(());
+                break;
             }
         }
     }
@@ -393,17 +477,6 @@ async fn write_all_flush(write: &mut (impl AsyncWrite + Unpin), frame: &[u8]) ->
     write.write_all(frame).await?;
     write.flush().await?;
     Ok(())
-}
-
-/// Waits until `counter` moves, or one second passes.
-pub(super) async fn wait_flushed(counter: &AtomicUsize, seen: usize) {
-    let start = Instant::now();
-    while counter.load(Ordering::Acquire) == seen {
-        if start.elapsed() > Duration::from_secs(1) {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(5)).await;
-    }
 }
 
 #[cfg(test)]
@@ -450,6 +523,57 @@ mod tests {
         let mut bucket = TokenBucket::new(5, 1);
         assert!(bucket.allow(start + Duration::from_secs(1)));
         assert!(!bucket.allow(start));
+    }
+
+    #[test]
+    fn a_bucket_keeps_time_that_did_not_fill_a_millitoken() {
+        let start = Instant::now();
+        let mut bucket = TokenBucket::new(5, 1);
+        assert!(bucket.allow(start));
+        assert!(!bucket.allow(start));
+        let mut now = start;
+        for _ in 0..1999 {
+            now += Duration::from_micros(100);
+            assert!(
+                !bucket.allow(now),
+                "{:?}",
+                now.saturating_duration_since(start)
+            );
+        }
+        now += Duration::from_micros(100);
+        assert!(bucket.allow(now));
+    }
+
+    #[test]
+    fn a_bucket_waits_only_for_the_missing_token() {
+        let start = Instant::now();
+        let mut bucket = TokenBucket::new(5, 1);
+        assert!(bucket.allow(start));
+        let full = bucket.until_token(start);
+        assert_eq!(full, Duration::from_millis(200));
+        let later = start + Duration::from_micros(100);
+        assert!(!bucket.allow(later));
+        let rest = bucket.until_token(later);
+        assert!(rest < full, "{rest:?}");
+        assert!(rest > Duration::from_millis(199), "{rest:?}");
+    }
+
+    #[tokio::test]
+    async fn the_last_frame_is_flushed_before_its_ack() {
+        use tokio::io::AsyncReadExt;
+        let (mut client, server) = tokio::io::duplex(256);
+        let (tx, rx, _cancel_tx, cancel_rx) = outbound();
+        let writer = tokio::spawn(write_frames(server, rx, cancel_rx));
+        assert!(try_frame(&tx, b"one\n".to_vec()));
+        let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+        tx.try_send(Outbound::Last(b"bye\n".to_vec(), ack_tx))
+            .expect("queue");
+        ack_rx.await.expect("ack");
+        drop(tx);
+        writer.await.expect("writer");
+        let mut buf = Vec::new();
+        client.read_to_end(&mut buf).await.expect("read");
+        assert_eq!(buf, b"one\nbye\n");
     }
 
     #[tokio::test]

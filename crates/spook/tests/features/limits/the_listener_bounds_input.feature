@@ -33,8 +33,7 @@ Feature: The listener bounds input
   Scenario: A flood is limited and another player still commits
     Given a docks table with two seated players
     When one player sends 200 lines as fast as it can
-    Then that player sees "RATE_LIMITED"
-    And the committed ticks stay within the rate allowance
+    Then the committed ticks stay within the rate allowance
     And the other player's line commits within 2 seconds
 
   Scenario: A player who stops reading is dropped
