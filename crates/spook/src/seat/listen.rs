@@ -132,24 +132,40 @@ fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
 }
 
 async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u64) {
-    let line = match read_lf_line(&mut stream).await {
-        Ok(Some(line)) => line,
-        Ok(None) => {
-            report_fault(&tx, conn, SocketEnd::Eof).await;
-            return;
-        }
-        Err(_) => {
-            report_fault(&tx, conn, SocketEnd::Read).await;
-            return;
+    let line = {
+        let read = async {
+            let mut reader = super::limits::Unbuffered::new(&mut stream);
+            super::limits::read_capped_line(&mut reader, super::limits::PLAYER_LINE_CAP).await
+        };
+        match tokio::time::timeout(super::limits::hello_timeout(), read).await {
+            Err(_) => return,
+            Ok(Ok(Some(line))) => line,
+            Ok(Ok(None)) => {
+                report_fault(&tx, conn, SocketEnd::Eof).await;
+                return;
+            }
+            Ok(Err(super::limits::LineFail::Io)) => {
+                report_fault(&tx, conn, SocketEnd::Read).await;
+                return;
+            }
+            Ok(Err(super::limits::LineFail::TooLong)) => {
+                refuse(&mut stream, &refused_frame(Reason::LineTooLong)).await;
+                return;
+            }
+            Ok(Err(super::limits::LineFail::BadUtf8)) => {
+                refuse(&mut stream, &refused_frame(Reason::Schema)).await;
+                return;
+            }
         }
     };
-    let (out_tx, out_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (out_tx, out_rx, cancel_tx, cancel_rx) = super::limits::outbound();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if tx
         .send(Msg::Hello {
             conn,
             line,
             out: out_tx.clone(),
+            cancel: cancel_tx,
             reply: reply_tx,
         })
         .is_err()
@@ -164,32 +180,60 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
         HelloReply::Refused(line) => {
             drop(out_tx);
             drop(out_rx);
+            drop(cancel_rx);
             refuse(&mut stream, line.as_bytes()).await;
         }
         HelloReply::Player => {
-            let (mut read_half, write_half) = stream.into_split();
-            let writer = tokio::spawn(async move {
-                let mut out_rx = out_rx;
-                let mut write_half = write_half;
-                while let Some(frame) = out_rx.recv().await {
-                    if write_frame(&mut write_half, &frame).await.is_err() {
-                        break;
-                    }
+            // The queue is the bound. A small send buffer makes a client that
+            // stops reading fill that queue instead of the kernel's window.
+            let _ = socket2::SockRef::from(&stream).set_send_buffer_size(8 * 1024);
+            player_session(stream, tx, conn, out_tx, out_rx, cancel_rx).await;
+        }
+        HelloReply::Gm => {
+            let (read_half, write_half) = stream.into_split();
+            gm::serve(read_half, write_half, out_tx, out_rx, cancel_rx, tx, conn).await;
+        }
+    }
+}
+
+async fn player_session(
+    stream: tokio::net::TcpStream,
+    tx: Sender<Msg>,
+    conn: u64,
+    out_tx: super::limits::OutTx,
+    out_rx: tokio::sync::mpsc::Receiver<super::limits::Outbound>,
+    mut cancel_rx: tokio::sync::watch::Receiver<bool>,
+) {
+    let (read_half, write_half) = stream.into_split();
+    let mut reader =
+        tokio::io::BufReader::with_capacity(super::limits::PLAYER_LINE_CAP + 1, read_half);
+    let writer = tokio::spawn(super::limits::write_frames(
+        write_half,
+        out_rx,
+        cancel_rx.clone(),
+    ));
+    let mut bucket =
+        super::limits::TokenBucket::new(super::limits::RATE_PER_SEC, super::limits::BURST);
+    loop {
+        // Wait before reading so a full window slows the sender. The line is kept.
+        if !super::limits::wait_turn(&mut bucket, &mut cancel_rx).await {
+            break;
+        }
+        let read = super::limits::read_capped_line(&mut reader, super::limits::PLAYER_LINE_CAP);
+        tokio::pin!(read);
+        let line = tokio::select! {
+            biased;
+            changed = cancel_rx.changed() => {
+                if changed.is_err() || *cancel_rx.borrow() {
+                    break;
                 }
-            });
-            drop(out_tx);
-            loop {
-                let line = match read_lf_line(&mut read_half).await {
-                    Ok(Some(line)) => line,
-                    Ok(None) => {
-                        report_fault(&tx, conn, SocketEnd::Eof).await;
-                        break;
-                    }
-                    Err(_) => {
-                        report_fault(&tx, conn, SocketEnd::Read).await;
-                        break;
-                    }
-                };
+                continue;
+            }
+            line = &mut read => line,
+        };
+        match line {
+            Ok(Some(line)) => {
+                let _ = bucket.allow(std::time::Instant::now());
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 if tx
                     .send(Msg::Player {
@@ -206,13 +250,34 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
                     Ok(PlayerReply::Hangup) | Err(_) => break,
                 }
             }
-            let _ = writer.await;
-        }
-        HelloReply::Gm => {
-            let (read_half, write_half) = stream.into_split();
-            gm::serve(read_half, write_half, out_tx, out_rx, tx, conn).await;
+            Ok(None) => {
+                report_fault(&tx, conn, SocketEnd::Eof).await;
+                break;
+            }
+            Err(super::limits::LineFail::TooLong) => {
+                super::limits::send_last(&out_tx, refused_frame(Reason::LineTooLong)).await;
+                report_fault(&tx, conn, SocketEnd::Close).await;
+                break;
+            }
+            Err(super::limits::LineFail::BadUtf8) => {
+                let _ = bucket.allow(std::time::Instant::now());
+                if !super::limits::try_frame(&out_tx, refused_frame(Reason::Schema)) {
+                    report_fault(&tx, conn, SocketEnd::Write).await;
+                    break;
+                }
+            }
+            Err(super::limits::LineFail::Io) => {
+                report_fault(&tx, conn, SocketEnd::Read).await;
+                break;
+            }
         }
     }
+    drop(out_tx);
+    let _ = writer.await;
+}
+
+fn refused_frame(code: Reason) -> Vec<u8> {
+    super::protocol::player_refused_line(code.token()).into_bytes()
 }
 
 pub(super) async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
@@ -228,42 +293,6 @@ pub(super) async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
         return;
     }
     let _ = ack_rx.await;
-}
-
-async fn write_frame(write: &mut tokio::net::tcp::OwnedWriteHalf, frame: &[u8]) -> io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    write.write_all(frame).await?;
-    write.flush().await?;
-    Ok(())
-}
-
-async fn read_lf_line<R: tokio::io::AsyncRead + Unpin>(
-    stream: &mut R,
-) -> io::Result<Option<String>> {
-    use tokio::io::AsyncReadExt;
-    let mut buf = Vec::new();
-    let mut byte = [0u8; 1];
-    loop {
-        match stream.read(&mut byte).await {
-            Ok(0) => {
-                if buf.is_empty() {
-                    return Ok(None);
-                }
-                break;
-            }
-            Ok(_) => {
-                if byte[0] == b'\n' {
-                    break;
-                }
-                buf.push(byte[0]);
-            }
-            Err(err) => return Err(err),
-        }
-    }
-    if buf.last() == Some(&b'\r') {
-        buf.pop();
-    }
-    Ok(Some(String::from_utf8_lossy(&buf).into_owned()))
 }
 
 async fn write_bytes(stream: &mut tokio::net::TcpStream, bytes: &[u8]) -> io::Result<()> {

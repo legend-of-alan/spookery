@@ -94,8 +94,12 @@ pub fn tick_names(pack: &Path) -> Vec<String> {
 }
 
 pub fn listen(pack: &Path, bind: &str, port: u16) {
+    listen_with(pack, bind, port, &[]);
+}
+
+pub fn listen_with(pack: &Path, bind: &str, port: u16, env: &[(&str, &str)]) {
     let pack_arg = support::pack_arg(pack);
-    let mut server = support::spawn(&["run", &pack_arg, "--addr", bind]);
+    let mut server = support::spawn_env(&["run", &pack_arg, "--addr", bind], env);
     wait_listen(port, &mut server);
     let opened_now =
         fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));

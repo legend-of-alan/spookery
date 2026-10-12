@@ -50,21 +50,22 @@ pub(super) fn http_host(tx: Sender<Msg>, conn: u64) -> GmHost {
 pub(super) async fn serve(
     read_half: tokio::net::tcp::OwnedReadHalf,
     write_half: tokio::net::tcp::OwnedWriteHalf,
-    out_tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
-    out_rx: tokio::sync::mpsc::UnboundedReceiver<Vec<u8>>,
+    out_tx: super::limits::OutTx,
+    out_rx: tokio::sync::mpsc::Receiver<super::limits::Outbound>,
+    cancel_rx: tokio::sync::watch::Receiver<bool>,
     tx: Sender<Msg>,
     conn: u64,
 ) {
+    let too_long = Arc::new(AtomicBool::new(false));
+    let read_half = super::limits::CappedLineRead::new(
+        read_half,
+        super::limits::GM_LINE_CAP,
+        Arc::clone(&too_long),
+    );
+    let mut service_cancel = cancel_rx.clone();
+    let notify = out_tx.clone();
+    let writer_task = tokio::spawn(super::limits::write_frames(write_half, out_rx, cancel_rx));
     let (after_tx, after_rx) = std::sync::mpsc::channel();
-    let writer_task = tokio::spawn(async move {
-        let mut out_rx = out_rx;
-        let mut write_half = write_half;
-        while let Some(frame) = out_rx.recv().await {
-            if write_frame(&mut write_half, &frame).await.is_err() {
-                break;
-            }
-        }
-    });
     let writer = LineWriter {
         tx: out_tx,
         buf: Vec::new(),
@@ -76,21 +77,41 @@ pub(super) async fn serve(
         http: None,
     };
     if let Ok(running) = host.serve((read_half, writer)).await {
-        let _ = running.waiting().await;
+        // A full queue drops the seat and cancels. Dropping the service here
+        // stops the next tool call. `Msg::Tool` has no connection id.
+        let mut token = Some(running.cancellation_token());
+        let waiting = running.waiting();
+        tokio::pin!(waiting);
+        loop {
+            tokio::select! {
+                biased;
+                changed = service_cancel.changed() => {
+                    if changed.is_err() || *service_cancel.borrow() {
+                        if let Some(token) = token.take() {
+                            token.cancel();
+                        }
+                    }
+                }
+                result = &mut waiting => {
+                    let _ = result;
+                    break;
+                }
+            }
+        }
     }
+    if too_long.load(Ordering::Acquire) {
+        let frame =
+            super::protocol::player_refused_line(spookery_kernel::Reason::LineTooLong.token())
+                .into_bytes();
+        super::limits::send_last(&notify, frame).await;
+    }
+    drop(notify);
     listen::report_fault(&tx, conn, SocketEnd::Eof).await;
     let _ = writer_task.await;
 }
 
-async fn write_frame(write: &mut tokio::net::tcp::OwnedWriteHalf, frame: &[u8]) -> io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    write.write_all(frame).await?;
-    write.flush().await?;
-    Ok(())
-}
-
 struct LineWriter {
-    tx: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    tx: super::limits::OutTx,
     buf: Vec<u8>,
     after_rx: std::sync::mpsc::Receiver<Vec<u8>>,
 }
@@ -105,14 +126,14 @@ impl tokio::io::AsyncWrite for LineWriter {
         writer.buf.extend_from_slice(data);
         while let Some(index) = writer.buf.iter().position(|byte| *byte == b'\n') {
             let frame: Vec<u8> = writer.buf.drain(..=index).collect();
-            if writer.tx.send(frame).is_err() {
+            if !super::limits::try_frame(&writer.tx, frame) {
                 return Poll::Ready(Err(io::Error::new(
                     io::ErrorKind::BrokenPipe,
                     "gm writer closed",
                 )));
             }
             while let Ok(extra) = writer.after_rx.try_recv() {
-                if writer.tx.send(extra).is_err() {
+                if !super::limits::try_frame(&writer.tx, extra) {
                     return Poll::Ready(Err(io::Error::new(
                         io::ErrorKind::BrokenPipe,
                         "gm writer closed",
@@ -219,13 +240,14 @@ impl GmHost {
         let Some(http) = &self.http else {
             return Ok(());
         };
-        let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (out_tx, mut out_rx, cancel_tx, mut cancel_rx) = super::limits::outbound();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(Msg::Hello {
                 conn: http.conn,
                 line: "gm".to_string(),
                 out: out_tx,
+                cancel: cancel_tx,
                 reply: reply_tx,
             })
             .map_err(|_| McpError::internal_error("shard closed", None))?;
@@ -241,8 +263,38 @@ impl GmHost {
                 }
                 let peer = context.peer.clone();
                 tokio::spawn(async move {
-                    while let Some(frame) = out_rx.recv().await {
-                        emit_event(&peer, &frame).await;
+                    loop {
+                        let item = tokio::select! {
+                            biased;
+                            item = out_rx.recv() => item,
+                            changed = cancel_rx.changed() => {
+                                if changed.is_err() || *cancel_rx.borrow() {
+                                    break;
+                                }
+                                continue;
+                            }
+                        };
+                        let Some(item) = item else {
+                            break;
+                        };
+                        let (frame, ack) = match item {
+                            super::limits::Outbound::Frame(frame) => (frame, None),
+                            super::limits::Outbound::Last(frame, ack) => (frame, Some(ack)),
+                        };
+                        let send = emit_event(&peer, &frame);
+                        tokio::pin!(send);
+                        let stop = tokio::select! {
+                            _ = &mut send => false,
+                            changed = cancel_rx.changed() => {
+                                changed.is_err() || *cancel_rx.borrow()
+                            }
+                        };
+                        if let Some(ack) = ack {
+                            let _ = ack.send(());
+                        }
+                        if stop {
+                            break;
+                        }
                     }
                 });
                 Ok(())
@@ -297,10 +349,10 @@ fn refusal_error(line: &str) -> McpError {
                 .map(str::to_string)
         })
         .unwrap_or_else(|| "SESSION_FULL".to_string());
-    let sentence = if code == "SESSION_FULL" {
-        format!("The table is full. [{code}]")
-    } else {
-        format!("The table refused that. [{code}]")
+    let sentence = match code.as_str() {
+        "SESSION_FULL" => format!("The table is full. [{code}]"),
+        "LINE_TOO_LONG" => format!("That line is too long. [{code}]"),
+        _ => format!("The table refused that. [{code}]"),
     };
     McpError::internal_error(sentence, None)
 }

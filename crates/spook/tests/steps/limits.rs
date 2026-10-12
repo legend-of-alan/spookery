@@ -1,0 +1,539 @@
+use std::io::{ErrorKind, Read, Write};
+use std::net::TcpStream;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use cucumber::{then, when};
+
+use crate::support;
+use crate::World;
+
+use super::table;
+
+const MIB: usize = 1024 * 1024;
+
+#[when(expr = "a player sends a 1 MiB line with no newline")]
+fn a_player_sends_a_mebibyte_line(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let port = table::free_port();
+    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::seat_player(&pack);
+    let text = crate::with_live(|live| Arc::clone(&live.player_text));
+    let writer = crate::with_live(|live| {
+        live.player_write
+            .as_ref()
+            .unwrap_or_else(|| panic!("no player"))
+            .try_clone()
+            .unwrap_or_else(|err| panic!("clone: {err}"))
+    });
+    let join = std::thread::spawn(move || write_all_ignoring(writer, vec![b'a'; MIB]));
+    world.player_added = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
+    table::wait_humans(&pack, 0);
+    join.join().unwrap_or_else(|_| panic!("writer thread"));
+}
+
+#[then(expr = "that player is refused with {string} and disconnected")]
+fn refused_and_disconnected(world: &mut World, code: String) {
+    let needle = format!("\"code\":\"{code}\"");
+    assert!(
+        world.player_added.contains(&needle),
+        "{}",
+        world.player_added
+    );
+    assert_eq!(
+        table::now_of(table::pack(world)).presence.humans,
+        0,
+        "the seat was not released"
+    );
+}
+
+#[then(expr = "a second player can sit and wait")]
+fn a_second_player_can_sit_and_wait(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::seat_actor(&pack, "pc_harbormouse");
+    let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
+    assert!(
+        !table::tick_names(&pack).is_empty(),
+        "the second player did not commit a tick"
+    );
+}
+
+#[when(expr = "a socket sends an oversized hello")]
+fn a_socket_sends_an_oversized_hello(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let port = table::free_port();
+    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    let stream = connect(port);
+    let text = spawn_reader(&stream);
+    let join = std::thread::spawn(move || write_all_ignoring(stream, vec![b'a'; MIB]));
+    world.scratch = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
+    join.join().unwrap_or_else(|_| panic!("writer thread"));
+}
+
+#[when(expr = "a GM sends a JSON-RPC line over 1 MiB")]
+fn a_gm_sends_a_line_over_a_mebibyte(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let port = table::free_port();
+    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::seat_gm();
+    let text = crate::with_live(|live| Arc::clone(&live.gm_text));
+    let writer = crate::with_live(|live| {
+        live.gm_write
+            .as_ref()
+            .unwrap_or_else(|| panic!("no GM"))
+            .try_clone()
+            .unwrap_or_else(|err| panic!("clone: {err}"))
+    });
+    let join = std::thread::spawn(move || write_all_ignoring(writer, vec![b'x'; MIB + 1]));
+    world.scratch = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
+    join.join().unwrap_or_else(|_| panic!("writer thread"));
+    world.pack = Some(pack);
+}
+
+#[then(expr = "the GM session ends with {string}")]
+fn the_gm_session_ends_with(world: &mut World, code: String) {
+    let needle = format!("\"code\":\"{code}\"");
+    assert!(world.scratch.contains(&needle), "{}", world.scratch);
+}
+
+#[then(expr = "a new GM can sit")]
+fn a_new_gm_can_sit(_world: &mut World) {
+    let port = crate::with_live(|live| live.port);
+    let start = Instant::now();
+    loop {
+        match try_gm(port) {
+            Ok(()) => return,
+            Err(err) if start.elapsed() < Duration::from_secs(5) => {
+                let _ = err;
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(err) => panic!("new GM did not sit: {err}"),
+        }
+    }
+}
+
+#[when(expr = "the player sends invalid UTF-8")]
+fn the_player_sends_invalid_utf8(world: &mut World) {
+    let mark = table::player_len();
+    crate::with_live(|live| {
+        let write = live
+            .player_write
+            .as_mut()
+            .unwrap_or_else(|| panic!("no player"));
+        write
+            .write_all(b"\xff\n")
+            .unwrap_or_else(|err| panic!("write: {err}"));
+        write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    });
+    world.player_added = table::wait_player_from(mark, "\"code\":\"SCHEMA\"");
+}
+
+#[then(expr = "the player is refused with {string}")]
+fn the_player_is_refused_with(world: &mut World, code: String) {
+    let needle = format!("\"code\":\"{code}\"");
+    assert!(
+        world.player_added.contains(&needle),
+        "{}",
+        world.player_added
+    );
+}
+
+#[then(expr = "the player can wait")]
+fn the_player_can_wait(world: &mut World) {
+    let _ = table::player_send("wait", "\"kind\":");
+    assert!(
+        table::now_of(table::pack(world)).world_time > 1080,
+        "the line after invalid UTF-8 did not commit"
+    );
+}
+
+#[when(expr = "a socket connects and sends nothing")]
+fn a_socket_connects_and_sends_nothing(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let port = table::free_port();
+    table::listen_with(
+        &pack,
+        &format!("127.0.0.1:{port}"),
+        port,
+        &[("SPOOK_HELLO_TIMEOUT_MS", "200")],
+    );
+    let mut stream = connect(port);
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap_or_else(|err| panic!("timeout: {err}"));
+    let start = Instant::now();
+    let mut buf = [0u8; 8];
+    let closed = match stream.read(&mut buf) {
+        Ok(0) => true,
+        Ok(_) => false,
+        Err(err) if err.kind() == ErrorKind::TimedOut || err.kind() == ErrorKind::WouldBlock => {
+            false
+        }
+        Err(_) => true,
+    };
+    world.scratch = format!("closed={closed} elapsed_ms={}", start.elapsed().as_millis());
+}
+
+#[then(expr = "the socket is closed before the hello")]
+fn the_socket_is_closed_before_the_hello(world: &mut World) {
+    assert!(
+        world.scratch.starts_with("closed=true"),
+        "{}",
+        world.scratch
+    );
+    let ms: u128 = world
+        .scratch
+        .split("elapsed_ms=")
+        .nth(1)
+        .unwrap_or("99999")
+        .parse()
+        .unwrap_or(99999);
+    assert!(ms < 2_000, "{}", world.scratch);
+}
+
+#[when(expr = "one player sends 200 lines as fast as it can")]
+fn one_player_sends_200_lines(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let before = table::tick_names(&pack).len();
+    let started = Instant::now();
+    crate::with_live(|live| {
+        let player = live
+            .players
+            .iter_mut()
+            .find(|player| player.actor_id == "pc_rowan")
+            .unwrap_or_else(|| panic!("no rowan"));
+        for _ in 0..200 {
+            writeln!(player.write, "wait").unwrap_or_else(|err| panic!("write: {err}"));
+        }
+        player
+            .write
+            .flush()
+            .unwrap_or_else(|err| panic!("flush: {err}"));
+    });
+    let other_at = Instant::now();
+    let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
+    let other_ms = other_at.elapsed().as_millis();
+    // Past the burst means a later line was kept. A drop would stop at 11 ticks.
+    let deadline = Instant::now() + Duration::from_secs(8);
+    let ticks = loop {
+        let ticks = table::tick_names(&pack).len().saturating_sub(before);
+        if ticks >= 12 || Instant::now() > deadline {
+            break ticks;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    world.scratch = format!("{ticks} {} {other_ms}", started.elapsed().as_millis());
+}
+
+#[then(expr = "the committed ticks stay within the rate allowance")]
+fn ticks_stay_within_the_allowance(world: &mut World) {
+    let mut parts = world.scratch.split_whitespace();
+    let ticks: f64 = parts
+        .next()
+        .unwrap_or("0")
+        .parse()
+        .unwrap_or_else(|_| panic!("{}", world.scratch));
+    let elapsed_ms: f64 = parts
+        .next()
+        .unwrap_or("0")
+        .parse()
+        .unwrap_or_else(|_| panic!("{}", world.scratch));
+    // Burst 10, then 5 lines per second, plus the other player's line and rounding.
+    // 12 means a line past the burst was kept. 200 would mean the flood was not paced.
+    let allowance = 10.0 + 5.0 * (elapsed_ms / 1000.0) + 2.0;
+    assert!(
+        ticks >= 12.0 && ticks <= allowance && ticks < 200.0,
+        "ticks {ticks} allowance {allowance} ({})",
+        world.scratch
+    );
+}
+
+#[then(expr = "the other player's line commits within 2 seconds")]
+fn the_other_player_commits_within_2_seconds(world: &mut World) {
+    let other_ms: u128 = world
+        .scratch
+        .split_whitespace()
+        .nth(2)
+        .unwrap_or("99999")
+        .parse()
+        .unwrap_or(99999);
+    assert!(other_ms < 2_000, "{}", world.scratch);
+}
+
+#[when(expr = "one player stops reading and the GM says many lines")]
+fn one_player_stops_reading(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let port = table::free_port();
+    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::seat_gm();
+    table::seat_actor(&pack, "pc_harbormouse");
+    let mut quiet = connect_small_window(port);
+    writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
+    quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    read_until(&mut quiet, "\"kind\":\"perceive\"", Duration::from_secs(2));
+    crate::with_live(|live| {
+        live.players.push(table::Seated {
+            actor_id: "pc_rowan".to_string(),
+            write: quiet,
+            text: Arc::new(Mutex::new(String::new())),
+        });
+    });
+    let start = Instant::now();
+    let mut id = 2u64;
+    let gm_text = crate::with_live(|live| Arc::clone(&live.gm_text));
+    loop {
+        let present = table::now_of(&pack).presence.actors_present.clone();
+        if !present.iter().any(|actor| actor == "pc_rowan") {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(30) || id > 700 {
+            let stderr = crate::with_live(|live| {
+                live.server
+                    .as_ref()
+                    .map(|server| support::text_of(&server.stderr))
+                    .unwrap_or_default()
+            });
+            panic!(
+                "rowan still seated after {} says: {present:?}\n{stderr}",
+                id - 2
+            );
+        }
+        let mark = support::text_of(&gm_text).len();
+        let wrote = crate::with_live(|live| {
+            let write = live.gm_write.as_mut().unwrap();
+            writeln!(
+                write,
+                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":\"say\",\"arguments\":{{\"address\":\"table\",\"text\":\"n\"}}}}}}"
+            )
+            .and_then(|()| write.flush())
+        });
+        if let Err(err) = wrote {
+            let stderr = crate::with_live(|live| {
+                live.server
+                    .as_ref()
+                    .map(|server| support::text_of(&server.stderr))
+                    .unwrap_or_default()
+            });
+            panic!("say {id} failed: {err}\n{stderr}");
+        }
+        let needle = format!("\"id\":{id}");
+        let wait_started = Instant::now();
+        loop {
+            let text = support::text_of(&gm_text);
+            if text.get(mark..).unwrap_or("").contains(&needle) {
+                break;
+            }
+            if wait_started.elapsed() > Duration::from_secs(5) {
+                let stderr = crate::with_live(|live| {
+                    live.server
+                        .as_ref()
+                        .map(|server| support::text_of(&server.stderr))
+                        .unwrap_or_default()
+                });
+                panic!("say {id} got no reply\n{text}\n{stderr}");
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        id += 1;
+    }
+    let heard = Instant::now();
+    loop {
+        let text = table::actor_text("pc_harbormouse");
+        if text.contains("\"kind\":\"say\"") {
+            world.player_added = text;
+            break;
+        }
+        if heard.elapsed() > Duration::from_secs(2) {
+            panic!(
+                "the other player saw no say\n{}",
+                table::actor_text("pc_harbormouse")
+            );
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[then(expr = "that player is disconnected")]
+fn that_player_is_disconnected(world: &mut World) {
+    let present = table::now_of(table::pack(world))
+        .presence
+        .actors_present
+        .clone();
+    assert!(
+        !present.iter().any(|actor| actor == "pc_rowan"),
+        "{present:?}"
+    );
+    assert!(
+        present.iter().any(|actor| actor == "pc_harbormouse"),
+        "{present:?}"
+    );
+}
+
+#[then(expr = "the other player keeps receiving frames")]
+fn the_other_player_keeps_receiving_frames(world: &mut World) {
+    assert!(
+        world.player_added.contains("\"kind\":\"say\""),
+        "{}",
+        world.player_added
+    );
+}
+
+fn write_all_ignoring(mut stream: TcpStream, bytes: Vec<u8>) {
+    let _ = stream.write_all(&bytes);
+    let _ = stream.flush();
+}
+
+fn connect_small_window(port: u16) -> TcpStream {
+    let socket = socket2::Socket::new(
+        socket2::Domain::IPV4,
+        socket2::Type::STREAM,
+        Some(socket2::Protocol::TCP),
+    )
+    .unwrap_or_else(|err| panic!("socket: {err}"));
+    socket
+        .set_recv_buffer_size(8 * 1024)
+        .unwrap_or_else(|err| panic!("recv buffer: {err}"));
+    socket
+        .set_tcp_nodelay(true)
+        .unwrap_or_else(|err| panic!("nodelay: {err}"));
+    let addr: std::net::SocketAddr = format!("127.0.0.1:{port}")
+        .parse()
+        .unwrap_or_else(|err| panic!("addr: {err}"));
+    let start = Instant::now();
+    loop {
+        match socket.connect(&addr.into()) {
+            Ok(()) => break,
+            Err(err) => {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("connect 127.0.0.1:{port}: {err}");
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+    let size = socket
+        .recv_buffer_size()
+        .unwrap_or_else(|err| panic!("recv buffer size: {err}"));
+    assert!(
+        size <= 128 * 1024,
+        "receive window is {size}, so a stopped reader would not fill the send queue"
+    );
+    socket.into()
+}
+
+fn connect(port: u16) -> TcpStream {
+    let start = Instant::now();
+    let addr = format!("127.0.0.1:{port}");
+    loop {
+        match TcpStream::connect(&addr) {
+            Ok(stream) => {
+                stream
+                    .set_nodelay(true)
+                    .unwrap_or_else(|err| panic!("nodelay: {err}"));
+                return stream;
+            }
+            Err(err) => {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("connect {addr}: {err}");
+                }
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+    }
+}
+
+fn spawn_reader(stream: &TcpStream) -> Arc<Mutex<String>> {
+    let read = stream
+        .try_clone()
+        .unwrap_or_else(|err| panic!("clone: {err}"));
+    let text = Arc::new(Mutex::new(String::new()));
+    let slot = Arc::clone(&text);
+    std::thread::spawn(move || {
+        let mut read = read;
+        let mut buf = [0u8; 256];
+        loop {
+            match read.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => text
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .push_str(&String::from_utf8_lossy(&buf[..n])),
+            }
+        }
+    });
+    slot
+}
+
+fn wait_text(slot: &Arc<Mutex<String>>, needle: &str, limit: Duration) -> String {
+    let start = Instant::now();
+    loop {
+        let text = support::text_of(slot);
+        if text.contains(needle) {
+            return text;
+        }
+        if start.elapsed() > limit {
+            panic!("missing {needle}\n{text}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
+    stream
+        .set_read_timeout(Some(limit))
+        .unwrap_or_else(|err| panic!("timeout: {err}"));
+    let mut got = Vec::new();
+    let mut tmp = [0u8; 1024];
+    let start = Instant::now();
+    while !String::from_utf8_lossy(&got).contains(needle) {
+        if start.elapsed() > limit {
+            panic!("missing {needle}\n{}", String::from_utf8_lossy(&got));
+        }
+        match stream.read(&mut tmp) {
+            Ok(0) => panic!("eof before {needle}"),
+            Ok(n) => got.extend_from_slice(&tmp[..n]),
+            Err(err)
+                if err.kind() == ErrorKind::TimedOut || err.kind() == ErrorKind::WouldBlock =>
+            {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(err) => panic!("read: {err}"),
+        }
+    }
+    stream
+        .set_read_timeout(None)
+        .unwrap_or_else(|err| panic!("clear timeout: {err}"));
+}
+
+fn try_gm(port: u16) -> Result<(), String> {
+    let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|err| err.to_string())?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .map_err(|err| err.to_string())?;
+    stream
+        .write_all(b"gm\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"proof\",\"version\":\"0\"}}}\n")
+        .map_err(|err| err.to_string())?;
+    stream.flush().map_err(|err| err.to_string())?;
+    let mut got = Vec::new();
+    let mut tmp = [0u8; 256];
+    let start = Instant::now();
+    loop {
+        if String::from_utf8_lossy(&got).contains("\"id\":1") {
+            let text = String::from_utf8_lossy(&got);
+            if text.contains("SESSION_FULL") {
+                return Err("SESSION_FULL".to_string());
+            }
+            return Ok(());
+        }
+        if start.elapsed() > Duration::from_secs(2) {
+            return Err(format!("no initialize\n{}", String::from_utf8_lossy(&got)));
+        }
+        match stream.read(&mut tmp) {
+            Ok(0) => return Err("eof".to_string()),
+            Ok(n) => got.extend_from_slice(&tmp[..n]),
+            Err(err)
+                if err.kind() == ErrorKind::TimedOut || err.kind() == ErrorKind::WouldBlock => {}
+            Err(err) => return Err(err.to_string()),
+        }
+    }
+}

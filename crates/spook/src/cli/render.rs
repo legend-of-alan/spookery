@@ -116,6 +116,7 @@ pub(crate) fn refusal(code: &str) -> String {
         "SESSION_FULL" => "The table is full.",
         "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
+        "LINE_TOO_LONG" => "That line is too long.",
         _ => return format!("The table refused that. [{code}]"),
     };
     format!("{sentence} [{code}]")
@@ -353,6 +354,11 @@ Shop day: 1/1"
         });
         assert_eq!(taken, "That character is already taken. [SEAT_TAKEN]");
         assert_readable(&taken);
+        let long = render(&PlayerMessage::Refused {
+            code: "LINE_TOO_LONG".to_string(),
+        });
+        assert_eq!(long, "That line is too long. [LINE_TOO_LONG]");
+        assert_readable(&long);
 
         let unknown = render(&PlayerMessage::Refused {
             code: "NEW_CODE".to_string(),

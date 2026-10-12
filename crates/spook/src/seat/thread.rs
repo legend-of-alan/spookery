@@ -6,6 +6,7 @@ use spookery_kernel::perceive::perceive;
 use spookery_kernel::shard::Shard;
 use spookery_kernel::{idle_digest, DigestViewer, Reason};
 
+use super::limits::{CancelTx, OutTx};
 use super::protocol;
 use super::speech::speak;
 use super::turn;
@@ -211,19 +212,34 @@ struct HeldPlayer {
     conn: u64,
     actor_id: String,
     session_id: String,
-    out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    out: OutTx,
+    cancel: CancelTx,
+}
+
+impl Drop for HeldPlayer {
+    fn drop(&mut self) {
+        let _ = self.cancel.send(true);
+    }
 }
 
 struct GmSeat {
     conn: u64,
-    out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    out: OutTx,
+    cancel: CancelTx,
+}
+
+impl Drop for GmSeat {
+    fn drop(&mut self) {
+        let _ = self.cancel.send(true);
+    }
 }
 
 pub(super) enum Msg {
     Hello {
         conn: u64,
         line: String,
-        out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+        out: OutTx,
+        cancel: CancelTx,
         reply: tokio::sync::oneshot::Sender<HelloReply>,
     },
     Player {
@@ -295,9 +311,10 @@ fn on_msg(
             conn,
             line,
             out,
+            cancel,
             reply,
         } => {
-            let answer = on_hello(shard, seats, next_session, conn, &line, out)?;
+            let answer = on_hello(shard, seats, next_session, conn, &line, out, cancel)?;
             if reply.send(answer).is_err() && seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
                 seats.gm = None;
             }
@@ -321,7 +338,7 @@ fn on_msg(
                 Vec::new()
             };
             if done.ticked {
-                refresh_players(shard, seats, &notices);
+                refresh_players(shard, seats, &notices)?;
                 print_host(shard);
             }
             if let Some(tape) = &done.tape {
@@ -329,12 +346,10 @@ fn on_msg(
                 let _ = io::stdout().flush();
             }
             if let Some(frame) = done.gm_event {
-                if let Some(gm) = &seats.gm {
-                    let _ = gm.out.send(frame);
-                }
+                send_gm(seats, frame);
             }
             if let Some((recipients, line)) = &done.player_line {
-                send_recipients(seats, recipients, line.clone());
+                send_recipients(shard, seats, recipients, line.clone())?;
             }
             let mut after = done.after;
             after.extend(turn::gm_check_frames(&notices));
@@ -363,19 +378,31 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
     let _ = restart.send(next);
 }
 
-fn refresh_players(shard: &Shard, seats: &Seats, notices: &[spookery_kernel::check::CheckNotice]) {
+fn refresh_players(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    notices: &[spookery_kernel::check::CheckNotice],
+) -> Result<(), Reason> {
+    let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
-        match player_refresh(shard, &player.actor_id) {
+        let bytes = match player_refresh(shard, &player.actor_id) {
             Ok(text) => {
                 let mut out = turn::player_notice_lines(notices, &player.actor_id);
                 out.push_str(&text);
-                let _ = player.out.send(out.into_bytes());
+                out.into_bytes()
             }
-            Err(code) => {
-                let _ = player.out.send(refused_line(code).into_bytes());
-            }
+            Err(code) => refused_line(code).into_bytes(),
+        };
+        if !super::limits::try_frame(&player.out, bytes) {
+            failed.push(player.conn);
         }
     }
+    for conn in failed {
+        if drop_conn(shard, seats, conn, SocketEnd::Write)? {
+            print_host(shard);
+        }
+    }
+    Ok(())
 }
 
 fn shutdown(shard: &mut Shard, seats: &mut Seats) -> ! {
@@ -399,13 +426,14 @@ fn on_hello(
     next_session: &mut u64,
     conn: u64,
     line: &str,
-    out: tokio::sync::mpsc::UnboundedSender<Vec<u8>>,
+    out: OutTx,
+    cancel: CancelTx,
 ) -> Result<HelloReply, Reason> {
     if line == "gm" {
         if seats.gm.is_some() {
             return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
-        seats.gm = Some(GmSeat { conn, out });
+        seats.gm = Some(GmSeat { conn, out, cancel });
         return Ok(HelloReply::Gm);
     }
     if let Some(id) = player_hello(line) {
@@ -434,12 +462,18 @@ fn on_hello(
                 return Ok(HelloReply::Refused(refused_line(code)));
             }
         };
-        let _ = out.send(bytes);
+        if !super::limits::try_frame(&out, bytes) {
+            if release_player_seat(shard, &session_id, id, SocketEnd::Write)? {
+                print_host(shard);
+            }
+            return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
+        }
         if let Err(code) = seats.players.sit(HeldPlayer {
             conn,
             actor_id: id.to_string(),
             session_id: session_id.clone(),
             out,
+            cancel,
         }) {
             if release_player_seat(shard, &session_id, id, SocketEnd::Close)? {
                 print_host(shard);
@@ -498,20 +532,23 @@ fn on_player(
             Ok(spoken) => {
                 println!("{}", spoken.tape);
                 let _ = io::stdout().flush();
-                if let Some(gm) = &seats.gm {
-                    let _ = gm.out.send(spoken.gm_event);
-                }
-                send_recipients(seats, &spoken.recipients, spoken.player_event.into_bytes());
+                send_gm(seats, spoken.gm_event);
+                send_recipients(
+                    shard,
+                    seats,
+                    &spoken.recipients,
+                    spoken.player_event.into_bytes(),
+                )?;
                 Ok(PlayerReply::Done)
             }
             Err(code) => {
-                send_player(seats, conn, refused_line(code).into_bytes());
+                send_player(shard, seats, conn, refused_line(code).into_bytes())?;
                 Ok(PlayerReply::Done)
             }
         },
         Ok(turn::PlayerLine::Turn) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
         Err(code) => {
-            send_player(seats, conn, refused_line(code).into_bytes());
+            send_player(shard, seats, conn, refused_line(code).into_bytes())?;
             Ok(PlayerReply::Done)
         }
     }
@@ -528,35 +565,68 @@ fn on_mechanical(
     let gm_seated = seats.gm.is_some();
     match turn::turn(shard, actor_id, line, gm_seated) {
         Ok(turn::Turn::Queued(note)) => {
-            if let Some(gm) = &seats.gm {
-                let _ = gm.out.send(note.gm_frame());
-            }
-            send_player(seats, conn, note.player_line().into_bytes());
+            send_gm(seats, note.gm_frame());
+            send_player(shard, seats, conn, note.player_line().into_bytes())?;
         }
         Ok(turn::Turn::Committed { advanced, notices }) => {
             if advanced {
                 bump_sleep(restart);
             }
             print_host(shard);
-            refresh_players(shard, seats, &notices);
+            refresh_players(shard, seats, &notices)?;
         }
-        Err(code) => send_player(seats, conn, refused_line(code).into_bytes()),
+        Err(code) => send_player(shard, seats, conn, refused_line(code).into_bytes())?,
     }
     Ok(PlayerReply::Done)
 }
 
-fn send_player(seats: &Seats, conn: u64, bytes: Vec<u8>) {
-    if let Some(player) = seats.players.by_conn(conn) {
-        let _ = player.out.send(bytes);
+/// A full or closed queue drops that seat. The shard thread does not wait.
+fn send_player(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    conn: u64,
+    bytes: Vec<u8>,
+) -> Result<(), Reason> {
+    let failed = match seats.players.by_conn(conn) {
+        Some(player) => !super::limits::try_frame(&player.out, bytes),
+        None => false,
+    };
+    if failed && drop_conn(shard, seats, conn, SocketEnd::Write)? {
+        print_host(shard);
+    }
+    Ok(())
+}
+
+fn send_gm(seats: &mut Seats, frame: Vec<u8>) {
+    let failed = match seats.gm.as_ref() {
+        Some(gm) => !super::limits::try_frame(&gm.out, frame),
+        None => false,
+    };
+    if failed {
+        seats.gm = None;
     }
 }
 
-fn send_recipients(seats: &Seats, recipients: &[String], line: Vec<u8>) {
+fn send_recipients(
+    shard: &mut Shard,
+    seats: &mut Seats,
+    recipients: &[String],
+    line: Vec<u8>,
+) -> Result<(), Reason> {
+    let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
-        if recipients.iter().any(|id| id == &player.actor_id) {
-            let _ = player.out.send(line.clone());
+        if recipients.iter().any(|id| id == &player.actor_id)
+            && !super::limits::try_frame(&player.out, line.clone())
+        {
+            failed.push(player.conn);
         }
     }
+    for conn in failed {
+        if drop_conn(shard, seats, conn, SocketEnd::Write)? {
+            print_host(shard);
+        }
+    }
+    Ok(())
 }
 
 fn is_close(line: &str) -> bool {

@@ -57,8 +57,15 @@ impl Drop for Proc {
 }
 
 pub fn spawn(args: &[&str]) -> Proc {
+    spawn_env(args, &[])
+}
+
+pub fn spawn_env(args: &[&str], env: &[(&str, &str)]) -> Proc {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(args);
+    for (key, value) in env {
+        command.env(key, value);
+    }
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
