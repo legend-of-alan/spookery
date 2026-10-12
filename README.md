@@ -115,6 +115,13 @@ spook verify /tmp/docks
 
 `replay` prints `state_rev <r>, <n> records`. `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`.
 
+`spook audit` replays that same journal and checks each player character's view for a hidden fact. A clean table prints `pass` and the character id, one line each, and exits 0. Speech that repeats a hidden fact is a note and does not fail the command. `--strict` makes those notes fail.
+
+```sh
+spook audit /tmp/docks
+spook audit --strict /tmp/docks
+```
+
 ## Game master
 
 ### No GM

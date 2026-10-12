@@ -86,6 +86,14 @@ enum Command {
         #[arg(long)]
         from: Option<PathBuf>,
     },
+    /// Replay the journal and report a hidden fact sent to a player.
+    Audit {
+        /// Fail when speech repeats a hidden fact.
+        #[arg(long)]
+        strict: bool,
+        /// Pack directory.
+        pack: PathBuf,
+    },
     /// Report pack problems and write nothing.
     Check {
         /// Print problems as one JSON array on stdout.
@@ -180,6 +188,19 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                 }
             }
         }
+        Command::Audit { pack, strict } => match spookery::audit::audit_pack(&pack, strict) {
+            Ok(report) => {
+                print!("{}", report.text);
+                if report.failed {
+                    std::process::exit(1);
+                }
+                Ok(())
+            }
+            Err(err) => {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+        },
         Command::Check { pack, json } => {
             let mut found = spookery_kernel::check_pack(&pack);
             if json {
@@ -283,7 +304,7 @@ mod tests {
     fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
             "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "replay", "verify",
-            "new",
+            "audit", "new",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
                 let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
@@ -360,5 +381,7 @@ mod tests {
             verify.command,
             Command::Verify { from: Some(path), .. } if path == Path::new("snap")
         ));
+        let audit = Cli::try_parse_from(["spook", "audit", "--strict", "pack"]).unwrap();
+        assert!(matches!(audit.command, Command::Audit { strict: true, .. }));
     }
 }
