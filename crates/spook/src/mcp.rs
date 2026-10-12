@@ -58,11 +58,13 @@ fn exit_closed() -> ! {
 }
 
 fn exit_refused(code: &str) -> ! {
-    if code == "SESSION_FULL" {
-        eprintln!("The table is full. [{code}]");
-    } else {
-        eprintln!("The table refused that. [{code}]");
-    }
+    let sentence = match code {
+        "SESSION_FULL" => "The table is full.",
+        "LINE_TOO_LONG" => "That line is too long.",
+        "RATE_LIMITED" => "Slow down.",
+        _ => "The table refused that.",
+    };
+    eprintln!("{sentence} [{code}]");
     let _ = io::stderr().flush();
     std::process::exit(1);
 }
