@@ -400,6 +400,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     }
     if let Some(canon) = &canon {
         diags.extend(crate::lint::body_leaks(root, canon));
+        diags.extend(crate::lint::message_text_leaks(root, canon));
     }
     diags
 }
