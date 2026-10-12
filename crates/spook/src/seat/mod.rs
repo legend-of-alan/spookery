@@ -3,7 +3,7 @@ mod http;
 mod limits;
 mod line;
 mod listen;
-mod protocol;
+pub(crate) mod protocol;
 mod speech;
 mod thread;
 mod tools;

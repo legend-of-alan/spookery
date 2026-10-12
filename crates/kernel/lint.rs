@@ -1,9 +1,11 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use crate::canon::{load_canon, Canon};
-use crate::diagnostic::{reason_of, schema, Diagnostic};
+use crate::diagnostic::{locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
+use crate::moves::RowEffect;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LintHit {
@@ -44,6 +46,75 @@ pub fn body_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
         problems.push(diag);
     }
     problems
+}
+
+/// Hidden-fact sentences found in a message template's `text`.
+/// `HIDDEN_FACT_IN_BODY` stays the Markdown scan. A move row is not a body.
+pub fn message_text_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
+    let rel = "rules/moves.yaml";
+    let Ok(file) = fs::read_to_string(root.join(rel)) else {
+        return Vec::new();
+    };
+    let needles = hidden_needles(canon);
+    if needles.is_empty() {
+        return Vec::new();
+    }
+    let mut texts = Vec::new();
+    for def in canon.moves.values() {
+        let Some(row) = &def.row else {
+            continue;
+        };
+        for effect in row
+            .effects
+            .iter()
+            .chain(row.success.iter())
+            .chain(row.partial.iter())
+            .chain(row.failure.iter())
+        {
+            let RowEffect::Message { text, .. } = effect else {
+                continue;
+            };
+            if needles.iter().any(|needle| text.contains(needle)) {
+                texts.push(text.clone());
+            }
+        }
+    }
+    texts.sort();
+    let mut seen: BTreeMap<String, usize> = BTreeMap::new();
+    let mut problems = Vec::new();
+    for text in texts {
+        let nth = seen.entry(text.clone()).or_insert(0);
+        let spot = locate_nth(&file, &text, *nth);
+        *nth += 1;
+        for needle in &needles {
+            if !text.contains(needle) {
+                continue;
+            }
+            let mut diag = Diagnostic::new(
+                rel,
+                "HIDDEN_FACT_IN_TEXT",
+                &format!("hidden fact '{needle}' is in a message row"),
+                "rewrite that message text, or set hidden: false",
+            );
+            if let Some((line, column)) = spot {
+                diag = diag.at_line(line, Some(column));
+            }
+            problems.push(diag);
+        }
+    }
+    problems
+}
+
+fn hidden_needles(canon: &Canon) -> Vec<String> {
+    let mut needles: Vec<String> = canon
+        .facts
+        .values()
+        .filter(|fact| fact.hidden && !fact.text.is_empty())
+        .map(|fact| fact.text.clone())
+        .collect();
+    needles.sort();
+    needles.dedup();
+    needles
 }
 
 struct Leak {

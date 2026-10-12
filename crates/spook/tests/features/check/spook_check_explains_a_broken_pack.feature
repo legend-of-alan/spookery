@@ -30,6 +30,7 @@ Feature: spook check explains a broken pack
       | missing meters                | rules/meters.yaml            | NOT_IN_SPEC         | missing       |
       | pack_rev mismatch             | state/now.yaml               | PACK_REV_MISMATCH   | pack_rev      |
       | hidden fact in a place body   | world/places/docks_shop.md   | HIDDEN_FACT_IN_BODY | hidden fact   |
+      | hidden fact in a message      | rules/moves.yaml             | HIDDEN_FACT_IN_TEXT | hidden fact   |
       | unknown place in a range      | cast/mira.md                 | SCHEMA              | not a place   |
 
   Scenario: Two problems in two files are both reported

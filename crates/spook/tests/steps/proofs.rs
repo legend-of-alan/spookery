@@ -1035,6 +1035,8 @@ fn import_boundary() {
         &["reqwest", "crate::ai", "crate::cli"],
     );
     assert!(mcp_hits.is_empty(), "{}", mcp_hits.join("\n"));
+    let audit_hits = byte_hits(&[spook_src.join("audit.rs")], &["tokio", "rmcp", "reqwest"]);
+    assert!(audit_hits.is_empty(), "{}", audit_hits.join("\n"));
 }
 
 fn five_e_words_under(dir: &Path) -> Vec<String> {

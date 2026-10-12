@@ -332,6 +332,11 @@ fn break_pack(pack: &std::path::Path, fault: &str) {
             text.push_str("The lamp-oil ledger is short.\n");
             fs::write(path, text).unwrap();
         }
+        "hidden fact in a message" => replace_file(
+            &pack.join("rules/moves.yaml"),
+            "text: Back at dusk. Oil on the shelf.\n",
+            "text: The lamp-oil ledger is short.\n",
+        ),
         "unknown place in a range" => replace_file(
             &pack.join("cast/mira.md"),
             "    - docks_street\n",
