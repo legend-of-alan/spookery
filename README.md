@@ -25,12 +25,15 @@ The docks pack is `packs/oneshot-docks`. Copy it first. `spook run` writes the s
 The fight pack is `packs/sample-d20`. Copy it before you host it, the same way as the docks pack.
 `spook play` sits `pc_lark`. Type `strike npc_briar` to attack, `drink` while you carry a tonic, `travel mill_lane` to leave the yard, and `wait` to pass the turn.
 
+`spook new` writes a smaller pack. The walkthrough is [docs/first-pack.md](docs/first-pack.md).
+
 ```sh
 cp -r packs/oneshot-docks /tmp/docks
+spook new /tmp/mypack
 export PATH="$PWD/target/release:$PATH"
 ```
 
-Run that `export` in each terminal. `spook --help` lists the commands and the flags. `spook check /tmp/docks` prints any pack problem in plain English and writes nothing.
+Run that `export` in each terminal. `spook --help` lists the commands and the flags. `spook check /tmp/docks` prints any pack problem in plain English and writes nothing. `spook check /tmp/mypack` prints `no problems`. `spook play /tmp/mypack` sits `pc_ada` and prints `You are in Yard.` `travel lane` prints `You are in Lane.`
 
 Terminal 1, from the repository root:
 

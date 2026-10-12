@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use spookery_kernel::Reason;
 
+mod starter;
+
 /// One loopback table.
 #[derive(Parser)]
 #[command(name = "spook", version)]
@@ -99,6 +101,12 @@ enum Command {
         json: bool,
         /// Pack directory.
         pack: PathBuf,
+    },
+    /// Write a minimal pack and print the next commands.
+    New {
+        /// Directory to create. An existing non-empty directory is refused.
+        #[arg(value_name = "DIR")]
+        dir: PathBuf,
     },
 }
 
@@ -217,6 +225,16 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                 std::process::exit(1);
             }
         }
+        Command::New { dir } => match starter::write_starter(&dir) {
+            Ok(next) => {
+                print!("{next}");
+                Ok(())
+            }
+            Err(err) => {
+                eprintln!("{err}");
+                std::process::exit(1);
+            }
+        },
     }
 }
 
@@ -286,7 +304,7 @@ mod tests {
     fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
             "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "replay", "verify",
-            "audit",
+            "audit", "new",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
                 let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])

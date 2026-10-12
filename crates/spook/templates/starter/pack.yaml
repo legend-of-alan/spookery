@@ -1,0 +1,7 @@
+schema: pack
+id: starter
+title: Waystation
+system: starter
+start:
+  place: yard
+  pc: pc_ada

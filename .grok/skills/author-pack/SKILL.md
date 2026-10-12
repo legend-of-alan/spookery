@@ -8,6 +8,8 @@ description: >
 
 # Author a pack
 
+Start a pack with `spook new <dir>`. The walkthrough is `docs/first-pack.md`.
+
 You have the `spook` CLI and a pack directory. The keys for the canon files are listed below. A key that is not listed is rejected. Follow the `hint` on each diagnostic.
 
 ## What a pack is

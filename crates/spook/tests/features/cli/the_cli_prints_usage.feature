@@ -22,6 +22,7 @@ Feature: The CLI prints usage
       | status  |
       | migrate |
       | check   |
+      | new     |
       | replay  |
       | verify  |
       | audit   |

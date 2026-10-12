@@ -1,0 +1,7 @@
+schema: checks
+checks:
+  - id: nerve
+    dice:
+      count: 2
+      sides: 6
+    stat: nerve
