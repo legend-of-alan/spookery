@@ -15,7 +15,7 @@ use spookery_kernel::model::Now;
 use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::tape::MAX_TAPE_BYTES;
 use spookery_kernel::Reason;
-use spookery_tick::{replay_journal, ReplayError};
+use spookery_tick::{replay_states, ReplayError};
 
 use crate::seat::protocol::{self, TapeLine};
 
@@ -90,10 +90,8 @@ fn load_snaps(pack: &Path) -> Result<Vec<Snap>, AuditError> {
     snaps.push(snap_of(
         &fs::read(&base).map_err(|_| AuditError::Reason(Reason::Schema))?,
     )?);
-    for entry in &records {
-        let rev = entry.state_rev_after();
-        let report = replay_journal(pack, None, Some(rev)).map_err(replay_error)?;
-        snaps.push(snap_of(&report.now_yaml)?);
+    for step in replay_states(pack).map_err(replay_error)? {
+        snaps.push(snap_of(&step.now_yaml)?);
     }
     Ok(snaps)
 }
@@ -239,9 +237,18 @@ fn unknown_hidden(canon: &Canon, known: &[String]) -> Vec<Secret> {
 
 fn line_leaks(line: &str, secrets: &[Secret]) -> bool {
     secrets.iter().any(|secret| {
-        contains_rendered(line, &secret.id)
+        contains_quoted_id(line, &secret.id)
             || (!secret.text.is_empty() && contains_rendered(line, &secret.text))
     })
+}
+
+/// A fact id matches only as a JSON string, so `fact_ledger` does not hit `fact_ledger_short`.
+fn contains_quoted_id(line: &str, id: &str) -> bool {
+    if id.is_empty() {
+        return false;
+    }
+    let quoted = serde_json::to_string(id).expect("string");
+    line.contains(&quoted)
 }
 
 fn contains_rendered(line: &str, needle: &str) -> bool {
@@ -264,10 +271,7 @@ fn notes_of(canon: &Canon, snaps: &[Snap], tape: &[TapeLine]) -> (Vec<Note>, boo
         return (notes, true);
     };
     for line in tape {
-        let matched = snaps
-            .iter()
-            .rev()
-            .find(|snap| snap.tick_index == line.tick_index);
+        let matched = snaps.iter().find(|snap| snap.tick_index == line.tick_index);
         let snap = match matched {
             Some(snap) => snap,
             None => {
@@ -304,4 +308,16 @@ fn notes_of(canon: &Canon, snaps: &[Snap], tape: &[TapeLine]) -> (Vec<Note>, boo
             .then(left.recipient.cmp(&right.recipient))
     });
     (notes, used_final)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::contains_quoted_id;
+
+    #[test]
+    fn a_shorter_fact_id_does_not_match_a_longer_one() {
+        let line = r#"{"id":"fact_ledger_short"}"#;
+        assert!(!contains_quoted_id(line, "fact_ledger"));
+        assert!(contains_quoted_id(line, "fact_ledger_short"));
+    }
 }
