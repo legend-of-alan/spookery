@@ -1,4 +1,5 @@
 pub mod ai;
+pub mod audit;
 pub mod cli;
 pub mod gm_client;
 pub mod mcp;

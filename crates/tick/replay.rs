@@ -100,12 +100,42 @@ impl std::fmt::Display for VerifyError {
 
 impl std::error::Error for VerifyError {}
 
+/// One `now.yaml` after an applied journal record. The base save is not included.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReplayStep {
+    pub state_rev: u64,
+    pub now_yaml: Vec<u8>,
+}
+
 /// Replay the journal. `from` is a directory whose `state/now.yaml` replaces the base.
 /// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
 pub fn replay_journal(
     pack: &Path,
     from: Option<&Path>,
     until: Option<u64>,
+) -> Result<ReplayReport, ReplayError> {
+    replay_walking(pack, from, until, |_rev, _bytes| Ok(()))
+}
+
+/// Replay once, in one temp copy, and return `now.yaml` after each applied record.
+/// An empty journal, or a journal with nothing past the base, returns an empty vec.
+pub fn replay_states(pack: &Path) -> Result<Vec<ReplayStep>, ReplayError> {
+    let mut steps = Vec::new();
+    let _report = replay_walking(pack, None, None, |rev, bytes| {
+        steps.push(ReplayStep {
+            state_rev: rev,
+            now_yaml: bytes.to_vec(),
+        });
+        Ok(())
+    })?;
+    Ok(steps)
+}
+
+fn replay_walking(
+    pack: &Path,
+    from: Option<&Path>,
+    until: Option<u64>,
+    mut on_step: impl FnMut(u64, &[u8]) -> Result<(), ReplayError>,
 ) -> Result<ReplayReport, ReplayError> {
     if !pack.join("pack.yaml").is_file() || !pack.join("state/now.yaml").is_file() {
         return Err(ReplayError::Reason(Reason::NotInSpec));
@@ -152,6 +182,7 @@ pub fn replay_journal(
     });
     check_sequence(&records, cap, base_rev, from.is_none(), &base_bytes)?;
     let mut applied = 0u64;
+    let mut saved = Vec::new();
     let needs_apply = records.iter().any(|entry| {
         let rev = entry.state_rev_after();
         rev > base_rev && rev <= cap
@@ -170,22 +201,25 @@ pub fn replay_journal(
         .map_err(|_| ReplayError::Reason(Reason::Schema))?;
     let mut shard = open_replay_shard(&temp.0).map_err(ReplayError::Reason)?;
     for entry in &records {
-        let rev = entry.state_rev_after();
-        if rev > cap {
+        let record_rev = entry.state_rev_after();
+        if record_rev > cap {
             break;
         }
-        if rev <= base_rev {
+        if record_rev <= base_rev {
             continue;
         }
         apply(&mut shard, entry)?;
         applied += 1;
+        let now_yaml = fs::read(temp.0.join("state/now.yaml"))
+            .map_err(|_| ReplayError::Reason(Reason::Schema))?;
+        let saved_rev = state_rev_of(&now_yaml)?;
+        on_step(saved_rev, &now_yaml)?;
+        saved = now_yaml;
     }
-    let now_yaml =
-        fs::read(temp.0.join("state/now.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))?;
     Ok(ReplayReport {
-        state_rev: state_rev_of(&now_yaml)?,
+        state_rev: state_rev_of(&saved)?,
         applied,
-        now_yaml,
+        now_yaml: saved,
     })
 }
 
@@ -583,7 +617,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use super::{replay_journal, verify_pack};
+    use super::{replay_journal, replay_states, verify_pack};
     use crate::tick_pack;
 
     #[test]
@@ -596,6 +630,22 @@ mod tests {
         assert_eq!(left.applied, 1);
         assert_eq!(right.applied, 1);
         assert_eq!(left.state_rev, 1);
+        let _ = fs::remove_dir_all(&pack);
+    }
+
+    #[test]
+    fn one_replay_returns_each_applied_save() {
+        let pack = temp_docks("replay-states");
+        tick_pack(&pack).unwrap();
+        tick_pack(&pack).unwrap();
+        let steps = replay_states(&pack).unwrap();
+        assert_eq!(steps.len(), 2, "{steps:?}");
+        assert_eq!(steps[0].state_rev, 1);
+        assert_eq!(steps[1].state_rev, 2);
+        assert_ne!(steps[0].now_yaml, steps[1].now_yaml);
+        let final_report = replay_journal(&pack, None, None).unwrap();
+        assert_eq!(steps[1].now_yaml, final_report.now_yaml);
+        assert_eq!(final_report.applied, 2);
         let _ = fs::remove_dir_all(&pack);
     }
 
