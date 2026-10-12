@@ -21,11 +21,38 @@ Feature: The host sits the GM seat
     Then the command exits 1
     And the pack bytes are unchanged
 
-  Scenario: A missing model setting does not dial
+  Scenario Outline: A missing model setting does not dial
     Given a docks table
-    When the operator runs ai-gm without the model setting
+    When the operator runs ai-gm without "<name>"
     Then the command exits 1
+    And stderr names "<name>" as unset
+    And stdout is empty
     And the listener accepted no connection
+
+    Examples:
+      | name           |
+      | SPOOK_GM_KEY   |
+      | SPOOK_GM_URL   |
+      | SPOOK_GM_MODEL |
+
+  Scenario: A hung model call times out and the table keeps going
+    When a hung model call meets a queued player line
+    Then the queued line committed one tick
+    And the hung call finished within one retry
+    And the seat stayed up
+
+  Scenario: A model that answers 500 once is retried and the say lands
+    When a model answers 500 once and then a say
+    Then the stub saw 2 model posts
+    And the model's say landed
+    And the queued line committed one tick
+
+  Scenario: A model that answers 401 is not retried
+    When a model answers 401
+    Then the stub saw 1 model post
+    And the model's say did not land
+    And the queued line committed one tick
+    And the error line shows the provider's text without the key
 
   Scenario: The host seat submits a say and reports a refused call
     Given a docks table with a seated player

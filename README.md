@@ -124,19 +124,31 @@ With both seats empty, the server still wakes on the pack's real-time interval. 
 
 `spook ai-gm` sits the GM seat and calls a chat-completions endpoint. It does not start the server or the player. Start `spook run` first.
 
-Three environment variables, and no others:
+Three environment variables, and no others. All three are required. There is no default URL.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `XAI_API_KEY` | yes | Bearer token. Read from the environment, never from the pack. |
+| `SPOOK_GM_KEY` | yes | Bearer token. Read from the environment, never from the pack. |
+| `SPOOK_GM_URL` | yes | Origin of the endpoint. Any OpenAI-compatible chat completions URL works. The client posts to `{url}/chat/completions`. |
 | `SPOOK_GM_MODEL` | yes | Model name sent in the request. |
-| `SPOOK_GM_URL` | no | Origin of the endpoint. The default is `https://api.x.ai/v1`. Any OpenAI-compatible chat completions URL works. The client posts to `{url}/chat/completions`. |
 
-A missing `XAI_API_KEY` or `SPOOK_GM_MODEL` is printed on stderr and the process exits 1 before it dials. Then:
+A missing variable is printed on stderr as `<NAME> is unset` and the process exits 1 before it dials. The variables are checked in the order `SPOOK_GM_KEY`, `SPOOK_GM_URL`, `SPOOK_GM_MODEL`. Then:
 
 ```sh
 spook ai-gm /tmp/docks
 ```
+
+When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
+
+`crates/spook/tests/live_round.rs` plays one real round against whatever provider those three variables name: it hosts a copy of the docks pack, sits `spook ai-gm`, queues one player move, and passes when every model call returns 2xx and the move commits a tick. It is ignored by default. With [Ollama](https://ollama.com) running locally:
+
+```sh
+ollama pull qwen2.5:0.5b
+SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b \
+  cargo test -p spook --test live_round --locked -- --ignored --nocapture
+```
+
+The `Live AI` workflow runs it against Ollama on pull requests that touch the model host. It also runs it against xAI weekly and on demand, never on pull requests, with the `XAI_API_KEY` repo secret passed in as `SPOOK_GM_KEY`. Without that secret the xAI job skips with a notice. The xAI model is `grok-4.20-0309-non-reasoning` unless the `SPOOK_XAI_MODEL` repo variable names another.
 
 ### Human GM
 
@@ -162,7 +174,7 @@ The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_turn`. 
 
 ## Privacy
 
-`spook ai-gm` sends table text to the host in `SPOOK_GM_URL`. When that variable is unset, the host is `https://api.x.ai/v1`. The API key is the bearer token from `XAI_API_KEY` in the environment. The pack does not hold the key.
+`spook ai-gm` sends table text to the host named by `SPOOK_GM_URL`. There is no default host. The API key is the bearer token from `SPOOK_GM_KEY` in the environment. The pack does not hold the key.
 
 The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt does not include a cast body, `now.yaml`, or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
 
