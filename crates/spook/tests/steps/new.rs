@@ -57,6 +57,27 @@ fn the_operator_runs_spook_new_on_that_directory(world: &mut World) {
     run_new(world, &pack);
 }
 
+#[when(expr = "the operator runs spook new under a missing parent")]
+fn the_operator_runs_spook_new_under_a_missing_parent(world: &mut World) {
+    let parent = fresh_path("missing");
+    let pack = parent.join("pack");
+    run_new(world, &pack);
+    world.pack = Some(parent);
+}
+
+#[then(expr = "stderr names the missing parent")]
+fn stderr_names_the_missing_parent(world: &mut World) {
+    let parent = table::pack(world);
+    let expected = format!("{} does not exist", parent.display());
+    assert_eq!(world.stderr.trim(), expected, "{}", world.stderr);
+}
+
+#[then(expr = "the missing parent was not created")]
+fn the_missing_parent_was_not_created(world: &mut World) {
+    let parent = table::pack(world);
+    assert!(!parent.exists(), "{}", parent.display());
+}
+
 #[when(expr = "the operator runs spook new beside a marker file")]
 fn the_operator_runs_spook_new_beside_a_marker_file(world: &mut World) {
     let parent = fresh_path("sandbox");

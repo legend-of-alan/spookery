@@ -18,6 +18,13 @@ Feature: spook new makes a pack
     And stdout is empty
     And the pack bytes are unchanged
 
+  Scenario: spook new refuses a missing parent
+    When the operator runs spook new under a missing parent
+    Then the command exits 1
+    And stdout is empty
+    And stderr names the missing parent
+    And the missing parent was not created
+
   Scenario: The generated pack runs
     When the operator runs spook new in a fresh directory
     And play joins that pack on a free loopback address
