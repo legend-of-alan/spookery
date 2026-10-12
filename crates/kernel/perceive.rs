@@ -127,6 +127,9 @@ fn perceive_at_budget(
         {
             continue;
         }
+        if text_names_unallowed_fact(canon, now, &viewer, &message.text) {
+            continue;
+        }
         let mut copy = message.clone();
         copy.to.sort();
         copy.fact_ids.sort();
@@ -177,6 +180,16 @@ fn perceive_at_budget(
         clocks,
         stocks,
         habits,
+    })
+}
+
+/// A place note stays in the save. Who can read it changes as actors move,
+/// so the drop is here and not in `apply`.
+fn text_names_unallowed_fact(canon: &Canon, now: &Now, viewer: &ViewerId, text: &str) -> bool {
+    canon.facts.iter().any(|(id, fact)| {
+        !fact.text.is_empty()
+            && text.contains(fact.text.as_str())
+            && !allows(canon, now, viewer, id)
     })
 }
 
