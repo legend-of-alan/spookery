@@ -53,6 +53,9 @@ mod host;
 #[path = "steps/mcp.rs"]
 mod mcp;
 
+#[path = "steps/new.rs"]
+mod new;
+
 #[path = "steps/gm.rs"]
 mod gm;
 
