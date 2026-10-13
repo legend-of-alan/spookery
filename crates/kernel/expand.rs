@@ -217,12 +217,12 @@ mod tests {
 
     use crate::apply::apply_effect;
     use crate::canon::pack_rev;
-    use crate::codec::{emit_now, load_now};
     use crate::effect::{Effect, EffectClass};
     use crate::error::Reason;
     use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
     use crate::meter::MeterWrite;
     use crate::model::Clock;
+    use crate::store::codec::{emit_save, load_save};
     use crate::world::World;
 
     use super::expand_outcome;
@@ -352,8 +352,8 @@ mod tests {
 "#,
         );
         fs::write(&moves, text).unwrap();
-        let now_path = root.join("state/now.yaml");
-        let mut now = load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        let now_path = root.join("state/save.yaml");
+        let mut now = load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         now.clocks.insert(
             "shelf_count".to_string(),
@@ -366,7 +366,7 @@ mod tests {
             },
         );
         now.pack_rev = pack_rev(&root).unwrap();
-        fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
+        fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 
         let world = World::open(&root).unwrap();
         let shelf = intent("shelf", Target::Empty);

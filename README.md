@@ -105,7 +105,7 @@ spook migrate /tmp/docks
 
 ## Prove the log
 
-Each commit that changes the save appends one journal record under `state/log`, and the first commit stores a replay base there. `spook replay` replays that journal and prints the final save counter. `spook verify` replays it and checks the save byte for byte. Neither command writes the pack, takes the lock, or binds a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
+Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook replay` replays that journal and prints the final save counter. `spook verify` replays it and checks the save byte for byte. Neither command writes the pack, takes the lock, or binds a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
 
 ```sh
 spook tick /tmp/docks
@@ -255,7 +255,7 @@ The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_turn`. 
 
 `spook ai-gm` sends table text to the host named by `SPOOK_GM_URL`. There is no default host. The API key is the bearer token from `SPOOK_GM_KEY` in the environment. The pack does not hold the key.
 
-The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt does not include a cast body, `now.yaml`, or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
+The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt does not include a cast body, `save.yaml`, or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
 
 ## Docs
 

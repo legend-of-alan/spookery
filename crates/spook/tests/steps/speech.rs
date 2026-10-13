@@ -28,8 +28,8 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let shard =
         spookery_kernel::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"));
     assert_eq!(shard.now().presence.humans, 0);
-    world.now_bytes =
-        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    world.now_bytes = fs::read(pack.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     spookery::host::speak(&shard, "pc_rowan", &format!("say mira {text}"))
         .unwrap_or_else(|err| panic!("speak: {err}"));
 }
@@ -62,7 +62,7 @@ fn the_tape_names_the_place(world: &mut World, place: String) {
 }
 
 fn tape_text(world: &World) -> String {
-    fs::read_to_string(table::pack(world).join("state/log/session.jsonl"))
+    fs::read_to_string(table::pack(world).join("state/journal/session.jsonl"))
         .unwrap_or_else(|err| panic!("read tape: {err}"))
 }
 
@@ -72,11 +72,11 @@ fn state_rev_is_unchanged(world: &mut World) {
     assert_eq!(table::now_of(table::pack(world)).state_rev, rev);
 }
 
-#[then(expr = "now.yaml is unchanged since the seat")]
+#[then(expr = "save.yaml is unchanged since the seat")]
 fn now_unchanged_since_the_seat(world: &mut World) {
     let seated = crate::with_live(|live| live.seated_now.clone());
-    let now = fs::read(table::pack(world).join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let now = fs::read(table::pack(world).join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, seated);
 }
 
@@ -85,14 +85,16 @@ fn no_tick_file(world: &mut World) {
     assert!(table::tick_names(table::pack(world)).is_empty());
 }
 
-#[then(expr = "now.yaml matches the bytes from before the line")]
+#[then(expr = "save.yaml matches the bytes from before the line")]
 fn now_matches_the_bytes_from_before_the_line(world: &mut World) {
-    let now = fs::read(table::pack(world).join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let now = fs::read(table::pack(world).join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, world.now_bytes);
 }
 
 #[then(expr = "the tape file is absent")]
 fn the_tape_file_is_absent(world: &mut World) {
-    assert!(!table::pack(world).join("state/log/session.jsonl").exists());
+    assert!(!table::pack(world)
+        .join("state/journal/session.jsonl")
+        .exists());
 }

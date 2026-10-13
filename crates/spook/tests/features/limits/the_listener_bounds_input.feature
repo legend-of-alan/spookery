@@ -10,7 +10,7 @@ Feature: The listener bounds input
     Given a docks table
     When a socket sends an oversized hello
     Then the hello is refused with "LINE_TOO_LONG"
-    And now.yaml is unchanged since the table opened
+    And save.yaml is unchanged since the table opened
 
   Scenario: A GM sends a JSON-RPC line over 1 MiB
     Given a docks table
@@ -28,7 +28,7 @@ Feature: The listener bounds input
     Given a docks table
     When a socket connects and sends nothing
     Then the socket is closed before the hello
-    And now.yaml is unchanged since the table opened
+    And save.yaml is unchanged since the table opened
 
   Scenario: A flood is limited and another player still commits
     Given a docks table with two seated players

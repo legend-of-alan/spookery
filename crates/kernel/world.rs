@@ -6,15 +6,15 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
-use crate::codec::{emit_now, load_now};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::StateKey;
 use crate::limits::Budget;
 use crate::model::{MemoryLine, Now, PauseView};
-use crate::recover::recover;
 use crate::rules::RollReport;
+use crate::store::codec::{emit_save, load_save};
+use crate::store::recover::recover;
 
 pub struct World {
     pub(crate) root: PathBuf,
@@ -330,14 +330,14 @@ pub fn session_status(now: &Now) -> SessionStatus {
 }
 
 fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
-    if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
+    if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
     recover(root)?;
     let canon = Arc::new(load_canon(root).map_err(reason_of)?);
-    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_now(now_text).map_err(reason_of)?;
+    let mut now = load_save(now_text).map_err(reason_of)?;
     let mut problems = save_problems(root, &now, &now_bytes);
     if replay {
         problems.retain(|diag| diag.code != Reason::PackRevMismatch.token());
@@ -367,11 +367,11 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             None
         }
     };
-    let now_path = root.join("state/now.yaml");
+    let now_path = root.join("state/save.yaml");
     let loaded = if now_path.is_file() {
         match fs::read(&now_path) {
             Ok(bytes) => match std::str::from_utf8(&bytes) {
-                Ok(text) => match load_now(text) {
+                Ok(text) => match load_save(text) {
                     Ok(now) => Some((bytes, now)),
                     Err(more) => {
                         diags.extend(more);
@@ -381,7 +381,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
                 Err(_) => {
                     diags.push(
                         schema(
-                            "state/now.yaml",
+                            "state/save.yaml",
                             "this file is not UTF-8 text",
                             "save it as UTF-8",
                         )
@@ -393,9 +393,9 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             Err(_) => {
                 diags.push(
                     coded(
-                        "state/now.yaml",
+                        "state/save.yaml",
                         Reason::Schema,
-                        "state/now.yaml could not be read",
+                        "state/save.yaml could not be read",
                         "check that the file is readable",
                     )
                     .with_path("schema"),
@@ -430,7 +430,7 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
     match pack_rev(root) {
         Ok(rev) if now.pack_rev != rev => {
             let mut diag = coded(
-                "state/now.yaml",
+                "state/save.yaml",
                 Reason::PackRevMismatch,
                 "pack_rev does not match the canon hash",
                 "run spook migrate to store the current hash",
@@ -446,7 +446,7 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
         Ok(_) => {}
         Err(_) => diags.push(
             coded(
-                "state/now.yaml",
+                "state/save.yaml",
                 Reason::Schema,
                 "the canon files could not be hashed",
                 "check that world/, cast/, and rules/ are readable",
@@ -454,13 +454,13 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
             .with_path("pack_rev"),
         ),
     }
-    match emit_now(now) {
+    match emit_save(now) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
                 .ok()
                 .and_then(|live| first_diff_line(live, &emitted));
             let mut diag = coded(
-                "state/now.yaml",
+                "state/save.yaml",
                 Reason::HandEdit,
                 "this save does not match the canonical text",
                 "run spook migrate to keep the edit, or restore the file",
@@ -474,7 +474,7 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
         Ok(_) => {}
         Err(_) => diags.push(
             coded(
-                "state/now.yaml",
+                "state/save.yaml",
                 Reason::Schema,
                 "the save could not be written back as YAML",
                 "fix the values so they match the now format",

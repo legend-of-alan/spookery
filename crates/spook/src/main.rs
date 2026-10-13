@@ -72,15 +72,15 @@ enum Command {
     Replay {
         /// Pack directory.
         pack: PathBuf,
-        /// Directory whose `state/now.yaml` is the replay base.
+        /// Directory whose `state/save.yaml` is the replay base.
         #[arg(long)]
         from: Option<PathBuf>,
     },
-    /// Replay the journal and byte-compare `now.yaml`.
+    /// Replay the journal and byte-compare `save.yaml`.
     Verify {
         /// Pack directory.
         pack: PathBuf,
-        /// Directory whose `state/now.yaml` is the replay base.
+        /// Directory whose `state/save.yaml` is the replay base.
         #[arg(long)]
         from: Option<PathBuf>,
     },

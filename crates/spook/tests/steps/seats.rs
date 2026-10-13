@@ -10,8 +10,8 @@ use super::table;
 #[given(expr = "a docks table with a seated GM")]
 fn a_docks_table_with_a_seated_gm(world: &mut World) {
     let pack = temp_pack("gm-seat");
-    let opened =
-        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let opened = fs::read(pack.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     let port = table::free_port();
     let bind = format!("127.0.0.1:{port}");
     table::listen(&pack, &bind, port);
@@ -30,11 +30,11 @@ fn a_second_gm_connects(world: &mut World) {
     world.scratch = table::second_hello("gm");
 }
 
-#[then(expr = "now.yaml is unchanged since the table opened")]
+#[then(expr = "save.yaml is unchanged since the table opened")]
 fn now_unchanged_since_open(world: &mut World) {
     let opened = crate::with_live(|live| live.opened_now.clone());
-    let now = fs::read(table::pack(world).join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let now = fs::read(table::pack(world).join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, opened);
 }
 
@@ -417,20 +417,22 @@ fn seat_three(pack: &std::path::Path) {
 }
 
 fn read_now(pack: &std::path::Path) -> spookery_kernel::model::Now {
-    let text = fs::read_to_string(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
-    spookery_kernel::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err:?}"))
+    let text = fs::read_to_string(pack.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
+    spookery_kernel::store::codec::load_save(&text)
+        .unwrap_or_else(|err| panic!("load now: {err:?}"))
 }
 
 fn store_now(pack: &std::path::Path, mut now: spookery_kernel::model::Now) {
     now.pack_rev =
         spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
-    let text = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}"));
-    fs::write(pack.join("state/now.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
+    let text =
+        spookery_kernel::store::codec::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}"));
+    fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 fn player_waits(pack: &std::path::Path, name: &str) -> Vec<String> {
-    let text = fs::read_to_string(pack.join("state/log").join(name))
+    let text = fs::read_to_string(pack.join("state/journal").join(name))
         .unwrap_or_else(|err| panic!("read {name}: {err}"));
     let tick: serde_json::Value =
         serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));

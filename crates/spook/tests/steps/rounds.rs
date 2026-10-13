@@ -64,7 +64,7 @@ fn the_player_line_is_queued(world: &mut World) {
 
 #[then(expr = "the tick log records the player wait")]
 fn the_tick_log_records_the_player_wait(world: &mut World) {
-    let text = std::fs::read_to_string(table::pack(world).join("state/log/tick-0001.jsonl"))
+    let text = std::fs::read_to_string(table::pack(world).join("state/journal/tick-0001.jsonl"))
         .unwrap_or_else(|err| panic!("read tick: {err}"));
     let tick: Value = serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"));
     let waits = tick["intents"]

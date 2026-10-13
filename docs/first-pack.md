@@ -11,7 +11,7 @@ spook new /tmp/mypack
 The pack is a waystation with two places, so travel has somewhere to go.
 
 - `yard` is the start place. `lane` is the other place.
-- `pc_ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/now.yaml` has a live `pc_ada` actor. A template alone does not sit a player.
+- `pc_ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `pc_ada` actor. A template alone does not sit a player.
 - `keeper` is an NPC in the lane. One habit, `tend`, runs while the table is empty and sets the flag `tended`.
 
 `rules/meters.yaml` defines the meter the check uses:
@@ -44,7 +44,7 @@ checks:
 
 `rules/tick.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
 
-`state/now.yaml` is the save. `state_rev` starts at 0. `pack_rev` is the hash of `world/`, `cast/`, and `rules/` only. `spook new` computes it. Leave that line for `spook migrate` when the canon changes.
+`state/save.yaml` is the save. `state_rev` starts at 0. `pack_rev` is the hash of `world/`, `cast/`, and `rules/` only. `spook new` computes it. Leave that line for `spook migrate` when the canon changes.
 
 ## Add a place
 
@@ -62,9 +62,9 @@ facts:
 The porch faces the yard.
 ```
 
-The save lists the places people can stand in. Add `porch` under `places` in `state/now.yaml`.
+The save lists the places people can stand in. Add `porch` under `places` in `state/save.yaml`.
 
-```yaml path=state/now.yaml mode=insert-before anchor=actors:
+```yaml path=state/save.yaml mode=insert-before anchor=actors:
   porch:
     stock: {}
     notes: []

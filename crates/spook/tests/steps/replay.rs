@@ -52,7 +52,7 @@ fn the_pack_is_copied_before_the_tick(world: &mut World) {
 
 #[when(expr = "the replay base is removed")]
 fn the_replay_base_is_removed(world: &mut World) {
-    let path = table::pack(world).join("state/log/base.yaml");
+    let path = table::pack(world).join("state/journal/base.yaml");
     assert!(path.is_file(), "no replay base at {}", path.display());
     fs::remove_file(&path).unwrap_or_else(|err| panic!("remove base: {err}"));
 }
@@ -120,7 +120,7 @@ fn a_player_sits_and_the_server_stops(world: &mut World) {
 
 #[when(expr = "one intent in a tick record is changed")]
 fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
-    let path = table::pack(world).join("state/log/tick-0001.jsonl");
+    let path = table::pack(world).join("state/journal/tick-0001.jsonl");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read tick: {err}"));
     let mut tick: Value =
         serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("json: {err}"));
@@ -141,7 +141,7 @@ fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
 
 #[when(expr = "one presence record is deleted")]
 fn one_presence_record_is_deleted(world: &mut World) {
-    let path = table::pack(world).join("state/log/presence-0001.json");
+    let path = table::pack(world).join("state/journal/presence-0001.json");
     assert!(path.is_file(), "no presence record at {}", path.display());
     fs::remove_file(&path).unwrap_or_else(|err| panic!("remove presence: {err}"));
     world.scratch = "state_rev 1".to_string();
@@ -190,5 +190,5 @@ fn stderr_names_that_record(world: &mut World) {
 
 #[then(expr = "stderr names the first differing save line")]
 fn stderr_names_the_first_differing_save_line(world: &mut World) {
-    assert!(world.stderr.contains("now.yaml:"), "{}", world.stderr);
+    assert!(world.stderr.contains("save.yaml:"), "{}", world.stderr);
 }

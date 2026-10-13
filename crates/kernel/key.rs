@@ -1,7 +1,7 @@
 use std::fmt;
 
 /// One budget identity. The commit diff summary is this type's `Display`,
-/// sorted as text. It is not a path inside `now.yaml`.
+/// sorted as text. It is not a path inside `save.yaml`.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum StateKey {
     ActorPlace(String),

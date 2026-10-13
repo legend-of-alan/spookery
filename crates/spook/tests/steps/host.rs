@@ -188,7 +188,7 @@ fn the_player_saw_a_say(world: &mut World) {
 
 #[then(expr = "the tape from is gm")]
 fn the_tape_from_is_gm(world: &mut World) {
-    let tape = fs::read_to_string(table::pack(world).join("state/log/session.jsonl"))
+    let tape = fs::read_to_string(table::pack(world).join("state/journal/session.jsonl"))
         .unwrap_or_else(|err| panic!("read tape: {err}"));
     assert!(tape.contains("\"from\":\"gm\""), "{tape}");
 }
@@ -256,8 +256,8 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     wait_posts(&posts, 2);
     table::wait_world_time(&pack, 1085);
     // The server still holds this pack. World::open runs recover and can collide with its commit.
-    let text = fs::read_to_string(pack.join("state/now.yaml")).unwrap();
-    let place = spookery_kernel::codec::load_now(&text)
+    let text = fs::read_to_string(pack.join("state/save.yaml")).unwrap();
+    let place = spookery_kernel::store::codec::load_save(&text)
         .unwrap()
         .actors
         .get("pc_rowan")
@@ -513,12 +513,14 @@ fn wait_idle(watch: &Watch, script: &Script, calls: usize) {
 }
 
 fn world_time(pack: &Path) -> u64 {
-    let text = fs::read_to_string(pack.join("state/now.yaml")).unwrap();
-    spookery_kernel::codec::load_now(&text).unwrap().world_time
+    let text = fs::read_to_string(pack.join("state/save.yaml")).unwrap();
+    spookery_kernel::store::codec::load_save(&text)
+        .unwrap()
+        .world_time
 }
 
 fn tape_text(pack: &Path) -> String {
-    fs::read_to_string(pack.join("state/log/session.jsonl")).unwrap_or_default()
+    fs::read_to_string(pack.join("state/journal/session.jsonl")).unwrap_or_default()
 }
 
 static LISTENER: Mutex<Option<TcpListener>> = Mutex::new(None);
@@ -832,10 +834,10 @@ where
 
 fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     let start = Instant::now();
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     while start.elapsed() < bound {
         if let Ok(text) = fs::read_to_string(&path) {
-            if let Ok(now) = spookery_kernel::codec::load_now(&text) {
+            if let Ok(now) = spookery_kernel::store::codec::load_save(&text) {
                 if now.world_time == expected {
                     return true;
                 }

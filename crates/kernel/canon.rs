@@ -779,7 +779,7 @@ pub fn bind_meters(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> 
             }
             diags.push(
                 schema(
-                    "state/now.yaml",
+                    "state/save.yaml",
                     &format!(
                         "actor '{id}' lists meter '{key}', which rules/meters.yaml does not define"
                     ),
@@ -797,7 +797,7 @@ pub fn bind_meters(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> 
             }
             diags.push(
                 schema(
-                    "state/now.yaml",
+                    "state/save.yaml",
                     &format!("actor '{id}' meter '{key}' is outside the rules"),
                     "set base and offset so the stored pair fits the meter",
                 )
@@ -828,7 +828,7 @@ pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
             if item.is_empty() {
                 diags.push(
                     schema(
-                        "state/now.yaml",
+                        "state/save.yaml",
                         &format!("actor '{id}' lists an empty item id"),
                         "give the item a non-empty id",
                     )
@@ -837,7 +837,7 @@ pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
             } else if !seen.insert(item.as_str()) {
                 diags.push(
                     schema(
-                        "state/now.yaml",
+                        "state/save.yaml",
                         &format!("actor '{id}' lists item '{item}' twice"),
                         "keep one of that item",
                     )
@@ -1321,7 +1321,7 @@ mod tests {
     fn docks_pack_rev_matches_now_yaml() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let rev = pack_rev(&root).unwrap();
-        let text = fs::read_to_string(root.join("state/now.yaml")).unwrap();
+        let text = fs::read_to_string(root.join("state/save.yaml")).unwrap();
         let line = text
             .lines()
             .find(|line| line.starts_with("pack_rev:"))

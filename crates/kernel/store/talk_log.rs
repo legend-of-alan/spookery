@@ -2,11 +2,11 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::Path;
 
-use crate::durable::fsync_dir;
 use crate::error::Reason;
 use crate::lock::lock_session;
+use crate::store::durable::fsync_dir;
 
-/// Hard cap for `state/log/session.jsonl`.
+/// Hard cap for `state/journal/session.jsonl`.
 pub const MAX_TAPE_BYTES: u64 = 1024 * 1024;
 
 const DEFAULT_TAPE_LIMIT: usize = 64;
@@ -16,7 +16,7 @@ const MAX_TAPE_LIMIT: usize = 256;
 /// Assigns `seq`, drops a trailing partial line, and does not open a `Draft`.
 pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u64, Reason> {
     let _lock = lock_session(root)?;
-    let log_dir = root.join("state/log");
+    let log_dir = root.join("state/journal");
     fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
     let path = log_dir.join("session.jsonl");
     let mut file = OpenOptions::new()
@@ -85,7 +85,7 @@ pub fn session_end_seq(root: &Path) -> Result<u64, Reason> {
 }
 
 fn load_kept(root: &Path) -> Result<Vec<String>, Reason> {
-    let path = root.join("state/log/session.jsonl");
+    let path = root.join("state/journal/session.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
     }

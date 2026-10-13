@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::{Map, Value};
 use serde_saphyr::SerializerOptions;
 
-use crate::diagnostic::{parse_file, schema, tag_diagnostic, Diagnostic};
+use crate::diagnostic::{coded, locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};
 use crate::effect::{Effect, EffectClass, EffectPayload};
 use crate::error::Reason;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
@@ -10,7 +10,7 @@ use crate::meter::MeterWrite;
 use crate::model::{sort_unique, MemoryLine, Now};
 
 #[allow(non_snake_case)]
-pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
+pub fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
     serde_saphyr::ser_options! {
         empty_as_braces: true,
         indent_step: 2,
@@ -25,12 +25,15 @@ pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
     }
 }
 
-pub fn load_now(text: &str) -> Result<Now, Vec<Diagnostic>> {
-    const FILE: &str = "state/now.yaml";
+pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
+    const FILE: &str = "state/save.yaml";
     if let Some(diag) = tag_diagnostic(text, crate::format::NOW, FILE, 0) {
         return Err(vec![diag]);
     }
     let now: Now = parse_file(FILE, text, 0)?;
+    if super::require_rules_rev(now.rules_rev).is_err() {
+        return Err(vec![rules_rev_diagnostic(text)]);
+    }
     let mut diags = Vec::new();
     if now.schema != crate::format::NOW {
         diags.push(
@@ -50,13 +53,41 @@ pub fn load_now(text: &str) -> Result<Now, Vec<Diagnostic>> {
     }
 }
 
-pub fn emit_now(now: &Now) -> Result<String, Reason> {
+pub fn emit_save(now: &Now) -> Result<String, Reason> {
     let mut canonical = now.clone();
     canonical.schema = crate::format::NOW.to_string();
+    canonical.rules_rev = super::RULES_REV;
     canonicalize(&mut canonical);
-    let text = serde_saphyr::to_string_with_options(&canonical, NOW_EMIT_OPTIONS())
+    let text = serde_saphyr::to_string_with_options(&canonical, SAVE_EMIT_OPTIONS())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
+}
+
+fn rules_rev_diagnostic(text: &str) -> Diagnostic {
+    let mut diag = coded(
+        "state/save.yaml",
+        Reason::RulesRev,
+        "this save was written by different rules",
+        "start a fresh save",
+    )
+    .with_path("rules_rev");
+    if let Some((line, column)) = locate_nth(text, "rules_rev:", 0) {
+        diag = diag.at_line(line, Some(column));
+    }
+    diag
+}
+
+/// Refuse a tick record whose `rules_rev` is missing or not the engine's.
+pub fn require_recorded_rules(text: &str) -> Result<(), Reason> {
+    let value: Value = serde_json::from_str(text.trim_end()).map_err(|_| Reason::Schema)?;
+    let rev = value
+        .as_object()
+        .and_then(|object| object.get("rules_rev"))
+        .and_then(Value::as_u64);
+    match rev {
+        Some(rev) => super::require_rules_rev(rev),
+        None => Err(Reason::RulesRev),
+    }
 }
 
 fn one_trailing_lf(mut text: String) -> String {
@@ -106,7 +137,7 @@ fn rebuilt_occupancy(now: &Now) -> std::collections::BTreeMap<String, Vec<String
 }
 
 fn occupancy_problems(now: &Now) -> Vec<Diagnostic> {
-    const FILE: &str = "state/now.yaml";
+    const FILE: &str = "state/save.yaml";
     let mut diags = Vec::new();
     for (id, actor) in &now.actors {
         if now.places.contains_key(actor.place()) {
@@ -490,12 +521,28 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn a_tick_with_the_wrong_rules_rev_is_refused_while_the_save_matches() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packs/oneshot-docks/state/save.yaml");
+        let save = fs::read_to_string(&path).unwrap();
+        assert!(load_save(&save).is_ok(), "{save}");
+        let wrong = crate::store::RULES_REV + 1;
+        let record = format!(r#"{{"tick_index":1,"rules_rev":{wrong}}}"#);
+        assert_eq!(require_recorded_rules(&record), Err(Reason::RulesRev));
+        let current = format!(
+            r#"{{"tick_index":1,"rules_rev":{}}}"#,
+            crate::store::RULES_REV
+        );
+        assert_eq!(require_recorded_rules(&current), Ok(()));
+    }
+
+    #[test]
     fn docks_now_round_trips_through_emitter() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packs/oneshot-docks/state/now.yaml");
+            .join("../../packs/oneshot-docks/state/save.yaml");
         let original = fs::read_to_string(&path).unwrap();
-        let now = load_now(&original).unwrap();
-        let emitted = emit_now(&now).unwrap();
+        let now = load_save(&original).unwrap();
+        let emitted = emit_save(&now).unwrap();
         assert_eq!(emitted, original);
     }
 
@@ -505,6 +552,7 @@ mod tests {
 schema: {tag}
 shard_id: ex
 pack_rev: blake2s:00
+rules_rev: {rules}
 state_rev: 0
 tick_index: 0
 world_time: 0
@@ -522,28 +570,29 @@ places:
 actors: {{}}
 clocks: {{}}
 messages: []
-"
+",
+            rules = crate::store::RULES_REV,
         )
     }
 
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        assert!(load_now(&now_text("now")).is_ok());
-        let old = load_now(&now_text(concat!("now/", "v0"))).unwrap_err();
+        assert!(load_save(&now_text("now")).is_ok());
+        let old = load_save(&now_text(concat!("now/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(crate::diagnostic::reason_of(old), Reason::Schema);
-        let bogus = load_now(&now_text("bogus")).unwrap_err();
+        let bogus = load_save(&now_text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(crate::diagnostic::reason_of(bogus), Reason::Schema);
     }
 
     #[test]
-    fn emit_now_writes_the_now_tag() {
-        let mut now = load_now(&now_text("now")).unwrap();
+    fn emit_save_writes_the_now_tag() {
+        let mut now = load_save(&now_text("now")).unwrap();
         now.schema = concat!("now/", "v0").to_string();
-        let emitted = emit_now(&now).unwrap();
+        let emitted = emit_save(&now).unwrap();
         assert!(emitted.starts_with("schema: now\n"), "{emitted}");
-        assert_eq!(load_now(&emitted).unwrap().schema, "now");
+        assert_eq!(load_save(&emitted).unwrap().schema, "now");
     }
 
     use crate::effect::EffectClass;

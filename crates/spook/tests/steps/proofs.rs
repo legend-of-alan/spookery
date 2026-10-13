@@ -11,7 +11,6 @@ use spookery::host::{
 };
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::check::Outcome;
-use spookery_kernel::codec::emit_now;
 use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::meter::MeterLive;
@@ -19,6 +18,7 @@ use spookery_kernel::model::{
     ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_kernel::rules::RollReport;
+use spookery_kernel::store::codec::emit_save;
 use spookery_kernel::world::Draft;
 use spookery_round::{catch_up, from_journal, play, play_pack_once};
 
@@ -81,11 +81,11 @@ fn write_text(path: &Path, text: &str) {
 }
 
 fn stamp_pack_rev(pack: &Path) {
-    let now_path = pack.join("state/now.yaml");
+    let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
-    fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
+    fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
 fn lamp_oil(now: &Now) -> i64 {
@@ -104,13 +104,13 @@ fn flags_of(now: &Now, id: &str) -> Vec<String> {
 }
 
 fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = fs::read_to_string(pack.join("state/log").join(name))
+    let text = fs::read_to_string(pack.join("state/journal").join(name))
         .unwrap_or_else(|err| panic!("read {name}: {err}"));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("json {name}: {err}"))
 }
 
 fn tick_names(pack: &Path) -> Vec<String> {
-    let dir = pack.join("state/log");
+    let dir = pack.join("state/journal");
     let mut names = Vec::new();
     if dir.is_dir() {
         for entry in fs::read_dir(&dir).unwrap() {
@@ -176,7 +176,7 @@ fn door_message() -> Message {
 }
 
 fn save_now(pack: &Path, now: &Now) {
-    fs::write(pack.join("state/now.yaml"), emit_now(now).unwrap()).unwrap();
+    fs::write(pack.join("state/save.yaml"), emit_save(now).unwrap()).unwrap();
 }
 
 fn evening_note() {
@@ -412,6 +412,7 @@ Rowan.
         schema: "now".to_string(),
         shard_id: "ex".to_string(),
         pack_rev: rev,
+        rules_rev: spookery_kernel::store::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -428,7 +429,7 @@ Rowan.
         clocks: BTreeMap::new(),
         messages: Vec::new(),
     };
-    write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
+    write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
@@ -516,7 +517,7 @@ fn stock_effect(delta: i64) -> Effect {
 
 fn an_open_transaction_writes_nothing() {
     let dropped = temp_pack("drop");
-    let now_path = dropped.join("state/now.yaml");
+    let now_path = dropped.join("state/save.yaml");
     let before = fs::read(&now_path).unwrap();
     let shard = open(&dropped);
     let state_rev = shard.now().state_rev;
@@ -538,16 +539,19 @@ fn an_open_transaction_writes_nothing() {
 
 fn an_incomplete_transaction_is_discarded() {
     let incomplete = temp_pack("incomplete");
-    let now_path = incomplete.join("state/now.yaml");
+    let now_path = incomplete.join("state/save.yaml");
     let before = fs::read(&now_path).unwrap();
     let txn = incomplete.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
-    fs::write(txn.join("prev/now.yaml"), b"not-yaml\n").unwrap();
+    fs::write(txn.join("prev/save.yaml"), b"not-yaml\n").unwrap();
     let opened = open(&incomplete);
     assert_eq!(fs::read(&now_path).unwrap(), before);
     assert_eq!(
         lamp_oil(opened.now()),
-        lamp_oil(&spookery_kernel::codec::load_now(std::str::from_utf8(&before).unwrap()).unwrap())
+        lamp_oil(
+            &spookery_kernel::store::codec::load_save(std::str::from_utf8(&before).unwrap())
+                .unwrap()
+        )
     );
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&incomplete);
@@ -555,7 +559,7 @@ fn an_incomplete_transaction_is_discarded() {
 
 fn the_same_revision_restores_the_previous_save() {
     let same = temp_pack("same-rev");
-    let now_path = same.join("state/now.yaml");
+    let now_path = same.join("state/save.yaml");
     let original = fs::read(&now_path).unwrap();
     let shard = open(&same);
     let mut dirty = shard.now().clone();
@@ -566,17 +570,18 @@ fn the_same_revision_restores_the_previous_save() {
         .unwrap()
         .stock
         .insert("lamp_oil".to_string(), 999);
-    fs::write(&now_path, emit_now(&dirty).unwrap()).unwrap();
+    fs::write(&now_path, emit_save(&dirty).unwrap()).unwrap();
     let txn = same.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
-    fs::write(txn.join("prev/now.yaml"), &original).unwrap();
+    fs::write(txn.join("prev/save.yaml"), &original).unwrap();
     fs::write(txn.join("COMPLETE"), b"").unwrap();
     let opened = open(&same);
     assert_eq!(fs::read(&now_path).unwrap(), original);
     assert_eq!(
         lamp_oil(opened.now()),
         lamp_oil(
-            &spookery_kernel::codec::load_now(std::str::from_utf8(&original).unwrap()).unwrap()
+            &spookery_kernel::store::codec::load_save(std::str::from_utf8(&original).unwrap())
+                .unwrap()
         )
     );
     assert!(!txn.exists());
@@ -596,12 +601,12 @@ fn the_next_revision_keeps_the_new_save() {
         .unwrap()
         .stock
         .insert("lamp_oil".to_string(), kept_oil);
-    fs::write(next.join("state/now.yaml"), emit_now(&live).unwrap()).unwrap();
+    fs::write(next.join("state/save.yaml"), emit_save(&live).unwrap()).unwrap();
     let txn = next.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
-    fs::write(txn.join("prev/now.yaml"), emit_now(&prev).unwrap()).unwrap();
+    fs::write(txn.join("prev/save.yaml"), emit_save(&prev).unwrap()).unwrap();
     fs::write(txn.join("COMPLETE"), b"").unwrap();
-    let log = next.join("state/log");
+    let log = next.join("state/journal");
     fs::create_dir_all(&log).unwrap();
     fs::write(
         log.join("tick-0001.jsonl"),
@@ -659,13 +664,13 @@ fn replay_byte_compares_now() {
     for tick in 1..=20 {
         play_pack_once(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
-    let golden = fs::read(played.join("state/now.yaml")).unwrap();
-    let source_log = fs::read(played.join("state/log/tick-0020.jsonl")).unwrap();
+    let golden = fs::read(played.join("state/save.yaml")).unwrap();
+    let source_log = fs::read(played.join("state/journal/tick-0020.jsonl")).unwrap();
     let report = from_journal(&played, Some(&start), None).unwrap();
     assert_eq!(report.now_yaml, golden);
-    assert_eq!(fs::read(played.join("state/now.yaml")).unwrap(), golden);
+    assert_eq!(fs::read(played.join("state/save.yaml")).unwrap(), golden);
     assert_eq!(
-        fs::read(played.join("state/log/tick-0020.jsonl")).unwrap(),
+        fs::read(played.join("state/journal/tick-0020.jsonl")).unwrap(),
         source_log
     );
     let _ = fs::remove_dir_all(&start);
@@ -771,6 +776,7 @@ tick:
         schema: "now".to_string(),
         shard_id: "crowd".to_string(),
         pack_rev: rev,
+        rules_rev: spookery_kernel::store::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -787,7 +793,7 @@ tick:
         clocks: BTreeMap::new(),
         messages: Vec::new(),
     };
-    write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
+    write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 1);
@@ -1503,9 +1509,11 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             .unwrap()
             .iter()
             .any(|name| name == "resolve_check"));
-        assert!(!fs::read_to_string(pack.join("state/log/tick-0001.jsonl"))
-            .unwrap()
-            .contains("faces"));
+        assert!(
+            !fs::read_to_string(pack.join("state/journal/tick-0001.jsonl"))
+                .unwrap()
+                .contains("faces")
+        );
         let _ = fs::remove_dir_all(&pack);
     }
 
@@ -1544,9 +1552,9 @@ tick:
 Nell keeps a guard up.
 ",
     );
-    let now_path = pack.join("state/now.yaml");
+    let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         ActorLive::Pc {
@@ -1558,7 +1566,7 @@ Nell keeps a guard up.
             known_facts: Vec::new(),
         },
     );
-    fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
+    fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
 fn rolled_stat(notices: &[RollReport], stat: i64) -> spookery_kernel::rules::RollResult {
@@ -1607,7 +1615,7 @@ fn opposing_total_reused() {
         let notices = shard.take_rolls();
         let rowan = rolled_stat(&notices, 1);
         assert_eq!(shard.now().world_time, 1085);
-        let tick = fs::read_to_string(pack.join("state/log/tick-0001.jsonl")).unwrap();
+        let tick = fs::read_to_string(pack.join("state/journal/tick-0001.jsonl")).unwrap();
         assert!(!tick.contains("faces"));
         if opposed {
             let nell = rolled_stat(&notices, 100);
@@ -1636,7 +1644,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     );
     fs::write(held.join("rules/moves.yaml"), moves).unwrap();
     insert_nell(&held);
-    let now_path = held.join("state/now.yaml");
+    let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
     let next = text.replacen(
         "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: []\n",
@@ -1666,9 +1674,11 @@ fn a_held_knife_still_runs_the_opposed_row() {
     assert!(commit_queued(&mut shard).unwrap());
     let rowan = rolled_stat(&shard.take_rolls(), 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
-    assert!(!fs::read_to_string(held.join("state/log/tick-0001.jsonl"))
-        .unwrap()
-        .contains("faces"));
+    assert!(
+        !fs::read_to_string(held.join("state/journal/tick-0001.jsonl"))
+            .unwrap()
+            .contains("faces")
+    );
     let _ = fs::remove_dir_all(&held);
 }
 

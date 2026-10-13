@@ -1,11 +1,9 @@
 pub mod apply;
 pub mod canon;
 pub mod check;
-pub mod codec;
 pub mod commit;
 pub mod diagnostic;
 pub mod digest;
-pub(crate) mod durable;
 pub mod effect;
 pub(crate) mod eligibility;
 pub mod error;
@@ -26,9 +24,8 @@ pub mod model;
 pub mod moves;
 pub mod pause;
 pub mod perceive;
-pub(crate) mod recover;
 pub mod rules;
-pub mod tape;
+pub mod store;
 pub mod world;
 
 pub use diagnostic::{first_reason, reason_of, Diagnostic};

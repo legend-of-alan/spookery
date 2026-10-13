@@ -11,26 +11,26 @@ Feature: One GM seat and up to three player seats
     When three players sit
     And a fourth player connects
     Then the hello is refused with "SESSION_FULL"
-    And now.yaml is unchanged since the seat
+    And save.yaml is unchanged since the seat
 
   Scenario: A hello for a held PC changes nothing
     Given a docks table with a seated player
     When a second player connects
     Then the hello is refused with "SEAT_TAKEN"
-    And now.yaml is unchanged since the seat
+    And save.yaml is unchanged since the seat
     And humans is 1
     And the present actor is pc_rowan
 
   Scenario: A GM hello writes nothing
     Given a docks table with a seated GM
-    Then now.yaml is unchanged since the table opened
+    Then save.yaml is unchanged since the table opened
     And humans is 0
 
   Scenario: A second GM leaves the table unchanged
     Given a docks table with a seated GM
     When a second GM connects
     Then the hello is refused with "SESSION_FULL"
-    And now.yaml is unchanged since the table opened
+    And save.yaml is unchanged since the table opened
     And humans is 0
 
   Scenario: A one-player pack sits and plays

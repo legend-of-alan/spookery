@@ -319,7 +319,7 @@ fn break_pack(pack: &std::path::Path, fault: &str) {
             fs::remove_file(pack.join("rules/meters.yaml")).unwrap();
         }
         "pack_rev mismatch" => {
-            let path = pack.join("state/now.yaml");
+            let path = pack.join("state/save.yaml");
             let text = fs::read_to_string(&path).unwrap();
             let text = text.replacen("pack_rev: blake2s:", "pack_rev: blake2s:0", 1);
             // The original hash does not start with an extra 0 in a way that stays equal:

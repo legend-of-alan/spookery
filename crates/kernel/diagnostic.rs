@@ -268,7 +268,7 @@ mod tests {
     #[test]
     fn a_path_is_the_location_when_the_line_is_unknown() {
         let diag = coded(
-            "state/now.yaml",
+            "state/save.yaml",
             Reason::PackRevMismatch,
             "pack_rev does not match the canon hash",
             "run spook migrate to store the current hash",
@@ -276,7 +276,7 @@ mod tests {
         .with_path("pack_rev");
         assert_eq!(
             diag.report_line(),
-            "state/now.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
+            "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
         );
     }
 

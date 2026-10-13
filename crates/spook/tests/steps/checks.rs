@@ -108,7 +108,7 @@ fn the_player_sees_a_check_success(world: &mut World) {
 
 #[then(expr = "the tick log resolves the check without faces")]
 fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
-    let text = std::fs::read_to_string(table::pack(world).join("state/log/tick-0001.jsonl"))
+    let text = std::fs::read_to_string(table::pack(world).join("state/journal/tick-0001.jsonl"))
         .unwrap_or_else(|err| panic!("read tick: {err}"));
     assert!(text.contains("resolve_check"), "{text}");
     assert!(!text.contains("faces"), "{text}");
@@ -286,13 +286,13 @@ fn the_tick_log_records_miras_kernel_brace(world: &mut World) {
 fn replaying_the_tick_reproduces_the_save(world: &mut World) {
     let played = table::pack(world);
     let start = PathBuf::from(&world.scratch);
-    let golden = fs::read(played.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let golden = fs::read(played.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     let report = spookery_round::from_journal(played, Some(&start), None)
         .unwrap_or_else(|err| panic!("replay: {err}"));
     assert_eq!(report.now_yaml, golden);
     assert_eq!(
-        fs::read(played.join("state/now.yaml")).unwrap_or_else(|err| panic!("read played: {err}")),
+        fs::read(played.join("state/save.yaml")).unwrap_or_else(|err| panic!("read played: {err}")),
         golden
     );
     let _ = fs::remove_dir_all(&start);
@@ -346,7 +346,7 @@ fn insert_brace_habit(pack: &Path) {
 }
 
 fn set_mira_grit(pack: &Path, base: i64) {
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
     let from = "  mira:\n    kind: npc\n    place: mira_rooms\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n";
     let to = format!("  mira:\n    kind: npc\n    place: mira_rooms\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: {base}\n");
@@ -356,8 +356,8 @@ fn set_mira_grit(pack: &Path, base: i64) {
 }
 
 fn stamp(pack: &Path) {
-    let now_path = pack.join("state/now.yaml");
-    let mut now = spookery_kernel::codec::load_now(
+    let now_path = pack.join("state/save.yaml");
+    let mut now = spookery_kernel::store::codec::load_save(
         &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
     )
     .unwrap_or_else(|err| panic!("load now: {err:?}"));
@@ -365,7 +365,7 @@ fn stamp(pack: &Path) {
         spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
     fs::write(
         &now_path,
-        spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}")),
+        spookery_kernel::store::codec::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}")),
     )
     .unwrap_or_else(|err| panic!("write now: {err}"));
 }
@@ -395,7 +395,7 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 }
 
 fn tick_json(world: &World) -> Value {
-    let text = fs::read_to_string(table::pack(world).join("state/log/tick-0001.jsonl"))
+    let text = fs::read_to_string(table::pack(world).join("state/journal/tick-0001.jsonl"))
         .unwrap_or_else(|err| panic!("read tick: {err}"));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }
@@ -740,7 +740,7 @@ fn append_check(pack: &Path, extra: &str) {
 }
 
 fn set_rowan_grit(pack: &Path, base: i64) {
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
     let from = "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n";
     let to = format!("  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: {base}\n");

@@ -89,8 +89,9 @@ fn a_visible_notes_id_is_the_ledger_fact(world: &mut World) {
         fact_ids: Vec::new(),
         text: "The shelf is stocked.".to_string(),
     });
-    let text = spookery_kernel::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}"));
-    fs::write(pack.join("state/now.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
+    let text =
+        spookery_kernel::store::codec::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}"));
+    fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 #[when(expr = "two players sit and the GM says the ledger fact")]

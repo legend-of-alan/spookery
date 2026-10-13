@@ -14,6 +14,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
     let seed = round_seed(&round.world_id, round.tick_index);
     let jsonl = render_round_line(&RoundLine {
         tick_index: round.tick_index,
+        rules_rev: spookery_kernel::store::RULES_REV,
         state_rev_before: round.rev_before,
         state_rev_after: round.rev_before + 1,
         world_time_before: round.world_time_before,

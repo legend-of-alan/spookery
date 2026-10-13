@@ -173,7 +173,9 @@ fn a_played_d20_fight(world: &mut World) {
         Target::Actor("npc_briar".to_string()),
     )];
     let (now, _rolls, _tick) = play_queued(&pack, intents);
-    world.now_bytes = spookery_kernel::codec::emit_now(&now).unwrap().into_bytes();
+    world.now_bytes = spookery_kernel::store::codec::emit_save(&now)
+        .unwrap()
+        .into_bytes();
     world.pack = Some(pack);
 }
 
@@ -188,7 +190,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
         spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
     assert_eq!(
         report.now_yaml,
-        fs::read(pack.join("state/now.yaml")).unwrap()
+        fs::read(pack.join("state/save.yaml")).unwrap()
     );
 }
 
@@ -307,7 +309,9 @@ fn those_waits_are_played(world: &mut World) {
     second.source = Source::Kernel;
     let (now, _rolls, tick) = play_queued(&pack, vec![first, second]);
     world.scratch = tick.to_string();
-    world.now_bytes = spookery_kernel::codec::emit_now(&now).unwrap().into_bytes();
+    world.now_bytes = spookery_kernel::store::codec::emit_save(&now)
+        .unwrap()
+        .into_bytes();
 }
 
 #[then(expr = "only the first wait lands and the second is INELIGIBLE")]
@@ -329,7 +333,8 @@ fn only_the_first_wait_lands(world: &mut World) {
         "{tick}"
     );
     let now =
-        spookery_kernel::codec::load_now(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(std::str::from_utf8(&world.now_bytes).unwrap())
+            .unwrap();
     assert_eq!(
         now.actors
             .get("mira")
@@ -706,18 +711,27 @@ fn queued(id: &str, actor: &str, kind: ActorKind, move_name: &str, target: Targe
 }
 
 fn set_mira_busy(pack: &Path) {
-    let path = pack.join("state/now.yaml");
-    let mut now = spookery_kernel::codec::load_now(&fs::read_to_string(&path).unwrap()).unwrap();
+    let path = pack.join("state/save.yaml");
+    let mut now =
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     *now.actors.get_mut("mira").unwrap().busy_mut() = true;
-    fs::write(&path, spookery_kernel::codec::emit_now(&now).unwrap()).unwrap();
+    fs::write(
+        &path,
+        spookery_kernel::store::codec::emit_save(&now).unwrap(),
+    )
+    .unwrap();
 }
 
 fn stamp(pack: &Path) {
-    let now_path = pack.join("state/now.yaml");
+    let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
-    fs::write(&now_path, spookery_kernel::codec::emit_now(&now).unwrap()).unwrap();
+    fs::write(
+        &now_path,
+        spookery_kernel::store::codec::emit_save(&now).unwrap(),
+    )
+    .unwrap();
 }
 
 fn append(path: &Path, extra: &str) {
@@ -727,8 +741,8 @@ fn append(path: &Path, extra: &str) {
 }
 
 fn tick_value(pack: &Path, name: &str) -> Value {
-    let text =
-        fs::read_to_string(pack.join("state/log").join(name)).unwrap_or_else(|err| panic!("{err}"));
+    let text = fs::read_to_string(pack.join("state/journal").join(name))
+        .unwrap_or_else(|err| panic!("{err}"));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}: {text}"))
 }
 

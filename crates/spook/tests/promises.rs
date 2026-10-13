@@ -29,6 +29,9 @@ mod round_play;
 #[path = "steps/replay.rs"]
 mod replay;
 
+#[path = "steps/rules.rs"]
+mod rules;
+
 #[path = "steps/checks.rs"]
 mod checks;
 

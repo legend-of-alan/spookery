@@ -4,13 +4,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use spookery_kernel::canon::{bind_inventory, bind_meters, pack_rev};
-use spookery_kernel::codec::{canonicalize, emit_now, load_now, parse_recorded_line};
 use spookery_kernel::commit::replay_write_now;
 use spookery_kernel::diagnostic::reason_of;
+use spookery_kernel::effect::Effect;
 use spookery_kernel::journal::{
     self, hash_now, JournalEntry, MigrateRecord, PresenceRecord, TickRecord,
 };
 use spookery_kernel::model::Now;
+use spookery_kernel::store::codec::{
+    canonicalize, emit_effect, emit_save, load_save, parse_recorded_line, parse_tick_effects,
+    require_recorded_rules,
+};
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
@@ -93,21 +97,21 @@ impl std::fmt::Display for VerifyError {
                 diverged,
                 line_no,
                 line,
-            } => write!(f, "{diverged}\nnow.yaml:{line_no}: {line}"),
+            } => write!(f, "{diverged}\nsave.yaml:{line_no}: {line}"),
         }
     }
 }
 
 impl std::error::Error for VerifyError {}
 
-/// One `now.yaml` after an applied journal record. The base save is not included.
+/// One `save.yaml` after an applied journal record. The base save is not included.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReplayStep {
     pub state_rev: u64,
-    pub now_yaml: Vec<u8>,
+    pub save_yaml: Vec<u8>,
 }
 
-/// Replay the journal. `from` is a directory whose `state/now.yaml` replaces the base.
+/// Replay the journal. `from` is a directory whose `state/save.yaml` replaces the base.
 /// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
 pub fn from_journal(
     pack: &Path,
@@ -117,14 +121,14 @@ pub fn from_journal(
     replay_walking(pack, from, until, |_rev, _bytes| Ok(()))
 }
 
-/// Replay once, in one temp copy, and return `now.yaml` after each applied record.
+/// Replay once, in one temp copy, and return `save.yaml` after each applied record.
 /// An empty journal, or a journal with nothing past the base, returns an empty vec.
 pub fn replay_states(pack: &Path) -> Result<Vec<ReplayStep>, ReplayError> {
     let mut steps = Vec::new();
     let _report = replay_walking(pack, None, None, |rev, bytes| {
         steps.push(ReplayStep {
             state_rev: rev,
-            now_yaml: bytes.to_vec(),
+            save_yaml: bytes.to_vec(),
         });
         Ok(())
     })?;
@@ -137,7 +141,7 @@ fn replay_walking(
     until: Option<u64>,
     mut on_step: impl FnMut(u64, &[u8]) -> Result<(), ReplayError>,
 ) -> Result<ReplayReport, ReplayError> {
-    if !pack.join("pack.yaml").is_file() || !pack.join("state/now.yaml").is_file() {
+    if !pack.join("pack.yaml").is_file() || !pack.join("state/save.yaml").is_file() {
         return Err(ReplayError::Reason(Reason::NotInSpec));
     }
     let records = journal::load_journal(pack).map_err(|fault| {
@@ -155,7 +159,7 @@ fn replay_walking(
     } else if base_path.is_file() {
         fs::read(&base_path).map_err(|_| ReplayError::Reason(Reason::Schema))?
     } else if records.is_empty() {
-        let now_yaml = fs::read(pack.join("state/now.yaml"))
+        let now_yaml = fs::read(pack.join("state/save.yaml"))
             .map_err(|_| ReplayError::Reason(Reason::NotInSpec))?;
         return Ok(ReplayReport {
             state_rev: state_rev_of(&now_yaml)?,
@@ -197,7 +201,7 @@ fn replay_walking(
     let temp = TempDir::new();
     copy_dir(pack, &temp.0)?;
     let _ = fs::remove_dir_all(temp.0.join("state/.txn"));
-    fs::write(temp.0.join("state/now.yaml"), &base_bytes)
+    fs::write(temp.0.join("state/save.yaml"), &base_bytes)
         .map_err(|_| ReplayError::Reason(Reason::Schema))?;
     let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
     for entry in &records {
@@ -210,7 +214,7 @@ fn replay_walking(
         }
         apply(&mut world, entry)?;
         applied += 1;
-        let now_yaml = fs::read(temp.0.join("state/now.yaml"))
+        let now_yaml = fs::read(temp.0.join("state/save.yaml"))
             .map_err(|_| ReplayError::Reason(Reason::Schema))?;
         let saved_rev = state_rev_of(&now_yaml)?;
         on_step(saved_rev, &now_yaml)?;
@@ -223,12 +227,12 @@ fn replay_walking(
     })
 }
 
-/// Read `now.yaml` once, replay up to that `state_rev`, and byte-compare.
+/// Read `save.yaml` once, replay up to that `state_rev`, and byte-compare.
 pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, VerifyError> {
-    if !pack.join("pack.yaml").is_file() || !pack.join("state/now.yaml").is_file() {
+    if !pack.join("pack.yaml").is_file() || !pack.join("state/save.yaml").is_file() {
         return Err(VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)));
     }
-    let live = fs::read(pack.join("state/now.yaml"))
+    let live = fs::read(pack.join("state/save.yaml"))
         .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
     let until = state_rev_of(&live).map_err(VerifyError::Replay)?;
     if from.is_none() && !pack.join("state").join(journal::base_rel()).is_file() {
@@ -261,7 +265,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Ver
             report.state_rev,
             "save",
             None,
-            "now.yaml differed".to_string(),
+            "save.yaml differed".to_string(),
             Some(report.now_yaml.clone()),
         );
         return Err(with_diff(diverged, &live));
@@ -374,6 +378,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             None,
         ))
     })?;
+    require_recorded_rules(&record.text).map_err(ReplayError::Reason)?;
     if world.now().tick_index + 1 != line.tick_index {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -394,7 +399,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         )));
     }
     let wall = line.last_tick_at.clone();
-    play_recorded(
+    let replayed = play_recorded(
         world,
         &wall,
         RecordedRound {
@@ -411,6 +416,16 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             read_now(world),
         ))
     })?;
+    let (_, logged) = parse_tick_effects(&record.text).map_err(|_| {
+        ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            "the tick effects could not be parsed".to_string(),
+            read_now(world),
+        ))
+    })?;
+    let effect_diff = first_effect_difference(&logged, &replayed);
     if world.now().state_rev != record.state_rev_after {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -422,15 +437,49 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
     }
     let written = read_now_bytes(world)?;
     if hash_now(&written) != record.now_hash {
+        let detail = effect_diff.unwrap_or_else(|| "now_hash differed".to_string());
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
             Some(record.tick_index),
-            "now_hash differed".to_string(),
+            detail,
             Some(written),
         )));
     }
+    if let Some(detail) = effect_diff {
+        return Err(ReplayError::Diverged(diverge(
+            record.state_rev_after,
+            "tick",
+            Some(record.tick_index),
+            detail,
+            None,
+        )));
+    }
     Ok(())
+}
+
+fn first_effect_difference(logged: &[Effect], replayed: &[Effect]) -> Option<String> {
+    let count = logged.len().max(replayed.len());
+    for index in 0..count {
+        let left = logged.get(index);
+        let right = replayed.get(index);
+        if left == right {
+            continue;
+        }
+        return Some(format!(
+            "effect {index} differed: logged {} replayed {}",
+            effect_text(left),
+            effect_text(right)
+        ));
+    }
+    None
+}
+
+fn effect_text(effect: Option<&Effect>) -> String {
+    match effect {
+        Some(effect) => emit_effect(effect),
+        None => "none".to_string(),
+    }
 }
 
 fn apply_presence(world: &mut World, record: &PresenceRecord) -> Result<(), ReplayError> {
@@ -439,7 +488,7 @@ fn apply_presence(world: &mut World, record: &PresenceRecord) -> Result<(), Repl
     next.presence.actors_present = record.actors_present.clone();
     canonicalize(&mut next);
     next.state_rev = record.state_rev_after;
-    let bytes = emit_now(&next).map_err(ReplayError::Reason)?.into_bytes();
+    let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -478,7 +527,7 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
     next.pack_rev = record.pack_rev_after.clone();
     next.state_rev = record.state_rev_after;
     canonicalize(&mut next);
-    let bytes = emit_now(&next).map_err(ReplayError::Reason)?.into_bytes();
+    let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -492,7 +541,7 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
 }
 
 fn read_from_now(from: &Path) -> Result<Vec<u8>, ReplayError> {
-    let path = from.join("state/now.yaml");
+    let path = from.join("state/save.yaml");
     if !path.is_file() {
         return Err(ReplayError::Reason(Reason::NotInSpec));
     }
@@ -501,7 +550,7 @@ fn read_from_now(from: &Path) -> Result<Vec<u8>, ReplayError> {
 
 fn load_base(bytes: &[u8]) -> Result<Now, ReplayError> {
     let text = std::str::from_utf8(bytes).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    load_now(text).map_err(|diag| ReplayError::Reason(reason_of(diag)))
+    load_save(text).map_err(|diag| ReplayError::Reason(reason_of(diag)))
 }
 
 fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {
@@ -509,11 +558,11 @@ fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {
 }
 
 fn read_now_bytes(world: &World) -> Result<Vec<u8>, ReplayError> {
-    fs::read(world.root().join("state/now.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))
+    fs::read(world.root().join("state/save.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))
 }
 
 fn read_now(world: &World) -> Option<Vec<u8>> {
-    fs::read(world.root().join("state/now.yaml")).ok()
+    fs::read(world.root().join("state/save.yaml")).ok()
 }
 
 fn diverge(
@@ -642,9 +691,9 @@ mod tests {
         assert_eq!(steps.len(), 2, "{steps:?}");
         assert_eq!(steps[0].state_rev, 1);
         assert_eq!(steps[1].state_rev, 2);
-        assert_ne!(steps[0].now_yaml, steps[1].now_yaml);
+        assert_ne!(steps[0].save_yaml, steps[1].save_yaml);
         let final_report = from_journal(&pack, None, None).unwrap();
-        assert_eq!(steps[1].now_yaml, final_report.now_yaml);
+        assert_eq!(steps[1].save_yaml, final_report.now_yaml);
         assert_eq!(final_report.applied, 2);
         let _ = fs::remove_dir_all(&pack);
     }
@@ -653,7 +702,7 @@ mod tests {
     fn verify_names_a_tick_whose_hash_no_longer_matches() {
         let pack = temp_docks("replay-tamper");
         play_pack_once(&pack).unwrap();
-        let path = pack.join("state/log/tick-0001.jsonl");
+        let path = pack.join("state/journal/tick-0001.jsonl");
         let text = fs::read_to_string(&path).unwrap();
         let swapped = text.replacen("\"now_hash\":\"blake2s:", "\"now_hash\":\"blake2s:00", 1);
         assert_ne!(swapped, text);

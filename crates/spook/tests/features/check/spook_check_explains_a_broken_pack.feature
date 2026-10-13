@@ -28,7 +28,7 @@ Feature: spook check explains a broken pack
       | duplicate move                | rules/moves.yaml             | SCHEMA              | listed twice  |
       | old format tag                | rules/moves.yaml             | SCHEMA              | no version    |
       | missing meters                | rules/meters.yaml            | NOT_IN_SPEC         | missing       |
-      | pack_rev mismatch             | state/now.yaml               | PACK_REV_MISMATCH   | pack_rev      |
+      | pack_rev mismatch             | state/save.yaml               | PACK_REV_MISMATCH   | pack_rev      |
       | hidden fact in a place body   | world/places/docks_shop.md   | HIDDEN_FACT_IN_BODY | hidden fact   |
       | hidden fact in a message      | rules/moves.yaml             | HIDDEN_FACT_IN_TEXT | hidden fact   |
       | unknown place in a range      | cast/mira.md                 | SCHEMA              | not a place   |
@@ -81,7 +81,7 @@ Feature: spook check explains a broken pack
     And the operator runs spook check --json
     Then the check exits 1
     And stdout is a JSON array of diagnostics
-    And the JSON array is one diagnostic code "PACK_REV_MISMATCH" file "state/now.yaml" path "pack_rev"
+    And the JSON array is one diagnostic code "PACK_REV_MISMATCH" file "state/save.yaml" path "pack_rev"
     When the operator runs migrate
     Then the command exits 0
     And stderr is empty
