@@ -6,7 +6,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
-use spookery_kernel::shard::open_shard;
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
 use super::gm_seat;
@@ -28,7 +28,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
         None => None,
     };
     let listener = TcpListener::bind(addr).map_err(Error::Io)?;
-    let mut shard = open_shard(pack).map_err(Error::Reason)?;
+    let mut shard = World::open(pack).map_err(Error::Reason)?;
     if world_loop::clear_crashed(&mut shard).map_err(Error::Reason)? {
         world_loop::print_host(&shard);
     }

@@ -1,8 +1,8 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::shard::Shard;
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
-use spookery_tick::{plan_catchup, run_catchup, run_tick, Cause};
+use spookery_round::{plan_catchup, play, play_catchup, TickCause};
 
 pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_tick_at, SystemTime::now())
@@ -22,7 +22,7 @@ pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
     format_utc(UNIX_EPOCH + Duration::from_secs(now.saturating_sub(seconds)))
 }
 
-pub fn idle_tick_if_due(shard: &mut Shard) -> Result<(), Reason> {
+pub fn idle_tick_if_due(shard: &mut World) -> Result<(), Reason> {
     if !shard.budget().idle_ticking && shard.now().presence.humans == 0 {
         return Ok(());
     }
@@ -31,14 +31,14 @@ pub fn idle_tick_if_due(shard: &mut Shard) -> Result<(), Reason> {
     let wall = format_utc(now)?;
     let hours = elapsed / 3600;
     if hours == 0 {
-        run_tick(shard, Cause::Scheduler, &wall)
+        play(shard, TickCause::Scheduler, &wall)
     } else {
         let humans = shard.now().presence.humans;
         let ticks = plan_catchup(humans, shard.budget(), hours)?;
         if ticks == 0 {
-            run_tick(shard, Cause::Scheduler, &wall)
+            play(shard, TickCause::Scheduler, &wall)
         } else {
-            run_catchup(shard, &wall, hours)
+            play_catchup(shard, &wall, hours)
         }
     }
 }
@@ -138,10 +138,10 @@ fn number(text: &str, start: usize, end: usize) -> Result<u32, Reason> {
         .ok_or(Reason::Schema)
 }
 
-/// Seat check and interval check. A tick that runs borrows this `Shard`.
+/// Seat check and interval check. A tick that runs borrows this `World`.
 /// Returns whether `world_time` advanced.
 pub fn on_scheduled_wake(
-    shard: &mut Shard,
+    shard: &mut World,
     player_held: bool,
     gm_held: bool,
 ) -> Result<bool, Reason> {

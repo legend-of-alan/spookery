@@ -58,7 +58,7 @@ pub fn pack(world: &World) -> &Path {
         .unwrap_or_else(|| panic!("no docks table"))
 }
 
-/// Read `state/now.yaml` without opening the shard. `open_shard` runs
+/// Read `state/now.yaml` without opening the shard. `World::open` runs
 /// recovery, which writes, and races a live server mid-commit. The server
 /// replaces now.yaml by atomic rename, so a read is always whole. Windows
 /// can briefly refuse to open a file mid-rename, so a failed read retries.

@@ -3,9 +3,9 @@ use spookery_kernel::intent::{ActorKind, IntentArgs, Target};
 use spookery_kernel::model::ActorLive;
 use spookery_kernel::moves::Audience;
 use spookery_kernel::perceive::perceive_budget;
-use spookery_kernel::shard::Shard;
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
-use spookery_tick::commit_turn_at;
+use spookery_round::commit_moves_at;
 
 use super::frames;
 use super::idle_clock::wall_now;
@@ -43,7 +43,7 @@ pub(super) struct GmTool {
     pub(super) name: &'static str,
     pub(super) about: &'static str,
     pub(super) schema: fn() -> Map<String, Value>,
-    run: fn(&mut Shard, Option<Map<String, Value>>) -> GmToolReply,
+    run: fn(&mut World, Option<Map<String, Value>>) -> GmToolReply,
 }
 
 const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_turn. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
@@ -88,7 +88,7 @@ pub(super) const GM_LIST: &[GmTool] = &[
 ];
 
 pub fn call_gm_tool(
-    shard: &mut Shard,
+    shard: &mut World,
     name: &str,
     arguments: Option<Map<String, Value>>,
 ) -> GmToolReply {
@@ -98,28 +98,28 @@ pub fn call_gm_tool(
     }
 }
 
-fn run_intent(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_intent(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match queue_tool_intent(shard, arguments) {
         Ok(note) => GmToolReply::new(frames::queued_ack(&note.id)),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_commit_turn(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_commit_turn(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match commit_tool(shard, arguments) {
         Ok(done) => done,
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_perceive(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_perceive(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match perceive_tool(shard, arguments) {
         Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_say(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_say(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match speech::speak_tool(shard, arguments) {
         Ok(spoken) => {
             let mut done = GmToolReply::new(spoken.tool);
@@ -133,14 +133,14 @@ fn run_say(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolRe
     }
 }
 
-fn run_session_status(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_session_status(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match session_status_tool(shard, arguments) {
         Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn refuse_not_in_spec(_shard: &mut Shard, _arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn refuse_not_in_spec(_shard: &mut World, _arguments: Option<Map<String, Value>>) -> GmToolReply {
     refused_tool(Reason::NotInSpec)
 }
 
@@ -260,7 +260,7 @@ fn schema_object(value: Value) -> Map<String, Value> {
 }
 
 fn commit_tool(
-    shard: &mut Shard,
+    shard: &mut World,
     arguments: Option<Map<String, Value>>,
 ) -> Result<GmToolReply, Reason> {
     let include_tick = commit_include_tick(arguments)?;
@@ -275,7 +275,7 @@ fn commit_tool(
     }
     let before = shard.now().world_time;
     let wall = wall_now()?;
-    let outcome = commit_turn_at(shard, &wall)?;
+    let outcome = commit_moves_at(shard, &wall)?;
     let advanced = shard.now().world_time != before;
     let mut done = GmToolReply::new(frames::commit_reply(
         outcome.state_rev,
@@ -287,7 +287,7 @@ fn commit_tool(
     Ok(done)
 }
 
-fn noop(shard: &Shard) -> GmToolReply {
+fn noop(shard: &World) -> GmToolReply {
     GmToolReply::new(frames::commit_reply(shard.now().state_rev, &[], None))
 }
 
@@ -295,7 +295,7 @@ fn refused_tool(code: Reason) -> GmToolReply {
     GmToolReply::new(frames::code_result(code.token()))
 }
 
-fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
+fn perceive_tool(shard: &World, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
     let args =
         crate::protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
@@ -305,7 +305,7 @@ fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result
 }
 
 fn session_status_tool(
-    shard: &Shard,
+    shard: &World,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Value, Reason> {
     let since = status_since(arguments)?;
@@ -333,7 +333,7 @@ fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Re
 }
 
 fn queue_tool_intent(
-    shard: &mut Shard,
+    shard: &mut World,
     arguments: Option<Map<String, Value>>,
 ) -> Result<QueuedNote, Reason> {
     let call = crate::protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;

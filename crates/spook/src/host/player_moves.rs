@@ -1,11 +1,11 @@
-use spookery_kernel::check::CheckNotice;
 use spookery_kernel::ids::player_intent_id;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::model::ActorLive;
 use spookery_kernel::moves::{ActionRow, Audience, MoveToken};
-use spookery_kernel::shard::Shard;
+use spookery_kernel::rules::RollReport;
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
-use spookery_tick::commit_turn_at;
+use spookery_round::commit_moves_at;
 
 use super::frames;
 use super::idle_clock::wall_now;
@@ -21,12 +21,12 @@ pub enum MoveOutcome {
     Queued(QueuedNote),
     Committed {
         advanced: bool,
-        notices: Vec<CheckNotice>,
+        notices: Vec<RollReport>,
     },
 }
 
 pub fn handle_player_move(
-    shard: &mut Shard,
+    shard: &mut World,
     actor_id: &str,
     line: &str,
     gm_seated: bool,
@@ -54,17 +54,17 @@ pub fn handle_player_move(
     })
 }
 
-pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
+pub fn player_notice_lines(notices: &[RollReport], actor_id: &str) -> String {
     let mut out = String::new();
     for notice in notices {
         if notice.actor_id() != actor_id {
             continue;
         }
         match notice {
-            CheckNotice::Rolled { out: rolled, .. } => {
+            RollReport::Rolled { out: rolled, .. } => {
                 out.push_str(&frames::player_check_line(rolled.outcome))
             }
-            CheckNotice::Refused { code, .. } => {
+            RollReport::Refused { code, .. } => {
                 out.push_str(&frames::player_refused_line(code.token()))
             }
         }
@@ -72,18 +72,18 @@ pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
     out
 }
 
-pub fn gm_check_frames(notices: &[CheckNotice]) -> Vec<Vec<u8>> {
+pub fn gm_check_frames(notices: &[RollReport]) -> Vec<Vec<u8>> {
     notices
         .iter()
         .filter_map(|notice| match notice {
-            CheckNotice::Rolled { out, .. } => Some(frames::check_event(out)),
-            CheckNotice::Refused { .. } => None,
+            RollReport::Rolled { out, .. } => Some(frames::check_event(out)),
+            RollReport::Refused { .. } => None,
         })
         .collect()
 }
 
 /// A named item must already be on the actor. The line is refused before queue.
-fn require_item(shard: &Shard, actor_id: &str, row: &ActionRow) -> Result<(), Reason> {
+fn require_item(shard: &World, actor_id: &str, row: &ActionRow) -> Result<(), Reason> {
     let Some(item) = row.item.as_deref() else {
         return Ok(());
     };
@@ -101,7 +101,7 @@ fn require_item(shard: &Shard, actor_id: &str, row: &ActionRow) -> Result<(), Re
 
 /// The actor or place token is stored as typed. An unknown id stays the tick's existing refusal.
 fn queue_row(
-    shard: &mut Shard,
+    shard: &mut World,
     actor_id: &str,
     verb: &str,
     rest: &str,
@@ -164,7 +164,7 @@ fn queue_row(
     Ok(note)
 }
 
-pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Reason> {
+pub fn queue_wait(shard: &mut World, actor_id: &str) -> Result<QueuedNote, Reason> {
     let Some(row) = shard
         .canon()
         .moves
@@ -179,7 +179,7 @@ pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Reaso
     queue_row(shard, actor_id, "wait", "", &row)
 }
 
-fn player_line_id(shard: &Shard, actor_id: &str, canonical: &str) -> Result<String, Reason> {
+fn player_line_id(shard: &World, actor_id: &str, canonical: &str) -> Result<String, Reason> {
     let tick = shard
         .now()
         .tick_index
@@ -192,14 +192,14 @@ fn player_line_id(shard: &Shard, actor_id: &str, canonical: &str) -> Result<Stri
     Ok(id)
 }
 
-/// An empty round does not enter `run_tick` and does not advance `world_time`.
-pub fn commit_queued(shard: &mut Shard) -> Result<bool, Reason> {
+/// An empty round does not enter `play` and does not advance `world_time`.
+pub fn commit_queued(shard: &mut World) -> Result<bool, Reason> {
     if shard.queued_intents().is_empty() {
         return Ok(false);
     }
     let before = shard.now().world_time;
     let wall = wall_now()?;
-    commit_turn_at(shard, &wall)?;
+    commit_moves_at(shard, &wall)?;
     Ok(shard.now().world_time != before)
 }
 
@@ -224,7 +224,7 @@ pub(super) struct IntentPush<'a> {
     pub tick_index: Option<u64>,
 }
 
-pub(super) fn push_intent(shard: &mut Shard, intent: IntentPush<'_>) -> Result<(), Reason> {
+pub(super) fn push_intent(shard: &mut World, intent: IntentPush<'_>) -> Result<(), Reason> {
     let tick_index = match intent.tick_index {
         Some(tick_index) => tick_index,
         None => shard
@@ -233,7 +233,7 @@ pub(super) fn push_intent(shard: &mut Shard, intent: IntentPush<'_>) -> Result<(
             .checked_add(1)
             .ok_or(Reason::Schema)?,
     };
-    shard.queue_intent(Intent {
+    shard.queue(Intent {
         id: intent.id,
         tick_index,
         actor_id: intent.actor_id.to_string(),

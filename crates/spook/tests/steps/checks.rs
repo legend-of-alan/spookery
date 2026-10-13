@@ -202,7 +202,7 @@ fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
     insert_brace_habit(&pack);
     stamp(&pack);
     let before = snapshot_of(&pack);
-    spookery_tick::tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    spookery_round::play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     world.scratch = before.display().to_string();
 }
 
@@ -288,7 +288,7 @@ fn replaying_the_tick_reproduces_the_save(world: &mut World) {
     let start = PathBuf::from(&world.scratch);
     let golden = fs::read(played.join("state/now.yaml"))
         .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
-    let report = spookery_tick::replay_journal(played, Some(&start), None)
+    let report = spookery_round::replay_journal(played, Some(&start), None)
         .unwrap_or_else(|err| panic!("replay: {err}"));
     assert_eq!(report.now_yaml, golden);
     assert_eq!(

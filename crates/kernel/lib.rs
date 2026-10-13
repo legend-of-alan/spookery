@@ -27,13 +27,13 @@ pub mod moves;
 pub mod pause;
 pub mod perceive;
 pub(crate) mod recover;
-pub mod shard;
+pub mod rules;
 pub mod tape;
+pub mod world;
 
-pub use check::die_face;
 pub use diagnostic::{first_reason, reason_of, Diagnostic};
 pub use digest::{idle_digest, DigestViewer};
 pub use error::Reason;
 pub use hash::{blake2s_256, blake2s_hex};
 pub use perceive::perceive;
-pub use shard::{check_pack, open_shard};
+pub use world::{check_pack, World};

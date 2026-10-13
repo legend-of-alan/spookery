@@ -1,5 +1,32 @@
 use spookery_kernel::limits::Budget;
+use spookery_kernel::pause::apply_pause_policy;
+use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
+
+use crate::round::Round;
+
+pub fn advance(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
+    round.trace.push("advance".to_string());
+    let world_before = draft.now().world_time;
+    round.world_time_before = world_before;
+    round.rev_before = draft.now().state_rev;
+    round.tick_index = draft.now().tick_index + 1;
+    round.world_id = draft.now().shard_id.clone();
+    draft.pin_loop(round.tick_index, world_before, &round.now_wall);
+    let minutes = pick_advance(round.humans, draft.budget());
+    let world_after = world_before.saturating_add(minutes);
+    let day_changed = world_before / 1440 != world_after / 1440;
+    let hour_changed = world_before / 60 != world_after / 60;
+    draft.pin_loop(round.tick_index, world_after, &round.now_wall);
+    round.world_time_after = world_after;
+    if day_changed {
+        draft.reset_idle_acts()?;
+    }
+    if hour_changed {
+        draft.reset_live_acts()?;
+    }
+    apply_pause_policy(draft)
+}
 
 pub fn pick_advance(humans: u32, budget: &Budget) -> u64 {
     if humans > 0 {

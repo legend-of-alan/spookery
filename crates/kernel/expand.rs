@@ -223,7 +223,7 @@ mod tests {
     use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
     use crate::meter::MeterWrite;
     use crate::model::Clock;
-    use crate::shard::open_shard;
+    use crate::world::World;
 
     use super::expand_outcome;
 
@@ -368,7 +368,7 @@ mod tests {
         now.pack_rev = pack_rev(&root).unwrap();
         fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
 
-        let shard = open_shard(&root).unwrap();
+        let shard = World::open(&root).unwrap();
         let shelf = intent("shelf", Target::Empty);
         let expanded = expand_outcome(shard.canon(), shard.now(), &shelf, None).unwrap();
         assert_eq!(
@@ -405,7 +405,7 @@ mod tests {
                 && effect.intent_id() == "shelf-1"
         }));
 
-        let mut txn = crate::shard::Txn::begin(&shard);
+        let mut txn = crate::world::Draft::begin(&shard);
         for effect in expanded {
             apply_effect(&mut txn, &shelf, effect).unwrap();
         }
@@ -430,7 +430,7 @@ mod tests {
             Reason::UnknownKey
         );
 
-        let mut ranged = crate::shard::Txn::begin(&shard);
+        let mut ranged = crate::world::Draft::begin(&shard);
         let overstock = intent("overstock", Target::Empty);
         let stock = expand_outcome(shard.canon(), shard.now(), &overstock, None).unwrap();
         assert_eq!(stock.len(), 1);
@@ -440,7 +440,7 @@ mod tests {
         );
         assert_eq!(ranged.now().places["docks_shop"].stock["lamp_oil"], 4);
 
-        let mut clock_txn = crate::shard::Txn::begin(&shard);
+        let mut clock_txn = crate::world::Draft::begin(&shard);
         let overclock = intent("overclock", Target::Empty);
         let clock = expand_outcome(shard.canon(), shard.now(), &overclock, None).unwrap();
         assert_eq!(
@@ -454,7 +454,7 @@ mod tests {
         );
         assert_eq!(clock_txn.now().clocks["shelf_count"].value, 0);
 
-        let mut stranger_txn = crate::shard::Txn::begin(&shard);
+        let mut stranger_txn = crate::world::Draft::begin(&shard);
         let stranger = Intent {
             id: "bram-clock".to_string(),
             tick_index: 0,
@@ -480,7 +480,7 @@ mod tests {
         );
         assert_eq!(stranger_txn.now().clocks["shelf_count"].value, 0);
 
-        let mut need_txn = crate::shard::Txn::begin(&shard);
+        let mut need_txn = crate::world::Draft::begin(&shard);
         let overneed = intent("overneed", Target::Empty);
         let need = expand_outcome(shard.canon(), shard.now(), &overneed, None).unwrap();
         assert_eq!(
@@ -491,7 +491,7 @@ mod tests {
         assert_eq!(held.base, 3);
         assert_eq!(held.offset, 0);
 
-        let mut cap_txn = crate::shard::Txn::begin(&shard);
+        let mut cap_txn = crate::world::Draft::begin(&shard);
         let cap = intent("cap", Target::Empty);
         let capped = expand_outcome(shard.canon(), shard.now(), &cap, None).unwrap();
         apply_effect(&mut cap_txn, &cap, capped.into_iter().next().unwrap()).unwrap();
@@ -499,11 +499,11 @@ mod tests {
         assert_eq!(capped_rest.base, 5);
         assert_eq!(capped_rest.offset, 0);
         assert!(cap_txn
-            .staged_paths()
+            .changes()
             .iter()
             .any(|line| line == "actor_meter mira rest"));
 
-        let mut creep_txn = crate::shard::Txn::begin(&shard);
+        let mut creep_txn = crate::world::Draft::begin(&shard);
         {
             let live = creep_txn
                 .now_mut()
@@ -523,7 +523,7 @@ mod tests {
         assert_eq!(crept_rest.base, 5);
         assert_eq!(crept_rest.offset, 0);
         assert!(creep_txn
-            .staged_paths()
+            .changes()
             .iter()
             .all(|line| line != "actor_meter mira rest"));
 

@@ -11,11 +11,11 @@ use spookery_kernel::journal::{
     self, hash_now, JournalEntry, MigrateRecord, PresenceRecord, TickRecord,
 };
 use spookery_kernel::model::Now;
-use spookery_kernel::shard::{open_replay_shard, Shard};
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
-use crate::run::{run_recorded_tick, RecordedTick};
-use crate::seed::seed_preimage;
+use crate::dice_seed::dice_seed;
+use crate::play::{play_recorded, RecordedTick};
 
 #[derive(Debug)]
 pub struct ReplayReport {
@@ -199,7 +199,7 @@ fn replay_walking(
     let _ = fs::remove_dir_all(temp.0.join("state/.txn"));
     fs::write(temp.0.join("state/now.yaml"), &base_bytes)
         .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    let mut shard = open_replay_shard(&temp.0).map_err(ReplayError::Reason)?;
+    let mut shard = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
     for entry in &records {
         let record_rev = entry.state_rev_after();
         if record_rev > cap {
@@ -356,7 +356,7 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
     Ok(())
 }
 
-fn apply(shard: &mut Shard, entry: &JournalEntry) -> Result<(), ReplayError> {
+fn apply(shard: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
     match entry {
         JournalEntry::Tick(record) => apply_tick(shard, record),
         JournalEntry::Presence(record) => apply_presence(shard, record),
@@ -364,7 +364,7 @@ fn apply(shard: &mut Shard, entry: &JournalEntry) -> Result<(), ReplayError> {
     }
 }
 
-fn apply_tick(shard: &mut Shard, record: &TickRecord) -> Result<(), ReplayError> {
+fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError> {
     let line = parse_recorded_line(&record.text).map_err(|_| {
         ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -383,7 +383,7 @@ fn apply_tick(shard: &mut Shard, record: &TickRecord) -> Result<(), ReplayError>
             None,
         )));
     }
-    let seed = seed_preimage(&shard.now().shard_id, line.tick_index);
+    let seed = dice_seed(&shard.now().shard_id, line.tick_index);
     if line.seed != seed {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -394,7 +394,7 @@ fn apply_tick(shard: &mut Shard, record: &TickRecord) -> Result<(), ReplayError>
         )));
     }
     let wall = line.last_tick_at.clone();
-    run_recorded_tick(
+    play_recorded(
         shard,
         &wall,
         RecordedTick {
@@ -433,7 +433,7 @@ fn apply_tick(shard: &mut Shard, record: &TickRecord) -> Result<(), ReplayError>
     Ok(())
 }
 
-fn apply_presence(shard: &mut Shard, record: &PresenceRecord) -> Result<(), ReplayError> {
+fn apply_presence(shard: &mut World, record: &PresenceRecord) -> Result<(), ReplayError> {
     let mut next = shard.now().clone();
     next.presence.humans = record.humans;
     next.presence.actors_present = record.actors_present.clone();
@@ -452,7 +452,7 @@ fn apply_presence(shard: &mut Shard, record: &PresenceRecord) -> Result<(), Repl
     replay_write_now(shard, next).map_err(ReplayError::Reason)
 }
 
-fn apply_migrate(shard: &mut Shard, record: &MigrateRecord) -> Result<(), ReplayError> {
+fn apply_migrate(shard: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
     let mut next = shard.now().clone();
     if next.pack_rev != record.pack_rev_before {
         return Err(ReplayError::Diverged(diverge(
@@ -508,11 +508,11 @@ fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {
     Ok(load_base(bytes)?.state_rev)
 }
 
-fn read_now_bytes(shard: &Shard) -> Result<Vec<u8>, ReplayError> {
+fn read_now_bytes(shard: &World) -> Result<Vec<u8>, ReplayError> {
     fs::read(shard.root().join("state/now.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))
 }
 
-fn read_now(shard: &Shard) -> Option<Vec<u8>> {
+fn read_now(shard: &World) -> Option<Vec<u8>> {
     fs::read(shard.root().join("state/now.yaml")).ok()
 }
 
@@ -618,12 +618,12 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{replay_journal, replay_states, verify_pack};
-    use crate::tick_pack;
+    use crate::play_pack;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
         let pack = temp_docks("replay-collide");
-        tick_pack(&pack).unwrap();
+        play_pack(&pack).unwrap();
         let left = replay_journal(&pack, None, None).unwrap();
         let right = replay_journal(&pack, None, None).unwrap();
         assert_eq!(left.now_yaml, right.now_yaml);
@@ -636,8 +636,8 @@ mod tests {
     #[test]
     fn one_replay_returns_each_applied_save() {
         let pack = temp_docks("replay-states");
-        tick_pack(&pack).unwrap();
-        tick_pack(&pack).unwrap();
+        play_pack(&pack).unwrap();
+        play_pack(&pack).unwrap();
         let steps = replay_states(&pack).unwrap();
         assert_eq!(steps.len(), 2, "{steps:?}");
         assert_eq!(steps[0].state_rev, 1);
@@ -652,7 +652,7 @@ mod tests {
     #[test]
     fn verify_names_a_tick_whose_hash_no_longer_matches() {
         let pack = temp_docks("replay-tamper");
-        tick_pack(&pack).unwrap();
+        play_pack(&pack).unwrap();
         let path = pack.join("state/log/tick-0001.jsonl");
         let text = fs::read_to_string(&path).unwrap();
         let swapped = text.replacen("\"now_hash\":\"blake2s:", "\"now_hash\":\"blake2s:00", 1);

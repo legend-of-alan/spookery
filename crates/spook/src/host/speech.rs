@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde_json::{Map, Value};
 use spookery_kernel::model::ActorLive;
-use spookery_kernel::shard::Shard;
 use spookery_kernel::tape::{append_session, read_session};
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
 use super::frames::{self, TapeLine};
@@ -24,7 +24,7 @@ enum Speech {
     Place { text: String },
 }
 
-pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
+pub fn speak(shard: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
     let speech = parse_line(line, actor_id, &shard.now().actors)?;
     if !shard
         .now()
@@ -65,7 +65,7 @@ pub fn speak(shard: &Shard, actor_id: &str, line: &str) -> Result<Spoken, Reason
 }
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
-pub fn speak_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
+pub fn speak_tool(shard: &World, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
     let call = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let address = call.address;
     let place = call.place;
@@ -112,7 +112,7 @@ pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, R
 }
 
 fn append_speech(
-    shard: &Shard,
+    shard: &World,
     from: &str,
     address: &str,
     place: Option<String>,
@@ -227,7 +227,7 @@ fn one_line(text: &str) -> Result<&str, Reason> {
 }
 
 fn recipients(
-    shard: &Shard,
+    shard: &World,
     speaker: Option<&str>,
     address: &str,
     place: Option<&str>,
@@ -269,7 +269,7 @@ fn recipients(
     ids.into_iter().collect()
 }
 
-fn seated_players(shard: &Shard) -> Vec<String> {
+fn seated_players(shard: &World) -> Vec<String> {
     shard
         .now()
         .presence

@@ -132,7 +132,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 | **Intent** | Proposed move from a player, NPC agent, or kernel scheduler |
 | **Effect** | Validated state mutation produced from an intent |
 | **GM** | Game Master — the storyteller. In this system usually an **agent** that calls MCP, not the runtime. `spook ai-gm` is the shipped model GM; a coding agent on the one GM seat playtests and authors |
-| **Shard** | A running pack with durable `state/`, zero humans allowed |
+| **World** | A running pack with durable `state/`, zero humans allowed |
 | **Session** | A presence window on a shard (people are typed in) |
 | **Play door** | Human client on the CLI, over loopback |
 | **Agent door** | MCP tools. Register `spook mcp --addr 127.0.0.1:<port>` as a stdio MCP server, or use `http://127.0.0.1:<port>/mcp` with `spook run --mcp-http` |
@@ -158,7 +158,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - Pack schema (markdown / YAML)
 - Runtime CLI: load a pack and write `state/`
 - Kernel: checks, meters, habits, knowledge firewall
-- Shard tick loop
+- World tick loop
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
 - Terminal play: one GM seat and up to three player seats. A fourth player gets `SESSION_FULL`. A held character gets `SEAT_TAKEN`. Built.
 - Rules primitives able to express a 5e-style game in a pack, with no 5e-specific code and no SRD text. `packs/sample-d20` is that sample. Known gaps: a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, a condition when hit points reach zero, and consume an item (drink checks for the tonic but never uses it up, so it heals forever).
@@ -274,7 +274,7 @@ Deployment:
 | Mode | Shape | When |
 |---|---|---|
 | Laptop | `spook run` on loopback | The sitting |
-| Shard host | The same binary, left running | When a host wants the pack always on |
+| World host | The same binary, left running | When a host wants the pack always on |
 | Hosted studio | Multi-tenant, later | After other authors exist |
 
 The runtime is not the LLM. Unplug API keys and subsistence ticks still run.
@@ -482,7 +482,7 @@ Later genre packs may override pause policy. The docks fixture does not.
   skills/author-pack/      # pack-authoring skill
 /crates
   kernel/                  # spookery-kernel
-  tick/                    # spookery-tick
+  round/                   # spookery-round
   spook/                   # package spook, binary spook, library spookery
     src/
       main.rs              # spook
@@ -497,7 +497,7 @@ Later genre packs may override pause policy. The docks fixture does not.
       features/
 ```
 
-Language: Rust. Three crates: spookery-kernel, spookery-tick, and spook.
+Language: Rust. Three crates: spookery-kernel, spookery-round, and spook.
 
 Agents implement from `docs/spec.md`. A human reviews. This file does not license a code change.
 

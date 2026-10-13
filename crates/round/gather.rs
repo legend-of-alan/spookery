@@ -1,8 +1,48 @@
-use crate::seed::shuffle_key;
+use std::collections::BTreeSet;
+
+use spookery_kernel::habit::{kernel_intents_for_eligible_npcs, stamp_for_priority};
 use spookery_kernel::intent::{ActorKind, Intent, Target};
 use spookery_kernel::model::Now;
+use spookery_kernel::world::Draft;
+use spookery_kernel::Reason;
 
-pub fn prioritize(
+use crate::dice_seed::shuffle_key;
+use crate::round::Round;
+
+pub fn gather(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
+    round.trace.push("gather".to_string());
+    round.trace.push("session_status".to_string());
+    round.supply_from = match &round.recorded {
+        Some(recorded) => recorded.intents.clone(),
+        None => round.queued.clone(),
+    };
+    let candidates = if let Some(recorded) = &round.recorded {
+        recorded.intents.clone()
+    } else {
+        let mut candidates = round.queued.clone();
+        for intent in &mut candidates {
+            stamp_for_priority(draft.canon(), draft.now(), intent);
+        }
+        candidates.extend(kernel_intents_for_eligible_npcs(draft.canon(), draft.now()));
+        let mut candidates =
+            order_intents(draft.now(), candidates, round.tick_index, &round.world_id);
+        let max_intents = draft.budget().max_intents_applied as usize;
+        if candidates.len() > max_intents {
+            candidates.truncate(max_intents);
+        }
+        candidates
+    };
+    let mut seen = BTreeSet::new();
+    for intent in &candidates {
+        if !seen.insert(intent.id.clone()) {
+            return Err(Reason::Schema);
+        }
+    }
+    round.candidates = candidates;
+    Ok(())
+}
+
+pub fn order_intents(
     now: &Now,
     mut intents: Vec<Intent>,
     tick_index: u64,

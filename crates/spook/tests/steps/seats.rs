@@ -129,7 +129,7 @@ Lark watches the street from a dry doorway.
     *actor.place_mut() = "docks_street".to_string();
     now.actors.insert("pc_lark".to_string(), actor);
     store_now(&pack, now);
-    spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
+    spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);
 }
 
@@ -183,7 +183,7 @@ fn a_one_player_docks_table(world: &mut World) {
     now.actors.remove("pc_harbormouse");
     now.actors.remove("pc_wren");
     store_now(&pack, now);
-    spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
+    spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     let port = table::free_port();
     let bind = format!("127.0.0.1:{port}");
     table::listen(&pack, &bind, port);
@@ -232,7 +232,7 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
         .known_facts_mut()
         .push(HIDDEN_FACT.to_string());
     store_now(&pack, now);
-    spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
+    spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
 }
 

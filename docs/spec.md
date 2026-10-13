@@ -22,15 +22,15 @@ This spec records one writer, the crate boundary, the threat list, loopback and 
 
 These fourteen rules are the referee, in this order. Later sections are the detail. A sentence in another document does not add a fifteenth rule.
 
-1. **Import boundary.** `spookery-kernel` and `spookery-tick` do not link a runtime, a database, or a model SDK.
-2. **`!Send` `Txn`.** One `std::thread` owns `Now`. The tick is not spawned on a runtime.
+1. **Import boundary.** `spookery-kernel` and `spookery-round` do not link a runtime, a database, or a model SDK.
+2. **`!Send` `Draft`.** One `std::thread` owns `Now`. The tick is not spawned on a runtime.
 3. **Atomic commit.** `now.yaml` is renamed last. A crash cannot apply a partial tick.
-4. **Closed effect, one apply.** Seven effect classes. `apply_effect` is the only mutator of world numbers.
+4. **Closed effect, one apply.** Seven effect classes. `apply_effect` is the only mutator of world numbers. A rule's effects apply all together. If one effect is refused, or the list is longer than `max_effects_per_intent`, that intent is rolled back and none of its effects are saved. The tick names the refusal. The effect cap's reason is `budget`.
 5. **Firewall.** `firewall::allows` is the visibility test. A hidden fact does not leak through place or cast prose.
-6. **Deterministic tick.** A row's literals are filled before the apply loop. Replay re-expands the recorded intents and calls `resolve_check` again from the recorded seed. It also replays every journaled commit since the base: a presence commit restores that presence, and a migrate commit restores `pack_rev`.
+6. **Deterministic tick.** A row's literals are filled before the apply loop. `round::play` runs `advance`, `complete`, `gather`, `resolve`, `apply`, `run_triggers`, `observe`, and `record` in that order. Replay runs those same stages. Each roll's seed is Blake2s of `{world}|{tick}|{rule}|{subject}|{roll_index}`. The tick line keeps `seed` as `{world}|{tick}`. Replay re-expands the recorded intents and rolls again from those keys. It also replays every journaled commit since the base: a presence commit restores that presence, and a migrate commit restores `pack_rev`.
 7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
 8. **Action-row loader.** A moves file is names and rows. A field is a literal, or the player token on a player row. A new verb is a new row in YAML.
-9. **Seeded checks.** `die_face` is Blake2s. One copy, in `check.rs`. The intent's own actor resolves the check, PC or NPC. Another actor does not. `difficulty` applies only when the row sets `check` and no opposing total applies. The total is `success` when it reaches the target, `partial` when the row sets `partial_at` and the total reaches that threshold but not the target, and `miss` otherwise. A row without `partial_at` is `success` or `miss`. An opposing total replaces `difficulty`, and that roll stays `success` or `miss` even when the row sets `partial_at`, because `partial_at` is compared with the row's own `difficulty`.
+9. **Seeded checks.** `rules::roll` is the only roll. It is Blake2s, one copy, in `rules/roll.rs`. There is no shared die cursor and no dice cap. The intent's own actor resolves the check, PC or NPC. Another actor does not. `difficulty` applies only when the row sets `check` and no opposing total applies. The total is `success` when it reaches the target, `partial` when the row sets `partial_at` and the total reaches that threshold but not the target, and `miss` otherwise. A row without `partial_at` is `success` or `miss`. An opposing total replaces `difficulty`, and that roll stays `success` or `miss` even when the row sets `partial_at`, because `partial_at` is compared with the row's own `difficulty`.
 10. **Eligibility and habits.** Both run before a kernel habit intent exists. An ineligible NPC produces no habit intent. A player-sourced intent is not a habit intent.
 11. **Failure tokens.** Each token has one meaning. `NOT_OWNER` and `LIVE_ONLY` are not tokens.
 12. **Speech versus queue.** Speech appends to the tape. It is not a row, it does not enter the intent queue, and it does not tick.
@@ -39,15 +39,15 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 
 ## One writer
 
-The shard thread is the only writer of `Now` and of `Seats`. One `std::thread` owns `Now`. `Txn` stays `!Send`, with `PhantomData<Rc<()>>` as in `crates/kernel/shard.rs`. No `tokio::spawn` of a tick.
+The shard thread is the only writer of `Now` and of `Seats`. One `std::thread` owns `Now`. `Draft` stays `!Send`, with `PhantomData<Rc<()>>` as in `crates/kernel/world.rs`. No `tokio::spawn` of a tick.
 
 The queue is a `Vec` of intents on the shard thread. It is ephemeral. A crash drops every uncommitted line. A crash cannot apply a partial tick. The queue is not a field of `now.yaml`. It is not a side file that recovery has to remember.
 
-`Txn::begin` clones `Now` once into `staging`. That is the only clone. `commit` moves `staging` into `Shard.now` after `write_commit` returns. It does not clone again.
+`Draft::begin` clones `Now` once into `state`. That is the only clone. `commit` moves `state` into `World.now` after `write_commit` returns. It does not clone again.
 
-`expand` takes `&Canon`, `&Now` (the staging borrow), and `&Intent`. It does not hold `Shard`. `apply_effect` takes `&mut Staging`. `Staging` borrows `Txn`'s staging, the typed key set, and the active intent, so it is `!Send`. The tick does not hold `&Shard` and `&mut Txn` in a way that aliases `Now`. Checks read `current` off the pre-loop `frozen` snapshot, the same `Now` expand uses. They do not read live staging. The item precondition reads the actor's inventory before queue. `stage_tick` receives `&mut Txn` and the queue snapshot: the `Vec` of intents is moved out for the tick and put back only if the tick is abandoned. `Shard` fields are private.
+`expand` takes `&Canon`, `&Now` (the draft borrow), and `&Intent`. It does not hold `World`. `apply_effect` takes `&mut Draft`. The tick does not hold `&World` and `&mut Draft` in a way that aliases `Now`. Checks read `current` off the pre-loop `frozen` snapshot, the same `Now` expand uses. They do not read the live draft. The item precondition reads the actor's inventory before queue. `round::play` receives `&mut World` and runs the eight stages over one `Draft`. `World` does not publish `set_pending`, `set_rolls`, `queue_intent`, or `clear_queue`.
 
-`append_session` takes the session lock and never a `Txn`. `commit_presence` takes the shard lock and never a `Txn`.
+`append_session` takes the session lock and never a `Draft`. `commit_presence` takes the shard lock and never a `Draft`.
 
 `Seats` is one GM seat and up to three player seats, plus a process-local session counter. Each player seat is one live socket bound to one pack PC. The cap of three is a constant in the seat code. It is not a pack setting. `Seats` is not a second presence document. The durable source of who is at the table is `Now.presence`, and that struct is only `humans` and `actors_present`. Session ids are not in it. The shard thread is the only writer of both `Seats` and `Now`. A player hello or drop that changes `humans` or `actors_present` calls `commit_presence` once before the handler returns. A drop releases only that seat. A GM hello does not change those fields and does not write `now.yaml`.
 
@@ -55,20 +55,20 @@ Invariant, checked by a debug assert on the shard thread: `presence.humans` equa
 
 ## Crate boundary
 
-Three crates, all under `crates/`. `crates/kernel` is `spookery-kernel`. `crates/tick` is `spookery-tick`. `crates/spook` is package `spook`, library `spookery`, binary `spook`. Protocol, the player client, and the model client are modules of that library: `protocol`, `terminal`, and `ai`. A one-crate collapse is not the layout. The `spook` package may link a runtime. The `ai` module may link an HTTP client.
+Three crates, all under `crates/`. `crates/kernel` is `spookery-kernel`. `crates/round` is `spookery-round`. `crates/spook` is package `spook`, library `spookery`, binary `spook`. Protocol, the player client, and the model client are modules of that library: `protocol`, `terminal`, and `ai`. A one-crate collapse is not the layout. The `spook` package may link a runtime. The `ai` module may link an HTTP client.
 
 | Crate or module | May link | Must not link |
 |---|---|---|
 | `protocol` | `serde`, `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `terminal`, `ai` |
-| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, `reqwest`, any model SDK, `spookery-tick`, the `spook` crate |
-| `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `reqwest`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, the `spook` crate |
+| `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, `reqwest`, any model SDK, `spookery-round`, the `spook` crate |
+| `spookery-round` | `spookery-kernel` | `tokio`, `rmcp`, `reqwest`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, the `spook` crate |
 | `terminal` | `protocol`, `spookery-kernel` | `ai`, `reqwest`, `rmcp`, `tokio` |
-| `ai` | `protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-tick`, `terminal`, `rmcp`, any model SDK |
+| `ai` | `protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-round`, `terminal`, `rmcp`, any model SDK |
 | `mcp` | `tokio`, `serde_json` | `reqwest`, `terminal`, `ai` |
-| `audit` | `spookery-kernel`, `spookery-tick`, the player perceive renderer | `tokio`, `rmcp`, `reqwest` |
-| bin `spook` | `spookery-kernel`, `spookery-tick`, `tokio`, `rmcp`, `socket2`, `serde_json`, and its `protocol`, `terminal`, `ai`, `mcp`, and `audit` modules | `reqwest` outside `crates/spook/src/ai/`. Host code that calls `terminal` or `ai`. Business rules that belong in the kernel. A second tick implementation. |
+| `audit` | `spookery-kernel`, `spookery-round`, the player perceive renderer | `tokio`, `rmcp`, `reqwest` |
+| bin `spook` | `spookery-kernel`, `spookery-round`, `tokio`, `rmcp`, `socket2`, `serde_json`, and its `protocol`, `terminal`, `ai`, `mcp`, and `audit` modules | `reqwest` outside `crates/spook/src/ai/`. Host code that calls `terminal` or `ai`. Business rules that belong in the kernel. A second tick implementation. |
 
-`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. It reads every runtime file under `crates/kernel`, `crates/tick`, and `crates/spook/src`. `crates/kernel` and `crates/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, `redis`, `reqwest`, `langchain`, `openai`, `anthropic`, or `ollama`. `reqwest` may appear only under `crates/spook/src/ai/`. `protocol` must not contain `tokio`, `rmcp`, `reqwest`, `spookery_kernel`, `crate::terminal`, or `crate::ai`. `terminal` must not contain `tokio`, `rmcp`, `reqwest`, or `crate::ai`. `ai` must not contain `rmcp`, `crate::terminal`, or `spookery_tick`. `host` must not contain `crate::terminal` or `crate::ai`. `gm_connection` must not contain `tokio`, `rmcp`, `reqwest`, `crate::ai`, or `crate::terminal`. `mcp` must not contain `reqwest`, `crate::terminal`, or `crate::ai`. `audit` must not contain `tokio`, `rmcp`, or `reqwest`. A comment in a scanned file that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`. An optional cargo feature may be named `ai`.
+`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. It reads every runtime file under `crates/kernel`, `crates/round`, and `crates/spook/src`. `crates/kernel` and `crates/round` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, `redis`, `reqwest`, `langchain`, `openai`, `anthropic`, or `ollama`. `reqwest` may appear only under `crates/spook/src/ai/`. `protocol` must not contain `tokio`, `rmcp`, `reqwest`, `spookery_kernel`, `crate::terminal`, or `crate::ai`. `terminal` must not contain `tokio`, `rmcp`, `reqwest`, or `crate::ai`. `ai` must not contain `rmcp`, `crate::terminal`, or `spookery_round`. `host` must not contain `crate::terminal` or `crate::ai`. `gm_connection` must not contain `tokio`, `rmcp`, `reqwest`, `crate::ai`, or `crate::terminal`. `mcp` must not contain `reqwest`, `crate::terminal`, or `crate::ai`. `audit` must not contain `tokio`, `rmcp`, or `reqwest`. A comment in a scanned file that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`. An optional cargo feature may be named `ai`.
 
 Tokio in `spook` is the accept loop, keepalive, and scheduler sleep. The tick function runs on the shard thread.
 
@@ -141,9 +141,9 @@ Stock names `place`, `sku`, and `delta`. `apply_stock` still refuses a place out
 Bindings and the outcome list are different steps.
 
 1. Habit selection picks a row before the apply loop. Expand fills that row's literals against the staging `Now` it sees, including `from` taken from the actor's live place. A row that does not expand is not the kernel intent. Player travel binds the typed place.
-2. Inside the per-candidate loop, `resolve_check` runs if the row has a `check`. The viewer is that intent's actor. A PC or an NPC may roll for themselves. A viewer who is not the actor is `UNKNOWN_KEY`. An unknown id is `UNKNOWN_KEY`. Templates do not run. The die cursor does not move.
+2. In `resolve`, `rules::roll` runs if the row has a `check`. The viewer is that intent's actor. A PC or an NPC may roll for themselves. A viewer who is not the actor is `UNKNOWN_KEY`. An unknown id is `UNKNOWN_KEY`. Templates do not run. Each roll has its own key, so another intent does not move its dice.
 3. After that roll, the selected templates are `effects`, plus `success` on success, `partial` on partial, and `failure` on miss. No roll means `effects` only. Those templates are filled from the row, not by choosing a new target. The result is a `Vec` of `EffectClass`.
-4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `run_recorded_tick` expands those intents again, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. Replay does not install the log as `Now`. A presence record restores `presence` and `state_rev`. A migrate record restores `pack_rev` and `state_rev`. Replay applies those commits. It does not install them as effects. The names `need` and `resource` are not variants.
+4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `play_recorded` runs the same stages, which expand those intents again and call `rules::roll` again from each roll's key. Replay does not install the log as `Now`. A presence record restores `presence` and `state_rev`. A migrate record restores `pack_rev` and `state_rev`. Replay applies those commits. It does not install them as effects. The names `need` and `resource` are not variants. An effect that is refused rolls the whole intent back. A list longer than `max_effects_per_intent` is refused as `budget` before any of it applies.
 
 A vec built before the roll cannot be the success list, the partial list, and the failure list at once. The post-roll value is the effect vec. Habit rows may have `success`, `partial`, and `failure`. Outcome lists are not limited to player rows.
 
@@ -173,7 +173,7 @@ pub enum Source {
 }
 ```
 
-Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `Shard` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again. It also applies presence and migrate records as their commits.
+Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `World` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again. It also applies presence and migrate records as their commits.
 
 Priority, computed before the roll, is player before NPC before system, then PC-owned clocks, claimed targets, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the clock id on the expanded effect. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a message's `to` hits `actors_present`.
 
@@ -249,11 +249,11 @@ The first commit on a pack with no `log/base.yaml` writes that file in the same 
 
 `recover` keeps three shapes. No `COMPLETE` means delete `.txn` and leave the live tree. `COMPLETE` and `live.state_rev == prev.state_rev` means restore `prev`. `COMPLETE` and `live.state_rev == prev + 1` means delete `.txn` and keep live. Then drop journal records whose `state_rev_after` is above live, drop `base.yaml` when its `state_rev` is above the live save, and drop memory lines whose `tick_index` is not in a live log.
 
-`commit_presence` writes `now.yaml` through the same `write_commit`, with the presence journal record in that plan. Presence is `humans` and `actors_present` only. When those two fields are unchanged after canonicalize, it writes nothing and does not increment `state_rev`. When either field changes, it increments `state_rev` by 1 and then emits. It does not open a `Txn`, does not write a tick log, and does not advance clocks. A session id is not an input.
+`commit_presence` writes `now.yaml` through the same `write_commit`, with the presence journal record in that plan. Presence is `humans` and `actors_present` only. When those two fields are unchanged after canonicalize, it writes nothing and does not increment `state_rev`. When either field changes, it increments `state_rev` by 1 and then emits. It does not open a `Draft`, does not write a tick log, and does not advance clocks. A session id is not an input.
 
 `migrate_pack` is the only writer that changes `pack_rev`. It goes through `write_commit`, writes the migrate journal record and the new base in that plan, and then appends one studio line. Replay does not read the studio line. A hand edit of `now.yaml` that is not `spook migrate` remains `HAND_EDIT` on the next tick. Studio tools do not write `state/`.
 
-`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Txn` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev` and stock at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `now.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `now.yaml` and deletes a journal record and a memory line that do not belong to it.
+`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Draft` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev` and stock at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `now.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `now.yaml` and deletes a journal record and a memory line that do not belong to it.
 
 Replay byte-compares `now.yaml` produced by this kernel, for every journaled commit since the base. It does not pin a frozen docks hash. A pack that has never committed has no base and no journal. `spook verify` then compares `now.yaml` to itself and reports zero records.
 
@@ -263,7 +263,7 @@ Replay byte-compares `now.yaml` produced by this kernel, for every journaled com
 
 A player line is `say` plus the words. The first word is the address when it is `place`, or an actor id, and more words follow. `place` is the speaker's live place. An actor id is that actor. Any other line is address `table`, and every word is the text. A line of one word is table text, including when that word is `place` or an actor id. An empty `say` is `SCHEMA`.
 
-Speech appends when `humans` is 0. The append takes `state/.session.lock`, writes one object, and fsyncs. That path uses no `Txn` and does not bump `state_rev`. The object keeps `seq`, `from`, `address`, `place`, `actor`, `recipients`, `text`, `tick_index`, and `world_time`. `from` is `player:{id}` or `gm`. A typed `from` on the GM tool is `SCHEMA` and appends nothing. An NPC `from` is not representable. The speech parser has no NPC speaker.
+Speech appends when `humans` is 0. The append takes `state/.session.lock`, writes one object, and fsyncs. That path uses no `Draft` and does not bump `state_rev`. The object keeps `seq`, `from`, `address`, `place`, `actor`, `recipients`, `text`, `tick_index`, and `world_time`. `from` is `player:{id}` or `gm`. A typed `from` on the GM tool is `SCHEMA` and appends nothing. An NPC `from` is not representable. The speech parser has no NPC speaker.
 
 Recipients are seated player actors. `table` includes every seated player. `place` includes the seated players in that place. `actor` includes that actor when they are a seated player. The speaking player is included. An NPC stored in `actor` is on the tape and is not a recipient.
 
@@ -360,7 +360,7 @@ A refusal before the first `perceive` exits 1. After the first `perceive`, a ref
 
 On start the host reads `SPOOK_GM_KEY`, `SPOOK_GM_URL`, and `SPOOK_GM_MODEL`, in that order. The first one missing: it writes `<NAME> is unset` to stderr and exits 1 before it dials. There is no default URL. The client posts to `{SPOOK_GM_URL}/chat/completions` with the key as a bearer token. The key is not an argument and not a pack file.
 
-The host calls `pack_rev` and `load_canon` on the pack path. It does not call `open_shard`, `apply_effect`, or `write_commit`. After initialize it calls `session_status` with no arguments and compares `pack_rev`. A mismatch disconnects and exits 1. A match writes `listening` to stderr. stdout stays empty.
+The host calls `pack_rev` and `load_canon` on the pack path. It does not call `World::open`, `apply_effect`, or `write_commit`. After initialize it calls `session_status` with no arguments and compares `pack_rev`. A mismatch disconnects and exits 1. A match writes `listening` to stderr. stdout stays empty.
 
 A non-empty queue is committed once after the model's turn. Talk alone does not tick. If the model call fails, the host skips the model's says and intents and still commits a queue the player already filled. The seat stays up. Each model call waits at most 60 seconds and at most 10 seconds to connect, and a timeout, a connect error, HTTP 429, or a 5xx is tried once more after 2 seconds. A commit that rolled dice gets one say-only follow-up. That follow-up does not queue and does not commit. `commit_turn`'s result includes `checks` (`faces`, `stat`, `total`, `target`, `outcome`). The same roll notices are still sent as `check` events on the GM socket. The player wire is `{"kind":"check","outcome":"success"|"partial"|"miss"}`. Faces stay off the player socket.
 
@@ -408,12 +408,12 @@ The player line grammar does change. The check wire object does not. That split 
 | How a second writer appears | Countermeasure |
 |---|---|
 | Client patches YAML | The play door queues an intent or appends speech. The CLI has no path that opens `now.yaml` for a client write. |
-| GM calls `apply_effect` | The tool is not a sitting handler. Effects come from expand inside a `Txn`. Only `tick_commit`, `commit_presence`, and `migrate_pack` rename files. |
+| GM calls `apply_effect` | The tool is not a sitting handler. Effects come from expand inside a `Draft`. Only `tick_commit`, `commit_presence`, and `migrate_pack` rename files. |
 | A summarizer writes memories | No LLM crate. Memory lines are written inside the commit, from a `memory` effect, after `allows`. |
 | Speech copied into `known_facts` | The tape is not an input to expand. No whisper. Inbound model text is not a field on `Intent`. |
 | Host digest reused as the player resume | `idle_digest` takes `DigestViewer::Host` or `DigestViewer::Player`. Different rows. |
 | Hand edit of `now.yaml` | `HAND_EDIT` until `spook migrate`. |
-| Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It re-expands the recorded intents, calls `resolve_check` again from the recorded seed, and then calls `apply_effect`. A presence record restores presence. A migrate record restores `pack_rev`. Neither is an effect list. |
+| Replay applies JSONL effects as the new state | Replay does not install the log as `Now`. It re-expands the recorded intents, calls `rules::roll` again from each roll's key, and then calls `apply_effect`. A presence record restores presence. A migrate record restores `pack_rev`. Neither is an effect list. |
 | Two ticks in flight | One lock around the tick run and `commit_turn`. The second caller gets `COMMIT_CONFLICT`. Tick code is synchronous on the shard thread. |
 | `patch_entity` writes canon and the live shard | Not a sitting tool. A canon byte change mismatches `pack_rev` until migrate. |
 | New effect class in a handler | `ILLEGAL_CLASS` at the parse boundary. `EffectClass` has seven variants. |
@@ -422,7 +422,7 @@ The player line grammar does change. The check wire object does not. That split 
 | `places.actors` edited apart from `actors.place` | Load fails `SCHEMA`. Emit rebuilds occupancy from `actors.*.place`. |
 | Feature `llm` | No such feature. |
 | Tokio task per shard inside the kernel | Kernel and tick cannot name the runtime. The scan stays. |
-| `rand::thread_rng` or a hand-rolled die | `die_face` is Blake2s. One copy, in `check.rs`. |
+| `rand::thread_rng` or a hand-rolled die | `rules::roll` is Blake2s. One copy, in `rules/roll.rs`. |
 | Markdown body used as a stock count or a hidden fact | `strip_body` and `lint`. |
 | A second snapshot beside `now.yaml` | `state/log/base.yaml` is replay input written in the commit. It is never read as the live save. One emit path still writes `now.yaml`. |
 | Non-loopback bind, accounts, second GM, fourth player, held PC | `NOT_IN_SPEC` for a non-loopback bind. No account store. `SESSION_FULL` for a second GM or a fourth player. `SEAT_TAKEN` for a held PC. |

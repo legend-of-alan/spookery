@@ -6,10 +6,10 @@ use crate::protocol::{
     StatusPause, StatusPresence, WireClock, WireFact, WireStock,
 };
 use serde_json::Value;
-use spookery_kernel::check::{CheckNotice, CheckOut};
 use spookery_kernel::intent::Intent;
 use spookery_kernel::model::{Message, Now, RunState};
 use spookery_kernel::perceive::{ClockView, KnownFact, Perceive, StockView};
+use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::Reason;
 
 pub struct TapeLine {
@@ -121,7 +121,7 @@ fn wire_outcome(outcome: spookery_kernel::check::Outcome) -> Outcome {
     }
 }
 
-pub fn check_event(out: &CheckOut) -> Vec<u8> {
+pub fn check_event(out: &RollResult) -> Vec<u8> {
     crate::protocol::write_check_event(&roll_of(out))
 }
 
@@ -155,12 +155,12 @@ pub fn commit_reply(state_rev: u64, diff_summary: &[String], log_path: Option<&s
     .to_value()
 }
 
-pub fn write_checks(value: &mut Value, notices: &[CheckNotice]) {
+pub fn write_checks(value: &mut Value, notices: &[RollReport]) {
     let rolls = notices
         .iter()
         .filter_map(|notice| match notice {
-            CheckNotice::Rolled { out, .. } => Some(roll_of(out)),
-            CheckNotice::Refused { .. } => None,
+            RollReport::Rolled { out, .. } => Some(roll_of(out)),
+            RollReport::Refused { .. } => None,
         })
         .collect::<Vec<_>>();
     crate::protocol::set_checks(value, &rolls);
@@ -267,7 +267,7 @@ fn wire_stock(stock: &StockView) -> WireStock {
     }
 }
 
-fn roll_of(out: &CheckOut) -> Roll {
+fn roll_of(out: &RollResult) -> Roll {
     Roll {
         faces: out.faces.clone(),
         stat: out.stat,

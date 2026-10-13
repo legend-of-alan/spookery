@@ -2,9 +2,9 @@ use crate::error::Reason;
 use crate::key::StateKey;
 use crate::limits::PausePolicy;
 use crate::model::RunState;
-use crate::shard::Txn;
+use crate::world::Draft;
 
-pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Reason> {
+pub fn apply_pause_policy(txn: &mut Draft) -> Result<(), Reason> {
     let humans = txn.now().presence.humans;
     let policies = txn.budget().pause;
     let clock_ids: Vec<String> = txn.now().clocks.keys().cloned().collect();
@@ -28,7 +28,7 @@ pub fn apply_pause_policy(txn: &mut Txn) -> Result<(), Reason> {
     Ok(())
 }
 
-fn set_paused(txn: &mut Txn, clock_id: &str, paused: bool) -> Result<(), Reason> {
+fn set_paused(txn: &mut Draft, clock_id: &str, paused: bool) -> Result<(), Reason> {
     let current = txn.now().clocks.get(clock_id).map(|clock| clock.paused);
     if current != Some(paused) {
         txn.track(StateKey::ClockPaused(clock_id.to_string()))?;

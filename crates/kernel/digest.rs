@@ -4,14 +4,14 @@ use std::path::Path;
 use crate::codec::{emit_effect_payload, parse_tick_effects};
 use crate::error::Reason;
 use crate::model::Clock;
-use crate::shard::Shard;
+use crate::world::World;
 
 pub enum DigestViewer {
     Host,
     Player(String),
 }
 
-pub fn idle_digest(shard: &Shard, viewer: DigestViewer) -> Result<String, Reason> {
+pub fn idle_digest(shard: &World, viewer: DigestViewer) -> Result<String, Reason> {
     let mut rows = Vec::new();
     match viewer {
         DigestViewer::Host => {

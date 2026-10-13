@@ -5,9 +5,9 @@ use crate::intent::{ActorKind, Intent, ViewerId};
 use crate::key::StateKey;
 use crate::meter::{self, MeterWrite};
 use crate::model::{MemoryLine, Message};
-use crate::shard::Txn;
+use crate::world::Draft;
 
-pub fn apply_effect(txn: &mut Txn, intent: &Intent, effect: Effect) -> Result<(), Reason> {
+pub fn apply_effect(txn: &mut Draft, intent: &Intent, effect: Effect) -> Result<(), Reason> {
     if !viewer_matches(intent, &effect) {
         return Err(Reason::ViewerMismatch);
     }
@@ -53,7 +53,7 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     }
 }
 
-fn apply_clock(txn: &mut Txn, actor_id: &str, clock_id: &str, delta: i64) -> Result<(), Reason> {
+fn apply_clock(txn: &mut Draft, actor_id: &str, clock_id: &str, delta: i64) -> Result<(), Reason> {
     let humans = txn.now().presence.humans;
     let clock = txn.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
     if !clock.owners.iter().any(|owner| owner == actor_id) {
@@ -78,7 +78,12 @@ fn apply_clock(txn: &mut Txn, actor_id: &str, clock_id: &str, delta: i64) -> Res
     Ok(())
 }
 
-fn apply_meter(txn: &mut Txn, actor_id: &str, key: &str, write: MeterWrite) -> Result<(), Reason> {
+fn apply_meter(
+    txn: &mut Draft,
+    actor_id: &str,
+    key: &str,
+    write: MeterWrite,
+) -> Result<(), Reason> {
     let def = *txn.canon().meters.get(key).ok_or(Reason::UnknownKey)?;
     let mut live = txn
         .now()
@@ -112,7 +117,7 @@ fn stock_next(current: i64, delta: i64) -> Result<i64, Reason> {
 }
 
 fn apply_stock(
-    txn: &mut Txn,
+    txn: &mut Draft,
     intent: &Intent,
     place: &str,
     sku: &str,
@@ -155,7 +160,7 @@ fn apply_stock(
 }
 
 fn apply_location(
-    txn: &mut Txn,
+    txn: &mut Draft,
     intent: &Intent,
     actor_id: &str,
     from: &str,
@@ -188,7 +193,7 @@ fn apply_location(
 }
 
 fn apply_memory(
-    txn: &mut Txn,
+    txn: &mut Draft,
     intent: &Intent,
     actor_id: &str,
     fact_ids: Vec<String>,
@@ -239,7 +244,7 @@ fn apply_memory(
     Ok(())
 }
 
-fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
+fn apply_flag(txn: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
     if key != "busy" {
         let listed = txn
             .canon()
@@ -289,7 +294,7 @@ fn apply_flag(txn: &mut Txn, actor_id: &str, key: &str, value: bool) -> Result<(
 }
 
 fn apply_message(
-    txn: &mut Txn,
+    txn: &mut Draft,
     message_id: String,
     to: Vec<String>,
     place: Option<String>,

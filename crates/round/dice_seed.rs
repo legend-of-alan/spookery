@@ -1,6 +1,6 @@
 use spookery_kernel::blake2s_256;
 
-pub fn seed_preimage(shard_id: &str, tick_index: u64) -> String {
+pub fn dice_seed(shard_id: &str, tick_index: u64) -> String {
     format!("{shard_id}|{tick_index}")
 }
 

@@ -67,7 +67,7 @@ fn the_door_note_text_contains_the_ledger_sentence(world: &mut World) {
 #[when(expr = "the evening tick runs on this copy")]
 fn the_evening_tick_runs_on_this_copy(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    spookery_tick::tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    spookery_round::play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = table::now_of(&pack);
     assert!(
         now.messages
@@ -185,7 +185,7 @@ fn stdout_says_notes_follow_the_journal(world: &mut World) {
 #[then(expr = "Rowan does not perceive the ledger sentence")]
 fn rowan_does_not_perceive_the_ledger_sentence(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let shard = spookery_kernel::open_shard(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let shard = spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view =
         spookery_kernel::perceive::perceive_at(shard.canon(), shard.now(), "player:pc_rowan")
             .unwrap_or_else(|err| panic!("perceive: {err}"));

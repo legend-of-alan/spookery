@@ -153,9 +153,9 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             }
             Ok(())
         }
-        Command::Tick { pack } => spookery_tick::tick_pack(&pack).map_err(spookery::Error::Reason),
+        Command::Tick { pack } => spookery_round::play_pack(&pack).map_err(spookery::Error::Reason),
         Command::Status { pack } => {
-            let shard = spookery_kernel::open_shard(&pack).map_err(spookery::Error::Reason)?;
+            let shard = spookery_kernel::World::open(&pack).map_err(spookery::Error::Reason)?;
             let text = spookery_kernel::idle_digest(&shard, spookery_kernel::DigestViewer::Host)
                 .map_err(spookery::Error::Reason)?;
             print!("{text}");
@@ -166,7 +166,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         }
         Command::Mcp => spookery::mcp::bridge(addr),
         Command::Replay { pack, from } => {
-            match spookery_tick::replay_journal(&pack, from.as_deref(), None) {
+            match spookery_round::replay_journal(&pack, from.as_deref(), None) {
                 Ok(report) => {
                     println!("state_rev {}, {} records", report.state_rev, report.applied);
                     Ok(())
@@ -178,7 +178,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             }
         }
         Command::Verify { pack, from } => {
-            match spookery_tick::verify_pack(&pack, from.as_deref()) {
+            match spookery_round::verify_pack(&pack, from.as_deref()) {
                 Ok(report) => {
                     println!(
                         "verified {} records, state_rev {}",

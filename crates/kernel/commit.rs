@@ -8,9 +8,9 @@ use crate::codec::{canonicalize, emit_memory_line, emit_migrate_line, emit_now, 
 use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
-use crate::lock::{lock_pack, lock_shard};
+use crate::lock::{lock_pack, lock_world};
 use crate::model::{MemoryLine, Now, Presence};
-use crate::shard::{Shard, Txn};
+use crate::world::{Draft, World};
 
 pub struct CommitOutcome {
     pub state_rev: u64,
@@ -18,16 +18,16 @@ pub struct CommitOutcome {
     pub log_path: String,
 }
 
-pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<(), Reason> {
-    txn.staging.state_rev = txn
-        .staging
+pub fn tick_commit(shard: &mut World, mut txn: Draft, tick_jsonl: &str) -> Result<(), Reason> {
+    txn.state.state_rev = txn
+        .state
         .state_rev
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
-    canonicalize(&mut txn.staging);
-    let now_bytes = emit_now(&txn.staging)?.into_bytes();
+    canonicalize(&mut txn.state);
+    let now_bytes = emit_now(&txn.state)?.into_bytes();
     let stamped = journal::stamp_now_hash(tick_jsonl, &now_bytes)?;
-    let tick_index = txn.staging.tick_index;
+    let tick_index = txn.state.tick_index;
     let state = shard.root.join("state");
     let pre = read_pre_now(&state)?;
     let mut planned = plan_commit(
@@ -38,20 +38,20 @@ pub fn tick_commit(shard: &mut Shard, mut txn: Txn, tick_jsonl: &str) -> Result<
     )?;
     push_base(&mut planned, &state, &pre, &now_bytes, false);
     write_commit(&state, &planned)?;
-    shard.now = txn.staging;
+    shard.now = txn.state;
     Ok(())
 }
 
 /// `include_tick: false` for a presence change. No tick file and no clock advance.
 /// Identical presence writes nothing and does not bump `state_rev`.
-pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Reason> {
+pub fn commit_presence(shard: &mut World, presence: Presence) -> Result<bool, Reason> {
     let mut next = shard.now.clone();
     next.presence = presence;
     canonicalize(&mut next);
     if next.presence == shard.now.presence {
         return Ok(false);
     }
-    let _lock = lock_shard(shard)?;
+    let _lock = lock_world(shard)?;
     let state_rev_before = next.state_rev;
     next.state_rev = next
         .state_rev
@@ -85,7 +85,7 @@ pub fn commit_presence(shard: &mut Shard, presence: Presence) -> Result<bool, Re
     Ok(true)
 }
 
-pub fn commit_pending(shard: &mut Shard) -> Result<CommitOutcome, Reason> {
+pub fn commit_pending(shard: &mut World) -> Result<CommitOutcome, Reason> {
     let pending = shard.pending.take().ok_or(Reason::CommitConflict)?;
     let mut now = pending.now;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
@@ -177,7 +177,7 @@ fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
 }
 
 /// Replay writes `now.yaml` on a temp pack and does not append a journal record.
-pub fn replay_write_now(shard: &mut Shard, now: Now) -> Result<(), Reason> {
+pub fn replay_write_now(shard: &mut World, now: Now) -> Result<(), Reason> {
     let now_bytes = emit_now(&now)?.into_bytes();
     let state = shard.root.join("state");
     let planned = vec![Planned {
