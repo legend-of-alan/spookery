@@ -21,11 +21,12 @@ pub struct World {
     canon: Arc<Canon>,
     pub(crate) now: Now,
     pub(crate) queue: Vec<Intent>,
-    pub(crate) pending: Option<UncommittedTick>,
+    pub(crate) pending: Option<UncommittedRound>,
     rolls: Vec<RollReport>,
 }
 
-pub struct UncommittedTick {
+/// One round played and not yet written. A tick is only the time unit.
+pub struct UncommittedRound {
     pub now: Now,
     pub tick_jsonl: String,
     pub tick_index: u64,
@@ -86,7 +87,7 @@ impl World {
         load_world(root, true)
     }
 
-    /// Record one played tick. Spook queues intents and takes rolls; it does not write this.
+    /// Hold one played round when the caller will write it. Spook queues intents and takes rolls; it does not write this.
     pub fn finish_tick(
         &mut self,
         draft: Draft,
@@ -97,7 +98,7 @@ impl World {
     ) -> Result<(), Reason> {
         if flush {
             let tick_index = draft.now().tick_index;
-            self.pending = Some(UncommittedTick {
+            self.pending = Some(UncommittedRound {
                 now: draft.now().clone(),
                 tick_jsonl: record,
                 tick_index,
