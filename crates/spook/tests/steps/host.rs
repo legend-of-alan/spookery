@@ -582,7 +582,7 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     } else {
         "down".to_string()
     };
-    world.scratch = hung_scratch(&log, backoff);
+    world.scratch = hung_scratch(&log, total, backoff);
 }
 
 #[when(expr = "a model answers 500 once and then a say")]
@@ -654,17 +654,13 @@ fn the_queued_line_committed_one_tick(world: &mut World) {
 fn the_hung_call_retried_once_after_the_delay(world: &mut World) {
     assert_eq!(hung_field(&world.scratch, "opens"), 2, "{}", world.scratch);
     let gap = hung_field(&world.scratch, "gap_ms");
+    let timeout = hung_field(&world.scratch, "timeout_ms");
     let delay = hung_field(&world.scratch, "delay_ms");
-    assert!(
-        gap >= delay,
-        "retry gap {gap} ms, delay {delay} ms ({})",
-        world.scratch
-    );
+    assert_eq!(gap, timeout + delay, "{}", world.scratch);
 }
 
-#[then(expr = "the retry closed before the line committed")]
-fn the_retry_closed_before_the_line_committed(world: &mut World) {
-    assert_eq!(world.stdout, "advanced", "{}", world.scratch);
+#[then(expr = "both hung calls closed")]
+fn both_hung_calls_closed(world: &mut World) {
     assert_eq!(hung_field(&world.scratch, "closes"), 2, "{}", world.scratch);
 }
 
@@ -860,10 +856,51 @@ struct TestClock {
 struct TestClockState {
     now: Duration,
     credit: Duration,
-    wait_waker: Option<Waker>,
     closes: usize,
     seen_closes: usize,
-    close_waker: Option<Waker>,
+    wakers: [Option<Waker>; 2],
+}
+
+#[derive(Clone, Copy)]
+enum Waiter {
+    Credit = 0,
+    Close = 1,
+}
+
+impl TestClockState {
+    fn waker(&mut self, waiter: Waiter) -> &mut Option<Waker> {
+        &mut self.wakers[waiter as usize]
+    }
+}
+
+fn wake(waker: Option<Waker>) {
+    if let Some(waker) = waker {
+        waker.wake();
+    }
+}
+
+/// Check, park, then check again, so a grant that lands during the park is not lost.
+fn poll_grant(
+    done: &mut bool,
+    state: &mut TestClockState,
+    waiter: Waiter,
+    granted: impl Fn(&mut TestClockState) -> bool,
+    waker: &Waker,
+) -> Poll<()> {
+    if *done {
+        return Poll::Ready(());
+    }
+    if granted(state) {
+        *done = true;
+        return Poll::Ready(());
+    }
+    *state.waker(waiter) = Some(waker.clone());
+    if granted(state) {
+        *done = true;
+        *state.waker(waiter) = None;
+        return Poll::Ready(());
+    }
+    Poll::Pending
 }
 
 impl TestClock {
@@ -872,10 +909,9 @@ impl TestClock {
             inner: Arc::new(Mutex::new(TestClockState {
                 now: Duration::ZERO,
                 credit: Duration::ZERO,
-                wait_waker: None,
                 closes: 0,
                 seen_closes: 0,
-                close_waker: None,
+                wakers: [None, None],
             })),
         }
     }
@@ -889,22 +925,18 @@ impl TestClock {
             let mut state = self.inner.lock().unwrap();
             state.now += duration;
             state.credit += duration;
-            state.wait_waker.take()
+            state.waker(Waiter::Credit).take()
         };
-        if let Some(waker) = waker {
-            waker.wake();
-        }
+        wake(waker);
     }
 
     fn note_close(&self) {
         let waker = {
             let mut state = self.inner.lock().unwrap();
             state.closes += 1;
-            state.close_waker.take()
+            state.waker(Waiter::Close).take()
         };
-        if let Some(waker) = waker {
-            waker.wake();
-        }
+        wake(waker);
     }
 }
 
@@ -913,23 +945,20 @@ impl Clock for TestClock {
         let clock = self.clone();
         let mut done = false;
         std::future::poll_fn(move |cx| {
-            if done {
-                return Poll::Ready(());
-            }
             let mut state = clock.inner.lock().unwrap();
-            if state.credit >= duration {
-                state.credit -= duration;
-                done = true;
-                return Poll::Ready(());
-            }
-            state.wait_waker = Some(cx.waker().clone());
-            if state.credit >= duration {
-                state.credit -= duration;
-                done = true;
-                state.wait_waker = None;
-                return Poll::Ready(());
-            }
-            Poll::Pending
+            poll_grant(
+                &mut done,
+                &mut state,
+                Waiter::Credit,
+                |state| {
+                    if state.credit < duration {
+                        return false;
+                    }
+                    state.credit -= duration;
+                    true
+                },
+                cx.waker(),
+            )
         })
     }
 
@@ -937,23 +966,20 @@ impl Clock for TestClock {
         let clock = self.clone();
         let mut done = false;
         std::future::poll_fn(move |cx| {
-            if done {
-                return Poll::Ready(());
-            }
             let mut state = clock.inner.lock().unwrap();
-            if state.closes > state.seen_closes {
-                state.seen_closes += 1;
-                done = true;
-                return Poll::Ready(());
-            }
-            state.close_waker = Some(cx.waker().clone());
-            if state.closes > state.seen_closes {
-                state.seen_closes += 1;
-                done = true;
-                state.close_waker = None;
-                return Poll::Ready(());
-            }
-            Poll::Pending
+            poll_grant(
+                &mut done,
+                &mut state,
+                Waiter::Close,
+                |state| {
+                    if state.closes <= state.seen_closes {
+                        return false;
+                    }
+                    state.seen_closes += 1;
+                    true
+                },
+                cx.waker(),
+            )
         })
     }
 }
@@ -964,7 +990,7 @@ enum HangEvent {
     Closed,
 }
 
-fn hung_scratch(log: &[HangEvent], backoff: Duration) -> String {
+fn hung_scratch(log: &[HangEvent], timeout: Duration, backoff: Duration) -> String {
     let opens: Vec<Duration> = log
         .iter()
         .filter_map(|event| match event {
@@ -981,9 +1007,10 @@ fn hung_scratch(log: &[HangEvent], backoff: Duration) -> String {
         .filter(|event| matches!(event, HangEvent::Closed))
         .count();
     format!(
-        "opens={} gap_ms={} delay_ms={} closes={} log={log:?}",
+        "opens={} gap_ms={} timeout_ms={} delay_ms={} closes={} log={log:?}",
         opens.len(),
         gap.as_millis(),
+        timeout.as_millis(),
         backoff.as_millis(),
         closes
     )

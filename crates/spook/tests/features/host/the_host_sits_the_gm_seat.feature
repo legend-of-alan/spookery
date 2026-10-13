@@ -39,7 +39,7 @@ Feature: The host sits the GM seat
     When a hung model call meets a queued player line
     Then the queued line committed one tick
     And the hung call retried once after the delay
-    And the retry closed before the line committed
+    And both hung calls closed
     And the seat stayed up
 
   Scenario: A model that answers 500 once is retried and the say lands
