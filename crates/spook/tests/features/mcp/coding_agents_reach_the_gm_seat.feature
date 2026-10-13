@@ -1,21 +1,9 @@
 Feature: Coding agents reach the GM seat
 
-  Scenario: A coding agent calls the seat tools over stdio
-    Given a docks table
-    When a coding agent calls the GM tools over the stdio bridge
-    Then world time moved forward
-
   Scenario: A coding agent calls the seat tools over loopback HTTP
     Given a docks table
     When a coding agent calls the GM tools over loopback HTTP
     Then world time moved forward
-
-  Scenario: A second bridge is told the table is full
-    Given a docks table
-    When the GM seat is held and another agent opens the bridge
-    Then the command exits 1
-    And stdout is empty
-    And stderr shows "The table is full. [SESSION_FULL]"
 
   Scenario: A second HTTP session is told the table is full
     Given a docks table
@@ -27,21 +15,6 @@ Feature: Coding agents reach the GM seat
     When the operator runs with an open MCP HTTP address
     Then the command exits 1
     And stderr is NOT_IN_SPEC
-    And stdout is empty
-    And the pack bytes are unchanged
-
-  Scenario: An open bridge address is refused before a dial
-    Given a docks table
-    When the operator runs mcp bound to an open address
-    Then the command exits 1
-    And stderr is NOT_IN_SPEC
-    And stdout is empty
-    And the pack bytes are unchanged
-
-  Scenario: The bridge with nothing listening leaves the pack
-    Given a docks table
-    When the operator runs mcp with nothing listening
-    Then the command exits 1
     And stdout is empty
     And the pack bytes are unchanged
 
@@ -60,13 +33,9 @@ Feature: Coding agents reach the GM seat
     Then a GM can sit over <newcomer>
 
     Examples:
-      | holder     | newcomer   |
-      | HTTP       | TCP        |
-      | HTTP       | the bridge |
-      | TCP        | HTTP       |
-      | the bridge | HTTP       |
-      | TCP        | the bridge |
-      | the bridge | TCP        |
+      | holder | newcomer |
+      | HTTP   | TCP      |
+      | TCP    | HTTP     |
 
   Scenario Outline: A Host other than 127.0.0.1 does not take the GM seat
     Given a docks table
@@ -89,7 +58,7 @@ Feature: Coding agents reach the GM seat
     When an HTTP GM session ends
     Then another GM can sit over HTTP
 
-  Scenario: The bridge delivers a say to a seated player
-    Given a docks table with a seated player
-    When a coding agent says good evening over the bridge
+  Scenario: An HTTP agent delivers a say to a seated player
+    Given a docks table with a seated player and an open HTTP door
+    When a coding agent says good evening over HTTP
     Then the player saw a say from the host

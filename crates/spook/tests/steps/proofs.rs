@@ -1110,11 +1110,6 @@ fn import_boundary() {
     assert!(ai_hits.is_empty(), "{}", ai_hits.join("\n"));
     let host_hits = hits_under(&spook_src.join("host"), &["crate::terminal", "crate::ai"]);
     assert!(host_hits.is_empty(), "{}", host_hits.join("\n"));
-    let mcp_hits = byte_hits(
-        &[spook_src.join("mcp.rs")],
-        &["reqwest", "crate::ai", "crate::terminal"],
-    );
-    assert!(mcp_hits.is_empty(), "{}", mcp_hits.join("\n"));
     let audit_hits = byte_hits(&[spook_src.join("audit.rs")], &["tokio", "rmcp", "reqwest"]);
     assert!(audit_hits.is_empty(), "{}", audit_hits.join("\n"));
 }

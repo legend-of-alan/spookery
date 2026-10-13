@@ -3,43 +3,25 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use cucumber::{then, when};
+use cucumber::{given, then, when};
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, Implementation, ProtocolVersion,
 };
-use rmcp::transport::{StreamableHttpClientTransport, TokioChildProcess};
+use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::ServiceExt;
 use serde_json::{json, Map, Value};
 use std::net::Shutdown;
 use std::sync::Mutex;
-use tokio::process::Command;
 
 use crate::support::{self, Proc};
 use crate::World;
 
 use super::table;
 
-#[when(expr = "a coding agent calls the GM tools over the stdio bridge")]
-fn agent_calls_over_stdio(world: &mut World) {
-    let port = table::free_port();
-    let addr = format!("127.0.0.1:{port}");
-    table::listen(table::pack(world), &addr, port);
-    block_on(exercise_bridge(&addr));
-}
-
 #[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
 fn agent_calls_over_http(world: &mut World) {
     let (_tcp, http) = listen_http(table::pack(world));
     block_on(exercise_http(http));
-}
-
-#[when(expr = "the GM seat is held and another agent opens the bridge")]
-fn second_bridge(world: &mut World) {
-    let port = table::free_port();
-    let addr = format!("127.0.0.1:{port}");
-    table::listen(table::pack(world), &addr, port);
-    table::seat_gm();
-    table::run(world, &["mcp", "--addr", &addr]);
 }
 
 #[when(expr = "the GM seat is held and another agent opens HTTP")]
@@ -66,18 +48,6 @@ fn second_http(world: &mut World) {
 fn open_http_address(world: &mut World) {
     let pack = support::pack_arg(table::pack(world));
     table::run(world, &["run", &pack, "--mcp-http", "0.0.0.0:9"]);
-}
-
-#[when(expr = "the operator runs mcp bound to an open address")]
-fn open_bridge_address(world: &mut World) {
-    table::run(world, &["mcp", "--addr", "0.0.0.0"]);
-}
-
-#[when(expr = "the operator runs mcp with nothing listening")]
-fn bridge_with_nothing_listening(world: &mut World) {
-    let port = table::free_port();
-    let addr = format!("127.0.0.1:{port}");
-    table::run(world, &["mcp", "--addr", &addr]);
 }
 
 #[when(expr = "an HTTP request arrives with a public Origin")]
@@ -183,16 +153,20 @@ pub fn drop_holder() {
     drop(holder);
 }
 
-fn bridge_addr() -> String {
-    let port = crate::with_live(|live| live.port);
-    format!("127.0.0.1:{port}")
-}
-
 fn http_port(world: &World) -> u16 {
     u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"))
 }
 
-#[when(regex = r"^a GM holds the seat over (HTTP|TCP|the bridge)$")]
+#[given(expr = "a docks table with a seated player and an open HTTP door")]
+fn seated_player_on_the_http_door(world: &mut World) {
+    let pack = support::temp_pack("http-say");
+    let (_tcp, http) = listen_http(&pack);
+    table::seat_player(&pack);
+    world.mark = usize::from(http);
+    world.pack = Some(pack);
+}
+
+#[when(regex = r"^a GM holds the seat over (HTTP|TCP)$")]
 fn gm_holds_over(world: &mut World, door: String) {
     let (_tcp, http) = listen_http(table::pack(world));
     world.mark = usize::from(http);
@@ -209,22 +183,12 @@ fn gm_holds_over(world: &mut World, door: String) {
             assert_sat(&status, "session_status");
             running
         })),
-        _ => {
-            let addr = bridge_addr();
-            Holder::Agent(block_on(async move {
-                let running = connect_bridge(&addr)
-                    .await
-                    .unwrap_or_else(|err| panic!("bridge GM: {err}"));
-                let status = call(&running, "session_status", None).await;
-                assert_sat(&status, "session_status");
-                running
-            }))
-        }
+        other => panic!("unknown door {other}"),
     };
     *HOLDER.lock().unwrap_or_else(|err| err.into_inner()) = Some(holder);
 }
 
-#[when(regex = r"^another GM tries to sit over (HTTP|TCP|the bridge)$")]
+#[when(regex = r"^another GM tries to sit over (HTTP|TCP)$")]
 fn another_gm_tries(world: &mut World, door: String) {
     world.scratch = match door.as_str() {
         "TCP" => table::second_hello("gm"),
@@ -245,13 +209,7 @@ fn another_gm_tries(world: &mut World, door: String) {
             assert!(!sat, "a second GM sat over HTTP\n{raw}");
             raw
         }
-        _ => {
-            let addr = bridge_addr();
-            table::run(world, &["mcp", "--addr", &addr]);
-            assert_eq!(world.code, Some(1), "stderr:\n{}", world.stderr);
-            assert!(world.stdout.is_empty(), "stdout:\n{}", world.stdout);
-            world.stderr.clone()
-        }
+        other => panic!("unknown door {other}"),
     };
 }
 
@@ -264,7 +222,7 @@ fn newcomer_is_told_full(world: &mut World) {
     );
 }
 
-#[when(regex = r"^the GM over (HTTP|TCP|the bridge) leaves$")]
+#[when(regex = r"^the GM over (HTTP|TCP) leaves$")]
 fn holder_leaves(_world: &mut World, _door: String) {
     let holder = HOLDER
         .lock()
@@ -290,15 +248,15 @@ fn holder_leaves(_world: &mut World, _door: String) {
     }
 }
 
-#[then(regex = r"^a GM can sit over (HTTP|TCP|the bridge)$")]
+#[then(regex = r"^a GM can sit over (HTTP|TCP)$")]
 fn a_gm_can_sit_over(world: &mut World, door: String) {
     let start = Instant::now();
     let mut last = String::new();
     while start.elapsed() < Duration::from_secs(5) {
         let sat = match door.as_str() {
             "TCP" => tcp_gm_sits(),
-            "HTTP" => agent_sits(Door::Http(http_port(world))),
-            _ => agent_sits(Door::Bridge(bridge_addr())),
+            "HTTP" => agent_sits(http_port(world)),
+            other => panic!("unknown door {other}"),
         };
         match sat {
             Ok(()) => return,
@@ -309,18 +267,9 @@ fn a_gm_can_sit_over(world: &mut World, door: String) {
     panic!("no GM could sit over {door}: {last}");
 }
 
-enum Door {
-    Http(u16),
-    Bridge(String),
-}
-
-fn agent_sits(door: Door) -> Result<(), String> {
+fn agent_sits(port: u16) -> Result<(), String> {
     block_on(async move {
-        let running = match door {
-            Door::Http(port) => connect_http(port).await,
-            Door::Bridge(addr) => connect_bridge(&addr).await,
-        }
-        .map_err(|err| format!("{err:?}"))?;
+        let running = connect_http(port).await.map_err(|err| format!("{err:?}"))?;
         let status = call(&running, "session_status", None).await;
         assert_sat(&status, "session_status");
         let _ = running.cancel().await;
@@ -356,15 +305,14 @@ fn the_refusal_names_session_full(world: &mut World) {
     assert!(world.stdout.is_empty(), "{}", world.stdout);
 }
 
-#[when(expr = "a coding agent says good evening over the bridge")]
-fn agent_says_over_the_bridge(world: &mut World) {
-    let port = crate::with_live(|live| live.port);
-    let addr = format!("127.0.0.1:{port}");
+#[when(expr = "a coding agent says good evening over HTTP")]
+fn agent_says_over_http(world: &mut World) {
+    let http = http_port(world);
     let mark = table::player_len();
     block_on(async move {
-        let running = connect_bridge(&addr)
+        let running = connect_http(http)
             .await
-            .unwrap_or_else(|err| panic!("bridge: {err}"));
+            .unwrap_or_else(|err| panic!("HTTP: {err}"));
         let said = call(
             &running,
             "say",
@@ -385,14 +333,6 @@ fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T {
                 .unwrap_or_else(|_| panic!("the agent timed out"))
         })
     })
-}
-
-async fn exercise_bridge(addr: &str) {
-    let running = connect_bridge(addr)
-        .await
-        .unwrap_or_else(|err| panic!("bridge: {err}"));
-    exercise(&running).await;
-    let _ = running.cancel().await;
 }
 
 async fn exercise_http(port: u16) {
@@ -475,20 +415,7 @@ fn client_config() -> rmcp::model::ClientConfig {
         ClientCapabilities::default(),
         Implementation::new("spook-promises", "0"),
     )
-    .with_protocol_version(ProtocolVersion::V_2024_11_05)
-}
-
-async fn connect_bridge(
-    addr: &str,
-) -> Result<
-    rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
-    rmcp::service::ClientInitializeError,
-> {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.arg("mcp").arg("--addr").arg(addr);
-    let transport =
-        TokioChildProcess::new(command).unwrap_or_else(|err| panic!("spawn mcp: {err}"));
-    client_config().serve(transport).await
+    .with_protocol_version(ProtocolVersion::LATEST)
 }
 
 async fn connect_http(
@@ -560,7 +487,10 @@ fn wait_port(port: u16, server: &mut Proc) {
 }
 
 fn http_post(port: u16, host: &str, origin: Option<&str>) -> String {
-    let body = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"probe\",\"version\":\"0\"}}}";
+    let version = ProtocolVersion::LATEST.as_str();
+    let body = format!(
+        "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{version}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"probe\",\"version\":\"0\"}}}}}}"
+    );
     let origin = match origin {
         Some(origin) => format!("Origin: {origin}\r\n"),
         None => String::new(),
