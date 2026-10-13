@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::diagnostic::reason_of;
 use crate::error::Reason;
-use crate::store::codec::load_now;
+use crate::store::codec::load_save;
 use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
 
 pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
@@ -19,9 +19,9 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
             if !prev_now.is_file() {
                 return Err(Reason::Schema);
             }
-            let prev = load_now(&fs::read_to_string(&prev_now).map_err(|_| Reason::Schema)?)
+            let prev = load_save(&fs::read_to_string(&prev_now).map_err(|_| Reason::Schema)?)
                 .map_err(reason_of)?;
-            let live = load_now(
+            let live = load_save(
                 &fs::read_to_string(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)?,
             )
             .map_err(reason_of)?;
@@ -39,7 +39,7 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
     }
 
     let now =
-        load_now(&fs::read_to_string(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)?)
+        load_save(&fs::read_to_string(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)?)
             .map_err(reason_of)?;
     let log_dir = state.join("journal");
     let mut live_ticks = BTreeSet::new();
@@ -179,7 +179,7 @@ fn drop_future_base(log_dir: &Path, live_rev: u64) -> Result<(), Reason> {
         return Ok(());
     }
     let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-    let saved = load_now(&text).map_err(reason_of)?;
+    let saved = load_save(&text).map_err(reason_of)?;
     if saved.state_rev > live_rev {
         fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
     }
@@ -244,7 +244,7 @@ mod tests {
     use crate::commit::commit_presence;
     use crate::journal::hash_now;
     use crate::model::Presence;
-    use crate::store::codec::{emit_now, load_now};
+    use crate::store::codec::{emit_save, load_save};
     use crate::World;
 
     #[test]
@@ -303,9 +303,9 @@ mod tests {
         let root = temp_docks("base-ahead");
         let now_path = root.join("state/save.yaml");
         let pre = fs::read(&now_path).unwrap();
-        let mut ahead = load_now(std::str::from_utf8(&pre).unwrap()).unwrap();
+        let mut ahead = load_save(std::str::from_utf8(&pre).unwrap()).unwrap();
         ahead.state_rev = 1;
-        let ahead_bytes = emit_now(&ahead).unwrap().into_bytes();
+        let ahead_bytes = emit_save(&ahead).unwrap().into_bytes();
         let log = root.join("state/journal");
         fs::create_dir_all(&log).unwrap();
         fs::write(log.join("base.yaml"), &ahead_bytes).unwrap();

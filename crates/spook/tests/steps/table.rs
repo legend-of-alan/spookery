@@ -74,7 +74,8 @@ pub fn now_of(pack: &Path) -> Now {
             Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
     };
-    spookery_kernel::store::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err:?}"))
+    spookery_kernel::store::codec::load_save(&text)
+        .unwrap_or_else(|err| panic!("load now: {err:?}"))
 }
 
 pub fn tick_names(pack: &Path) -> Vec<String> {
@@ -209,7 +210,7 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
     let path = pack.join("state/save.yaml");
     loop {
         let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-        if let Ok(now) = spookery_kernel::store::codec::load_now(&text) {
+        if let Ok(now) = spookery_kernel::store::codec::load_save(&text) {
             if now.world_time == expected {
                 return;
             }
@@ -289,7 +290,7 @@ pub fn wait_humans(pack: &Path, expected: u32) {
     let path = pack.join("state/save.yaml");
     loop {
         if let Ok(text) = fs::read_to_string(&path) {
-            if let Ok(now) = spookery_kernel::store::codec::load_now(&text) {
+            if let Ok(now) = spookery_kernel::store::codec::load_save(&text) {
                 if now.presence.humans == expected {
                     return;
                 }

@@ -48,16 +48,23 @@ fn spook_run_or_spook_verify_opens_it(world: &mut World) {
 #[then(expr = "it refuses with RULES_REV and says to start a fresh save")]
 fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
     assert_eq!(world.code, Some(1), "{}", world.stderr);
-    assert!(
-        world.stderr.matches("RULES_REV").count() >= 2,
-        "{}",
-        world.stderr
-    );
-    assert!(
-        world.stderr.matches("start a fresh save").count() >= 2,
-        "{}",
-        world.stderr
-    );
+    let rest = world
+        .stderr
+        .strip_prefix("run:\n")
+        .unwrap_or_else(|| panic!("missing run stderr\n{}", world.stderr));
+    let (run_err, verify_err) = rest
+        .split_once("\nverify:\n")
+        .unwrap_or_else(|| panic!("missing verify stderr\n{}", world.stderr));
+    for (command, err) in [("spook run", run_err), ("spook verify", verify_err)] {
+        assert!(
+            err.contains("RULES_REV"),
+            "{command} did not refuse with RULES_REV\n{err}"
+        );
+        assert!(
+            err.contains("start a fresh save"),
+            "{command} did not say to start a fresh save\n{err}"
+        );
+    }
 }
 
 #[given(expr = "logged effects that differ from the re-run")]

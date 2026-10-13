@@ -357,7 +357,7 @@ fn set_mira_grit(pack: &Path, base: i64) {
 
 fn stamp(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_kernel::store::codec::load_now(
+    let mut now = spookery_kernel::store::codec::load_save(
         &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
     )
     .unwrap_or_else(|err| panic!("load now: {err:?}"));
@@ -365,7 +365,7 @@ fn stamp(pack: &Path) {
         spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_now(&now).unwrap_or_else(|err| panic!("emit: {err}")),
+        spookery_kernel::store::codec::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}")),
     )
     .unwrap_or_else(|err| panic!("write now: {err}"));
 }

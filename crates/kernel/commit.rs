@@ -8,7 +8,9 @@ use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::{lock_pack, lock_world};
 use crate::model::{MemoryLine, Now, Presence};
-use crate::store::codec::{canonicalize, emit_memory_line, emit_migrate_line, emit_now, load_now};
+use crate::store::codec::{
+    canonicalize, emit_memory_line, emit_migrate_line, emit_save, load_save,
+};
 use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::world::{Draft, World};
 
@@ -25,7 +27,7 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut draft.state);
-    let now_bytes = emit_now(&draft.state)?.into_bytes();
+    let now_bytes = emit_save(&draft.state)?.into_bytes();
     let stamped = journal::stamp_now_hash(round_jsonl, &now_bytes)?;
     let tick_index = draft.state.tick_index;
     let state = world.root.join("state");
@@ -57,7 +59,7 @@ pub fn commit_presence(world: &mut World, presence: Presence) -> Result<bool, Re
         .state_rev
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
-    let now_bytes = emit_now(&next)?.into_bytes();
+    let now_bytes = emit_save(&next)?.into_bytes();
     let state = world.root.join("state");
     let pre = read_pre_now(&state)?;
     let record = journal::emit_presence(
@@ -90,7 +92,7 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
     let mut now = pending.now;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
-    let now_bytes = emit_now(&now)?.into_bytes();
+    let now_bytes = emit_save(&now)?.into_bytes();
     let stamped = journal::stamp_now_hash(&pending.round_jsonl, &now_bytes)?;
     let tick_index = pending.tick_index;
     let log_path = format!("state/journal/tick-{tick_index:04}.jsonl");
@@ -119,7 +121,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     }
     let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_now(now_text).map_err(crate::diagnostic::reason_of)?;
+    let mut now = load_save(now_text).map_err(crate::diagnostic::reason_of)?;
     let canon = crate::canon::load_canon(root).map_err(crate::diagnostic::reason_of)?;
     crate::canon::bind_meters(&canon, &mut now).map_err(crate::diagnostic::reason_of)?;
     crate::canon::bind_inventory(&now).map_err(crate::diagnostic::reason_of)?;
@@ -130,7 +132,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     now.pack_rev = pack_rev_after;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
-    let emitted = emit_now(&now)?.into_bytes();
+    let emitted = emit_save(&now)?.into_bytes();
     let state = root.join("state");
     let record = journal::emit_migrate(
         &pack_rev_before,
@@ -180,7 +182,7 @@ fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
 
 /// Replay writes `save.yaml` on a temp pack and does not append a journal record.
 pub fn replay_write_now(world: &mut World, now: Now) -> Result<(), Reason> {
-    let now_bytes = emit_now(&now)?.into_bytes();
+    let now_bytes = emit_save(&now)?.into_bytes();
     let state = world.root.join("state");
     let planned = vec![Planned {
         target: state.join("save.yaml"),

@@ -18,7 +18,7 @@ use spookery_kernel::model::{
     ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
 use spookery_kernel::rules::RollReport;
-use spookery_kernel::store::codec::emit_now;
+use spookery_kernel::store::codec::emit_save;
 use spookery_kernel::world::Draft;
 use spookery_round::{catch_up, from_journal, play, play_pack_once};
 
@@ -83,9 +83,9 @@ fn write_text(path: &Path, text: &str) {
 fn stamp_pack_rev(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
-    fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
+    fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
 fn lamp_oil(now: &Now) -> i64 {
@@ -176,7 +176,7 @@ fn door_message() -> Message {
 }
 
 fn save_now(pack: &Path, now: &Now) {
-    fs::write(pack.join("state/save.yaml"), emit_now(now).unwrap()).unwrap();
+    fs::write(pack.join("state/save.yaml"), emit_save(now).unwrap()).unwrap();
 }
 
 fn evening_note() {
@@ -429,7 +429,7 @@ Rowan.
         clocks: BTreeMap::new(),
         messages: Vec::new(),
     };
-    write_text(&pack.join("state/save.yaml"), &emit_now(&now).unwrap());
+    write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
@@ -549,7 +549,7 @@ fn an_incomplete_transaction_is_discarded() {
     assert_eq!(
         lamp_oil(opened.now()),
         lamp_oil(
-            &spookery_kernel::store::codec::load_now(std::str::from_utf8(&before).unwrap())
+            &spookery_kernel::store::codec::load_save(std::str::from_utf8(&before).unwrap())
                 .unwrap()
         )
     );
@@ -570,7 +570,7 @@ fn the_same_revision_restores_the_previous_save() {
         .unwrap()
         .stock
         .insert("lamp_oil".to_string(), 999);
-    fs::write(&now_path, emit_now(&dirty).unwrap()).unwrap();
+    fs::write(&now_path, emit_save(&dirty).unwrap()).unwrap();
     let txn = same.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
     fs::write(txn.join("prev/save.yaml"), &original).unwrap();
@@ -580,7 +580,7 @@ fn the_same_revision_restores_the_previous_save() {
     assert_eq!(
         lamp_oil(opened.now()),
         lamp_oil(
-            &spookery_kernel::store::codec::load_now(std::str::from_utf8(&original).unwrap())
+            &spookery_kernel::store::codec::load_save(std::str::from_utf8(&original).unwrap())
                 .unwrap()
         )
     );
@@ -601,10 +601,10 @@ fn the_next_revision_keeps_the_new_save() {
         .unwrap()
         .stock
         .insert("lamp_oil".to_string(), kept_oil);
-    fs::write(next.join("state/save.yaml"), emit_now(&live).unwrap()).unwrap();
+    fs::write(next.join("state/save.yaml"), emit_save(&live).unwrap()).unwrap();
     let txn = next.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
-    fs::write(txn.join("prev/save.yaml"), emit_now(&prev).unwrap()).unwrap();
+    fs::write(txn.join("prev/save.yaml"), emit_save(&prev).unwrap()).unwrap();
     fs::write(txn.join("COMPLETE"), b"").unwrap();
     let log = next.join("state/journal");
     fs::create_dir_all(&log).unwrap();
@@ -793,7 +793,7 @@ tick:
         clocks: BTreeMap::new(),
         messages: Vec::new(),
     };
-    write_text(&pack.join("state/save.yaml"), &emit_now(&now).unwrap());
+    write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 1);
@@ -1559,7 +1559,7 @@ Nell keeps a guard up.
     );
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         ActorLive::Pc {
@@ -1571,7 +1571,7 @@ Nell keeps a guard up.
             known_facts: Vec::new(),
         },
     );
-    fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
+    fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
 fn rolled_stat(notices: &[RollReport], stat: i64) -> spookery_kernel::rules::RollResult {

@@ -12,7 +12,7 @@ use spookery_kernel::diagnostic::reason_of;
 use spookery_kernel::journal;
 use spookery_kernel::model::Now;
 use spookery_kernel::perceive::perceive_at;
-use spookery_kernel::store::codec::load_now;
+use spookery_kernel::store::codec::load_save;
 use spookery_kernel::store::talk_log::MAX_TAPE_BYTES;
 use spookery_kernel::Reason;
 use spookery_round::{replay_states, ReplayError};
@@ -91,14 +91,14 @@ fn load_snaps(pack: &Path) -> Result<Vec<Snap>, AuditError> {
         &fs::read(&base).map_err(|_| AuditError::Reason(Reason::Schema))?,
     )?);
     for step in replay_states(pack).map_err(replay_error)? {
-        snaps.push(snap_of(&step.now_yaml)?);
+        snaps.push(snap_of(&step.save_yaml)?);
     }
     Ok(snaps)
 }
 
 fn snap_of(bytes: &[u8]) -> Result<Snap, AuditError> {
     let text = std::str::from_utf8(bytes).map_err(|_| AuditError::Reason(Reason::Schema))?;
-    let now = load_now(text).map_err(|diags| AuditError::Reason(reason_of(diags)))?;
+    let now = load_save(text).map_err(|diags| AuditError::Reason(reason_of(diags)))?;
     Ok(Snap {
         state_rev: now.state_rev,
         tick_index: now.tick_index,

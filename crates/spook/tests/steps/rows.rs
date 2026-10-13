@@ -159,11 +159,11 @@ fn add_knife_row(pack: &Path) {
 fn stamp(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_now(&now).unwrap(),
+        spookery_kernel::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }
@@ -190,7 +190,7 @@ Nell keeps a guard up.
     .unwrap();
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         ActorLive::Pc {
@@ -213,7 +213,7 @@ Nell keeps a guard up.
     );
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_now(&now).unwrap(),
+        spookery_kernel::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }

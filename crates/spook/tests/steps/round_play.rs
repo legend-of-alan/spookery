@@ -173,7 +173,7 @@ fn a_played_d20_fight(world: &mut World) {
         Target::Actor("npc_briar".to_string()),
     )];
     let (now, _rolls, _tick) = play_queued(&pack, intents);
-    world.now_bytes = spookery_kernel::store::codec::emit_now(&now)
+    world.now_bytes = spookery_kernel::store::codec::emit_save(&now)
         .unwrap()
         .into_bytes();
     world.pack = Some(pack);
@@ -309,7 +309,7 @@ fn those_waits_are_played(world: &mut World) {
     second.source = Source::Kernel;
     let (now, _rolls, tick) = play_queued(&pack, vec![first, second]);
     world.scratch = tick.to_string();
-    world.now_bytes = spookery_kernel::store::codec::emit_now(&now)
+    world.now_bytes = spookery_kernel::store::codec::emit_save(&now)
         .unwrap()
         .into_bytes();
 }
@@ -333,7 +333,7 @@ fn only_the_first_wait_lands(world: &mut World) {
         "{tick}"
     );
     let now =
-        spookery_kernel::store::codec::load_now(std::str::from_utf8(&world.now_bytes).unwrap())
+        spookery_kernel::store::codec::load_save(std::str::from_utf8(&world.now_bytes).unwrap())
             .unwrap();
     assert_eq!(
         now.actors
@@ -713,11 +713,11 @@ fn queued(id: &str, actor: &str, kind: ActorKind, move_name: &str, target: Targe
 fn set_mira_busy(pack: &Path) {
     let path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_now(&fs::read_to_string(&path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     *now.actors.get_mut("mira").unwrap().busy_mut() = true;
     fs::write(
         &path,
-        spookery_kernel::store::codec::emit_now(&now).unwrap(),
+        spookery_kernel::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }
@@ -725,11 +725,11 @@ fn set_mira_busy(pack: &Path) {
 fn stamp(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_now(&now).unwrap(),
+        spookery_kernel::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }

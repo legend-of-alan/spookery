@@ -13,7 +13,7 @@ use crate::key::StateKey;
 use crate::limits::Budget;
 use crate::model::{MemoryLine, Now, PauseView};
 use crate::rules::RollReport;
-use crate::store::codec::{emit_now, load_now};
+use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
 
 pub struct World {
@@ -337,7 +337,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     let canon = Arc::new(load_canon(root).map_err(reason_of)?);
     let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_now(now_text).map_err(reason_of)?;
+    let mut now = load_save(now_text).map_err(reason_of)?;
     let mut problems = save_problems(root, &now, &now_bytes);
     if replay {
         problems.retain(|diag| diag.code != Reason::PackRevMismatch.token());
@@ -371,7 +371,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     let loaded = if now_path.is_file() {
         match fs::read(&now_path) {
             Ok(bytes) => match std::str::from_utf8(&bytes) {
-                Ok(text) => match load_now(text) {
+                Ok(text) => match load_save(text) {
                     Ok(now) => Some((bytes, now)),
                     Err(more) => {
                         diags.extend(more);
@@ -454,7 +454,7 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
             .with_path("pack_rev"),
         ),
     }
-    match emit_now(now) {
+    match emit_save(now) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
                 .ok()

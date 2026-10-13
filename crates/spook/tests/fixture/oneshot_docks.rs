@@ -9,9 +9,9 @@ pub(crate) fn docks_save_round_trips() {
     let now_bytes =
         fs::read(root.join("state/save.yaml")).unwrap_or_else(|err| panic!("read now: {err}"));
     let now_text = std::str::from_utf8(&now_bytes).unwrap_or_else(|err| panic!("now utf-8: {err}"));
-    let now = spookery_kernel::store::codec::load_now(now_text)
+    let now = spookery_kernel::store::codec::load_save(now_text)
         .unwrap_or_else(|err| panic!("load now: {err:?}"));
-    let emitted = spookery_kernel::store::codec::emit_now(&now)
+    let emitted = spookery_kernel::store::codec::emit_save(&now)
         .unwrap_or_else(|err| panic!("emit now: {err}"));
     assert_eq!(emitted.as_bytes(), now_bytes.as_slice());
     assert_eq!(now.pack_rev, rev);

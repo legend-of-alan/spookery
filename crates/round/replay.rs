@@ -12,7 +12,7 @@ use spookery_kernel::journal::{
 };
 use spookery_kernel::model::Now;
 use spookery_kernel::store::codec::{
-    canonicalize, emit_effect, emit_now, load_now, parse_recorded_line, parse_tick_effects,
+    canonicalize, emit_effect, emit_save, load_save, parse_recorded_line, parse_tick_effects,
     require_recorded_rules,
 };
 use spookery_kernel::world::World;
@@ -108,7 +108,7 @@ impl std::error::Error for VerifyError {}
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReplayStep {
     pub state_rev: u64,
-    pub now_yaml: Vec<u8>,
+    pub save_yaml: Vec<u8>,
 }
 
 /// Replay the journal. `from` is a directory whose `state/save.yaml` replaces the base.
@@ -128,7 +128,7 @@ pub fn replay_states(pack: &Path) -> Result<Vec<ReplayStep>, ReplayError> {
     let _report = replay_walking(pack, None, None, |rev, bytes| {
         steps.push(ReplayStep {
             state_rev: rev,
-            now_yaml: bytes.to_vec(),
+            save_yaml: bytes.to_vec(),
         });
         Ok(())
     })?;
@@ -488,7 +488,7 @@ fn apply_presence(world: &mut World, record: &PresenceRecord) -> Result<(), Repl
     next.presence.actors_present = record.actors_present.clone();
     canonicalize(&mut next);
     next.state_rev = record.state_rev_after;
-    let bytes = emit_now(&next).map_err(ReplayError::Reason)?.into_bytes();
+    let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -527,7 +527,7 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
     next.pack_rev = record.pack_rev_after.clone();
     next.state_rev = record.state_rev_after;
     canonicalize(&mut next);
-    let bytes = emit_now(&next).map_err(ReplayError::Reason)?.into_bytes();
+    let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -550,7 +550,7 @@ fn read_from_now(from: &Path) -> Result<Vec<u8>, ReplayError> {
 
 fn load_base(bytes: &[u8]) -> Result<Now, ReplayError> {
     let text = std::str::from_utf8(bytes).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    load_now(text).map_err(|diag| ReplayError::Reason(reason_of(diag)))
+    load_save(text).map_err(|diag| ReplayError::Reason(reason_of(diag)))
 }
 
 fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {
@@ -691,9 +691,9 @@ mod tests {
         assert_eq!(steps.len(), 2, "{steps:?}");
         assert_eq!(steps[0].state_rev, 1);
         assert_eq!(steps[1].state_rev, 2);
-        assert_ne!(steps[0].now_yaml, steps[1].now_yaml);
+        assert_ne!(steps[0].save_yaml, steps[1].save_yaml);
         let final_report = from_journal(&pack, None, None).unwrap();
-        assert_eq!(steps[1].now_yaml, final_report.now_yaml);
+        assert_eq!(steps[1].save_yaml, final_report.now_yaml);
         assert_eq!(final_report.applied, 2);
         let _ = fs::remove_dir_all(&pack);
     }

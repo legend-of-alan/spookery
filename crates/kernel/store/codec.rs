@@ -10,7 +10,7 @@ use crate::meter::MeterWrite;
 use crate::model::{sort_unique, MemoryLine, Now};
 
 #[allow(non_snake_case)]
-pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
+pub fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
     serde_saphyr::ser_options! {
         empty_as_braces: true,
         indent_step: 2,
@@ -25,7 +25,7 @@ pub fn NOW_EMIT_OPTIONS() -> SerializerOptions {
     }
 }
 
-pub fn load_now(text: &str) -> Result<Now, Vec<Diagnostic>> {
+pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
     const FILE: &str = "state/save.yaml";
     if let Some(diag) = tag_diagnostic(text, crate::format::NOW, FILE, 0) {
         return Err(vec![diag]);
@@ -53,12 +53,12 @@ pub fn load_now(text: &str) -> Result<Now, Vec<Diagnostic>> {
     }
 }
 
-pub fn emit_now(now: &Now) -> Result<String, Reason> {
+pub fn emit_save(now: &Now) -> Result<String, Reason> {
     let mut canonical = now.clone();
     canonical.schema = crate::format::NOW.to_string();
     canonical.rules_rev = super::RULES_REV;
     canonicalize(&mut canonical);
-    let text = serde_saphyr::to_string_with_options(&canonical, NOW_EMIT_OPTIONS())
+    let text = serde_saphyr::to_string_with_options(&canonical, SAVE_EMIT_OPTIONS())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
 }
@@ -521,12 +521,28 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn a_tick_with_the_wrong_rules_rev_is_refused_while_the_save_matches() {
+        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packs/oneshot-docks/state/save.yaml");
+        let save = fs::read_to_string(&path).unwrap();
+        assert!(load_save(&save).is_ok(), "{save}");
+        let wrong = crate::store::RULES_REV + 1;
+        let record = format!(r#"{{"tick_index":1,"rules_rev":{wrong}}}"#);
+        assert_eq!(require_recorded_rules(&record), Err(Reason::RulesRev));
+        let current = format!(
+            r#"{{"tick_index":1,"rules_rev":{}}}"#,
+            crate::store::RULES_REV
+        );
+        assert_eq!(require_recorded_rules(&current), Ok(()));
+    }
+
+    #[test]
     fn docks_now_round_trips_through_emitter() {
         let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/state/save.yaml");
         let original = fs::read_to_string(&path).unwrap();
-        let now = load_now(&original).unwrap();
-        let emitted = emit_now(&now).unwrap();
+        let now = load_save(&original).unwrap();
+        let emitted = emit_save(&now).unwrap();
         assert_eq!(emitted, original);
     }
 
@@ -561,22 +577,22 @@ messages: []
 
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        assert!(load_now(&now_text("now")).is_ok());
-        let old = load_now(&now_text(concat!("now/", "v0"))).unwrap_err();
+        assert!(load_save(&now_text("now")).is_ok());
+        let old = load_save(&now_text(concat!("now/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(crate::diagnostic::reason_of(old), Reason::Schema);
-        let bogus = load_now(&now_text("bogus")).unwrap_err();
+        let bogus = load_save(&now_text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(crate::diagnostic::reason_of(bogus), Reason::Schema);
     }
 
     #[test]
-    fn emit_now_writes_the_now_tag() {
-        let mut now = load_now(&now_text("now")).unwrap();
+    fn emit_save_writes_the_now_tag() {
+        let mut now = load_save(&now_text("now")).unwrap();
         now.schema = concat!("now/", "v0").to_string();
-        let emitted = emit_now(&now).unwrap();
+        let emitted = emit_save(&now).unwrap();
         assert!(emitted.starts_with("schema: now\n"), "{emitted}");
-        assert_eq!(load_now(&emitted).unwrap().schema, "now");
+        assert_eq!(load_save(&emitted).unwrap().schema, "now");
     }
 
     use crate::effect::EffectClass;
