@@ -26,7 +26,7 @@ pub fn record(world: &mut World, round: &mut Round, draft: Draft) -> Result<(), 
         effects: &round.effects,
         tool_trace: &round.trace,
     });
-    world.finish_tick(
+    world.finish_round(
         draft,
         round.cause == TickCause::Flush,
         jsonl,

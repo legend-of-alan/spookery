@@ -88,7 +88,7 @@ impl World {
     }
 
     /// Hold one played round when the caller will write it. Spook queues intents and takes rolls; it does not write this.
-    pub fn finish_tick(
+    pub fn finish_round(
         &mut self,
         draft: Draft,
         flush: bool,

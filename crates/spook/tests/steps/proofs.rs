@@ -522,10 +522,10 @@ fn an_open_transaction_writes_nothing() {
     let state_rev = shard.now().state_rev;
     let oil = lamp_oil(shard.now());
     let delta = if oil > 0 { -1 } else { 1 };
-    let mut txn = Draft::begin(&shard);
-    apply_effect(&mut txn, &mira_intent(), stock_effect(delta)).unwrap();
-    assert_eq!(lamp_oil(txn.now()), oil + delta);
-    drop(txn);
+    let mut draft = Draft::begin(&shard);
+    apply_effect(&mut draft, &mira_intent(), stock_effect(delta)).unwrap();
+    assert_eq!(lamp_oil(draft.now()), oil + delta);
+    drop(draft);
     drop(shard);
     assert!(!dropped.join("state/.txn").exists());
     assert_eq!(fs::read(&now_path).unwrap(), before);

@@ -18,27 +18,27 @@ pub struct CommitOutcome {
     pub log_path: String,
 }
 
-pub fn tick_commit(shard: &mut World, mut txn: Draft, tick_jsonl: &str) -> Result<(), Reason> {
-    txn.state.state_rev = txn
+pub fn tick_commit(shard: &mut World, mut draft: Draft, tick_jsonl: &str) -> Result<(), Reason> {
+    draft.state.state_rev = draft
         .state
         .state_rev
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
-    canonicalize(&mut txn.state);
-    let now_bytes = emit_now(&txn.state)?.into_bytes();
+    canonicalize(&mut draft.state);
+    let now_bytes = emit_now(&draft.state)?.into_bytes();
     let stamped = journal::stamp_now_hash(tick_jsonl, &now_bytes)?;
-    let tick_index = txn.state.tick_index;
+    let tick_index = draft.state.tick_index;
     let state = shard.root.join("state");
     let pre = read_pre_now(&state)?;
     let mut planned = plan_commit(
         &state,
         now_bytes.clone(),
         Some((tick_index, stamped.as_bytes())),
-        &txn.memories,
+        &draft.memories,
     )?;
     push_base(&mut planned, &state, &pre, &now_bytes, false);
     write_commit(&state, &planned)?;
-    shard.now = txn.state;
+    shard.now = draft.state;
     Ok(())
 }
 

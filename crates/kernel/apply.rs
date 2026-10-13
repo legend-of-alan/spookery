@@ -7,41 +7,41 @@ use crate::meter::{self, MeterWrite};
 use crate::model::{MemoryLine, Message};
 use crate::world::Draft;
 
-pub fn apply_effect(txn: &mut Draft, intent: &Intent, effect: Effect) -> Result<(), Reason> {
+pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Result<(), Reason> {
     if !viewer_matches(intent, &effect) {
         return Err(Reason::ViewerMismatch);
     }
     match effect.class {
         EffectClass::Clock { clock_id, delta } => {
-            apply_clock(txn, &intent.actor_id, &clock_id, delta)
+            apply_clock(draft, &intent.actor_id, &clock_id, delta)
         }
         EffectClass::Meter {
             actor_id,
             key,
             write,
-        } => apply_meter(txn, &actor_id, &key, write),
-        EffectClass::Stock { place, sku, delta } => apply_stock(txn, intent, &place, &sku, delta),
+        } => apply_meter(draft, &actor_id, &key, write),
+        EffectClass::Stock { place, sku, delta } => apply_stock(draft, intent, &place, &sku, delta),
         EffectClass::Location { actor_id, from, to } => {
-            apply_location(txn, intent, &actor_id, &from, &to)
+            apply_location(draft, intent, &actor_id, &from, &to)
         }
         EffectClass::Memory {
             actor_id,
             fact_ids,
             tags,
             text,
-        } => apply_memory(txn, intent, &actor_id, fact_ids, tags, text),
+        } => apply_memory(draft, intent, &actor_id, fact_ids, tags, text),
         EffectClass::Flag {
             actor_id,
             key,
             value,
-        } => apply_flag(txn, &actor_id, &key, value),
+        } => apply_flag(draft, &actor_id, &key, value),
         EffectClass::Message {
             message_id,
             to,
             place,
             fact_ids,
             text,
-        } => apply_message(txn, message_id, to, place, fact_ids, text),
+        } => apply_message(draft, message_id, to, place, fact_ids, text),
     }
 }
 
@@ -53,9 +53,14 @@ fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
     }
 }
 
-fn apply_clock(txn: &mut Draft, actor_id: &str, clock_id: &str, delta: i64) -> Result<(), Reason> {
-    let humans = txn.now().presence.humans;
-    let clock = txn.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
+fn apply_clock(
+    draft: &mut Draft,
+    actor_id: &str,
+    clock_id: &str,
+    delta: i64,
+) -> Result<(), Reason> {
+    let humans = draft.now().presence.humans;
+    let clock = draft.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
     if !clock.owners.iter().any(|owner| owner == actor_id) {
         return Err(Reason::UnknownKey);
     }
@@ -68,9 +73,10 @@ fn apply_clock(txn: &mut Draft, actor_id: &str, clock_id: &str, delta: i64) -> R
         return Err(Reason::OutOfRange);
     }
     if next != current {
-        txn.track(StateKey::ClockValue(clock_id.to_string()))?;
+        draft.track(StateKey::ClockValue(clock_id.to_string()))?;
     }
-    txn.now_mut()
+    draft
+        .now_mut()
         .clocks
         .get_mut(clock_id)
         .ok_or(Reason::UnknownKey)?
@@ -79,13 +85,13 @@ fn apply_clock(txn: &mut Draft, actor_id: &str, clock_id: &str, delta: i64) -> R
 }
 
 fn apply_meter(
-    txn: &mut Draft,
+    draft: &mut Draft,
     actor_id: &str,
     key: &str,
     write: MeterWrite,
 ) -> Result<(), Reason> {
-    let def = *txn.canon().meters.get(key).ok_or(Reason::UnknownKey)?;
-    let mut live = txn
+    let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownKey)?;
+    let mut live = draft
         .now()
         .actors
         .get(actor_id)
@@ -96,9 +102,10 @@ fn apply_meter(
         .ok_or(Reason::UnknownKey)?;
     let changed = meter::write(&def, &mut live, write)?;
     if changed {
-        txn.track(StateKey::ActorMeter(actor_id.to_string(), key.to_string()))?;
+        draft.track(StateKey::ActorMeter(actor_id.to_string(), key.to_string()))?;
     }
-    *txn.now_mut()
+    *draft
+        .now_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -117,13 +124,13 @@ fn stock_next(current: i64, delta: i64) -> Result<i64, Reason> {
 }
 
 fn apply_stock(
-    txn: &mut Draft,
+    draft: &mut Draft,
     intent: &Intent,
     place: &str,
     sku: &str,
     delta: i64,
 ) -> Result<(), Reason> {
-    let profile = txn
+    let profile = draft
         .canon()
         .profile(&intent.actor_id)
         .ok_or(Reason::NoProfile)?;
@@ -139,7 +146,7 @@ fn apply_stock(
     if delta.abs() > rate.abs() {
         return Err(Reason::OutOfRange);
     }
-    let current = txn
+    let current = draft
         .now()
         .places
         .get(place)
@@ -148,9 +155,9 @@ fn apply_stock(
         .unwrap_or(0);
     let next = stock_next(current, delta)?;
     if next != current {
-        txn.track(StateKey::PlaceStock(place.to_string(), sku.to_string()))?;
+        draft.track(StateKey::PlaceStock(place.to_string(), sku.to_string()))?;
     }
-    let place_live = txn
+    let place_live = draft
         .now_mut()
         .places
         .get_mut(place)
@@ -160,7 +167,7 @@ fn apply_stock(
 }
 
 fn apply_location(
-    txn: &mut Draft,
+    draft: &mut Draft,
     intent: &Intent,
     actor_id: &str,
     from: &str,
@@ -169,22 +176,23 @@ fn apply_location(
     if actor_id != intent.actor_id {
         return Err(Reason::ActorMismatch);
     }
-    let actor = txn.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
-    if txn.now().presence.humans == 0 && actor.is_pc() {
+    let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
+    if draft.now().presence.humans == 0 && actor.is_pc() {
         return Err(Reason::TableEmpty);
     }
     if actor.place() != from {
         return Err(Reason::OutOfRange);
     }
-    let profile = txn.canon().profile(actor_id).ok_or(Reason::NoProfile)?;
+    let profile = draft.canon().profile(actor_id).ok_or(Reason::NoProfile)?;
     if !profile.range.iter().any(|item| item == to) {
         return Err(Reason::OutOfRange);
     }
     let place_changed = actor.place() != to;
     if place_changed {
-        txn.track(StateKey::ActorPlace(actor_id.to_string()))?;
+        draft.track(StateKey::ActorPlace(actor_id.to_string()))?;
     }
-    *txn.now_mut()
+    *draft
+        .now_mut()
         .actors
         .get_mut(actor_id)
         .ok_or(Reason::UnknownKey)?
@@ -193,7 +201,7 @@ fn apply_location(
 }
 
 fn apply_memory(
-    txn: &mut Draft,
+    draft: &mut Draft,
     intent: &Intent,
     actor_id: &str,
     fact_ids: Vec<String>,
@@ -212,29 +220,29 @@ fn apply_memory(
         ActorKind::System => return Err(Reason::ActorMismatch),
     };
     for fact in &fact_ids {
-        if !allows(txn.canon(), txn.now(), &viewer, fact) {
+        if !allows(draft.canon(), draft.now(), &viewer, fact) {
             return Err(Reason::IllegalKnowledge);
         }
     }
     if let Some(text) = &text {
-        let leaked = txn.canon().facts.iter().any(|(id, fact)| {
+        let leaked = draft.canon().facts.iter().any(|(id, fact)| {
             !fact.text.is_empty()
                 && text.contains(&fact.text)
-                && !allows(txn.canon(), txn.now(), &viewer, id)
+                && !allows(draft.canon(), draft.now(), &viewer, id)
         });
         if leaked {
             return Err(Reason::IllegalKnowledge);
         }
     }
-    txn.bump_memory()?;
+    draft.bump_memory()?;
     let mut fact_ids = fact_ids;
     fact_ids.sort();
     fact_ids.dedup();
     let mut tags = tags;
     tags.sort();
     tags.dedup();
-    txn.stage_memory(MemoryLine {
-        tick_index: txn.now().tick_index,
+    draft.stage_memory(MemoryLine {
+        tick_index: draft.now().tick_index,
         actor_id: actor_id.to_string(),
         intent_id: intent.id.clone(),
         fact_ids,
@@ -244,9 +252,9 @@ fn apply_memory(
     Ok(())
 }
 
-fn apply_flag(txn: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
+fn apply_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
     if key != "busy" {
-        let listed = txn
+        let listed = draft
             .canon()
             .profile(actor_id)
             .is_some_and(|profile| profile.flags.iter().any(|flag| flag == key));
@@ -255,18 +263,19 @@ fn apply_flag(txn: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result
         }
     }
     if key == "busy" {
-        let current = txn.now().actors.get(actor_id).map(|actor| actor.busy());
+        let current = draft.now().actors.get(actor_id).map(|actor| actor.busy());
         if current != Some(value) {
-            txn.track(StateKey::ActorBusy(actor_id.to_string()))?;
+            draft.track(StateKey::ActorBusy(actor_id.to_string()))?;
         }
-        *txn.now_mut()
+        *draft
+            .now_mut()
             .actors
             .get_mut(actor_id)
             .ok_or(Reason::UnknownKey)?
             .busy_mut() = value;
         return Ok(());
     }
-    let has = txn
+    let has = draft
         .now()
         .actors
         .get(actor_id)
@@ -275,9 +284,9 @@ fn apply_flag(txn: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result
             | crate::model::ActorLive::Pc { flags, .. } => flags.iter().any(|flag| flag == key),
         });
     if has != value {
-        txn.track(StateKey::ActorFlag(actor_id.to_string(), key.to_string()))?;
+        draft.track(StateKey::ActorFlag(actor_id.to_string(), key.to_string()))?;
     }
-    let flags = txn
+    let flags = draft
         .now_mut()
         .actors
         .get_mut(actor_id)
@@ -294,14 +303,14 @@ fn apply_flag(txn: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result
 }
 
 fn apply_message(
-    txn: &mut Draft,
+    draft: &mut Draft,
     message_id: String,
     to: Vec<String>,
     place: Option<String>,
     fact_ids: Vec<String>,
     text: String,
 ) -> Result<(), Reason> {
-    if txn
+    if draft
         .now()
         .messages
         .iter()
@@ -310,13 +319,13 @@ fn apply_message(
         return Err(Reason::UnknownKey);
     }
     if let Some(place_id) = &place {
-        if !txn.now().places.contains_key(place_id) {
+        if !draft.now().places.contains_key(place_id) {
             return Err(Reason::UnknownKey);
         }
     }
-    txn.track(StateKey::Message(message_id.clone()))?;
+    draft.track(StateKey::Message(message_id.clone()))?;
     if let Some(place_id) = &place {
-        let mut notes = txn
+        let mut notes = draft
             .now()
             .places
             .get(place_id)
@@ -325,7 +334,7 @@ fn apply_message(
         notes.push(message_id.clone());
         notes.sort();
         notes.dedup();
-        if let Some(place_live) = txn.now_mut().places.get_mut(place_id) {
+        if let Some(place_live) = draft.now_mut().places.get_mut(place_id) {
             place_live.notes = notes;
         }
     }
@@ -335,7 +344,7 @@ fn apply_message(
     let mut fact_ids = fact_ids;
     fact_ids.sort();
     fact_ids.dedup();
-    txn.now_mut().messages.push(Message {
+    draft.now_mut().messages.push(Message {
         id: message_id,
         to,
         place,

@@ -405,20 +405,20 @@ mod tests {
                 && effect.intent_id() == "shelf-1"
         }));
 
-        let mut txn = crate::world::Draft::begin(&shard);
+        let mut draft = crate::world::Draft::begin(&shard);
         for effect in expanded {
-            apply_effect(&mut txn, &shelf, effect).unwrap();
+            apply_effect(&mut draft, &shelf, effect).unwrap();
         }
         assert_eq!(
-            txn.now().places["docks_shop"].stock["lamp_oil"],
+            draft.now().places["docks_shop"].stock["lamp_oil"],
             8,
             "stock range check accepted delta 4 against rate 4"
         );
-        let rest = &txn.now().actors["mira"].meters()["rest"];
+        let rest = &draft.now().actors["mira"].meters()["rest"];
         assert_eq!(rest.base, 4);
         assert_eq!(rest.offset, 0);
-        assert_eq!(txn.now().clocks["shelf_count"].value, 1);
-        assert_eq!(txn.now().messages[0].id, "note_mira_door");
+        assert_eq!(draft.now().clocks["shelf_count"].value, 1);
+        assert_eq!(draft.now().messages[0].id, "note_mira_door");
 
         let again = expand_outcome(shard.canon(), shard.now(), &shelf, None).unwrap();
         let message = again
@@ -426,7 +426,7 @@ mod tests {
             .find(|effect| matches!(effect.class, EffectClass::Message { .. }))
             .unwrap();
         assert_eq!(
-            apply_effect(&mut txn, &shelf, message).unwrap_err(),
+            apply_effect(&mut draft, &shelf, message).unwrap_err(),
             Reason::UnknownKey
         );
 
