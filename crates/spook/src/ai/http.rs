@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -13,11 +14,38 @@ pub struct Env {
 }
 
 /// Fixed bounds for one model call. Production uses 60s total, 10s to connect,
-/// and one retry after 2s. Tests pass a shorter total through `with_limits`.
+/// and one retry after 2s. Tests pass a shorter total, and a clock, through
+/// `with_limits`.
 pub struct Limits {
     pub total: Duration,
     pub connect: Duration,
     pub backoff: Duration,
+}
+
+/// Time source for one model call's limit and the pause before its retry.
+///
+/// [`WallClock`] sleeps. A test clock's `wait` finishes when the test says the
+/// time has passed, so a hung call can time out without a real delay.
+pub trait Clock: Send + Sync {
+    fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send;
+
+    /// The attempt's socket has been dropped.
+    ///
+    /// The wall clock returns at once. A test clock can wait until its stub
+    /// has observed the close, which keeps a later commit after that close.
+    fn abandon(&self) -> impl Future<Output = ()> + Send {
+        std::future::ready(())
+    }
+}
+
+/// Production clock. `wait` sleeps for the duration.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct WallClock;
+
+impl Clock for WallClock {
+    fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send {
+        tokio::time::sleep(duration)
+    }
 }
 
 impl Limits {
@@ -30,10 +58,13 @@ impl Limits {
     }
 }
 
-pub struct HttpModel {
+pub struct HttpModel<C> {
     env: Env,
-    client: reqwest::blocking::Client,
+    client: reqwest::Client,
     limits: Limits,
+    clock: C,
+    /// Dropped after `client`. The client may still be settling a connection.
+    runtime: tokio::runtime::Runtime,
 }
 
 pub fn require_env() -> Result<Env, HostError> {
@@ -64,21 +95,31 @@ fn trim_url(url: &str) -> String {
     url.trim_end_matches('/').to_string()
 }
 
-impl HttpModel {
+impl HttpModel<WallClock> {
     pub fn new(env: Env) -> Result<Self, HostError> {
-        Self::with_limits(env, Limits::production())
+        Self::with_limits(env, Limits::production(), WallClock)
     }
+}
 
-    pub fn with_limits(env: Env, limits: Limits) -> Result<Self, HostError> {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(limits.total)
+impl<C: Clock> HttpModel<C> {
+    pub fn with_limits(env: Env, limits: Limits, clock: C) -> Result<Self, HostError> {
+        // No reqwest total timeout. That timer is the wall clock. `clock.wait`
+        // is the limit, and dropping the request closes the socket.
+        let client = reqwest::Client::builder()
             .connect_timeout(limits.connect)
+            .build()
+            .map_err(|err| fail(err.to_string()))?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_io()
+            .enable_time()
             .build()
             .map_err(|err| fail(err.to_string()))?;
         Ok(Self {
             env,
             client,
             limits,
+            clock,
+            runtime,
         })
     }
 }
@@ -150,8 +191,23 @@ struct Tried {
     result: Result<Option<String>, CompleteError>,
 }
 
-impl HttpModel {
-    fn attempt(&self, request: &CompletionRequest) -> Tried {
+impl<C: Clock> HttpModel<C> {
+    fn fail_transport(&self, err: &reqwest::Error) -> Tried {
+        let class = class_of(err);
+        Tried {
+            retry: should_retry(class),
+            result: Err(failure_message(class, self.limits.total, &err.to_string())),
+        }
+    }
+
+    fn miss_deadline(&self) -> Tried {
+        Tried {
+            retry: true,
+            result: Err(failure_message(RetryClass::Timeout, self.limits.total, "")),
+        }
+    }
+
+    async fn read_attempt(&self, request: &CompletionRequest) -> Tried {
         let body = chat_body(&self.env.model, &request.prompt, request.says_only);
         let url = format!("{}/chat/completions", self.env.url);
         let response = match self
@@ -160,52 +216,61 @@ impl HttpModel {
             .bearer_auth(&self.env.key)
             .json(&body)
             .send()
+            .await
         {
             Ok(response) => response,
-            Err(err) => {
-                let class = class_of(&err);
-                return Tried {
-                    retry: should_retry(class),
-                    result: Err(failure_message(class, self.limits.total, &err.to_string())),
-                };
-            }
+            Err(err) => return self.fail_transport(&err),
         };
         let status = response.status();
         if !status.is_success() {
             let code = status.as_u16();
             let class = RetryClass::Status(code);
-            let body = response.text().unwrap_or_default();
+            let body = response.text().await.unwrap_or_default();
             let detail = provider_detail(&body, &self.env.key);
             return Tried {
                 retry: should_retry(class),
                 result: Err(failure_message(class, self.limits.total, &detail)),
             };
         }
-        let text = match response.text() {
+        let text = match response.text().await {
             Ok(text) => text,
-            Err(err) => {
-                let class = class_of(&err);
-                return Tried {
-                    retry: should_retry(class),
-                    result: Err(failure_message(class, self.limits.total, &err.to_string())),
-                };
-            }
+            Err(err) => return self.fail_transport(&err),
         };
         Tried {
             retry: false,
             result: interpret_completion(&text),
         }
     }
+
+    async fn attempt(&self, request: &CompletionRequest) -> Tried {
+        // The block owns the request. Leaving it drops the socket before
+        // `abandon`, so a test clock can see the close before this returns.
+        {
+            let attempt = self.read_attempt(request);
+            tokio::pin!(attempt);
+            let limit = self.clock.wait(self.limits.total);
+            tokio::pin!(limit);
+            tokio::select! {
+                biased;
+                result = &mut attempt => return result,
+                _ = &mut limit => {}
+            }
+        }
+        self.clock.abandon().await;
+        self.miss_deadline()
+    }
 }
 
-impl Model for HttpModel {
+impl<C: Clock> Model for HttpModel<C> {
     fn complete(&mut self, request: &CompletionRequest) -> Result<Option<String>, CompleteError> {
-        let first = self.attempt(request);
-        if !first.retry {
-            return first.result;
-        }
-        std::thread::sleep(self.limits.backoff);
-        self.attempt(request).result
+        self.runtime.block_on(async {
+            let first = self.attempt(request).await;
+            if !first.retry {
+                return first.result;
+            }
+            self.clock.wait(self.limits.backoff).await;
+            self.attempt(request).await.result
+        })
     }
 }
 

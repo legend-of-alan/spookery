@@ -7,7 +7,7 @@ mod wire;
 use std::path::Path;
 
 pub use gm_loop::{run_ai_gm, Watch};
-pub use http::{Env, HttpModel, Limits};
+pub use http::{Clock, Env, HttpModel, Limits, WallClock};
 pub use llm::{CompleteError, CompletionRequest, Model, Script};
 pub use prompt::{
     from_canon, keep, parse_actions, prepare, render_prompt, ActionKind, HandledSay, MenuRow,
