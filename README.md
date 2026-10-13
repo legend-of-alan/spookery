@@ -172,13 +172,82 @@ Type `help` for the seat commands. `spook gm --raw` prints each socket frame as 
 
 ### Coding agent
 
-`spook mcp` is the stdio door. It does not start the server and it does not take a pack. Start `spook run` first. Grok Build, Claude Code, and Cursor each register that command as an MCP server:
+Start the server with an HTTP door. That port is not the game port. Both stay on loopback. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:<port>/mcp` gets a 403.
 
 ```sh
-spook mcp --addr 127.0.0.1:9737
+spook run packs/oneshot-docks --mcp-http 127.0.0.1:<port>
 ```
 
-The same seat is also at `http://127.0.0.1:<port>/mcp` when the server is started with `--mcp-http 127.0.0.1:<port>`. That port is not the game port. Both stay on loopback. Point your agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:<port>/mcp` gets a 403.
+Register `http://127.0.0.1:<port>/mcp`. The key names below are the ones each client documents for streamable HTTP.
+
+Grok Build, in `~/.grok/config.toml`:
+
+```toml
+[mcp_servers.spook]
+url = "http://127.0.0.1:<port>/mcp"
+```
+
+Claude Code, in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "spook": {
+      "type": "http",
+      "url": "http://127.0.0.1:<port>/mcp"
+    }
+  }
+}
+```
+
+Cursor, in `.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "spook": {
+      "url": "http://127.0.0.1:<port>/mcp"
+    }
+  }
+}
+```
+
+Gemini CLI, in `~/.gemini/settings.json`. `httpUrl` is the streamable HTTP key. `url` is SSE.
+
+```json
+{
+  "mcpServers": {
+    "spook": {
+      "httpUrl": "http://127.0.0.1:<port>/mcp"
+    }
+  }
+}
+```
+
+Windsurf, in `mcp_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "spook": {
+      "serverUrl": "http://127.0.0.1:<port>/mcp"
+    }
+  }
+}
+```
+
+Claude Desktop's config file only takes stdio. One line reaches the HTTP door:
+
+```json
+{
+  "mcpServers": {
+    "spook": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://127.0.0.1:<port>/mcp"]
+    }
+  }
+}
+```
 
 The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_turn`. A client may ignore `spook/event` notifications. `session_status` with `since` returns the speech it missed.
 

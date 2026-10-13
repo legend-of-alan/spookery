@@ -68,8 +68,6 @@ enum Command {
         /// Pack directory.
         pack: PathBuf,
     },
-    /// Relay the GM seat to a coding agent on stdio.
-    Mcp,
     /// Replay the journal and print the final state_rev.
     Replay {
         /// Pack directory.
@@ -166,7 +164,6 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         Command::Migrate { pack } => {
             spookery_kernel::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
         }
-        Command::Mcp => spookery::mcp::bridge(addr),
         Command::Replay { pack, from } => {
             match spookery_round::from_journal(&pack, from.as_deref(), None) {
                 Ok(report) => {
@@ -338,15 +335,8 @@ mod tests {
         assert!(matches!(gm_raw.command, Command::Gm { raw: true, .. }));
         assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
-        assert!(Cli::try_parse_from(["spook", "mcp", "pack"]).is_err());
-        let mcp = Cli::try_parse_from(["spook", "mcp"]).unwrap();
-        assert!(matches!(mcp.command, Command::Mcp));
-        assert_eq!(mcp.addr, "127.0.0.1:9737");
-        let open = Cli::try_parse_from(["spook", "mcp", "--addr", "0.0.0.0"]).unwrap();
-        assert!(matches!(
-            dispatch(open),
-            Err(spookery::Error::Reason(Reason::NotInSpec))
-        ));
+        assert!(Cli::try_parse_from(["spook", "mcp"]).is_err());
+        assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
         let http = Cli::try_parse_from(["spook", "run", "--mcp-http", "0.0.0.0:9", "no-such-pack"])
             .unwrap();
         assert!(matches!(
