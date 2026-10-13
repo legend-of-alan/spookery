@@ -8,7 +8,7 @@ use spookery_kernel::Reason;
 
 use crate::round::{Resolution, Round};
 
-pub fn resolve(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
+pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("resolve".to_string());
     round.frozen = draft.now().clone();
     let candidates = round.candidates.clone();
@@ -175,7 +175,7 @@ fn next_key(round: &mut Round, rule: &str, subject: &str) -> RollKey {
     };
     RollKey {
         world_id: round.world_id.clone(),
-        tick_index: round.tick_index,
+        round_index: round.tick_index,
         rule_id: rule.to_string(),
         subject_id: subject.to_string(),
         roll_index,

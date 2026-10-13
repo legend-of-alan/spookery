@@ -249,10 +249,10 @@ mod tests {
     #[test]
     fn a_presence_commit_journals_the_new_presence_and_the_base() {
         let root = temp_docks("presence-journal");
-        let mut shard = World::open(&root).unwrap();
+        let mut world = World::open(&root).unwrap();
         let pre = fs::read(root.join("state/now.yaml")).unwrap();
         let changed = commit_presence(
-            &mut shard,
+            &mut world,
             Presence {
                 humans: 1,
                 actors_present: vec!["pc_rowan".to_string()],
@@ -265,24 +265,24 @@ mod tests {
         let record = fs::read_to_string(root.join("state/log/presence-0001.json")).unwrap();
         assert!(record.contains(&hash_now(&now)), "{record}");
         assert!(record.contains("\"state_rev_after\":1"), "{record}");
-        assert_eq!(shard.now().state_rev, 1);
+        assert_eq!(world.now().state_rev, 1);
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
     fn a_crash_between_the_journal_rename_and_now_rolls_back() {
         let root = temp_docks("crash-window");
-        let mut shard = World::open(&root).unwrap();
+        let mut world = World::open(&root).unwrap();
         let pre = fs::read(root.join("state/now.yaml")).unwrap();
         commit_presence(
-            &mut shard,
+            &mut world,
             Presence {
                 humans: 1,
                 actors_present: vec!["pc_rowan".to_string()],
             },
         )
         .unwrap();
-        drop(shard);
+        drop(world);
         fs::write(root.join("state/now.yaml"), &pre).unwrap();
         let txn = root.join("state/.txn");
         fs::create_dir_all(txn.join("prev")).unwrap();

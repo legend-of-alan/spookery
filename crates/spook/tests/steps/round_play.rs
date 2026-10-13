@@ -5,7 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::rules::{roll, RollInput, RollKey, RollReport};
-use spookery_round::TickCause;
+use spookery_round::RoundCause;
 
 use crate::support::{self, copy_dir};
 use crate::World;
@@ -72,17 +72,17 @@ fn crates_round_has_exactly_one_call_site_of_roll(world: &mut World) {
     assert_round_names(&root);
 }
 
-#[when(expr = "a docks tick is played")]
-fn a_docks_tick_is_played(world: &mut World) {
+#[when(expr = "a docks round is played")]
+fn a_docks_round_is_played(world: &mut World) {
     let pack = copy_named("oneshot-docks", "stage-order");
     spookery_round::play_pack(&pack).unwrap_or_else(|err| panic!("play: {err}"));
     world.pack = Some(pack);
 }
 
 #[then(
-    expr = "the tick trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order"
+    expr = "the round trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order"
 )]
-fn the_tick_trace_lists_the_stages(world: &mut World) {
+fn the_round_trace_lists_the_stages(world: &mut World) {
     let tick = tick_value(world.pack.as_ref().unwrap(), "tick-0001.jsonl");
     let trace: Vec<&str> = tick["tool_trace"]
         .as_array()
@@ -109,8 +109,8 @@ fn the_tick_trace_lists_the_stages(world: &mut World) {
     assert_eq!(at, stages.len(), "{trace:?}");
 }
 
-#[given(expr = "a tick where Lark rolls grit")]
-fn a_tick_where_lark_rolls_grit(world: &mut World) {
+#[given(expr = "a round where Lark rolls grit")]
+fn a_round_where_lark_rolls_grit(world: &mut World) {
     let clean = lark_pack();
     let played = copy_tree(&clean, "lark-alone");
     let (faces, total) = lark_roll(&played, false);
@@ -119,8 +119,8 @@ fn a_tick_where_lark_rolls_grit(world: &mut World) {
     world.pack = Some(clean);
 }
 
-#[when(expr = "the same tick is replayed with an extra unrelated NPC roll queued first")]
-fn the_same_tick_is_replayed_with_an_extra_roll(world: &mut World) {
+#[when(expr = "the same round is replayed with an extra unrelated NPC roll queued first")]
+fn the_same_round_is_replayed_with_an_extra_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     let (faces, total) = lark_roll(&pack, true);
     world.player_added = format!("{faces}|{total}");
@@ -131,8 +131,8 @@ fn larks_faces_and_total_are_identical(world: &mut World) {
     assert_eq!(world.player_added, world.scratch);
 }
 
-#[given(expr = "ten rolling intents in one tick")]
-fn ten_rolling_intents_in_one_tick(world: &mut World) {
+#[given(expr = "ten rolling intents in one round")]
+fn ten_rolling_intents_in_one_round(world: &mut World) {
     let pack = copy_named("oneshot-docks", "ten-dice");
     let intents = (0..10)
         .map(|index| {
@@ -278,13 +278,13 @@ fn mira_plays(world: &mut World, move_name: String) {
         .count();
 }
 
-#[then(expr = "lamp oil stays {int} and the tick names {word}")]
-fn lamp_oil_stays_and_the_tick_names(world: &mut World, oil: i64, reason: String) {
+#[then(expr = "lamp oil stays {int} and the round names {word}")]
+fn lamp_oil_stays_and_the_round_names(world: &mut World, oil: i64, reason: String) {
     assert_refusal(world, oil, &reason);
 }
 
-#[then(expr = "lamp oil stays {int}, the tick names {word}, and no roll is reported")]
-fn lamp_oil_stays_the_tick_names_and_no_roll_is_reported(
+#[then(expr = "lamp oil stays {int}, the round names {word}, and no roll is reported")]
+fn lamp_oil_stays_the_round_names_and_no_roll_is_reported(
     world: &mut World,
     oil: i64,
     reason: String,
@@ -535,7 +535,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
         },
         &RollKey {
             world_id: world.now().shard_id.clone(),
-            tick_index: world.now().tick_index,
+            round_index: world.now().tick_index,
             rule_id: "strike".to_string(),
             subject_id: actor_id.to_string(),
             roll_index,
@@ -683,7 +683,7 @@ fn play_queued(
     for intent in intents {
         world.queue(intent);
     }
-    spookery_round::play(&mut world, TickCause::Manual, &wall)
+    spookery_round::play(&mut world, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = tick_value(pack, "tick-0001.jsonl");
     let now = world.now().clone();

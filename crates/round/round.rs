@@ -7,7 +7,7 @@ use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::{session_status, Draft, World};
 
 use crate::log::Rejected;
-use crate::play::{RecordedTick, TickCause};
+use crate::play::{RecordedRound, RoundCause};
 
 /// One tick of world time, passed through the stages in order.
 pub struct Round {
@@ -15,13 +15,13 @@ pub struct Round {
     pub world_time_before: u64,
     pub world_time_after: u64,
     pub humans: u32,
-    pub cause: TickCause,
+    pub cause: RoundCause,
     pub world_id: String,
     pub now_wall: String,
     pub rev_before: u64,
     pub owns_commit: bool,
     pub queued: Vec<Intent>,
-    pub recorded: Option<RecordedTick>,
+    pub recorded: Option<RecordedRound>,
     pub candidates: Vec<Intent>,
     pub applied: Vec<Intent>,
     pub rejected: Vec<Rejected>,
@@ -53,9 +53,9 @@ impl Round {
     pub fn prepare(
         world: &World,
         draft: &Draft,
-        cause: TickCause,
+        cause: RoundCause,
         now_wall: &str,
-        recorded: Option<RecordedTick>,
+        recorded: Option<RecordedRound>,
     ) -> Self {
         let humans = recorded
             .as_ref()
@@ -70,7 +70,7 @@ impl Round {
             world_id: draft.now().shard_id.clone(),
             now_wall: now_wall.to_string(),
             rev_before: draft.now().state_rev,
-            owns_commit: cause != TickCause::Flush,
+            owns_commit: cause != RoundCause::Flush,
             queued: world.queued_intents().to_vec(),
             recorded,
             candidates: Vec::new(),

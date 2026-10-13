@@ -8,5 +8,5 @@ Feature: A round runs named stages
     Then crates/round has exactly one call site of roll
 
   Scenario: Stages run in order
-    When a docks tick is played
-    Then the tick trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order
+    When a docks round is played
+    Then the round trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order

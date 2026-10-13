@@ -108,7 +108,7 @@ impl World {
             self.rolls = notices;
             return Ok(());
         }
-        crate::commit::tick_commit(self, draft, &record)?;
+        crate::commit::commit_round(self, draft, &record)?;
         self.rolls = notices;
         if !keep_queue {
             self.queue.clear();
@@ -118,11 +118,11 @@ impl World {
 }
 
 impl Draft {
-    pub fn begin(shard: &World) -> Self {
+    pub fn begin(world: &World) -> Self {
         Self {
-            canon: Arc::clone(&shard.canon),
-            budget: shard.canon.budget,
-            state: shard.now.clone(),
+            canon: Arc::clone(&world.canon),
+            budget: world.canon.budget,
+            state: world.now.clone(),
             keys: BTreeSet::new(),
             memories: Vec::new(),
             memory_writes: 0,

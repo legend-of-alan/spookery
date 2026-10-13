@@ -25,11 +25,11 @@ pub enum SocketEnd {
 /// Engine cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
 
-pub fn seat_player(shard: &mut World, actor_id: &str) -> Result<String, Reason> {
-    if !is_live_pc(shard, actor_id) {
+pub fn seat_player(world: &mut World, actor_id: &str) -> Result<String, Reason> {
+    if !is_live_pc(world, actor_id) {
         return Err(Reason::Schema);
     }
-    let mut ids = shard.now().presence.actors_present.clone();
+    let mut ids = world.now().presence.actors_present.clone();
     if ids.len() >= MAX_PLAYER_SEATS {
         return Err(Reason::SessionFull);
     }
@@ -37,14 +37,14 @@ pub fn seat_player(shard: &mut World, actor_id: &str) -> Result<String, Reason> 
         return Err(Reason::SeatTaken);
     }
     ids.push(actor_id.to_string());
-    commit_held(shard, &ids)?;
+    commit_held(world, &ids)?;
     // Seating always changes presence, so `state_rev` has just moved and
     // never repeats. A seat count would reuse an id after a drop.
-    Ok(format!("s{}", shard.now().state_rev))
+    Ok(format!("s{}", world.now().state_rev))
 }
 
 pub fn release_player_seat(
-    shard: &mut World,
+    world: &mut World,
     session_id: &str,
     actor_id: &str,
     end: SocketEnd,
@@ -59,14 +59,14 @@ pub fn release_player_seat(
     if session_id.is_empty() {
         return Err(Reason::Schema);
     }
-    let mut ids = shard.now().presence.actors_present.clone();
+    let mut ids = world.now().presence.actors_present.clone();
     ids.retain(|id| id != actor_id);
-    commit_held(shard, &ids)
+    commit_held(world, &ids)
 }
 
-fn commit_held(shard: &mut World, ids: &[String]) -> Result<bool, Reason> {
+fn commit_held(world: &mut World, ids: &[String]) -> Result<bool, Reason> {
     commit_presence(
-        shard,
+        world,
         Presence {
             humans: u32::try_from(ids.len()).map_err(|_| Reason::Schema)?,
             actors_present: ids.to_vec(),
@@ -74,21 +74,21 @@ fn commit_held(shard: &mut World, ids: &[String]) -> Result<bool, Reason> {
     )
 }
 
-fn is_live_pc(shard: &World, actor_id: &str) -> bool {
-    shard
+fn is_live_pc(world: &World, actor_id: &str) -> bool {
+    world
         .now()
         .actors
         .get(actor_id)
         .is_some_and(ActorLive::is_pc)
 }
 
-pub(super) fn clear_crashed(shard: &mut World) -> Result<bool, Reason> {
-    let presence = &shard.now().presence;
+pub(super) fn clear_crashed(world: &mut World) -> Result<bool, Reason> {
+    let presence = &world.now().presence;
     if presence.humans == 0 && presence.actors_present.is_empty() {
         return Ok(false);
     }
     commit_presence(
-        shard,
+        world,
         Presence {
             humans: 0,
             actors_present: Vec::new(),
@@ -97,13 +97,13 @@ pub(super) fn clear_crashed(shard: &mut World) -> Result<bool, Reason> {
 }
 
 pub(super) fn run_world_loop(
-    mut shard: World,
+    mut world: World,
     rx: std::sync::mpsc::Receiver<Msg>,
     restart: &tokio::sync::watch::Sender<u64>,
 ) -> ! {
     let mut seats = Seats::default();
     let mut next_session = 1u64;
-    debug_seats(&seats, &shard);
+    debug_seats(&seats, &world);
     loop {
         let msg = match rx.recv() {
             Ok(msg) => msg,
@@ -112,16 +112,16 @@ pub(super) fn run_world_loop(
                 std::process::exit(1);
             }
         };
-        if let Err(code) = handle(&mut shard, &mut seats, &mut next_session, restart, msg) {
+        if let Err(code) = handle(&mut world, &mut seats, &mut next_session, restart, msg) {
             eprintln!("{code}");
             std::process::exit(1);
         }
-        debug_seats(&seats, &shard);
+        debug_seats(&seats, &world);
     }
 }
 
-pub(super) fn print_host(shard: &World) {
-    if let Ok(text) = idle_digest(shard, DigestViewer::Host) {
+pub(super) fn print_host(world: &World) {
+    if let Ok(text) = idle_digest(world, DigestViewer::Host) {
         if !text.is_empty() {
             print!("{text}");
             let _ = io::stdout().flush();
@@ -302,7 +302,7 @@ pub(super) enum PlayerReply {
 }
 
 fn handle(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     next_session: &mut u64,
     restart: &tokio::sync::watch::Sender<u64>,
@@ -316,32 +316,32 @@ fn handle(
             cancel,
             reply,
         } => {
-            let answer = on_hello(shard, seats, next_session, conn, &line, out, cancel)?;
+            let answer = on_hello(world, seats, next_session, conn, &line, out, cancel)?;
             if reply.send(answer).is_err() && seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
                 seats.gm = None;
             }
         }
         Msg::Player { conn, line, reply } => {
-            let answer = on_player(shard, seats, restart, conn, &line)?;
+            let answer = on_player(world, seats, restart, conn, &line)?;
             let _ = reply.send(answer);
         }
-        Msg::Fault { conn, end, ack } => on_fault(shard, seats, conn, end, ack)?,
+        Msg::Fault { conn, end, ack } => on_fault(world, seats, conn, end, ack)?,
         Msg::Tool {
             name,
             arguments,
             reply,
         } => {
-            let mut done = super::gm_tools::call_gm_tool(shard, &name, arguments);
+            let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
             let notices = if done.ticked {
-                let notices = shard.take_rolls();
+                let notices = world.take_rolls();
                 frames::write_checks(&mut done.value, &notices);
                 notices
             } else {
                 Vec::new()
             };
             if done.ticked {
-                refresh_players(shard, seats, &notices)?;
-                print_host(shard);
+                refresh_players(world, seats, &notices)?;
+                print_host(world);
             }
             if let Some(tape) = &done.tape {
                 println!("{tape}");
@@ -351,7 +351,7 @@ fn handle(
                 send_gm(seats, frame);
             }
             if let Some((recipients, line)) = &done.player_line {
-                send_recipients(shard, seats, recipients, line.clone())?;
+                send_recipients(world, seats, recipients, line.clone())?;
             }
             let mut after = done.after;
             after.extend(player_moves::gm_check_frames(&notices));
@@ -364,14 +364,14 @@ fn handle(
             });
         }
         Msg::Wake => {
-            if idle_clock::on_scheduled_wake(shard, !seats.players.is_empty(), seats.gm.is_some())?
+            if idle_clock::on_scheduled_wake(world, !seats.players.is_empty(), seats.gm.is_some())?
             {
                 bump_sleep(restart);
             }
         }
-        Msg::Stdin(line) if line == "stop" => shutdown(shard, seats),
+        Msg::Stdin(line) if line == "stop" => shutdown(world, seats),
         Msg::Stdin(_) => eprintln!("{}", Reason::NotInSpec),
-        Msg::StdinEof => shutdown(shard, seats),
+        Msg::StdinEof => shutdown(world, seats),
     }
     Ok(())
 }
@@ -382,13 +382,13 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
 }
 
 fn refresh_players(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     notices: &[spookery_kernel::rules::RollReport],
 ) -> Result<(), Reason> {
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
-        let bytes = match player_refresh(shard, &player.actor_id) {
+        let bytes = match player_refresh(world, &player.actor_id) {
             Ok(text) => {
                 let mut out = player_moves::player_notice_lines(notices, &player.actor_id);
                 out.push_str(&text);
@@ -401,17 +401,17 @@ fn refresh_players(
         }
     }
     for conn in failed {
-        if drop_conn(shard, seats, conn, SocketEnd::Write)? {
-            print_host(shard);
+        if drop_conn(world, seats, conn, SocketEnd::Write)? {
+            print_host(world);
         }
     }
     Ok(())
 }
 
-fn shutdown(shard: &mut World, seats: &mut Seats) -> ! {
+fn shutdown(world: &mut World, seats: &mut Seats) -> ! {
     for conn in seats.players.conns() {
-        match drop_conn(shard, seats, conn, SocketEnd::Eof) {
-            Ok(true) => print_host(shard),
+        match drop_conn(world, seats, conn, SocketEnd::Eof) {
+            Ok(true) => print_host(world),
             Ok(false) => {}
             Err(code) => {
                 eprintln!("{code}");
@@ -424,7 +424,7 @@ fn shutdown(shard: &mut World, seats: &mut Seats) -> ! {
 }
 
 fn on_hello(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     next_session: &mut u64,
     conn: u64,
@@ -446,28 +446,28 @@ fn on_hello(
         if seats.players.holds(id) {
             return Ok(HelloReply::Refused(refused_line(Reason::SeatTaken)));
         }
-        if !is_live_pc(shard, id) {
+        if !is_live_pc(world, id) {
             return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
         }
         let session_id = format!("s{next_session}");
         *next_session = next_session.checked_add(1).ok_or(Reason::Schema)?;
         let mut ids = seats.players.actor_ids();
         ids.push(id.to_string());
-        if let Err(code) = commit_held(shard, &ids) {
+        if let Err(code) = commit_held(world, &ids) {
             return Ok(HelloReply::Refused(refused_line(code)));
         }
-        let bytes = match welcome(shard, id) {
+        let bytes = match welcome(world, id) {
             Ok(bytes) => bytes,
             Err(code) => {
-                if release_player_seat(shard, &session_id, id, SocketEnd::Close)? {
-                    print_host(shard);
+                if release_player_seat(world, &session_id, id, SocketEnd::Close)? {
+                    print_host(world);
                 }
                 return Ok(HelloReply::Refused(refused_line(code)));
             }
         };
         if !super::limits::try_frame(&out, bytes) {
-            if release_player_seat(shard, &session_id, id, SocketEnd::Write)? {
-                print_host(shard);
+            if release_player_seat(world, &session_id, id, SocketEnd::Write)? {
+                print_host(world);
             }
             return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
         }
@@ -478,12 +478,12 @@ fn on_hello(
             out,
             cancel,
         }) {
-            if release_player_seat(shard, &session_id, id, SocketEnd::Close)? {
-                print_host(shard);
+            if release_player_seat(world, &session_id, id, SocketEnd::Close)? {
+                print_host(world);
             }
             return Ok(HelloReply::Refused(refused_line(code)));
         }
-        print_host(shard);
+        print_host(world);
         return Ok(HelloReply::Player);
     }
     Ok(HelloReply::Refused(refused_line(Reason::Schema)))
@@ -493,33 +493,33 @@ fn player_hello(line: &str) -> Option<&str> {
     crate::protocol::read_player_hello(line)
 }
 
-fn welcome(shard: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
+fn welcome(world: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
     let mut out = String::new();
-    for line in super::speech::player_scrollback(shard.root(), actor_id)? {
+    for line in super::speech::player_scrollback(world.root(), actor_id)? {
         out.push_str(&line);
     }
-    out.push_str(&player_refresh(shard, actor_id)?);
+    out.push_str(&player_refresh(world, actor_id)?);
     Ok(out.into_bytes())
 }
 
-fn player_refresh(shard: &World, actor_id: &str) -> Result<String, Reason> {
-    let digest = idle_digest(shard, DigestViewer::Player(actor_id.to_string()))?;
-    let view = perceive(shard, &format!("player:{actor_id}"))?;
+fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
+    let digest = idle_digest(world, DigestViewer::Player(actor_id.to_string()))?;
+    let view = perceive(world, &format!("player:{actor_id}"))?;
     let mut out = frames::player_resume_line(&digest);
     out.push_str(&frames::player_perceive_line(&view));
     Ok(out)
 }
 
 fn on_player(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     restart: &tokio::sync::watch::Sender<u64>,
     conn: u64,
     line: &str,
 ) -> Result<PlayerReply, Reason> {
     if is_close(line) {
-        if drop_conn(shard, seats, conn, SocketEnd::Close)? {
-            print_host(shard);
+        if drop_conn(world, seats, conn, SocketEnd::Close)? {
+            print_host(world);
         }
         return Ok(PlayerReply::Hangup);
     }
@@ -530,14 +530,14 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match input::parse_player_input(line, &actor_id, &shard.canon().moves) {
-        Ok(input::PlayerLine::Speech) => match speak(shard, &actor_id, line) {
+    match input::parse_player_input(line, &actor_id, &world.canon().moves) {
+        Ok(input::PlayerLine::Speech) => match speak(world, &actor_id, line) {
             Ok(spoken) => {
                 println!("{}", spoken.tape);
                 let _ = io::stdout().flush();
                 send_gm(seats, spoken.gm_event);
                 send_recipients(
-                    shard,
+                    world,
                     seats,
                     &spoken.recipients,
                     spoken.player_event.into_bytes(),
@@ -545,20 +545,20 @@ fn on_player(
                 Ok(PlayerReply::Done)
             }
             Err(code) => {
-                send_player(shard, seats, conn, refused_line(code).into_bytes())?;
+                send_player(world, seats, conn, refused_line(code).into_bytes())?;
                 Ok(PlayerReply::Done)
             }
         },
-        Ok(input::PlayerLine::Turn) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
+        Ok(input::PlayerLine::Turn) => on_mechanical(world, seats, restart, conn, &actor_id, line),
         Err(code) => {
-            send_player(shard, seats, conn, refused_line(code).into_bytes())?;
+            send_player(world, seats, conn, refused_line(code).into_bytes())?;
             Ok(PlayerReply::Done)
         }
     }
 }
 
 fn on_mechanical(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     restart: &tokio::sync::watch::Sender<u64>,
     conn: u64,
@@ -566,26 +566,26 @@ fn on_mechanical(
     line: &str,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match player_moves::handle_player_move(shard, actor_id, line, gm_seated) {
+    match player_moves::handle_player_move(world, actor_id, line, gm_seated) {
         Ok(player_moves::MoveOutcome::Queued(note)) => {
             send_gm(seats, note.gm_frame());
-            send_player(shard, seats, conn, note.player_line().into_bytes())?;
+            send_player(world, seats, conn, note.player_line().into_bytes())?;
         }
         Ok(player_moves::MoveOutcome::Committed { advanced, notices }) => {
             if advanced {
                 bump_sleep(restart);
             }
-            print_host(shard);
-            refresh_players(shard, seats, &notices)?;
+            print_host(world);
+            refresh_players(world, seats, &notices)?;
         }
-        Err(code) => send_player(shard, seats, conn, refused_line(code).into_bytes())?,
+        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
     }
     Ok(PlayerReply::Done)
 }
 
 /// A full or closed queue drops that seat. The shard thread does not wait.
 fn send_player(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     conn: u64,
     bytes: Vec<u8>,
@@ -594,8 +594,8 @@ fn send_player(
         Some(player) => !super::limits::try_frame(&player.out, bytes),
         None => false,
     };
-    if failed && drop_conn(shard, seats, conn, SocketEnd::Write)? {
-        print_host(shard);
+    if failed && drop_conn(world, seats, conn, SocketEnd::Write)? {
+        print_host(world);
     }
     Ok(())
 }
@@ -611,7 +611,7 @@ fn send_gm(seats: &mut Seats, frame: Vec<u8>) {
 }
 
 fn send_recipients(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     recipients: &[String],
     line: Vec<u8>,
@@ -625,8 +625,8 @@ fn send_recipients(
         }
     }
     for conn in failed {
-        if drop_conn(shard, seats, conn, SocketEnd::Write)? {
-            print_host(shard);
+        if drop_conn(world, seats, conn, SocketEnd::Write)? {
+            print_host(world);
         }
     }
     Ok(())
@@ -640,7 +640,7 @@ fn is_close(line: &str) -> bool {
 }
 
 fn drop_conn(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     conn: u64,
     end: SocketEnd,
@@ -648,20 +648,20 @@ fn drop_conn(
     let Some(player) = seats.players.take_conn(conn) else {
         return Ok(false);
     };
-    release_player_seat(shard, &player.session_id, &player.actor_id, end)
+    release_player_seat(world, &player.session_id, &player.actor_id, end)
 }
 
 fn on_fault(
-    shard: &mut World,
+    world: &mut World,
     seats: &mut Seats,
     conn: u64,
     end: SocketEnd,
     ack: Ack,
 ) -> Result<(), Reason> {
     let result = if seats.players.by_conn(conn).is_some() {
-        match drop_conn(shard, seats, conn, end) {
+        match drop_conn(world, seats, conn, end) {
             Ok(true) => {
-                print_host(shard);
+                print_host(world);
                 Ok(())
             }
             Ok(false) => Ok(()),
@@ -681,10 +681,10 @@ fn refused_line(code: Reason) -> String {
     frames::player_refused_line(code.token())
 }
 
-fn debug_seats(seats: &Seats, shard: &World) {
+fn debug_seats(seats: &Seats, world: &World) {
     let mut held = seats.players.actor_ids();
     held.sort();
-    let presence = &shard.now().presence;
+    let presence = &world.now().presence;
     debug_assert_eq!(presence.humans as usize, held.len());
     let mut present = presence.actors_present.clone();
     present.sort();

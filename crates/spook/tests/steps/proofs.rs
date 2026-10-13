@@ -286,7 +286,7 @@ fn gm_restocks() {
         Some(args.as_object().unwrap().clone()),
     );
     assert!(queued.value.get("code").is_none(), "{}", queued.value);
-    play(&mut shard, spookery_round::TickCause::Manual, &wall).unwrap();
+    play(&mut shard, spookery_round::RoundCause::Manual, &wall).unwrap();
     assert_eq!(lamp_oil(shard.now()), 8);
     assert_eq!(shard.now().messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
@@ -319,7 +319,7 @@ fn claimed_note_sorts_first() {
         );
         assert!(queued.value.get("code").is_none(), "{}", queued.value);
     }
-    play(&mut shard, spookery_round::TickCause::Manual, &wall).unwrap();
+    play(&mut shard, spookery_round::RoundCause::Manual, &wall).unwrap();
     let log = tick_value(&pack, "tick-0001.jsonl");
     let moves: Vec<&str> = log["intents"]
         .as_array()

@@ -7,9 +7,9 @@ use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
 use crate::round::Round;
-use crate::tick_seed::shuffle_key;
+use crate::round_seed::shuffle_key;
 
-pub fn gather(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
+pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("gather".to_string());
     round.trace.push("session_status".to_string());
     round.supply_from = match &round.recorded {

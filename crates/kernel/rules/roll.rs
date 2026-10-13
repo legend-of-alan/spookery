@@ -36,7 +36,7 @@ impl RollReport {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollKey {
     pub world_id: String,
-    pub tick_index: u64,
+    pub round_index: u64,
     pub rule_id: String,
     pub subject_id: String,
     pub roll_index: u32,
@@ -46,7 +46,7 @@ impl RollKey {
     pub fn preimage(&self) -> String {
         format!(
             "{}|{}|{}|{}|{}",
-            self.world_id, self.tick_index, self.rule_id, self.subject_id, self.roll_index
+            self.world_id, self.round_index, self.rule_id, self.subject_id, self.roll_index
         )
     }
 }
@@ -161,7 +161,7 @@ mod tests {
     fn key(index: u32) -> RollKey {
         RollKey {
             world_id: "docks".to_string(),
-            tick_index: 1,
+            round_index: 1,
             rule_id: "grit".to_string(),
             subject_id: "mira".to_string(),
             roll_index: index,

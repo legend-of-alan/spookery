@@ -5,7 +5,7 @@ use spookery_kernel::Reason;
 
 use crate::round::Round;
 
-pub fn advance(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
+pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("advance".to_string());
     let world_before = draft.now().world_time;
     round.world_time_before = world_before;

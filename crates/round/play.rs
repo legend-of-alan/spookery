@@ -4,12 +4,18 @@ use spookery_kernel::lock::lock_world;
 use spookery_kernel::world::{Draft, World};
 use spookery_kernel::Reason;
 
-use crate::advance::plan_catchup;
+use crate::advance::{self, plan_catchup};
+use crate::apply;
+use crate::complete;
+use crate::gather;
+use crate::observe;
+use crate::record;
+use crate::resolve;
 use crate::round::Round;
-use crate::stages;
+use crate::run_triggers;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum TickCause {
+pub enum RoundCause {
     Scheduler,
     Catchup,
     Flush,
@@ -17,7 +23,7 @@ pub enum TickCause {
     Replay,
 }
 
-pub struct RecordedTick {
+pub struct RecordedRound {
     pub intents: Vec<spookery_kernel::intent::Intent>,
     pub presence_humans: u32,
 }
@@ -36,35 +42,35 @@ pub fn commit_moves_at(
     wall: &str,
 ) -> Result<spookery_kernel::commit::CommitOutcome, Reason> {
     let _lock = lock_world(world)?;
-    play(world, TickCause::Flush, wall)?;
+    play(world, RoundCause::Flush, wall)?;
     spookery_kernel::commit::commit_pending(world)
 }
 
 pub fn play_pack(path: &Path) -> Result<(), Reason> {
     let mut world = World::open(path)?;
     let wall = world.now().last_tick_at.clone();
-    play(&mut world, TickCause::Manual, &wall)
+    play(&mut world, RoundCause::Manual, &wall)
 }
 
 pub fn play_catchup(world: &mut World, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
     let humans = spookery_kernel::world::session_status(world.now()).humans;
     let ticks = plan_catchup(humans, world.budget(), downtime_hours)?;
     for _ in 0..ticks {
-        play(world, TickCause::Catchup, now_wall)?;
+        play(world, RoundCause::Catchup, now_wall)?;
     }
     Ok(())
 }
 
-pub fn play(world: &mut World, cause: TickCause, now_wall: &str) -> Result<(), Reason> {
+pub fn play(world: &mut World, cause: RoundCause, now_wall: &str) -> Result<(), Reason> {
     play_with(world, cause, now_wall, None)
 }
 
 pub(crate) fn play_recorded(
     world: &mut World,
     now_wall: &str,
-    recorded: RecordedTick,
+    recorded: RecordedRound,
 ) -> Result<(), Reason> {
-    play_with(world, TickCause::Replay, now_wall, Some(recorded))
+    play_with(world, RoundCause::Replay, now_wall, Some(recorded))
 }
 
 fn stage_passes() -> u32 {
@@ -77,11 +83,11 @@ fn stage_passes() -> u32 {
 
 fn play_with(
     world: &mut World,
-    cause: TickCause,
+    cause: RoundCause,
     now_wall: &str,
-    recorded: Option<RecordedTick>,
+    recorded: Option<RecordedRound>,
 ) -> Result<(), Reason> {
-    let _lock = if cause == TickCause::Flush {
+    let _lock = if cause == RoundCause::Flush {
         None
     } else {
         Some(lock_world(world)?)
@@ -97,15 +103,15 @@ fn play_with(
     );
     for pass in 1..=passes {
         let draft = draft_slot.as_mut().expect("draft");
-        stages::advance(&mut round, draft)?;
-        stages::complete(&mut round, draft)?;
-        stages::gather(&mut round, draft)?;
-        stages::resolve(&mut round, draft)?;
-        stages::apply(&mut round, draft)?;
-        stages::run_triggers(&mut round, draft)?;
-        stages::observe(&mut round, draft)?;
+        advance::run(&mut round, draft)?;
+        complete::run(&mut round, draft)?;
+        gather::run(&mut round, draft)?;
+        resolve::run(&mut round, draft)?;
+        apply::run(&mut round, draft)?;
+        run_triggers::run(&mut round, draft)?;
+        observe::run(&mut round, draft)?;
         if pass == passes {
-            stages::record(world, &mut round, draft_slot.take().expect("draft"))?;
+            record::run(world, &mut round, draft_slot.take().expect("draft"))?;
             return Ok(());
         }
     }

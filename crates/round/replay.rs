@@ -14,8 +14,8 @@ use spookery_kernel::model::Now;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
-use crate::play::{play_recorded, RecordedTick};
-use crate::tick_seed::tick_seed;
+use crate::play::{play_recorded, RecordedRound};
+use crate::round_seed::round_seed;
 
 #[derive(Debug)]
 pub struct ReplayReport {
@@ -199,7 +199,7 @@ fn replay_walking(
     let _ = fs::remove_dir_all(temp.0.join("state/.txn"));
     fs::write(temp.0.join("state/now.yaml"), &base_bytes)
         .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    let mut shard = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
+    let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
     for entry in &records {
         let record_rev = entry.state_rev_after();
         if record_rev > cap {
@@ -208,7 +208,7 @@ fn replay_walking(
         if record_rev <= base_rev {
             continue;
         }
-        apply(&mut shard, entry)?;
+        apply(&mut world, entry)?;
         applied += 1;
         let now_yaml = fs::read(temp.0.join("state/now.yaml"))
             .map_err(|_| ReplayError::Reason(Reason::Schema))?;
@@ -356,15 +356,15 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
     Ok(())
 }
 
-fn apply(shard: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
+fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
     match entry {
-        JournalEntry::Tick(record) => apply_tick(shard, record),
-        JournalEntry::Presence(record) => apply_presence(shard, record),
-        JournalEntry::Migrate(record) => apply_migrate(shard, record),
+        JournalEntry::Tick(record) => apply_recorded_round(world, record),
+        JournalEntry::Presence(record) => apply_presence(world, record),
+        JournalEntry::Migrate(record) => apply_migrate(world, record),
     }
 }
 
-fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError> {
+fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), ReplayError> {
     let line = parse_recorded_line(&record.text).map_err(|_| {
         ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -374,7 +374,7 @@ fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError>
             None,
         ))
     })?;
-    if shard.now().tick_index + 1 != line.tick_index {
+    if world.now().tick_index + 1 != line.tick_index {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
@@ -383,7 +383,7 @@ fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError>
             None,
         )));
     }
-    let seed = tick_seed(&shard.now().shard_id, line.tick_index);
+    let seed = round_seed(&world.now().shard_id, line.tick_index);
     if line.seed != seed {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -395,9 +395,9 @@ fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError>
     }
     let wall = line.last_tick_at.clone();
     play_recorded(
-        shard,
+        world,
         &wall,
-        RecordedTick {
+        RecordedRound {
             intents: line.intents,
             presence_humans: line.presence_humans,
         },
@@ -408,19 +408,19 @@ fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError>
             "tick",
             Some(record.tick_index),
             code.token().to_string(),
-            read_now(shard),
+            read_now(world),
         ))
     })?;
-    if shard.now().state_rev != record.state_rev_after {
+    if world.now().state_rev != record.state_rev_after {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
             Some(record.tick_index),
             "state_rev differed".to_string(),
-            read_now(shard),
+            read_now(world),
         )));
     }
-    let written = read_now_bytes(shard)?;
+    let written = read_now_bytes(world)?;
     if hash_now(&written) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -433,8 +433,8 @@ fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError>
     Ok(())
 }
 
-fn apply_presence(shard: &mut World, record: &PresenceRecord) -> Result<(), ReplayError> {
-    let mut next = shard.now().clone();
+fn apply_presence(world: &mut World, record: &PresenceRecord) -> Result<(), ReplayError> {
+    let mut next = world.now().clone();
     next.presence.humans = record.humans;
     next.presence.actors_present = record.actors_present.clone();
     canonicalize(&mut next);
@@ -449,11 +449,11 @@ fn apply_presence(shard: &mut World, record: &PresenceRecord) -> Result<(), Repl
             Some(bytes),
         )));
     }
-    replay_write_now(shard, next).map_err(ReplayError::Reason)
+    replay_write_now(world, next).map_err(ReplayError::Reason)
 }
 
-fn apply_migrate(shard: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
-    let mut next = shard.now().clone();
+fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
+    let mut next = world.now().clone();
     if next.pack_rev != record.pack_rev_before {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -463,9 +463,9 @@ fn apply_migrate(shard: &mut World, record: &MigrateRecord) -> Result<(), Replay
             None,
         )));
     }
-    bind_meters(shard.canon(), &mut next).map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
+    bind_meters(world.canon(), &mut next).map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
     bind_inventory(&next).map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
-    let computed = pack_rev(shard.root()).map_err(ReplayError::Reason)?;
+    let computed = pack_rev(world.root()).map_err(ReplayError::Reason)?;
     if computed != record.pack_rev_after {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -488,7 +488,7 @@ fn apply_migrate(shard: &mut World, record: &MigrateRecord) -> Result<(), Replay
             Some(bytes),
         )));
     }
-    replay_write_now(shard, next).map_err(ReplayError::Reason)
+    replay_write_now(world, next).map_err(ReplayError::Reason)
 }
 
 fn read_from_now(from: &Path) -> Result<Vec<u8>, ReplayError> {
@@ -508,12 +508,12 @@ fn state_rev_of(bytes: &[u8]) -> Result<u64, ReplayError> {
     Ok(load_base(bytes)?.state_rev)
 }
 
-fn read_now_bytes(shard: &World) -> Result<Vec<u8>, ReplayError> {
-    fs::read(shard.root().join("state/now.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))
+fn read_now_bytes(world: &World) -> Result<Vec<u8>, ReplayError> {
+    fs::read(world.root().join("state/now.yaml")).map_err(|_| ReplayError::Reason(Reason::Schema))
 }
 
-fn read_now(shard: &World) -> Option<Vec<u8>> {
-    fs::read(shard.root().join("state/now.yaml")).ok()
+fn read_now(world: &World) -> Option<Vec<u8>> {
+    fs::read(world.root().join("state/now.yaml")).ok()
 }
 
 fn diverge(

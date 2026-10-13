@@ -88,39 +88,39 @@ pub(super) const GM_LIST: &[GmTool] = &[
 ];
 
 pub fn call_gm_tool(
-    shard: &mut World,
+    world: &mut World,
     name: &str,
     arguments: Option<Map<String, Value>>,
 ) -> GmToolReply {
     match GM_LIST.iter().find(|tool| tool.name == name) {
-        Some(tool) => (tool.run)(shard, arguments),
-        None => refuse_not_in_spec(shard, arguments),
+        Some(tool) => (tool.run)(world, arguments),
+        None => refuse_not_in_spec(world, arguments),
     }
 }
 
-fn run_intent(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match queue_tool_intent(shard, arguments) {
+fn run_intent(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+    match queue_tool_intent(world, arguments) {
         Ok(note) => GmToolReply::new(frames::queued_ack(&note.id)),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_commit_turn(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match commit_tool(shard, arguments) {
+fn run_commit_turn(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+    match commit_tool(world, arguments) {
         Ok(done) => done,
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_perceive(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match perceive_tool(shard, arguments) {
+fn run_perceive(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+    match perceive_tool(world, arguments) {
         Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_say(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match speech::speak_tool(shard, arguments) {
+fn run_say(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+    match speech::speak_tool(world, arguments) {
         Ok(spoken) => {
             let mut done = GmToolReply::new(spoken.tool);
             // Same object as the tool result, after that response. Ahead of it, the client stalls.
@@ -133,14 +133,14 @@ fn run_say(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolRe
     }
 }
 
-fn run_session_status(shard: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match session_status_tool(shard, arguments) {
+fn run_session_status(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+    match session_status_tool(world, arguments) {
         Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn refuse_not_in_spec(_shard: &mut World, _arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn refuse_not_in_spec(_world: &mut World, _arguments: Option<Map<String, Value>>) -> GmToolReply {
     refused_tool(Reason::NotInSpec)
 }
 
@@ -260,23 +260,23 @@ fn schema_object(value: Value) -> Map<String, Value> {
 }
 
 fn commit_tool(
-    shard: &mut World,
+    world: &mut World,
     arguments: Option<Map<String, Value>>,
 ) -> Result<GmToolReply, Reason> {
     let include_tick = commit_include_tick(arguments)?;
     if !include_tick {
-        if shard.queued_intents().is_empty() {
-            return Ok(noop(shard));
+        if world.queued_intents().is_empty() {
+            return Ok(noop(world));
         }
         return Err(Reason::NotInSpec);
     }
-    if shard.queued_intents().is_empty() {
-        return Ok(noop(shard));
+    if world.queued_intents().is_empty() {
+        return Ok(noop(world));
     }
-    let before = shard.now().world_time;
+    let before = world.now().world_time;
     let wall = wall_now()?;
-    let outcome = commit_moves_at(shard, &wall)?;
-    let advanced = shard.now().world_time != before;
+    let outcome = commit_moves_at(world, &wall)?;
+    let advanced = world.now().world_time != before;
     let mut done = GmToolReply::new(frames::commit_reply(
         outcome.state_rev,
         &outcome.diff_summary,
@@ -287,36 +287,36 @@ fn commit_tool(
     Ok(done)
 }
 
-fn noop(shard: &World) -> GmToolReply {
-    GmToolReply::new(frames::commit_reply(shard.now().state_rev, &[], None))
+fn noop(world: &World) -> GmToolReply {
+    GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None))
 }
 
 fn refused_tool(code: Reason) -> GmToolReply {
     GmToolReply::new(frames::code_result(code.token()))
 }
 
-fn perceive_tool(shard: &World, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
+fn perceive_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
     let args =
         crate::protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
     let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
-    let view = perceive_budget(shard, &as_arg, budget)?;
+    let view = perceive_budget(world, &as_arg, budget)?;
     Ok(frames::perceive_value(&view))
 }
 
 fn session_status_tool(
-    shard: &World,
+    world: &World,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Value, Reason> {
     let since = status_since(arguments)?;
     let events = match since {
-        Some(since) => Some(speech::tape_after(shard.root(), since)?),
+        Some(since) => Some(speech::tape_after(world.root(), since)?),
         None => None,
     };
-    let last_seq = speech::last_tape_seq(shard.root())?;
+    let last_seq = speech::last_tape_seq(world.root())?;
     Ok(frames::session_status(
-        shard.now(),
-        shard.queued_intents(),
+        world.now(),
+        world.queued_intents(),
         last_seq,
         events.as_deref(),
     ))
@@ -333,7 +333,7 @@ fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Re
 }
 
 fn queue_tool_intent(
-    shard: &mut World,
+    world: &mut World,
     arguments: Option<Map<String, Value>>,
 ) -> Result<QueuedNote, Reason> {
     let call = crate::protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
@@ -354,14 +354,14 @@ fn queue_tool_intent(
     let actor_id = actor_id.ok_or(Reason::Schema)?;
     let actor_kind = actor_kind.ok_or(Reason::Schema)?;
     let move_name = move_name.ok_or(Reason::Schema)?;
-    let audience = match shard
+    let audience = match world
         .canon()
         .moves
         .get(&move_name)
         .and_then(|def| def.row.as_ref())
     {
         Some(row) => row.audience,
-        None if shard.canon().moves.contains_key(&move_name) => return Err(Reason::NotInSpec),
+        None if world.canon().moves.contains_key(&move_name) => return Err(Reason::NotInSpec),
         None => return Err(Reason::UnknownMove),
     };
     match actor_kind {
@@ -369,7 +369,7 @@ fn queue_tool_intent(
             if audience != Some(Audience::Player) {
                 return Err(Reason::NotInSpec);
             }
-            if !shard
+            if !world
                 .now()
                 .actors
                 .get(&actor_id)
@@ -382,7 +382,7 @@ fn queue_tool_intent(
             if audience != Some(Audience::Player) && audience != Some(Audience::Habit) {
                 return Err(Reason::NotInSpec);
             }
-            if !shard
+            if !world
                 .now()
                 .actors
                 .get(&actor_id)
@@ -398,11 +398,11 @@ fn queue_tool_intent(
         Some(_) => return Err(Reason::Schema),
         None => player_moves::mint_intent_id()?,
     };
-    if shard.queued_intents().iter().any(|intent| intent.id == id) {
+    if world.queued_intents().iter().any(|intent| intent.id == id) {
         return Err(Reason::Schema);
     }
     player_moves::push_intent(
-        shard,
+        world,
         player_moves::IntentPush {
             id: id.clone(),
             actor_id: &actor_id,

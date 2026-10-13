@@ -408,7 +408,7 @@ The player line grammar does change. The check wire object does not. That split 
 | How a second writer appears | Countermeasure |
 |---|---|
 | Client patches YAML | The play door queues an intent or appends speech. The CLI has no path that opens `now.yaml` for a client write. |
-| GM calls `apply_effect` | The tool is not a sitting handler. Effects come from expand inside a `Draft`. Only `tick_commit`, `commit_presence`, and `migrate_pack` rename files. |
+| GM calls `apply_effect` | The tool is not a sitting handler. Effects come from expand inside a `Draft`. Only `commit_round`, `commit_presence`, and `migrate_pack` rename files. |
 | A summarizer writes memories | No LLM crate. Memory lines are written inside the commit, from a `memory` effect, after `allows`. |
 | Speech copied into `known_facts` | The tape is not an input to expand. No whisper. Inbound model text is not a field on `Intent`. |
 | Host digest reused as the player resume | `idle_digest` takes `DigestViewer::Host` or `DigestViewer::Player`. Different rows. |

@@ -65,8 +65,8 @@ impl Drop for LockGuard {
     }
 }
 
-pub fn lock_world(shard: &World) -> Result<LockGuard, Reason> {
-    lock_pack(&shard.root)
+pub fn lock_world(world: &World) -> Result<LockGuard, Reason> {
+    lock_pack(&world.root)
 }
 
 pub(crate) fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {

@@ -12,7 +12,7 @@ use crate::log::Rejected;
 use crate::resolve::viewer_token;
 use crate::round::{Resolution, Round};
 
-pub fn apply(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
+pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("apply".to_string());
     let max_effects = draft.budget().max_effects_per_intent as usize;
     let max_npcs = draft.budget().max_npcs_acting;

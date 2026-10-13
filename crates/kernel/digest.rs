@@ -11,17 +11,17 @@ pub enum DigestViewer {
     Player(String),
 }
 
-pub fn idle_digest(shard: &World, viewer: DigestViewer) -> Result<String, Reason> {
+pub fn idle_digest(world: &World, viewer: DigestViewer) -> Result<String, Reason> {
     let mut rows = Vec::new();
     match viewer {
         DigestViewer::Host => {
-            rows.extend(effect_rows(shard.root())?);
-            for (id, clock) in &shard.now().clocks {
+            rows.extend(effect_rows(world.root())?);
+            for (id, clock) in &world.now().clocks {
                 rows.push(clock_line(id, clock));
             }
         }
         DigestViewer::Player(id) => {
-            let mut messages: Vec<_> = shard
+            let mut messages: Vec<_> = world
                 .now()
                 .messages
                 .iter()
@@ -31,7 +31,7 @@ pub fn idle_digest(shard: &World, viewer: DigestViewer) -> Result<String, Reason
             for message in messages {
                 rows.push(format!("message {} {}", message.id, message.text));
             }
-            for (clock_id, clock) in &shard.now().clocks {
+            for (clock_id, clock) in &world.now().clocks {
                 if clock.owners.iter().any(|owner| owner == &id) {
                     rows.push(clock_line(clock_id, clock));
                 }

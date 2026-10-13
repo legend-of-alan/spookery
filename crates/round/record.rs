@@ -1,18 +1,18 @@
 use spookery_kernel::world::{Draft, World};
 use spookery_kernel::Reason;
 
-use crate::log::{render_tick, TickLine};
-use crate::play::TickCause;
+use crate::log::{render_round_line, RoundLine};
+use crate::play::RoundCause;
 use crate::round::Round;
-use crate::tick_seed::tick_seed;
+use crate::round_seed::round_seed;
 
-pub fn record(world: &mut World, round: &mut Round, draft: Draft) -> Result<(), Reason> {
+pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<(), Reason> {
     round.trace.push("record".to_string());
     if round.owns_commit {
-        round.trace.push("tick_commit".to_string());
+        round.trace.push("commit_round".to_string());
     }
-    let seed = tick_seed(&round.world_id, round.tick_index);
-    let jsonl = render_tick(&TickLine {
+    let seed = round_seed(&round.world_id, round.tick_index);
+    let jsonl = render_round_line(&RoundLine {
         tick_index: round.tick_index,
         state_rev_before: round.rev_before,
         state_rev_after: round.rev_before + 1,
@@ -28,7 +28,7 @@ pub fn record(world: &mut World, round: &mut Round, draft: Draft) -> Result<(), 
     });
     world.finish_round(
         draft,
-        round.cause == TickCause::Flush,
+        round.cause == RoundCause::Flush,
         jsonl,
         std::mem::take(&mut round.notices),
         round.recorded.is_some(),

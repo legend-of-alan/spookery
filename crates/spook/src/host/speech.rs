@@ -24,9 +24,9 @@ enum Speech {
     Place { text: String },
 }
 
-pub fn speak(shard: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
-    let speech = parse_line(line, actor_id, &shard.now().actors)?;
-    if !shard
+pub fn speak(world: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
+    let speech = parse_line(line, actor_id, &world.now().actors)?;
+    if !world
         .now()
         .actors
         .get(actor_id)
@@ -34,7 +34,7 @@ pub fn speak(shard: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason
     {
         return Err(Reason::Schema);
     }
-    let speaker_place = shard
+    let speaker_place = world
         .now()
         .actors
         .get(actor_id)
@@ -47,14 +47,14 @@ pub fn speak(shard: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason
         Speech::Place { text } => ("place", Some(speaker_place), None, text),
     };
     let recipients = recipients(
-        shard,
+        world,
         Some(actor_id),
         address,
         place.as_deref(),
         actor.as_deref(),
     );
     append_speech(
-        shard,
+        world,
         &format!("player:{actor_id}"),
         address,
         place,
@@ -65,7 +65,7 @@ pub fn speak(shard: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason
 }
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
-pub fn speak_tool(shard: &World, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
+pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
     let call = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let address = call.address;
     let place = call.place;
@@ -87,15 +87,15 @@ pub fn speak_tool(shard: &World, arguments: Option<Map<String, Value>>) -> Resul
         }
         "actor" => {
             let actor = actor.ok_or(Reason::Schema)?;
-            if actor.is_empty() || place.is_some() || !shard.now().actors.contains_key(&actor) {
+            if actor.is_empty() || place.is_some() || !world.now().actors.contains_key(&actor) {
                 return Err(Reason::Schema);
             }
             (None, Some(actor))
         }
         _ => return Err(Reason::Schema),
     };
-    let recipients = recipients(shard, None, &address, place.as_deref(), actor.as_deref());
-    append_speech(shard, "gm", &address, place, actor, recipients, text)
+    let recipients = recipients(world, None, &address, place.as_deref(), actor.as_deref());
+    append_speech(world, "gm", &address, place, actor, recipients, text)
 }
 
 pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Reason> {
@@ -112,7 +112,7 @@ pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, R
 }
 
 fn append_speech(
-    shard: &World,
+    world: &World,
     from: &str,
     address: &str,
     place: Option<String>,
@@ -120,11 +120,11 @@ fn append_speech(
     recipients: Vec<String>,
     text: String,
 ) -> Result<Spoken, Reason> {
-    let tick_index = shard.now().tick_index;
-    let world_time = shard.now().world_time;
+    let tick_index = world.now().tick_index;
+    let world_time = world.now().world_time;
     let from = from.to_string();
     let address = address.to_string();
-    let seq = append_session(shard.root(), |seq| {
+    let seq = append_session(world.root(), |seq| {
         frames::tape_body(&TapeLine {
             seq,
             from: from.clone(),
@@ -227,7 +227,7 @@ fn one_line(text: &str) -> Result<&str, Reason> {
 }
 
 fn recipients(
-    shard: &World,
+    world: &World,
     speaker: Option<&str>,
     address: &str,
     place: Option<&str>,
@@ -236,14 +236,14 @@ fn recipients(
     let mut ids = BTreeSet::new();
     match address {
         "table" => {
-            for id in seated_players(shard) {
+            for id in seated_players(world) {
                 ids.insert(id);
             }
         }
         "place" => {
             if let Some(place) = place {
-                for id in seated_players(shard) {
-                    if shard
+                for id in seated_players(world) {
+                    if world
                         .now()
                         .actors
                         .get(&id)
@@ -256,7 +256,7 @@ fn recipients(
         }
         "actor" => {
             if let Some(actor) = actor {
-                if seated_players(shard).iter().any(|id| id == actor) {
+                if seated_players(world).iter().any(|id| id == actor) {
                     ids.insert(actor.to_string());
                 }
             }
@@ -269,13 +269,13 @@ fn recipients(
     ids.into_iter().collect()
 }
 
-fn seated_players(shard: &World) -> Vec<String> {
-    shard
+fn seated_players(world: &World) -> Vec<String> {
+    world
         .now()
         .presence
         .actors_present
         .iter()
-        .filter(|id| shard.now().actors.get(*id).is_some_and(ActorLive::is_pc))
+        .filter(|id| world.now().actors.get(*id).is_some_and(ActorLive::is_pc))
         .cloned()
         .collect()
 }
