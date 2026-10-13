@@ -13,7 +13,7 @@ const DEFAULT_TAPE_LIMIT: usize = 64;
 const MAX_TAPE_LIMIT: usize = 256;
 
 /// Append one session tape line under `state/.session.lock`.
-/// Assigns `seq`, drops a trailing partial line, and does not open a `Txn`.
+/// Assigns `seq`, drops a trailing partial line, and does not open a `Draft`.
 pub fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u64, Reason> {
     let _lock = lock_session(root)?;
     let log_dir = root.join("state/log");

@@ -15,7 +15,7 @@ use spookery_kernel::model::Now;
 use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::tape::MAX_TAPE_BYTES;
 use spookery_kernel::Reason;
-use spookery_tick::{replay_states, ReplayError};
+use spookery_round::{replay_states, ReplayError};
 
 use crate::host::frames::{self, TapeLine};
 

@@ -20,5 +20,5 @@ pub(crate) fn docks_save_round_trips() {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert!(!now_text.contains("session_ids"));
 
-    spookery_kernel::open_shard(&root).unwrap_or_else(|err| panic!("open_shard: {err}"));
+    spookery_kernel::World::open(&root).unwrap_or_else(|err| panic!("World::open: {err}"));
 }

@@ -6,7 +6,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
-use spookery_kernel::shard::open_shard;
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
 use super::gm_seat;
@@ -28,13 +28,13 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
         None => None,
     };
     let listener = TcpListener::bind(addr).map_err(Error::Io)?;
-    let mut shard = open_shard(pack).map_err(Error::Reason)?;
-    if world_loop::clear_crashed(&mut shard).map_err(Error::Reason)? {
-        world_loop::print_host(&shard);
+    let mut world = World::open(pack).map_err(Error::Reason)?;
+    if world_loop::clear_crashed(&mut world).map_err(Error::Reason)? {
+        world_loop::print_host(&world);
     }
     // Keepalive stays the pack interval. The idle switch does not change it.
-    let keepalive_secs = shard.budget().tick_every_real_seconds;
-    let arm_idle_timer = shard.budget().idle_ticking;
+    let keepalive_secs = world.budget().tick_every_real_seconds;
+    let arm_idle_timer = world.budget().idle_ticking;
     let (tx, rx) = std::sync::mpsc::channel();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -119,7 +119,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
         }
         let _ = tx_stdin.send(Msg::StdinEof);
     });
-    world_loop::run_world_loop(shard, rx, &restart_tx)
+    world_loop::run_world_loop(world, rx, &restart_tx)
 }
 
 fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {

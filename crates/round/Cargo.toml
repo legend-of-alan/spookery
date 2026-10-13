@@ -1,5 +1,5 @@
 [package]
-name = "spookery-tick"
+name = "spookery-round"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

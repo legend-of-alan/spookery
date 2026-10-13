@@ -10,7 +10,7 @@ use spookery::host::{
     release_player_seat, seat_player, MoveOutcome, SocketEnd,
 };
 use spookery_kernel::apply::apply_effect;
-use spookery_kernel::check::{CheckNotice, Outcome};
+use spookery_kernel::check::Outcome;
 use spookery_kernel::codec::emit_now;
 use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
@@ -18,8 +18,9 @@ use spookery_kernel::meter::MeterLive;
 use spookery_kernel::model::{
     ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
 };
-use spookery_kernel::shard::{Shard, Txn};
-use spookery_tick::{replay_journal, run_catchup, run_tick, tick_pack};
+use spookery_kernel::rules::RollReport;
+use spookery_kernel::world::Draft;
+use spookery_round::{catch_up, from_journal, play, play_pack_once};
 
 use crate::World;
 
@@ -63,8 +64,8 @@ fn temp_pack(label: &str) -> PathBuf {
     pack
 }
 
-fn open(pack: &Path) -> Shard {
-    spookery_kernel::open_shard(pack).unwrap_or_else(|err| panic!("open_shard: {err}"))
+fn open(pack: &Path) -> spookery_kernel::world::World {
+    spookery_kernel::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
 }
 
 fn now_of(pack: &Path) -> Now {
@@ -148,7 +149,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn no_self_win() {
     let pack = temp_pack("self-win");
     for tick in 1..=12 {
-        tick_pack(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+        play_pack_once(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 12, "twelve empty-table ticks commit");
@@ -180,7 +181,7 @@ fn save_now(pack: &Path, now: &Now) {
 
 fn evening_note() {
     let pack = temp_pack("evening");
-    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
@@ -205,7 +206,7 @@ fn morning_restock() {
         now_of(&pack).actors.get("mira").unwrap().place(),
         "mira_rooms"
     );
-    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 8);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
@@ -222,7 +223,7 @@ fn off_hours_hold() {
         now.messages.push(door_message());
         save_now(&pack, &now);
     }
-    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
@@ -242,7 +243,7 @@ fn player_in_the_shop() {
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         save_now(&pack, &now);
     }
-    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
@@ -285,7 +286,7 @@ fn gm_restocks() {
         Some(args.as_object().unwrap().clone()),
     );
     assert!(queued.value.get("code").is_none(), "{}", queued.value);
-    run_tick(&mut shard, spookery_tick::Cause::Manual, &wall).unwrap();
+    play(&mut shard, spookery_round::RoundCause::Manual, &wall).unwrap();
     assert_eq!(lamp_oil(shard.now()), 8);
     assert_eq!(shard.now().messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
@@ -318,7 +319,7 @@ fn claimed_note_sorts_first() {
         );
         assert!(queued.value.get("code").is_none(), "{}", queued.value);
     }
-    run_tick(&mut shard, spookery_tick::Cause::Manual, &wall).unwrap();
+    play(&mut shard, spookery_round::RoundCause::Manual, &wall).unwrap();
     let log = tick_value(&pack, "tick-0001.jsonl");
     let moves: Vec<&str> = log["intents"]
         .as_array()
@@ -432,7 +433,7 @@ Rowan.
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
     let wall = shard.now().last_tick_at.clone();
-    run_catchup(&mut shard, &wall, 72).unwrap_or_else(|err| panic!("catch-up: {err}"));
+    catch_up(&mut shard, &wall, 72).unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = open(&pack);
     let now = saved.now();
     assert_eq!(now.state_rev, 12, "twelve commits");
@@ -463,7 +464,7 @@ fn busy_skip() {
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         save_now(&pack, &now);
     }
-    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(
@@ -521,10 +522,10 @@ fn an_open_transaction_writes_nothing() {
     let state_rev = shard.now().state_rev;
     let oil = lamp_oil(shard.now());
     let delta = if oil > 0 { -1 } else { 1 };
-    let mut txn = Txn::begin(&shard);
-    apply_effect(&mut txn, &mira_intent(), stock_effect(delta)).unwrap();
-    assert_eq!(lamp_oil(txn.now()), oil + delta);
-    drop(txn);
+    let mut draft = Draft::begin(&shard);
+    apply_effect(&mut draft, &mira_intent(), stock_effect(delta)).unwrap();
+    assert_eq!(lamp_oil(draft.now()), oil + delta);
+    drop(draft);
     drop(shard);
     assert!(!dropped.join("state/.txn").exists());
     assert_eq!(fs::read(&now_path).unwrap(), before);
@@ -656,11 +657,11 @@ fn replay_byte_compares_now() {
     );
     copy_dir(&start, &played);
     for tick in 1..=20 {
-        tick_pack(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+        play_pack_once(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let golden = fs::read(played.join("state/now.yaml")).unwrap();
     let source_log = fs::read(played.join("state/log/tick-0020.jsonl")).unwrap();
-    let report = replay_journal(&played, Some(&start), None).unwrap();
+    let report = from_journal(&played, Some(&start), None).unwrap();
     assert_eq!(report.now_yaml, golden);
     assert_eq!(fs::read(played.join("state/now.yaml")).unwrap(), golden);
     assert_eq!(
@@ -787,7 +788,7 @@ tick:
         messages: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
-    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 1);
     assert_eq!(
@@ -885,7 +886,7 @@ fn strip_bodies_and_hidden_string_lint() {
         .contains(LEDGER));
     stamp_pack_rev(&pack);
     open(&pack);
-    tick_pack(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
     let perceive = format!(
         "{:?}",
         spookery_kernel::perceive(&open(&pack), "npc:aldric").unwrap()
@@ -1053,12 +1054,12 @@ fn import_boundary() {
     let root = workspace_root();
     let spook_src = root.join("crates/spook/src");
     let mut kernel_hits = hits_under(&root.join("crates/kernel"), KERNEL_TICK_NEEDLES);
-    kernel_hits.extend(hits_under(&root.join("crates/tick"), KERNEL_TICK_NEEDLES));
+    kernel_hits.extend(hits_under(&root.join("crates/round"), KERNEL_TICK_NEEDLES));
     assert!(kernel_hits.is_empty(), "{}", kernel_hits.join("\n"));
 
     let mut runtime = Vec::new();
     files_under(&root.join("crates/kernel"), &mut runtime);
-    files_under(&root.join("crates/tick"), &mut runtime);
+    files_under(&root.join("crates/round"), &mut runtime);
     files_under(&spook_src, &mut runtime);
     let ai = spook_src.join("ai");
     let mut reqwest_hits = Vec::new();
@@ -1104,7 +1105,7 @@ fn import_boundary() {
     );
     let ai_hits = hits_under(
         &spook_src.join("ai"),
-        &["rmcp", "crate::terminal", "spookery_tick"],
+        &["rmcp", "crate::terminal", "spookery_round"],
     );
     assert!(ai_hits.is_empty(), "{}", ai_hits.join("\n"));
     let host_hits = hits_under(&spook_src.join("host"), &["crate::terminal", "crate::ai"]);
@@ -1160,7 +1161,7 @@ fn is_word_byte(byte: u8) -> bool {
 fn no_five_e_words_in_kernel_or_tick() {
     let root = workspace_root();
     let mut hits = five_e_words_under(&root.join("crates/kernel"));
-    hits.extend(five_e_words_under(&root.join("crates/tick")));
+    hits.extend(five_e_words_under(&root.join("crates/round")));
     assert!(hits.is_empty(), "{}", hits.join("\n"));
 }
 
@@ -1408,7 +1409,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     assert_eq!(shard.now().tick_index, 1);
     drop(shard);
     assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
-    tick_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 2);
     assert_eq!(now.world_time, 1090);
@@ -1565,11 +1566,11 @@ Nell keeps a guard up.
     fs::write(&now_path, emit_now(&now).unwrap()).unwrap();
 }
 
-fn rolled_stat(notices: &[CheckNotice], stat: i64) -> spookery_kernel::check::CheckOut {
+fn rolled_stat(notices: &[RollReport], stat: i64) -> spookery_kernel::rules::RollResult {
     notices
         .iter()
         .find_map(|notice| match notice {
-            CheckNotice::Rolled { out, .. } if out.stat == stat => Some(out.clone()),
+            RollReport::Rolled { out, .. } if out.stat == stat => Some(out.clone()),
             _ => None,
         })
         .unwrap_or_else(|| panic!("no stat {stat} in {notices:?}"))
@@ -1695,12 +1696,7 @@ fn the_scheduler_does_not_spawn_a_tick() {
         !schedule.contains("tokio"),
         "idle_clock.rs reaches for the Tokio runtime"
     );
-    for needle in [
-        "run_tick",
-        "run_catchup",
-        "idle_tick_if_due",
-        "idle_clock::",
-    ] {
+    for needle in ["::play(", "catch_up(", "idle_tick_if_due", "idle_clock::"] {
         assert!(
             !listen.contains(needle),
             "the async listener calls {needle} instead of posting a wake to the shard thread"
@@ -1713,7 +1709,7 @@ fn manifests_do_not_name_a_model_crate() {
     for path in [
         root.join("Cargo.toml"),
         root.join("crates/kernel/Cargo.toml"),
-        root.join("crates/tick/Cargo.toml"),
+        root.join("crates/round/Cargo.toml"),
         root.join("crates/spook/Cargo.toml"),
     ] {
         let text = fs::read_to_string(&path).unwrap();

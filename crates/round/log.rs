@@ -6,7 +6,7 @@ pub struct Rejected {
     pub reason: String,
 }
 
-pub struct TickLine<'a> {
+pub struct RoundLine<'a> {
     pub tick_index: u64,
     pub state_rev_before: u64,
     pub state_rev_after: u64,
@@ -21,7 +21,7 @@ pub struct TickLine<'a> {
     pub tool_trace: &'a [String],
 }
 
-pub fn render_tick(line: &TickLine<'_>) -> String {
+pub fn render_round_line(line: &RoundLine<'_>) -> String {
     let mut out = String::from("{");
     push_key_u64(&mut out, "tick_index", line.tick_index, true);
     push_key_u64(&mut out, "state_rev_before", line.state_rev_before, false);
@@ -167,10 +167,10 @@ mod tests {
     use spookery_kernel::effect::{Effect, EffectClass};
     use spookery_kernel::intent::ViewerId;
 
-    use super::{render_tick, TickLine};
+    use super::{render_round_line, RoundLine};
 
     #[test]
-    fn tick_line_embeds_the_flat_effect() {
+    fn round_line_embeds_the_flat_effect() {
         let effect = Effect {
             class: EffectClass::Stock {
                 place: "docks_shop".to_string(),
@@ -180,7 +180,7 @@ mod tests {
             as_viewer: ViewerId::Npc("mira".to_string()),
             intent_id: "i".to_string(),
         };
-        let line = render_tick(&TickLine {
+        let line = render_round_line(&RoundLine {
             tick_index: 1,
             state_rev_before: 0,
             state_rev_after: 1,

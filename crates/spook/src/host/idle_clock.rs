@@ -1,8 +1,8 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::shard::Shard;
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
-use spookery_tick::{plan_catchup, run_catchup, run_tick, Cause};
+use spookery_round::{catch_up, plan_catchup, play, RoundCause};
 
 pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_tick_at, SystemTime::now())
@@ -22,23 +22,23 @@ pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
     format_utc(UNIX_EPOCH + Duration::from_secs(now.saturating_sub(seconds)))
 }
 
-pub fn idle_tick_if_due(shard: &mut Shard) -> Result<(), Reason> {
-    if !shard.budget().idle_ticking && shard.now().presence.humans == 0 {
+pub fn idle_tick_if_due(world: &mut World) -> Result<(), Reason> {
+    if !world.budget().idle_ticking && world.now().presence.humans == 0 {
         return Ok(());
     }
     let now = SystemTime::now();
-    let elapsed = elapsed_secs(&shard.now().last_tick_at, now)?;
+    let elapsed = elapsed_secs(&world.now().last_tick_at, now)?;
     let wall = format_utc(now)?;
     let hours = elapsed / 3600;
     if hours == 0 {
-        run_tick(shard, Cause::Scheduler, &wall)
+        play(world, RoundCause::Scheduler, &wall)
     } else {
-        let humans = shard.now().presence.humans;
-        let ticks = plan_catchup(humans, shard.budget(), hours)?;
+        let humans = world.now().presence.humans;
+        let ticks = plan_catchup(humans, world.budget(), hours)?;
         if ticks == 0 {
-            run_tick(shard, Cause::Scheduler, &wall)
+            play(world, RoundCause::Scheduler, &wall)
         } else {
-            run_catchup(shard, &wall, hours)
+            catch_up(world, &wall, hours)
         }
     }
 }
@@ -138,26 +138,26 @@ fn number(text: &str, start: usize, end: usize) -> Result<u32, Reason> {
         .ok_or(Reason::Schema)
 }
 
-/// Seat check and interval check. A tick that runs borrows this `Shard`.
+/// Seat check and interval check. A tick that runs borrows this `World`.
 /// Returns whether `world_time` advanced.
 pub fn on_scheduled_wake(
-    shard: &mut Shard,
+    world: &mut World,
     player_held: bool,
     gm_held: bool,
 ) -> Result<bool, Reason> {
     if player_held || gm_held {
         return Ok(false);
     }
-    if !shard.budget().idle_ticking {
+    if !world.budget().idle_ticking {
         return Ok(false);
     }
-    let every = shard.budget().tick_every_real_seconds;
-    if seconds_since(&shard.now().last_tick_at)? < every {
+    let every = world.budget().tick_every_real_seconds;
+    if seconds_since(&world.now().last_tick_at)? < every {
         return Ok(false);
     }
-    let before = shard.now().world_time;
-    idle_tick_if_due(shard)?;
-    Ok(shard.now().world_time != before)
+    let before = world.now().world_time;
+    idle_tick_if_due(world)?;
+    Ok(world.now().world_time != before)
 }
 
 #[cfg(test)]

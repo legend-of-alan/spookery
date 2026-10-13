@@ -7,7 +7,7 @@ use std::os::unix::io::AsRawFd;
 use std::os::windows::io::AsRawHandle;
 
 use crate::error::Reason;
-use crate::shard::Shard;
+use crate::world::World;
 
 #[cfg(unix)]
 const LOCK_EX: i32 = 2;
@@ -65,8 +65,8 @@ impl Drop for LockGuard {
     }
 }
 
-pub fn lock_shard(shard: &Shard) -> Result<LockGuard, Reason> {
-    lock_pack(&shard.root)
+pub fn lock_world(world: &World) -> Result<LockGuard, Reason> {
+    lock_pack(&world.root)
 }
 
 pub(crate) fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {

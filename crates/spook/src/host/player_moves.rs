@@ -1,11 +1,11 @@
-use spookery_kernel::check::CheckNotice;
 use spookery_kernel::ids::player_intent_id;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::model::ActorLive;
 use spookery_kernel::moves::{ActionRow, Audience, MoveToken};
-use spookery_kernel::shard::Shard;
+use spookery_kernel::rules::RollReport;
+use spookery_kernel::world::World;
 use spookery_kernel::Reason;
-use spookery_tick::commit_turn_at;
+use spookery_round::commit_moves_at;
 
 use super::frames;
 use super::idle_clock::wall_now;
@@ -21,18 +21,18 @@ pub enum MoveOutcome {
     Queued(QueuedNote),
     Committed {
         advanced: bool,
-        notices: Vec<CheckNotice>,
+        notices: Vec<RollReport>,
     },
 }
 
 pub fn handle_player_move(
-    shard: &mut Shard,
+    world: &mut World,
     actor_id: &str,
     line: &str,
     gm_seated: bool,
 ) -> Result<MoveOutcome, Reason> {
     let (verb, rest) = input::verb_line(line, actor_id)?;
-    let Some(row) = shard
+    let Some(row) = world
         .canon()
         .moves
         .get(verb)
@@ -43,28 +43,28 @@ pub fn handle_player_move(
     if row.audience != Some(Audience::Player) {
         return Err(Reason::NotInSpec);
     }
-    let note = queue_row(shard, actor_id, verb, rest, &row)?;
+    let note = queue_row(world, actor_id, verb, rest, &row)?;
     if gm_seated {
         return Ok(MoveOutcome::Queued(note));
     }
-    let advanced = commit_queued(shard)?;
+    let advanced = commit_queued(world)?;
     Ok(MoveOutcome::Committed {
         advanced,
-        notices: shard.take_rolls(),
+        notices: world.take_rolls(),
     })
 }
 
-pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
+pub fn player_notice_lines(notices: &[RollReport], actor_id: &str) -> String {
     let mut out = String::new();
     for notice in notices {
         if notice.actor_id() != actor_id {
             continue;
         }
         match notice {
-            CheckNotice::Rolled { out: rolled, .. } => {
+            RollReport::Rolled { out: rolled, .. } => {
                 out.push_str(&frames::player_check_line(rolled.outcome))
             }
-            CheckNotice::Refused { code, .. } => {
+            RollReport::Refused { code, .. } => {
                 out.push_str(&frames::player_refused_line(code.token()))
             }
         }
@@ -72,22 +72,22 @@ pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
     out
 }
 
-pub fn gm_check_frames(notices: &[CheckNotice]) -> Vec<Vec<u8>> {
+pub fn gm_check_frames(notices: &[RollReport]) -> Vec<Vec<u8>> {
     notices
         .iter()
         .filter_map(|notice| match notice {
-            CheckNotice::Rolled { out, .. } => Some(frames::check_event(out)),
-            CheckNotice::Refused { .. } => None,
+            RollReport::Rolled { out, .. } => Some(frames::check_event(out)),
+            RollReport::Refused { .. } => None,
         })
         .collect()
 }
 
 /// A named item must already be on the actor. The line is refused before queue.
-fn require_item(shard: &Shard, actor_id: &str, row: &ActionRow) -> Result<(), Reason> {
+fn require_item(world: &World, actor_id: &str, row: &ActionRow) -> Result<(), Reason> {
     let Some(item) = row.item.as_deref() else {
         return Ok(());
     };
-    let held = shard
+    let held = world
         .now()
         .actors
         .get(actor_id)
@@ -101,13 +101,13 @@ fn require_item(shard: &Shard, actor_id: &str, row: &ActionRow) -> Result<(), Re
 
 /// The actor or place token is stored as typed. An unknown id stays the tick's existing refusal.
 fn queue_row(
-    shard: &mut Shard,
+    world: &mut World,
     actor_id: &str,
     verb: &str,
     rest: &str,
     row: &ActionRow,
 ) -> Result<QueuedNote, Reason> {
-    if !shard
+    if !world
         .now()
         .actors
         .get(actor_id)
@@ -137,19 +137,19 @@ fn queue_row(
             Target::Place(place.to_string())
         }
     };
-    require_item(shard, actor_id, row)?;
+    require_item(world, actor_id, row)?;
     let token = match &target {
         Target::Empty => "",
         Target::Actor(id) | Target::Place(id) => id.as_str(),
         Target::Clock(_) => return Err(Reason::Schema),
     };
     let note = QueuedNote {
-        id: player_line_id(shard, actor_id, &canonical_line(verb, token))?,
+        id: player_line_id(world, actor_id, &canonical_line(verb, token))?,
         actor_id: actor_id.to_string(),
         move_name: verb.to_string(),
     };
     push_intent(
-        shard,
+        world,
         IntentPush {
             id: note.id.clone(),
             actor_id,
@@ -164,8 +164,8 @@ fn queue_row(
     Ok(note)
 }
 
-pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Reason> {
-    let Some(row) = shard
+pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, Reason> {
+    let Some(row) = world
         .canon()
         .moves
         .get("wait")
@@ -176,31 +176,31 @@ pub fn queue_wait(shard: &mut Shard, actor_id: &str) -> Result<QueuedNote, Reaso
     if row.audience != Some(Audience::Player) {
         return Err(Reason::NotInSpec);
     }
-    queue_row(shard, actor_id, "wait", "", &row)
+    queue_row(world, actor_id, "wait", "", &row)
 }
 
-fn player_line_id(shard: &Shard, actor_id: &str, canonical: &str) -> Result<String, Reason> {
-    let tick = shard
+fn player_line_id(world: &World, actor_id: &str, canonical: &str) -> Result<String, Reason> {
+    let tick = world
         .now()
         .tick_index
         .checked_add(1)
         .ok_or(Reason::Schema)?;
-    let id = player_intent_id(&shard.now().shard_id, tick, actor_id, canonical);
-    if shard.queued_intents().iter().any(|intent| intent.id == id) {
+    let id = player_intent_id(&world.now().shard_id, tick, actor_id, canonical);
+    if world.queued_intents().iter().any(|intent| intent.id == id) {
         return Err(Reason::Schema);
     }
     Ok(id)
 }
 
-/// An empty round does not enter `run_tick` and does not advance `world_time`.
-pub fn commit_queued(shard: &mut Shard) -> Result<bool, Reason> {
-    if shard.queued_intents().is_empty() {
+/// An empty round does not enter `play` and does not advance `world_time`.
+pub fn commit_queued(world: &mut World) -> Result<bool, Reason> {
+    if world.queued_intents().is_empty() {
         return Ok(false);
     }
-    let before = shard.now().world_time;
+    let before = world.now().world_time;
     let wall = wall_now()?;
-    commit_turn_at(shard, &wall)?;
-    Ok(shard.now().world_time != before)
+    commit_moves_at(world, &wall)?;
+    Ok(world.now().world_time != before)
 }
 
 impl QueuedNote {
@@ -224,16 +224,16 @@ pub(super) struct IntentPush<'a> {
     pub tick_index: Option<u64>,
 }
 
-pub(super) fn push_intent(shard: &mut Shard, intent: IntentPush<'_>) -> Result<(), Reason> {
+pub(super) fn push_intent(world: &mut World, intent: IntentPush<'_>) -> Result<(), Reason> {
     let tick_index = match intent.tick_index {
         Some(tick_index) => tick_index,
-        None => shard
+        None => world
             .now()
             .tick_index
             .checked_add(1)
             .ok_or(Reason::Schema)?,
     };
-    shard.queue_intent(Intent {
+    world.queue(Intent {
         id: intent.id,
         tick_index,
         actor_id: intent.actor_id.to_string(),

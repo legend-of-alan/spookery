@@ -67,7 +67,7 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 #[then(expr = "the player resume lists the door message")]
 fn the_player_resume_lists_the_door_message(world: &mut World) {
     let pack = table::pack(world);
-    let shard = spookery_kernel::open_shard(pack).unwrap();
+    let shard = spookery_kernel::World::open(pack).unwrap();
     let resume =
         spookery_kernel::idle_digest(&shard, DigestViewer::Player("pc_rowan".to_string())).unwrap();
     assert_eq!(resume, RESUME);
@@ -78,7 +78,7 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
 #[then(expr = "the shop lists the oil and the rooms do not")]
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
-    let shard = spookery_kernel::open_shard(pack).unwrap();
+    let shard = spookery_kernel::World::open(pack).unwrap();
     let shop = spookery_kernel::perceive(&shard, "player:pc_rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(

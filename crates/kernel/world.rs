@@ -6,7 +6,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
-use crate::check::CheckNotice;
 use crate::codec::{emit_now, load_now};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
@@ -15,19 +14,21 @@ use crate::key::StateKey;
 use crate::limits::Budget;
 use crate::model::{MemoryLine, Now, PauseView};
 use crate::recover::recover;
+use crate::rules::RollReport;
 
-pub struct Shard {
+pub struct World {
     pub(crate) root: PathBuf,
     canon: Arc<Canon>,
     pub(crate) now: Now,
     pub(crate) queue: Vec<Intent>,
-    pub(crate) pending: Option<PendingCommit>,
-    rolls: Vec<CheckNotice>,
+    pub(crate) pending: Option<UncommittedRound>,
+    rolls: Vec<RollReport>,
 }
 
-pub struct PendingCommit {
+/// One round played and not yet written. A tick is only the time unit.
+pub struct UncommittedRound {
     pub now: Now,
-    pub tick_jsonl: String,
+    pub round_jsonl: String,
     pub tick_index: u64,
     pub memories: Vec<MemoryLine>,
     pub paths: Vec<String>,
@@ -38,17 +39,17 @@ pub struct SessionStatus {
     pub actors_present: Vec<String>,
 }
 
-pub struct Txn {
+pub struct Draft {
     canon: Arc<Canon>,
     budget: Budget,
-    pub(crate) staging: Now,
+    pub(crate) state: Now,
     keys: BTreeSet<StateKey>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
 }
 
-impl Shard {
+impl World {
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -69,37 +70,59 @@ impl Shard {
         &self.queue
     }
 
-    pub fn queue_intent(&mut self, intent: Intent) {
+    pub fn queue(&mut self, intent: Intent) {
         self.queue.push(intent);
     }
 
-    pub fn clear_queue(&mut self) {
-        self.queue.clear();
-    }
-
-    pub fn set_pending(&mut self, pending: PendingCommit) {
-        self.pending = Some(pending);
-    }
-
-    pub fn take_pending(&mut self) -> Option<PendingCommit> {
-        self.pending.take()
-    }
-
-    pub fn set_rolls(&mut self, rolls: Vec<CheckNotice>) {
-        self.rolls = rolls;
-    }
-
-    pub fn take_rolls(&mut self) -> Vec<CheckNotice> {
+    pub fn take_rolls(&mut self) -> Vec<RollReport> {
         std::mem::take(&mut self.rolls)
+    }
+
+    pub fn open(root: &Path) -> Result<Self, Reason> {
+        load_world(root, false)
+    }
+
+    /// Open a temp pack for replay. A base from before migrate may not match `pack_rev`.
+    pub fn open_for_replay(root: &Path) -> Result<Self, Reason> {
+        load_world(root, true)
+    }
+
+    /// Hold one played round when the caller will write it. Spook queues intents and takes rolls; it does not write this.
+    pub fn finish_round(
+        &mut self,
+        draft: Draft,
+        flush: bool,
+        record: String,
+        notices: Vec<RollReport>,
+        keep_queue: bool,
+    ) -> Result<(), Reason> {
+        if flush {
+            let tick_index = draft.now().tick_index;
+            self.pending = Some(UncommittedRound {
+                now: draft.now().clone(),
+                round_jsonl: record,
+                tick_index,
+                memories: draft.memories().to_vec(),
+                paths: draft.changes(),
+            });
+            self.rolls = notices;
+            return Ok(());
+        }
+        crate::commit::commit_round(self, draft, &record)?;
+        self.rolls = notices;
+        if !keep_queue {
+            self.queue.clear();
+        }
+        Ok(())
     }
 }
 
-impl Txn {
-    pub fn begin(shard: &Shard) -> Self {
+impl Draft {
+    pub fn begin(world: &World) -> Self {
         Self {
-            canon: Arc::clone(&shard.canon),
-            budget: shard.canon.budget,
-            staging: shard.now.clone(),
+            canon: Arc::clone(&world.canon),
+            budget: world.canon.budget,
+            state: world.now.clone(),
             keys: BTreeSet::new(),
             memories: Vec::new(),
             memory_writes: 0,
@@ -112,7 +135,7 @@ impl Txn {
     }
 
     pub fn now(&self) -> &Now {
-        &self.staging
+        &self.state
     }
 
     pub fn budget(&self) -> &Budget {
@@ -120,24 +143,24 @@ impl Txn {
     }
 
     pub(crate) fn now_mut(&mut self) -> &mut Now {
-        &mut self.staging
+        &mut self.state
     }
 
     pub fn pin_loop(&mut self, tick_index: u64, world_time: u64, last_tick_at: &str) {
-        self.staging.tick_index = tick_index;
-        self.staging.world_time = world_time;
-        self.staging.last_tick_at = last_tick_at.to_string();
+        self.state.tick_index = tick_index;
+        self.state.world_time = world_time;
+        self.state.last_tick_at = last_tick_at.to_string();
     }
 
     pub fn set_pause_view(&mut self, pause: PauseView) {
-        self.staging.pause = pause;
+        self.state.pause = pause;
     }
 
     pub fn reset_idle_acts(&mut self) -> Result<(), Reason> {
-        let ids: Vec<String> = self.staging.actors.keys().cloned().collect();
+        let ids: Vec<String> = self.state.actors.keys().cloned().collect();
         for id in ids {
             let Some(current) = self
-                .staging
+                .state
                 .actors
                 .get(&id)
                 .and_then(|actor| actor.tick())
@@ -149,7 +172,7 @@ impl Txn {
                 self.track(StateKey::TickIdleActs(id.clone()))?;
             }
             if let Some(tick) = self
-                .staging
+                .state
                 .actors
                 .get_mut(&id)
                 .and_then(|actor| actor.tick_mut())
@@ -161,10 +184,10 @@ impl Txn {
     }
 
     pub fn reset_live_acts(&mut self) -> Result<(), Reason> {
-        let ids: Vec<String> = self.staging.actors.keys().cloned().collect();
+        let ids: Vec<String> = self.state.actors.keys().cloned().collect();
         for id in ids {
             let Some(current) = self
-                .staging
+                .state
                 .actors
                 .get(&id)
                 .and_then(|actor| actor.tick())
@@ -176,7 +199,7 @@ impl Txn {
                 self.track(StateKey::TickLiveActs(id.clone()))?;
             }
             if let Some(tick) = self
-                .staging
+                .state
                 .actors
                 .get_mut(&id)
                 .and_then(|actor| actor.tick_mut())
@@ -188,10 +211,10 @@ impl Txn {
     }
 
     pub fn stage_npc_counters(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
-        let tick_index = self.staging.tick_index;
+        let tick_index = self.state.tick_index;
         let (current_idle, current_live, current_last) = {
             let tick = self
-                .staging
+                .state
                 .actors
                 .get(actor_id)
                 .and_then(|actor| actor.tick())
@@ -216,7 +239,7 @@ impl Txn {
         }
         self.track_many(&keys)?;
         let tick = self
-            .staging
+            .state
             .actors
             .get_mut(actor_id)
             .and_then(|actor| actor.tick_mut())
@@ -269,11 +292,34 @@ impl Txn {
         &self.memories
     }
 
-    pub fn staged_paths(&self) -> Vec<String> {
+    pub fn changes(&self) -> Vec<String> {
         let mut lines: Vec<String> = self.keys.iter().map(ToString::to_string).collect();
         lines.sort();
         lines
     }
+
+    pub fn savepoint(&self) -> DraftPoint {
+        DraftPoint {
+            state: self.state.clone(),
+            keys: self.keys.clone(),
+            memories: self.memories.clone(),
+            memory_writes: self.memory_writes,
+        }
+    }
+
+    pub fn rollback(&mut self, point: DraftPoint) {
+        self.state = point.state;
+        self.keys = point.keys;
+        self.memories = point.memories;
+        self.memory_writes = point.memory_writes;
+    }
+}
+
+pub struct DraftPoint {
+    state: Now,
+    keys: BTreeSet<StateKey>,
+    memories: Vec<MemoryLine>,
+    memory_writes: u32,
 }
 
 pub fn session_status(now: &Now) -> SessionStatus {
@@ -283,7 +329,7 @@ pub fn session_status(now: &Now) -> SessionStatus {
     }
 }
 
-pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
+fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -292,42 +338,16 @@ pub fn open_shard(root: &Path) -> Result<Shard, Reason> {
     let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
     let mut now = load_now(now_text).map_err(reason_of)?;
-    let problems = save_problems(root, &now, &now_bytes);
+    let mut problems = save_problems(root, &now, &now_bytes);
+    if replay {
+        problems.retain(|diag| diag.code != Reason::PackRevMismatch.token());
+    }
     if !problems.is_empty() {
         return Err(reason_of(problems));
     }
     bind_meters(&canon, &mut now).map_err(reason_of)?;
     bind_inventory(&now).map_err(reason_of)?;
-    Ok(Shard {
-        root: root.to_path_buf(),
-        canon,
-        now,
-        queue: Vec::new(),
-        pending: None,
-        rolls: Vec::new(),
-    })
-}
-
-/// Open a temp pack for replay. A base from before migrate may not match `pack_rev`.
-pub fn open_replay_shard(root: &Path) -> Result<Shard, Reason> {
-    if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
-        return Err(Reason::NotInSpec);
-    }
-    recover(root)?;
-    let canon = Arc::new(load_canon(root).map_err(reason_of)?);
-    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_now(now_text).map_err(reason_of)?;
-    let problems: Vec<_> = save_problems(root, &now, &now_bytes)
-        .into_iter()
-        .filter(|diag| diag.code != Reason::PackRevMismatch.token())
-        .collect();
-    if !problems.is_empty() {
-        return Err(reason_of(problems));
-    }
-    bind_meters(&canon, &mut now).map_err(reason_of)?;
-    bind_inventory(&now).map_err(reason_of)?;
-    Ok(Shard {
+    Ok(World {
         root: root.to_path_buf(),
         canon,
         now,

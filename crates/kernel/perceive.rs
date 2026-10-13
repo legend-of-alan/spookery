@@ -6,7 +6,7 @@ use crate::firewall::allows;
 use crate::habit::habits_on;
 use crate::intent::ViewerId;
 use crate::model::{Message, Now};
-use crate::shard::Shard;
+use crate::world::World;
 
 const BUDGET_TOKENS: usize = 800;
 
@@ -44,16 +44,16 @@ pub struct StockView {
     pub qty: i64,
 }
 
-pub fn perceive(shard: &Shard, as_arg: &str) -> Result<Perceive, Reason> {
-    perceive_budget(shard, as_arg, BUDGET_TOKENS)
+pub fn perceive(world: &World, as_arg: &str) -> Result<Perceive, Reason> {
+    perceive_budget(world, as_arg, BUDGET_TOKENS)
 }
 
 pub fn perceive_budget(
-    shard: &Shard,
+    world: &World,
     as_arg: &str,
     budget_tokens: usize,
 ) -> Result<Perceive, Reason> {
-    perceive_at_budget(shard.canon(), shard.now(), as_arg, budget_tokens)
+    perceive_at_budget(world.canon(), world.now(), as_arg, budget_tokens)
 }
 
 pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<Perceive, Reason> {
