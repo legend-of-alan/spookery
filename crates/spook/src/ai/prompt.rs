@@ -30,7 +30,7 @@ pub struct QueueItem {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Roll {
+pub struct RollLine {
     pub faces: Vec<u64>,
     pub stat: i64,
     pub total: i64,
@@ -141,7 +141,7 @@ pub struct ModelObject {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Rule {
+pub enum ActionKind {
     Actor { actor: String },
     Place { place: String },
 }
@@ -171,7 +171,7 @@ pub enum Wake {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TurnView {
-    pub rule: Rule,
+    pub rule: ActionKind,
     pub player: Option<Value>,
     pub npcs: Vec<Value>,
 }
@@ -188,7 +188,7 @@ pub struct PromptSide {
     pub buffer: Vec<HandledSay>,
     pub new_lines: Vec<HandledSay>,
     pub queue: Vec<QueueItem>,
-    pub checks: Vec<Roll>,
+    pub checks: Vec<RollLine>,
 }
 
 pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>) {
@@ -242,7 +242,7 @@ pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelObject> {
     Some(ModelObject { says, intents })
 }
 
-pub fn keep(object: ModelObject, rule: &Rule, menu: &[MenuRow]) -> Kept {
+pub fn keep(object: ModelObject, rule: &ActionKind, menu: &[MenuRow]) -> Kept {
     let mut says = Vec::new();
     for say in object.says {
         if !accept_say(&say, rule) {
@@ -307,14 +307,14 @@ pub fn prepare_with(
             }
             match kinds.get(actor) {
                 Some(CastKind::Npc) => Prepared::Model(TurnView {
-                    rule: Rule::Actor {
+                    rule: ActionKind::Actor {
                         actor: actor.to_string(),
                     },
                     player: None,
                     npcs: vec![strip_npc(&view)],
                 }),
                 Some(CastKind::PcTemplate) => Prepared::Model(TurnView {
-                    rule: Rule::Actor {
+                    rule: ActionKind::Actor {
                         actor: actor.to_string(),
                     },
                     player: Some(strip_player(&view)),
@@ -345,7 +345,7 @@ pub fn prepare_with(
             };
             let npcs = npc_views(&player, kinds, &filter, perceive);
             Prepared::Model(TurnView {
-                rule: Rule::Place { place: filter },
+                rule: ActionKind::Place { place: filter },
                 player: Some(strip_player(&player)),
                 npcs,
             })
@@ -367,7 +367,7 @@ pub fn prepare_with(
             let place = place_of(&player);
             let npcs = npc_views(&player, kinds, &place, perceive);
             Prepared::Model(TurnView {
-                rule: Rule::Place { place },
+                rule: ActionKind::Place { place },
                 player: Some(strip_player(&player)),
                 npcs,
             })
@@ -375,7 +375,12 @@ pub fn prepare_with(
     }
 }
 
-pub fn render(menu: &[MenuRow], side: &PromptSide, view: &TurnView, checks: &[Roll]) -> String {
+pub fn render_prompt(
+    menu: &[MenuRow],
+    side: &PromptSide,
+    view: &TurnView,
+    checks: &[RollLine],
+) -> String {
     let mut map = Map::new();
     map.insert(
         "menu".to_string(),
@@ -528,10 +533,12 @@ fn strip_npc(view: &Value) -> Value {
     ])
 }
 
-fn accept_say(say: &OutgoingSay, rule: &Rule) -> bool {
+fn accept_say(say: &OutgoingSay, rule: &ActionKind) -> bool {
     match rule {
-        Rule::Actor { actor } => matches!(say, OutgoingSay::Actor { actor: id, .. } if id == actor),
-        Rule::Place { place } => match say {
+        ActionKind::Actor { actor } => {
+            matches!(say, OutgoingSay::Actor { actor: id, .. } if id == actor)
+        }
+        ActionKind::Place { place } => match say {
             OutgoingSay::Table { .. } => true,
             OutgoingSay::Place { place: named, .. } => named == place,
             OutgoingSay::Actor { .. } => false,
@@ -702,7 +709,7 @@ fn queue_value(item: &QueueItem) -> Value {
     ])
 }
 
-fn roll_value(roll: &Roll) -> Value {
+fn roll_value(roll: &RollLine) -> Value {
     obj([
         (
             "faces",
@@ -836,7 +843,7 @@ mod tests {
         let Prepared::Model(view) = prepared else {
             panic!("model was not called");
         };
-        let prompt = render(&menu, &PromptSide::default(), &view, &[]);
+        let prompt = render_prompt(&menu, &PromptSide::default(), &view, &[]);
         assert!(!prompt.contains("KNOWN-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("CAST-BODY-SENTINEL"), "{prompt}");
@@ -864,7 +871,7 @@ mod tests {
         };
         let kept = keep(
             object,
-            &Rule::Actor {
+            &ActionKind::Actor {
                 actor: "mira".to_string(),
             },
             &menu,
@@ -888,7 +895,7 @@ mod tests {
         };
         let kept = keep(
             object,
-            &Rule::Actor {
+            &ActionKind::Actor {
                 actor: "mira".to_string(),
             },
             &menu,
@@ -909,7 +916,7 @@ mod tests {
         };
         let kept = keep(
             object,
-            &Rule::Place {
+            &ActionKind::Place {
                 place: "docks_shop".to_string(),
             },
             &menu,

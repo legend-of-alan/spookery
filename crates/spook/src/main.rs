@@ -130,19 +130,23 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                 Some(text) => Some(parse_loopback(&text)?),
                 None => None,
             };
-            spookery::seat::listen(&pack, addr, http)
+            spookery::host::listen(&pack, addr, http)
         }
         Command::Play {
             pack,
             as_player,
             raw,
-        } => from_cli(spookery::cli::play(
+        } => from_terminal(spookery::terminal::run_player_terminal(
             &pack,
             as_player.as_deref(),
             &addr.to_string(),
             raw,
         )),
-        Command::Gm { pack, raw } => from_cli(spookery::cli::gm(&pack, &addr.to_string(), raw)),
+        Command::Gm { pack, raw } => from_terminal(spookery::terminal::run_gm_terminal(
+            &pack,
+            &addr.to_string(),
+            raw,
+        )),
         Command::AiGm { pack } => {
             if spookery::ai::sit(&pack, &addr.to_string()).is_err() {
                 std::process::exit(1);
@@ -238,10 +242,12 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
     }
 }
 
-fn from_cli(result: Result<(), spookery::cli::Error>) -> Result<(), spookery::Error> {
+fn from_terminal(
+    result: Result<(), spookery::terminal::TerminalError>,
+) -> Result<(), spookery::Error> {
     result.map_err(|err| match err {
-        spookery::cli::Error::Reason(code) => spookery::Error::Reason(code),
-        spookery::cli::Error::Io(err) => spookery::Error::Io(err),
+        spookery::terminal::TerminalError::Reason(code) => spookery::Error::Reason(code),
+        spookery::terminal::TerminalError::Io(err) => spookery::Error::Io(err),
     })
 }
 

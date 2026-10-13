@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{Error, Outcome};
+use crate::protocol::{Outcome, ProtocolError};
 
 /// A line on the player socket. No GM field, and no roll faces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -27,18 +27,18 @@ pub enum PlayerMessage {
         viewer: String,
         place: String,
         visible_actors: Vec<String>,
-        known_facts: Vec<KnownFact>,
+        known_facts: Vec<WireFact>,
         messages: Vec<FactNote>,
         unknown_mentioned: Vec<String>,
-        clocks: Vec<ClockView>,
-        stocks: Vec<StockView>,
+        clocks: Vec<WireClock>,
+        stocks: Vec<WireStock>,
         habits: Vec<String>,
     },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct KnownFact {
+pub struct WireFact {
     pub id: String,
     pub text: String,
     pub body: String,
@@ -57,7 +57,7 @@ pub struct FactNote {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ClockView {
+pub struct WireClock {
     pub id: String,
     pub value: i64,
     pub max: i64,
@@ -66,7 +66,7 @@ pub struct ClockView {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct StockView {
+pub struct WireStock {
     pub sku: String,
     pub qty: i64,
 }
@@ -77,8 +77,8 @@ pub fn write_player(message: &PlayerMessage) -> String {
     line
 }
 
-pub fn read_player(line: &str) -> Result<PlayerMessage, Error> {
-    serde_json::from_str(trim_line(line)).map_err(|_| Error)
+pub fn read_player(line: &str) -> Result<PlayerMessage, ProtocolError> {
+    serde_json::from_str(trim_line(line)).map_err(|_| ProtocolError)
 }
 
 /// `player:{id}\n`. An empty id, or an id with whitespace, is not a hello.

@@ -1,19 +1,19 @@
+mod gm_loop;
 mod http;
-mod model;
+mod llm;
 mod prompt;
-mod turn;
 mod wire;
 
 use std::path::Path;
 
+pub use gm_loop::{run_ai_gm, Watch};
 pub use http::{Env, HttpModel, Limits};
-pub use model::{CompleteError, CompletionRequest, Model, Script};
+pub use llm::{CompleteError, CompletionRequest, Model, Script};
 pub use prompt::{
-    from_canon, keep, parse_actions, prepare, render, HandledSay, MenuRow, OutgoingSay, Prepared,
-    PromptSide, QueueItem, Roll, Rule, TurnView, Wake,
+    from_canon, keep, parse_actions, prepare, render_prompt, ActionKind, HandledSay, MenuRow,
+    OutgoingSay, Prepared, PromptSide, QueueItem, RollLine, TurnView, Wake,
 };
-pub use turn::{drive, Watch};
-pub use wire::{parse_tool_line, CallOutcome, Seat};
+pub use wire::parse_tool_line;
 
 #[derive(Debug)]
 pub struct HostError {
@@ -41,5 +41,5 @@ pub(crate) fn fail(message: impl Into<String>) -> HostError {
 pub fn sit(pack: &Path, addr: &str) -> Result<(), HostError> {
     let env = http::require_env()?;
     let mut model = http::HttpModel::new(env)?;
-    drive(pack, addr, &mut model, &Watch::default())
+    run_ai_gm(pack, addr, &mut model, &Watch::default())
 }

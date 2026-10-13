@@ -17,7 +17,7 @@ use spookery_kernel::tape::MAX_TAPE_BYTES;
 use spookery_kernel::Reason;
 use spookery_tick::{replay_states, ReplayError};
 
-use crate::seat::protocol::{self, TapeLine};
+use crate::host::frames::{self, TapeLine};
 
 pub struct AuditReport {
     pub text: String,
@@ -133,7 +133,7 @@ fn read_tape(pack: &Path) -> Result<Vec<TapeLine>, AuditError> {
         if line.is_empty() {
             continue;
         }
-        lines.push(protocol::parse_tape(line).map_err(AuditError::Reason)?);
+        lines.push(frames::parse_tape(line).map_err(AuditError::Reason)?);
     }
     Ok(lines)
 }
@@ -157,7 +157,7 @@ fn report_of(
             }
             let view = perceive_at(canon, &snap.now, &format!("player:{pc}"))
                 .map_err(AuditError::Reason)?;
-            let line = protocol::player_perceive_line(&view);
+            let line = frames::player_perceive_line(&view);
             let line = line.trim_end_matches(['\n', '\r']).to_string();
             if line_leaks(&line, &unknown_hidden(canon, actor.known_facts())) {
                 failed_pcs.insert(pc.clone());

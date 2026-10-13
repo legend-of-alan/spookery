@@ -10,7 +10,7 @@ pub enum PlayerLine {
     Turn,
 }
 
-pub fn classify_player_line(
+pub fn parse_player_input(
     line: &str,
     seated: &str,
     moves: &BTreeMap<String, MoveDef>,

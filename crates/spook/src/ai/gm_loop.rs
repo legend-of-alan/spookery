@@ -1,17 +1,19 @@
+use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use serde_json::json;
+use serde_json::{json, Value};
 use spookery_kernel::canon::{self, CastKind};
 
 use crate::ai::fail;
-use crate::ai::model::{CompleteError, CompletionRequest, Model};
+use crate::ai::llm::{CompleteError, CompletionRequest, Model};
 use crate::ai::prompt::{
-    from_canon, keep, parse_actions, prepare_with, push_handled, render, HandledSay, Kept, MenuRow,
-    OutgoingSay, Prepared, PromptSide, Wake,
+    from_canon, keep, parse_actions, prepare_with, push_handled, render_prompt, HandledSay, Kept,
+    MenuRow, OutgoingSay, Prepared, PromptSide, Wake,
 };
-use crate::ai::wire::{self, Seat, Status};
+use crate::ai::wire::{self, Status};
 use crate::ai::HostError;
+use crate::gm_connection::{self, EventBody, Incoming, ToolCallResult};
 
 pub struct Watch {
     pub listening: AtomicBool,
@@ -31,7 +33,7 @@ impl Default for Watch {
     }
 }
 
-pub fn drive<M: Model>(
+pub fn run_ai_gm<M: Model>(
     pack: &Path,
     addr: &str,
     model: &mut M,
@@ -43,7 +45,7 @@ pub fn drive<M: Model>(
         from_canon(&canon)
     };
     let rev = canon::pack_rev(pack).map_err(|err| fail(err.to_string()))?;
-    let mut seat = Seat::connect(addr)?;
+    let mut seat = GmLoop::connect(addr)?;
     let status = call_status(&mut seat, None)?;
     if status.pack_rev != rev {
         return Err(fail("PACK_REV_MISMATCH".to_string()));
@@ -90,7 +92,7 @@ pub fn drive<M: Model>(
 }
 
 struct TurnIn<'a, M: Model> {
-    seat: &'a mut Seat,
+    seat: &'a mut GmLoop,
     menu: &'a [MenuRow],
     kinds: &'a std::collections::BTreeMap<String, CastKind>,
     buffer: &'a mut Vec<HandledSay>,
@@ -142,7 +144,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
                 queue: status.queued.clone(),
                 checks: Vec::new(),
             };
-            let prompt = render(menu, &side, &turn_view, &[]);
+            let prompt = render_prompt(menu, &side, &turn_view, &[]);
             match model.complete(&CompletionRequest {
                 prompt,
                 says_only: false,
@@ -195,7 +197,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         if let Some((turn_view, mut side)) = view {
             side.buffer = buffer.clone();
             side.checks = checks.clone();
-            let prompt = render(menu, &side, &turn_view, &checks);
+            let prompt = render_prompt(menu, &side, &turn_view, &checks);
             match model.complete(&CompletionRequest {
                 prompt,
                 says_only: true,
@@ -219,7 +221,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
 fn kept_actions(
     body: Option<String>,
     says_only: bool,
-    rule: &crate::ai::prompt::Rule,
+    rule: &crate::ai::prompt::ActionKind,
     menu: &[MenuRow],
 ) -> Option<Kept> {
     let Some(text) = body else {
@@ -246,7 +248,7 @@ fn report_model(err: CompleteError) {
     let _ = std::io::Write::flush(&mut std::io::stderr());
 }
 
-fn submit_say(seat: &mut Seat, say: &OutgoingSay) -> Result<Option<HandledSay>, HostError> {
+fn submit_say(seat: &mut GmLoop, say: &OutgoingSay) -> Result<Option<HandledSay>, HostError> {
     let outcome = seat.call("say", say.arguments())?;
     if outcome.refused {
         return Ok(None);
@@ -254,7 +256,10 @@ fn submit_say(seat: &mut Seat, say: &OutgoingSay) -> Result<Option<HandledSay>, 
     Ok(Some(say.handled(wire::say_seq(&outcome.body))))
 }
 
-fn perceive(seat: &mut Seat, viewer: &str) -> Result<Result<serde_json::Value, String>, HostError> {
+fn perceive(
+    seat: &mut GmLoop,
+    viewer: &str,
+) -> Result<Result<serde_json::Value, String>, HostError> {
     let outcome = seat.call("perceive", json!({ "as": viewer }))?;
     if outcome.refused {
         let code = outcome
@@ -268,7 +273,7 @@ fn perceive(seat: &mut Seat, viewer: &str) -> Result<Result<serde_json::Value, S
     Ok(Ok(outcome.body))
 }
 
-fn call_status(seat: &mut Seat, since: Option<u64>) -> Result<Status, HostError> {
+fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<Status, HostError> {
     let arguments = match since {
         Some(since) => json!({ "since": since }),
         None => json!({}),
@@ -287,4 +292,120 @@ fn player_lines(status: &Status, high: u64) -> Vec<HandledSay> {
         .filter(|say| say.from.starts_with("player:") && say.seq.is_some_and(|seq| seq > high))
         .cloned()
         .collect()
+}
+
+struct GmLoop {
+    client: gm_connection::GmConnection,
+    wakes: VecDeque<Wake>,
+    /// Say events at or below this seq are not a wake. Starts closed.
+    high_water: u64,
+    /// Advances when a `commit_turn` result arrives, before later events.
+    gen: u64,
+}
+
+impl GmLoop {
+    fn connect(addr: &str) -> Result<Self, HostError> {
+        let client = gm_connection::GmConnection::connect(addr).map_err(host_err)?;
+        Ok(GmLoop {
+            client,
+            wakes: VecDeque::new(),
+            high_water: u64::MAX,
+            gen: 0,
+        })
+    }
+
+    fn set_high_water(&mut self, seq: u64) {
+        self.high_water = seq;
+    }
+
+    fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, HostError> {
+        let commit = name == "commit_turn";
+        let outcome = self.client.call(name, arguments).map_err(host_err)?;
+        // Lines already on the socket are folded in before the commit generation
+        // moves, which is the order the seat used to stamp them.
+        let events = self.client.take_events();
+        self.absorb(events);
+        if commit {
+            self.gen = self.gen.wrapping_add(1);
+        }
+        Ok(outcome)
+    }
+
+    fn next_wake(&mut self) -> Result<Option<Wake>, HostError> {
+        if let Some(wake) = self.wakes.pop_front() {
+            return Ok(Some(wake));
+        }
+        loop {
+            match self.client.next_incoming() {
+                Incoming::Event(event) => {
+                    if let Some(wake) = self.classify(event.body) {
+                        return Ok(Some(wake));
+                    }
+                }
+                Incoming::Result { raw, .. }
+                | Incoming::Bad(raw)
+                | Incoming::Refused { raw, .. } => {
+                    return Err(fail(raw));
+                }
+                Incoming::Eof => return Ok(None),
+            }
+        }
+    }
+
+    /// Drop say wakes already covered by `high`, and queued wakes from before a commit.
+    fn retain_pending(&mut self, high: u64, committed: bool) {
+        let gen = self.gen;
+        self.wakes.retain(|wake| match wake {
+            Wake::Say { seq, .. } => *seq > high,
+            Wake::Queued { gen: arrived } => !committed || *arrived >= gen,
+            Wake::Sit => false,
+        });
+    }
+
+    fn absorb(&mut self, events: Vec<gm_connection::Event>) {
+        for event in events {
+            if let Some(wake) = self.classify(event.body) {
+                self.wakes.push_back(wake);
+            }
+        }
+    }
+
+    fn classify(&self, body: EventBody) -> Option<Wake> {
+        let gen = self.gen;
+        match body {
+            EventBody::Say {
+                from,
+                seq,
+                address,
+                place,
+                actor,
+                text,
+            } => {
+                if from.starts_with("player:") && seq > self.high_water {
+                    Some(Wake::Say {
+                        from,
+                        seq,
+                        address,
+                        place,
+                        actor,
+                        text,
+                        gen,
+                    })
+                } else {
+                    None
+                }
+            }
+            EventBody::Queued { .. } => Some(Wake::Queued { gen }),
+            EventBody::Check { .. } => None,
+        }
+    }
+}
+
+fn host_err(err: gm_connection::GmConnectionError) -> HostError {
+    match err {
+        gm_connection::GmConnectionError::Io(err) => fail(err.to_string()),
+        gm_connection::GmConnectionError::Closed => fail("seat closed".to_string()),
+        gm_connection::GmConnectionError::Bad(line) => fail(line),
+        gm_connection::GmConnectionError::Refused { raw, .. } => fail(raw),
+    }
 }

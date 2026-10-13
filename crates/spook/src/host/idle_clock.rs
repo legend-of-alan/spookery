@@ -22,7 +22,7 @@ pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
     format_utc(UNIX_EPOCH + Duration::from_secs(now.saturating_sub(seconds)))
 }
 
-pub fn wake_shard(shard: &mut Shard) -> Result<(), Reason> {
+pub fn idle_tick_if_due(shard: &mut Shard) -> Result<(), Reason> {
     if !shard.budget().idle_ticking && shard.now().presence.humans == 0 {
         return Ok(());
     }
@@ -136,6 +136,28 @@ fn number(text: &str, start: usize, end: usize) -> Result<u32, Reason> {
     text.get(start..end)
         .and_then(|slice| slice.parse().ok())
         .ok_or(Reason::Schema)
+}
+
+/// Seat check and interval check. A tick that runs borrows this `Shard`.
+/// Returns whether `world_time` advanced.
+pub fn on_scheduled_wake(
+    shard: &mut Shard,
+    player_held: bool,
+    gm_held: bool,
+) -> Result<bool, Reason> {
+    if player_held || gm_held {
+        return Ok(false);
+    }
+    if !shard.budget().idle_ticking {
+        return Ok(false);
+    }
+    let every = shard.budget().tick_every_real_seconds;
+    if seconds_since(&shard.now().last_tick_at)? < every {
+        return Ok(false);
+    }
+    let before = shard.now().world_time;
+    idle_tick_if_due(shard)?;
+    Ok(shard.now().world_time != before)
 }
 
 #[cfg(test)]

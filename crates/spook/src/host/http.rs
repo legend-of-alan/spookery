@@ -5,9 +5,9 @@ use std::sync::Arc;
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
-use super::gm;
+use super::gm_seat;
 use super::limits::GM_LINE_CAP;
-use super::thread::Msg;
+use super::world_loop::Msg;
 
 // The HTTP body cap matches a GM TCP line. The seat tape has the same cap.
 pub(super) async fn serve(
@@ -18,7 +18,7 @@ pub(super) async fn serve(
     let service = StreamableHttpService::new(
         move || {
             let conn = next_conn.fetch_add(1, Ordering::Relaxed);
-            Ok(gm::http_host(tx.clone(), conn))
+            Ok(gm_seat::http_host(tx.clone(), conn))
         },
         Arc::new(LocalSessionManager::default()),
         http_config(),

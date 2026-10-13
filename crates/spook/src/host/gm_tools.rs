@@ -7,12 +7,12 @@ use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
 use spookery_tick::commit_turn_at;
 
-use super::protocol;
+use super::frames;
+use super::idle_clock::wall_now;
+use super::player_moves::{self, QueuedNote};
 use super::speech;
-use super::turn::{self, QueuedNote};
-use crate::schedule::wall_now;
 
-pub struct ToolResult {
+pub struct GmToolReply {
     pub value: Value,
     pub advanced: bool,
     pub ticked: bool,
@@ -23,7 +23,7 @@ pub struct ToolResult {
     pub tape: Option<String>,
 }
 
-impl ToolResult {
+impl GmToolReply {
     fn new(value: Value) -> Self {
         Self {
             value,
@@ -43,7 +43,7 @@ pub(super) struct GmTool {
     pub(super) name: &'static str,
     pub(super) about: &'static str,
     pub(super) schema: fn() -> Map<String, Value>,
-    run: fn(&mut Shard, Option<Map<String, Value>>) -> ToolResult,
+    run: fn(&mut Shard, Option<Map<String, Value>>) -> GmToolReply,
 }
 
 const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_turn. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
@@ -87,38 +87,42 @@ pub(super) const GM_LIST: &[GmTool] = &[
     },
 ];
 
-pub fn gm_tool(shard: &mut Shard, name: &str, arguments: Option<Map<String, Value>>) -> ToolResult {
+pub fn call_gm_tool(
+    shard: &mut Shard,
+    name: &str,
+    arguments: Option<Map<String, Value>>,
+) -> GmToolReply {
     match GM_LIST.iter().find(|tool| tool.name == name) {
         Some(tool) => (tool.run)(shard, arguments),
         None => refuse_not_in_spec(shard, arguments),
     }
 }
 
-fn run_intent(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolResult {
+fn run_intent(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match queue_tool_intent(shard, arguments) {
-        Ok(note) => ToolResult::new(protocol::queued_ack(&note.id)),
+        Ok(note) => GmToolReply::new(frames::queued_ack(&note.id)),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_commit_turn(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolResult {
+fn run_commit_turn(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match commit_tool(shard, arguments) {
         Ok(done) => done,
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_perceive(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolResult {
+fn run_perceive(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match perceive_tool(shard, arguments) {
-        Ok(value) => ToolResult::new(value),
+        Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_say(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolResult {
+fn run_say(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match speech::speak_tool(shard, arguments) {
         Ok(spoken) => {
-            let mut done = ToolResult::new(spoken.tool);
+            let mut done = GmToolReply::new(spoken.tool);
             // Same object as the tool result, after that response. Ahead of it, the client stalls.
             done.after.push(spoken.gm_event);
             done.player_line = Some((spoken.recipients, spoken.player_event.into_bytes()));
@@ -129,14 +133,14 @@ fn run_say(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolResu
     }
 }
 
-fn run_session_status(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> ToolResult {
+fn run_session_status(shard: &mut Shard, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match session_status_tool(shard, arguments) {
-        Ok(value) => ToolResult::new(value),
+        Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn refuse_not_in_spec(_shard: &mut Shard, _arguments: Option<Map<String, Value>>) -> ToolResult {
+fn refuse_not_in_spec(_shard: &mut Shard, _arguments: Option<Map<String, Value>>) -> GmToolReply {
     refused_tool(Reason::NotInSpec)
 }
 
@@ -258,7 +262,7 @@ fn schema_object(value: Value) -> Map<String, Value> {
 fn commit_tool(
     shard: &mut Shard,
     arguments: Option<Map<String, Value>>,
-) -> Result<ToolResult, Reason> {
+) -> Result<GmToolReply, Reason> {
     let include_tick = commit_include_tick(arguments)?;
     if !include_tick {
         if shard.queued_intents().is_empty() {
@@ -273,7 +277,7 @@ fn commit_tool(
     let wall = wall_now()?;
     let outcome = commit_turn_at(shard, &wall)?;
     let advanced = shard.now().world_time != before;
-    let mut done = ToolResult::new(protocol::commit_turn(
+    let mut done = GmToolReply::new(frames::commit_reply(
         outcome.state_rev,
         &outcome.diff_summary,
         Some(&outcome.log_path),
@@ -283,12 +287,12 @@ fn commit_tool(
     Ok(done)
 }
 
-fn noop(shard: &Shard) -> ToolResult {
-    ToolResult::new(protocol::commit_turn(shard.now().state_rev, &[], None))
+fn noop(shard: &Shard) -> GmToolReply {
+    GmToolReply::new(frames::commit_reply(shard.now().state_rev, &[], None))
 }
 
-fn refused_tool(code: Reason) -> ToolResult {
-    ToolResult::new(protocol::code_result(code.token()))
+fn refused_tool(code: Reason) -> GmToolReply {
+    GmToolReply::new(frames::code_result(code.token()))
 }
 
 fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
@@ -297,7 +301,7 @@ fn perceive_tool(shard: &Shard, arguments: Option<Map<String, Value>>) -> Result
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
     let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
     let view = perceive_budget(shard, &as_arg, budget)?;
-    Ok(protocol::perceive_value(&view))
+    Ok(frames::perceive_value(&view))
 }
 
 fn session_status_tool(
@@ -310,7 +314,7 @@ fn session_status_tool(
         None => None,
     };
     let last_seq = speech::last_tape_seq(shard.root())?;
-    Ok(protocol::session_status(
+    Ok(frames::session_status(
         shard.now(),
         shard.queued_intents(),
         last_seq,
@@ -392,14 +396,14 @@ fn queue_tool_intent(
     let id = match id {
         Some(id) if !id.is_empty() => id,
         Some(_) => return Err(Reason::Schema),
-        None => turn::mint_intent_id()?,
+        None => player_moves::mint_intent_id()?,
     };
     if shard.queued_intents().iter().any(|intent| intent.id == id) {
         return Err(Reason::Schema);
     }
-    turn::push_intent(
+    player_moves::push_intent(
         shard,
-        turn::IntentPush {
+        player_moves::IntentPush {
             id: id.clone(),
             actor_id: &actor_id,
             actor_kind,
