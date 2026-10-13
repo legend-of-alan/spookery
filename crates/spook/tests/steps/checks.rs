@@ -202,7 +202,7 @@ fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
     insert_brace_habit(&pack);
     stamp(&pack);
     let before = snapshot_of(&pack);
-    spookery_round::open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     world.scratch = before.display().to_string();
 }
 

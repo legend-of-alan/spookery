@@ -75,7 +75,7 @@ fn crates_round_has_exactly_one_call_site_of_roll(world: &mut World) {
 #[when(expr = "a docks round is played")]
 fn a_docks_round_is_played(world: &mut World) {
     let pack = copy_named("oneshot-docks", "stage-order");
-    spookery_round::open_pack(&pack).unwrap_or_else(|err| panic!("play: {err}"));
+    spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("play: {err}"));
     world.pack = Some(pack);
 }
 

@@ -46,7 +46,7 @@ pub fn commit_moves_at(
     spookery_kernel::commit::commit_pending(world)
 }
 
-pub fn open_pack(path: &Path) -> Result<(), Reason> {
+pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
     let mut world = World::open(path)?;
     let wall = world.now().last_tick_at.clone();
     play(&mut world, RoundCause::Manual, &wall)

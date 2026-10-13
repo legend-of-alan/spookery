@@ -153,7 +153,9 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             }
             Ok(())
         }
-        Command::Tick { pack } => spookery_round::open_pack(&pack).map_err(spookery::Error::Reason),
+        Command::Tick { pack } => {
+            spookery_round::play_pack_once(&pack).map_err(spookery::Error::Reason)
+        }
         Command::Status { pack } => {
             let world = spookery_kernel::World::open(&pack).map_err(spookery::Error::Reason)?;
             let text = spookery_kernel::idle_digest(&world, spookery_kernel::DigestViewer::Host)

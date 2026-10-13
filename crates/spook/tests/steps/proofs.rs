@@ -20,7 +20,7 @@ use spookery_kernel::model::{
 };
 use spookery_kernel::rules::RollReport;
 use spookery_kernel::world::Draft;
-use spookery_round::{catch_up, from_journal, open_pack, play};
+use spookery_round::{catch_up, from_journal, play, play_pack_once};
 
 use crate::World;
 
@@ -149,7 +149,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn no_self_win() {
     let pack = temp_pack("self-win");
     for tick in 1..=12 {
-        open_pack(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+        play_pack_once(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 12, "twelve empty-table ticks commit");
@@ -181,7 +181,7 @@ fn save_now(pack: &Path, now: &Now) {
 
 fn evening_note() {
     let pack = temp_pack("evening");
-    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
@@ -206,7 +206,7 @@ fn morning_restock() {
         now_of(&pack).actors.get("mira").unwrap().place(),
         "mira_rooms"
     );
-    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 8);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
@@ -223,7 +223,7 @@ fn off_hours_hold() {
         now.messages.push(door_message());
         save_now(&pack, &now);
     }
-    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
@@ -243,7 +243,7 @@ fn player_in_the_shop() {
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         save_now(&pack, &now);
     }
-    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
@@ -464,7 +464,7 @@ fn busy_skip() {
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         save_now(&pack, &now);
     }
-    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(
@@ -657,7 +657,7 @@ fn replay_byte_compares_now() {
     );
     copy_dir(&start, &played);
     for tick in 1..=20 {
-        open_pack(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+        play_pack_once(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let golden = fs::read(played.join("state/now.yaml")).unwrap();
     let source_log = fs::read(played.join("state/log/tick-0020.jsonl")).unwrap();
@@ -788,7 +788,7 @@ tick:
         messages: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
-    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 1);
     assert_eq!(
@@ -886,7 +886,7 @@ fn strip_bodies_and_hidden_string_lint() {
         .contains(LEDGER));
     stamp_pack_rev(&pack);
     open(&pack);
-    open_pack(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
     let perceive = format!(
         "{:?}",
         spookery_kernel::perceive(&open(&pack), "npc:aldric").unwrap()
@@ -1409,7 +1409,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     assert_eq!(shard.now().tick_index, 1);
     drop(shard);
     assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
-    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 2);
     assert_eq!(now.world_time, 1090);

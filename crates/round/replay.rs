@@ -618,12 +618,12 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use super::{from_journal, replay_states, verify_pack};
-    use crate::open_pack;
+    use crate::play_pack_once;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
         let pack = temp_docks("replay-collide");
-        open_pack(&pack).unwrap();
+        play_pack_once(&pack).unwrap();
         let left = from_journal(&pack, None, None).unwrap();
         let right = from_journal(&pack, None, None).unwrap();
         assert_eq!(left.now_yaml, right.now_yaml);
@@ -636,8 +636,8 @@ mod tests {
     #[test]
     fn one_replay_returns_each_applied_save() {
         let pack = temp_docks("replay-states");
-        open_pack(&pack).unwrap();
-        open_pack(&pack).unwrap();
+        play_pack_once(&pack).unwrap();
+        play_pack_once(&pack).unwrap();
         let steps = replay_states(&pack).unwrap();
         assert_eq!(steps.len(), 2, "{steps:?}");
         assert_eq!(steps[0].state_rev, 1);
@@ -652,7 +652,7 @@ mod tests {
     #[test]
     fn verify_names_a_tick_whose_hash_no_longer_matches() {
         let pack = temp_docks("replay-tamper");
-        open_pack(&pack).unwrap();
+        play_pack_once(&pack).unwrap();
         let path = pack.join("state/log/tick-0001.jsonl");
         let text = fs::read_to_string(&path).unwrap();
         let swapped = text.replacen("\"now_hash\":\"blake2s:", "\"now_hash\":\"blake2s:00", 1);
