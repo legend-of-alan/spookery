@@ -1,18 +1,20 @@
 use std::fs;
+use std::future::Future;
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
+use std::task::{Poll, Waker};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::ai::{
-    parse_tool_line, run_ai_gm, CompleteError, CompletionRequest, Env, HttpModel, Limits, Model,
-    Script, Watch,
+    parse_tool_line, run_ai_gm, Clock, CompleteError, CompletionRequest, Env, HttpModel, Limits,
+    Model, Script, WallClock, Watch,
 };
 use spookery::gm_connection::GmConnection;
 
@@ -560,19 +562,14 @@ const SAY_ARGUMENTS: &str =
 #[when(expr = "a hung model call meets a queued player line")]
 fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     let (pack, port, sit) = queued_travel("host-hang");
-    let (stub, hits) = hang_server();
-    let (handle, watch) = drive_when_free(
-        &pack,
-        port,
-        stub,
-        Duration::from_secs(1),
-        Duration::from_secs(2),
-    );
-    let started = Instant::now();
+    let total = Duration::from_secs(1);
+    let backoff = Duration::from_secs(2);
+    let clock = TestClock::new();
+    let (stub, events) = hang_server(clock.clone(), total, backoff);
+    let (handle, watch) = drive_when_free(&pack, port, stub, total, backoff, clock);
     let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
-    let elapsed = started.elapsed();
+    let log = events.lock().unwrap().clone();
     let up = watch.listening.load(Ordering::Acquire) && !handle.is_finished();
-    let connections = hits.load(Ordering::Acquire);
     stop_host(handle);
     let _ = fs::remove_dir_all(&pack);
     world.stdout = if advanced {
@@ -585,8 +582,7 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     } else {
         "down".to_string()
     };
-    world.mark = elapsed.as_millis() as usize;
-    world.scratch = connections.to_string();
+    world.scratch = hung_scratch(&log, backoff);
 }
 
 #[when(expr = "a model answers 500 once and then a say")]
@@ -620,7 +616,12 @@ const UNAUTHORIZED_BODY: &str =
 fn direct_error(replies: Vec<(u16, String)>) -> String {
     let (stub, _posts) = scripted_stub(replies);
     thread::spawn(move || {
-        let mut model = http_model(stub, Duration::from_secs(5), Duration::from_millis(50));
+        let mut model = http_model(
+            stub,
+            Duration::from_secs(5),
+            Duration::from_millis(50),
+            WallClock,
+        );
         let request = CompletionRequest {
             prompt: "the table is quiet".to_string(),
             says_only: false,
@@ -649,14 +650,22 @@ fn the_queued_line_committed_one_tick(world: &mut World) {
     assert_eq!(world.stdout, "advanced", "{}", world.scratch);
 }
 
-#[then(expr = "the hung call finished within one retry")]
-fn the_hung_call_finished_within_one_retry(world: &mut World) {
-    assert_eq!(world.scratch, "2", "connections");
+#[then(expr = "the hung call retried once after the delay")]
+fn the_hung_call_retried_once_after_the_delay(world: &mut World) {
+    assert_eq!(hung_field(&world.scratch, "opens"), 2, "{}", world.scratch);
+    let gap = hung_field(&world.scratch, "gap_ms");
+    let delay = hung_field(&world.scratch, "delay_ms");
     assert!(
-        world.mark > 3_000 && world.mark < 5_000,
-        "elapsed {} ms",
-        world.mark
+        gap >= delay,
+        "retry gap {gap} ms, delay {delay} ms ({})",
+        world.scratch
     );
+}
+
+#[then(expr = "the retry closed before the line committed")]
+fn the_retry_closed_before_the_line_committed(world: &mut World) {
+    assert_eq!(world.stdout, "advanced", "{}", world.scratch);
+    assert_eq!(hung_field(&world.scratch, "closes"), 2, "{}", world.scratch);
 }
 
 #[then(expr = "the seat stayed up")]
@@ -689,6 +698,7 @@ fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
         stub,
         Duration::from_secs(5),
         Duration::from_millis(50),
+        WallClock,
     );
     let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
     let tape = tape_text(&pack);
@@ -730,19 +740,23 @@ fn queued_travel(label: &str) -> (std::path::PathBuf, u16, u64) {
     (pack, port, sit)
 }
 
-fn drive_when_free(
+fn drive_when_free<C>(
     pack: &Path,
     port: u16,
     stub: u16,
     total: Duration,
     backoff: Duration,
+    clock: C,
 ) -> (
     thread::JoinHandle<Result<(), spookery::ai::HostError>>,
     Arc<Watch>,
-) {
+)
+where
+    C: Clock + Clone + 'static,
+{
     let mut last = String::new();
     for _ in 0..40 {
-        let (handle, watch) = spawn_model(pack, port, stub, total, backoff);
+        let (handle, watch) = spawn_model(pack, port, stub, total, backoff, clock.clone());
         let start = Instant::now();
         while start.elapsed() < Duration::from_millis(500) {
             if watch.listening.load(Ordering::Acquire) {
@@ -781,7 +795,7 @@ fn drive_when_free(
     panic!("host did not listen: {last}");
 }
 
-fn http_model(port: u16, total: Duration, backoff: Duration) -> HttpModel {
+fn http_model<C: Clock>(port: u16, total: Duration, backoff: Duration, clock: C) -> HttpModel<C> {
     HttpModel::with_limits(
         Env::new("test-key", format!("http://127.0.0.1:{port}"), "grok-test"),
         Limits {
@@ -789,27 +803,32 @@ fn http_model(port: u16, total: Duration, backoff: Duration) -> HttpModel {
             connect: Duration::from_secs(1),
             backoff,
         },
+        clock,
     )
     .unwrap_or_else(|err| panic!("{err}"))
 }
 
-fn spawn_model(
+fn spawn_model<C>(
     pack: &Path,
     port: u16,
     stub: u16,
     total: Duration,
     backoff: Duration,
+    clock: C,
 ) -> (
     thread::JoinHandle<Result<(), spookery::ai::HostError>>,
     Arc<Watch>,
-) {
+)
+where
+    C: Clock + 'static,
+{
     let watch = Arc::new(Watch::default());
     let watch_bg = Arc::clone(&watch);
     let pack_bg = pack.to_path_buf();
     let addr = format!("127.0.0.1:{port}");
-    // The blocking client owns a runtime. Build and drop it off the cucumber thread.
+    // The client owns a runtime. Build and drop it off the cucumber thread.
     let handle = thread::spawn(move || {
-        let mut model = http_model(stub, total, backoff);
+        let mut model = http_model(stub, total, backoff, clock);
         run_ai_gm(&pack_bg, &addr, &mut model, &watch_bg)
     });
     (handle, watch)
@@ -831,20 +850,180 @@ fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     false
 }
 
-fn hang_server() -> (u16, Arc<AtomicUsize>) {
+/// Logical clock for the hung-call scenario. `wait` completes when `release`
+/// has granted the duration. `abandon` completes when the stub has seen the socket close.
+#[derive(Clone)]
+struct TestClock {
+    inner: Arc<Mutex<TestClockState>>,
+}
+
+struct TestClockState {
+    now: Duration,
+    credit: Duration,
+    wait_waker: Option<Waker>,
+    closes: usize,
+    seen_closes: usize,
+    close_waker: Option<Waker>,
+}
+
+impl TestClock {
+    fn new() -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(TestClockState {
+                now: Duration::ZERO,
+                credit: Duration::ZERO,
+                wait_waker: None,
+                closes: 0,
+                seen_closes: 0,
+                close_waker: None,
+            })),
+        }
+    }
+
+    fn now(&self) -> Duration {
+        self.inner.lock().unwrap().now
+    }
+
+    fn release(&self, duration: Duration) {
+        let waker = {
+            let mut state = self.inner.lock().unwrap();
+            state.now += duration;
+            state.credit += duration;
+            state.wait_waker.take()
+        };
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+
+    fn note_close(&self) {
+        let waker = {
+            let mut state = self.inner.lock().unwrap();
+            state.closes += 1;
+            state.close_waker.take()
+        };
+        if let Some(waker) = waker {
+            waker.wake();
+        }
+    }
+}
+
+impl Clock for TestClock {
+    fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send {
+        let clock = self.clone();
+        let mut done = false;
+        std::future::poll_fn(move |cx| {
+            if done {
+                return Poll::Ready(());
+            }
+            let mut state = clock.inner.lock().unwrap();
+            if state.credit >= duration {
+                state.credit -= duration;
+                done = true;
+                return Poll::Ready(());
+            }
+            state.wait_waker = Some(cx.waker().clone());
+            if state.credit >= duration {
+                state.credit -= duration;
+                done = true;
+                state.wait_waker = None;
+                return Poll::Ready(());
+            }
+            Poll::Pending
+        })
+    }
+
+    fn abandon(&self) -> impl Future<Output = ()> + Send {
+        let clock = self.clone();
+        let mut done = false;
+        std::future::poll_fn(move |cx| {
+            if done {
+                return Poll::Ready(());
+            }
+            let mut state = clock.inner.lock().unwrap();
+            if state.closes > state.seen_closes {
+                state.seen_closes += 1;
+                done = true;
+                return Poll::Ready(());
+            }
+            state.close_waker = Some(cx.waker().clone());
+            if state.closes > state.seen_closes {
+                state.seen_closes += 1;
+                done = true;
+                state.close_waker = None;
+                return Poll::Ready(());
+            }
+            Poll::Pending
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+enum HangEvent {
+    Opened(Duration),
+    Closed,
+}
+
+fn hung_scratch(log: &[HangEvent], backoff: Duration) -> String {
+    let opens: Vec<Duration> = log
+        .iter()
+        .filter_map(|event| match event {
+            HangEvent::Opened(at) => Some(*at),
+            HangEvent::Closed => None,
+        })
+        .collect();
+    let gap = match opens.as_slice() {
+        [first, second, ..] => second.saturating_sub(*first),
+        _ => Duration::ZERO,
+    };
+    let closes = log
+        .iter()
+        .filter(|event| matches!(event, HangEvent::Closed))
+        .count();
+    format!(
+        "opens={} gap_ms={} delay_ms={} closes={} log={log:?}",
+        opens.len(),
+        gap.as_millis(),
+        backoff.as_millis(),
+        closes
+    )
+}
+
+fn hung_field(scratch: &str, key: &str) -> u128 {
+    scratch
+        .split_whitespace()
+        .find_map(|part| {
+            let (name, value) = part.split_once('=')?;
+            if name == key {
+                value.parse().ok()
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| panic!("missing {key} in {scratch}"))
+}
+
+fn hang_server(
+    clock: TestClock,
+    timeout: Duration,
+    backoff: Duration,
+) -> (u16, Arc<Mutex<Vec<HangEvent>>>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
     let port = listener
         .local_addr()
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
         .port();
-    let hits = Arc::new(AtomicUsize::new(0));
-    let count = Arc::clone(&hits);
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let log = Arc::clone(&events);
     thread::spawn(move || {
+        let mut seen = 0usize;
         for stream in listener.incoming() {
             let Ok(mut stream) = stream else {
                 break;
             };
-            count.fetch_add(1, Ordering::SeqCst);
+            log.lock().unwrap().push(HangEvent::Opened(clock.now()));
+            // The client is blocked in `wait(timeout)` until this grant.
+            clock.release(timeout);
             let _ = read_http(&mut stream);
             let _ = stream.set_read_timeout(None);
             let mut buf = [0u8; 8];
@@ -854,9 +1033,15 @@ fn hang_server() -> (u16, Arc<AtomicUsize>) {
                     Ok(_) => {}
                 }
             }
+            log.lock().unwrap().push(HangEvent::Closed);
+            clock.note_close();
+            seen += 1;
+            if seen == 1 {
+                clock.release(backoff);
+            }
         }
     });
-    (port, hits)
+    (port, events)
 }
 
 fn scripted_stub(replies: Vec<(u16, String)>) -> (u16, Arc<Mutex<Vec<String>>>) {
