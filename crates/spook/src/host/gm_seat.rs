@@ -284,7 +284,10 @@ impl GmHost {
                         let send = emit_event(&peer, &frame);
                         tokio::pin!(send);
                         let stop = tokio::select! {
-                            _ = &mut send => false,
+                            _ = &mut send => {
+                                out_rx.release_written(&frame);
+                                false
+                            }
                             changed = cancel_rx.changed() => {
                                 changed.is_err() || *cancel_rx.borrow()
                             }

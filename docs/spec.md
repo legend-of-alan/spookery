@@ -260,7 +260,7 @@ Replay byte-compares `now.yaml` produced by this kernel, for every journaled com
 
 `say` is speech. It is not a row. The tape is not an input to expand. Text is not parsed into `known_facts`. There is no whisper that grants a fact.
 
-A player line is `say` plus the words. The first word is the address when it is `place`, or an actor id, and more words follow. `place` is the speaker's live place. An actor id is that actor. Any other line is address `table`, and every word is the text. A line of one word is table text, including when that word is `place` or an actor id. An empty `say` is `SCHEMA`.
+A player line is `say` plus the words. The first word is the address when it is `place`, or an actor id, and more words follow. `place` is the speaker's live place. An actor id is that actor. Any other line is address `table`, and every word is the text. A line of one word is table text, including when that word is `place` or an actor id. An empty `say` is `SCHEMA`. Say text is at most 4096 characters; longer text is `SCHEMA`.
 
 Speech appends when `humans` is 0. The append takes `state/.session.lock`, writes one object, and fsyncs. That path uses no `Draft` and does not bump `state_rev`. The object keeps `seq`, `from`, `address`, `place`, `actor`, `recipients`, `text`, `tick_index`, and `world_time`. `from` is `player:{id}` or `gm`. A typed `from` on the GM tool is `SCHEMA` and appends nothing. An NPC `from` is not representable. The speech parser has no NPC speaker.
 
@@ -327,7 +327,7 @@ A player connection may send 5 lines per second, and it may burst to 10. When th
 
 A GM TCP line, after the hello, is at most 1 MiB, the same cap as an HTTP POST body. A longer line ends that GM session, releases the seat, and the refusal line is `LINE_TOO_LONG`.
 
-Each player socket, the GM TCP socket, and the HTTP GM session has an outbound queue of at most 256 frames and at most 64 KiB. An empty queue still takes one frame of any size, so one welcome is delivered. The shard thread does not wait on a send. A full queue means that client is not reading. That connection is dropped and its seat is released. A dropped GM stops reading, so a later tool call does not run. Other seats keep their frames. This queue does not start a turn.
+Each player socket, the GM TCP socket, and the HTTP GM session has an outbound queue of at most 256 frames and at most 64 KiB. An empty queue still takes one frame of any size, so one welcome is delivered. A frame's bytes count until it is written to the client. The shard thread does not wait on a send. A full queue means that client is not reading. That connection is dropped and its seat is released. A dropped GM stops reading, so a later tool call does not run. Other seats keep their frames. This queue does not start a turn.
 
 The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 

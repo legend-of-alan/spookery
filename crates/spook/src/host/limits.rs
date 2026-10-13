@@ -58,7 +58,7 @@ pub(super) struct OutTx {
     queued: Arc<AtomicUsize>,
 }
 
-/// Receiver half. Taking a frame releases its bytes.
+/// Receiver half. A frame's bytes stay counted until it is written.
 pub(super) struct OutRx {
     rx: tokio::sync::mpsc::Receiver<Outbound>,
     queued: Arc<AtomicUsize>,
@@ -97,9 +97,12 @@ impl OutTx {
 
 impl OutRx {
     pub(super) async fn recv(&mut self) -> Option<Outbound> {
-        let item = self.rx.recv().await?;
-        release(&self.queued, outbound_len(&item));
-        Some(item)
+        self.rx.recv().await
+    }
+
+    /// Releases a frame's bytes once the writer has sent it.
+    pub(super) fn release_written(&self, frame: &[u8]) {
+        release(&self.queued, frame.len());
     }
 }
 
@@ -529,6 +532,7 @@ pub(super) async fn write_frames<W>(
                         if result.is_err() {
                             break;
                         }
+                        frames.release_written(&bytes);
                     }
                     changed = cancel.changed() => {
                         if changed.is_err() || *cancel.borrow() {
@@ -730,7 +734,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_byte_cap_rejects_until_a_frame_is_taken() {
+    async fn the_byte_cap_rejects_until_a_frame_is_written() {
         let (tx, mut rx, _cancel_tx, _cancel_rx) = outbound();
         assert!(try_frame(&tx, vec![b'a'; OUTBOUND_BYTES + 8]));
         assert!(
@@ -738,7 +742,15 @@ mod tests {
             "a second frame was queued past the byte cap"
         );
         let taken = rx.recv().await.expect("frame");
-        assert!(matches!(taken, Outbound::Frame(bytes) if bytes.len() == OUTBOUND_BYTES + 8));
+        let Outbound::Frame(bytes) = taken else {
+            panic!("expected a frame");
+        };
+        assert_eq!(bytes.len(), OUTBOUND_BYTES + 8);
+        assert!(
+            !try_frame(&tx, b"n".to_vec()),
+            "a taken frame was released before it was written"
+        );
+        rx.release_written(&bytes);
         assert!(try_frame(&tx, b"n".to_vec()));
     }
 }
