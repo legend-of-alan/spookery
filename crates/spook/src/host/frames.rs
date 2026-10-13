@@ -2,9 +2,8 @@
 //! A tape line this parser cannot read is `SCHEMA` for the whole read.
 
 use crate::protocol::{
-    ClockView as WireClock, CommitBody, FactNote, GmSay, KnownFact as WireFact, Outcome,
-    PlayerMessage, QueueRow, Roll, SessionStatus, StatusPause, StatusPresence,
-    StockView as WireStock,
+    CommitBody, FactNote, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus,
+    StatusPause, StatusPresence, WireClock, WireFact, WireStock,
 };
 use serde_json::Value;
 use spookery_kernel::check::{CheckNotice, CheckOut};
@@ -146,7 +145,7 @@ pub fn perceive_value(view: &Perceive) -> Value {
     serde_json::to_value(player_view(view)).expect("perceive")
 }
 
-pub fn commit_turn(state_rev: u64, diff_summary: &[String], log_path: Option<&str>) -> Value {
+pub fn commit_reply(state_rev: u64, diff_summary: &[String], log_path: Option<&str>) -> Value {
     CommitBody {
         state_rev,
         diff_summary: diff_summary.to_vec(),

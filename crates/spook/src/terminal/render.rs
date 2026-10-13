@@ -1,4 +1,4 @@
-use crate::protocol::{ClockView, FactNote, KnownFact, Outcome, PlayerMessage, StockView};
+use crate::protocol::{FactNote, Outcome, PlayerMessage, WireClock, WireFact, WireStock};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -77,7 +77,7 @@ fn resume_row(row: &str) -> String {
         "clock" => match rest.split_whitespace().collect::<Vec<_>>()[..] {
             [id, value, max, state @ ("paused" | "running")] => {
                 match (value.parse(), max.parse()) {
-                    (Ok(value), Ok(max)) => clock_line(&ClockView {
+                    (Ok(value), Ok(max)) => clock_line(&WireClock {
                         id: id.to_string(),
                         value,
                         max,
@@ -126,10 +126,10 @@ fn perceive(
     viewer: &str,
     place: &str,
     visible_actors: &[String],
-    known_facts: &[KnownFact],
+    known_facts: &[WireFact],
     messages: &[FactNote],
-    clocks: &[ClockView],
-    stocks: &[StockView],
+    clocks: &[WireClock],
+    stocks: &[WireStock],
 ) -> String {
     let mut sections = Vec::new();
     if !place.is_empty() {
@@ -187,7 +187,7 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
     sections.push(format!("{title}\n{}", lines.join("\n")));
 }
 
-fn clock_line(clock: &ClockView) -> String {
+fn clock_line(clock: &WireClock) -> String {
     let name = humanize(&clock.id);
     if clock.paused {
         format!("{name}: {}/{}, paused", clock.value, clock.max)
@@ -373,7 +373,7 @@ Shop day: 1/1"
             viewer: "player:pc_rowan".to_string(),
             place: "docks_shop".to_string(),
             visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
-            known_facts: vec![KnownFact {
+            known_facts: vec![WireFact {
                 id: "fact_oil_on_shelf".to_string(),
                 text: "Oil is on the shelf.".to_string(),
                 body: "CANON-BODY".to_string(),
@@ -387,20 +387,20 @@ Shop day: 1/1"
             }],
             unknown_mentioned: vec!["secret_fact".to_string()],
             clocks: vec![
-                ClockView {
+                WireClock {
                     id: "assassination_debt".to_string(),
                     value: 2,
                     max: 6,
                     paused: true,
                 },
-                ClockView {
+                WireClock {
                     id: "shop_day".to_string(),
                     value: 1,
                     max: 1,
                     paused: false,
                 },
             ],
-            stocks: vec![StockView {
+            stocks: vec![WireStock {
                 sku: "lamp_oil".to_string(),
                 qty: 4,
             }],

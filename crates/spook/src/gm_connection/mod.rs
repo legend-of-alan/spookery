@@ -8,25 +8,25 @@ use std::time::Duration;
 
 /// A GM-seat failure. The display text is the socket line or the I/O error.
 #[derive(Debug)]
-pub enum Error {
+pub enum GmConnectionError {
     Io(std::io::Error),
     Closed,
     Bad(String),
     Refused { code: String, raw: String },
 }
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for GmConnectionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Io(err) => write!(f, "{err}"),
-            Error::Closed => f.write_str("seat closed"),
-            Error::Bad(line) => f.write_str(line),
-            Error::Refused { raw, .. } => f.write_str(raw),
+            GmConnectionError::Io(err) => write!(f, "{err}"),
+            GmConnectionError::Closed => f.write_str("seat closed"),
+            GmConnectionError::Bad(line) => f.write_str(line),
+            GmConnectionError::Refused { raw, .. } => f.write_str(raw),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for GmConnectionError {}
 
 /// One `spook/event` the seat already sent. `raw` is the socket line.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -72,14 +72,14 @@ pub enum Incoming {
 
 /// The structured body of one tool result.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ToolResult {
+pub struct ToolCallResult {
     pub raw: String,
     pub body: Value,
     pub refused: bool,
 }
 
 /// The loopback GM seat. Std threads and a `TcpStream`. No model client.
-pub struct Client {
+pub struct GmConnection {
     write: TcpStream,
     incoming: mpsc::Receiver<Incoming>,
     buffered: VecDeque<Incoming>,
@@ -87,23 +87,25 @@ pub struct Client {
     opened: String,
 }
 
-impl Client {
+impl GmConnection {
     /// `gm`, initialize, and `notifications/initialized`, then the initialize result.
-    pub fn connect(addr: &str) -> Result<Self, Error> {
-        let mut write = TcpStream::connect(addr).map_err(Error::Io)?;
-        write.set_nodelay(true).map_err(Error::Io)?;
-        let read = write.try_clone().map_err(Error::Io)?;
+    pub fn connect(addr: &str) -> Result<Self, GmConnectionError> {
+        let mut write = TcpStream::connect(addr).map_err(GmConnectionError::Io)?;
+        write.set_nodelay(true).map_err(GmConnectionError::Io)?;
+        let read = write.try_clone().map_err(GmConnectionError::Io)?;
         let hello = format!(
             "{}{}{}",
             crate::protocol::GM_HELLO,
             crate::protocol::INITIALIZE_LINE,
             crate::protocol::INITIALIZED_LINE
         );
-        write.write_all(hello.as_bytes()).map_err(Error::Io)?;
-        write.flush().map_err(Error::Io)?;
+        write
+            .write_all(hello.as_bytes())
+            .map_err(GmConnectionError::Io)?;
+        write.flush().map_err(GmConnectionError::Io)?;
         let (tx, incoming) = mpsc::channel();
         thread::spawn(move || read_loop(read, tx));
-        let mut client = Client {
+        let mut client = GmConnection {
             write,
             incoming,
             buffered: VecDeque::new(),
@@ -114,16 +116,16 @@ impl Client {
             Incoming::Result { id: 1, raw } => {
                 let outcome = parse_tool(&raw)?;
                 if outcome.refused {
-                    return Err(Error::Bad(raw));
+                    return Err(GmConnectionError::Bad(raw));
                 }
                 client.opened = raw;
                 Ok(client)
             }
-            Incoming::Refused { code, raw } => Err(Error::Refused { code, raw }),
-            Incoming::Bad(line) => Err(Error::Bad(line)),
-            Incoming::Eof => Err(Error::Closed),
-            Incoming::Result { raw, .. } => Err(Error::Bad(raw)),
-            Incoming::Event(event) => Err(Error::Bad(event.raw)),
+            Incoming::Refused { code, raw } => Err(GmConnectionError::Refused { code, raw }),
+            Incoming::Bad(line) => Err(GmConnectionError::Bad(line)),
+            Incoming::Eof => Err(GmConnectionError::Closed),
+            Incoming::Result { raw, .. } => Err(GmConnectionError::Bad(raw)),
+            Incoming::Event(event) => Err(GmConnectionError::Bad(event.raw)),
         }
     }
 
@@ -132,7 +134,11 @@ impl Client {
         &self.opened
     }
 
-    pub fn call(&mut self, name: &str, arguments: Value) -> Result<ToolResult, Error> {
+    pub fn call(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<ToolCallResult, GmConnectionError> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
         let line = crate::protocol::write_tool_call(&crate::protocol::ToolCall {
@@ -140,16 +146,20 @@ impl Client {
             name: name.to_string(),
             arguments,
         });
-        self.write.write_all(line.as_bytes()).map_err(Error::Io)?;
-        self.write.flush().map_err(Error::Io)?;
+        self.write
+            .write_all(line.as_bytes())
+            .map_err(GmConnectionError::Io)?;
+        self.write.flush().map_err(GmConnectionError::Io)?;
         loop {
             match self.recv_channel() {
                 Incoming::Result { id: got, raw } if got == id => return parse_tool(&raw),
-                Incoming::Result { raw, .. } => return Err(Error::Bad(raw)),
+                Incoming::Result { raw, .. } => return Err(GmConnectionError::Bad(raw)),
                 Incoming::Event(event) => self.buffered.push_back(Incoming::Event(event)),
-                Incoming::Bad(line) => return Err(Error::Bad(line)),
-                Incoming::Refused { code, raw } => return Err(Error::Refused { code, raw }),
-                Incoming::Eof => return Err(Error::Closed),
+                Incoming::Bad(line) => return Err(GmConnectionError::Bad(line)),
+                Incoming::Refused { code, raw } => {
+                    return Err(GmConnectionError::Refused { code, raw })
+                }
+                Incoming::Eof => return Err(GmConnectionError::Closed),
             }
         }
     }
@@ -197,16 +207,17 @@ impl Client {
     }
 }
 
-impl Drop for Client {
+impl Drop for GmConnection {
     fn drop(&mut self) {
         let _ = self.write.shutdown(Shutdown::Both);
     }
 }
 
-fn parse_tool(raw: &str) -> Result<ToolResult, Error> {
-    let body = crate::protocol::read_tool_result(raw).map_err(|_| Error::Bad(raw.to_string()))?;
+fn parse_tool(raw: &str) -> Result<ToolCallResult, GmConnectionError> {
+    let body = crate::protocol::read_tool_result(raw)
+        .map_err(|_| GmConnectionError::Bad(raw.to_string()))?;
     let refused = body.get("code").is_some();
-    Ok(ToolResult {
+    Ok(ToolCallResult {
         raw: raw.to_string(),
         body,
         refused,

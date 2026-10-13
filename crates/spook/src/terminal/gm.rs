@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use spookery_kernel::canon::{Canon, CastKind};
 use spookery_kernel::moves::MoveToken;
 
-use crate::gm_client::{self, Client, Event, EventBody, Incoming, ToolResult};
+use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
 use crate::protocol::PlayerMessage;
 
 use super::render::{self, humanize, refusal};
@@ -36,17 +36,21 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub fn sit(pack: &Path, addr: &str, raw: bool) -> Result<(), super::Error> {
-    let client = match Client::connect(addr) {
+pub fn run_gm_terminal(pack: &Path, addr: &str, raw: bool) -> Result<(), super::TerminalError> {
+    let client = match GmConnection::connect(addr) {
         Ok(client) => client,
-        Err(gm_client::Error::Io(err)) => return Err(super::Error::Io(err)),
-        Err(gm_client::Error::Refused { code, raw: line }) => exit_refused(&code, &line, raw),
-        Err(gm_client::Error::Bad(line)) => {
+        Err(gm_connection::GmConnectionError::Io(err)) => {
+            return Err(super::TerminalError::Io(err))
+        }
+        Err(gm_connection::GmConnectionError::Refused { code, raw: line }) => {
+            exit_refused(&code, &line, raw)
+        }
+        Err(gm_connection::GmConnectionError::Bad(line)) => {
             eprintln!("{line}");
             let _ = io::stderr().flush();
             std::process::exit(1);
         }
-        Err(gm_client::Error::Closed) => {
+        Err(gm_connection::GmConnectionError::Closed) => {
             eprintln!("seat closed");
             let _ = io::stderr().flush();
             std::process::exit(1);
@@ -107,7 +111,7 @@ pub fn sit(pack: &Path, addr: &str, raw: bool) -> Result<(), super::Error> {
 }
 
 struct Session {
-    client: Client,
+    client: GmConnection,
     canon: Canon,
     raw: bool,
     printed_checks: PrintedChecks,
@@ -257,20 +261,20 @@ impl Session {
         self.show_ready();
     }
 
-    fn call_tool(&mut self, name: &str, arguments: Value) -> Option<ToolResult> {
+    fn call_tool(&mut self, name: &str, arguments: Value) -> Option<ToolCallResult> {
         match self.client.call(name, arguments) {
             Ok(outcome) => Some(outcome),
-            Err(gm_client::Error::Io(err)) => {
+            Err(gm_connection::GmConnectionError::Io(err)) => {
                 eprintln!("{err}");
                 let _ = io::stderr().flush();
                 std::process::exit(1);
             }
-            Err(gm_client::Error::Closed) => None,
-            Err(gm_client::Error::Refused { code, raw }) => {
+            Err(gm_connection::GmConnectionError::Closed) => None,
+            Err(gm_connection::GmConnectionError::Refused { code, raw }) => {
                 self.show_refusal(&code, &raw);
                 None
             }
-            Err(gm_client::Error::Bad(line)) => {
+            Err(gm_connection::GmConnectionError::Bad(line)) => {
                 if self.raw {
                     emit(&line);
                 } else {
@@ -283,7 +287,11 @@ impl Session {
     }
 
     /// Text mode prints `render`. Raw mode already printed the result line.
-    fn after_result(&mut self, outcome: &ToolResult, render: impl FnOnce(&mut Self, &ToolResult)) {
+    fn after_result(
+        &mut self,
+        outcome: &ToolCallResult,
+        render: impl FnOnce(&mut Self, &ToolCallResult),
+    ) {
         self.show_early();
         if outcome.refused {
             self.show_tool_refusal(outcome);
@@ -344,7 +352,7 @@ impl Session {
         emit(&line);
     }
 
-    fn show_tool_refusal(&self, outcome: &ToolResult) {
+    fn show_tool_refusal(&self, outcome: &ToolCallResult) {
         let code = outcome
             .body
             .get("code")

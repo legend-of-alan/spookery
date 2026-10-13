@@ -7,11 +7,9 @@ use spookery_kernel::shard::Shard;
 use spookery_kernel::Reason;
 use spookery_tick::commit_turn_at;
 
-use super::line::{self, canonical_line};
-use super::protocol;
-use crate::schedule::{self, seconds_since, wall_now};
-
-pub use super::line::{classify_player_line, PlayerLine};
+use super::frames;
+use super::idle_clock::wall_now;
+use super::input::{self, canonical_line};
 
 pub struct QueuedNote {
     pub id: String,
@@ -19,7 +17,7 @@ pub struct QueuedNote {
     pub move_name: String,
 }
 
-pub enum Turn {
+pub enum MoveOutcome {
     Queued(QueuedNote),
     Committed {
         advanced: bool,
@@ -27,13 +25,13 @@ pub enum Turn {
     },
 }
 
-pub fn turn(
+pub fn handle_player_move(
     shard: &mut Shard,
     actor_id: &str,
     line: &str,
     gm_seated: bool,
-) -> Result<Turn, Reason> {
-    let (verb, rest) = line::verb_line(line, actor_id)?;
+) -> Result<MoveOutcome, Reason> {
+    let (verb, rest) = input::verb_line(line, actor_id)?;
     let Some(row) = shard
         .canon()
         .moves
@@ -47,35 +45,13 @@ pub fn turn(
     }
     let note = queue_row(shard, actor_id, verb, rest, &row)?;
     if gm_seated {
-        return Ok(Turn::Queued(note));
+        return Ok(MoveOutcome::Queued(note));
     }
     let advanced = commit_queued(shard)?;
-    Ok(Turn::Committed {
+    Ok(MoveOutcome::Committed {
         advanced,
         notices: shard.take_rolls(),
     })
-}
-
-/// Seat check and interval check. A tick that runs borrows this `Shard`.
-/// Returns whether `world_time` advanced.
-pub fn on_scheduled_wake(
-    shard: &mut Shard,
-    player_held: bool,
-    gm_held: bool,
-) -> Result<bool, Reason> {
-    if player_held || gm_held {
-        return Ok(false);
-    }
-    if !shard.budget().idle_ticking {
-        return Ok(false);
-    }
-    let every = shard.budget().tick_every_real_seconds;
-    if seconds_since(&shard.now().last_tick_at)? < every {
-        return Ok(false);
-    }
-    let before = shard.now().world_time;
-    schedule::wake_shard(shard)?;
-    Ok(shard.now().world_time != before)
 }
 
 pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
@@ -86,10 +62,10 @@ pub fn player_notice_lines(notices: &[CheckNotice], actor_id: &str) -> String {
         }
         match notice {
             CheckNotice::Rolled { out: rolled, .. } => {
-                out.push_str(&protocol::player_check_line(rolled.outcome))
+                out.push_str(&frames::player_check_line(rolled.outcome))
             }
             CheckNotice::Refused { code, .. } => {
-                out.push_str(&protocol::player_refused_line(code.token()))
+                out.push_str(&frames::player_refused_line(code.token()))
             }
         }
     }
@@ -100,7 +76,7 @@ pub fn gm_check_frames(notices: &[CheckNotice]) -> Vec<Vec<u8>> {
     notices
         .iter()
         .filter_map(|notice| match notice {
-            CheckNotice::Rolled { out, .. } => Some(protocol::check_event(out)),
+            CheckNotice::Rolled { out, .. } => Some(frames::check_event(out)),
             CheckNotice::Refused { .. } => None,
         })
         .collect()
@@ -147,14 +123,14 @@ fn queue_row(
             Target::Empty
         }
         MoveToken::Actor => {
-            let (named, extra) = line::split_token(rest);
+            let (named, extra) = input::split_token(rest);
             if named.is_empty() || !extra.is_empty() {
                 return Err(Reason::Schema);
             }
             Target::Actor(named.to_string())
         }
         MoveToken::Place => {
-            let (place, extra) = line::split_token(rest);
+            let (place, extra) = input::split_token(rest);
             if place.is_empty() || !extra.is_empty() {
                 return Err(Reason::Schema);
             }
@@ -229,11 +205,11 @@ pub fn commit_queued(shard: &mut Shard) -> Result<bool, Reason> {
 
 impl QueuedNote {
     pub fn player_line(&self) -> String {
-        protocol::player_queued_line(&self.id)
+        frames::player_queued_line(&self.id)
     }
 
     pub fn gm_frame(&self) -> Vec<u8> {
-        protocol::queued_event(&self.id, &self.actor_id, &self.move_name)
+        frames::queued_event(&self.id, &self.actor_id, &self.move_name)
     }
 }
 

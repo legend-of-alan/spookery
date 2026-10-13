@@ -5,9 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
-use spookery::seat::{
-    commit_queued, gm_tool, on_scheduled_wake, queue_wait, release_player_seat, seat_player, turn,
-    SocketEnd, Turn,
+use spookery::host::{
+    call_gm_tool, commit_queued, handle_player_move, on_scheduled_wake, queue_wait,
+    release_player_seat, seat_player, MoveOutcome, SocketEnd,
 };
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::check::{CheckNotice, Outcome};
@@ -279,7 +279,7 @@ fn gm_restocks() {
         "source": "player",
         "move": "restock_lamp_oil"
     });
-    let queued = gm_tool(
+    let queued = call_gm_tool(
         &mut shard,
         "intent",
         Some(args.as_object().unwrap().clone()),
@@ -311,7 +311,7 @@ fn claimed_note_sorts_first() {
             "source": "player",
             "move": move_name
         });
-        let queued = gm_tool(
+        let queued = call_gm_tool(
             &mut shard,
             "intent",
             Some(args.as_object().unwrap().clone()),
@@ -974,6 +974,81 @@ const KERNEL_TICK_NEEDLES: &[&str] = &[
     "ollama",
 ];
 
+fn names_say_what_the_code_does() {
+    let src = workspace_root().join("crates/spook/src");
+    let mut files = Vec::new();
+    walk_pub_names(&src, &src, &mut files);
+    let mut defs = BTreeMap::<String, Vec<String>>::new();
+    for path in files {
+        let text = fs::read_to_string(&path).unwrap();
+        for (index, line) in text.lines().enumerate() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("pub struct Seat")
+                || trimmed.starts_with("pub enum Turn ")
+                || trimmed.starts_with("pub enum Turn{")
+                || trimmed == "pub enum Turn"
+                || is_pub_fn_turn(trimmed)
+            {
+                panic!(
+                    "{}:{} still publishes a retired name",
+                    path.display(),
+                    index + 1
+                );
+            }
+            if let Some(name) = declared_type_name(trimmed) {
+                defs.entry(name)
+                    .or_default()
+                    .push(format!("{}:{}", path.display(), index + 1));
+            }
+        }
+    }
+    let clashes: Vec<String> = defs
+        .iter()
+        .filter(|(_, places)| places.len() > 1)
+        .map(|(name, places)| format!("{name}: {}", places.join(", ")))
+        .collect();
+    assert!(clashes.is_empty(), "{}", clashes.join("\n"));
+}
+
+fn is_pub_fn_turn(trimmed: &str) -> bool {
+    let Some(rest) = trimmed.strip_prefix("pub fn turn") else {
+        return false;
+    };
+    rest.starts_with('(') || rest.starts_with('<')
+}
+
+fn declared_type_name(trimmed: &str) -> Option<String> {
+    let rest = trimmed
+        .strip_prefix("pub struct ")
+        .or_else(|| trimmed.strip_prefix("pub enum "))?;
+    let name: String = rest
+        .chars()
+        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
+        .collect();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
+}
+
+fn walk_pub_names(src: &Path, dir: &Path, files: &mut Vec<PathBuf>) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if path.is_dir() {
+            assert!(name != "seat", "directory named seat: {}", path.display());
+            walk_pub_names(src, &path, files);
+        } else {
+            assert!(name != "turn.rs", "file named turn.rs: {}", path.display());
+            if name == "schedule.rs" && path.parent() == Some(src) {
+                panic!("schedule.rs at the src root: {}", path.display());
+            }
+            files.push(path);
+        }
+    }
+}
+
 fn import_boundary() {
     let root = workspace_root();
     let spook_src = root.join("crates/spook/src");
@@ -1008,31 +1083,35 @@ fn import_boundary() {
             "rmcp",
             "reqwest",
             "spookery_kernel",
-            "crate::cli",
+            "crate::terminal",
             "crate::ai",
         ],
     );
     assert!(protocol_hits.is_empty(), "{}", protocol_hits.join("\n"));
-    let cli_hits = hits_under(
-        &spook_src.join("cli"),
+    let terminal_hits = hits_under(
+        &spook_src.join("terminal"),
         &["tokio", "rmcp", "reqwest", "crate::ai"],
     );
-    assert!(cli_hits.is_empty(), "{}", cli_hits.join("\n"));
-    let gm_client_hits = hits_under(
-        &spook_src.join("gm_client"),
-        &["tokio", "rmcp", "reqwest", "crate::ai", "crate::cli"],
+    assert!(terminal_hits.is_empty(), "{}", terminal_hits.join("\n"));
+    let gm_connection_hits = hits_under(
+        &spook_src.join("gm_connection"),
+        &["tokio", "rmcp", "reqwest", "crate::ai", "crate::terminal"],
     );
-    assert!(gm_client_hits.is_empty(), "{}", gm_client_hits.join("\n"));
+    assert!(
+        gm_connection_hits.is_empty(),
+        "{}",
+        gm_connection_hits.join("\n")
+    );
     let ai_hits = hits_under(
         &spook_src.join("ai"),
-        &["rmcp", "crate::cli", "spookery_tick"],
+        &["rmcp", "crate::terminal", "spookery_tick"],
     );
     assert!(ai_hits.is_empty(), "{}", ai_hits.join("\n"));
-    let seat_hits = hits_under(&spook_src.join("seat"), &["crate::cli", "crate::ai"]);
-    assert!(seat_hits.is_empty(), "{}", seat_hits.join("\n"));
+    let host_hits = hits_under(&spook_src.join("host"), &["crate::terminal", "crate::ai"]);
+    assert!(host_hits.is_empty(), "{}", host_hits.join("\n"));
     let mcp_hits = byte_hits(
         &[spook_src.join("mcp.rs")],
-        &["reqwest", "crate::ai", "crate::cli"],
+        &["reqwest", "crate::ai", "crate::terminal"],
     );
     assert!(mcp_hits.is_empty(), "{}", mcp_hits.join("\n"));
     let audit_hits = byte_hits(&[spook_src.join("audit.rs")], &["tokio", "rmcp", "reqwest"]);
@@ -1194,8 +1273,8 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let dropped = temp_pack("drop-queue");
     let mut shard = open(&dropped);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
-    let note = turn(&mut shard, "pc_rowan", "wait", true).unwrap();
-    let Turn::Queued(note) = note else {
+    let note = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
+    let MoveOutcome::Queued(note) = note else {
         panic!("queued wait committed");
     };
     assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
@@ -1265,7 +1344,7 @@ fn idle_off_past_due_wake_writes_nothing() {
             "interval {every} is not inside one hour"
         );
         assert!(!shard.budget().idle_ticking);
-        let stamp = spookery::schedule::wall_ago(every + 60).unwrap();
+        let stamp = spookery::host::idle_clock::wall_ago(every + 60).unwrap();
         let mut now = shard.now().clone();
         let world_time = now.world_time;
         let state_rev = now.state_rev;
@@ -1276,7 +1355,7 @@ fn idle_off_past_due_wake_writes_nothing() {
         (world_time, state_rev, tick_index, stamp)
     };
     let mut shard = open(&pack);
-    let elapsed = spookery::schedule::seconds_since(&stamp).unwrap();
+    let elapsed = spookery::host::idle_clock::seconds_since(&stamp).unwrap();
     assert!(elapsed >= shard.budget().tick_every_real_seconds);
     assert!(elapsed < 3600);
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
@@ -1301,7 +1380,7 @@ fn idle_off_long_absence_writes_no_catchup() {
     let last = shard.now().last_tick_at.clone();
     let state_rev = shard.now().state_rev;
     let tick_index = shard.now().tick_index;
-    assert!(spookery::schedule::seconds_since(&last).unwrap() >= 3600);
+    assert!(spookery::host::idle_clock::seconds_since(&last).unwrap() >= 3600);
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
     assert_eq!(shard.now().world_time, world_time);
     assert_eq!(shard.now().last_tick_at, last);
@@ -1320,8 +1399,8 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     seat_player(&mut shard, "pc_rowan").unwrap();
-    let played = turn(&mut shard, "pc_rowan", "wait", false).unwrap();
-    let Turn::Committed { advanced, .. } = played else {
+    let played = handle_player_move(&mut shard, "pc_rowan", "wait", false).unwrap();
+    let MoveOutcome::Committed { advanced, .. } = played else {
         panic!("wait stayed queued");
     };
     assert!(advanced);
@@ -1345,13 +1424,13 @@ fn idle_off_commit_turn_still_commits() {
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     seat_player(&mut shard, "pc_rowan").unwrap();
-    let queued = turn(&mut shard, "pc_rowan", "wait", true).unwrap();
-    let Turn::Queued(_) = queued else {
+    let queued = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
+    let MoveOutcome::Queued(_) = queued else {
         panic!("wait committed with a GM seated");
     };
     assert_eq!(shard.now().world_time, 1080);
     assert!(tick_names(&pack).is_empty());
-    let done = gm_tool(
+    let done = call_gm_tool(
         &mut shard,
         "commit_turn",
         Some(json!({ "include_tick": true }).as_object().unwrap().clone()),
@@ -1398,8 +1477,8 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
 fn play_mark(pack: &Path, line: &str) -> Now {
     let mut shard = open(pack);
     seat_player(&mut shard, "pc_rowan").unwrap();
-    let played = turn(&mut shard, "pc_rowan", line, false).unwrap();
-    let Turn::Committed { .. } = played else {
+    let played = handle_player_move(&mut shard, "pc_rowan", line, false).unwrap();
+    let MoveOutcome::Committed { .. } = played else {
         panic!("{line} stayed queued");
     };
     shard.now().clone()
@@ -1516,15 +1595,15 @@ fn opposing_total_reused() {
                 "source": "player",
                 "move": "defend"
             });
-            let queued = gm_tool(
+            let queued = call_gm_tool(
                 &mut shard,
                 "intent",
                 Some(args.as_object().unwrap().clone()),
             );
             assert!(queued.value.get("code").is_none(), "{}", queued.value);
         }
-        let mark = turn(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
-        let Turn::Queued(_) = mark else {
+        let mark = handle_player_move(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
+        let MoveOutcome::Queued(_) = mark else {
             panic!("mark committed while a gm seat was requested");
         };
         assert_eq!(shard.now().world_time, 1080);
@@ -1579,13 +1658,13 @@ fn a_held_knife_still_runs_the_opposed_row() {
         "source": "player",
         "move": "defend"
     });
-    gm_tool(
+    call_gm_tool(
         &mut shard,
         "intent",
         Some(args.as_object().unwrap().clone()),
     );
-    let queued = turn(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
-    let Turn::Queued(_) = queued else {
+    let queued = handle_player_move(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
+    let MoveOutcome::Queued(_) = queued else {
         panic!("held mark committed before the round");
     };
     assert!(commit_queued(&mut shard).unwrap());
@@ -1599,7 +1678,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 fn the_scheduler_does_not_spawn_a_tick() {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let listen = fs::read_to_string(src.join("seat/listen.rs")).unwrap();
+    let listen = fs::read_to_string(src.join("host/listen.rs")).unwrap();
     let timer = listen
         .find("tokio::time::sleep")
         .unwrap_or_else(|| panic!("the idle timer does not sleep on a Tokio timer"));
@@ -1607,16 +1686,21 @@ fn the_scheduler_does_not_spawn_a_tick() {
         listen[timer..].contains("send(Msg::Wake)"),
         "the idle timer does not post a wake to the shard thread"
     );
-    let schedule = fs::read_to_string(src.join("schedule.rs")).unwrap();
+    let schedule = fs::read_to_string(src.join("host/idle_clock.rs")).unwrap();
     assert!(
-        schedule.contains("pub fn wake_shard(") && !schedule.contains("async fn"),
-        "wake_shard is not a plain function run on the shard thread"
+        schedule.contains("pub fn idle_tick_if_due(") && !schedule.contains("async fn"),
+        "idle_tick_if_due is not a plain function run on the shard thread"
     );
     assert!(
         !schedule.contains("tokio"),
-        "schedule.rs reaches for the Tokio runtime"
+        "idle_clock.rs reaches for the Tokio runtime"
     );
-    for needle in ["run_tick", "run_catchup", "wake_shard", "schedule::"] {
+    for needle in [
+        "run_tick",
+        "run_catchup",
+        "idle_tick_if_due",
+        "idle_clock::",
+    ] {
         assert!(
             !listen.contains(needle),
             "the async listener calls {needle} instead of posting a wake to the shard thread"
@@ -1731,6 +1815,7 @@ fn prose_is_stripped(_world: &mut World) {
 #[when(expr = "the kernel and tick sources are scanned")]
 fn the_kernel_and_tick_sources_are_scanned(_world: &mut World) {
     import_boundary();
+    names_say_what_the_code_does();
 }
 
 #[when(expr = "reqwest is planted in kernel and tick")]

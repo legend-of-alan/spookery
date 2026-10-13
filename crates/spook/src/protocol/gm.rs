@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-use crate::protocol::{Error, Outcome};
+use crate::protocol::{Outcome, ProtocolError};
 
 pub const GM_HELLO: &str = "gm\n";
 
@@ -30,22 +30,25 @@ pub fn write_tool_call(call: &ToolCall) -> String {
     ended(&line)
 }
 
-pub fn read_tool_call(line: &str) -> Result<ToolCall, Error> {
-    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| Error)?;
+pub fn read_tool_call(line: &str) -> Result<ToolCall, ProtocolError> {
+    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| ProtocolError)?;
     if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-        return Err(Error);
+        return Err(ProtocolError);
     }
     if value.get("method").and_then(Value::as_str) != Some("tools/call") {
-        return Err(Error);
+        return Err(ProtocolError);
     }
-    let id = value.get("id").and_then(Value::as_u64).ok_or(Error)?;
-    let params = value.get("params").ok_or(Error)?;
+    let id = value
+        .get("id")
+        .and_then(Value::as_u64)
+        .ok_or(ProtocolError)?;
+    let params = value.get("params").ok_or(ProtocolError)?;
     let name = params
         .get("name")
         .and_then(Value::as_str)
-        .ok_or(Error)?
+        .ok_or(ProtocolError)?
         .to_string();
-    let arguments = params.get("arguments").cloned().ok_or(Error)?;
+    let arguments = params.get("arguments").cloned().ok_or(ProtocolError)?;
     Ok(ToolCall {
         id,
         name,
@@ -54,9 +57,9 @@ pub fn read_tool_call(line: &str) -> Result<ToolCall, Error> {
 }
 
 /// The structured body of a tool-result line.
-pub fn read_tool_result(line: &str) -> Result<Value, Error> {
-    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| Error)?;
-    let result = value.get("result").ok_or(Error)?;
+pub fn read_tool_result(line: &str) -> Result<Value, ProtocolError> {
+    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| ProtocolError)?;
+    let result = value.get("result").ok_or(ProtocolError)?;
     Ok(result
         .get("structuredContent")
         .or_else(|| result.get("structured_content"))
@@ -81,16 +84,16 @@ pub enum Frame {
     Dropped,
 }
 
-pub fn read_frame(line: &str) -> Result<Frame, Error> {
-    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| Error)?;
+pub fn read_frame(line: &str) -> Result<Frame, ProtocolError> {
+    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| ProtocolError)?;
     if let Some(id) = value.get("id").and_then(Value::as_u64) {
         return Ok(Frame::Result { id });
     }
     if value.get("method").and_then(Value::as_str) != Some("spook/event") {
-        return Err(Error);
+        return Err(ProtocolError);
     }
     let Some(params) = value.get("params") else {
-        return Err(Error);
+        return Err(ProtocolError);
     };
     let kind = params.get("kind").and_then(Value::as_str).unwrap_or("");
     match kind {
@@ -125,7 +128,9 @@ pub struct StatusArgs {
     pub since: Option<u64>,
 }
 
-pub fn read_status_args(arguments: Option<&Map<String, Value>>) -> Result<StatusArgs, Error> {
+pub fn read_status_args(
+    arguments: Option<&Map<String, Value>>,
+) -> Result<StatusArgs, ProtocolError> {
     let Some(arguments) = arguments else {
         return Ok(StatusArgs { since: None });
     };
@@ -133,10 +138,10 @@ pub fn read_status_args(arguments: Option<&Map<String, Value>>) -> Result<Status
         return Ok(StatusArgs { since: None });
     }
     if arguments.len() != 1 {
-        return Err(Error);
+        return Err(ProtocolError);
     }
     let Some(since) = arguments.get("since").and_then(Value::as_u64) else {
-        return Err(Error);
+        return Err(ProtocolError);
     };
     Ok(StatusArgs { since: Some(since) })
 }
@@ -148,7 +153,9 @@ pub struct PerceiveArgs {
     pub budget_tokens: Option<u64>,
 }
 
-pub fn read_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<PerceiveArgs, Error> {
+pub fn read_perceive_args(
+    arguments: Option<&Map<String, Value>>,
+) -> Result<PerceiveArgs, ProtocolError> {
     let empty = Map::new();
     let arguments = arguments.unwrap_or(&empty);
     let mut as_viewer = None;
@@ -156,13 +163,13 @@ pub fn read_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<Perc
     let mut budget_tokens = None;
     for (key, value) in arguments {
         match key.as_str() {
-            "as" => as_viewer = Some(value.as_str().ok_or(Error)?.to_string()),
+            "as" => as_viewer = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
             "focus" => match value.as_str() {
                 Some(text @ ("place" | "actor")) => focus = Some(text.to_string()),
-                _ => return Err(Error),
+                _ => return Err(ProtocolError),
             },
-            "budget_tokens" => budget_tokens = Some(value.as_u64().ok_or(Error)?),
-            _ => return Err(Error),
+            "budget_tokens" => budget_tokens = Some(value.as_u64().ok_or(ProtocolError)?),
+            _ => return Err(ProtocolError),
         }
     }
     Ok(PerceiveArgs {
@@ -178,19 +185,21 @@ pub struct CommitArgs {
     pub session_id: Option<String>,
 }
 
-pub fn read_commit_args(arguments: Option<&Map<String, Value>>) -> Result<CommitArgs, Error> {
-    let arguments = arguments.ok_or(Error)?;
+pub fn read_commit_args(
+    arguments: Option<&Map<String, Value>>,
+) -> Result<CommitArgs, ProtocolError> {
+    let arguments = arguments.ok_or(ProtocolError)?;
     let mut include_tick = None;
     let mut session_id = None;
     for (key, value) in arguments {
         match key.as_str() {
-            "include_tick" => include_tick = Some(value.as_bool().ok_or(Error)?),
-            "session_id" => session_id = Some(value.as_str().ok_or(Error)?.to_string()),
-            _ => return Err(Error),
+            "include_tick" => include_tick = Some(value.as_bool().ok_or(ProtocolError)?),
+            "session_id" => session_id = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
+            _ => return Err(ProtocolError),
         }
     }
     Ok(CommitArgs {
-        include_tick: include_tick.ok_or(Error)?,
+        include_tick: include_tick.ok_or(ProtocolError)?,
         session_id,
     })
 }
@@ -203,25 +212,25 @@ pub struct SayArgs {
     pub actor: Option<String>,
 }
 
-pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs, Error> {
-    let arguments = arguments.ok_or(Error)?;
+pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs, ProtocolError> {
+    let arguments = arguments.ok_or(ProtocolError)?;
     let mut address = None;
     let mut place = None;
     let mut actor = None;
     let mut text = None;
     for (key, value) in arguments {
         match key.as_str() {
-            "from" => return Err(Error),
-            "address" => address = Some(value.as_str().ok_or(Error)?.to_string()),
+            "from" => return Err(ProtocolError),
+            "address" => address = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
             "place" => place = optional_text(value)?,
             "actor" => actor = optional_text(value)?,
-            "text" => text = Some(value.as_str().ok_or(Error)?.to_string()),
-            _ => return Err(Error),
+            "text" => text = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
+            _ => return Err(ProtocolError),
         }
     }
     Ok(SayArgs {
-        address: address.ok_or(Error)?,
-        text: text.ok_or(Error)?,
+        address: address.ok_or(ProtocolError)?,
+        text: text.ok_or(ProtocolError)?,
         place,
         actor,
     })
@@ -248,8 +257,10 @@ pub struct IntentCall {
     pub rationale_code: String,
 }
 
-pub fn read_intent_args(arguments: Option<&Map<String, Value>>) -> Result<IntentCall, Error> {
-    let arguments = arguments.ok_or(Error)?;
+pub fn read_intent_args(
+    arguments: Option<&Map<String, Value>>,
+) -> Result<IntentCall, ProtocolError> {
+    let arguments = arguments.ok_or(ProtocolError)?;
     let mut id = None;
     let mut tick_index = None;
     let mut actor_id = None;
@@ -261,16 +272,16 @@ pub fn read_intent_args(arguments: Option<&Map<String, Value>>) -> Result<Intent
     let mut rationale_code = String::new();
     for (key, value) in arguments {
         match key.as_str() {
-            "id" => id = Some(value.as_str().ok_or(Error)?.to_string()),
-            "tick_index" => tick_index = Some(value.as_u64().ok_or(Error)?),
-            "actor_id" => actor_id = Some(value.as_str().ok_or(Error)?.to_string()),
-            "actor_kind" => actor_kind = Some(value.as_str().ok_or(Error)?.to_string()),
-            "source" => source = Some(value.as_str().ok_or(Error)?.to_string()),
-            "move" => move_name = Some(value.as_str().ok_or(Error)?.to_string()),
+            "id" => id = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
+            "tick_index" => tick_index = Some(value.as_u64().ok_or(ProtocolError)?),
+            "actor_id" => actor_id = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
+            "actor_kind" => actor_kind = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
+            "source" => source = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
+            "move" => move_name = Some(value.as_str().ok_or(ProtocolError)?.to_string()),
             "target" => target = read_target(value)?,
             "args" => message_to = read_message_to(value)?,
-            "rationale_code" => rationale_code = value.as_str().ok_or(Error)?.to_string(),
-            _ => return Err(Error),
+            "rationale_code" => rationale_code = value.as_str().ok_or(ProtocolError)?.to_string(),
+            _ => return Err(ProtocolError),
         }
     }
     Ok(IntentCall {
@@ -417,13 +428,13 @@ pub fn code_result(code: &str) -> Value {
     serde_json::json!({ "code": code })
 }
 
-fn read_target(value: &Value) -> Result<CallTarget, Error> {
-    let object = value.as_object().ok_or(Error)?;
+fn read_target(value: &Value) -> Result<CallTarget, ProtocolError> {
+    let object = value.as_object().ok_or(ProtocolError)?;
     if object.is_empty() {
         return Ok(CallTarget::Empty);
     }
     if object.len() != 1 {
-        return Err(Error);
+        return Err(ProtocolError);
     }
     if let Some(place) = object.get("place").and_then(Value::as_str) {
         return Ok(CallTarget::Place(place.to_string()));
@@ -434,33 +445,33 @@ fn read_target(value: &Value) -> Result<CallTarget, Error> {
     if let Some(clock) = object.get("clock").and_then(Value::as_str) {
         return Ok(CallTarget::Clock(clock.to_string()));
     }
-    Err(Error)
+    Err(ProtocolError)
 }
 
-fn read_message_to(value: &Value) -> Result<Option<Vec<String>>, Error> {
-    let object = value.as_object().ok_or(Error)?;
+fn read_message_to(value: &Value) -> Result<Option<Vec<String>>, ProtocolError> {
+    let object = value.as_object().ok_or(ProtocolError)?;
     let mut message_to = None;
     for (key, item) in object {
         match key.as_str() {
             "to" => {
-                let values = item.as_array().ok_or(Error)?;
+                let values = item.as_array().ok_or(ProtocolError)?;
                 let mut ids = Vec::new();
                 for value in values {
-                    ids.push(value.as_str().ok_or(Error)?.to_string());
+                    ids.push(value.as_str().ok_or(ProtocolError)?.to_string());
                 }
                 message_to = Some(ids);
             }
-            _ => return Err(Error),
+            _ => return Err(ProtocolError),
         }
     }
     Ok(message_to)
 }
 
-fn optional_text(value: &Value) -> Result<Option<String>, Error> {
+fn optional_text(value: &Value) -> Result<Option<String>, ProtocolError> {
     match value {
         Value::Null => Ok(None),
         Value::String(text) => Ok(Some(text.clone())),
-        _ => Err(Error),
+        _ => Err(ProtocolError),
     }
 }
 

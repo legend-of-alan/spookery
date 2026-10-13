@@ -11,9 +11,10 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::ai::{
-    drive, parse_tool_line, CompleteError, CompletionRequest, Env, HttpModel, Limits, Model,
-    Script, Seat, Watch,
+    parse_tool_line, run_ai_gm, CompleteError, CompletionRequest, Env, HttpModel, Limits, Model,
+    Script, Watch,
 };
+use spookery::gm_connection::GmConnection;
 
 use crate::support::{self, pack_arg, temp_pack};
 use crate::World;
@@ -154,7 +155,7 @@ fn the_host_seat_says(world: &mut World) {
     let port = crate::with_live(|live| live.port);
     let mark = table::player_len();
     let mut seat =
-        Seat::connect(&format!("127.0.0.1:{port}")).unwrap_or_else(|err| panic!("{err}"));
+        GmConnection::connect(&format!("127.0.0.1:{port}")).unwrap_or_else(|err| panic!("{err}"));
     let say = seat
         .call("say", json!({"address": "table", "text": "good evening"}))
         .unwrap_or_else(|err| panic!("{err}"));
@@ -403,7 +404,7 @@ fn with_host(label: &str, body: impl FnOnce(&Path, u16, &Script, &Watch)) {
     let addr = format!("127.0.0.1:{port}");
     let handle = thread::spawn(move || {
         let mut script = script_bg;
-        drive(&pack_bg, &addr, &mut script, &watch_bg)
+        run_ai_gm(&pack_bg, &addr, &mut script, &watch_bg)
     });
     wait_listening(&watch);
     body(&pack, port, &script, &watch);
@@ -436,7 +437,7 @@ fn start_after_gm(
         let addr = format!("127.0.0.1:{port}");
         let handle = thread::spawn(move || {
             let mut script = script_bg;
-            drive(&pack_bg, &addr, &mut script, &watch_bg)
+            run_ai_gm(&pack_bg, &addr, &mut script, &watch_bg)
         });
         let start = Instant::now();
         while start.elapsed() < Duration::from_millis(500) {
@@ -809,7 +810,7 @@ fn spawn_model(
     // The blocking client owns a runtime. Build and drop it off the cucumber thread.
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff);
-        drive(&pack_bg, &addr, &mut model, &watch_bg)
+        run_ai_gm(&pack_bg, &addr, &mut model, &watch_bg)
     });
     (handle, watch)
 }

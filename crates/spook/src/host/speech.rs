@@ -6,8 +6,8 @@ use spookery_kernel::shard::Shard;
 use spookery_kernel::tape::{append_session, read_session};
 use spookery_kernel::Reason;
 
-use super::line::split_token;
-use super::protocol::{self, TapeLine};
+use super::frames::{self, TapeLine};
+use super::input::split_token;
 
 #[derive(Debug)]
 pub struct Spoken {
@@ -106,7 +106,7 @@ pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Reason> {
 pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, Reason> {
     let mut out = Vec::new();
     for tape in read_session(root, since, None)? {
-        out.push(protocol::parse_tape(&tape)?);
+        out.push(frames::parse_tape(&tape)?);
     }
     Ok(out)
 }
@@ -125,7 +125,7 @@ fn append_speech(
     let from = from.to_string();
     let address = address.to_string();
     let seq = append_session(shard.root(), |seq| {
-        protocol::tape_body(&TapeLine {
+        frames::tape_body(&TapeLine {
             seq,
             from: from.clone(),
             address: address.clone(),
@@ -153,9 +153,9 @@ fn append_speech(
 pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<String>, Reason> {
     let mut out = Vec::new();
     for tape in read_session(root, 0, Some(256))? {
-        let stored = protocol::parse_tape(&tape)?;
+        let stored = frames::parse_tape(&tape)?;
         if stored.recipients.iter().any(|id| id == actor_id) {
-            out.push(protocol::player_say_line(&stored));
+            out.push(frames::player_say_line(&stored));
         }
     }
     Ok(out)
@@ -163,10 +163,10 @@ pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<S
 
 fn spoken_from(stored: &TapeLine) -> Spoken {
     Spoken {
-        tape: protocol::tape_body(stored),
-        player_event: protocol::player_say_line(stored),
-        gm_event: protocol::say_event(stored),
-        tool: protocol::say_value(stored),
+        tape: frames::tape_body(stored),
+        player_event: frames::player_say_line(stored),
+        gm_event: frames::say_event(stored),
+        tool: frames::say_value(stored),
         recipients: stored.recipients.clone(),
     }
 }

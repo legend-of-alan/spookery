@@ -487,11 +487,10 @@ Later genre packs may override pause policy. The docks fixture does not.
     src/
       main.rs              # spook
       mcp.rs               # stdio door, spook mcp
-      schedule.rs          # when the shard wakes
-      gm_client/           # shared GM-seat client
-      seat/                # both seats
+      host/                # world loop, seats, and the idle clock
+      gm_connection/       # shared GM-seat client
       protocol/            # shared lines
-      cli/                 # spook play and spook gm
+      terminal/            # spook play and spook gm
       ai/                  # spook ai-gm
     tests/
       promises.rs

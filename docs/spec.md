@@ -55,20 +55,20 @@ Invariant, checked by a debug assert on the shard thread: `presence.humans` equa
 
 ## Crate boundary
 
-Three crates, all under `crates/`. `crates/kernel` is `spookery-kernel`. `crates/tick` is `spookery-tick`. `crates/spook` is package `spook`, library `spookery`, binary `spook`. Protocol, the player client, and the model client are modules of that library: `protocol`, `cli`, and `ai`. A one-crate collapse is not the layout. The `spook` package may link a runtime. The `ai` module may link an HTTP client.
+Three crates, all under `crates/`. `crates/kernel` is `spookery-kernel`. `crates/tick` is `spookery-tick`. `crates/spook` is package `spook`, library `spookery`, binary `spook`. Protocol, the player client, and the model client are modules of that library: `protocol`, `terminal`, and `ai`. A one-crate collapse is not the layout. The `spook` package may link a runtime. The `ai` module may link an HTTP client.
 
 | Crate or module | May link | Must not link |
 |---|---|---|
-| `protocol` | `serde`, `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `cli`, `ai` |
+| `protocol` | `serde`, `serde_json` | `tokio`, `rmcp`, `reqwest`, `spookery-kernel`, `terminal`, `ai` |
 | `spookery-kernel` | `serde`, `serde-saphyr` `=1.3.0`, `serde_json`, `blake2`, `thiserror`, std | `tokio`, `rmcp`, `rmcp-macros`, `sqlx`, `postgres`, `redis`, `jsonschema`, `reqwest`, any model SDK, `spookery-tick`, the `spook` crate |
 | `spookery-tick` | `spookery-kernel` | `tokio`, `rmcp`, `reqwest`, `serde_json` as a direct dependency (it uses `kernel::codec`), MCP, any model SDK, the `spook` crate |
-| `cli` | `protocol`, `spookery-kernel` | `ai`, `reqwest`, `rmcp`, `tokio` |
-| `ai` | `protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-tick`, `cli`, `rmcp`, any model SDK |
-| `mcp` | `tokio`, `serde_json` | `reqwest`, `cli`, `ai` |
+| `terminal` | `protocol`, `spookery-kernel` | `ai`, `reqwest`, `rmcp`, `tokio` |
+| `ai` | `protocol`, `spookery-kernel`, an HTTP client, a runtime | `spookery-tick`, `terminal`, `rmcp`, any model SDK |
+| `mcp` | `tokio`, `serde_json` | `reqwest`, `terminal`, `ai` |
 | `audit` | `spookery-kernel`, `spookery-tick`, the player perceive renderer | `tokio`, `rmcp`, `reqwest` |
-| bin `spook` | `spookery-kernel`, `spookery-tick`, `tokio`, `rmcp`, `socket2`, `serde_json`, and its `protocol`, `cli`, `ai`, `mcp`, and `audit` modules | `reqwest` outside `crates/spook/src/ai/`. Seat code that calls `cli` or `ai`. Business rules that belong in the kernel. A second tick implementation. |
+| bin `spook` | `spookery-kernel`, `spookery-tick`, `tokio`, `rmcp`, `socket2`, `serde_json`, and its `protocol`, `terminal`, `ai`, `mcp`, and `audit` modules | `reqwest` outside `crates/spook/src/ai/`. Host code that calls `terminal` or `ai`. Business rules that belong in the kernel. A second tick implementation. |
 
-`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. It reads every runtime file under `crates/kernel`, `crates/tick`, and `crates/spook/src`. `crates/kernel` and `crates/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, `redis`, `reqwest`, `langchain`, `openai`, `anthropic`, or `ollama`. `reqwest` may appear only under `crates/spook/src/ai/`. `protocol` must not contain `tokio`, `rmcp`, `reqwest`, `spookery_kernel`, `crate::cli`, or `crate::ai`. `cli` must not contain `tokio`, `rmcp`, `reqwest`, or `crate::ai`. `ai` must not contain `rmcp`, `crate::cli`, or `spookery_tick`. `seat` must not contain `crate::cli` or `crate::ai`. `mcp` must not contain `reqwest`, `crate::cli`, or `crate::ai`. `audit` must not contain `tokio`, `rmcp`, or `reqwest`. A comment in a scanned file that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`. An optional cargo feature may be named `ai`.
+`serde_json` in the kernel is allowed. The import scan does not forbid it. The scan stays a source scan, not a `Cargo.toml` parser. It reads every runtime file under `crates/kernel`, `crates/tick`, and `crates/spook/src`. `crates/kernel` and `crates/tick` must not contain the byte strings `tokio`, `rmcp`, `sqlx`, `postgres`, `redis`, `reqwest`, `langchain`, `openai`, `anthropic`, or `ollama`. `reqwest` may appear only under `crates/spook/src/ai/`. `protocol` must not contain `tokio`, `rmcp`, `reqwest`, `spookery_kernel`, `crate::terminal`, or `crate::ai`. `terminal` must not contain `tokio`, `rmcp`, `reqwest`, or `crate::ai`. `ai` must not contain `rmcp`, `crate::terminal`, or `spookery_tick`. `host` must not contain `crate::terminal` or `crate::ai`. `gm_connection` must not contain `tokio`, `rmcp`, `reqwest`, `crate::ai`, or `crate::terminal`. `mcp` must not contain `reqwest`, `crate::terminal`, or `crate::ai`. `audit` must not contain `tokio`, `rmcp`, or `reqwest`. A comment in a scanned file that names a banned crate is still a failure. This spec is where that ban is written. There is no cargo feature named `llm`. An optional cargo feature may be named `ai`.
 
 Tokio in `spook` is the accept loop, keepalive, and scheduler sleep. The tick function runs on the shard thread.
 

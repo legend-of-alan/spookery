@@ -9,9 +9,9 @@ use std::time::Duration;
 use spookery_kernel::shard::open_shard;
 use spookery_kernel::Reason;
 
-use super::gm;
+use super::gm_seat;
 use super::http;
-use super::thread::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};
+use super::world_loop::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};
 
 pub enum Error {
     Reason(Reason),
@@ -29,8 +29,8 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
     };
     let listener = TcpListener::bind(addr).map_err(Error::Io)?;
     let mut shard = open_shard(pack).map_err(Error::Reason)?;
-    if thread::clear_crashed(&mut shard).map_err(Error::Reason)? {
-        thread::print_host(&shard);
+    if world_loop::clear_crashed(&mut shard).map_err(Error::Reason)? {
+        world_loop::print_host(&shard);
     }
     // Keepalive stays the pack interval. The idle switch does not change it.
     let keepalive_secs = shard.budget().tick_every_real_seconds;
@@ -119,7 +119,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
         }
         let _ = tx_stdin.send(Msg::StdinEof);
     });
-    thread::serve(shard, rx, &restart_tx)
+    world_loop::run_world_loop(shard, rx, &restart_tx)
 }
 
 fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
@@ -191,7 +191,7 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
         }
         HelloReply::Gm => {
             let (read_half, write_half) = stream.into_split();
-            gm::serve(read_half, write_half, out_tx, out_rx, cancel_rx, tx, conn).await;
+            gm_seat::serve(read_half, write_half, out_tx, out_rx, cancel_rx, tx, conn).await;
         }
     }
 }
@@ -277,7 +277,7 @@ async fn player_session(
 }
 
 fn refused_frame(code: Reason) -> Vec<u8> {
-    super::protocol::player_refused_line(code.token()).into_bytes()
+    super::frames::player_refused_line(code.token()).into_bytes()
 }
 
 pub(super) async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {

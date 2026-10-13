@@ -14,9 +14,9 @@ use rmcp::model::{
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
 
+use super::gm_tools;
 use super::listen;
-use super::thread::{Ack, HelloReply, Msg, SocketEnd, ToolReply};
-use super::tools;
+use super::world_loop::{Ack, HelloReply, Msg, SocketEnd, ToolReply};
 
 /// How long releasing an HTTP GM seat waits for the shard thread's ack.
 const RELEASE_WAIT: Duration = Duration::from_secs(2);
@@ -101,7 +101,7 @@ pub(super) async fn serve(
     }
     if too_long.load(Ordering::Acquire) {
         let frame =
-            super::protocol::player_refused_line(spookery_kernel::Reason::LineTooLong.token())
+            super::frames::player_refused_line(spookery_kernel::Reason::LineTooLong.token())
                 .into_bytes();
         super::limits::send_last(&notify, frame).await;
     }
@@ -171,7 +171,7 @@ impl ServerHandler for GmHost {
         _request: Option<PaginatedRequestParams>,
         _context: RequestContext<RoleServer>,
     ) -> impl std::future::Future<Output = Result<ListToolsResult, McpError>> + Send + '_ {
-        let tools = tools::GM_LIST
+        let tools = gm_tools::GM_LIST
             .iter()
             .map(|tool| {
                 Tool::new(

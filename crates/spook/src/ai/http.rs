@@ -3,7 +3,7 @@ use std::time::Duration;
 use serde_json::{json, Value};
 
 use crate::ai::fail;
-use crate::ai::model::{CompleteError, CompletionRequest, Model};
+use crate::ai::llm::{CompleteError, CompletionRequest, Model};
 use crate::ai::HostError;
 
 pub struct Env {

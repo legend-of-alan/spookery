@@ -31,18 +31,18 @@ pub use gm::{
     INITIALIZE_LINE,
 };
 pub use player::{
-    read_player, read_player_hello, write_player, write_player_hello, ClockView, FactNote,
-    KnownFact, PlayerMessage, StockView,
+    read_player, read_player_hello, write_player, write_player_hello, FactNote, PlayerMessage,
+    WireClock, WireFact, WireStock,
 };
 
 /// A line that is not one of the two message sets.
 #[derive(Debug, PartialEq, Eq)]
-pub struct Error;
+pub struct ProtocolError;
 
-impl std::fmt::Display for Error {
+impl std::fmt::Display for ProtocolError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("protocol")
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for ProtocolError {}

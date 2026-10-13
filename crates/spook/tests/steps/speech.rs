@@ -29,7 +29,7 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     assert_eq!(shard.now().presence.humans, 0);
     world.now_bytes =
         fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
-    spookery::seat::speak(&shard, "pc_rowan", &format!("say mira {text}"))
+    spookery::host::speak(&shard, "pc_rowan", &format!("say mira {text}"))
         .unwrap_or_else(|err| panic!("speak: {err}"));
 }
 

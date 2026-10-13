@@ -6,10 +6,12 @@ use spookery_kernel::perceive::perceive;
 use spookery_kernel::shard::Shard;
 use spookery_kernel::{idle_digest, DigestViewer, Reason};
 
+use super::frames;
+use super::idle_clock;
+use super::input;
 use super::limits::{CancelTx, OutTx};
-use super::protocol;
+use super::player_moves;
 use super::speech::speak;
-use super::turn;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SocketEnd {
@@ -94,7 +96,7 @@ pub(super) fn clear_crashed(shard: &mut Shard) -> Result<bool, Reason> {
     )
 }
 
-pub(super) fn serve(
+pub(super) fn run_world_loop(
     mut shard: Shard,
     rx: std::sync::mpsc::Receiver<Msg>,
     restart: &tokio::sync::watch::Sender<u64>,
@@ -110,7 +112,7 @@ pub(super) fn serve(
                 std::process::exit(1);
             }
         };
-        if let Err(code) = on_msg(&mut shard, &mut seats, &mut next_session, restart, msg) {
+        if let Err(code) = handle(&mut shard, &mut seats, &mut next_session, restart, msg) {
             eprintln!("{code}");
             std::process::exit(1);
         }
@@ -299,7 +301,7 @@ pub(super) enum PlayerReply {
     Hangup,
 }
 
-fn on_msg(
+fn handle(
     shard: &mut Shard,
     seats: &mut Seats,
     next_session: &mut u64,
@@ -329,10 +331,10 @@ fn on_msg(
             arguments,
             reply,
         } => {
-            let mut done = super::tools::gm_tool(shard, &name, arguments);
+            let mut done = super::gm_tools::call_gm_tool(shard, &name, arguments);
             let notices = if done.ticked {
                 let notices = shard.take_rolls();
-                protocol::write_checks(&mut done.value, &notices);
+                frames::write_checks(&mut done.value, &notices);
                 notices
             } else {
                 Vec::new()
@@ -352,7 +354,7 @@ fn on_msg(
                 send_recipients(shard, seats, recipients, line.clone())?;
             }
             let mut after = done.after;
-            after.extend(turn::gm_check_frames(&notices));
+            after.extend(player_moves::gm_check_frames(&notices));
             if done.advanced {
                 bump_sleep(restart);
             }
@@ -362,7 +364,8 @@ fn on_msg(
             });
         }
         Msg::Wake => {
-            if turn::on_scheduled_wake(shard, !seats.players.is_empty(), seats.gm.is_some())? {
+            if idle_clock::on_scheduled_wake(shard, !seats.players.is_empty(), seats.gm.is_some())?
+            {
                 bump_sleep(restart);
             }
         }
@@ -387,7 +390,7 @@ fn refresh_players(
     for player in seats.players.slots.iter().flatten() {
         let bytes = match player_refresh(shard, &player.actor_id) {
             Ok(text) => {
-                let mut out = turn::player_notice_lines(notices, &player.actor_id);
+                let mut out = player_moves::player_notice_lines(notices, &player.actor_id);
                 out.push_str(&text);
                 out.into_bytes()
             }
@@ -502,8 +505,8 @@ fn welcome(shard: &Shard, actor_id: &str) -> Result<Vec<u8>, Reason> {
 fn player_refresh(shard: &Shard, actor_id: &str) -> Result<String, Reason> {
     let digest = idle_digest(shard, DigestViewer::Player(actor_id.to_string()))?;
     let view = perceive(shard, &format!("player:{actor_id}"))?;
-    let mut out = protocol::player_resume_line(&digest);
-    out.push_str(&protocol::player_perceive_line(&view));
+    let mut out = frames::player_resume_line(&digest);
+    out.push_str(&frames::player_perceive_line(&view));
     Ok(out)
 }
 
@@ -527,8 +530,8 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match turn::classify_player_line(line, &actor_id, &shard.canon().moves) {
-        Ok(turn::PlayerLine::Speech) => match speak(shard, &actor_id, line) {
+    match input::parse_player_input(line, &actor_id, &shard.canon().moves) {
+        Ok(input::PlayerLine::Speech) => match speak(shard, &actor_id, line) {
             Ok(spoken) => {
                 println!("{}", spoken.tape);
                 let _ = io::stdout().flush();
@@ -546,7 +549,7 @@ fn on_player(
                 Ok(PlayerReply::Done)
             }
         },
-        Ok(turn::PlayerLine::Turn) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
+        Ok(input::PlayerLine::Turn) => on_mechanical(shard, seats, restart, conn, &actor_id, line),
         Err(code) => {
             send_player(shard, seats, conn, refused_line(code).into_bytes())?;
             Ok(PlayerReply::Done)
@@ -563,12 +566,12 @@ fn on_mechanical(
     line: &str,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match turn::turn(shard, actor_id, line, gm_seated) {
-        Ok(turn::Turn::Queued(note)) => {
+    match player_moves::handle_player_move(shard, actor_id, line, gm_seated) {
+        Ok(player_moves::MoveOutcome::Queued(note)) => {
             send_gm(seats, note.gm_frame());
             send_player(shard, seats, conn, note.player_line().into_bytes())?;
         }
-        Ok(turn::Turn::Committed { advanced, notices }) => {
+        Ok(player_moves::MoveOutcome::Committed { advanced, notices }) => {
             if advanced {
                 bump_sleep(restart);
             }
@@ -675,7 +678,7 @@ fn on_fault(
 }
 
 fn refused_line(code: Reason) -> String {
-    protocol::player_refused_line(code.token())
+    frames::player_refused_line(code.token())
 }
 
 fn debug_seats(seats: &Seats, shard: &Shard) {
