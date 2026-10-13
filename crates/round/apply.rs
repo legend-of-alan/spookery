@@ -1,12 +1,15 @@
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::effect::Effect;
 use spookery_kernel::expand::expand_outcome;
+use spookery_kernel::habit::allowed;
 use spookery_kernel::intent::{ActorKind, Intent};
+use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
 use crate::log::Rejected;
+use crate::resolve::viewer_token;
 use crate::round::{Resolution, Round};
 
 pub fn apply(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
@@ -41,18 +44,20 @@ pub fn apply(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         let Resolution::Ready { rolled } = resolution else {
             continue;
         };
+        if let Some(reason) = live_gate(draft, &intent)? {
+            refuse(round, &intent.id, reason);
+            continue;
+        }
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let expanded = match expand_outcome(draft.canon(), &frozen, &intent, outcome) {
             Ok(effects) => effects,
             Err(code) => {
                 refuse(round, &intent.id, code.jsonl_reason());
-                keep_roll(round, &rolled, &intent.actor_id);
                 continue;
             }
         };
         if expanded.len() > max_effects {
             refuse(round, &intent.id, Reason::Budget.jsonl_reason());
-            keep_roll(round, &rolled, &intent.actor_id);
             continue;
         }
         if commit_intent(round, draft, &intent, &expanded, &rolled) && spends_slot {
@@ -60,6 +65,18 @@ pub fn apply(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         }
     }
     Ok(())
+}
+
+/// Perceive and eligibility see effects already applied in this tick.
+fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<&'static str>, Reason> {
+    let view = perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
+    if view.known_facts.is_empty() {
+        return Ok(Some("empty_perceive"));
+    }
+    if let Err(code) = allowed(draft.canon(), draft.now(), intent) {
+        return Ok(Some(code.jsonl_reason()));
+    }
+    Ok(None)
 }
 
 fn commit_intent(
@@ -83,7 +100,6 @@ fn commit_intent(
                 if code == Reason::Budget {
                     round.budget_stop = true;
                 }
-                keep_roll(round, rolled, &intent.actor_id);
                 return false;
             }
         }
@@ -95,7 +111,6 @@ fn commit_intent(
             if code == Reason::Budget {
                 round.budget_stop = true;
             }
-            keep_roll(round, rolled, &intent.actor_id);
             return false;
         }
     }

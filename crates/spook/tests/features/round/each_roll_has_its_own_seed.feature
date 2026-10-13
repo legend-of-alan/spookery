@@ -12,3 +12,7 @@ Feature: Each roll has its own seed
   Scenario: Verify reproduces every roll
     Given a played d20 fight
     Then spook verify passes and re-derives every roll
+
+  Scenario: Opposed strikes share one roll each
+    When Lark and Briar strike each other
+    Then each strike is scored on the other's own roll

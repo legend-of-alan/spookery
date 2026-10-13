@@ -4,15 +4,9 @@ use spookery_kernel::lock::lock_world;
 use spookery_kernel::world::{Draft, World};
 use spookery_kernel::Reason;
 
-use crate::advance::{advance, plan_catchup};
-use crate::apply::apply;
-use crate::complete::complete;
-use crate::gather::gather;
-use crate::observe::observe;
-use crate::record::record;
-use crate::resolve::resolve;
+use crate::advance::plan_catchup;
 use crate::round::Round;
-use crate::run_triggers::run_triggers;
+use crate::stages;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TickCause {
@@ -103,15 +97,15 @@ fn play_with(
     );
     for pass in 1..=passes {
         let draft = draft_slot.as_mut().expect("draft");
-        advance(&mut round, draft)?;
-        complete(&mut round, draft)?;
-        gather(&mut round, draft)?;
-        resolve(&mut round, draft)?;
-        apply(&mut round, draft)?;
-        run_triggers(&mut round, draft)?;
-        observe(&mut round, draft)?;
+        stages::advance(&mut round, draft)?;
+        stages::complete(&mut round, draft)?;
+        stages::gather(&mut round, draft)?;
+        stages::resolve(&mut round, draft)?;
+        stages::apply(&mut round, draft)?;
+        stages::run_triggers(&mut round, draft)?;
+        stages::observe(&mut round, draft)?;
         if pass == passes {
-            record(world, &mut round, draft_slot.take().expect("draft"))?;
+            stages::record(world, &mut round, draft_slot.take().expect("draft"))?;
             return Ok(());
         }
     }

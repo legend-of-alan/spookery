@@ -45,10 +45,9 @@ fn roll_row(
     intent: &Intent,
     check_id: &str,
 ) -> Result<Resolution, Reason> {
-    let viewer = match ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
-        Ok(viewer) => viewer,
-        Err(code) => return Ok(refused_check(intent, code)),
-    };
+    if let Err(code) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
+        return Ok(refused_check(intent, code));
+    }
     let opposed = match supplied_target(round, draft, intent) {
         Ok(total) => total,
         Err(code) => return Ok(refused_check(intent, code)),
@@ -64,29 +63,9 @@ fn roll_row(
             rolled: Some(reclassify(&out, target, partial_at)),
         });
     }
-    let Some(check) = draft.canon().checks.get(check_id).cloned() else {
-        return Ok(refused_check(intent, Reason::UnknownKey));
-    };
-    let Some(actor) = round.frozen.actors.get(&intent.actor_id).cloned() else {
-        return Ok(refused_check(intent, Reason::UnknownKey));
-    };
-    let key = next_key(round, &intent.move_name, &intent.actor_id);
-    match roll(
-        RollInput {
-            check: &check,
-            defs: &draft.canon().meters,
-            actor_id: &intent.actor_id,
-            actor: &actor,
-            viewer: &viewer,
-            target,
-            partial_at,
-        },
-        &key,
-    ) {
+    match roll_for(round, draft, intent, check_id, target, partial_at) {
         Ok(out) => {
-            if target == 0 {
-                round.opposed.insert(intent.id.clone(), out.clone());
-            }
+            round.opposed.insert(intent.id.clone(), out.clone());
             Ok(Resolution::Ready { rolled: Some(out) })
         }
         Err(code) => Ok(refused_check(intent, code)),
@@ -101,29 +80,17 @@ fn validate_roll(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Re
         .get(&intent.move_name)
         .and_then(|def| def.check.clone())
         .ok_or(Reason::UnknownKey)?;
-    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    let Some(check) = draft.canon().checks.get(&check_id).cloned() else {
+    ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
+    if !draft.canon().checks.contains_key(&check_id) {
         return Err(Reason::UnknownKey);
-    };
-    let Some(actor) = round.frozen.actors.get(&intent.actor_id).cloned() else {
-        return Ok(refused(Reason::UnknownKey.jsonl_reason(), None));
-    };
-    let key = next_key(round, &intent.move_name, &intent.actor_id);
-    if let Err(code) = roll(
-        RollInput {
-            check: &check,
-            defs: &draft.canon().meters,
-            actor_id: &intent.actor_id,
-            actor: &actor,
-            viewer: &viewer,
-            target: 0,
-            partial_at: None,
-        },
-        &key,
-    ) {
-        return Ok(refused(code.jsonl_reason(), None));
     }
-    Ok(Resolution::Ready { rolled: None })
+    if !round.frozen.actors.contains_key(&intent.actor_id) {
+        return Ok(refused(Reason::UnknownKey.jsonl_reason(), None));
+    }
+    match roll_for(round, draft, intent, &check_id, 0, None) {
+        Ok(_) => Ok(Resolution::Ready { rolled: None }),
+        Err(code) => Ok(refused(code.jsonl_reason(), None)),
+    }
 }
 
 fn supplied_target(
@@ -154,35 +121,46 @@ fn supplied_target(
     let Some(check_id) = draft.canon().row_check(&opposing.move_name) else {
         return Ok(None);
     };
-    let viewer = ViewerId::from_kind(opposing.actor_kind, &opposing.actor_id)?;
+    let out = roll_for(round, draft, &opposing, &check_id, 0, None)?;
+    let total = out.total;
+    round.opposed.insert(opposing.id, out);
+    Ok(Some(total))
+}
+
+fn roll_for(
+    round: &mut Round,
+    draft: &Draft,
+    intent: &Intent,
+    check_id: &str,
+    target: i64,
+    partial_at: Option<i64>,
+) -> Result<RollResult, Reason> {
+    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let check = draft
         .canon()
         .checks
-        .get(&check_id)
+        .get(check_id)
         .cloned()
         .ok_or(Reason::UnknownKey)?;
     let actor = round
         .frozen
         .actors
-        .get(&opposing.actor_id)
+        .get(&intent.actor_id)
         .cloned()
         .ok_or(Reason::UnknownKey)?;
-    let key = next_key(round, &opposing.move_name, &opposing.actor_id);
-    let out = roll(
+    let key = next_key(round, &intent.move_name, &intent.actor_id);
+    roll(
         RollInput {
             check: &check,
             defs: &draft.canon().meters,
-            actor_id: &opposing.actor_id,
+            actor_id: &intent.actor_id,
             actor: &actor,
             viewer: &viewer,
-            target: 0,
-            partial_at: None,
+            target,
+            partial_at,
         },
         &key,
-    )?;
-    let total = out.total;
-    round.opposed.insert(opposing.id, out);
-    Ok(Some(total))
+    )
 }
 
 fn next_key(round: &mut Round, rule: &str, subject: &str) -> RollKey {
@@ -231,7 +209,7 @@ fn refused_check(intent: &Intent, code: Reason) -> Resolution {
     )
 }
 
-fn viewer_token(intent: &Intent) -> Result<String, Reason> {
+pub(crate) fn viewer_token(intent: &Intent) -> Result<String, Reason> {
     match intent.actor_kind {
         ActorKind::Npc => Ok(format!("npc:{}", intent.actor_id)),
         ActorKind::Player => Ok(format!("player:{}", intent.actor_id)),

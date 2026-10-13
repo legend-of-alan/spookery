@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::rules::RollReport;
+use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::rules::{roll, RollInput, RollKey, RollReport};
 use spookery_round::TickCause;
 
 use crate::support::{self, copy_dir};
@@ -34,22 +34,26 @@ fn all_pass_and_spook_verify_passes_on_both_sample_packs(_world: &mut World) {
     }
 }
 
-#[then(
-    expr = "crates\\/round has no call to resolve_check and kernel rules::roll is the only roll function"
-)]
-fn crates_round_has_no_call_to_resolve_check(world: &mut World) {
+#[then(expr = "crates\\/round has exactly one call site of roll")]
+fn crates_round_has_exactly_one_call_site_of_roll(world: &mut World) {
     let root = workspace_root();
     let round = root.join("crates/round");
     let mut files = Vec::new();
     files_under(&round, &mut files);
+    let mut sites = 0usize;
     for path in &files {
+        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
+            continue;
+        }
         let text = fs::read_to_string(path).unwrap();
         assert!(
             !text.contains("resolve_check("),
             "{} calls resolve_check",
             path.display()
         );
+        sites += roll_calls(&text);
     }
+    assert_eq!(sites, 1, "crates/round roll call sites");
     let kernel = root.join("crates/kernel");
     let mut kernel_files = Vec::new();
     files_under(&kernel, &mut kernel_files);
@@ -188,12 +192,13 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     );
 }
 
-#[then(expr = "the first effect is absent from the save and the tick log names the refusal")]
-fn the_first_effect_is_absent_from_the_save(world: &mut World) {
+#[given(expr = "a docks row overreach that adds {int} lamp oil and then removes {int}")]
+fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     let pack = copy_named("oneshot-docks", "rollback");
     append(
         &pack.join("rules/moves.yaml"),
-        "
+        &format!(
+            "
   - name: overreach
     audience: player
     token: none
@@ -202,22 +207,56 @@ fn the_first_effect_is_absent_from_the_save(world: &mut World) {
       - class: stock
         place: docks_shop
         sku: lamp_oil
-        delta: 1
+        delta: {add}
       - class: stock
         place: docks_shop
         sku: lamp_oil
-        delta: -8
-",
+        delta: -{remove}
+"
+        ),
     );
     stamp(&pack);
     set_mira_busy(&pack);
-    let (now, _rolls, tick) = play_queued(
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
+fn a_docks_row_spilled(world: &mut World, remove: i64) {
+    let pack = copy_named("oneshot-docks", "spilled");
+    append(
+        &pack.join("rules/moves.yaml"),
+        &format!(
+            "
+  - name: spilled
+    audience: player
+    token: none
+    on: speaker
+    check: grit
+    difficulty: 0
+    effects:
+      - class: stock
+        place: docks_shop
+        sku: lamp_oil
+        delta: -{remove}
+"
+        ),
+    );
+    stamp(&pack);
+    set_mira_busy(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Mira plays {word}")]
+fn mira_plays(world: &mut World, move_name: String) {
+    let pack = world.pack.as_ref().unwrap().clone();
+    let id = format!("{move_name}-1");
+    let (now, rolls, tick) = play_queued(
         &pack,
         vec![queued(
-            "overreach-1",
+            &id,
             "mira",
             ActorKind::Npc,
-            "overreach",
+            &move_name,
             Target::Empty,
         )],
     );
@@ -225,17 +264,140 @@ fn the_first_effect_is_absent_from_the_save(world: &mut World) {
         .places
         .get("docks_shop")
         .and_then(|place| place.stock.get("lamp_oil"))
-        .copied();
-    assert_eq!(oil, Some(4), "{now:?}");
+        .copied()
+        .unwrap_or(-1);
+    world.now_bytes = oil.to_string().into_bytes();
+    world.player_added = id;
+    world.scratch = tick.to_string();
+    world.mark = rolls
+        .iter()
+        .filter(|notice| match notice {
+            RollReport::Rolled { actor_id, .. } => actor_id == "mira",
+            RollReport::Refused { .. } => false,
+        })
+        .count();
+}
+
+#[then(expr = "lamp oil stays {int} and the tick names {word}")]
+fn lamp_oil_stays_and_the_tick_names(world: &mut World, oil: i64, reason: String) {
+    assert_refusal(world, oil, &reason);
+}
+
+#[then(expr = "lamp oil stays {int}, the tick names {word}, and no roll is reported")]
+fn lamp_oil_stays_the_tick_names_and_no_roll_is_reported(
+    world: &mut World,
+    oil: i64,
+    reason: String,
+) {
+    assert_refusal(world, oil, &reason);
+    assert_eq!(world.mark, 0, "a refused move reported a roll");
+}
+
+#[given(expr = "two kernel waits queued for Mira")]
+fn two_kernel_waits_queued_for_mira(world: &mut World) {
+    world.pack = Some(copy_named("oneshot-docks", "second-wait"));
+}
+
+#[when(expr = "those waits are played")]
+fn those_waits_are_played(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap().clone();
+    let mut first = queued("wait-1", "mira", ActorKind::Npc, "wait", Target::Empty);
+    let mut second = queued("wait-2", "mira", ActorKind::Npc, "wait", Target::Empty);
+    first.source = Source::Kernel;
+    second.source = Source::Kernel;
+    let (now, _rolls, tick) = play_queued(&pack, vec![first, second]);
+    world.scratch = tick.to_string();
+    world.now_bytes = spookery_kernel::codec::emit_now(&now).unwrap().into_bytes();
+}
+
+#[then(expr = "only the first wait lands and the second is INELIGIBLE")]
+fn only_the_first_wait_lands(world: &mut World) {
+    let tick: Value = serde_json::from_str(&world.scratch).unwrap();
+    let applied: Vec<&str> = tick["intents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|item| item["id"].as_str())
+        .collect();
+    assert!(applied.contains(&"wait-1"), "{tick}");
+    assert!(!applied.contains(&"wait-2"), "{tick}");
     let rejected = tick["rejected"].as_array().unwrap();
     assert!(
         rejected
             .iter()
-            .any(|item| item["id"] == "overreach-1" && item["reason"].as_str().is_some()),
+            .any(|item| item["id"] == "wait-2" && item["reason"] == "INELIGIBLE"),
         "{tick}"
     );
-    assert!(tick["effects"].as_array().unwrap().is_empty(), "{tick}");
+    let now =
+        spookery_kernel::codec::load_now(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
+    assert_eq!(
+        now.actors
+            .get("mira")
+            .and_then(|actor| actor.tick())
+            .map(|tick| tick.last_act_tick),
+        Some(1)
+    );
+}
+
+#[when(expr = "Lark and Briar strike each other")]
+fn lark_and_briar_strike_each_other(world: &mut World) {
+    let pack = copy_named("sample-d20", "mutual-strike");
+    let (_now, rolls, _tick) = play_queued(
+        &pack,
+        vec![
+            queued(
+                "lark-strike",
+                "pc_lark",
+                ActorKind::Player,
+                "strike",
+                Target::Actor("npc_briar".to_string()),
+            ),
+            queued(
+                "briar-strike",
+                "npc_briar",
+                ActorKind::Npc,
+                "strike",
+                Target::Actor("pc_lark".to_string()),
+            ),
+        ],
+    );
     world.pack = Some(pack);
+    world.scratch = rolls
+        .iter()
+        .filter_map(|notice| match notice {
+            RollReport::Rolled { actor_id, out } => Some(format!(
+                "{actor_id}={}:{}:{}",
+                out.faces
+                    .iter()
+                    .map(|face| face.to_string())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                out.total,
+                out.target
+            )),
+            RollReport::Refused { .. } => None,
+        })
+        .collect::<Vec<_>>()
+        .join(";");
+}
+
+#[then(expr = "each strike is scored on the other's own roll")]
+fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap();
+    let lark = strike_line(&world.scratch, "pc_lark");
+    let briar = strike_line(&world.scratch, "npc_briar");
+    let lark_once = indexed_roll(pack, "pc_lark", 0);
+    let lark_again = indexed_roll(pack, "pc_lark", 1);
+    let briar_once = indexed_roll(pack, "npc_briar", 0);
+    let briar_again = indexed_roll(pack, "npc_briar", 1);
+    assert_ne!(lark_once.1, lark_again.1, "lark's two indexes collide");
+    assert_ne!(briar_once.1, briar_again.1, "briar's two indexes collide");
+    assert_eq!(lark.0, lark_once.0, "lark was rolled twice");
+    assert_eq!(briar.0, briar_once.0, "briar was rolled twice");
+    assert_eq!(lark.1, lark_once.1);
+    assert_eq!(briar.1, briar_once.1);
+    assert_eq!(lark.2, briar.1, "lark's target is not briar's roll");
+    assert_eq!(briar.2, lark.1, "briar's target is not lark's roll");
 }
 
 #[given(expr = "max_effects_per_intent is 1 and a row with 2 effects")]
@@ -301,6 +463,92 @@ fn no_effect_from_that_row_applies(world: &mut World) {
             .any(|item| item["id"] == "two-1" && item["reason"] == "budget"),
         "{tick}"
     );
+}
+
+fn roll_calls(text: &str) -> usize {
+    let bytes = text.as_bytes();
+    let mut count = 0usize;
+    let mut from = 0usize;
+    while let Some(at) = text[from..].find("roll(") {
+        let index = from + at;
+        let boundary =
+            index == 0 || (!bytes[index - 1].is_ascii_alphanumeric() && bytes[index - 1] != b'_');
+        if boundary {
+            count += 1;
+        }
+        from = index + 5;
+    }
+    count
+}
+
+fn assert_refusal(world: &World, oil: i64, reason: &str) {
+    assert_eq!(String::from_utf8_lossy(&world.now_bytes), oil.to_string());
+    let tick: Value = serde_json::from_str(&world.scratch).unwrap();
+    assert!(tick["effects"].as_array().unwrap().is_empty(), "{tick}");
+    let rejected = tick["rejected"].as_array().unwrap();
+    assert!(
+        rejected
+            .iter()
+            .any(|item| item["id"] == world.player_added && item["reason"] == reason),
+        "{tick}"
+    );
+}
+
+fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
+    let prefix = format!("{actor}=");
+    let line = scratch
+        .split(';')
+        .find(|item| item.starts_with(&prefix))
+        .unwrap_or_else(|| panic!("no roll for {actor} in {scratch}"));
+    let rest = line.trim_start_matches(&prefix);
+    let mut parts = rest.split(':');
+    let faces = parts.next().unwrap().to_string();
+    let total = parts.next().unwrap().parse().unwrap();
+    let target = parts.next().unwrap().parse().unwrap();
+    (faces, total, target)
+}
+
+fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
+    let world = spookery_kernel::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let actor = world
+        .now()
+        .actors
+        .get(actor_id)
+        .unwrap_or_else(|| panic!("missing {actor_id}"))
+        .clone();
+    let kind = if actor.is_pc() {
+        ActorKind::Player
+    } else {
+        ActorKind::Npc
+    };
+    let viewer = ViewerId::from_kind(kind, actor_id).unwrap();
+    let check = world.canon().checks.get("strike").unwrap().clone();
+    let out = roll(
+        RollInput {
+            check: &check,
+            defs: &world.canon().meters,
+            actor_id,
+            actor: &actor,
+            viewer: &viewer,
+            target: 0,
+            partial_at: None,
+        },
+        &RollKey {
+            world_id: world.now().shard_id.clone(),
+            tick_index: world.now().tick_index,
+            rule_id: "strike".to_string(),
+            subject_id: actor_id.to_string(),
+            roll_index,
+        },
+    )
+    .unwrap_or_else(|err| panic!("roll: {err}"));
+    let faces = out
+        .faces
+        .iter()
+        .map(|face| face.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+    (faces, out.total)
 }
 
 fn assert_round_names(root: &Path) {

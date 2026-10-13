@@ -1,6 +1,7 @@
 use spookery_kernel::blake2s_256;
 
-pub fn dice_seed(shard_id: &str, tick_index: u64) -> String {
+/// The tick line's `seed` field. A roll uses `RollKey`, not this string.
+pub fn tick_seed(shard_id: &str, tick_index: u64) -> String {
     format!("{shard_id}|{tick_index}")
 }
 

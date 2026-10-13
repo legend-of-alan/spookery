@@ -5,7 +5,7 @@ Feature: A round runs named stages
     Then all pass and spook verify passes on both sample packs
 
   Scenario: One dice path
-    Then crates/round has no call to resolve_check and kernel rules::roll is the only roll function
+    Then crates/round has exactly one call site of roll
 
   Scenario: Stages run in order
     When a docks tick is played

@@ -6,8 +6,8 @@ use spookery_kernel::model::Now;
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::dice_seed::shuffle_key;
 use crate::round::Round;
+use crate::tick_seed::shuffle_key;
 
 pub fn gather(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("gather".to_string());

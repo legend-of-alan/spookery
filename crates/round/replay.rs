@@ -14,8 +14,8 @@ use spookery_kernel::model::Now;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
-use crate::dice_seed::dice_seed;
 use crate::play::{play_recorded, RecordedTick};
+use crate::tick_seed::tick_seed;
 
 #[derive(Debug)]
 pub struct ReplayReport {
@@ -383,7 +383,7 @@ fn apply_tick(shard: &mut World, record: &TickRecord) -> Result<(), ReplayError>
             None,
         )));
     }
-    let seed = dice_seed(&shard.now().shard_id, line.tick_index);
+    let seed = tick_seed(&shard.now().shard_id, line.tick_index);
     if line.seed != seed {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,

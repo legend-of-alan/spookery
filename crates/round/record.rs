@@ -1,17 +1,17 @@
 use spookery_kernel::world::{Draft, World};
 use spookery_kernel::Reason;
 
-use crate::dice_seed::dice_seed;
 use crate::log::{render_tick, TickLine};
 use crate::play::TickCause;
 use crate::round::Round;
+use crate::tick_seed::tick_seed;
 
 pub fn record(world: &mut World, round: &mut Round, draft: Draft) -> Result<(), Reason> {
     round.trace.push("record".to_string());
     if round.owns_commit {
         round.trace.push("tick_commit".to_string());
     }
-    let seed = dice_seed(&round.world_id, round.tick_index);
+    let seed = tick_seed(&round.world_id, round.tick_index);
     let jsonl = render_tick(&TickLine {
         tick_index: round.tick_index,
         state_rev_before: round.rev_before,
