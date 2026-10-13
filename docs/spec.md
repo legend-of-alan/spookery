@@ -327,7 +327,7 @@ A player connection may send 5 lines per second, and it may burst to 10. When th
 
 A GM TCP line, after the hello, is at most 1 MiB, the same cap as an HTTP POST body. A longer line ends that GM session, releases the seat, and the refusal line is `LINE_TOO_LONG`.
 
-Each player socket, the GM TCP socket, and the HTTP GM session has an outbound queue of 256 frames. The shard thread does not wait on a send. A full queue means that client is not reading. That connection is dropped and its seat is released. A dropped GM stops reading, so a later tool call does not run. Other seats keep their frames. This queue does not start a turn.
+Each player socket, the GM TCP socket, and the HTTP GM session has an outbound queue of at most 256 frames and at most 64 KiB. An empty queue still takes one frame of any size, so one welcome is delivered. The shard thread does not wait on a send. A full queue means that client is not reading. That connection is dropped and its seat is released. A dropped GM stops reading, so a later tool call does not run. Other seats keep their frames. This queue does not start a turn.
 
 The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<port>` are the only legal values. `--addr` is one global flag, and every command checks it. The default address is `127.0.0.1:9737`. Any other host, including `0.0.0.0`, a LAN address, or a hostname, is `NOT_IN_SPEC` before the pack opens, for every command. There is no account store.
 
@@ -392,7 +392,7 @@ Still not built, and not implied by a missing sentence above:
 - A cargo feature named `llm`, or an NPC `from` on the tape.
 - Parsing speech into `known_facts`, or a whisper that grants a fact.
 - A non-loopback bind, accounts, or a second GM.
-- An ack cursor, or a per-client outbound queue whose purpose is to make a host event start a host turn. The seat's 256-frame send queue only drops a slow reader.
+- An ack cursor, or a per-client outbound queue whose purpose is to make a host event start a host turn. The seat's send queue only drops a slow reader.
 - `apply_effect` or `patch_entity` on the sitting.
 - Studio tools that write `state/`.
 - Changing the player wire kinds `refused`, `check`, and `say`.
@@ -426,6 +426,6 @@ The player line grammar does change. The check wire object does not. That split 
 | A second snapshot beside `now.yaml` | `state/log/base.yaml` is replay input written in the commit. It is never read as the live save. One emit path still writes `now.yaml`. |
 | Non-loopback bind, accounts, second GM, fourth player, held PC | `NOT_IN_SPEC` for a non-loopback bind. No account store. `SESSION_FULL` for a second GM or a fourth player. `SEAT_TAKEN` for a held PC. |
 | Hidden fact in a perceive body | `allows` plus lint. |
-| A client sends an endless line, floods lines, or stops reading | Hello and player lines cap at 8 KiB (`LINE_TOO_LONG`). A GM TCP line caps at 1 MiB. Invalid UTF-8 on a hello or player line is `SCHEMA`. A hello that does not finish in 10 seconds is closed and commits nothing. A player connection allows 5 lines per second with a burst of 10, and it waits for the next allowance instead of dropping the line. The GM seat is not rate-limited. An outbound queue of 256 frames drops a client that stops reading, and the shard thread does not block on that send. |
+| A client sends an endless line, floods lines, or stops reading | Hello and player lines cap at 8 KiB (`LINE_TOO_LONG`). A GM TCP line caps at 1 MiB. Invalid UTF-8 on a hello or player line is `SCHEMA`. A hello that does not finish in 10 seconds is closed and commits nothing. A player connection allows 5 lines per second with a burst of 10, and it waits for the next allowance instead of dropping the line. The GM seat is not rate-limited. An outbound queue of at most 256 frames and 64 KiB drops a client that stops reading, and the shard thread does not block on that send. |
 
 Privacy: the pack is local. There is no account, no connection secret, and no telemetry. The tape holds table speech on disk under the pack. That is the product log. The tape file stays on disk. `spook ai-gm` sends table text off the machine only as the body of its chat-completions POST: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up.

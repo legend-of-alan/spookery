@@ -219,8 +219,11 @@ fn parse_line(
     })
 }
 
+/// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
+const SAY_TEXT_CAP: usize = 4 * 1024;
+
 fn one_line(text: &str) -> Result<&str, Reason> {
-    if text.is_empty() || text.contains('\n') || text.chars().count() > 2000 {
+    if text.is_empty() || text.contains('\n') || text.chars().count() > SAY_TEXT_CAP {
         return Err(Reason::Schema);
     }
     Ok(text)

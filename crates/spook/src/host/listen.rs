@@ -184,9 +184,11 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             refuse(&mut stream, line.as_bytes()).await;
         }
         HelloReply::Player => {
-            // The queue is the bound. A small send buffer makes a client that
-            // stops reading fill that queue instead of the kernel's window.
-            let _ = socket2::SockRef::from(&stream).set_send_buffer_size(8 * 1024);
+            // The queue is the bound. Ask for a small send buffer so a client
+            // that stops reading fills the queue. The OS may grant more, and
+            // the queue's byte cap still drops that seat.
+            let _ = socket2::SockRef::from(&stream)
+                .set_send_buffer_size(super::limits::REQUESTED_SEND_BUFFER);
             player_session(stream, tx, conn, out_tx, out_rx, cancel_rx).await;
         }
         HelloReply::Gm => {
@@ -201,7 +203,7 @@ async fn player_session(
     tx: Sender<Msg>,
     conn: u64,
     out_tx: super::limits::OutTx,
-    out_rx: tokio::sync::mpsc::Receiver<super::limits::Outbound>,
+    out_rx: super::limits::OutRx,
     mut cancel_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     let (read_half, write_half) = stream.into_split();

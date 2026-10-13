@@ -51,7 +51,7 @@ pub(super) async fn serve(
     read_half: tokio::net::tcp::OwnedReadHalf,
     write_half: tokio::net::tcp::OwnedWriteHalf,
     out_tx: super::limits::OutTx,
-    out_rx: tokio::sync::mpsc::Receiver<super::limits::Outbound>,
+    out_rx: super::limits::OutRx,
     cancel_rx: tokio::sync::watch::Receiver<bool>,
     tx: Sender<Msg>,
     conn: u64,

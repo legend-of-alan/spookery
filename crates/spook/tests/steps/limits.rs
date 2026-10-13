@@ -5,12 +5,16 @@ use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
 
+use spookery::host::{OUTBOUND_BYTES, OUTBOUND_FRAMES, REQUESTED_SEND_BUFFER};
+use spookery::protocol::{write_player, PlayerMessage};
+
 use crate::support;
 use crate::World;
 
 use super::table;
 
 const MIB: usize = 1024 * 1024;
+const SAY_TEXT_BYTES: usize = 4 * 1024;
 
 #[when(expr = "a player sends a 1 MiB line with no newline")]
 fn a_player_sends_a_mebibyte_line(world: &mut World) {
@@ -267,7 +271,8 @@ fn one_player_stops_reading(world: &mut World) {
     table::listen(&pack, &format!("127.0.0.1:{port}"), port);
     table::seat_gm();
     table::seat_actor(&pack, "pc_harbormouse");
-    let mut quiet = connect_small_window(port);
+    let (mut quiet, recv) = connect_small_window(port);
+    let send = granted_send_buffer(REQUESTED_SEND_BUFFER);
     writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
     quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     read_until(&mut quiet, "\"kind\":\"perceive\"", Duration::from_secs(2));
@@ -278,15 +283,31 @@ fn one_player_stops_reading(world: &mut World) {
             text: Arc::new(Mutex::new(String::new())),
         });
     });
+    let say = "n".repeat(SAY_TEXT_BYTES);
+    let frame = write_player(&PlayerMessage::Say {
+        from: "gm".to_string(),
+        address: "table".to_string(),
+        text: say.clone(),
+    })
+    .len();
+    // Granted kernel windows, then the userspace queue, then one extra
+    // buffer so a getsockopt that under-reports still reaches the drop.
+    let queue = OUTBOUND_BYTES.min(OUTBOUND_FRAMES.saturating_mul(frame));
+    let margin = recv.max(send).max(frame);
+    let budget = recv
+        .saturating_add(send)
+        .saturating_add(queue)
+        .saturating_add(margin);
     let start = Instant::now();
     let mut id = 2u64;
+    let mut sent = 0usize;
     let gm_text = crate::with_live(|live| Arc::clone(&live.gm_text));
     loop {
         let present = table::now_of(&pack).presence.actors_present.clone();
         if !present.iter().any(|actor| actor == "pc_rowan") {
             break;
         }
-        if start.elapsed() > Duration::from_secs(30) || id > 700 {
+        if start.elapsed() > Duration::from_secs(60) || sent > budget {
             let stderr = crate::with_live(|live| {
                 live.server
                     .as_ref()
@@ -294,8 +315,7 @@ fn one_player_stops_reading(world: &mut World) {
                     .unwrap_or_default()
             });
             panic!(
-                "rowan still seated after {} says: {present:?}\n{stderr}",
-                id - 2
+                "rowan still seated after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget}): {present:?}\n{stderr}"
             );
         }
         let mark = support::text_of(&gm_text).len();
@@ -303,7 +323,7 @@ fn one_player_stops_reading(world: &mut World) {
             let write = live.gm_write.as_mut().unwrap();
             writeln!(
                 write,
-                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":\"say\",\"arguments\":{{\"address\":\"table\",\"text\":\"n\"}}}}}}"
+                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":\"say\",\"arguments\":{{\"address\":\"table\",\"text\":\"{say}\"}}}}}}"
             )
             .and_then(|()| write.flush())
         });
@@ -334,6 +354,7 @@ fn one_player_stops_reading(world: &mut World) {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
+        sent = sent.saturating_add(frame);
         id += 1;
     }
     let heard = Instant::now();
@@ -383,7 +404,7 @@ fn write_all_ignoring(mut stream: TcpStream, bytes: Vec<u8>) {
     let _ = stream.flush();
 }
 
-fn connect_small_window(port: u16) -> TcpStream {
+fn connect_small_window(port: u16) -> (TcpStream, usize) {
     let socket = socket2::Socket::new(
         socket2::Domain::IPV4,
         socket2::Type::STREAM,
@@ -391,7 +412,7 @@ fn connect_small_window(port: u16) -> TcpStream {
     )
     .unwrap_or_else(|err| panic!("socket: {err}"));
     socket
-        .set_recv_buffer_size(8 * 1024)
+        .set_recv_buffer_size(REQUESTED_SEND_BUFFER)
         .unwrap_or_else(|err| panic!("recv buffer: {err}"));
     socket
         .set_tcp_nodelay(true)
@@ -414,11 +435,30 @@ fn connect_small_window(port: u16) -> TcpStream {
     let size = socket
         .recv_buffer_size()
         .unwrap_or_else(|err| panic!("recv buffer size: {err}"));
-    assert!(
-        size <= 128 * 1024,
-        "receive window is {size}, so a stopped reader would not fill the send queue"
-    );
-    socket.into()
+    (socket.into(), size)
+}
+
+/// What this OS grants for the send buffer the player socket requests.
+/// Set after accept, which is when the listener sets it.
+fn granted_send_buffer(requested: usize) -> usize {
+    let listener =
+        std::net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    let addr = listener
+        .local_addr()
+        .unwrap_or_else(|err| panic!("addr: {err}"));
+    let client = std::thread::spawn(move || TcpStream::connect(addr));
+    let (accepted, _) = listener
+        .accept()
+        .unwrap_or_else(|err| panic!("accept: {err}"));
+    let socket = socket2::SockRef::from(&accepted);
+    let _ = socket.set_send_buffer_size(requested);
+    let size = socket
+        .send_buffer_size()
+        .unwrap_or_else(|err| panic!("send buffer size: {err}"));
+    drop(accepted);
+    drop(listener);
+    let _ = client.join();
+    size
 }
 
 fn connect(port: u16) -> TcpStream {
