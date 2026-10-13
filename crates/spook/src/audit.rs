@@ -8,12 +8,12 @@ use std::fs;
 use std::path::Path;
 
 use spookery_kernel::canon::{load_canon, Canon};
-use spookery_kernel::codec::load_now;
 use spookery_kernel::diagnostic::reason_of;
 use spookery_kernel::journal;
 use spookery_kernel::model::Now;
 use spookery_kernel::perceive::perceive_at;
-use spookery_kernel::tape::MAX_TAPE_BYTES;
+use spookery_kernel::store::codec::load_now;
+use spookery_kernel::store::talk_log::MAX_TAPE_BYTES;
 use spookery_kernel::Reason;
 use spookery_round::{replay_states, ReplayError};
 
@@ -64,7 +64,7 @@ struct Secret {
 /// Read the pack, replay every committed state, and render the report.
 /// Writes nothing, takes no lock, and binds no port.
 pub fn audit_pack(pack: &Path, strict: bool) -> Result<AuditReport, AuditError> {
-    if !pack.join("pack.yaml").is_file() || !pack.join("state/now.yaml").is_file() {
+    if !pack.join("pack.yaml").is_file() || !pack.join("state/save.yaml").is_file() {
         return Err(AuditError::Reason(Reason::NotInSpec));
     }
     let canon = load_canon(pack).map_err(|diags| AuditError::Reason(reason_of(diags)))?;
@@ -78,7 +78,7 @@ fn load_snaps(pack: &Path) -> Result<Vec<Snap>, AuditError> {
         .map_err(|fault| AuditError::Replay(format!("{}: {}", fault.file, fault.detail)))?;
     let mut snaps = Vec::new();
     if records.is_empty() {
-        let bytes = fs::read(pack.join("state/now.yaml"))
+        let bytes = fs::read(pack.join("state/save.yaml"))
             .map_err(|_| AuditError::Reason(Reason::NotInSpec))?;
         snaps.push(snap_of(&bytes)?);
         return Ok(snaps);
@@ -114,7 +114,7 @@ fn replay_error(err: ReplayError) -> AuditError {
 }
 
 fn read_tape(pack: &Path) -> Result<Vec<TapeLine>, AuditError> {
-    let path = pack.join("state/log/session.jsonl");
+    let path = pack.join("state/journal/session.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
     }

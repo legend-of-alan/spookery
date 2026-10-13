@@ -141,7 +141,7 @@ fn the_travel_committed_a_tick(world: &mut World) {
     let now = table::now_of(pack);
     assert_eq!(now.actors.get("pc_ada").unwrap().place(), "lane");
     assert!(
-        pack.join("state/log/tick-0001.jsonl").is_file(),
+        pack.join("state/journal/tick-0001.jsonl").is_file(),
         "no tick file"
     );
 }

@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::Path;
 
-use crate::codec::{emit_effect_payload, parse_tick_effects};
 use crate::error::Reason;
 use crate::model::Clock;
+use crate::store::codec::{emit_effect_payload, parse_tick_effects};
 use crate::world::World;
 
 pub enum DigestViewer {
@@ -51,7 +51,7 @@ fn clock_line(id: &str, clock: &Clock) -> String {
 }
 
 fn effect_rows(root: &Path) -> Result<Vec<String>, Reason> {
-    let log_dir = root.join("state/log");
+    let log_dir = root.join("state/journal");
     if !log_dir.is_dir() {
         return Ok(Vec::new());
     }

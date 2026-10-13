@@ -10,6 +10,9 @@ pub struct Now {
     pub schema: String,
     pub shard_id: String,
     pub pack_rev: String,
+    /// Engine rules version. Missing means 0, which is not the current version.
+    #[serde(default)]
+    pub rules_rev: u64,
     pub state_rev: u64,
     pub tick_index: u64,
     pub world_time: u64,
@@ -38,7 +41,7 @@ pub enum RunState {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-// Emit order is the docks `now.yaml` pause mapping.
+// Emit order is the docks `save.yaml` pause mapping.
 pub struct PauseView {
     pub named_plot_clocks: RunState,
 }

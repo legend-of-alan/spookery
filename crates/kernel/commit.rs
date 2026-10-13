@@ -4,12 +4,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
-use crate::codec::{canonicalize, emit_memory_line, emit_migrate_line, emit_now, load_now};
-use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::{lock_pack, lock_world};
 use crate::model::{MemoryLine, Now, Presence};
+use crate::store::codec::{canonicalize, emit_memory_line, emit_migrate_line, emit_now, load_now};
+use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::world::{Draft, World};
 
 pub struct CommitOutcome {
@@ -68,14 +68,14 @@ pub fn commit_presence(world: &mut World, presence: Presence) -> Result<bool, Re
         &hash_now(&now_bytes),
     );
     let mut planned = vec![Planned {
-        target: state.join("now.yaml"),
+        target: state.join("save.yaml"),
         bytes: now_bytes.clone(),
         is_now: true,
     }];
     push_base(&mut planned, &state, &pre, &now_bytes, false);
     planned.push(Planned {
         target: state
-            .join("log")
+            .join("journal")
             .join(journal::presence_file(next.state_rev)),
         bytes: record.into_bytes(),
         is_now: false,
@@ -93,7 +93,7 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
     let now_bytes = emit_now(&now)?.into_bytes();
     let stamped = journal::stamp_now_hash(&pending.round_jsonl, &now_bytes)?;
     let tick_index = pending.tick_index;
-    let log_path = format!("state/log/tick-{tick_index:04}.jsonl");
+    let log_path = format!("state/journal/tick-{tick_index:04}.jsonl");
     let state = world.root.join("state");
     let pre = read_pre_now(&state)?;
     let mut planned = plan_commit(
@@ -114,10 +114,10 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
 }
 
 pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
-    if !root.join("pack.yaml").is_file() || !root.join("state/now.yaml").is_file() {
+    if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
-    let now_bytes = fs::read(root.join("state/now.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
     let mut now = load_now(now_text).map_err(crate::diagnostic::reason_of)?;
     let canon = crate::canon::load_canon(root).map_err(crate::diagnostic::reason_of)?;
@@ -142,7 +142,9 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     let mut planned = plan_commit(&state, emitted.clone(), None, &[])?;
     push_base(&mut planned, &state, &now_bytes, &emitted, true);
     planned.push(Planned {
-        target: state.join("log").join(journal::migrate_file(now.state_rev)),
+        target: state
+            .join("journal")
+            .join(journal::migrate_file(now.state_rev)),
         bytes: record.into_bytes(),
         is_now: false,
     });
@@ -161,7 +163,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
 }
 
 fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
-    let log_dir = state.join("log");
+    let log_dir = state.join("journal");
     fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
     let path = log_dir.join("studio.jsonl");
     let mut file = OpenOptions::new()
@@ -176,12 +178,12 @@ fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
     Ok(())
 }
 
-/// Replay writes `now.yaml` on a temp pack and does not append a journal record.
+/// Replay writes `save.yaml` on a temp pack and does not append a journal record.
 pub fn replay_write_now(world: &mut World, now: Now) -> Result<(), Reason> {
     let now_bytes = emit_now(&now)?.into_bytes();
     let state = world.root.join("state");
     let planned = vec![Planned {
-        target: state.join("now.yaml"),
+        target: state.join("save.yaml"),
         bytes: now_bytes,
         is_now: true,
     }];
@@ -191,7 +193,7 @@ pub fn replay_write_now(world: &mut World, now: Now) -> Result<(), Reason> {
 }
 
 fn read_pre_now(state: &Path) -> Result<Vec<u8>, Reason> {
-    fs::read(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)
+    fs::read(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)
 }
 
 /// The first commit stores the pre-commit save. Migrate stores the post-migrate save.
@@ -219,13 +221,13 @@ fn plan_commit(
 ) -> Result<Vec<Planned>, Reason> {
     let mut planned = Vec::new();
     planned.push(Planned {
-        target: state.join("now.yaml"),
+        target: state.join("save.yaml"),
         bytes: now_bytes,
         is_now: true,
     });
     if let Some((tick_index, tick_jsonl)) = tick {
         planned.push(Planned {
-            target: state.join(format!("log/tick-{tick_index:04}.jsonl")),
+            target: state.join(format!("journal/tick-{tick_index:04}.jsonl")),
             bytes: tick_jsonl.to_vec(),
             is_now: false,
         });

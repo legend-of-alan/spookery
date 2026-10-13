@@ -8,6 +8,7 @@ pub struct Rejected {
 
 pub struct RoundLine<'a> {
     pub tick_index: u64,
+    pub rules_rev: u64,
     pub state_rev_before: u64,
     pub state_rev_after: u64,
     pub world_time_before: u64,
@@ -24,6 +25,7 @@ pub struct RoundLine<'a> {
 pub fn render_round_line(line: &RoundLine<'_>) -> String {
     let mut out = String::from("{");
     push_key_u64(&mut out, "tick_index", line.tick_index, true);
+    push_key_u64(&mut out, "rules_rev", line.rules_rev, false);
     push_key_u64(&mut out, "state_rev_before", line.state_rev_before, false);
     push_key_u64(&mut out, "state_rev_after", line.state_rev_after, false);
     push_key_u64(&mut out, "world_time_before", line.world_time_before, false);
@@ -134,7 +136,7 @@ fn push_args(out: &mut String, args: &IntentArgs) {
 }
 
 fn push_effect(out: &mut String, effect: &Effect) {
-    out.push_str(&spookery_kernel::codec::emit_effect(effect));
+    out.push_str(&spookery_kernel::store::codec::emit_effect(effect));
 }
 
 fn push_key_u64(out: &mut String, key: &str, value: u64, first: bool) {
@@ -182,6 +184,7 @@ mod tests {
         };
         let line = render_round_line(&RoundLine {
             tick_index: 1,
+            rules_rev: spookery_kernel::store::RULES_REV,
             state_rev_before: 0,
             state_rev_after: 1,
             world_time_before: 0,
@@ -194,7 +197,7 @@ mod tests {
             effects: std::slice::from_ref(&effect),
             tool_trace: &[],
         });
-        let encoded = spookery_kernel::codec::emit_effect(&effect);
+        let encoded = spookery_kernel::store::codec::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
         assert!(!line.contains("\"payload\""));
     }

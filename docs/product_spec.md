@@ -206,10 +206,10 @@ pack/
     moves.yaml
     tick.yaml
   state/
-    now.yaml                  # live world; each PC is an actor here
-    log/session.jsonl         # tape, runtime-created
-    log/studio.jsonl          # migrate record, runtime-created
-    log/tick-NNNN.jsonl       # one file per committed tick, runtime-created
+    save.yaml                  # live world; each PC is an actor here
+    journal/session.jsonl     # speech log, runtime-created
+    journal/studio.jsonl      # migrate record, runtime-created
+    journal/tick-NNNN.jsonl   # one file per committed tick, runtime-created
     memories/<id>.jsonl       # runtime-created
 ```
 
@@ -221,7 +221,7 @@ A permanent change to the authored world waits for a person. Players do not rewr
 
 Format tags carry no version until the format is frozen and a compatibility promise is made. The tags are `pack`, `place`, `cast`, `meters`, `moves`, `checks`, `tick`, and `now`.
 
-Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. A PC is a `pc_template` cast file plus a live actor in `state/now.yaml`.
+Authors write YAML and Markdown. Markdown bodies are flavor for people reading the pack. A PC is a `pc_template` cast file plus a live actor in `state/save.yaml`.
 
 NPC profile, as a product sketch:
 
@@ -262,7 +262,7 @@ The fixture is a world a host can leave running and a player can return to. The 
   |   kernel    tick loop    tool handlers   |
   +-----------+------------------+-----------+
               |                  |
-        state/now.yaml      pack canon
+        state/save.yaml      pack canon
         tick log
 ```
 

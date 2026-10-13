@@ -30,7 +30,7 @@ Feature: The d20 pack runs a fight
     Given a sample-d20 table where Lark has no tonic
     When the player drinks
     Then the player was refused MISSING_ITEM
-    And now.yaml is unchanged since the seat
+    And save.yaml is unchanged since the seat
     And no tick file was written
 
   Scenario: A short fight through play drops the raider to zero

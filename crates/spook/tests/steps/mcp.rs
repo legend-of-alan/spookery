@@ -515,8 +515,8 @@ fn listen_http(pack: &std::path::Path) -> (u16, u16) {
     let mut server = support::spawn(&["run", &pack_arg, "--addr", &addr, "--mcp-http", &http_addr]);
     wait_port(tcp, &mut server);
     wait_port(http, &mut server);
-    let opened_now = std::fs::read(pack.join("state/now.yaml"))
-        .unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let opened_now = std::fs::read(pack.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     crate::set_live(table::Live {
         port: tcp,
         player_write: None,

@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use spookery_kernel::effect::Effect;
 use spookery_kernel::lock::lock_world;
 use spookery_kernel::world::{Draft, World};
 use spookery_kernel::Reason;
@@ -62,14 +63,14 @@ pub fn catch_up(world: &mut World, now_wall: &str, downtime_hours: u64) -> Resul
 }
 
 pub fn play(world: &mut World, cause: RoundCause, now_wall: &str) -> Result<(), Reason> {
-    play_with(world, cause, now_wall, None)
+    play_with(world, cause, now_wall, None).map(|_| ())
 }
 
 pub(crate) fn play_recorded(
     world: &mut World,
     now_wall: &str,
     recorded: RecordedRound,
-) -> Result<(), Reason> {
+) -> Result<Vec<Effect>, Reason> {
     play_with(world, RoundCause::Replay, now_wall, Some(recorded))
 }
 
@@ -86,7 +87,7 @@ fn play_with(
     cause: RoundCause,
     now_wall: &str,
     recorded: Option<RecordedRound>,
-) -> Result<(), Reason> {
+) -> Result<Vec<Effect>, Reason> {
     let _lock = if cause == RoundCause::Flush {
         None
     } else {
@@ -112,8 +113,8 @@ fn play_with(
         observe::run(&mut round, draft)?;
         if pass == passes {
             record::run(world, &mut round, draft_slot.take().expect("draft"))?;
-            return Ok(());
+            return Ok(std::mem::take(&mut round.effects));
         }
     }
-    Ok(())
+    Ok(Vec::new())
 }

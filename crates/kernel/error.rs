@@ -16,6 +16,7 @@ pub enum Reason {
     ActorMismatch,
     TableEmpty,
     PackRevMismatch,
+    RulesRev,
     UnknownMove,
     UnscopedPerceive,
     CommitConflict,
@@ -44,6 +45,7 @@ impl Reason {
             Reason::ActorMismatch => "ACTOR_MISMATCH",
             Reason::TableEmpty => "TABLE_EMPTY",
             Reason::PackRevMismatch => "PACK_REV_MISMATCH",
+            Reason::RulesRev => "RULES_REV",
             Reason::UnknownMove => "UNKNOWN_MOVE",
             Reason::UnscopedPerceive => "UNSCOPED_PERCEIVE",
             Reason::CommitConflict => "COMMIT_CONFLICT",
@@ -72,6 +74,7 @@ impl Reason {
             "ACTOR_MISMATCH" => Reason::ActorMismatch,
             "TABLE_EMPTY" => Reason::TableEmpty,
             "PACK_REV_MISMATCH" => Reason::PackRevMismatch,
+            "RULES_REV" => Reason::RulesRev,
             "UNKNOWN_MOVE" => Reason::UnknownMove,
             "UNSCOPED_PERCEIVE" => Reason::UnscopedPerceive,
             "COMMIT_CONFLICT" => Reason::CommitConflict,
@@ -97,6 +100,9 @@ impl Reason {
 
 impl fmt::Display for Reason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Reason::RulesRev = self {
+            return f.write_str("RULES_REV: start a fresh save");
+        }
         f.write_str(self.token())
     }
 }
@@ -107,7 +113,7 @@ impl std::error::Error for Reason {}
 mod tests {
     use super::Reason;
 
-    const ALL: [Reason; 23] = [
+    const ALL: [Reason; 24] = [
         Reason::IllegalClass,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
@@ -121,6 +127,7 @@ mod tests {
         Reason::ActorMismatch,
         Reason::TableEmpty,
         Reason::PackRevMismatch,
+        Reason::RulesRev,
         Reason::UnknownMove,
         Reason::UnscopedPerceive,
         Reason::CommitConflict,
@@ -149,6 +156,7 @@ mod tests {
             | Reason::ActorMismatch
             | Reason::TableEmpty
             | Reason::PackRevMismatch
+            | Reason::RulesRev
             | Reason::UnknownMove
             | Reason::UnscopedPerceive
             | Reason::CommitConflict

@@ -329,7 +329,7 @@ fn gm_stderr(world: &mut World) -> String {
 }
 
 fn tick_json(world: &mut World) -> serde_json::Value {
-    let text = std::fs::read_to_string(table::pack(world).join("state/log/tick-0001.jsonl"))
+    let text = std::fs::read_to_string(table::pack(world).join("state/journal/tick-0001.jsonl"))
         .unwrap_or_else(|err| panic!("read tick: {err}"));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }

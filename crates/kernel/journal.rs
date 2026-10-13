@@ -1,11 +1,11 @@
-//! One record per `now.yaml` commit, plus the replay base.
+//! One record per `save.yaml` commit, plus the replay base.
 //!
-//! A tick record stays `log/tick-NNNN.jsonl`. A presence commit writes
-//! `log/presence-NNNN.json`. A migrate commit writes `log/migrate-NNNN.json`.
+//! A tick record stays `journal/tick-NNNN.jsonl`. A presence commit writes
+//! `journal/presence-NNNN.json`. A migrate commit writes `journal/migrate-NNNN.json`.
 //! `NNNN` is `state_rev` after the commit for presence and migrate, and the
 //! tick index for a tick file, which is the name the rest of the tree already
-//! reads. Each record carries `now_hash`, the Blake2s of the `now.yaml` bytes
-//! that commit wrote. `log/base.yaml` is replay input, not the live save.
+//! reads. Each record carries `now_hash`, the Blake2s of the `save.yaml` bytes
+//! that commit wrote. `journal/base.yaml` is replay input, not the live save.
 
 use std::fs;
 use std::path::Path;
@@ -28,7 +28,7 @@ pub fn migrate_file(state_rev: u64) -> String {
 }
 
 pub fn base_rel() -> &'static str {
-    "log/base.yaml"
+    "journal/base.yaml"
 }
 
 /// Insert `now_hash` before the closing brace of one JSON object.
@@ -152,7 +152,7 @@ pub struct JournalFault {
 }
 
 pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
-    let dir = pack.join("state/log");
+    let dir = pack.join("state/journal");
     if !dir.is_dir() {
         return Ok(Vec::new());
     }

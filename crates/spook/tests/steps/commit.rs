@@ -25,7 +25,7 @@ fn a_canon_file_gains_a_byte(world: &mut World) {
     let mut body = fs::read_to_string(&mira).unwrap();
     body.push('\n');
     fs::write(&mira, body).unwrap();
-    world.now_bytes = fs::read(pack.join("state/now.yaml")).unwrap();
+    world.now_bytes = fs::read(pack.join("state/save.yaml")).unwrap();
 }
 
 #[when(expr = "the operator runs tick")]
@@ -55,7 +55,7 @@ fn the_operator_migrates_twice(world: &mut World) {
 #[when(expr = "the save is hand edited and the canon gains a byte")]
 fn the_save_is_hand_edited(world: &mut World) {
     let pack = table::pack(world);
-    let now_path = pack.join("state/now.yaml");
+    let now_path = pack.join("state/save.yaml");
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
     text = text.replace(
@@ -79,7 +79,7 @@ fn the_save_is_hand_edited(world: &mut World) {
 #[when(expr = "the save is replaced with a broken document")]
 fn the_save_is_replaced(world: &mut World) {
     let pack = table::pack(world);
-    fs::write(pack.join("state/now.yaml"), "schema: no\n").unwrap();
+    fs::write(pack.join("state/save.yaml"), "schema: no\n").unwrap();
     world.before = table::files(pack);
 }
 
@@ -108,11 +108,11 @@ fn stderr_is_empty(world: &mut World) {
 fn the_tick_writes_nothing(world: &mut World) {
     let pack = table::pack(world);
     assert_eq!(
-        fs::read(pack.join("state/now.yaml")).unwrap(),
+        fs::read(pack.join("state/save.yaml")).unwrap(),
         world.now_bytes
     );
     assert!(!pack.join("state/.txn").exists());
-    assert!(!pack.join("state/log").exists());
+    assert!(!pack.join("state/journal").exists());
 }
 
 #[then(expr = "state_rev is 2")]
@@ -136,7 +136,7 @@ fn state_rev_is_2(world: &mut World) {
 #[then(expr = "the studio log records two migrates")]
 fn the_studio_log_records_two_migrates(world: &mut World) {
     let rev = docks_rev();
-    let studio = fs::read_to_string(table::pack(world).join("state/log/studio.jsonl")).unwrap();
+    let studio = fs::read_to_string(table::pack(world).join("state/journal/studio.jsonl")).unwrap();
     assert_eq!(
         studio,
         format!(
@@ -159,12 +159,14 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
-    assert!(!pack.join("state/log/tick-0001.jsonl").exists());
-    let studio = fs::read_to_string(pack.join("state/log/studio.jsonl")).unwrap();
+    assert!(!pack.join("state/journal/tick-0001.jsonl").exists());
+    let studio = fs::read_to_string(pack.join("state/journal/studio.jsonl")).unwrap();
     assert_eq!(studio, evidence(&docks_rev(), &rev, 0, 1));
 }
 
 #[then(expr = "the studio log is absent")]
 fn the_studio_log_is_absent(world: &mut World) {
-    assert!(!table::pack(world).join("state/log/studio.jsonl").exists());
+    assert!(!table::pack(world)
+        .join("state/journal/studio.jsonl")
+        .exists());
 }

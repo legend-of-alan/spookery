@@ -39,8 +39,8 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../templates/starter/rules/tick.yaml"),
     ),
     (
-        "state/now.yaml",
-        include_str!("../templates/starter/state/now.yaml"),
+        "state/save.yaml",
+        include_str!("../templates/starter/state/save.yaml"),
     ),
 ];
 
@@ -167,12 +167,12 @@ fn starter_dirs() -> Vec<std::path::PathBuf> {
 fn restamp(dir: &Path) -> Result<(), StarterError> {
     let rev = spookery_kernel::canon::pack_rev(dir)
         .map_err(|_| StarterError::Message("the starter canon could not be hashed".to_string()))?;
-    let path = dir.join("state/now.yaml");
+    let path = dir.join("state/save.yaml");
     let text = fs::read_to_string(&path).map_err(StarterError::Io)?;
-    let mut now = spookery_kernel::codec::load_now(&text)
+    let mut now = spookery_kernel::store::codec::load_now(&text)
         .map_err(|_| StarterError::Message("the starter save could not be read".to_string()))?;
     now.pack_rev = rev;
-    let emitted = spookery_kernel::codec::emit_now(&now)
+    let emitted = spookery_kernel::store::codec::emit_now(&now)
         .map_err(|_| StarterError::Message("the starter save could not be written".to_string()))?;
     fs::write(path, emitted).map_err(StarterError::Io)?;
     Ok(())

@@ -217,12 +217,12 @@ mod tests {
 
     use crate::apply::apply_effect;
     use crate::canon::pack_rev;
-    use crate::codec::{emit_now, load_now};
     use crate::effect::{Effect, EffectClass};
     use crate::error::Reason;
     use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
     use crate::meter::MeterWrite;
     use crate::model::Clock;
+    use crate::store::codec::{emit_now, load_now};
     use crate::world::World;
 
     use super::expand_outcome;
@@ -352,7 +352,7 @@ mod tests {
 "#,
         );
         fs::write(&moves, text).unwrap();
-        let now_path = root.join("state/now.yaml");
+        let now_path = root.join("state/save.yaml");
         let mut now = load_now(&fs::read_to_string(&now_path).unwrap()).unwrap();
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         now.clocks.insert(

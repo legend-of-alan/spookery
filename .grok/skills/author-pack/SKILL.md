@@ -23,11 +23,11 @@ A pack is a directory. Copy it before you edit. `spook run` writes `state/` (the
 - `rules/checks.yaml` has `schema: checks` and a `checks` list.
 - `rules/meters.yaml` has `schema: meters` and a `meters` list.
 - `rules/tick.yaml` has `schema: tick`, the counters below, and `pause.named_plot_clocks`.
-- `state/now.yaml` has `schema: now`. It is the save. `spook check` reads it when it is present. `spook run` and `spook migrate` require it. Leave the keys already in that file in place. This skill does not list them.
+- `state/save.yaml` has `schema: now`. It is the save. `spook check` reads it when it is present. `spook run` and `spook migrate` require it. Leave the keys already in that file in place. This skill does not list them.
 
 Each file's format tag is the unversioned word after `schema:`: `pack`, `place`, `cast`, `meters`, `moves`, `checks`, `tick`, or `now`. A version suffix is rejected. Unknown fields are rejected. Ids are not empty.
 
-`pack_rev` in `state/now.yaml` is the hash of `world/`, `cast/`, and `rules/` only. `spook migrate` is what stores a new hash.
+`pack_rev` in `state/save.yaml` is the hash of `world/`, `cast/`, and `rules/` only. `spook migrate` is what stores a new hash.
 
 A fact has `id`, `text`, and `hidden` (`true` or `false`).
 
@@ -93,15 +93,15 @@ A habit has:
 4. Repeat until stdout is `[]` and the process exits 0. Any problem exits 1. In `--json` mode nothing else is written to stdout. A missing argument is clap's usage text on stderr and exit 2.
 5. Run `spook status <pack>`. It prints the host digest.
 
-Leave `state/now.yaml` for `spook migrate` to rewrite. The codes are `SCHEMA`, `NOT_IN_SPEC`, `PACK_REV_MISMATCH`, `HAND_EDIT`, and `HIDDEN_FACT_IN_BODY`.
+Leave `state/save.yaml` for `spook migrate` to rewrite. The codes are `SCHEMA`, `NOT_IN_SPEC`, `PACK_REV_MISMATCH`, `HAND_EDIT`, and `HIDDEN_FACT_IN_BODY`.
 
 - `SCHEMA` is a shape error. Change the file the diagnostic names.
 - `NOT_IN_SPEC` means a required file is missing. Add that file.
 - `PACK_REV_MISMATCH` means `pack_rev` does not match `world/`, `cast/`, and `rules/`.
-- `HAND_EDIT` means `state/now.yaml` is not the canonical save text.
+- `HAND_EDIT` means `state/save.yaml` is not the canonical save text.
 - `HIDDEN_FACT_IN_BODY` means a hidden fact's text is in a Markdown body. Remove that sentence, or set `hidden: false`.
 
-`spook migrate <pack>` stores the current hash, keeps a hand edit of the save, and rewrites `state/now.yaml`. Run it when the code is `PACK_REV_MISMATCH` or `HAND_EDIT`, then check again. Migrate does not fix a shape error.
+`spook migrate <pack>` stores the current hash, keeps a hand edit of the save, and rewrites `state/save.yaml`. Run it when the code is `PACK_REV_MISMATCH` or `HAND_EDIT`, then check again. Migrate does not fix a shape error.
 
 ## Worked example
 
@@ -115,4 +115,4 @@ On a copy of `packs/oneshot-docks`, append this row to `rules/moves.yaml`:
     effects: []
 ```
 
-`spook check --json <pack>` reports `PACK_REV_MISMATCH` on `state/now.yaml`, because the rules changed and the save still has the old hash. Run `spook migrate <pack>`, then `spook check --json <pack>`. stdout is `[]`. Then run `spook status <pack>`.
+`spook check --json <pack>` reports `PACK_REV_MISMATCH` on `state/save.yaml`, because the rules changed and the save still has the old hash. Run `spook migrate <pack>`, then `spook check --json <pack>`. stdout is `[]`. Then run `spook status <pack>`.

@@ -3,10 +3,10 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::codec::load_now;
 use crate::diagnostic::reason_of;
-use crate::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::error::Reason;
+use crate::store::codec::load_now;
+use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
 
 pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
@@ -15,14 +15,14 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
         if !txn.join("COMPLETE").is_file() {
             fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
         } else {
-            let prev_now = txn.join("prev/now.yaml");
+            let prev_now = txn.join("prev/save.yaml");
             if !prev_now.is_file() {
                 return Err(Reason::Schema);
             }
             let prev = load_now(&fs::read_to_string(&prev_now).map_err(|_| Reason::Schema)?)
                 .map_err(reason_of)?;
             let live = load_now(
-                &fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?,
+                &fs::read_to_string(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)?,
             )
             .map_err(reason_of)?;
             if live.state_rev == prev.state_rev.saturating_add(1)
@@ -38,9 +38,10 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
         }
     }
 
-    let now = load_now(&fs::read_to_string(state.join("now.yaml")).map_err(|_| Reason::NotInSpec)?)
-        .map_err(reason_of)?;
-    let log_dir = state.join("log");
+    let now =
+        load_now(&fs::read_to_string(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)?)
+            .map_err(reason_of)?;
+    let log_dir = state.join("journal");
     let mut live_ticks = BTreeSet::new();
     if log_dir.is_dir() {
         let mut entries = fs::read_dir(&log_dir)
@@ -240,17 +241,17 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::codec::{emit_now, load_now};
     use crate::commit::commit_presence;
     use crate::journal::hash_now;
     use crate::model::Presence;
+    use crate::store::codec::{emit_now, load_now};
     use crate::World;
 
     #[test]
     fn a_presence_commit_journals_the_new_presence_and_the_base() {
         let root = temp_docks("presence-journal");
         let mut world = World::open(&root).unwrap();
-        let pre = fs::read(root.join("state/now.yaml")).unwrap();
+        let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let changed = commit_presence(
             &mut world,
             Presence {
@@ -260,9 +261,9 @@ mod tests {
         )
         .unwrap();
         assert!(changed);
-        assert_eq!(fs::read(root.join("state/log/base.yaml")).unwrap(), pre);
-        let now = fs::read(root.join("state/now.yaml")).unwrap();
-        let record = fs::read_to_string(root.join("state/log/presence-0001.json")).unwrap();
+        assert_eq!(fs::read(root.join("state/journal/base.yaml")).unwrap(), pre);
+        let now = fs::read(root.join("state/save.yaml")).unwrap();
+        let record = fs::read_to_string(root.join("state/journal/presence-0001.json")).unwrap();
         assert!(record.contains(&hash_now(&now)), "{record}");
         assert!(record.contains("\"state_rev_after\":1"), "{record}");
         assert_eq!(world.now().state_rev, 1);
@@ -273,7 +274,7 @@ mod tests {
     fn a_crash_between_the_journal_rename_and_now_rolls_back() {
         let root = temp_docks("crash-window");
         let mut world = World::open(&root).unwrap();
-        let pre = fs::read(root.join("state/now.yaml")).unwrap();
+        let pre = fs::read(root.join("state/save.yaml")).unwrap();
         commit_presence(
             &mut world,
             Presence {
@@ -283,16 +284,16 @@ mod tests {
         )
         .unwrap();
         drop(world);
-        fs::write(root.join("state/now.yaml"), &pre).unwrap();
+        fs::write(root.join("state/save.yaml"), &pre).unwrap();
         let txn = root.join("state/.txn");
         fs::create_dir_all(txn.join("prev")).unwrap();
-        fs::write(txn.join("prev/now.yaml"), &pre).unwrap();
+        fs::write(txn.join("prev/save.yaml"), &pre).unwrap();
         fs::write(txn.join("COMPLETE"), b"").unwrap();
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
-        assert_eq!(fs::read(root.join("state/now.yaml")).unwrap(), pre);
-        assert!(!root.join("state/log/presence-0001.json").exists());
-        assert_eq!(fs::read(root.join("state/log/base.yaml")).unwrap(), pre);
+        assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
+        assert!(!root.join("state/journal/presence-0001.json").exists());
+        assert_eq!(fs::read(root.join("state/journal/base.yaml")).unwrap(), pre);
         assert!(!txn.exists());
         let _ = fs::remove_dir_all(&root);
     }
@@ -300,12 +301,12 @@ mod tests {
     #[test]
     fn a_base_ahead_of_the_save_is_dropped_with_its_record() {
         let root = temp_docks("base-ahead");
-        let now_path = root.join("state/now.yaml");
+        let now_path = root.join("state/save.yaml");
         let pre = fs::read(&now_path).unwrap();
         let mut ahead = load_now(std::str::from_utf8(&pre).unwrap()).unwrap();
         ahead.state_rev = 1;
         let ahead_bytes = emit_now(&ahead).unwrap().into_bytes();
-        let log = root.join("state/log");
+        let log = root.join("state/journal");
         fs::create_dir_all(&log).unwrap();
         fs::write(log.join("base.yaml"), &ahead_bytes).unwrap();
         fs::write(
@@ -315,7 +316,7 @@ mod tests {
         .unwrap();
         let txn = root.join("state/.txn");
         fs::create_dir_all(txn.join("prev")).unwrap();
-        fs::write(txn.join("prev/now.yaml"), &pre).unwrap();
+        fs::write(txn.join("prev/save.yaml"), &pre).unwrap();
         fs::write(txn.join("COMPLETE"), b"").unwrap();
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);

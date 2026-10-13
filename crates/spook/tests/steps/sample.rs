@@ -135,7 +135,7 @@ fn copy_sample(label: &str) -> PathBuf {
 }
 
 fn set_lark_might(pack: &Path, base: i64) {
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
     let from = "      might:\n        base: 40\n";
     assert_eq!(
@@ -148,7 +148,7 @@ fn set_lark_might(pack: &Path, base: i64) {
 }
 
 fn take_tonic(pack: &Path) {
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
     let from = "    inventory:\n      - tonic\n";
     assert_eq!(text.matches(from).count(), 1, "tonic was not listed once");

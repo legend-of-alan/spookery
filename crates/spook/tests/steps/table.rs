@@ -58,27 +58,27 @@ pub fn pack(world: &World) -> &Path {
         .unwrap_or_else(|| panic!("no docks table"))
 }
 
-/// Read `state/now.yaml` without opening the shard. `World::open` runs
+/// Read `state/save.yaml` without opening the shard. `World::open` runs
 /// recovery, which writes, and races a live server mid-commit. The server
-/// replaces now.yaml by atomic rename, so a read is always whole. Windows
+/// replaces save.yaml by atomic rename, so a read is always whole. Windows
 /// can briefly refuse to open a file mid-rename, so a failed read retries.
 pub fn now_of(pack: &Path) -> Now {
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     let start = Instant::now();
     let text = loop {
         match fs::read_to_string(&path) {
             Ok(text) => break text,
             Err(err) if start.elapsed() > Duration::from_secs(2) => {
-                panic!("read now.yaml: {err}")
+                panic!("read save.yaml: {err}")
             }
             Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
     };
-    spookery_kernel::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err:?}"))
+    spookery_kernel::store::codec::load_now(&text).unwrap_or_else(|err| panic!("load now: {err:?}"))
 }
 
 pub fn tick_names(pack: &Path) -> Vec<String> {
-    let dir = pack.join("state/log");
+    let dir = pack.join("state/journal");
     let mut names = Vec::new();
     if dir.is_dir() {
         for entry in fs::read_dir(&dir).unwrap_or_else(|err| panic!("read log: {err}")) {
@@ -101,8 +101,8 @@ pub fn listen_with(pack: &Path, bind: &str, port: u16, env: &[(&str, &str)]) {
     let pack_arg = support::pack_arg(pack);
     let mut server = support::spawn_env(&["run", &pack_arg, "--addr", bind], env);
     wait_listen(port, &mut server);
-    let opened_now =
-        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let opened_now = fs::read(pack.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     crate::set_live(Live {
         port,
         player_write: None,
@@ -124,8 +124,8 @@ pub fn seat_player(pack: &Path) {
 pub fn seat_actor(pack: &Path, actor_id: &str) {
     let port = crate::with_live(|live| live.port);
     let (write, text) = connect_actor(port, actor_id);
-    let seated_now =
-        fs::read(pack.join("state/now.yaml")).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
+    let seated_now = fs::read(pack.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     let seated_rev = now_of(pack).state_rev;
     crate::with_live(|live| {
         if live.player_write.is_none() {
@@ -206,10 +206,10 @@ pub fn wait_gm(needle: &str) -> String {
 
 pub fn wait_world_time(pack: &Path, expected: u64) {
     let start = Instant::now();
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     loop {
-        let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now.yaml: {err}"));
-        if let Ok(now) = spookery_kernel::codec::load_now(&text) {
+        let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save.yaml: {err}"));
+        if let Ok(now) = spookery_kernel::store::codec::load_now(&text) {
             if now.world_time == expected {
                 return;
             }
@@ -286,10 +286,10 @@ pub fn close_actor(actor_id: &str) {
 
 pub fn wait_humans(pack: &Path, expected: u32) {
     let start = Instant::now();
-    let path = pack.join("state/now.yaml");
+    let path = pack.join("state/save.yaml");
     loop {
         if let Ok(text) = fs::read_to_string(&path) {
-            if let Ok(now) = spookery_kernel::codec::load_now(&text) {
+            if let Ok(now) = spookery_kernel::store::codec::load_now(&text) {
                 if now.presence.humans == expected {
                     return;
                 }
