@@ -51,7 +51,7 @@ pub(super) async fn serve(
     read_half: tokio::net::tcp::OwnedReadHalf,
     write_half: tokio::net::tcp::OwnedWriteHalf,
     out_tx: super::limits::OutTx,
-    out_rx: tokio::sync::mpsc::Receiver<super::limits::Outbound>,
+    out_rx: super::limits::OutRx,
     cancel_rx: tokio::sync::watch::Receiver<bool>,
     tx: Sender<Msg>,
     conn: u64,
@@ -284,7 +284,10 @@ impl GmHost {
                         let send = emit_event(&peer, &frame);
                         tokio::pin!(send);
                         let stop = tokio::select! {
-                            _ = &mut send => false,
+                            _ = &mut send => {
+                                out_rx.release_written(&frame);
+                                false
+                            }
                             changed = cancel_rx.changed() => {
                                 changed.is_err() || *cancel_rx.borrow()
                             }

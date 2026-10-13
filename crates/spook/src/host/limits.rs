@@ -8,7 +8,7 @@
 
 use std::io;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -28,7 +28,15 @@ pub(super) const RATE_PER_SEC: u64 = 5;
 pub(super) const BURST: u64 = 10;
 
 /// Frames queued toward one socket before that socket is dropped.
-pub(super) const OUTBOUND_FRAMES: usize = 256;
+pub const OUTBOUND_FRAMES: usize = 256;
+
+/// Bytes queued toward one socket before that socket is dropped.
+/// A 256-frame queue of large says fills the tape before a large TCP
+/// window fills, so the byte cap is what drops a stopped reader there.
+pub const OUTBOUND_BYTES: usize = 64 * 1024;
+
+/// Send buffer the player socket asks for. The OS may grant more.
+pub const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
 
 const HELLO_LIMIT: Duration = Duration::from_secs(10);
 
@@ -41,28 +49,98 @@ pub(super) enum Outbound {
     Last(Vec<u8>, tokio::sync::oneshot::Sender<()>),
 }
 
-pub(super) type OutTx = tokio::sync::mpsc::Sender<Outbound>;
 pub(super) type CancelTx = tokio::sync::watch::Sender<bool>;
 
-pub(super) fn outbound() -> (
-    OutTx,
-    tokio::sync::mpsc::Receiver<Outbound>,
-    CancelTx,
-    tokio::sync::watch::Receiver<bool>,
-) {
+/// Sender half of one socket's outbound queue.
+#[derive(Clone)]
+pub(super) struct OutTx {
+    tx: tokio::sync::mpsc::Sender<Outbound>,
+    queued: Arc<AtomicUsize>,
+}
+
+/// Receiver half. A frame's bytes stay counted until it is written.
+pub(super) struct OutRx {
+    rx: tokio::sync::mpsc::Receiver<Outbound>,
+    queued: Arc<AtomicUsize>,
+}
+
+impl OutTx {
+    fn enqueue(&self, item: Outbound) -> bool {
+        let len = outbound_len(&item);
+        if !self.reserve(len) {
+            return false;
+        }
+        if self.tx.try_send(item).is_err() {
+            release(&self.queued, len);
+            return false;
+        }
+        true
+    }
+
+    /// An empty queue takes one frame of any size, so a welcome still fits.
+    fn reserve(&self, len: usize) -> bool {
+        self.queued
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |cur| {
+                if cur == 0 {
+                    return Some(len);
+                }
+                let next = cur.saturating_add(len);
+                if next > OUTBOUND_BYTES {
+                    None
+                } else {
+                    Some(next)
+                }
+            })
+            .is_ok()
+    }
+}
+
+impl OutRx {
+    pub(super) async fn recv(&mut self) -> Option<Outbound> {
+        self.rx.recv().await
+    }
+
+    /// Releases a frame's bytes once the writer has sent it.
+    pub(super) fn release_written(&self, frame: &[u8]) {
+        release(&self.queued, frame.len());
+    }
+}
+
+fn outbound_len(item: &Outbound) -> usize {
+    match item {
+        Outbound::Frame(bytes) | Outbound::Last(bytes, _) => bytes.len(),
+    }
+}
+
+fn release(queued: &AtomicUsize, len: usize) {
+    let _ = queued.fetch_update(Ordering::AcqRel, Ordering::Acquire, |cur| {
+        Some(cur.saturating_sub(len))
+    });
+}
+
+pub(super) fn outbound() -> (OutTx, OutRx, CancelTx, tokio::sync::watch::Receiver<bool>) {
     let (tx, rx) = tokio::sync::mpsc::channel(OUTBOUND_FRAMES);
     let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
-    (tx, rx, cancel_tx, cancel_rx)
+    let queued = Arc::new(AtomicUsize::new(0));
+    (
+        OutTx {
+            tx,
+            queued: Arc::clone(&queued),
+        },
+        OutRx { rx, queued },
+        cancel_tx,
+        cancel_rx,
+    )
 }
 
 pub(super) fn try_frame(tx: &OutTx, bytes: Vec<u8>) -> bool {
-    tx.try_send(Outbound::Frame(bytes)).is_ok()
+    tx.enqueue(Outbound::Frame(bytes))
 }
 
 /// Queues the closing frame and waits until the writer has flushed it.
 pub(super) async fn send_last(tx: &OutTx, frame: Vec<u8>) {
     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-    if tx.try_send(Outbound::Last(frame, ack_tx)).is_ok() {
+    if tx.enqueue(Outbound::Last(frame, ack_tx)) {
         let _ = ack_rx.await;
     }
 }
@@ -424,7 +502,7 @@ pub(super) async fn wait_turn(
 
 pub(super) async fn write_frames<W>(
     mut write: W,
-    mut frames: tokio::sync::mpsc::Receiver<Outbound>,
+    mut frames: OutRx,
     mut cancel: tokio::sync::watch::Receiver<bool>,
 ) where
     W: AsyncWrite + Unpin,
@@ -454,6 +532,7 @@ pub(super) async fn write_frames<W>(
                         if result.is_err() {
                             break;
                         }
+                        frames.release_written(&bytes);
                     }
                     changed = cancel.changed() => {
                         if changed.is_err() || *cancel.borrow() {
@@ -566,8 +645,7 @@ mod tests {
         let writer = tokio::spawn(write_frames(server, rx, cancel_rx));
         assert!(try_frame(&tx, b"one\n".to_vec()));
         let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
-        tx.try_send(Outbound::Last(b"bye\n".to_vec(), ack_tx))
-            .expect("queue");
+        assert!(tx.enqueue(Outbound::Last(b"bye\n".to_vec(), ack_tx)));
         ack_rx.await.expect("ack");
         drop(tx);
         writer.await.expect("writer");
@@ -644,5 +722,35 @@ mod tests {
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
         assert!(flag.load(Ordering::Acquire));
         assert!(reader.inner.position() <= 1025);
+    }
+
+    #[test]
+    fn the_frame_cap_rejects_before_the_byte_cap() {
+        let (tx, _rx, _cancel_tx, _cancel_rx) = outbound();
+        for _ in 0..OUTBOUND_FRAMES {
+            assert!(try_frame(&tx, b"n".to_vec()));
+        }
+        assert!(!try_frame(&tx, b"n".to_vec()));
+    }
+
+    #[tokio::test]
+    async fn the_byte_cap_rejects_until_a_frame_is_written() {
+        let (tx, mut rx, _cancel_tx, _cancel_rx) = outbound();
+        assert!(try_frame(&tx, vec![b'a'; OUTBOUND_BYTES + 8]));
+        assert!(
+            !try_frame(&tx, b"n".to_vec()),
+            "a second frame was queued past the byte cap"
+        );
+        let taken = rx.recv().await.expect("frame");
+        let Outbound::Frame(bytes) = taken else {
+            panic!("expected a frame");
+        };
+        assert_eq!(bytes.len(), OUTBOUND_BYTES + 8);
+        assert!(
+            !try_frame(&tx, b"n".to_vec()),
+            "a taken frame was released before it was written"
+        );
+        rx.release_written(&bytes);
+        assert!(try_frame(&tx, b"n".to_vec()));
     }
 }
