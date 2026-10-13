@@ -46,11 +46,11 @@ pub fn order_intents(
     now: &Now,
     mut intents: Vec<Intent>,
     tick_index: u64,
-    shard_id: &str,
+    world_id: &str,
 ) -> Vec<Intent> {
     intents.sort_by(|left, right| {
-        priority_key(now, left, tick_index, shard_id)
-            .cmp(&priority_key(now, right, tick_index, shard_id))
+        priority_key(now, left, tick_index, world_id)
+            .cmp(&priority_key(now, right, tick_index, world_id))
     });
     intents
 }
@@ -59,7 +59,7 @@ fn priority_key(
     now: &Now,
     intent: &Intent,
     tick_index: u64,
-    shard_id: &str,
+    world_id: &str,
 ) -> (u8, u8, u8, [u8; 32]) {
     let kind = match intent.actor_kind {
         ActorKind::Player => 0,
@@ -72,7 +72,7 @@ fn priority_key(
     let shuffle = if intent.actor_kind == ActorKind::Player {
         [0u8; 32]
     } else {
-        shuffle_key(shard_id, tick_index, &intent.actor_id)
+        shuffle_key(world_id, tick_index, &intent.actor_id)
     };
     (kind, pc_clock, claimed, shuffle)
 }

@@ -264,7 +264,7 @@ pub(super) enum Msg {
     StdinEof,
 }
 
-/// The shard thread answers a fault once the seat is released.
+/// The world thread answers a fault once the seat is released.
 /// An async caller awaits `Task`. A caller that must wait from a plain `Drop`
 /// uses `Thread` and blocks on it with a timeout.
 pub(super) enum Ack {
@@ -583,7 +583,7 @@ fn on_mechanical(
     Ok(PlayerReply::Done)
 }
 
-/// A full or closed queue drops that seat. The shard thread does not wait.
+/// A full or closed queue drops that seat. The world thread does not wait.
 fn send_player(
     world: &mut World,
     seats: &mut Seats,

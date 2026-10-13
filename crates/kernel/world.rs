@@ -28,7 +28,7 @@ pub struct World {
 /// One round played and not yet written. A tick is only the time unit.
 pub struct UncommittedRound {
     pub now: Now,
-    pub tick_jsonl: String,
+    pub round_jsonl: String,
     pub tick_index: u64,
     pub memories: Vec<MemoryLine>,
     pub paths: Vec<String>,
@@ -100,7 +100,7 @@ impl World {
             let tick_index = draft.now().tick_index;
             self.pending = Some(UncommittedRound {
                 now: draft.now().clone(),
-                tick_jsonl: record,
+                round_jsonl: record,
                 tick_index,
                 memories: draft.memories().to_vec(),
                 paths: draft.changes(),

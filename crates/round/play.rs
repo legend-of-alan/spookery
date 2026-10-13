@@ -46,13 +46,13 @@ pub fn commit_moves_at(
     spookery_kernel::commit::commit_pending(world)
 }
 
-pub fn play_pack(path: &Path) -> Result<(), Reason> {
+pub fn open_pack(path: &Path) -> Result<(), Reason> {
     let mut world = World::open(path)?;
     let wall = world.now().last_tick_at.clone();
     play(&mut world, RoundCause::Manual, &wall)
 }
 
-pub fn play_catchup(world: &mut World, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
+pub fn catch_up(world: &mut World, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
     let humans = spookery_kernel::world::session_status(world.now()).humans;
     let ticks = plan_catchup(humans, world.budget(), downtime_hours)?;
     for _ in 0..ticks {

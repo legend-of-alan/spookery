@@ -13,7 +13,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.tick_index = draft.now().tick_index + 1;
     round.world_id = draft.now().shard_id.clone();
     draft.pin_loop(round.tick_index, world_before, &round.now_wall);
-    let minutes = pick_advance(round.humans, draft.budget());
+    let minutes = minutes_for(round.humans, draft.budget());
     let world_after = world_before.saturating_add(minutes);
     let day_changed = world_before / 1440 != world_after / 1440;
     let hour_changed = world_before / 60 != world_after / 60;
@@ -28,7 +28,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     apply_pause_policy(draft)
 }
 
-pub fn pick_advance(humans: u32, budget: &Budget) -> u64 {
+pub fn minutes_for(humans: u32, budget: &Budget) -> u64 {
     if humans > 0 {
         budget.live_minutes_per_tick
     } else {

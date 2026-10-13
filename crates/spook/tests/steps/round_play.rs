@@ -75,7 +75,7 @@ fn crates_round_has_exactly_one_call_site_of_roll(world: &mut World) {
 #[when(expr = "a docks round is played")]
 fn a_docks_round_is_played(world: &mut World) {
     let pack = copy_named("oneshot-docks", "stage-order");
-    spookery_round::play_pack(&pack).unwrap_or_else(|err| panic!("play: {err}"));
+    spookery_round::open_pack(&pack).unwrap_or_else(|err| panic!("play: {err}"));
     world.pack = Some(pack);
 }
 
@@ -185,7 +185,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{stdout}{stderr}");
     let report =
-        spookery_round::replay_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
+        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
     assert_eq!(
         report.now_yaml,
         fs::read(pack.join("state/now.yaml")).unwrap()

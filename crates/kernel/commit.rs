@@ -91,7 +91,7 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
     let now_bytes = emit_now(&now)?.into_bytes();
-    let stamped = journal::stamp_now_hash(&pending.tick_jsonl, &now_bytes)?;
+    let stamped = journal::stamp_now_hash(&pending.round_jsonl, &now_bytes)?;
     let tick_index = pending.tick_index;
     let log_path = format!("state/log/tick-{tick_index:04}.jsonl");
     let state = world.root.join("state");

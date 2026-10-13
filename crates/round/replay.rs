@@ -109,7 +109,7 @@ pub struct ReplayStep {
 
 /// Replay the journal. `from` is a directory whose `state/now.yaml` replaces the base.
 /// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
-pub fn replay_journal(
+pub fn from_journal(
     pack: &Path,
     from: Option<&Path>,
     until: Option<u64>,
@@ -251,7 +251,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Ver
             }
         }
     }
-    let report = match replay_journal(pack, from, Some(until)) {
+    let report = match from_journal(pack, from, Some(until)) {
         Ok(report) => report,
         Err(ReplayError::Diverged(diverged)) => return Err(with_diff(diverged, &live)),
         Err(err) => return Err(VerifyError::Replay(err)),
@@ -617,15 +617,15 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use super::{replay_journal, replay_states, verify_pack};
-    use crate::play_pack;
+    use super::{from_journal, replay_states, verify_pack};
+    use crate::open_pack;
 
     #[test]
     fn two_replays_in_one_process_do_not_collide() {
         let pack = temp_docks("replay-collide");
-        play_pack(&pack).unwrap();
-        let left = replay_journal(&pack, None, None).unwrap();
-        let right = replay_journal(&pack, None, None).unwrap();
+        open_pack(&pack).unwrap();
+        let left = from_journal(&pack, None, None).unwrap();
+        let right = from_journal(&pack, None, None).unwrap();
         assert_eq!(left.now_yaml, right.now_yaml);
         assert_eq!(left.applied, 1);
         assert_eq!(right.applied, 1);
@@ -636,14 +636,14 @@ mod tests {
     #[test]
     fn one_replay_returns_each_applied_save() {
         let pack = temp_docks("replay-states");
-        play_pack(&pack).unwrap();
-        play_pack(&pack).unwrap();
+        open_pack(&pack).unwrap();
+        open_pack(&pack).unwrap();
         let steps = replay_states(&pack).unwrap();
         assert_eq!(steps.len(), 2, "{steps:?}");
         assert_eq!(steps[0].state_rev, 1);
         assert_eq!(steps[1].state_rev, 2);
         assert_ne!(steps[0].now_yaml, steps[1].now_yaml);
-        let final_report = replay_journal(&pack, None, None).unwrap();
+        let final_report = from_journal(&pack, None, None).unwrap();
         assert_eq!(steps[1].now_yaml, final_report.now_yaml);
         assert_eq!(final_report.applied, 2);
         let _ = fs::remove_dir_all(&pack);
@@ -652,7 +652,7 @@ mod tests {
     #[test]
     fn verify_names_a_tick_whose_hash_no_longer_matches() {
         let pack = temp_docks("replay-tamper");
-        play_pack(&pack).unwrap();
+        open_pack(&pack).unwrap();
         let path = pack.join("state/log/tick-0001.jsonl");
         let text = fs::read_to_string(&path).unwrap();
         let swapped = text.replacen("\"now_hash\":\"blake2s:", "\"now_hash\":\"blake2s:00", 1);

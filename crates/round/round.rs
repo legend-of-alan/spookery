@@ -9,7 +9,7 @@ use spookery_kernel::world::{session_status, Draft, World};
 use crate::log::Rejected;
 use crate::play::{RecordedRound, RoundCause};
 
-/// One tick of world time, passed through the stages in order.
+/// One pass of the rules over one tick.
 pub struct Round {
     pub tick_index: u64,
     pub world_time_before: u64,

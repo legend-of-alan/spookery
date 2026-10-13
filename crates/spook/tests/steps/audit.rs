@@ -67,7 +67,7 @@ fn the_door_note_text_contains_the_ledger_sentence(world: &mut World) {
 #[when(expr = "the evening tick runs on this copy")]
 fn the_evening_tick_runs_on_this_copy(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    spookery_round::play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    spookery_round::open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = table::now_of(&pack);
     assert!(
         now.messages

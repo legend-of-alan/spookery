@@ -13,8 +13,8 @@ mod round_seed;
 mod run_triggers;
 
 pub use advance::plan_catchup;
-pub use play::{commit_moves, commit_moves_at, play, play_catchup, play_pack, RoundCause};
+pub use play::{catch_up, commit_moves, commit_moves_at, open_pack, play, RoundCause};
 pub use replay::{
-    replay_journal, replay_states, verify_pack, ReplayError, ReplayReport, ReplayStep, VerifyError,
+    from_journal, replay_states, verify_pack, ReplayError, ReplayReport, ReplayStep, VerifyError,
     VerifyReport,
 };

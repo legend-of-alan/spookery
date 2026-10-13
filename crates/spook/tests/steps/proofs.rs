@@ -20,7 +20,7 @@ use spookery_kernel::model::{
 };
 use spookery_kernel::rules::RollReport;
 use spookery_kernel::world::Draft;
-use spookery_round::{play, play_catchup, play_pack, replay_journal};
+use spookery_round::{catch_up, from_journal, open_pack, play};
 
 use crate::World;
 
@@ -149,7 +149,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 fn no_self_win() {
     let pack = temp_pack("self-win");
     for tick in 1..=12 {
-        play_pack(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+        open_pack(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 12, "twelve empty-table ticks commit");
@@ -181,7 +181,7 @@ fn save_now(pack: &Path, now: &Now) {
 
 fn evening_note() {
     let pack = temp_pack("evening");
-    play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
@@ -206,7 +206,7 @@ fn morning_restock() {
         now_of(&pack).actors.get("mira").unwrap().place(),
         "mira_rooms"
     );
-    play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 8);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
@@ -223,7 +223,7 @@ fn off_hours_hold() {
         now.messages.push(door_message());
         save_now(&pack, &now);
     }
-    play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
@@ -243,7 +243,7 @@ fn player_in_the_shop() {
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         save_now(&pack, &now);
     }
-    play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
@@ -433,7 +433,7 @@ Rowan.
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
     let wall = shard.now().last_tick_at.clone();
-    play_catchup(&mut shard, &wall, 72).unwrap_or_else(|err| panic!("catch-up: {err}"));
+    catch_up(&mut shard, &wall, 72).unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = open(&pack);
     let now = saved.now();
     assert_eq!(now.state_rev, 12, "twelve commits");
@@ -464,7 +464,7 @@ fn busy_skip() {
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         save_now(&pack, &now);
     }
-    play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(
@@ -657,11 +657,11 @@ fn replay_byte_compares_now() {
     );
     copy_dir(&start, &played);
     for tick in 1..=20 {
-        play_pack(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+        open_pack(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let golden = fs::read(played.join("state/now.yaml")).unwrap();
     let source_log = fs::read(played.join("state/log/tick-0020.jsonl")).unwrap();
-    let report = replay_journal(&played, Some(&start), None).unwrap();
+    let report = from_journal(&played, Some(&start), None).unwrap();
     assert_eq!(report.now_yaml, golden);
     assert_eq!(fs::read(played.join("state/now.yaml")).unwrap(), golden);
     assert_eq!(
@@ -788,7 +788,7 @@ tick:
         messages: Vec::new(),
     };
     write_text(&pack.join("state/now.yaml"), &emit_now(&now).unwrap());
-    play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 1);
     assert_eq!(
@@ -886,7 +886,7 @@ fn strip_bodies_and_hidden_string_lint() {
         .contains(LEDGER));
     stamp_pack_rev(&pack);
     open(&pack);
-    play_pack(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
     let perceive = format!(
         "{:?}",
         spookery_kernel::perceive(&open(&pack), "npc:aldric").unwrap()
@@ -1409,7 +1409,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     assert_eq!(shard.now().tick_index, 1);
     drop(shard);
     assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
-    play_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
+    open_pack(&pack).unwrap_or_else(|err| panic!("tick: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 2);
     assert_eq!(now.world_time, 1090);
@@ -1696,12 +1696,7 @@ fn the_scheduler_does_not_spawn_a_tick() {
         !schedule.contains("tokio"),
         "idle_clock.rs reaches for the Tokio runtime"
     );
-    for needle in [
-        "::play(",
-        "play_catchup(",
-        "idle_tick_if_due",
-        "idle_clock::",
-    ] {
+    for needle in ["::play(", "catch_up(", "idle_tick_if_due", "idle_clock::"] {
         assert!(
             !listen.contains(needle),
             "the async listener calls {needle} instead of posting a wake to the shard thread"

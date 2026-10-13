@@ -67,7 +67,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     Ok(())
 }
 
-/// Perceive and eligibility see effects already applied in this tick.
+/// Perceive and eligibility see effects already applied in this round.
 fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<&'static str>, Reason> {
     let view = perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
     if view.known_facts.is_empty() {
