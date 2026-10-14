@@ -8,9 +8,7 @@ use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::{lock_pack, lock_world};
 use crate::model::{MemoryLine, Now, Presence};
-use crate::store::codec::{
-    canonicalize, emit_memory_line, emit_migrate_line, emit_save, load_save,
-};
+use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
 use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
 use crate::world::{Draft, World};
 
@@ -151,20 +149,11 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
         target: state
             .join("journal")
             .join(journal::migrate_file(now.state_rev)),
-        bytes: record.into_bytes(),
+        bytes: record.as_bytes().to_vec(),
         is_now: false,
     });
     write_commit(&state, &planned)?;
-    let line = format!(
-        "{}\n",
-        emit_migrate_line(
-            &pack_rev_before,
-            &now.pack_rev,
-            state_rev_before,
-            now.state_rev
-        )
-    );
-    append_studio(&state, &line)?;
+    append_studio(&state, &record)?;
     Ok(())
 }
 

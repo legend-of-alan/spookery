@@ -12,10 +12,15 @@ fn docks_rev() -> String {
     spookery_kernel::canon::pack_rev(&root).unwrap()
 }
 
-fn evidence(before_pack: &str, after_pack: &str, before_rev: u64, after_rev: u64) -> String {
-    format!(
-        "{{\"op\":\"migrate\",\"pack_rev_before\":\"{before_pack}\",\"pack_rev_after\":\"{after_pack}\",\"state_rev_before\":{before_rev},\"state_rev_after\":{after_rev}}}\n"
-    )
+fn studio_matches(pack: &std::path::Path, revs: &[u64]) {
+    let studio = fs::read_to_string(pack.join("state/journal/studio.jsonl")).unwrap();
+    let mut expected = String::new();
+    for rev in revs {
+        let record =
+            fs::read_to_string(pack.join(format!("state/journal/migrate-{rev:04}.json"))).unwrap();
+        expected.push_str(&record);
+    }
+    assert_eq!(studio, expected);
 }
 
 #[when(expr = "a canon file gains a byte")]
@@ -135,16 +140,7 @@ fn state_rev_is_2(world: &mut World) {
 
 #[then(expr = "the studio log records two migrates")]
 fn the_studio_log_records_two_migrates(world: &mut World) {
-    let rev = docks_rev();
-    let studio = fs::read_to_string(table::pack(world).join("state/journal/studio.jsonl")).unwrap();
-    assert_eq!(
-        studio,
-        format!(
-            "{}{}",
-            evidence(&rev, &rev, 0, 1),
-            evidence(&rev, &rev, 1, 2)
-        )
-    );
+    studio_matches(table::pack(world), &[1, 2]);
 }
 
 #[then(expr = "migrate keeps the hand edit")]
@@ -160,8 +156,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert!(!pack.join("state/journal/tick-0001.jsonl").exists());
-    let studio = fs::read_to_string(pack.join("state/journal/studio.jsonl")).unwrap();
-    assert_eq!(studio, evidence(&docks_rev(), &rev, 0, 1));
+    studio_matches(pack, &[1]);
 }
 
 #[then(expr = "the studio log is absent")]

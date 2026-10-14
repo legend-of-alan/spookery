@@ -4,6 +4,7 @@ use crate::error::Reason;
 
 pub mod codec;
 pub(crate) mod durable;
+pub(crate) mod records;
 pub(crate) mod recover;
 pub mod talk_log;
 

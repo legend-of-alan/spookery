@@ -11,10 +11,8 @@ use spookery_kernel::journal::{
     self, hash_now, JournalEntry, MigrateRecord, PresenceRecord, TickRecord,
 };
 use spookery_kernel::model::Now;
-use spookery_kernel::store::codec::{
-    canonicalize, emit_effect, emit_save, load_save, parse_recorded_line, parse_tick_effects,
-    require_recorded_rules,
-};
+use spookery_kernel::store::codec::{canonicalize, emit_effect, emit_save, load_save};
+use spookery_kernel::store::require_rules_rev;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
@@ -369,17 +367,8 @@ fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
 }
 
 fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), ReplayError> {
-    let line = parse_recorded_line(&record.text).map_err(|_| {
-        ReplayError::Diverged(diverge(
-            record.state_rev_after,
-            "tick",
-            Some(record.tick_index),
-            "the tick record could not be parsed".to_string(),
-            None,
-        ))
-    })?;
-    require_recorded_rules(&record.text).map_err(ReplayError::Reason)?;
-    if world.now().tick_index + 1 != line.tick_index {
+    require_rules_rev(record.rules_rev).map_err(ReplayError::Reason)?;
+    if world.now().tick_index + 1 != record.tick_index {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
@@ -388,8 +377,8 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             None,
         )));
     }
-    let seed = round_seed(&world.now().shard_id, line.tick_index);
-    if line.seed != seed {
+    let seed = round_seed(&world.now().shard_id, record.tick_index);
+    if record.seed != seed {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
@@ -398,13 +387,13 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             None,
         )));
     }
-    let wall = line.last_tick_at.clone();
+    let wall = record.last_tick_at.clone();
     let replayed = play_recorded(
         world,
         &wall,
         RecordedRound {
-            intents: line.intents,
-            presence_humans: line.presence_humans,
+            intents: record.intents.clone(),
+            presence_humans: record.presence_humans,
         },
     )
     .map_err(|code| {
@@ -416,16 +405,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             read_now(world),
         ))
     })?;
-    let (_, logged) = parse_tick_effects(&record.text).map_err(|_| {
-        ReplayError::Diverged(diverge(
-            record.state_rev_after,
-            "tick",
-            Some(record.tick_index),
-            "the tick effects could not be parsed".to_string(),
-            read_now(world),
-        ))
-    })?;
-    let effect_diff = first_effect_difference(&logged, &replayed);
+    let effect_diff = first_effect_difference(&record.effects, &replayed);
     if world.now().state_rev != record.state_rev_after {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,

@@ -1,6 +1,9 @@
+use serde::{Deserialize, Serialize};
+
 use crate::error::Reason;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
 pub enum ViewerId {
     Player(String),
     Npc(String),
@@ -43,7 +46,22 @@ impl ViewerId {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+impl From<ViewerId> for String {
+    fn from(id: ViewerId) -> Self {
+        id.token()
+    }
+}
+
+impl TryFrom<String> for ViewerId {
+    type Error = Reason;
+
+    fn try_from(raw: String) -> Result<Self, Self::Error> {
+        ViewerId::parse(&raw)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ActorKind {
     Npc,
     Player,
@@ -60,7 +78,8 @@ impl ActorKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Source {
     Kernel,
     Player,
@@ -91,15 +110,19 @@ pub struct IntentArgs {
     pub message_to: Option<Vec<String>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Intent {
     pub id: String,
     pub tick_index: u64,
     pub actor_id: String,
     pub actor_kind: ActorKind,
     pub source: Source,
+    #[serde(rename = "move")]
     pub move_name: String,
+    #[serde(with = "crate::store::records::target_as")]
     pub target: Target,
+    #[serde(with = "crate::store::records::args_as")]
     pub args: IntentArgs,
     pub rationale_code: String,
 }

@@ -1,12 +1,9 @@
-use serde::Serialize;
-use serde_json::{Map, Value};
+use serde::{Deserialize, Serialize};
 use serde_saphyr::SerializerOptions;
 
 use crate::diagnostic::{coded, locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};
-use crate::effect::{Effect, EffectClass, EffectPayload};
+use crate::effect::Effect;
 use crate::error::Reason;
-use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use crate::meter::MeterWrite;
 use crate::model::{sort_unique, MemoryLine, Now};
 
 #[allow(non_snake_case)]
@@ -79,12 +76,13 @@ fn rules_rev_diagnostic(text: &str) -> Diagnostic {
 
 /// Refuse a tick record whose `rules_rev` is missing or not the engine's.
 pub fn require_recorded_rules(text: &str) -> Result<(), Reason> {
-    let value: Value = serde_json::from_str(text.trim_end()).map_err(|_| Reason::Schema)?;
-    let rev = value
-        .as_object()
-        .and_then(|object| object.get("rules_rev"))
-        .and_then(Value::as_u64);
-    match rev {
+    #[derive(Deserialize)]
+    struct RulesProbe {
+        #[serde(default)]
+        rules_rev: Option<u64>,
+    }
+    let probe: RulesProbe = serde_json::from_str(text.trim_end()).map_err(|_| Reason::Schema)?;
+    match probe.rules_rev {
         Some(rev) => super::require_rules_rev(rev),
         None => Err(Reason::RulesRev),
     }
@@ -181,155 +179,24 @@ pub fn emit_effect(effect: &Effect) -> String {
     serde_json::to_string(effect).expect("effect json")
 }
 
-/// Payload fields only, in `EffectClass` declaration order. Absent options are omitted.
+/// Payload fields only, in declaration order. Absent options are omitted.
 pub fn emit_effect_payload(effect: &Effect) -> String {
-    serde_json::to_string(&EffectPayload(&effect.class)).expect("effect payload")
+    super::records::payload_json(&effect.class)
 }
 
 pub fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
-    let value: Value = serde_json::from_str(text.trim()).map_err(|_| Reason::Schema)?;
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    let tick_index = object
-        .get("tick_index")
-        .and_then(Value::as_u64)
-        .ok_or(Reason::Schema)?;
-    let effects = object
-        .get("effects")
-        .and_then(Value::as_array)
-        .ok_or(Reason::Schema)?;
-    let mut parsed = Vec::with_capacity(effects.len());
-    for effect in effects {
-        parsed.push(parse_effect(effect)?);
+    #[derive(Deserialize)]
+    struct EffectsOnly {
+        tick_index: u64,
+        effects: Vec<Effect>,
     }
-    Ok((tick_index, parsed))
+    let parsed: EffectsOnly = serde_json::from_str(text.trim())
+        .map_err(|err| super::records::effect_reason(&err.to_string()))?;
+    Ok((parsed.tick_index, parsed.effects))
 }
 
-pub fn parse_effect(value: &Value) -> Result<Effect, Reason> {
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    let name = object
-        .get("class")
-        .and_then(Value::as_str)
-        .ok_or(Reason::Schema)?;
-    let token = object
-        .get("as")
-        .and_then(Value::as_str)
-        .ok_or(Reason::Schema)?;
-    let as_viewer = ViewerId::parse(token).map_err(|_| Reason::Schema)?;
-    let intent_id = req_str(object, "intent_id")?;
-    let class = parse_class(name, object)?;
-    Ok(Effect {
-        class,
-        as_viewer,
-        intent_id,
-    })
-}
-
-/// Header and intents of one tick JSONL object. Trailing whitespace is ignored.
-/// Other fields, including `effects`, stay on `parse_tick_effects`.
-pub struct RecordedLine {
-    pub tick_index: u64,
-    pub state_rev_after: u64,
-    pub presence_humans: u32,
-    pub seed: String,
-    pub last_tick_at: String,
-    pub intents: Vec<Intent>,
-}
-
-pub fn parse_recorded_line(text: &str) -> Result<RecordedLine, Reason> {
-    let value: Value = serde_json::from_str(text.trim_end()).map_err(|_| Reason::Schema)?;
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    let intents = object
-        .get("intents")
-        .and_then(Value::as_array)
-        .ok_or(Reason::Schema)?;
-    let mut parsed = Vec::new();
-    for intent in intents {
-        parsed.push(parse_intent(intent)?);
-    }
-    Ok(RecordedLine {
-        tick_index: req_u64(object, "tick_index")?,
-        state_rev_after: req_u64(object, "state_rev_after")?,
-        presence_humans: req_u64(object, "presence_humans")?
-            .try_into()
-            .map_err(|_| Reason::Schema)?,
-        seed: req_str(object, "seed")?,
-        last_tick_at: req_str(object, "last_tick_at")?,
-        intents: parsed,
-    })
-}
-
-fn parse_intent(value: &Value) -> Result<Intent, Reason> {
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    Ok(Intent {
-        id: req_str(object, "id")?,
-        tick_index: req_u64(object, "tick_index")?,
-        actor_id: req_str(object, "actor_id")?,
-        actor_kind: actor_kind(&req_str(object, "actor_kind")?)?,
-        source: intent_source(&req_str(object, "source")?)?,
-        move_name: req_str(object, "move")?,
-        target: parse_target(object.get("target").ok_or(Reason::Schema)?)?,
-        args: parse_args(object.get("args").ok_or(Reason::Schema)?)?,
-        rationale_code: req_str(object, "rationale_code")?,
-    })
-}
-
-fn parse_target(value: &Value) -> Result<Target, Reason> {
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    if object.is_empty() {
-        return Ok(Target::Empty);
-    }
-    if object.len() != 1 {
-        return Err(Reason::Schema);
-    }
-    if let Some(place) = object.get("place").and_then(Value::as_str) {
-        return Ok(Target::Place(place.to_string()));
-    }
-    if let Some(actor) = object.get("actor").and_then(Value::as_str) {
-        return Ok(Target::Actor(actor.to_string()));
-    }
-    if let Some(clock) = object.get("clock").and_then(Value::as_str) {
-        return Ok(Target::Clock(clock.to_string()));
-    }
-    Err(Reason::Schema)
-}
-
-fn parse_args(value: &Value) -> Result<IntentArgs, Reason> {
-    let object = value.as_object().ok_or(Reason::Schema)?;
-    let mut args = IntentArgs::default();
-    for (key, item) in object {
-        match key.as_str() {
-            "to" => args.message_to = Some(req_string_array(item)?),
-            _ => return Err(Reason::Schema),
-        }
-    }
-    Ok(args)
-}
-
-fn req_string_array(value: &Value) -> Result<Vec<String>, Reason> {
-    let values = value.as_array().ok_or(Reason::Schema)?;
-    let mut ids = Vec::new();
-    for item in values {
-        ids.push(item.as_str().ok_or(Reason::Schema)?.to_string());
-    }
-    Ok(ids)
-}
-
-fn actor_kind(text: &str) -> Result<ActorKind, Reason> {
-    match text {
-        "npc" => Ok(ActorKind::Npc),
-        "player" => Ok(ActorKind::Player),
-        "system" => Ok(ActorKind::System),
-        _ => Err(Reason::Schema),
-    }
-}
-
-fn intent_source(text: &str) -> Result<Source, Reason> {
-    match text {
-        "kernel" => Ok(Source::Kernel),
-        "player" => Ok(Source::Player),
-        "system" => Ok(Source::System),
-        _ => Err(Reason::Schema),
-    }
+pub fn parse_effect(text: &str) -> Result<Effect, Reason> {
+    serde_json::from_str(text).map_err(|err| super::records::effect_reason(&err.to_string()))
 }
 
 pub fn emit_memory_line(line: &MemoryLine) -> String {
@@ -344,22 +211,6 @@ pub fn emit_memory_line(line: &MemoryLine) -> String {
     serde_json::to_string(&json).expect("memory line")
 }
 
-pub fn emit_migrate_line(
-    pack_rev_before: &str,
-    pack_rev_after: &str,
-    state_rev_before: u64,
-    state_rev_after: u64,
-) -> String {
-    let json = MigrateLineJson {
-        op: "migrate",
-        pack_rev_before,
-        pack_rev_after,
-        state_rev_before,
-        state_rev_after,
-    };
-    serde_json::to_string(&json).expect("migrate line")
-}
-
 #[derive(Serialize)]
 struct MemoryLineJson<'a> {
     tick_index: u64,
@@ -368,194 +219,6 @@ struct MemoryLineJson<'a> {
     fact_ids: &'a [String],
     tags: &'a [String],
     text: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct MigrateLineJson<'a> {
-    op: &'a str,
-    pack_rev_before: &'a str,
-    pack_rev_after: &'a str,
-    state_rev_before: u64,
-    state_rev_after: u64,
-}
-
-fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, Reason> {
-    match name {
-        "clock" => {
-            allow(object, &["clock_id", "delta"])?;
-            Ok(EffectClass::Clock {
-                clock_id: req_str(object, "clock_id")?,
-                delta: req_i64(object, "delta")?,
-            })
-        }
-        "meter" => {
-            allow(object, &["actor_id", "key", "write", "delta"])?;
-            let actor_id = req_str(object, "actor_id")?;
-            let key = req_str(object, "key")?;
-            let write = match object.get("write").and_then(Value::as_str) {
-                Some("base") => MeterWrite::Base(req_i64(object, "delta")?),
-                Some("offset") => MeterWrite::Offset(req_i64(object, "delta")?),
-                Some("snap") => {
-                    if object.contains_key("delta") {
-                        return Err(Reason::Schema);
-                    }
-                    MeterWrite::Snap
-                }
-                _ => return Err(Reason::Schema),
-            };
-            Ok(EffectClass::Meter {
-                actor_id,
-                key,
-                write,
-            })
-        }
-        "item" => {
-            allow(object, &["actor_id", "place", "id", "delta", "max"])?;
-            let actor_id = opt_str(object, "actor_id")?;
-            let place = opt_str(object, "place")?;
-            if actor_id.is_some() == place.is_some() {
-                return Err(Reason::Schema);
-            }
-            Ok(EffectClass::Item {
-                actor_id,
-                place,
-                id: req_str(object, "id")?,
-                delta: req_i64(object, "delta")?,
-                max: opt_i64(object, "max")?,
-            })
-        }
-        "wield" => {
-            allow(object, &["actor_id", "id"])?;
-            Ok(EffectClass::Wield {
-                actor_id: req_str(object, "actor_id")?,
-                id: req_str(object, "id")?,
-            })
-        }
-        "unwield" => {
-            allow(object, &["actor_id"])?;
-            Ok(EffectClass::Unwield {
-                actor_id: req_str(object, "actor_id")?,
-            })
-        }
-        "narrate" => {
-            allow(object, &["to", "fact_ids", "text"])?;
-            Ok(EffectClass::Narrate {
-                to: req_strs(object, "to")?,
-                fact_ids: req_strs(object, "fact_ids")?,
-                text: req_str(object, "text")?,
-            })
-        }
-        "location" => {
-            allow(object, &["actor_id", "from", "to", "arrived_at"])?;
-            Ok(EffectClass::Location {
-                actor_id: req_str(object, "actor_id")?,
-                from: req_str(object, "from")?,
-                to: req_str(object, "to")?,
-                arrived_at: opt_u64(object, "arrived_at")?,
-            })
-        }
-        "memory" => {
-            allow(object, &["actor_id", "fact_ids", "tags", "text"])?;
-            Ok(EffectClass::Memory {
-                actor_id: req_str(object, "actor_id")?,
-                fact_ids: req_strs(object, "fact_ids")?,
-                tags: req_strs(object, "tags")?,
-                text: opt_str(object, "text")?,
-            })
-        }
-        "flag" => {
-            allow(object, &["actor_id", "key", "value"])?;
-            Ok(EffectClass::Flag {
-                actor_id: req_str(object, "actor_id")?,
-                key: req_str(object, "key")?,
-                value: req_bool(object, "value")?,
-            })
-        }
-        "message" => {
-            allow(object, &["message_id", "to", "place", "fact_ids", "text"])?;
-            Ok(EffectClass::Message {
-                message_id: req_str(object, "message_id")?,
-                to: req_strs(object, "to")?,
-                place: opt_str(object, "place")?,
-                fact_ids: req_strs(object, "fact_ids")?,
-                text: req_str(object, "text")?,
-            })
-        }
-        _ => Err(Reason::IllegalClass),
-    }
-}
-
-fn allow(object: &Map<String, Value>, fields: &[&str]) -> Result<(), Reason> {
-    for key in object.keys() {
-        if key == "class" || key == "as" || key == "intent_id" || fields.contains(&key.as_str()) {
-            continue;
-        }
-        return Err(Reason::Schema);
-    }
-    Ok(())
-}
-
-fn req_str(object: &Map<String, Value>, key: &str) -> Result<String, Reason> {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or(Reason::Schema)
-}
-
-fn opt_str(object: &Map<String, Value>, key: &str) -> Result<Option<String>, Reason> {
-    match object.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(text)) => Ok(Some(text.clone())),
-        Some(_) => Err(Reason::Schema),
-    }
-}
-
-fn req_u64(object: &Map<String, Value>, key: &str) -> Result<u64, Reason> {
-    object
-        .get(key)
-        .and_then(Value::as_u64)
-        .ok_or(Reason::Schema)
-}
-
-fn opt_i64(object: &Map<String, Value>, key: &str) -> Result<Option<i64>, Reason> {
-    match object.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(value) => value.as_i64().map(Some).ok_or(Reason::Schema),
-    }
-}
-
-fn opt_u64(object: &Map<String, Value>, key: &str) -> Result<Option<u64>, Reason> {
-    match object.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(value) => value.as_u64().map(Some).ok_or(Reason::Schema),
-    }
-}
-
-fn req_i64(object: &Map<String, Value>, key: &str) -> Result<i64, Reason> {
-    object
-        .get(key)
-        .and_then(Value::as_i64)
-        .ok_or(Reason::Schema)
-}
-
-fn req_bool(object: &Map<String, Value>, key: &str) -> Result<bool, Reason> {
-    object
-        .get(key)
-        .and_then(Value::as_bool)
-        .ok_or(Reason::Schema)
-}
-
-fn req_strs(object: &Map<String, Value>, key: &str) -> Result<Vec<String>, Reason> {
-    let array = object
-        .get(key)
-        .and_then(Value::as_array)
-        .ok_or(Reason::Schema)?;
-    let mut out = Vec::with_capacity(array.len());
-    for item in array {
-        out.push(item.as_str().ok_or(Reason::Schema)?.to_string());
-    }
-    Ok(out)
 }
 
 #[cfg(test)]
@@ -795,10 +458,7 @@ messages: []
             let encoded = super::emit_effect(&effect);
             assert_eq!(encoded, expected);
             assert!(!encoded.contains("\"payload\""), "{encoded}");
-            assert_eq!(
-                super::parse_effect(&serde_json::from_str(&encoded).unwrap()).unwrap(),
-                effect
-            );
+            assert_eq!(super::parse_effect(&encoded).unwrap(), effect);
         }
         for name in ["need", "resource", "inventory"] {
             let value = serde_json::json!({
@@ -807,7 +467,7 @@ messages: []
                 "intent_id": "i",
             });
             assert_eq!(
-                super::parse_effect(&value).unwrap_err(),
+                super::parse_effect(&value.to_string()).unwrap_err(),
                 Reason::IllegalClass
             );
         }
@@ -821,7 +481,7 @@ messages: []
             "delta": 1,
         });
         assert_eq!(
-            super::parse_effect(&snap_delta).unwrap_err(),
+            super::parse_effect(&snap_delta.to_string()).unwrap_err(),
             Reason::Schema
         );
         let missing_delta = serde_json::json!({
@@ -833,7 +493,7 @@ messages: []
             "write": "base",
         });
         assert_eq!(
-            super::parse_effect(&missing_delta).unwrap_err(),
+            super::parse_effect(&missing_delta.to_string()).unwrap_err(),
             Reason::Schema
         );
     }
@@ -852,9 +512,9 @@ messages: []
     #[test]
     fn nested_payload_and_external_tag_are_not_effects() {
         let nested = r#"{"class":"clock","as":"npc:mira","intent_id":"i","payload":{"clock_id":"c","delta":1}}"#;
-        assert!(super::parse_effect(&serde_json::from_str(nested).unwrap()).is_err());
+        assert!(super::parse_effect(nested).is_err());
         let external = r#"{"Clock":{"clock_id":"c","delta":1},"as":"npc:mira","intent_id":"i"}"#;
-        assert!(super::parse_effect(&serde_json::from_str(external).unwrap()).is_err());
+        assert!(super::parse_effect(external).is_err());
     }
 
     #[test]
@@ -871,10 +531,10 @@ messages: []
             memory,
             r#"{"tick_index":3,"actor_id":"mi\"ra","intent_id":"abc","fact_ids":["f"],"tags":[],"text":null}"#
         );
-        let migrate = super::emit_migrate_line("blake2s:aa", "blake2s:bb", 0, 1);
+        let migrate = crate::journal::emit_migrate("blake2s:aa", "blake2s:bb", 0, 1, "blake2s:cc");
         assert_eq!(
             migrate,
-            r#"{"op":"migrate","pack_rev_before":"blake2s:aa","pack_rev_after":"blake2s:bb","state_rev_before":0,"state_rev_after":1}"#
+            "{\"kind\":\"migrate\",\"pack_rev_before\":\"blake2s:aa\",\"pack_rev_after\":\"blake2s:bb\",\"state_rev_before\":0,\"state_rev_after\":1,\"now_hash\":\"blake2s:cc\"}\n"
         );
     }
 }

@@ -3,6 +3,8 @@ use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use serde::Deserialize;
+
 use crate::diagnostic::reason_of;
 use crate::error::Reason;
 use crate::store::codec::load_save;
@@ -57,11 +59,8 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
                 continue;
             }
             let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-            match (
-                json_u64(&text, "tick_index"),
-                json_u64(&text, "state_rev_after"),
-            ) {
-                (Some(tick_index), Some(rev)) if rev <= now.state_rev => {
+            match tick_head(&text) {
+                Some((tick_index, rev)) if rev <= now.state_rev => {
                     live_ticks.insert(tick_index);
                 }
                 _ => {
@@ -92,7 +91,7 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
                 if line.is_empty() {
                     continue;
                 }
-                match json_u64(line, "tick_index") {
+                match memory_tick(line) {
                     Some(tick_index) if live_ticks.contains(&tick_index) => {
                         kept.push_str(line);
                         kept.push('\n');
@@ -163,7 +162,7 @@ fn drop_ahead(log_dir: &Path, prefix: &str, suffix: &str, live_rev: u64) -> Resu
         }
         let path = entry.path();
         let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-        match json_u64(&text, "state_rev_after") {
+        match rev_after(&text) {
             Some(rev) if rev <= live_rev => {}
             _ => {
                 fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
@@ -186,16 +185,34 @@ fn drop_future_base(log_dir: &Path, live_rev: u64) -> Result<(), Reason> {
     Ok(())
 }
 
-fn json_u64(text: &str, key: &str) -> Option<u64> {
-    let pattern = format!("\"{key}\":");
-    let index = text.find(&pattern)?;
-    let rest = text[index + pattern.len()..].trim_start();
-    let digits: String = rest.chars().take_while(|ch| ch.is_ascii_digit()).collect();
-    if digits.is_empty() {
-        None
-    } else {
-        digits.parse().ok()
+fn tick_head(text: &str) -> Option<(u64, u64)> {
+    #[derive(Deserialize)]
+    struct TickHead {
+        tick_index: u64,
+        state_rev_after: u64,
     }
+    let head: TickHead = serde_json::from_str(text.trim_end()).ok()?;
+    Some((head.tick_index, head.state_rev_after))
+}
+
+fn rev_after(text: &str) -> Option<u64> {
+    #[derive(Deserialize)]
+    struct RevHead {
+        state_rev_after: u64,
+    }
+    serde_json::from_str::<RevHead>(text.trim_end())
+        .ok()
+        .map(|head| head.state_rev_after)
+}
+
+fn memory_tick(line: &str) -> Option<u64> {
+    #[derive(serde::Deserialize)]
+    struct MemoryTick {
+        tick_index: u64,
+    }
+    serde_json::from_str::<MemoryTick>(line)
+        .ok()
+        .map(|row| row.tick_index)
 }
 
 fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), Reason> {

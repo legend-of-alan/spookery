@@ -188,3 +188,120 @@ fn stderr_names_that_record(world: &mut World) {
 fn stderr_names_the_first_differing_save_line(world: &mut World) {
     assert!(world.stderr.contains("save.yaml:"), "{}", world.stderr);
 }
+
+#[when(expr = "the tick record's tick_index is a string")]
+fn the_tick_index_is_a_string(world: &mut World) {
+    let path = tick_path(world);
+    let mut tick = tick_value(&path);
+    tick["tick_index"] = Value::String("no".to_string());
+    write_tick(&path, &tick);
+}
+
+#[when(expr = "the tick record gains an unknown key")]
+fn the_tick_record_gains_an_unknown_key(world: &mut World) {
+    let path = tick_path(world);
+    let mut tick = tick_value(&path);
+    tick["surplus"] = Value::Bool(true);
+    write_tick(&path, &tick);
+    world.scratch = "surplus".to_string();
+}
+
+#[when(expr = "one effect class is need")]
+fn one_effect_class_is_need(world: &mut World) {
+    let path = tick_path(world);
+    let mut tick = tick_value(&path);
+    let effects = tick["effects"]
+        .as_array_mut()
+        .unwrap_or_else(|| panic!("no effects"));
+    if effects.is_empty() {
+        effects.push(serde_json::json!({
+            "class": "need",
+            "as": "npc:mira",
+            "intent_id": "i",
+        }));
+    } else {
+        effects[0]["class"] = Value::String("need".to_string());
+    }
+    let rev = tick["state_rev_after"].as_u64().unwrap_or(1);
+    let index = tick["tick_index"].as_u64().unwrap_or(1);
+    world.scratch = format!("state_rev {rev} tick {index}");
+    write_tick(&path, &tick);
+}
+
+#[then(expr = "stderr names the tick record and the field tick_index")]
+fn stderr_names_the_tick_field(world: &mut World) {
+    assert!(world.stderr.contains("tick-0001.jsonl"), "{}", world.stderr);
+    assert!(world.stderr.contains("tick_index"), "{}", world.stderr);
+    assert!(world.stderr.contains("invalid type"), "{}", world.stderr);
+    assert!(
+        world.stderr.contains("line") && world.stderr.contains("column"),
+        "{}",
+        world.stderr
+    );
+    assert!(!world.stderr.contains("is missing"), "{}", world.stderr);
+}
+
+#[then(expr = "stderr names that unknown key")]
+fn stderr_names_that_unknown_key(world: &mut World) {
+    assert!(
+        world.stderr.contains(&world.scratch),
+        "missing {}\n{}",
+        world.scratch,
+        world.stderr
+    );
+    assert!(world.stderr.contains("tick-0001.jsonl"), "{}", world.stderr);
+}
+
+#[then(expr = "stderr names that record and says ILLEGAL_CLASS")]
+fn stderr_names_the_record_and_illegal_class(world: &mut World) {
+    assert!(world.stderr.contains("ILLEGAL_CLASS"), "{}", world.stderr);
+    assert!(
+        world.stderr.contains("tick-0001.jsonl") || world.stderr.contains(world.scratch.trim()),
+        "{}",
+        world.stderr
+    );
+}
+
+#[then(expr = "each journal record parses back to the bytes that were written")]
+fn each_journal_record_parses_back(world: &mut World) {
+    let pack = table::pack(world);
+    let entries = spookery_kernel::journal::load_journal(pack).unwrap_or_else(|fault| {
+        panic!("{}: {}", fault.file, fault.detail);
+    });
+    let ticks = entries
+        .iter()
+        .filter(|entry| entry.tick_index().is_some())
+        .count();
+    assert!(ticks >= 3, "ticks {ticks}");
+    for entry in &entries {
+        let bytes = fs::read_to_string(pack.join(journal_file(entry))).unwrap();
+        let again = spookery_kernel::journal::emit_entry(entry);
+        assert_eq!(again, bytes, "{bytes}");
+    }
+}
+
+fn tick_path(world: &World) -> std::path::PathBuf {
+    table::pack(world).join("state/journal/tick-0001.jsonl")
+}
+
+fn tick_value(path: &std::path::Path) -> Value {
+    let text = fs::read_to_string(path).unwrap_or_else(|err| panic!("read tick: {err}"));
+    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("json: {err}"))
+}
+
+fn write_tick(path: &std::path::Path, tick: &Value) {
+    let mut text = serde_json::to_string(tick).unwrap();
+    text.push('\n');
+    fs::write(path, text).unwrap();
+}
+
+fn journal_file(entry: &spookery_kernel::journal::JournalEntry) -> String {
+    match entry.tick_index() {
+        Some(index) => format!("state/journal/tick-{index:04}.jsonl"),
+        None => format!(
+            "state/journal/{}-{:04}.json",
+            entry.kind_name(),
+            entry.state_rev_after()
+        ),
+    }
+}

@@ -10,10 +10,13 @@
 use std::fs;
 use std::path::Path;
 
-use serde_json::Value;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
+use crate::effect::Effect;
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
+use crate::intent::Intent;
 
 pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
@@ -49,10 +52,14 @@ pub fn emit_presence(
     actors_present: &[String],
     now_hash: &str,
 ) -> String {
-    let actors = serde_json::to_string(actors_present).expect("actor ids");
-    format!(
-        "{{\"kind\":\"presence\",\"state_rev_before\":{state_rev_before},\"state_rev_after\":{state_rev_after},\"humans\":{humans},\"actors_present\":{actors},\"now_hash\":\"{now_hash}\"}}\n"
-    )
+    emit_entry(&JournalEntry::Presence(PresenceRecord {
+        kind: PresenceKind::Presence,
+        state_rev_before,
+        state_rev_after,
+        humans,
+        actors_present: actors_present.to_vec(),
+        now_hash: now_hash.to_string(),
+    }))
 }
 
 pub fn emit_migrate(
@@ -62,16 +69,32 @@ pub fn emit_migrate(
     state_rev_after: u64,
     now_hash: &str,
 ) -> String {
-    format!(
-        "{{\"kind\":\"migrate\",\"pack_rev_before\":{before},\"pack_rev_after\":{after},\"state_rev_before\":{state_rev_before},\"state_rev_after\":{state_rev_after},\"now_hash\":{hash}}}\n",
-        before = serde_json::to_string(pack_rev_before).expect("pack_rev"),
-        after = serde_json::to_string(pack_rev_after).expect("pack_rev"),
-        hash = serde_json::to_string(now_hash).expect("now_hash"),
-    )
+    emit_entry(&JournalEntry::Migrate(MigrateRecord {
+        kind: MigrateKind::Migrate,
+        pack_rev_before: pack_rev_before.to_string(),
+        pack_rev_after: pack_rev_after.to_string(),
+        state_rev_before,
+        state_rev_after,
+        now_hash: now_hash.to_string(),
+    }))
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum PresenceKind {
+    Presence,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MigrateKind {
+    Migrate,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PresenceRecord {
+    kind: PresenceKind,
     pub state_rev_before: u64,
     pub state_rev_after: u64,
     pub humans: u32,
@@ -79,8 +102,10 @@ pub struct PresenceRecord {
     pub now_hash: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MigrateRecord {
+    kind: MigrateKind,
     pub pack_rev_before: String,
     pub pack_rev_after: String,
     pub state_rev_before: u64,
@@ -88,13 +113,47 @@ pub struct MigrateRecord {
     pub now_hash: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One refusal stored on a tick line.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Rejected {
+    pub id: String,
+    pub reason: String,
+}
+
+/// One timed arrival stored on a tick line.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Arrival {
+    pub actor_id: String,
+    pub arrived_at: u64,
+    pub to: String,
+    pub via: String,
+}
+
+/// One tick line. `now_hash` is stamped after the save bytes exist, so a line
+/// that has not been stamped omits it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TickRecord {
+    pub tick_index: u64,
+    #[serde(default)]
+    pub rules_rev: u64,
     pub state_rev_before: u64,
     pub state_rev_after: u64,
-    pub tick_index: u64,
+    pub world_time_before: u64,
+    pub world_time_after: u64,
+    pub presence_humans: u32,
+    pub seed: String,
+    pub last_tick_at: String,
+    pub intents: Vec<Intent>,
+    pub rejected: Vec<Rejected>,
+    pub effects: Vec<Effect>,
+    pub arrivals: Vec<Arrival>,
+    pub fast_forward: bool,
+    pub tool_trace: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub now_hash: String,
-    pub text: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -188,90 +247,33 @@ pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
     Ok(entries)
 }
 
-fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {
-    let object = object(name, text)?;
-    Ok(TickRecord {
-        state_rev_before: req_u64(name, &object, "state_rev_before")?,
-        state_rev_after: req_u64(name, &object, "state_rev_after")?,
-        tick_index: req_u64(name, &object, "tick_index")?,
-        now_hash: req_str(name, &object, "now_hash")?,
-        text: text.to_string(),
-    })
+pub fn emit_entry(entry: &JournalEntry) -> String {
+    let json = match entry {
+        JournalEntry::Tick(record) => serde_json::to_string(record).expect("tick"),
+        JournalEntry::Presence(record) => serde_json::to_string(record).expect("presence"),
+        JournalEntry::Migrate(record) => serde_json::to_string(record).expect("migrate"),
+    };
+    format!("{json}\n")
+}
+
+pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {
+    read_json(name, text)
 }
 
 pub fn parse_presence(name: &str, text: &str) -> Result<PresenceRecord, JournalFault> {
-    let object = object(name, text)?;
-    if object.get("kind").and_then(Value::as_str) != Some("presence") {
-        return Err(fault_name(name, "kind is not presence"));
-    }
-    let actors = object
-        .get("actors_present")
-        .and_then(Value::as_array)
-        .ok_or_else(|| fault_name(name, "actors_present is missing"))?;
-    let mut actors_present = Vec::new();
-    for actor in actors {
-        actors_present.push(
-            actor
-                .as_str()
-                .ok_or_else(|| fault_name(name, "actors_present holds a non-string"))?
-                .to_string(),
-        );
-    }
-    Ok(PresenceRecord {
-        state_rev_before: req_u64(name, &object, "state_rev_before")?,
-        state_rev_after: req_u64(name, &object, "state_rev_after")?,
-        humans: req_u64(name, &object, "humans")?
-            .try_into()
-            .map_err(|_| fault_name(name, "humans does not fit"))?,
-        actors_present,
-        now_hash: req_str(name, &object, "now_hash")?,
-    })
+    read_json(name, text)
 }
 
 pub fn parse_migrate(name: &str, text: &str) -> Result<MigrateRecord, JournalFault> {
-    let object = object(name, text)?;
-    if object.get("kind").and_then(Value::as_str) != Some("migrate") {
-        return Err(fault_name(name, "kind is not migrate"));
+    read_json(name, text)
+}
+
+fn read_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, JournalFault> {
+    let mut de = serde_json::Deserializer::from_str(text.trim_end());
+    match serde_path_to_error::deserialize(&mut de) {
+        Ok(value) => Ok(value),
+        Err(err) => Err(fault_name(name, &err.to_string())),
     }
-    Ok(MigrateRecord {
-        pack_rev_before: req_str(name, &object, "pack_rev_before")?,
-        pack_rev_after: req_str(name, &object, "pack_rev_after")?,
-        state_rev_before: req_u64(name, &object, "state_rev_before")?,
-        state_rev_after: req_u64(name, &object, "state_rev_after")?,
-        now_hash: req_str(name, &object, "now_hash")?,
-    })
-}
-
-fn object(name: &str, text: &str) -> Result<serde_json::Map<String, Value>, JournalFault> {
-    let value: Value = serde_json::from_str(text.trim_end())
-        .map_err(|_| fault_name(name, "the record is not JSON"))?;
-    value
-        .as_object()
-        .cloned()
-        .ok_or_else(|| fault_name(name, "the record is not an object"))
-}
-
-fn req_u64(
-    name: &str,
-    object: &serde_json::Map<String, Value>,
-    key: &str,
-) -> Result<u64, JournalFault> {
-    object
-        .get(key)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| fault_name(name, &format!("{key} is missing")))
-}
-
-fn req_str(
-    name: &str,
-    object: &serde_json::Map<String, Value>,
-    key: &str,
-) -> Result<String, JournalFault> {
-    object
-        .get(key)
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| fault_name(name, &format!("{key} is missing")))
 }
 
 fn fault(path: &Path, detail: &str) -> JournalFault {
@@ -339,5 +341,31 @@ mod tests {
         let hash = hash_now(b"now");
         assert!(stamped.contains(&hash));
         assert!(stamp_now_hash(&stamped, b"now").is_err());
+    }
+
+    #[test]
+    fn golden_tick_presence_and_migrate_round_trip() {
+        let tick = include_str!("fixtures/tick.jsonl");
+        let parsed = parse_tick("tick.jsonl", tick).unwrap();
+        assert_eq!(emit_entry(&JournalEntry::Tick(parsed.clone())), tick);
+        assert_eq!(parsed.arrivals[0].via, "stairs");
+        assert_eq!(parsed.arrivals[0].arrived_at, 1082);
+        assert!(parsed.effects.iter().any(|effect| {
+            matches!(
+                effect.class,
+                crate::effect::EffectClass::Location {
+                    arrived_at: Some(1082),
+                    ..
+                }
+            )
+        }));
+
+        let presence = include_str!("fixtures/presence.json");
+        let parsed = parse_presence("presence.json", presence).unwrap();
+        assert_eq!(emit_entry(&JournalEntry::Presence(parsed)), presence);
+
+        let migrate = include_str!("fixtures/migrate.json");
+        let parsed = parse_migrate("migrate.json", migrate).unwrap();
+        assert_eq!(emit_entry(&JournalEntry::Migrate(parsed)), migrate);
     }
 }
