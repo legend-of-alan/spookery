@@ -27,8 +27,7 @@ pub use gm::{
     read_say_args, read_status_args, read_tool_call, read_tool_result, set_checks,
     write_check_event, write_queued_event, write_say_event, write_tool_call, CallTarget,
     CommitArgs, CommitBody, Frame, GmSay, IntentCall, PerceiveArgs, QueueRow, Roll, SayArgs,
-    SessionStatus, StatusArgs, StatusPause, StatusPresence, ToolCall, GM_HELLO, INITIALIZED_LINE,
-    INITIALIZE_LINE,
+    SessionStatus, StatusArgs, StatusPause, StatusPresence, ToolCall,
 };
 pub use player::{
     read_player, read_player_hello, write_player, write_player_hello, FactNote, PlayerMessage,

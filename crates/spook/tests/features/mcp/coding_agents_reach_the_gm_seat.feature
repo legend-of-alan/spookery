@@ -24,18 +24,36 @@ Feature: Coding agents reach the GM seat
     Then the response is forbidden
     And a GM hello still sits
 
-  Scenario Outline: A GM on one door keeps the seat from a GM on another
+  Scenario: A second HTTP GM is told the table is full
     Given a docks table
-    When a GM holds the seat over <holder>
-    And another GM tries to sit over <newcomer>
+    When a GM holds the seat over HTTP
+    And another GM tries to sit over HTTP
     Then the newcomer is told the table is full
-    When the GM over <holder> leaves
-    Then a GM can sit over <newcomer>
+    When the GM over HTTP leaves
+    Then a GM can sit over HTTP
 
-    Examples:
-      | holder | newcomer |
-      | HTTP   | TCP      |
-      | TCP    | HTTP     |
+  Scenario: spook gm and a coding agent share one seat
+    Given a docks table
+    When a human GM sits on the default agent door
+    And a coding agent tries to sit that door
+    Then the agent is told the table is full
+    When the human GM leaves
+    Then a coding agent can sit that door
+
+  Scenario: spook run serves /mcp without a flag
+    Given a docks table
+    When spook run listens with no MCP flag
+    Then the next port serves /mcp
+
+  Scenario: A request with an unknown MCP-Protocol-Version is refused
+    Given a docks table
+    When an HTTP request arrives with an unknown MCP-Protocol-Version
+    Then the response status is 400
+
+  Scenario: A request with the negotiated MCP-Protocol-Version is accepted
+    Given a docks table
+    When an HTTP request arrives with the negotiated MCP-Protocol-Version
+    Then the response is accepted
 
   Scenario Outline: A Host other than 127.0.0.1 does not take the GM seat
     Given a docks table

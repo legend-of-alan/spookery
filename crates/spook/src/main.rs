@@ -24,7 +24,7 @@ enum Command {
     Run {
         /// Pack directory.
         pack: PathBuf,
-        /// Loopback streamable HTTP for one coding agent.
+        /// Loopback streamable HTTP for the GM seat. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
     },
@@ -43,6 +43,9 @@ enum Command {
     Gm {
         /// Pack directory.
         pack: PathBuf,
+        /// Agent door. Defaults to the game port plus one.
+        #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
+        mcp_http: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
@@ -52,6 +55,9 @@ enum Command {
     AiGm {
         /// Pack directory.
         pack: PathBuf,
+        /// Agent door. Defaults to the game port plus one.
+        #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
+        mcp_http: Option<String>,
     },
     /// Advance the pack one tick.
     Tick {
@@ -143,13 +149,22 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             &addr.to_string(),
             raw,
         )),
-        Command::Gm { pack, raw } => from_terminal(spookery::terminal::run_gm_terminal(
-            &pack,
-            &addr.to_string(),
+        Command::Gm {
+            pack,
+            mcp_http,
             raw,
-        )),
-        Command::AiGm { pack } => {
-            if spookery::ai::sit(&pack, &addr.to_string()).is_err() {
+        } => {
+            let door = door_addr(mcp_http)?;
+            from_terminal(spookery::terminal::run_gm_terminal(
+                &pack,
+                &addr.to_string(),
+                door.as_deref(),
+                raw,
+            ))
+        }
+        Command::AiGm { pack, mcp_http } => {
+            let door = door_addr(mcp_http)?;
+            if spookery::ai::sit(&pack, &addr.to_string(), door.as_deref()).is_err() {
                 std::process::exit(1);
             }
             Ok(())
@@ -277,6 +292,13 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, spookery::Error> {
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
+fn door_addr(mcp_http: Option<String>) -> Result<Option<String>, spookery::Error> {
+    match mcp_http {
+        Some(text) => Ok(Some(parse_loopback(&text)?.to_string())),
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -363,6 +385,26 @@ mod tests {
                 ..
             } if text == "127.0.0.1:9801"
         ));
+        for command in ["gm", "ai-gm"] {
+            let open =
+                Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9", "no-such-pack"])
+                    .unwrap();
+            assert!(
+                matches!(
+                    dispatch(open),
+                    Err(spookery::Error::Reason(Reason::NotInSpec))
+                ),
+                "{command} --mcp-http"
+            );
+            let door =
+                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801", "pack"])
+                    .unwrap();
+            let text = match door.command {
+                Command::Gm { mcp_http, .. } | Command::AiGm { mcp_http, .. } => mcp_http,
+                _ => panic!("{command}"),
+            };
+            assert_eq!(text.as_deref(), Some("127.0.0.1:9801"));
+        }
         let play = Cli::try_parse_from(["spook", "play", "pack", "--as", "player:rowan"]).unwrap();
         match play.command {
             Command::Play {

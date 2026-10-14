@@ -1,9 +1,6 @@
-use std::io;
-use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::time::Duration;
 
 use rmcp::model::{
@@ -12,11 +9,10 @@ use rmcp::model::{
     ServerConfig, ServerNotification, Tool, ToolsCapability,
 };
 use rmcp::service::{Peer, RequestContext, RoleServer};
-use rmcp::{ErrorData as McpError, ServerHandler, ServiceExt};
+use rmcp::{ErrorData as McpError, ServerHandler};
 
 use super::gm_tools;
-use super::listen;
-use super::world_loop::{Ack, HelloReply, Msg, SocketEnd, ToolReply};
+use super::world_loop::{Ack, Msg, SocketEnd, ToolReply};
 
 /// How long releasing an HTTP GM seat waits for the shard thread's ack.
 const RELEASE_WAIT: Duration = Duration::from_secs(2);
@@ -24,132 +20,24 @@ const RELEASE_WAIT: Duration = Duration::from_secs(2);
 struct HttpSeat {
     conn: u64,
     held: Arc<AtomicBool>,
-    peer: Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
+    /// Clone of the seat's outbound queue. Say and check frames go here, in
+    /// order, and the one forwarder below writes them.
+    out: std::sync::Mutex<Option<super::limits::OutTx>>,
 }
 
 pub(super) struct GmHost {
     tx: Sender<Msg>,
-    after_tx: std::sync::mpsc::Sender<Vec<u8>>,
     http: Option<HttpSeat>,
 }
 
 pub(super) fn http_host(tx: Sender<Msg>, conn: u64) -> GmHost {
-    let (after_tx, after_rx) = std::sync::mpsc::channel();
-    drop(after_rx);
     GmHost {
         tx,
-        after_tx,
         http: Some(HttpSeat {
             conn,
             held: Arc::new(AtomicBool::new(false)),
-            peer: Arc::new(tokio::sync::Mutex::new(None)),
+            out: std::sync::Mutex::new(None),
         }),
-    }
-}
-
-pub(super) async fn serve(
-    read_half: tokio::net::tcp::OwnedReadHalf,
-    write_half: tokio::net::tcp::OwnedWriteHalf,
-    out_tx: super::limits::OutTx,
-    out_rx: super::limits::OutRx,
-    cancel_rx: tokio::sync::watch::Receiver<bool>,
-    tx: Sender<Msg>,
-    conn: u64,
-) {
-    let too_long = Arc::new(AtomicBool::new(false));
-    let read_half = super::limits::CappedLineRead::new(
-        read_half,
-        super::limits::GM_LINE_CAP,
-        Arc::clone(&too_long),
-    );
-    let mut service_cancel = cancel_rx.clone();
-    let notify = out_tx.clone();
-    let writer_task = tokio::spawn(super::limits::write_frames(write_half, out_rx, cancel_rx));
-    let (after_tx, after_rx) = std::sync::mpsc::channel();
-    let writer = LineWriter {
-        tx: out_tx,
-        buf: Vec::new(),
-        after_rx,
-    };
-    let host = GmHost {
-        tx: tx.clone(),
-        after_tx,
-        http: None,
-    };
-    if let Ok(running) = host.serve((read_half, writer)).await {
-        // A full queue drops the seat and cancels. Dropping the service here
-        // stops the next tool call. `Msg::Tool` has no connection id.
-        let mut token = Some(running.cancellation_token());
-        let waiting = running.waiting();
-        tokio::pin!(waiting);
-        loop {
-            tokio::select! {
-                biased;
-                changed = service_cancel.changed() => {
-                    if changed.is_err() || *service_cancel.borrow() {
-                        if let Some(token) = token.take() {
-                            token.cancel();
-                        }
-                    }
-                }
-                result = &mut waiting => {
-                    let _ = result;
-                    break;
-                }
-            }
-        }
-    }
-    if too_long.load(Ordering::Acquire) {
-        let frame =
-            super::frames::player_refused_line(spookery_kernel::Reason::LineTooLong.token())
-                .into_bytes();
-        super::limits::send_last(&notify, frame).await;
-    }
-    drop(notify);
-    listen::report_fault(&tx, conn, SocketEnd::Eof).await;
-    let _ = writer_task.await;
-}
-
-struct LineWriter {
-    tx: super::limits::OutTx,
-    buf: Vec<u8>,
-    after_rx: std::sync::mpsc::Receiver<Vec<u8>>,
-}
-
-impl tokio::io::AsyncWrite for LineWriter {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        _cx: &mut Context<'_>,
-        data: &[u8],
-    ) -> Poll<io::Result<usize>> {
-        let writer = self.get_mut();
-        writer.buf.extend_from_slice(data);
-        while let Some(index) = writer.buf.iter().position(|byte| *byte == b'\n') {
-            let frame: Vec<u8> = writer.buf.drain(..=index).collect();
-            if !super::limits::try_frame(&writer.tx, frame) {
-                return Poll::Ready(Err(io::Error::new(
-                    io::ErrorKind::BrokenPipe,
-                    "gm writer closed",
-                )));
-            }
-            while let Ok(extra) = writer.after_rx.try_recv() {
-                if !super::limits::try_frame(&writer.tx, extra) {
-                    return Poll::Ready(Err(io::Error::new(
-                        io::ErrorKind::BrokenPipe,
-                        "gm writer closed",
-                    )));
-                }
-            }
-        }
-        Poll::Ready(Ok(data.len()))
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<io::Result<()>> {
-        Poll::Ready(Ok(()))
     }
 }
 
@@ -208,8 +96,6 @@ impl ServerHandler for GmHost {
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
         let tx = self.tx.clone();
-        let after_tx = self.after_tx.clone();
-        let peer = self.http.as_ref().map(|http| Arc::clone(&http.peer));
         let name = request.name.into_owned();
         let arguments = request.arguments;
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
@@ -222,15 +108,10 @@ impl ServerHandler for GmHost {
         let ToolReply { value, after } = reply_rx
             .await
             .map_err(|_| McpError::internal_error("shard closed", None))?;
-        for frame in after {
-            let _ = after_tx.send(frame.clone());
-            if let Some(peer) = &peer {
-                let guard = peer.lock().await;
-                if let Some(peer) = guard.as_ref() {
-                    emit_event(peer, &frame).await;
-                }
-            }
-        }
+        // Queue the events and return. Waiting here for the write stalls the
+        // client: it is blocked on this result, so it never reads the event.
+        // The forwarder started in `claim` drains this queue in order.
+        self.enqueue_after(after);
         Ok(CallToolResult::structured(value).into())
     }
 }
@@ -241,11 +122,11 @@ impl GmHost {
             return Ok(());
         };
         let (out_tx, mut out_rx, cancel_tx, mut cancel_rx) = super::limits::outbound();
+        let queued = out_tx.clone();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
-            .send(Msg::Hello {
+            .send(Msg::Claim {
                 conn: http.conn,
-                line: "gm".to_string(),
                 out: out_tx,
                 cancel: cancel_tx,
                 reply: reply_tx,
@@ -255,12 +136,9 @@ impl GmHost {
             .await
             .map_err(|_| McpError::internal_error("shard closed", None))?;
         match reply {
-            HelloReply::Gm => {
+            Ok(()) => {
                 http.held.store(true, Ordering::Release);
-                {
-                    let mut slot = http.peer.lock().await;
-                    *slot = Some(context.peer.clone());
-                }
+                *http.out.lock().unwrap_or_else(|err| err.into_inner()) = Some(queued);
                 let peer = context.peer.clone();
                 tokio::spawn(async move {
                     loop {
@@ -302,8 +180,34 @@ impl GmHost {
                 });
                 Ok(())
             }
-            HelloReply::Refused(line) => Err(refusal_error(&line)),
-            HelloReply::Player => Err(McpError::internal_error("shard closed", None)),
+            Err(line) => Err(refusal_error(&line)),
+        }
+    }
+
+    /// One forwarder writes this queue, so two tool calls cannot pass each
+    /// other. A full queue drops the seat.
+    fn enqueue_after(&self, frames: Vec<Vec<u8>>) {
+        let Some(http) = &self.http else {
+            return;
+        };
+        // Hold the queue lock across every frame of this call, then drop it
+        // before a full queue releases the seat.
+        let full = {
+            let guard = http.out.lock().unwrap_or_else(|err| err.into_inner());
+            let Some(out) = guard.as_ref() else {
+                return;
+            };
+            let mut full = false;
+            for frame in frames {
+                if !super::limits::try_frame(out, frame) {
+                    full = true;
+                    break;
+                }
+            }
+            full
+        };
+        if full {
+            self.release();
         }
     }
 

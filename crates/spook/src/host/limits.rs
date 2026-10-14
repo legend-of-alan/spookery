@@ -1,14 +1,11 @@
 //! Caps, the hello deadline, and the per-player token bucket.
 //!
-//! A hello is read one byte at a time so the GM path can take the socket
-//! exactly after the newline. The GM client writes `initialize` on that same
-//! write. A buffered hello would keep those bytes. Player lines after the
-//! hello use a `BufReader`. The GM TCP door goes through rmcp's combined
-//! reader, which calls `read_until` with no cap, so that read half is wrapped.
+//! A hello is read one byte at a time so a following line stays on the socket
+//! for the player reader. Player lines after the hello use a `BufReader`.
 
 use std::io;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
@@ -18,8 +15,8 @@ use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
 /// Hello and player lines, not counting the newline.
 pub(super) const PLAYER_LINE_CAP: usize = 8 * 1024;
 
-/// GM TCP lines after the hello. Same size as the HTTP body cap.
-pub(super) const GM_LINE_CAP: usize = 1024 * 1024;
+/// HTTP POST body cap for the GM seat.
+pub(super) const GM_BODY_CAP: usize = 1024 * 1024;
 
 /// Player lines accepted per second after the burst is spent.
 pub(super) const RATE_PER_SEC: u64 = 5;
@@ -316,99 +313,6 @@ impl<R: AsyncRead + Unpin> AsyncBufRead for Unbuffered<R> {
     }
 }
 
-/// Stops an `AsyncRead` once a line passes `max` bytes before the next newline.
-/// rmcp's TCP reader has no line cap of its own.
-pub(super) struct CappedLineRead<R> {
-    inner: R,
-    max: usize,
-    since_nl: usize,
-    failed: bool,
-    flag: Arc<AtomicBool>,
-}
-
-impl<R> CappedLineRead<R> {
-    pub(super) fn new(inner: R, max: usize, flag: Arc<AtomicBool>) -> Self {
-        Self {
-            inner,
-            max,
-            since_nl: 0,
-            failed: false,
-            flag,
-        }
-    }
-
-    fn fail(&mut self) {
-        self.failed = true;
-        self.flag.store(true, Ordering::Release);
-    }
-}
-
-impl<R: AsyncRead + Unpin> AsyncRead for CappedLineRead<R> {
-    fn poll_read(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        let this = self.get_mut();
-        if this.failed {
-            return Poll::Ready(Err(line_too_long()));
-        }
-        let room = if this.since_nl >= this.max {
-            1
-        } else {
-            this.max - this.since_nl
-        };
-        let want = room.min(buf.remaining());
-        if want == 0 {
-            return Poll::Ready(Ok(()));
-        }
-        let before = buf.filled().len();
-        let n = {
-            let mut limited = buf.take(want);
-            match Pin::new(&mut this.inner).poll_read(cx, &mut limited) {
-                Poll::Pending => return Poll::Pending,
-                Poll::Ready(Err(err)) => return Poll::Ready(Err(err)),
-                Poll::Ready(Ok(())) => limited.filled().len(),
-            }
-        };
-        if n == 0 {
-            return Poll::Ready(Ok(()));
-        }
-        // SAFETY: `take` aliases this tail, and the inner read initialized `n` bytes there.
-        unsafe { buf.assume_init(n) };
-        buf.advance(n);
-        let new = &buf.filled()[before..];
-        let mut count = this.since_nl;
-        let mut overflow = None;
-        for (index, byte) in new.iter().enumerate() {
-            if *byte == b'\n' {
-                count = 0;
-            } else {
-                count += 1;
-                if count > this.max {
-                    overflow = Some(index);
-                    break;
-                }
-            }
-        }
-        if let Some(index) = overflow {
-            buf.set_filled(before + index);
-            this.fail();
-            if index == 0 {
-                return Poll::Ready(Err(line_too_long()));
-            }
-            this.since_nl = this.max;
-            return Poll::Ready(Ok(()));
-        }
-        this.since_nl = count;
-        Poll::Ready(Ok(()))
-    }
-}
-
-fn line_too_long() -> io::Error {
-    io::Error::new(io::ErrorKind::InvalidData, "line too long")
-}
-
 /// One token per line that is read. An empty bucket spends nothing.
 pub(super) struct TokenBucket {
     rate_per_sec: u128,
@@ -562,7 +466,7 @@ async fn write_all_flush(write: &mut (impl AsyncWrite + Unpin), frame: &[u8]) ->
 mod tests {
     use std::io::Cursor;
 
-    use tokio::io::{AsyncReadExt, BufReader};
+    use tokio::io::BufReader;
 
     use super::*;
 
@@ -694,34 +598,14 @@ mod tests {
 
     #[tokio::test]
     async fn a_hello_read_stops_at_the_newline() {
-        let data = b"gm\n{\"jsonrpc\":1}\n";
+        let data = b"player:ada\n{\"jsonrpc\":1}\n";
         let mut reader = Unbuffered::new(Cursor::new(&data[..]));
         let line = read_capped_line(&mut reader, PLAYER_LINE_CAP)
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(line, "gm");
-        assert_eq!(reader.inner.position(), 3);
-    }
-
-    #[tokio::test]
-    async fn a_capped_reader_stops_near_the_max() {
-        let flag = Arc::new(AtomicBool::new(false));
-        let data = vec![b'x'; 4096];
-        let mut reader = CappedLineRead::new(Cursor::new(data), 1024, Arc::clone(&flag));
-        let mut sink = [0u8; 100];
-        let mut total = 0usize;
-        let err = loop {
-            match reader.read(&mut sink).await {
-                Ok(0) => panic!("eof before the cap"),
-                Ok(n) => total += n,
-                Err(err) => break err,
-            }
-        };
-        assert!(total <= 1024, "{total}");
-        assert_eq!(err.kind(), io::ErrorKind::InvalidData);
-        assert!(flag.load(Ordering::Acquire));
-        assert!(reader.inner.position() <= 1025);
+        assert_eq!(line, "player:ada");
+        assert_eq!(reader.inner.position(), 11);
     }
 
     #[test]

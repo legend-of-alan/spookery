@@ -21,17 +21,23 @@ Feature: One GM seat and up to three player seats
     And humans is 1
     And the present actor is pc_rowan
 
-  Scenario: A GM hello writes nothing
+  Scenario: A seated GM writes nothing
     Given a docks table with a seated GM
     Then save.yaml is unchanged since the table opened
     And humans is 0
 
   Scenario: A second GM leaves the table unchanged
     Given a docks table with a seated GM
-    When a second GM connects
+    When a second GM connects over HTTP
     Then the hello is refused with "SESSION_FULL"
     And save.yaml is unchanged since the table opened
     And humans is 0
+
+  Scenario: A GM hello on the game port is refused
+    Given a docks table
+    When a socket sends gm on the game port
+    Then the hello is refused with "NOT_IN_SPEC"
+    And save.yaml is unchanged since the table opened
 
   Scenario: A one-player pack sits and plays
     Given a one-player docks table

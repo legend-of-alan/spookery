@@ -9,7 +9,6 @@ use std::time::Duration;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
-use super::gm_seat;
 use super::http;
 use super::world_loop::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};
 
@@ -19,13 +18,19 @@ pub enum Error {
 }
 
 pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Result<(), Error> {
-    let http_listener = match mcp_http {
-        Some(http_addr) => {
-            let listener = TcpListener::bind(http_addr).map_err(Error::Io)?;
-            listener.set_nonblocking(true).map_err(Error::Io)?;
-            Some(listener)
-        }
-        None => None,
+    let http_addr = match mcp_http {
+        Some(http_addr) => http_addr,
+        None => SocketAddr::new(
+            addr.ip(),
+            addr.port()
+                .checked_add(1)
+                .ok_or(Error::Reason(Reason::NotInSpec))?,
+        ),
+    };
+    let http_listener = {
+        let listener = TcpListener::bind(http_addr).map_err(Error::Io)?;
+        listener.set_nonblocking(true).map_err(Error::Io)?;
+        listener
     };
     let listener = TcpListener::bind(addr).map_err(Error::Io)?;
     let mut world = World::open(pack).map_err(Error::Reason)?;
@@ -71,17 +76,15 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
     while !started.load(Ordering::Acquire) {
         std::thread::yield_now();
     }
-    if let Some(std_listener) = http_listener {
-        let listener = {
-            let _entered = handle.enter();
-            tokio::net::TcpListener::from_std(std_listener).map_err(Error::Io)?
-        };
-        let tx_http = tx.clone();
-        let ids = Arc::clone(&next_conn);
-        handle.spawn(async move {
-            http::serve(listener, tx_http, ids).await;
-        });
-    }
+    let listener = {
+        let _entered = handle.enter();
+        tokio::net::TcpListener::from_std(http_listener).map_err(Error::Io)?
+    };
+    let tx_http = tx.clone();
+    let ids = Arc::clone(&next_conn);
+    handle.spawn(async move {
+        http::serve(listener, tx_http, ids).await;
+    });
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if arm_idle_timer {
         let tx_timer = tx.clone();
@@ -190,10 +193,6 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
             let _ = socket2::SockRef::from(&stream)
                 .set_send_buffer_size(super::limits::REQUESTED_SEND_BUFFER);
             player_session(stream, tx, conn, out_tx, out_rx, cancel_rx).await;
-        }
-        HelloReply::Gm => {
-            let (read_half, write_half) = stream.into_split();
-            gm_seat::serve(read_half, write_half, out_tx, out_rx, cancel_rx, tx, conn).await;
         }
     }
 }
@@ -312,8 +311,8 @@ const REFUSE_DRAIN_BYTES: usize = 64 * 1024;
 
 /// Sends the refusal so it always arrives, then closes.
 ///
-/// A client may pipeline lines after its hello, as the GM hello does with
-/// `initialize`. Closing a socket that still holds unread bytes sends RST on
+/// A client may pipeline bytes after its hello. Closing a socket that still
+/// holds unread bytes sends RST on
 /// Windows, and the client's stack then drops the refusal it already got. So
 /// the seat sends FIN after the refusal and reads until the client hangs up,
 /// for at most `REFUSE_DRAIN` and `REFUSE_DRAIN_BYTES`.

@@ -95,6 +95,52 @@ fn the_gm_queues_an_unknown_move(world: &mut World) {
     write_gm(world, "queue mira not_a_move");
 }
 
+#[when(expr = "spook run stops")]
+fn spook_run_stops(_world: &mut World) {
+    crate::with_live(|live| {
+        live.server.take();
+    });
+}
+
+#[then(expr = "the GM exits")]
+fn the_gm_exits(world: &mut World) {
+    let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
+    let start = Instant::now();
+    loop {
+        if let Some(status) = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
+            assert!(status.success(), "gm exited {status:?}");
+            return;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("gm still running");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[when(expr = "spook run listens with an overridden agent door")]
+fn spook_run_listens_with_an_overridden_agent_door(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let _ = table::listen_door(&pack);
+}
+
+#[when(expr = "a human GM dials that door")]
+fn a_human_gm_dials_that_door(world: &mut World) {
+    let (game, http) = crate::with_live(|live| (live.port, live.http_port));
+    let pack_arg = support::pack_arg(table::pack(world));
+    let game = format!("127.0.0.1:{game}");
+    let http = format!("127.0.0.1:{http}");
+    world.gm = Some(support::spawn(&[
+        "gm",
+        &pack_arg,
+        "--addr",
+        &game,
+        "--mcp-http",
+        &http,
+    ]));
+    wait_gm(world, "Commands:");
+}
+
 #[when(expr = "the operator runs gm with nothing listening")]
 fn gm_with_nothing_listening(world: &mut World) {
     let port = table::free_port();

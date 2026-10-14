@@ -259,6 +259,13 @@ pub(super) enum Msg {
         arguments: Option<serde_json::Map<String, serde_json::Value>>,
         reply: tokio::sync::oneshot::Sender<ToolReply>,
     },
+    /// The HTTP session takes the one GM seat. The game port does not.
+    Claim {
+        conn: u64,
+        out: OutTx,
+        cancel: CancelTx,
+        reply: tokio::sync::oneshot::Sender<Result<(), String>>,
+    },
     Wake,
     Stdin(String),
     StdinEof,
@@ -293,7 +300,6 @@ pub(super) struct ToolReply {
 pub(super) enum HelloReply {
     Refused(String),
     Player,
-    Gm,
 }
 
 pub(super) enum PlayerReply {
@@ -317,6 +323,15 @@ fn handle(
             reply,
         } => {
             let answer = on_hello(world, seats, next_session, conn, &line, out, cancel)?;
+            let _ = reply.send(answer);
+        }
+        Msg::Claim {
+            conn,
+            out,
+            cancel,
+            reply,
+        } => {
+            let answer = seat_gm(seats, conn, out, cancel);
             if reply.send(answer).is_err() && seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
                 seats.gm = None;
             }
@@ -433,11 +448,7 @@ fn on_hello(
     cancel: CancelTx,
 ) -> Result<HelloReply, Reason> {
     if line == "gm" {
-        if seats.gm.is_some() {
-            return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
-        }
-        seats.gm = Some(GmSeat { conn, out, cancel });
-        return Ok(HelloReply::Gm);
+        return Ok(HelloReply::Refused(refused_line(Reason::NotInSpec)));
     }
     if let Some(id) = player_hello(line) {
         if seats.players.is_full() {
@@ -487,6 +498,14 @@ fn on_hello(
         return Ok(HelloReply::Player);
     }
     Ok(HelloReply::Refused(refused_line(Reason::Schema)))
+}
+
+fn seat_gm(seats: &mut Seats, conn: u64, out: OutTx, cancel: CancelTx) -> Result<(), String> {
+    if seats.gm.is_some() {
+        return Err(refused_line(Reason::SessionFull));
+    }
+    seats.gm = Some(GmSeat { conn, out, cancel });
+    Ok(())
 }
 
 fn player_hello(line: &str) -> Option<&str> {

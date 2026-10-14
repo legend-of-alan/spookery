@@ -10,7 +10,6 @@ use rmcp::model::{
 use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::ServiceExt;
 use serde_json::{json, Map, Value};
-use std::net::Shutdown;
 use std::sync::Mutex;
 
 use crate::support::{self, Proc};
@@ -120,6 +119,120 @@ fn request_with_host(world: &mut World, host: String) {
     world.scratch = http_post(http, &host, None);
 }
 
+#[when(expr = "a human GM sits on the default agent door")]
+fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
+    let port = table::free_port();
+    let addr = format!("127.0.0.1:{port}");
+    let pack = table::pack(world).to_path_buf();
+    table::listen(&pack, &addr, port);
+    let pack_arg = support::pack_arg(&pack);
+    world.gm = Some(support::spawn(&["gm", &pack_arg, "--addr", &addr]));
+    world.mark = usize::from(port.saturating_add(1));
+    let start = Instant::now();
+    loop {
+        let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
+        let stdout = support::text_of(&gm.stdout);
+        if stdout.contains("Commands:") {
+            break;
+        }
+        if let Some(status) = gm.child.try_wait().unwrap_or_else(|err| panic!("{err}")) {
+            panic!("gm exited {status:?}\n{}", support::text_of(&gm.stderr));
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("gm did not sit\n{stdout}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[when(expr = "a coding agent tries to sit that door")]
+fn a_coding_agent_tries_to_sit_that_door(world: &mut World) {
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
+    world.scratch = http_post(http, "127.0.0.1", None);
+}
+
+#[then(expr = "the agent is told the table is full")]
+fn the_agent_is_told_the_table_is_full(world: &mut World) {
+    assert!(
+        world.scratch.contains("SESSION_FULL"),
+        "refusal:\n{}",
+        world.scratch
+    );
+}
+
+#[when(expr = "the human GM leaves")]
+fn the_human_gm_leaves(world: &mut World) {
+    let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
+    let mut stdin = gm.stdin.take().unwrap_or_else(|| panic!("no gm stdin"));
+    writeln!(stdin, "quit").unwrap_or_else(|err| panic!("quit: {err}"));
+    drop(stdin);
+    let gm = world.gm.as_mut().unwrap();
+    let status = gm
+        .child
+        .wait()
+        .unwrap_or_else(|err| panic!("wait gm: {err}"));
+    assert!(status.success(), "gm quit exited {status:?}");
+}
+
+#[then(expr = "a coding agent can sit that door")]
+fn a_coding_agent_can_sit_that_door(world: &mut World) {
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
+    let start = Instant::now();
+    let mut last = String::new();
+    while start.elapsed() < Duration::from_secs(5) {
+        let raw = http_post(http, "127.0.0.1", None);
+        if raw.contains("\"protocolVersion\"") {
+            return;
+        }
+        last = raw;
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    panic!("the agent did not sit\n{last}");
+}
+
+#[when(expr = "spook run listens with no MCP flag")]
+fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
+    let port = table::free_port();
+    let pack = table::pack(world).to_path_buf();
+    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    world.mark = usize::from(port);
+}
+
+#[then(regex = "^the next port serves /mcp$")]
+fn the_next_port_serves_mcp(world: &mut World) {
+    let game = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no game port"));
+    let http = game.saturating_add(1);
+    let raw = http_post(http, "127.0.0.1", None);
+    assert!(
+        raw.lines().next().unwrap_or("").contains(" 200 "),
+        "no /mcp on {http}\n{raw}"
+    );
+    assert!(raw.contains("\"protocolVersion\""), "{raw}");
+}
+
+#[when(expr = "an HTTP request arrives with an unknown MCP-Protocol-Version")]
+fn an_unknown_protocol_version(world: &mut World) {
+    let (_tcp, http) = listen_http(table::pack(world));
+    world.scratch = http_post_version(http, "1999-01-01");
+}
+
+#[when(expr = "an HTTP request arrives with the negotiated MCP-Protocol-Version")]
+fn the_negotiated_protocol_version(world: &mut World) {
+    let (_tcp, http) = listen_http(table::pack(world));
+    world.scratch = http_post_version(http, ProtocolVersion::LATEST.as_str());
+}
+
+#[then(expr = "the response status is {int}")]
+fn the_response_status_is(world: &mut World, status: usize) {
+    let line = world
+        .scratch
+        .lines()
+        .next()
+        .unwrap_or_else(|| panic!("no HTTP status\n{}", world.scratch));
+    let needle = format!(" {status} ");
+    assert!(line.contains(&needle), "status: {line}\n{}", world.scratch);
+}
+
 #[then(expr = "the response is accepted")]
 fn the_response_is_accepted(world: &mut World) {
     let status = world
@@ -139,12 +252,8 @@ fn the_response_is_accepted(world: &mut World) {
     );
 }
 
-/// The GM that holds the seat in a cross-door scenario. It lives across steps,
-/// and the after hook drops it if a step fails first.
-enum Holder {
-    Tcp,
-    Agent(rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>),
-}
+/// The HTTP GM that holds the seat across steps. The after hook drops it.
+type Holder = rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>;
 
 static HOLDER: Mutex<Option<Holder>> = Mutex::new(None);
 
@@ -166,51 +275,38 @@ fn seated_player_on_the_http_door(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(regex = r"^a GM holds the seat over (HTTP|TCP)$")]
-fn gm_holds_over(world: &mut World, door: String) {
+#[when(expr = "a GM holds the seat over HTTP")]
+fn gm_holds_over_http(world: &mut World) {
     let (_tcp, http) = listen_http(table::pack(world));
     world.mark = usize::from(http);
-    let holder = match door.as_str() {
-        "TCP" => {
-            table::seat_gm();
-            Holder::Tcp
-        }
-        "HTTP" => Holder::Agent(block_on(async move {
-            let running = connect_http(http)
-                .await
-                .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
-            let status = call(&running, "session_status", None).await;
-            assert_sat(&status, "session_status");
-            running
-        })),
-        other => panic!("unknown door {other}"),
-    };
+    let holder = block_on(async move {
+        let running = connect_http(http)
+            .await
+            .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
+        let status = call(&running, "session_status", None).await;
+        assert_sat(&status, "session_status");
+        running
+    });
     *HOLDER.lock().unwrap_or_else(|err| err.into_inner()) = Some(holder);
 }
 
-#[when(regex = r"^another GM tries to sit over (HTTP|TCP)$")]
-fn another_gm_tries(world: &mut World, door: String) {
-    world.scratch = match door.as_str() {
-        "TCP" => table::second_hello("gm"),
-        "HTTP" => {
-            // rmcp's client error drops the JSON-RPC message, so read the
-            // refusal from a raw initialize, then check a real client fails too.
-            let http = http_port(world);
-            let raw = http_post(http, "127.0.0.1", None);
-            let sat = block_on(async move {
-                match connect_http(http).await {
-                    Ok(running) => {
-                        let _ = running.cancel().await;
-                        true
-                    }
-                    Err(_) => false,
-                }
-            });
-            assert!(!sat, "a second GM sat over HTTP\n{raw}");
-            raw
+#[when(expr = "another GM tries to sit over HTTP")]
+fn another_gm_tries_http(world: &mut World) {
+    // rmcp's client error drops the JSON-RPC message, so read the
+    // refusal from a raw initialize, then check a real client fails too.
+    let http = http_port(world);
+    let raw = http_post(http, "127.0.0.1", None);
+    let sat = block_on(async move {
+        match connect_http(http).await {
+            Ok(running) => {
+                let _ = running.cancel().await;
+                true
+            }
+            Err(_) => false,
         }
-        other => panic!("unknown door {other}"),
-    };
+    });
+    assert!(!sat, "a second GM sat over HTTP\n{raw}");
+    world.scratch = raw;
 }
 
 #[then(expr = "the newcomer is told the table is full")]
@@ -222,49 +318,33 @@ fn newcomer_is_told_full(world: &mut World) {
     );
 }
 
-#[when(regex = r"^the GM over (HTTP|TCP) leaves$")]
-fn holder_leaves(_world: &mut World, _door: String) {
-    let holder = HOLDER
+#[when(expr = "the GM over HTTP leaves")]
+fn holder_leaves(_world: &mut World) {
+    let running = HOLDER
         .lock()
         .unwrap_or_else(|err| err.into_inner())
         .take()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
-    match holder {
-        Holder::Tcp => {
-            let write = crate::with_live(|live| live.gm_write.take())
-                .unwrap_or_else(|| panic!("no TCP GM"));
-            // The reader thread holds a clone of this socket, so shut it down
-            // rather than only dropping this handle.
-            let _ = write.shutdown(Shutdown::Both);
-        }
-        Holder::Agent(running) => {
-            block_on(async move {
-                running
-                    .cancel()
-                    .await
-                    .unwrap_or_else(|err| panic!("close GM session: {err}"));
-            });
-        }
-    }
+    block_on(async move {
+        running
+            .cancel()
+            .await
+            .unwrap_or_else(|err| panic!("close GM session: {err}"));
+    });
 }
 
-#[then(regex = r"^a GM can sit over (HTTP|TCP)$")]
-fn a_gm_can_sit_over(world: &mut World, door: String) {
+#[then(expr = "a GM can sit over HTTP")]
+fn a_gm_can_sit_over_http(world: &mut World) {
     let start = Instant::now();
     let mut last = String::new();
     while start.elapsed() < Duration::from_secs(5) {
-        let sat = match door.as_str() {
-            "TCP" => tcp_gm_sits(),
-            "HTTP" => agent_sits(http_port(world)),
-            other => panic!("unknown door {other}"),
-        };
-        match sat {
+        match agent_sits(http_port(world)) {
             Ok(()) => return,
             Err(err) => last = err,
         }
         std::thread::sleep(Duration::from_millis(50));
     }
-    panic!("no GM could sit over {door}: {last}");
+    panic!("no GM could sit over HTTP: {last}");
 }
 
 fn agent_sits(port: u16) -> Result<(), String> {
@@ -275,22 +355,6 @@ fn agent_sits(port: u16) -> Result<(), String> {
         let _ = running.cancel().await;
         Ok(())
     })
-}
-
-fn tcp_gm_sits() -> Result<(), String> {
-    let port = crate::with_live(|live| live.port);
-    let mut stream =
-        TcpStream::connect(("127.0.0.1", port)).map_err(|err| format!("connect: {err}"))?;
-    stream
-        .write_all(b"gm\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"proof\",\"version\":\"0\"}}}\n")
-        .map_err(|err| format!("gm hello: {err}"))?;
-    let line = table::read_line(&mut stream);
-    let _ = stream.shutdown(Shutdown::Both);
-    if line.contains("\"id\":1") && line.contains("\"result\"") {
-        Ok(())
-    } else {
-        Err(line)
-    }
 }
 
 #[then(expr = "world time moved forward")]
@@ -449,7 +513,8 @@ fn listen_http(pack: &std::path::Path) -> (u16, u16) {
         player_write: None,
         player_text: Arc::new(std::sync::Mutex::new(String::new())),
         players: Vec::new(),
-        gm_write: None,
+        gm: None,
+        http_port: http,
         gm_text: Arc::new(std::sync::Mutex::new(String::new())),
         opened_now: opened_now.clone(),
         seated_now: opened_now,
@@ -486,7 +551,28 @@ fn wait_port(port: u16, server: &mut Proc) {
     }
 }
 
-fn http_post(port: u16, host: &str, origin: Option<&str>) -> String {
+fn http_post_version(port: u16, version: &str) -> String {
+    let body = format!(
+        "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{version}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"probe\",\"version\":\"0\"}}}}}}"
+    );
+    let request = format!(
+        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nMCP-Protocol-Version: {version}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let mut stream =
+        TcpStream::connect(("127.0.0.1", port)).unwrap_or_else(|err| panic!("connect HTTP: {err}"));
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap_or_else(|err| panic!("timeout: {err}"));
+    stream
+        .write_all(request.as_bytes())
+        .unwrap_or_else(|err| panic!("write HTTP: {err}"));
+    let mut buf = String::new();
+    let _ = stream.read_to_string(&mut buf);
+    buf
+}
+
+pub fn http_post(port: u16, host: &str, origin: Option<&str>) -> String {
     let version = ProtocolVersion::LATEST.as_str();
     let body = format!(
         "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{version}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"probe\",\"version\":\"0\"}}}}}}"

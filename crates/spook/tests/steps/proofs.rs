@@ -1090,7 +1090,7 @@ fn import_boundary() {
     let ai = spook_src.join("ai");
     let mut reqwest_hits = Vec::new();
     for path in &runtime {
-        if path.starts_with(&ai) {
+        if path.starts_with(&ai) || path.ends_with("gm_connection.rs") {
             continue;
         }
         let bytes = fs::read(path).unwrap();
@@ -1120,9 +1120,9 @@ fn import_boundary() {
         &["tokio", "rmcp", "reqwest", "crate::ai"],
     );
     assert!(terminal_hits.is_empty(), "{}", terminal_hits.join("\n"));
-    let gm_connection_hits = hits_under(
-        &spook_src.join("gm_connection"),
-        &["tokio", "rmcp", "reqwest", "crate::ai", "crate::terminal"],
+    let gm_connection_hits = byte_hits(
+        &[spook_src.join("gm_connection.rs")],
+        &["crate::ai", "crate::terminal"],
     );
     assert!(
         gm_connection_hits.is_empty(),

@@ -84,7 +84,7 @@ Primary user is **not** “D&D players at large.”
 |---|---|---|
 | 1 | Engine / tool builders, including us | Run and extend packs |
 | 2 | World authors (agent-native first) | Write a folder, press Play, sit one GM (you or an AI) and up to three players, leave it ticking |
-| 3 | Coding agents (Claude Code, Codex, etc.) | Edit packs and call MCP tools. Use `http://127.0.0.1:<port>/mcp` from `spook run --mcp-http`. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM |
+| 3 | Coding agents (Claude Code, Codex, etc.) | Edit packs and call MCP tools. Use `http://127.0.0.1:9738/mcp` from `spook run`. `--mcp-http` overrides that port. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM |
 | 4 | Players in those worlds | Type what they do; do not see YAML |
 
 Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor). The format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint (`spook check` is not built yet, #24; `spook check --json` is not built yet, #26; generated schemas are not built yet, #29).
@@ -135,7 +135,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 | **World** | A running pack with durable `state/`, zero humans allowed |
 | **Session** | A presence window on a shard (people are typed in) |
 | **Play door** | Human client on the CLI, over loopback |
-| **Agent door** | MCP tools. Use `http://127.0.0.1:<port>/mcp` from `spook run --mcp-http` |
+| **Agent door** | MCP tools at `http://127.0.0.1:9738/mcp` from `spook run`. `--mcp-http` overrides that port on `run`, `gm`, and `ai-gm` |
 | **Canon** | Immutable-at-runtime files under `world/`, `cast/`, `rules/` |
 | **Wedge** | First paid offer: always-on shard + lint/conformance, host pays |
 
@@ -267,7 +267,7 @@ The fixture is a world a host can leave running and a player can return to. The 
 ```
 
 **Play door:** human intents (“I search the desk”).
-**Agent door:** MCP. Use `http://127.0.0.1:<port>/mcp` from `spook run --mcp-http`. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM.
+**Agent door:** MCP. Use `http://127.0.0.1:9738/mcp` from `spook run`. `--mcp-http` overrides that port. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM.
 
 Deployment:
 
@@ -370,7 +370,7 @@ Do not pitch “format other software can run” as the year-0 offer. That is ye
 - Groups still cannot schedule human GMs reliably.
 - Hosted AI tables already charge ~$20–40/month with friends-play-free — willingness to pay for a *table* is proven. Willingness to pay for a *format* is not. Do not confuse them.
 - The crowded layer is *chat*. The thin layer is *a runnable, honest referee*.
-- Coding agents need schemas and tools, not another GUI. MCP + pack is the 2026 distribution channel for engine work. Use `http://127.0.0.1:<port>/mcp` from `spook run --mcp-http`. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM.
+- Coding agents need schemas and tools, not another GUI. MCP + pack is the 2026 distribution channel for engine work. Use `http://127.0.0.1:9738/mcp` from `spook run`. `--mcp-http` overrides that port. One GM seat, for playtesting and authoring loops; `spook ai-gm` is the shipped model GM.
 - Memory and longevity are the unsolved axes in the 2026 field. The refusals aim there on purpose.
 
 ### 14.3 Why “AI NPCs from profiles” is not the business
@@ -487,7 +487,7 @@ Later genre packs may override pause policy. The docks fixture does not.
     src/
       main.rs              # spook
       host/                # world loop, seats, and the idle clock
-      gm_connection/       # shared GM-seat client
+      gm_connection.rs     # shared GM-seat client
       protocol/            # shared lines
       terminal/            # spook play and spook gm
       ai/                  # spook ai-gm
