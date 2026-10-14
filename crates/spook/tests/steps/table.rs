@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -390,6 +391,11 @@ pub fn second_hello(line: &str) -> String {
     read_line(&mut stream)
 }
 
+/// Ports already handed to a scenario in this test process, each with its agent door (port + 1).
+/// Scenarios run concurrently, and the OS may hand a just-probed port + 1 to the next probe
+/// (Windows allocates ephemeral ports in order), so a probe alone cannot keep two tables apart.
+static RESERVED: Mutex<BTreeSet<u16>> = Mutex::new(BTreeSet::new());
+
 pub fn free_port() -> u16 {
     loop {
         let listener =
@@ -412,6 +418,15 @@ pub fn free_port() -> u16 {
         if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
             continue;
         }
+        let door = port.saturating_add(1);
+        let mut reserved = RESERVED
+            .lock()
+            .unwrap_or_else(|err| panic!("reserved: {err}"));
+        if reserved.contains(&port) || reserved.contains(&door) {
+            continue;
+        }
+        reserved.insert(port);
+        reserved.insert(door);
         return port;
     }
 }
