@@ -6,7 +6,7 @@ use spookery_kernel::rules::rule::{TargetKind, When};
 use spookery_kernel::rules::RollReport;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
-use spookery_round::commit_moves_at;
+use spookery_round::{advance_while_busy, commit_moves_at};
 
 use super::frames;
 use super::idle_clock::wall_now;
@@ -33,7 +33,16 @@ pub fn handle_player_move(
     gm_seated: bool,
 ) -> Result<MoveOutcome, Miss> {
     let (verb, rest) = input::verb_line(line, actor_id)?;
-    let note = queue_verb(world, actor_id, verb, rest)?;
+    let note = match queue_verb(world, actor_id, verb, rest) {
+        Ok(note) => note,
+        Err(miss) => {
+            if !gm_seated && miss.reason() == spookery_kernel::Reason::Busy {
+                let wall = wall_now().map_err(Miss::from)?;
+                advance_while_busy(world, &wall, 0).map_err(Miss::from)?;
+            }
+            return Err(miss);
+        }
+    };
     if gm_seated {
         return Ok(MoveOutcome::Queued(note));
     }

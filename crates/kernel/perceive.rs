@@ -4,6 +4,7 @@ use crate::canon::Canon;
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::ViewerId;
+use crate::map::ExitView;
 use crate::model::{Message, Now};
 use crate::rules::habits::habits_on;
 use crate::world::World;
@@ -21,6 +22,7 @@ pub struct Perceive {
     pub clocks: Vec<ClockView>,
     pub items: Vec<ItemStack>,
     pub habits: Vec<String>,
+    pub exits: Vec<ExitView>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -169,6 +171,7 @@ fn perceive_at_budget(
         ViewerId::Player(_) => Vec::new(),
         ViewerId::Npc(id) => habits_on(canon, now, id),
     };
+    let exits = crate::map::visible(canon, now, viewer.actor_id());
 
     Ok(Perceive {
         viewer: viewer.token(),
@@ -180,6 +183,7 @@ fn perceive_at_budget(
         clocks,
         items,
         habits,
+        exits,
     })
 }
 

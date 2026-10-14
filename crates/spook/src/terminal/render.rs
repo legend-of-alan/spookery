@@ -1,4 +1,4 @@
-use crate::protocol::{FactNote, Outcome, PlayerMessage, WireClock, WireFact, WireItem};
+use crate::protocol::{FactNote, Outcome, PlayerMessage, WireClock, WireExit, WireFact, WireItem};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -15,6 +15,7 @@ pub fn render(message: &PlayerMessage) -> String {
             Outcome::Miss => "Your roll missed.".to_string(),
         },
         PlayerMessage::Resume { text } => resume(text),
+        PlayerMessage::Lines { text } => text.clone(),
         PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
         PlayerMessage::Perceive {
             viewer,
@@ -26,15 +27,26 @@ pub fn render(message: &PlayerMessage) -> String {
             clocks,
             items,
             habits: _,
-        } => perceive(
-            viewer,
-            place,
-            visible_actors,
-            known_facts,
-            messages,
-            clocks,
-            items,
-        ),
+            exits,
+        } => {
+            let mut text = perceive(
+                viewer,
+                place,
+                visible_actors,
+                known_facts,
+                messages,
+                clocks,
+                items,
+            );
+            let extra = exit_section(exits);
+            if !extra.is_empty() {
+                if !text.is_empty() {
+                    text.push_str("\n\n");
+                }
+                text.push_str(&extra);
+            }
+            text
+        }
     }
 }
 
@@ -122,6 +134,13 @@ fn named_refusal(code: &str, missing: Option<&str>) -> String {
         "MISSING_ITEM" => "You do not have that.",
         "NOT_A_WEAPON" => "That is not a weapon.",
         "LINE_TOO_LONG" => "That line is too long.",
+        "NO_EXIT" => {
+            return match missing {
+                Some(text) if !text.is_empty() => format!("{text} [{code}]"),
+                _ => format!("There is no exit that way. [{code}]"),
+            };
+        }
+        "BUSY" => return format!("You are busy. [{code}]"),
         "CANT_AFFORD" => {
             return match missing {
                 Some(what) if !what.is_empty() => format!("You cannot afford {what}. [{code}]"),
@@ -185,6 +204,28 @@ fn perceive(
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
     sections.join("\n\n")
+}
+
+fn exit_section(exits: &[WireExit]) -> String {
+    if exits.is_empty() {
+        return String::new();
+    }
+    let mut lines = Vec::new();
+    for exit in exits {
+        let mut line = format!("{} → {}", exit.name, exit.place_name);
+        let mut notes = Vec::new();
+        if exit.minutes > 0 {
+            notes.push(format!("{} min", exit.minutes));
+        }
+        if exit.locked {
+            notes.push("locked".to_string());
+        }
+        if !notes.is_empty() {
+            line.push_str(&format!(" ({})", notes.join(", ")));
+        }
+        lines.push(line);
+    }
+    format!("Exits:\n{}", lines.join("\n"))
 }
 
 fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<Item = &'a str>) {
@@ -442,6 +483,7 @@ Shop day: 1/1"
                 count: 4,
             }],
             habits: vec!["tend_shop".to_string()],
+            exits: Vec::new(),
         });
         assert_eq!(
             text,
@@ -480,6 +522,7 @@ Lamp oil: 4"
             clocks: Vec::new(),
             items: Vec::new(),
             habits: Vec::new(),
+            exits: Vec::new(),
         });
         assert_eq!(quiet, "You are in Docks street.\n\nHere: Bram");
         assert!(!quiet.contains("You know:"), "{quiet}");

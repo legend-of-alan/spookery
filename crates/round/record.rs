@@ -25,6 +25,8 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         intents: &round.applied,
         rejected: &round.rejected,
         effects: &round.effects,
+        arrivals: &round.arrivals,
+        fast_forward: round.fast_forward,
         tool_trace: &round.trace,
     });
     world.finish_round(

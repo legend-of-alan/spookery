@@ -41,6 +41,8 @@ pub enum EffectClass {
         actor_id: String,
         from: String,
         to: String,
+        /// Exact world minute of a timed arrival. Instant moves leave this empty.
+        arrived_at: Option<u64>,
     },
     Memory {
         actor_id: String,
@@ -131,7 +133,8 @@ fn payload_len(class: &EffectClass) -> usize {
         EffectClass::Item { max, .. } => 3 + usize::from(max.is_some()),
         EffectClass::Wield { .. } => 2,
         EffectClass::Unwield { .. } => 1,
-        EffectClass::Location { .. } | EffectClass::Flag { .. } => 3,
+        EffectClass::Location { arrived_at, .. } => 3 + usize::from(arrived_at.is_some()),
+        EffectClass::Flag { .. } => 3,
         EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
         EffectClass::Message { place, .. } => 4 + usize::from(place.is_some()),
         EffectClass::Narrate { .. } => 3,
@@ -194,10 +197,18 @@ where
         EffectClass::Unwield { actor_id } => {
             state.serialize_field("actor_id", actor_id)?;
         }
-        EffectClass::Location { actor_id, from, to } => {
+        EffectClass::Location {
+            actor_id,
+            from,
+            to,
+            arrived_at,
+        } => {
             state.serialize_field("actor_id", actor_id)?;
             state.serialize_field("from", from)?;
             state.serialize_field("to", to)?;
+            if let Some(arrived_at) = arrived_at {
+                state.serialize_field("arrived_at", arrived_at)?;
+            }
         }
         EffectClass::Memory {
             actor_id,

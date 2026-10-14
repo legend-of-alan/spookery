@@ -15,7 +15,7 @@ use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::meter::MeterLive;
 use spookery_kernel::model::{
-    ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState, TickCounters,
+    ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
 };
 use spookery_kernel::rules::RollReport;
 use spookery_kernel::store::codec::emit_save;
@@ -269,15 +269,7 @@ fn player_in_the_shop() {
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
-    assert_eq!(
-        now.actors
-            .get("mira")
-            .unwrap()
-            .tick()
-            .unwrap()
-            .last_act_tick,
-        0
-    );
+    assert_eq!(now.actors.get("mira").unwrap().act().last_act_tick, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -424,11 +416,13 @@ Rowan.
         ActorLive::Pc {
             place: "gate".to_string(),
             flags: Vec::new(),
-            busy: false,
+
             meters: meters(1),
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
+            visited: vec!["gate".to_string()],
+            act: ActCounters::fresh(),
         },
     );
     let now = Now {
@@ -484,31 +478,15 @@ fn busy_skip() {
         drop(shard);
         now.world_time = 600;
         now.messages.push(door_message());
-        *now.actors.get_mut("mira").unwrap().busy_mut() = true;
+        now.actors.get_mut("mira").unwrap().act_mut().busy_until = Some(u64::MAX);
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         save_now(&pack, &now);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(
-        now.actors
-            .get("mira")
-            .unwrap()
-            .tick()
-            .unwrap()
-            .last_act_tick,
-        0
-    );
-    assert_eq!(
-        now.actors
-            .get("bram")
-            .unwrap()
-            .tick()
-            .unwrap()
-            .last_act_tick,
-        0
-    );
+    assert_eq!(now.actors.get("mira").unwrap().act().last_act_tick, 0);
+    assert_eq!(now.actors.get("bram").unwrap().act().last_act_tick, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -748,8 +726,6 @@ kind: npc
 facts: []
 tick:
   eligible: true
-  range:
-    - yard
 rules:
   - id: hold
     when: habit
@@ -764,16 +740,12 @@ rules:
             ActorLive::Npc {
                 place: "yard".to_string(),
                 flags: Vec::new(),
-                busy: false,
+
                 meters: meters(1),
                 inventory: BTreeMap::new(),
                 wielded: None,
                 known_facts: Vec::new(),
-                tick: TickCounters {
-                    last_act_tick: 0,
-                    idle_acts_today: 0,
-                    live_acts_this_hour: 0,
-                },
+                act: ActCounters::fresh(),
             },
         );
     }
@@ -824,7 +796,7 @@ rules:
     let acted = now
         .actors
         .values()
-        .filter(|actor| actor.tick().is_some_and(|tick| tick.last_act_tick == 1))
+        .filter(|actor| actor.act().last_act_tick == 1)
         .count();
     let applied = tick_value(&pack, "tick-0001.jsonl")["intents"]
         .as_array()
@@ -1580,11 +1552,13 @@ Nell keeps a guard up.
         ActorLive::Pc {
             place: "docks_shop".to_string(),
             flags: Vec::new(),
-            busy: false,
+
             meters: meters(100),
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
+            visited: vec!["docks_shop".to_string()],
+            act: ActCounters::fresh(),
         },
     );
     fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
@@ -1675,8 +1649,8 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
     let next = text.replacen(
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n",
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      knife: 1\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      knife: 1\n",
         1,
     );
     assert_ne!(next, text);

@@ -969,7 +969,7 @@ mod tests {
         assert!(menu.iter().all(|row| row.audience != "system"));
         assert!(menu.iter().any(|row| row.name == "travel"
             && row.audience == "verb"
-            && row.token == "place"
+            && row.token == "exit"
             && row.on == "self"));
         assert!(menu
             .iter()

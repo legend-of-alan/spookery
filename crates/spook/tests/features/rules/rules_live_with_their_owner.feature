@@ -53,9 +53,9 @@ Feature: Rules live with their owner
     When the sitter lines up use tonic
     Then the queued target is that actor and the save is unchanged
 
-  Scenario: Time is named when it is not applied
+  Scenario: A time cost is quiet at check
     Given a verb with a time cost and a resist roll
-    Then spook check names the time and not the resist
+    Then spook check is quiet about the time and the resist
 
   Scenario: A bare resist same is reported at check
     Given a verb whose only resist is same

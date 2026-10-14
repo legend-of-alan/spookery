@@ -16,6 +16,7 @@ pub mod journal;
 pub(crate) mod key;
 pub mod lint;
 pub mod lock;
+pub mod map;
 pub mod meter;
 pub mod model;
 pub mod pause;

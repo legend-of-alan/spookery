@@ -1,5 +1,4 @@
 use crate::canon::Canon;
-use crate::diagnostic::{coded, Diagnostic};
 use crate::error::Reason;
 use crate::key::StateKey;
 use crate::meter::{self, MeterWrite};
@@ -99,23 +98,4 @@ pub fn pay(draft: &mut Draft, who: &str, cost: &Cost) -> Result<(), Reason> {
 
 pub fn duration(cost: &Cost) -> u64 {
     cost.minutes
-}
-
-/// `time` loads and does not change the world on this pass.
-pub(crate) fn unapplied(canon: &Canon) -> Vec<Diagnostic> {
-    let mut found = Vec::new();
-    for rule in canon.rules.iter() {
-        if rule.cost.as_ref().is_some_and(|cost| duration(cost) > 0) {
-            found.push(
-                coded(
-                    &rule.file,
-                    Reason::NotInSpec,
-                    "this cost time is not applied",
-                    "time is stored as minutes and does not change the world on this pass",
-                )
-                .with_path(format!("rules[{}].cost.time", rule.index)),
-            );
-        }
-    }
-    found
 }

@@ -1,7 +1,7 @@
 schema: now
 shard_id: sample-d20
-pack_rev: blake2s:e7920ae906c7eab1edcfbe51c94cb9c9adcda9d1fc32424406622ccb21ba601d
-rules_rev: 4
+pack_rev: blake2s:5e10beab104223055428a1daacd3a81f375a826f3f21a453851abb3e39ef6b25
+rules_rev: 5
 state_rev: 0
 tick_index: 0
 world_time: 1080
@@ -33,7 +33,6 @@ actors:
     kind: npc
     place: gate_yard
     flags: []
-    busy: false
     meters:
       defense:
         base: 14
@@ -49,7 +48,7 @@ actors:
         offset: 0
     inventory: {}
     known_facts: []
-    tick:
+    act:
       last_act_tick: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
@@ -57,7 +56,6 @@ actors:
     kind: npc
     place: mill_lane
     flags: []
-    busy: false
     meters:
       defense:
         base: 10
@@ -73,7 +71,7 @@ actors:
         offset: 0
     inventory: {}
     known_facts: []
-    tick:
+    act:
       last_act_tick: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
@@ -81,7 +79,6 @@ actors:
     kind: pc
     place: gate_yard
     flags: []
-    busy: false
     meters:
       defense:
         base: 11
@@ -98,11 +95,16 @@ actors:
     inventory:
       tonic: 1
     known_facts: []
+    visited:
+      - gate_yard
+    act:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
   pc_nell:
     kind: pc
     place: mill_lane
     flags: []
-    busy: false
     meters:
       defense:
         base: 10
@@ -118,5 +120,11 @@ actors:
         offset: 0
     inventory: {}
     known_facts: []
+    visited:
+      - mill_lane
+    act:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
 clocks: {}
 messages: []

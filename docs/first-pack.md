@@ -40,7 +40,7 @@ checks:
     stat: nerve
 ```
 
-`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or failure list. `travel` takes a place. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
+`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or failure list. `travel` follows an exit of the current place: `travel lane` uses the exit named `lane`. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
 
 `rules/tick.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
 
@@ -54,12 +54,23 @@ A place is a Markdown file under `world/places/`. The header is the frontmatter.
 ---
 schema: place
 id: porch
+name: Porch
 facts:
   - id: fact_porch_dry
     text: The porch is dry.
     hidden: false
+exits:
+  - to: yard
+    name: yard
 ---
 The porch faces the yard.
+```
+
+The yard needs an exit to the porch, or `spook check` warns that the porch cannot be reached.
+
+```yaml path=world/places/yard.md mode=insert-before anchor=  # more-exits
+  - to: porch
+    name: porch
 ```
 
 The save lists the places people can stand in. Add `porch` under `places` in `state/save.yaml`.
@@ -71,7 +82,7 @@ The save lists the places people can stand in. Add `porch` under `places` in `st
     actors: []
 ```
 
-`porch` is not on anyone's `range` yet. `travel porch` stays put until you add that id to the character's `tick.range`.
+`travel porch` follows the exit named `porch`. A place with no path from the start place is a warning from `spook check`.
 
 ## Add a player move
 

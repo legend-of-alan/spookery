@@ -1,7 +1,7 @@
 schema: now
 shard_id: starter
-pack_rev: blake2s:a9b7ad7590b2c2aef9e699ada1cb43b5ebc1be2098929440b0c28e0520b548b6
-rules_rev: 4
+pack_rev: blake2s:83292983740d8afed3ae82ecdb37d8911218b698b8bc08b845bde2a8b0390a91
+rules_rev: 5
 state_rev: 0
 tick_index: 0
 world_time: 0
@@ -27,14 +27,13 @@ actors:
     kind: npc
     place: lane
     flags: []
-    busy: false
     meters:
       nerve:
         base: 1
         offset: 0
     inventory: {}
     known_facts: []
-    tick:
+    act:
       last_act_tick: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
@@ -42,12 +41,17 @@ actors:
     kind: pc
     place: yard
     flags: []
-    busy: false
     meters:
       nerve:
         base: 1
         offset: 0
     inventory: {}
     known_facts: []
+    visited:
+      - yard
+    act:
+      last_act_tick: 0
+      idle_acts_today: 0
+      live_acts_this_hour: 0
 clocks: {}
 messages: []

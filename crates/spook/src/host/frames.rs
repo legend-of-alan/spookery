@@ -7,6 +7,7 @@ use crate::protocol::{
 };
 use serde_json::Value;
 use spookery_kernel::intent::Intent;
+use spookery_kernel::map::ExitView;
 use spookery_kernel::model::{Message, Now, RunState};
 use spookery_kernel::perceive::{ClockView, ItemStack, KnownFact, Perceive};
 use spookery_kernel::rules::{RollReport, RollResult};
@@ -131,6 +132,12 @@ pub fn player_resume_line(text: &str) -> String {
     })
 }
 
+pub fn player_lines(text: &str) -> String {
+    crate::protocol::write_player(&PlayerMessage::Lines {
+        text: text.to_string(),
+    })
+}
+
 pub fn player_refused_line(code: &str) -> String {
     player_refused(code, None)
 }
@@ -235,6 +242,17 @@ fn player_view(view: &Perceive) -> PlayerMessage {
         clocks: view.clocks.iter().map(wire_clock).collect(),
         items: view.items.iter().map(wire_item).collect(),
         habits: view.habits.clone(),
+        exits: view.exits.iter().map(wire_exit).collect(),
+    }
+}
+
+fn wire_exit(exit: &ExitView) -> crate::protocol::WireExit {
+    crate::protocol::WireExit {
+        name: exit.name.clone(),
+        to: exit.to.clone(),
+        place_name: exit.place_name.clone(),
+        minutes: exit.minutes,
+        locked: exit.locked,
     }
 }
 

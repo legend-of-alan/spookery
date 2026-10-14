@@ -327,6 +327,10 @@ pub fn player_len() -> usize {
     crate::with_live(|live| support::text_of(&live.player_text).len())
 }
 
+pub fn player_text() -> String {
+    crate::with_live(|live| support::text_of(&live.player_text))
+}
+
 pub fn player_send(line: &str, needle: &str) -> (usize, String) {
     let (slot, mark) = crate::with_live(|live| {
         let mark = support::text_of(&live.player_text).len();

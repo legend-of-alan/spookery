@@ -14,18 +14,18 @@ use spookery_round::{play, RoundCause};
 use super::table;
 use crate::support::{copy_dir, spook, temp_pack};
 use crate::World;
-#[given(expr = "a save with rules_rev 3 and an engine at 4")]
-fn a_save_with_rules_rev_3_and_an_engine_at_4(world: &mut World) {
+#[given(expr = "a save with rules_rev 4 and an engine at 5")]
+fn a_save_with_rules_rev_4_and_an_engine_at_5(world: &mut World) {
     assert_eq!(
         spookery_kernel::store::RULES_REV,
-        4,
-        "the engine rules version is 4"
+        5,
+        "the engine rules version is 5"
     );
     let pack = crate::support::temp_pack("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let stamped = text.replacen("rules_rev: 4\n", "rules_rev: 3\n", 1);
-    assert_ne!(stamped, text, "save did not carry rules_rev 4\n{text}");
+    let stamped = text.replacen("rules_rev: 5\n", "rules_rev: 4\n", 1);
+    assert_ne!(stamped, text, "save did not carry rules_rev 5\n{text}");
     fs::write(&path, stamped).unwrap_or_else(|err| panic!("write save: {err}"));
     world.pack = Some(pack);
 }
@@ -241,10 +241,10 @@ The ferry waits at the dock.
     let rowan = pack.join("cast/pc-rowan.md");
     let text = fs::read_to_string(&rowan).unwrap();
     let next = text.replace(
-        "    - docks_street\n",
-        "    - docks_street\n    - ferry_dock\n  flags:\n    - took_the_ferry\n",
+        "tick:\n  eligible: false\n",
+        "tick:\n  eligible: false\n  flags:\n    - took_the_ferry\n",
     );
-    assert_ne!(text, next, "rowan range was not found");
+    assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
     save(&pack, |now| {
         now.places.insert(
@@ -294,8 +294,6 @@ kind: npc
 facts: []
 tick:
   eligible: true
-  range:
-    - docks_shop
 rules:
   - id: restock
     when: habit
@@ -386,10 +384,10 @@ fn attack_targets_defense(world: &mut World) {
     let briar = pack.join("cast/briar.md");
     let text = fs::read_to_string(&briar).unwrap();
     let next = text.replace(
-        "    - loft\n",
-        "    - loft\n  flags:\n    - hit\n    - missed\n",
+        "  eligible: true\n",
+        "  eligible: true\n  flags:\n    - hit\n    - missed\n",
     );
-    assert_ne!(text, next, "briar range was not found");
+    assert_ne!(text, next, "briar profile was not found");
     fs::write(&briar, next).unwrap();
     save(&pack, |now| {
         let defense = now
@@ -401,7 +399,11 @@ fn attack_targets_defense(world: &mut World) {
             .unwrap();
         defense.base = 12;
         defense.offset = 0;
-        *now.actors.get_mut("npc_briar").unwrap().busy_mut() = true;
+        now.actors
+            .get_mut("npc_briar")
+            .unwrap()
+            .act_mut()
+            .busy_until = Some(u64::MAX);
     });
     world.pack = Some(pack);
 }
@@ -837,23 +839,14 @@ fn a_verb_with_time_and_resist(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook check names the time and not the resist")]
-fn check_names_time_and_not_resist(world: &mut World) {
+#[then(expr = "spook check is quiet about the time and the resist")]
+fn check_is_quiet_about_time_and_resist(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     open_pack(&pack);
     run(world, &["check"]);
-    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
-    assert!(
-        world.stderr.contains("this cost time is not applied"),
-        "{}",
-        world.stderr
-    );
-    assert!(
-        !world.stderr.contains("resist is not applied"),
-        "{}",
-        world.stderr
-    );
-    assert!(world.stderr.contains("NOT_IN_SPEC"), "{}", world.stderr);
+    assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
+    assert!(!world.stderr.contains("cost time"), "{}", world.stderr);
+    assert!(!world.stderr.contains("resist"), "{}", world.stderr);
 }
 
 const BARE_SAME: &str = "

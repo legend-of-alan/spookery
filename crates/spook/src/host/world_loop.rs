@@ -568,6 +568,16 @@ fn on_player(
                 Ok(PlayerReply::Done)
             }
         },
+        Ok(input::PlayerLine::Help) | Ok(input::PlayerLine::Look) => {
+            let text = spookery_kernel::map::help_lines(world.canon(), world.now(), &actor_id);
+            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
+            Ok(PlayerReply::Done)
+        }
+        Ok(input::PlayerLine::Map) => {
+            let text = spookery_kernel::map::player_lines(world.canon(), world.now(), &actor_id);
+            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
+            Ok(PlayerReply::Done)
+        }
         Ok(input::PlayerLine::Turn) => on_mechanical(world, seats, restart, conn, &actor_id, line),
         Err(code) => {
             send_player(world, seats, conn, refused_line(code).into_bytes())?;

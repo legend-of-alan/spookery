@@ -31,7 +31,7 @@ Feature: spook check explains a broken pack
       | pack_rev mismatch             | state/save.yaml              | PACK_REV_MISMATCH   | pack_rev            |
       | hidden fact in a place body   | world/places/docks_shop.md   | HIDDEN_FACT_IN_BODY | hidden fact         |
       | hidden fact in a message      | cast/mira.md                 | HIDDEN_FACT_IN_TEXT | hidden fact         |
-      | unknown place in a range      | cast/mira.md                 | SCHEMA              | not a place         |
+      | unknown place in a range      | world/places/docks_shop.md   | SCHEMA              | not a place         |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
@@ -40,7 +40,7 @@ Feature: spook check explains a broken pack
     And the operator runs spook check
     Then the check exits 1
     And the report names "rules/verbs.yaml"
-    And the report names "cast/mira.md"
+    And the report names "world/places/docks_shop.md"
     And stdout is empty
     And the pack bytes are unchanged
 

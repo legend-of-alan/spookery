@@ -5,9 +5,6 @@ kind: npc
 facts: []
 tick:
   eligible: true
-  range:
-    - yard
-    - lane
   flags:
     - tended
 rules:

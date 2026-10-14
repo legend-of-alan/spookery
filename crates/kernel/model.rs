@@ -61,24 +61,25 @@ pub enum ActorLive {
     Npc {
         place: String,
         flags: Vec<String>,
-        busy: bool,
         meters: BTreeMap<String, MeterLive>,
         inventory: BTreeMap<String, u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wielded: Option<String>,
         known_facts: Vec<String>,
-        tick: TickCounters,
+        act: ActCounters,
     },
     #[serde(rename = "pc")]
     Pc {
         place: String,
         flags: Vec<String>,
-        busy: bool,
         meters: BTreeMap<String, MeterLive>,
         inventory: BTreeMap<String, u32>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         wielded: Option<String>,
         known_facts: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        visited: Vec<String>,
+        act: ActCounters,
     },
 }
 
@@ -95,16 +96,42 @@ impl ActorLive {
         }
     }
 
-    pub fn busy(&self) -> bool {
+    pub fn act(&self) -> &ActCounters {
         match self {
-            ActorLive::Npc { busy, .. } | ActorLive::Pc { busy, .. } => *busy,
+            ActorLive::Npc { act, .. } | ActorLive::Pc { act, .. } => act,
         }
     }
 
-    pub fn busy_mut(&mut self) -> &mut bool {
+    pub fn act_mut(&mut self) -> &mut ActCounters {
         match self {
-            ActorLive::Npc { busy, .. } | ActorLive::Pc { busy, .. } => busy,
+            ActorLive::Npc { act, .. } | ActorLive::Pc { act, .. } => act,
         }
+    }
+
+    /// Busy means `busy_until` is still after this world minute.
+    pub fn is_busy(&self, world_time: u64) -> bool {
+        self.act()
+            .busy_until
+            .is_some_and(|until| until > world_time)
+    }
+
+    pub fn visited(&self) -> &[String] {
+        match self {
+            ActorLive::Pc { visited, .. } => visited,
+            ActorLive::Npc { .. } => &[],
+        }
+    }
+
+    pub fn visit(&mut self, place: &str) -> bool {
+        let ActorLive::Pc { visited, .. } = self else {
+            return false;
+        };
+        if visited.iter().any(|id| id == place) {
+            return false;
+        }
+        visited.push(place.to_string());
+        visited.sort();
+        true
     }
 
     pub fn flags(&self) -> &[String] {
@@ -137,20 +164,6 @@ impl ActorLive {
 
     pub fn is_pc(&self) -> bool {
         matches!(self, ActorLive::Pc { .. })
-    }
-
-    pub fn tick(&self) -> Option<&TickCounters> {
-        match self {
-            ActorLive::Npc { tick, .. } => Some(tick),
-            ActorLive::Pc { .. } => None,
-        }
-    }
-
-    pub fn tick_mut(&mut self) -> Option<&mut TickCounters> {
-        match self {
-            ActorLive::Npc { tick, .. } => Some(tick),
-            ActorLive::Pc { .. } => None,
-        }
     }
 
     pub fn meters(&self) -> &BTreeMap<String, MeterLive> {
@@ -246,10 +259,43 @@ pub fn shift_count(
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TickCounters {
+/// How many times an actor has acted, and the journey they are still on.
+pub struct ActCounters {
     pub last_act_tick: u64,
     pub idle_acts_today: u32,
     pub live_acts_this_hour: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub busy_until: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub busy_for: Option<Pending>,
+}
+
+impl ActCounters {
+    pub fn fresh() -> Self {
+        Self {
+            last_act_tick: 0,
+            idle_acts_today: 0,
+            live_acts_this_hour: 0,
+            busy_until: None,
+            busy_for: None,
+        }
+    }
+}
+
+/// Work that finishes when `busy_until` is reached. Travel keeps the destination.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Pending {
+    pub rule: String,
+    pub verb: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub target: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arrive: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub via: Option<String>,
+    /// `player` or `kernel`.
+    pub source: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

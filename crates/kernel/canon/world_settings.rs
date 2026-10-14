@@ -22,6 +22,7 @@ pub struct Budget {
     pub live_minutes_per_tick: u64,
     pub idle_catchup_max_ticks: u64,
     pub idle_max_world_hours_per_real_hour: u64,
+    pub max_fastforward_ticks: u64,
     pub pause: PausePolicies,
 }
 
@@ -54,6 +55,7 @@ impl Budget {
             live_minutes_per_tick: 5,
             idle_catchup_max_ticks: 12,
             idle_max_world_hours_per_real_hour: 8,
+            max_fastforward_ticks: 12,
             pause: PausePolicies {
                 named_plot_clocks: PausePolicy::PauseWhenEmpty,
             },
@@ -163,6 +165,13 @@ pub fn load_world_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         defaults.idle_max_world_hours_per_real_hour,
         &mut diags,
     );
+    let max_fastforward_ticks = take(
+        text,
+        "max_fastforward_ticks",
+        file.max_fastforward_ticks,
+        defaults.max_fastforward_ticks,
+        &mut diags,
+    );
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -180,6 +189,7 @@ pub fn load_world_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         live_minutes_per_tick,
         idle_catchup_max_ticks,
         idle_max_world_hours_per_real_hour,
+        max_fastforward_ticks,
         pause: PausePolicies {
             named_plot_clocks: file.pause.named_plot_clocks,
         },
@@ -277,6 +287,8 @@ struct TickFile {
     live_minutes_per_tick: Option<i64>,
     idle_catchup_max_ticks: Option<i64>,
     idle_max_world_hours_per_real_hour: Option<i64>,
+    #[serde(default)]
+    max_fastforward_ticks: Option<i64>,
     pause: PauseFile,
 }
 

@@ -34,6 +34,9 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
         Ok(rule) => rule.clone(),
         Err(miss) => return Ok(refused(&miss.named(), None)),
     };
+    if spookery_kernel::map::span(draft.canon(), draft.now(), intent, &rule) > 0 {
+        return Ok(Resolution::Ready { rolled: None });
+    }
     if let Some(roll) = rule.roll.clone() {
         round.trace.push("resolve_check".to_string());
         return roll_check(round, draft, intent, &roll);
@@ -128,6 +131,8 @@ pub(crate) struct SubjectRoll<'a> {
     pub check_id: &'a str,
     pub target: i64,
     pub partial_at: Option<i64>,
+    /// The actor at completion. Absent means the actor frozen at gather.
+    pub live: Option<&'a spookery_kernel::model::ActorLive>,
 }
 
 /// The one `rules::roll` call. Action checks and resist rolls both come through here.
@@ -137,12 +142,15 @@ pub(crate) fn roll_subject(
     meters: &BTreeMap<String, MeterDef>,
     spec: &SubjectRoll<'_>,
 ) -> Result<RollResult, Reason> {
-    let actor = round
-        .frozen
-        .actors
-        .get(spec.actor_id)
-        .cloned()
-        .ok_or(Reason::UnknownKey)?;
+    let actor = match spec.live {
+        Some(actor) => actor.clone(),
+        None => round
+            .frozen
+            .actors
+            .get(spec.actor_id)
+            .cloned()
+            .ok_or(Reason::UnknownKey)?,
+    };
     let viewer = ViewerId::from_kind(spec.actor_kind, spec.actor_id)?;
     let check = checks.get(spec.check_id).ok_or(Reason::UnknownKey)?;
     let key = next_key(round, spec.rule_id, spec.actor_id);
@@ -180,6 +188,7 @@ fn roll_for(
             check_id,
             target,
             partial_at,
+            live: None,
         },
     )
 }

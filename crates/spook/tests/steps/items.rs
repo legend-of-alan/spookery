@@ -57,7 +57,7 @@ fn place_of(now: &mut Now, actor: &str, place: &str) {
 
 fn quiet(now: &mut Now) {
     if let Some(briar) = now.actors.get_mut("npc_briar") {
-        *briar.busy_mut() = true;
+        briar.act_mut().busy_until = Some(u64::MAX);
     }
 }
 
@@ -535,7 +535,10 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
     )
     .unwrap();
     let nell = fs::read_to_string(pack.join("cast/pc-nell.md")).unwrap();
-    let next = nell.replace("  range:\n", "  flags:\n    - poisoned\n  range:\n");
+    let next = nell.replace(
+        "  eligible: false\n",
+        "  eligible: false\n  flags:\n    - poisoned\n",
+    );
     assert_ne!(nell, next);
     fs::write(pack.join("cast/pc-nell.md"), next).unwrap();
     write_dagger(

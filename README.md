@@ -87,7 +87,7 @@ wait
 grit
 ```
 
-The first word is the verb. `say` plus the words after it is speech at the table, and it does not tick. `travel` takes one place id. `travel docks_street` leaves the shop for the street, and the client prints `You are in Docks street.` `wait` and `grit` take no further words. `grit` is the pack's check, 2d6 plus the grit meter. The client prints `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.`
+The first word is the verb. `say` plus the words after it is speech at the table, and it does not tick. `travel` takes one exit name. `travel docks_street` leaves the shop for the street, and the client prints `You are in Docks street.` `wait` and `grit` take no further words. `grit` is the pack's check, 2d6 plus the grit meter. The client prints `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.`
 
 With no GM seated, `travel`, `wait`, and `grit` each commit one tick by themselves. Nothing narrates, and the line is not held for someone else to commit. Each seated player does that on their own line. With a GM seated, the lines wait, and one commit plays them in the order they were queued.
 

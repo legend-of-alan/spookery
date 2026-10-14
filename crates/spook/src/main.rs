@@ -109,6 +109,11 @@ enum Command {
         /// Pack directory.
         pack: PathBuf,
     },
+    /// Print the pack's exit graph.
+    Map {
+        /// Pack directory.
+        pack: PathBuf,
+    },
     /// Write a minimal pack and print the next commands.
     New {
         /// Directory to create. An existing non-empty directory is refused.
@@ -167,6 +172,12 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             if spookery::ai::sit(&pack, &addr.to_string(), door.as_deref()).is_err() {
                 std::process::exit(1);
             }
+            Ok(())
+        }
+        Command::Map { pack } => {
+            let canon = spookery_kernel::canon::load_canon(&pack)
+                .map_err(|diags| spookery::Error::Reason(spookery_kernel::reason_of(diags)))?;
+            print!("{}", spookery_kernel::map::graph(&canon));
             Ok(())
         }
         Command::Tick { pack } => {
@@ -248,7 +259,8 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                     eprintln!("{}", item.report_line());
                 }
             }
-            if found.is_empty() {
+            let errors = found.iter().any(|item| item.code != "WARNING");
+            if !errors {
                 Ok(())
             } else {
                 std::process::exit(1);

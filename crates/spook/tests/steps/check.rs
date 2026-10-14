@@ -373,9 +373,9 @@ fn break_pack(pack: &std::path::Path, fault: &str) {
             "text: The lamp-oil ledger is short.\n",
         ),
         "unknown place in a range" => replace_file(
-            &pack.join("cast/mira.md"),
-            "    - docks_street\n",
-            "    - nowhere\n",
+            &pack.join("world/places/docks_shop.md"),
+            "  - to: docks_street\n",
+            "  - to: nowhere\n",
         ),
         "idle maybe" => replace_file(
             &pack.join("rules/tick.yaml"),

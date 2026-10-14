@@ -5,6 +5,9 @@ use spookery_kernel::Reason;
 pub enum PlayerLine {
     Speech,
     Turn,
+    Help,
+    Map,
+    Look,
 }
 
 pub fn parse_player_input(
@@ -12,12 +15,19 @@ pub fn parse_player_input(
     seated: &str,
     rules: &RuleTable,
 ) -> Result<PlayerLine, Reason> {
-    let (verb, _) = verb_line(line, seated)?;
+    let (verb, rest) = verb_line(line, seated)?;
     if verb.is_empty() {
         return Err(Reason::Schema);
     }
     if verb == "say" {
         return Ok(PlayerLine::Speech);
+    }
+    if rest.is_empty() && matches!(verb, "help" | "map" | "look") {
+        return Ok(match verb {
+            "help" => PlayerLine::Help,
+            "map" => PlayerLine::Map,
+            _ => PlayerLine::Look,
+        });
     }
     if rules.is_verb(verb) {
         Ok(PlayerLine::Turn)

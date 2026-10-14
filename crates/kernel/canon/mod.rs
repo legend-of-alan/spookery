@@ -55,8 +55,10 @@ pub struct FactCanon {
 
 #[derive(Clone, Debug)]
 pub struct PlaceCanon {
+    pub name: String,
     pub facts: Vec<String>,
     pub body: String,
+    pub exits: Vec<crate::map::Exit>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -76,7 +78,6 @@ pub struct CastCanon {
 #[derive(Clone, Debug)]
 pub struct TickProfile {
     pub eligible: bool,
-    pub range: Vec<String>,
     pub flags: Vec<String>,
 }
 
@@ -218,6 +219,13 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             continue;
         }
         let ids = fact_ids_of(&facts, &file.id);
+        let exits = match compile_exits(&rel, &file.exits) {
+            Ok(exits) => exits,
+            Err(more) => {
+                diags.extend(more);
+                Vec::new()
+            }
+        };
         if places.contains_key(&file.id) {
             diags.push(
                 schema_error(
@@ -232,8 +240,10 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         places.insert(
             file.id.clone(),
             PlaceCanon {
+                name: file.name,
                 facts: ids,
                 body: body.to_string(),
+                exits,
             },
         );
         match schema::compile(&rel, file.rules, &Owner::Place(file.id)) {
@@ -301,23 +311,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         if !fact_ok || !tick_ok {
             continue;
-        }
-        if let Some(profile) = &tick {
-            for (index, place_id) in profile.range.iter().enumerate() {
-                if places.contains_key(place_id) {
-                    continue;
-                }
-                let mut diag = schema_error(
-                    &rel,
-                    &format!("range names '{place_id}', which is not a place"),
-                    "use a place id from world/",
-                )
-                .with_path(format!("tick.range[{index}]"));
-                if let Some((line, column)) = locate_nth(text, place_id, 0) {
-                    diag = diag.at_line(line, Some(column));
-                }
-                diags.push(diag);
-            }
         }
         let kind = match file.kind.as_str() {
             "npc" => CastKind::Npc,
@@ -473,6 +466,21 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(find_bare_resist(&rules));
+    diags.extend(crate::map::broken(&Canon {
+        pack_id: String::new(),
+        title: String::new(),
+        system: String::new(),
+        start_place: String::new(),
+        start_pc: String::new(),
+        places: places.clone(),
+        cast: BTreeMap::new(),
+        facts: facts.clone(),
+        rules: crate::rules::rule::RuleTable::new(Vec::new()),
+        checks: BTreeMap::new(),
+        meters: BTreeMap::new(),
+        items: items.clone(),
+        budget: crate::canon::world_settings::Budget::defaults(),
+    }));
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -570,9 +578,73 @@ fn validate_tick(file: &str, text: &str, tick: TickFile) -> Result<TickProfile, 
     let _ = (file, text);
     Ok(TickProfile {
         eligible: tick.eligible,
-        range: tick.range,
         flags: tick.flags,
     })
+}
+
+fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<crate::map::Exit>, Vec<Diagnostic>> {
+    let mut diags = Vec::new();
+    let mut compiled = Vec::new();
+    for (index, exit) in exits.iter().enumerate() {
+        if exit.name.is_empty() || exit.to.is_empty() {
+            diags.push(
+                schema_error(file, "an exit needs a name and a to", "set both")
+                    .with_path(format!("exits[{index}]")),
+            );
+            continue;
+        }
+        let cost = match &exit.cost {
+            Some(yaml) => match schema::cost_of(yaml) {
+                Ok(cost) => cost,
+                Err(problem) => {
+                    diags.push(
+                        schema_error(file, &problem, "fix the exit cost")
+                            .with_path(format!("exits[{index}].cost")),
+                    );
+                    continue;
+                }
+            },
+            None => crate::rules::rule::Cost {
+                minutes: 0,
+                meters: Vec::new(),
+                items: Vec::new(),
+            },
+        };
+        let mut if_ = Vec::new();
+        let mut bad = false;
+        for cond in &exit.if_ {
+            match schema::cond_of(cond) {
+                Ok(cond) => if_.push(cond),
+                Err(problem) => {
+                    diags.push(
+                        schema_error(file, &problem, "fix the exit condition")
+                            .with_path(format!("exits[{index}].if")),
+                    );
+                    bad = true;
+                }
+            }
+        }
+        if bad {
+            continue;
+        }
+        compiled.push(crate::map::Exit {
+            name: exit.name.clone(),
+            to: exit.to.clone(),
+            minutes: cost.minutes,
+            cost,
+            if_,
+            locked_text: exit.locked_text.clone(),
+            hidden: exit.hidden,
+            revealed_by: exit.revealed_by.clone(),
+            file: file.to_string(),
+            index,
+        });
+    }
+    if diags.is_empty() {
+        Ok(compiled)
+    } else {
+        Err(diags)
+    }
 }
 
 pub fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
@@ -1369,9 +1441,30 @@ struct PackStart {
 struct PlaceFile {
     schema: String,
     id: String,
+    #[serde(default)]
+    name: String,
     facts: Vec<FactFile>,
     #[serde(default)]
+    exits: Vec<ExitFile>,
+    #[serde(default)]
     rules: Vec<RuleEntry>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ExitFile {
+    to: String,
+    name: String,
+    #[serde(default)]
+    cost: Option<schema::CostYaml>,
+    #[serde(default, rename = "if")]
+    if_: Vec<schema::CondYaml>,
+    #[serde(default)]
+    locked_text: String,
+    #[serde(default)]
+    hidden: bool,
+    #[serde(default)]
+    revealed_by: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1399,8 +1492,6 @@ struct CastFile {
 #[serde(deny_unknown_fields)]
 struct TickFile {
     eligible: bool,
-    #[serde(default)]
-    range: Vec<String>,
     #[serde(default)]
     flags: Vec<String>,
 }

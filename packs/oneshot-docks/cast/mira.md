@@ -8,10 +8,6 @@ facts:
     hidden: true
 tick:
   eligible: true
-  range:
-    - docks_shop
-    - docks_street
-    - mira_rooms
 rules:
   - id: leave_door_note
     when: habit
