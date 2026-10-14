@@ -1,7 +1,7 @@
 use std::fs;
 use std::future::Future;
 use std::io::{Read, Write};
-use std::net::{Shutdown, TcpListener, TcpStream};
+use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::atomic::Ordering;
@@ -54,14 +54,7 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
 
 #[when(expr = "the operator runs ai-gm without {string}")]
 fn the_operator_runs_host_without(world: &mut World, name: String) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-    listener
-        .set_nonblocking(true)
-        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
-    let addr = listener
-        .local_addr()
-        .unwrap_or_else(|err| panic!("local_addr: {err}"))
-        .to_string();
+    let (addr, listeners) = bind_game_and_agent();
     let pack = pack_arg(table::pack(world));
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.args(["ai-gm", &pack, "--addr", &addr]);
@@ -72,12 +65,11 @@ fn the_operator_runs_host_without(world: &mut World, name: String) {
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    match listener.accept() {
-        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-            world.scratch = "quiet".to_string();
-        }
-        other => panic!("listener accepted a connection: {other:?}"),
-    }
+    world.scratch = if accepted_any(&listeners) {
+        "dialed".to_string()
+    } else {
+        "quiet".to_string()
+    };
 }
 
 #[then(expr = "stderr names {string} as unset")]
@@ -96,27 +88,26 @@ fn the_listener_accepted_no_connection(world: &mut World) {
 
 #[then(expr = "nothing was dialed")]
 fn nothing_was_dialed(_world: &mut World) {
-    let listener = LISTENER
+    let listeners = LISTENER
         .lock()
         .unwrap_or_else(|err| err.into_inner())
         .take()
         .unwrap_or_else(|| panic!("no listener"));
-    match listener.accept() {
-        Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
-        other => panic!("ai-gm dialed: {other:?}"),
+    if accepted_any(&listeners) {
+        panic!("ai-gm dialed");
     }
 }
 
 #[when(expr = "the host is pointed at a free loopback address")]
 fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    let game = table::free_port();
+    let http = game.saturating_add(1);
+    let listener =
+        TcpListener::bind(("127.0.0.1", http)).unwrap_or_else(|err| panic!("bind: {err}"));
     listener
         .set_nonblocking(true)
         .unwrap_or_else(|err| panic!("nonblocking: {err}"));
-    let addr = listener
-        .local_addr()
-        .unwrap_or_else(|err| panic!("local_addr: {err}"))
-        .to_string();
+    let addr = format!("127.0.0.1:{game}");
     let pack = pack_arg(table::pack(world));
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
@@ -138,7 +129,7 @@ fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
             }
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                 if start.elapsed() > Duration::from_secs(5) {
-                    panic!("ai-gm did not dial {addr}");
+                    panic!("ai-gm did not dial 127.0.0.1:{http}");
                 }
                 thread::sleep(Duration::from_millis(20));
             }
@@ -371,10 +362,7 @@ fn sit_commits_the_waiting_queue() {
     table::player_send("travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), 1080);
     crate::with_live(|live| {
-        if let Some(stream) = live.gm_write.as_mut() {
-            let _ = stream.shutdown(Shutdown::Both);
-        }
-        live.gm_write.take();
+        live.gm.take();
     });
     let script = Script::new();
     let (handle, watch) = start_after_gm(&pack, port, &script);
@@ -523,19 +511,45 @@ fn tape_text(pack: &Path) -> String {
     fs::read_to_string(pack.join("state/journal/session.jsonl")).unwrap_or_default()
 }
 
-static LISTENER: Mutex<Option<TcpListener>> = Mutex::new(None);
+static LISTENER: Mutex<Option<Vec<TcpListener>>> = Mutex::new(None);
 
 fn arm_listener() -> String {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-    listener
-        .set_nonblocking(true)
-        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
-    let addr = listener
-        .local_addr()
-        .unwrap_or_else(|err| panic!("local_addr: {err}"))
-        .to_string();
-    *LISTENER.lock().unwrap_or_else(|err| err.into_inner()) = Some(listener);
+    let (addr, listeners) = bind_game_and_agent();
+    *LISTENER.lock().unwrap_or_else(|err| err.into_inner()) = Some(listeners);
     addr
+}
+
+fn bind_game_and_agent() -> (String, Vec<TcpListener>) {
+    loop {
+        let game = table::free_port();
+        let http = game.saturating_add(1);
+        let Ok(game_listener) = TcpListener::bind(("127.0.0.1", game)) else {
+            continue;
+        };
+        let Ok(http_listener) = TcpListener::bind(("127.0.0.1", http)) else {
+            continue;
+        };
+        for listener in [&game_listener, &http_listener] {
+            listener
+                .set_nonblocking(true)
+                .unwrap_or_else(|err| panic!("nonblocking: {err}"));
+        }
+        return (
+            format!("127.0.0.1:{game}"),
+            vec![game_listener, http_listener],
+        );
+    }
+}
+
+fn accepted_any(listeners: &[TcpListener]) -> bool {
+    for listener in listeners {
+        match listener.accept() {
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {}
+            Ok(_) => return true,
+            Err(err) => panic!("accept: {err}"),
+        }
+    }
+    false
 }
 
 fn wait_port(port: u16, server: &mut support::Proc) {
@@ -730,10 +744,7 @@ fn queued_travel(label: &str) -> (std::path::PathBuf, u16, u64) {
     table::player_send("travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), sit, "travel committed before the host");
     crate::with_live(|live| {
-        if let Some(stream) = live.gm_write.as_mut() {
-            let _ = stream.shutdown(Shutdown::Both);
-        }
-        live.gm_write.take();
+        live.gm.take();
     });
     (pack, port, sit)
 }

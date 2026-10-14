@@ -3,13 +3,6 @@ use serde_json::{Map, Value};
 
 use crate::protocol::{Outcome, ProtocolError};
 
-pub const GM_HELLO: &str = "gm\n";
-
-pub const INITIALIZE_LINE: &str = "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"spook-host\",\"version\":\"0\"}}}\n";
-
-pub const INITIALIZED_LINE: &str =
-    "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}\n";
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ToolCall {
     pub id: u64,

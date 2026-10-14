@@ -74,30 +74,31 @@ fn a_socket_sends_an_oversized_hello(world: &mut World) {
     join.join().unwrap_or_else(|_| panic!("writer thread"));
 }
 
-#[when(expr = "a GM sends a JSON-RPC line over 1 MiB")]
-fn a_gm_sends_a_line_over_a_mebibyte(world: &mut World) {
+#[when(expr = "an HTTP body over 1 MiB is posted")]
+fn an_http_body_over_a_mebibyte(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let port = table::free_port();
     table::listen(&pack, &format!("127.0.0.1:{port}"), port);
-    table::seat_gm();
-    let text = crate::with_live(|live| Arc::clone(&live.gm_text));
-    let writer = crate::with_live(|live| {
-        live.gm_write
-            .as_ref()
-            .unwrap_or_else(|| panic!("no GM"))
-            .try_clone()
-            .unwrap_or_else(|err| panic!("clone: {err}"))
-    });
-    let join = std::thread::spawn(move || write_all_ignoring(writer, vec![b'x'; MIB + 1]));
-    world.scratch = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
-    join.join().unwrap_or_else(|_| panic!("writer thread"));
+    let http = port.saturating_add(1);
+    let body = vec![b'x'; MIB + 1];
+    let request = format!(
+        "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{http}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let mut stream = connect(http);
+    stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .unwrap_or_else(|err| panic!("timeout: {err}"));
+    stream
+        .write_all(request.as_bytes())
+        .unwrap_or_else(|err| panic!("write HTTP: {err}"));
+    stream
+        .write_all(&body)
+        .unwrap_or_else(|err| panic!("write body: {err}"));
+    let mut buf = String::new();
+    let _ = stream.read_to_string(&mut buf);
+    world.scratch = buf;
     world.pack = Some(pack);
-}
-
-#[then(expr = "the GM session ends with {string}")]
-fn the_gm_session_ends_with(world: &mut World, code: String) {
-    let needle = format!("\"code\":\"{code}\"");
-    assert!(world.scratch.contains(&needle), "{}", world.scratch);
 }
 
 #[then(expr = "a new GM can sit")]
@@ -299,9 +300,8 @@ fn one_player_stops_reading(world: &mut World) {
         .saturating_add(queue)
         .saturating_add(margin);
     let start = Instant::now();
-    let mut id = 2u64;
     let mut sent = 0usize;
-    let gm_text = crate::with_live(|live| Arc::clone(&live.gm_text));
+    let args = format!(r#"{{"address":"table","text":"{say}"}}"#);
     loop {
         let present = table::now_of(&pack).presence.actors_present.clone();
         if !present.iter().any(|actor| actor == "pc_rowan") {
@@ -318,44 +318,8 @@ fn one_player_stops_reading(world: &mut World) {
                 "rowan still seated after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget}): {present:?}\n{stderr}"
             );
         }
-        let mark = support::text_of(&gm_text).len();
-        let wrote = crate::with_live(|live| {
-            let write = live.gm_write.as_mut().unwrap();
-            writeln!(
-                write,
-                "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":\"say\",\"arguments\":{{\"address\":\"table\",\"text\":\"{say}\"}}}}}}"
-            )
-            .and_then(|()| write.flush())
-        });
-        if let Err(err) = wrote {
-            let stderr = crate::with_live(|live| {
-                live.server
-                    .as_ref()
-                    .map(|server| support::text_of(&server.stderr))
-                    .unwrap_or_default()
-            });
-            panic!("say {id} failed: {err}\n{stderr}");
-        }
-        let needle = format!("\"id\":{id}");
-        let wait_started = Instant::now();
-        loop {
-            let text = support::text_of(&gm_text);
-            if text.get(mark..).unwrap_or("").contains(&needle) {
-                break;
-            }
-            if wait_started.elapsed() > Duration::from_secs(5) {
-                let stderr = crate::with_live(|live| {
-                    live.server
-                        .as_ref()
-                        .map(|server| support::text_of(&server.stderr))
-                        .unwrap_or_default()
-                });
-                panic!("say {id} got no reply\n{text}\n{stderr}");
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        let _ = table::gm_call(2, "say", &args);
         sent = sent.saturating_add(frame);
-        id += 1;
     }
     let heard = Instant::now();
     loop {
@@ -546,34 +510,11 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 }
 
 fn try_gm(port: u16) -> Result<(), String> {
-    let mut stream = TcpStream::connect(("127.0.0.1", port)).map_err(|err| err.to_string())?;
-    stream
-        .set_read_timeout(Some(Duration::from_secs(2)))
-        .map_err(|err| err.to_string())?;
-    stream
-        .write_all(b"gm\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"proof\",\"version\":\"0\"}}}\n")
-        .map_err(|err| err.to_string())?;
-    stream.flush().map_err(|err| err.to_string())?;
-    let mut got = Vec::new();
-    let mut tmp = [0u8; 256];
-    let start = Instant::now();
-    loop {
-        if String::from_utf8_lossy(&got).contains("\"id\":1") {
-            let text = String::from_utf8_lossy(&got);
-            if text.contains("SESSION_FULL") {
-                return Err("SESSION_FULL".to_string());
-            }
-            return Ok(());
+    match spookery::gm_connection::GmConnection::connect(&format!("127.0.0.1:{port}")) {
+        Ok(gm) => {
+            drop(gm);
+            Ok(())
         }
-        if start.elapsed() > Duration::from_secs(2) {
-            return Err(format!("no initialize\n{}", String::from_utf8_lossy(&got)));
-        }
-        match stream.read(&mut tmp) {
-            Ok(0) => return Err("eof".to_string()),
-            Ok(n) => got.extend_from_slice(&tmp[..n]),
-            Err(err)
-                if err.kind() == ErrorKind::TimedOut || err.kind() == ErrorKind::WouldBlock => {}
-            Err(err) => return Err(err.to_string()),
-        }
+        Err(err) => Err(err.to_string()),
     }
 }

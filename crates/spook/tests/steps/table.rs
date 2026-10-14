@@ -5,6 +5,8 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use serde_json::Value;
+use spookery::gm_connection::{GmConnection, Incoming};
 use spookery_kernel::model::Now;
 
 use crate::support::{self, Proc};
@@ -21,7 +23,8 @@ pub struct Live {
     pub player_write: Option<TcpStream>,
     pub player_text: Arc<Mutex<String>>,
     pub players: Vec<Seated>,
-    pub gm_write: Option<TcpStream>,
+    pub gm: Option<GmConnection>,
+    pub http_port: u16,
     pub gm_text: Arc<Mutex<String>>,
     pub opened_now: Vec<u8>,
     pub seated_now: Vec<u8>,
@@ -109,7 +112,8 @@ pub fn listen_with(pack: &Path, bind: &str, port: u16, env: &[(&str, &str)]) {
         player_write: None,
         player_text: Arc::new(Mutex::new(String::new())),
         players: Vec::new(),
-        gm_write: None,
+        gm: None,
+        http_port: port.saturating_add(1),
         gm_text: Arc::new(Mutex::new(String::new())),
         opened_now: opened_now.clone(),
         seated_now: opened_now,
@@ -148,11 +152,16 @@ pub fn seat_actor(pack: &Path, actor_id: &str) {
 }
 
 pub fn seat_gm() {
-    let port = crate::with_live(|live| live.port);
-    let (write, text) = connect_gm(port);
+    let http = crate::with_live(|live| live.http_port);
+    let below = http
+        .checked_sub(1)
+        .unwrap_or_else(|| panic!("http port {http}"));
+    let gm = GmConnection::connect(&format!("127.0.0.1:{below}"))
+        .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let opened = gm.opened_line().to_string();
     crate::with_live(|live| {
-        live.gm_write = Some(write);
-        live.gm_text = text;
+        push_line(&live.gm_text, &opened);
+        live.gm = Some(gm);
     });
 }
 
@@ -180,29 +189,39 @@ pub fn wait_player_from(mark: usize, needle: &str) -> String {
 }
 
 pub fn gm_call(id: u64, name: &str, arguments: &str) -> String {
-    let needle = format!("\"id\":{id}");
-    let (slot, mark) = crate::with_live(|live| {
-        let mark = support::text_of(&live.gm_text).len();
-        let write = live
-            .gm_write
-            .as_mut()
-            .unwrap_or_else(|| panic!("no seated GM"));
-        let name = serde_json::to_string(name).unwrap_or_else(|err| panic!("name: {err}"));
-        writeln!(
-            write,
-            "{{\"jsonrpc\":\"2.0\",\"id\":{id},\"method\":\"tools/call\",\"params\":{{\"name\":{name},\"arguments\":{arguments}}}}}"
-        )
-        .unwrap_or_else(|err| panic!("gm call: {err}"));
-        write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-        (Arc::clone(&live.gm_text), mark)
-    });
-    wait_suffix(&slot, mark, &needle)
+    let value: Value =
+        serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
+    crate::with_live(|live| {
+        let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
+        let outcome = gm
+            .call(name, value)
+            .unwrap_or_else(|err| panic!("gm call: {err}"));
+        for event in gm.take_events() {
+            push_line(&live.gm_text, &event.raw);
+        }
+        let raw = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": { "structuredContent": outcome.body }
+        })
+        .to_string();
+        push_line(&live.gm_text, &raw);
+        raw
+    })
 }
 
 pub fn wait_gm(needle: &str) -> String {
-    let slot = crate::with_live(|live| Arc::clone(&live.gm_text));
-    wait_text(&slot, needle);
-    support::text_of(&slot)
+    let start = Instant::now();
+    loop {
+        let text = gm_text();
+        if text.contains(needle) {
+            return text;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("missing {needle}\n{text}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 pub fn wait_world_time(pack: &Path, expected: u64) {
@@ -223,8 +242,35 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
 }
 
 pub fn gm_text() -> String {
-    let slot = crate::with_live(|live| Arc::clone(&live.gm_text));
-    support::text_of(&slot)
+    crate::with_live(|live| {
+        if let Some(gm) = live.gm.as_mut() {
+            let ready = gm.drain_ready();
+            for incoming in ready {
+                if let Some(line) = incoming_line(incoming) {
+                    push_line(&live.gm_text, &line);
+                }
+            }
+        }
+        support::text_of(&live.gm_text)
+    })
+}
+
+fn push_line(slot: &Arc<Mutex<String>>, line: &str) {
+    let mut text = slot.lock().unwrap_or_else(|err| err.into_inner());
+    text.push_str(line);
+    if !line.ends_with('\n') {
+        text.push('\n');
+    }
+}
+
+fn incoming_line(incoming: Incoming) -> Option<String> {
+    match incoming {
+        Incoming::Event(event) => Some(event.raw),
+        Incoming::Result { raw, .. } | Incoming::Bad(raw) | Incoming::Refused { raw, .. } => {
+            Some(raw)
+        }
+        Incoming::Eof => None,
+    }
 }
 
 pub fn actor_text(actor_id: &str) -> String {
@@ -263,7 +309,7 @@ pub fn stop_server() {
     crate::with_live(|live| {
         live.players.clear();
         live.player_write.take();
-        live.gm_write.take();
+        live.gm.take();
         if let Some(server) = live.server.take() {
             drop(server);
         }
@@ -321,9 +367,19 @@ pub fn free_port() -> u16 {
             .port();
         drop(listener);
         // The documented default is 127.0.0.1:9737. A free-port scenario asserts it was not chosen.
-        if port != 9737 {
-            return port;
+        // The agent door is the next port, so that port has to bind too.
+        if port == 9737 || port.saturating_add(1) == 9737 {
+            continue;
         }
+        let agent = match std::net::TcpListener::bind(("127.0.0.1", port.saturating_add(1))) {
+            Ok(agent) => agent,
+            Err(_) => continue,
+        };
+        drop(agent);
+        if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
+            continue;
+        }
+        return port;
     }
 }
 
@@ -382,23 +438,6 @@ fn connect_actor(port: u16, actor_id: &str) -> (TcpStream, Arc<Mutex<String>>) {
     writeln!(stream, "player:{actor_id}").unwrap_or_else(|err| panic!("hello: {err}"));
     stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     wait_text(&text, "\"kind\":\"perceive\"");
-    (stream, text)
-}
-
-fn connect_gm(port: u16) -> (TcpStream, Arc<Mutex<String>>) {
-    let mut stream = connect(port);
-    let text = spawn_reader(&stream);
-    stream
-        .write_all(b"gm\n{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{},\"clientInfo\":{\"name\":\"proof\",\"version\":\"0\"}}}\n")
-        .unwrap_or_else(|err| panic!("gm hello: {err}"));
-    stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    wait_text(&text, "\"id\":1");
-    writeln!(
-        stream,
-        "{{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}}"
-    )
-    .unwrap_or_else(|err| panic!("initialized: {err}"));
-    stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     (stream, text)
 }
 

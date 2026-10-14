@@ -12,10 +12,10 @@ Feature: The listener bounds input
     Then the hello is refused with "LINE_TOO_LONG"
     And save.yaml is unchanged since the table opened
 
-  Scenario: A GM sends a JSON-RPC line over 1 MiB
+  Scenario: An HTTP body over 1 MiB is refused and the seat stays free
     Given a docks table
-    When a GM sends a JSON-RPC line over 1 MiB
-    Then the GM session ends with "LINE_TOO_LONG"
+    When an HTTP body over 1 MiB is posted
+    Then the response status is 413
     And a new GM can sit
 
   Scenario: Invalid UTF-8 in a player line is refused and the seat stays usable

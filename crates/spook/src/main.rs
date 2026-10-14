@@ -24,7 +24,7 @@ enum Command {
     Run {
         /// Pack directory.
         pack: PathBuf,
-        /// Loopback streamable HTTP for one coding agent.
+        /// Loopback streamable HTTP for the GM seat. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
     },

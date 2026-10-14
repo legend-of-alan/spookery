@@ -117,9 +117,9 @@ struct Session {
     printed_checks: PrintedChecks,
 }
 
-/// Check lines `commit` already printed, in the order their check events
-/// follow the result on the socket. Each matching event is skipped once, so a
-/// later check still prints.
+/// Check lines `commit` already printed. Each matching event is skipped once,
+/// so a later check still prints. Events that arrive after the result use
+/// this list. Events that arrive before it are matched in `show_arrived`.
 #[derive(Debug, Default)]
 struct PrintedChecks(VecDeque<String>);
 
@@ -239,7 +239,15 @@ impl Session {
         let Some(outcome) = self.call_tool("commit_turn", json!({ "include_tick": true })) else {
             return;
         };
-        self.show_early();
+        let checks = render_checks(&outcome.body);
+        // HTTP delivers this commit's check events before the tool result.
+        // The result text is what prints each roll. Swallow a matching event
+        // that is already buffered, and skip one that arrives afterwards.
+        if outcome.refused || self.raw {
+            self.show_arrived(&[]);
+        } else {
+            self.show_arrived(&checks);
+        }
         if outcome.refused {
             self.show_tool_refusal(&outcome);
             self.show_ready();
@@ -251,12 +259,9 @@ impl Session {
             return;
         }
         emit(&render_diff(&outcome.body));
-        let checks = render_checks(&outcome.body);
         for line in &checks {
             emit(line);
         }
-        // The seat writes this commit's check events right after its result,
-        // so each one is skipped once and later checks still print.
         self.printed_checks.printed(checks);
         self.show_ready();
     }
@@ -307,8 +312,22 @@ impl Session {
     }
 
     fn show_early(&mut self) {
+        self.show_arrived(&[]);
+    }
+
+    /// Events buffered before this result. `checks` are rolls this result
+    /// will print; a matching check event is not printed again.
+    fn show_arrived(&mut self, checks: &[String]) {
+        let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
         let events = self.client.take_events();
         for event in &events {
+            if let EventBody::Check { .. } = event.body {
+                let line = render_event(&event.body);
+                if pending.front().copied() == Some(line.as_str()) {
+                    pending.pop_front();
+                    continue;
+                }
+            }
             self.show_event(event);
         }
         // Every check event of the previous commit came before this result.

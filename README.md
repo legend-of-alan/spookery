@@ -162,42 +162,48 @@ The `Live AI` workflow runs it against Ollama on pull requests that touch the mo
 
 ### Human GM
 
-`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first.
+`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first. Both dial the agent door on the next port, `http://127.0.0.1:9738/mcp` when the game is on `9737`.
 
 ```sh
 spook gm /tmp/docks
 ```
 
-Type `help` for the seat commands. `spook gm --raw` prints each socket frame as one JSON line.
+Type `help` for the seat commands. `spook gm --raw` prints each protocol frame as one JSON line.
 
 ### Coding agent
 
-Start the server with an HTTP door. That port is not the game port. Both stay on loopback. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:<port>/mcp` gets a 403.
+`spook run` serves one agent door at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--mcp-http 127.0.0.1:<port>` overrides it. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
 
 ```sh
-spook run packs/oneshot-docks --mcp-http 127.0.0.1:<port>
+spook run packs/oneshot-docks
 ```
 
-Register `http://127.0.0.1:<port>/mcp`. The key names below are the ones each client documents for streamable HTTP.
+Register `http://127.0.0.1:9738/mcp`. The key names below are the ones each client documents for streamable HTTP.
 
-Grok Build, in `~/.grok/config.toml`:
+Claude Code:
 
-```toml
-[mcp_servers.spook]
-url = "http://127.0.0.1:<port>/mcp"
+```sh
+claude mcp add --transport http spook http://127.0.0.1:9738/mcp
 ```
 
-Claude Code, in `.mcp.json`:
+Or in `.mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "spook": {
       "type": "http",
-      "url": "http://127.0.0.1:<port>/mcp"
+      "url": "http://127.0.0.1:9738/mcp"
     }
   }
 }
+```
+
+Grok Build, in `~/.grok/config.toml`. The key is `url` under `[mcp_servers]`, not a `mcpServers` JSON file.
+
+```toml
+[mcp_servers.spook]
+url = "http://127.0.0.1:9738/mcp"
 ```
 
 Cursor, in `.cursor/mcp.json`:
@@ -206,7 +212,7 @@ Cursor, in `.cursor/mcp.json`:
 {
   "mcpServers": {
     "spook": {
-      "url": "http://127.0.0.1:<port>/mcp"
+      "url": "http://127.0.0.1:9738/mcp"
     }
   }
 }
@@ -218,32 +224,32 @@ Gemini CLI, in `~/.gemini/settings.json`. `httpUrl` is the streamable HTTP key. 
 {
   "mcpServers": {
     "spook": {
-      "httpUrl": "http://127.0.0.1:<port>/mcp"
+      "httpUrl": "http://127.0.0.1:9738/mcp"
     }
   }
 }
 ```
 
-Windsurf, in `mcp_config.json`:
+Windsurf, in `~/.codeium/windsurf/mcp_config.json`. The key is `serverUrl`.
 
 ```json
 {
   "mcpServers": {
     "spook": {
-      "serverUrl": "http://127.0.0.1:<port>/mcp"
+      "serverUrl": "http://127.0.0.1:9738/mcp"
     }
   }
 }
 ```
 
-Claude Desktop's config file only takes stdio. One line reaches the HTTP door:
+Claude Desktop's config file only takes stdio. `mcp-remote` reaches the HTTP door:
 
 ```json
 {
   "mcpServers": {
     "spook": {
       "command": "npx",
-      "args": ["mcp-remote", "http://127.0.0.1:<port>/mcp"]
+      "args": ["mcp-remote", "http://127.0.0.1:9738/mcp"]
     }
   }
 }

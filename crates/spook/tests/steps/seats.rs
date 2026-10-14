@@ -25,8 +25,18 @@ fn a_second_player_connects(world: &mut World) {
     world.scratch = table::second_hello("player:pc_rowan");
 }
 
-#[when(expr = "a second GM connects")]
-fn a_second_gm_connects(world: &mut World) {
+#[when(expr = "a second GM connects over HTTP")]
+fn a_second_gm_connects_over_http(world: &mut World) {
+    let game = crate::with_live(|live| live.port);
+    let http = game.saturating_add(1);
+    world.scratch = super::mcp::http_post(http, "127.0.0.1", None);
+}
+
+#[when(expr = "a socket sends gm on the game port")]
+fn a_socket_sends_gm_on_the_game_port(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let port = table::free_port();
+    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
     world.scratch = table::second_hello("gm");
 }
 
@@ -146,9 +156,8 @@ fn a_fourth_player_connects(world: &mut World) {
 
 #[then(expr = "the hello is refused with {string}")]
 fn the_hello_is_refused_with(world: &mut World, code: String) {
-    let needle = format!("\"code\":\"{code}\"");
     assert!(
-        world.scratch.contains(&needle),
+        world.scratch.contains(&code),
         "hello reply:\n{}",
         world.scratch
     );
@@ -285,7 +294,7 @@ fn both_players_wait(world: &mut World) {
 
 #[then(expr = "both lines are queued for the GM")]
 fn both_lines_are_queued_for_the_gm(_world: &mut World) {
-    let text = table::gm_text();
+    let text = table::wait_gm("\"kind\":\"queued\"");
     assert!(text.contains("\"kind\":\"queued\""), "{text}");
     assert!(text.contains("\"actor_id\":\"pc_rowan\""), "{text}");
     assert!(text.contains("\"actor_id\":\"pc_harbormouse\""), "{text}");
