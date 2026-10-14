@@ -472,6 +472,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(unknown_meters(meters, checks, &rules));
     }
     diags.extend(unknown_rule_items(&rules, &items));
+    diags.extend(find_bare_resist(&rules));
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -925,6 +926,49 @@ fn effect_items(effect: &EffectTemplate, ids: &mut Vec<String>) {
         | EffectTemplate::Narrate { resist, .. } => resist_items(resist.as_ref(), ids),
         _ => {}
     }
+}
+
+fn find_bare_resist(rules: &RuleTable) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for rule in rules.iter() {
+        let after_do = scan_resist(&rule.do_, false, rule, &mut diags);
+        scan_resist(&rule.success, after_do, rule, &mut diags);
+        scan_resist(&rule.partial, after_do, rule, &mut diags);
+        scan_resist(&rule.failure, after_do, rule, &mut diags);
+    }
+    diags
+}
+
+fn scan_resist(
+    effects: &[EffectTemplate],
+    mut seen: bool,
+    rule: &crate::rules::rule::Rule,
+    diags: &mut Vec<Diagnostic>,
+) -> bool {
+    use crate::rules::rule::ResistSpec;
+    for effect in effects {
+        match effect.resist() {
+            Some(ResistSpec::Same) if !seen => {
+                diags.push(
+                    schema_error(
+                        &rule.file,
+                        &format!(
+                            "rule '{}' uses resist: same before any resist roll",
+                            rule.local_id
+                        ),
+                        "put a resist roll before it, or name the check on this effect",
+                    )
+                    .with_path(format!("rules[{}]", rule.index)),
+                );
+            }
+            Some(ResistSpec::Roll { resisted, .. }) => {
+                seen = true;
+                scan_resist(resisted, true, rule, diags);
+            }
+            _ => {}
+        }
+    }
+    seen
 }
 
 fn resist_items(resist: Option<&crate::rules::rule::ResistSpec>, ids: &mut Vec<String>) {

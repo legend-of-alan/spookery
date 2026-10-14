@@ -157,8 +157,8 @@ where
         EffectTemplate::Item {
             who, id, add, max, ..
         } => {
-            let item_id = named_id(intent, id)?;
-            let (actor_id, place) = holder(now, ctx, who)?;
+            let item_id = expr::resolve_item_id(intent, id)?;
+            let (actor_id, place) = resolve_holder(now, ctx, who)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
@@ -178,7 +178,7 @@ where
                 &intent.id,
                 EffectClass::Wield {
                     actor_id,
-                    id: named_id(intent, id)?,
+                    id: expr::resolve_item_id(intent, id)?,
                 },
             ));
         }
@@ -219,7 +219,7 @@ where
             to, text, fact_ids, ..
         } => {
             let to = match to {
-                NarrateTo::Here => actors_here(now, ctx)?,
+                NarrateTo::Here => resolve_actors_here(now, ctx)?,
                 NarrateTo::Self_ => vec![intent.actor_id.clone()],
                 NarrateTo::Actors(ids) => ids.clone(),
             };
@@ -283,18 +283,12 @@ fn meter_write(
     ))
 }
 
-fn named_id(intent: &Intent, id: &str) -> Result<String, Reason> {
-    if id == "target" {
-        return match &intent.target {
-            Target::Actor(token) | Target::Place(token) => Ok(token.clone()),
-            _ => Err(Reason::Schema),
-        };
-    }
-    Ok(id.to_string())
-}
-
 /// An item holder. `place:` and `here` are the place. Anyone else is an actor.
-fn holder(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<(Option<String>, Option<String>), Reason> {
+fn resolve_holder(
+    now: &Now,
+    ctx: &Ctx<'_>,
+    who: &Who,
+) -> Result<(Option<String>, Option<String>), Reason> {
     match who {
         Who::Place(id) => Ok((None, Some(id.clone()))),
         Who::Here => Ok((None, Some(expr::actor_of(now, ctx, &Who::Here)?))),
@@ -303,7 +297,7 @@ fn holder(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<(Option<String>, Option
     }
 }
 
-fn actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> {
+fn resolve_actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> {
     let place = expr::actor_of(now, ctx, &Who::Here)?;
     let mut ids: Vec<String> = now
         .actors

@@ -177,15 +177,10 @@ fn apply_item(
 }
 
 fn apply_wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason> {
-    let weapon = draft
-        .canon()
-        .items
-        .get(item_id)
-        .is_some_and(|item| item.tags.iter().any(|tag| tag == "weapon"));
-    if !draft.canon().items.contains_key(item_id) {
+    let Some(item) = draft.canon().items.get(item_id) else {
         return Err(Reason::UnknownKey);
-    }
-    if !weapon {
+    };
+    if !item.tags.iter().any(|tag| tag == "weapon") {
         return Err(Reason::NotAWeapon);
     }
     let held = draft

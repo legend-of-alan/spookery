@@ -11,6 +11,21 @@ Feature: Items are real
     When rowan takes lamp_oil
     Then docks_shop has 2 and rowan has 1
 
+  Scenario: Using an item you do not hold is refused
+    Given docks_shop has 3 lamp_oil
+    When rowan types "use lamp_oil"
+    Then the line is rejected with MISSING_ITEM and no tick was written
+
+  Scenario: Taking an item that is not there is refused
+    Given docks_shop has no lamp_oil
+    When rowan takes lamp_oil
+    Then the tick names MISSING_ITEM and the shop has no lamp_oil
+
+  Scenario: Dropping an item you do not hold is refused
+    Given docks_shop has 3 lamp_oil
+    When rowan drops lamp_oil
+    Then the tick names MISSING_ITEM and rowan still has no lamp_oil
+
   Scenario: Unknown item
     Given now.yaml lists an item with no definition
     Then spook check reports an unknown item diagnostic

@@ -53,6 +53,10 @@ rules:
     when:
       verb: use
       target: item
+    if:
+      - has_item:
+          who: self
+          id: target
     do: []
 
   - id: wield

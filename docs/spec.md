@@ -102,7 +102,7 @@ JSONL and MCP write one flat object per effect. The object is internally tagged 
 
 ## Apply
 
-`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. A meter write clamps a sum that fits in `i64`. An item count below 0 is `OUT_OF_RANGE`. Memory text longer than 240 characters is `SCHEMA`. Memory facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
+`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. A meter write clamps a sum that fits in `i64`. Removing an item from a count of 0 is `MISSING_ITEM`. A removal that would pass below 0 from a positive count is `OUT_OF_RANGE`. Memory text longer than 240 characters is `SCHEMA`. Memory facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
 
 The effect's viewer must be the active intent's actor. Failure is `VIEWER_MISMATCH`.
 
@@ -110,7 +110,7 @@ Clocks do not clamp. An unknown clock is `UNKNOWN_KEY`. A paused clock, or a clo
 
 Location: `from` must equal the live place, and `to` must be in the profile range. Otherwise `OUT_OF_RANGE`. An `actor_id` other than the intent actor is `ACTOR_MISMATCH`. A PC location while `humans == 0` is `TABLE_EMPTY`. An NPC with no tick profile is `NO_PROFILE`.
 
-An `item` effect adds or removes a count on an actor or a place. `who: place:<id>` and `who: here` name a place. A result below 0 is `OUT_OF_RANGE` and the intent rolls back. `max` caps a positive add. A count that lands on 0 is omitted. Dropping or spending the wielded item clears that actor's wielded slot in the same tick.
+An `item` effect adds or removes a count on an actor or a place. `who: place:<id>` and `who: here` name a place. Removing from a count of 0 is `MISSING_ITEM`. A removal that would pass below 0 from a positive count is `OUT_OF_RANGE` and the intent rolls back. `max` caps a positive add. A count that lands on 0 is omitted. Dropping or spending the wielded item clears that actor's wielded slot in the same tick.
 
 Meter: `write` is `base`, `offset`, or `snap`. `base` adds the delta to `base` and clamps that base into `[min, base_cap]`, and keeps `offset`. `offset` adds the delta to `offset` and keeps `base`. `snap` sets the next pair to `(base, 0)`. The live pair is assigned only when `base` is inside `[min, base_cap]` and `base + offset` fits in `i64`. A sum that fits and passes `max` is clamped when `current` is read. `current` is `clamp(base + offset, min, max)`. It is not stored. An add that does not fit in `i64`, or a next pair that fails that check, is `OUT_OF_RANGE` and the record is unchanged. An unknown meter id is `UNKNOWN_KEY`. A PC and an NPC take the same write.
 
@@ -122,13 +122,13 @@ One rule has `id`, `when`, an optional `if`, an optional `cost`, an optional `ro
 
 The full id is the owner plus the local id: `verb:travel`, `place:docks_shop/bell`, `item:tonic/use`, `cast:mira/restock_lamp_oil`, `story:smuggler/bell`. For `attack`, the wielded weapon's rule wins when that item has one. Otherwise one verb intent uses the target item's rule for that verb, then the target actor's, then the rule on the actor's current place, then the rule in `rules/verbs.yaml`. A full id is not a verb word and does not select a rule. A habit is selected by its local id, and only for that NPC.
 
-`if` is a list. Each dash is one condition: `has_item`, `wielding`, `meter`, `flag`, `at`, `knows`, `clock`, `hour`, `humans`, `note_exists`, `all`, `any`, or `not`. Two conditions under one dash are `SCHEMA`. A failed `has_item` is `MISSING_ITEM` and that line is not queued. `wielding` is true when that actor's wielded slot holds that item.
+`if` is a list. Each dash is one condition: `has_item`, `wielding`, `meter`, `flag`, `at`, `knows`, `clock`, `hour`, `humans`, `note_exists`, `all`, `any`, or `not`. Two conditions under one dash are `SCHEMA`. A failed `has_item` is `MISSING_ITEM` and that line is not queued. `has_item` and `wielding` read `id: target` as the intent's target token. `wielding` is true when that actor's wielded slot holds that item.
 
 `roll` names a `check` and a `target`. The target is a number, or a meter plus a number. `partial_at` is strictly below that target and needs a `partial` list. A `partial` list without `partial_at`, a `partial_at` without that list, a `partial_at` at or above the target, or an outcome list without a roll, is `SCHEMA`. An opposing total replaces the target and that roll stays binary.
 
 `do` runs on every band. `success`, `partial`, and `failure` run on that band. `failure` is the miss. A yield is `do: []` with no outcome lists. `wait` is a yield. A yield with a roll reports the band and writes no world key. `say` is speech, so that id is not a rule.
 
-`cost` may name `time`, meters, and items. A cost the actor cannot pay is `CANT_AFFORD`. The refusal names the meter or the item, the journal word is `CANT_AFFORD` plus that name, and the world is unchanged. The player sentence is `You cannot afford <name>. [CANT_AFFORD]`. Items in `cost` are paid when the intent commits, before its effects, and a spent wielded item clears the slot. `time` is parsed to minutes. `spook check` reports that this time is not applied. `resist` on an effect gives its subject a keyed roll. A success shrugs that effect off and runs `resisted` instead. `resist: same` reuses the previous resist roll in that list. A resist is an outcome. The tick does not record it as a refusal. Both the action roll and the resist roll use the per-roll seed, so `spook verify` reproduces them.
+`cost` may name `time`, meters, and items. A cost the actor cannot pay is `CANT_AFFORD`. The refusal names the meter or the item, the journal word is `CANT_AFFORD` plus that name, and the world is unchanged. The player sentence is `You cannot afford <name>. [CANT_AFFORD]`. Items in `cost` are paid when the intent commits, before its effects, and a spent wielded item clears the slot. `time` is parsed to minutes. `spook check` reports that this time is not applied. `resist` on an effect gives its subject a keyed roll. A success shrugs that effect off and runs `resisted` instead. `resist: same` reuses the previous resist roll in that list. `do` counts for the outcome lists that follow it. `spook check` reports `resist: same` when no earlier effect in that run has rolled a resist. A resist is an outcome. The tick does not record it as a refusal. Both the action roll and the resist roll use the per-roll seed, so `spook verify` reproduces them.
 
 A player line queues a verb. Typing a habit name is `NOT_IN_SPEC` and is not queued. A full id is `NOT_IN_SPEC` for a PC. It does not select another actor's habit or a rule on another place. The GM intent tool queues a verb for a player or an NPC, and that NPC's habit. A habit for a PC is `NOT_IN_SPEC`. `source` on that tool stays `player`. A player-sourced habit skips `if`. A kernel habit still requires eligibility and `if`.
 
@@ -186,7 +186,7 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 | `NOT_OWNER` when a kernel source acts for an ineligible NPC | `INELIGIBLE` | NPC failed eligibility |
 | `NOT_OWNER` when location or NPC counters need a tick profile and there is none | `NO_PROFILE` | The effect needed a tick profile and there is none |
 | `NOT_OWNER` when location, memory, or a system memory names an actor other than the intent actor | `ACTOR_MISMATCH` | The effect names an actor other than the intent actor |
-| `NOT_OWNER` when an item count would go below 0 | `OUT_OF_RANGE` | The same bounds token location already uses |
+| `NOT_OWNER` when an item count would go below 0 | `OUT_OF_RANGE` | A shortfall from a positive count. A count of 0 is `MISSING_ITEM` |
 | `NOT_OWNER` when a PC changes location while `humans == 0` | `TABLE_EMPTY` | This change requires a seated human |
 | `LIVE_ONLY` on the five-name denylist | retired | Those names are not a denylist |
 | `LIVE_ONLY` on a player world line while `humans == 0` | `TABLE_EMPTY` | A world line needs a seated human |
@@ -200,7 +200,7 @@ Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLED
 
 `SEAT_TAKEN` is a hello for a PC another player seat already holds. `SESSION_FULL` is a fourth player hello, or a second GM. The fourth-player check runs before the held-PC check.
 
-`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `has_item` precondition, and of wielding an item the actor does not hold. `NOT_A_WEAPON` is wielding an item that is not tagged `weapon`. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`.
+`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` is a failed `has_item`, wielding an item the actor does not hold, or removing an item that is not there. `NOT_A_WEAPON` is wielding an item that is not tagged `weapon`. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`.
 
 ## Commit
 

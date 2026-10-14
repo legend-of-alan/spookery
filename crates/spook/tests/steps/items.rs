@@ -270,6 +270,85 @@ fn the_tin_moved(world: &mut World) {
     assert_eq!(now.actors.get("pc_rowan").unwrap().count("lamp_oil"), 1);
 }
 
+#[when(expr = "rowan types {string}")]
+fn rowan_types(world: &mut World, line: String) {
+    let pack = world.pack.clone().unwrap();
+    world.scratch = match play(&pack, "pc_rowan", &line) {
+        Ok(_) => "ok".to_string(),
+        Err(err) => err.token().to_string(),
+    };
+}
+
+#[then(expr = "the line is rejected with MISSING_ITEM and no tick was written")]
+fn the_line_is_missing_and_quiet(world: &mut World) {
+    assert_eq!(world.scratch, "MISSING_ITEM");
+    let pack = world.pack.as_ref().unwrap();
+    assert_eq!(read_now(pack).tick_index, 0);
+    assert!(!pack.join("state/journal/tick-0001.jsonl").exists());
+}
+
+#[given(expr = "docks_shop has no lamp_oil")]
+fn the_shop_has_no_oil(world: &mut World) {
+    let pack = copy_pack("oneshot-docks", "take-none");
+    save(&pack, |now| {
+        now.places
+            .get_mut("docks_shop")
+            .unwrap()
+            .items
+            .remove("lamp_oil");
+    });
+    world.pack = Some(pack);
+}
+
+#[when(expr = "rowan drops lamp_oil")]
+fn rowan_drops_oil(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    play(&pack, "pc_rowan", "drop lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
+}
+
+fn tick_names_missing(pack: &Path) {
+    let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
+    let rejected = tick["rejected"].as_array().unwrap();
+    assert!(
+        rejected.iter().any(|item| item["reason"] == "MISSING_ITEM"),
+        "{tick}"
+    );
+}
+
+#[then(expr = "the tick names MISSING_ITEM and the shop has no lamp_oil")]
+fn the_take_was_missing(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap();
+    tick_names_missing(pack);
+    let now = read_now(pack);
+    assert_eq!(
+        now.places
+            .get("docks_shop")
+            .unwrap()
+            .items
+            .get("lamp_oil")
+            .copied(),
+        None
+    );
+    assert_eq!(now.actors.get("pc_rowan").unwrap().count("lamp_oil"), 0);
+}
+
+#[then(expr = "the tick names MISSING_ITEM and rowan still has no lamp_oil")]
+fn the_drop_was_missing(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap();
+    tick_names_missing(pack);
+    let now = read_now(pack);
+    assert_eq!(now.actors.get("pc_rowan").unwrap().count("lamp_oil"), 0);
+    assert_eq!(
+        now.places
+            .get("docks_shop")
+            .unwrap()
+            .items
+            .get("lamp_oil")
+            .copied(),
+        Some(3)
+    );
+}
+
 #[given(expr = "now.yaml lists an item with no definition")]
 fn the_save_lists_an_unknown_item(world: &mut World) {
     let pack = copy_pack("oneshot-docks", "unknown-item");

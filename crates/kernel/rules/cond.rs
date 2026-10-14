@@ -29,15 +29,17 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
     match cond {
         Cond::HasItem { who, id, count } => {
             let actor = expr::actor_of(now, ctx, who)?;
+            let id = expr::resolve_item_id(ctx.intent, id)?;
             let held = now
                 .actors
                 .get(&actor)
-                .map(|actor| actor.count(id))
+                .map(|actor| actor.count(&id))
                 .unwrap_or(0);
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {
             let actor = expr::actor_of(now, ctx, who)?;
+            let id = expr::resolve_item_id(ctx.intent, id)?;
             Ok(now
                 .actors
                 .get(&actor)

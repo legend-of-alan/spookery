@@ -19,6 +19,8 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     let max_npcs = draft.budget().max_npcs_acting;
     let mut slots = 0u64;
     let frozen = round.frozen.clone();
+    let checks = draft.canon().checks.clone();
+    let meters = draft.canon().meters.clone();
     let candidates = round.candidates.clone();
     for intent in candidates {
         if round.budget_stop {
@@ -50,8 +52,6 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             continue;
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
-        let checks = draft.canon().checks.clone();
-        let meters = draft.canon().meters.clone();
         let mut resist_reports = Vec::new();
         let expanded = match expand_outcome(
             draft.canon(),

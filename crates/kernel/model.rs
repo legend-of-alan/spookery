@@ -206,7 +206,8 @@ impl ActorLive {
     }
 }
 
-/// Add `delta` to a count. A negative result is refused. A positive `max` caps the result.
+/// Add `delta` to a count. Removing from a count of 0 is `MISSING_ITEM`.
+/// A shortfall from a positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
 pub fn shift_count(
     counts: &mut BTreeMap<String, u32>,
     id: &str,
@@ -218,6 +219,9 @@ pub fn shift_count(
         .checked_add(delta)
         .ok_or(crate::error::Reason::OutOfRange)?;
     if next < 0 {
+        if current == 0 {
+            return Err(crate::error::Reason::MissingItem);
+        }
         return Err(crate::error::Reason::OutOfRange);
     }
     if delta > 0 {

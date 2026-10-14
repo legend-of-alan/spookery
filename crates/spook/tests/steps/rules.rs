@@ -764,6 +764,10 @@ A small bottle.
     when:
       verb: use
       target: item
+    if:
+      - has_item:
+          who: self
+          id: target
     do: []
 ";
     let to = "  - id: use
@@ -851,6 +855,78 @@ fn check_names_time_and_not_resist(world: &mut World) {
         world.stderr
     );
     assert!(world.stderr.contains("NOT_IN_SPEC"), "{}", world.stderr);
+}
+
+const BARE_SAME: &str = "
+  - id: shrug
+    when:
+      verb: shrug
+    do:
+      - meter:
+          who: self
+          key: grit
+          add: 1
+          resist: same
+";
+
+const SAME_AFTER_ROLL: &str = "
+  - id: shrug
+    when:
+      verb: shrug
+    do:
+      - meter:
+          who: self
+          key: grit
+          add: -1
+          resist:
+            who: self
+            check: grit
+            target: 2
+            resisted: []
+      - meter:
+          who: self
+          key: grit
+          add: 1
+          resist: same
+";
+
+#[given(expr = "a verb whose only resist is same")]
+fn a_verb_whose_only_resist_is_same(world: &mut World) {
+    let pack = temp_pack("rules-bare-same");
+    append(&pack.join("rules/verbs.yaml"), BARE_SAME);
+    save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[then(expr = "spook check reports resist: same with no earlier roll")]
+fn check_reports_bare_resist_same(world: &mut World) {
+    run(world, &["check"]);
+    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
+    assert!(
+        world.stderr.contains("resist: same before any resist roll"),
+        "{}",
+        world.stderr
+    );
+    assert!(world.stderr.contains("SCHEMA"), "{}", world.stderr);
+}
+
+#[given(expr = "a verb whose resist same follows a roll")]
+fn a_verb_whose_resist_same_follows_a_roll(world: &mut World) {
+    let pack = temp_pack("rules-same-after");
+    append(&pack.join("rules/verbs.yaml"), SAME_AFTER_ROLL);
+    save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[then(expr = "spook check does not report a bare resist same")]
+fn check_accepts_resist_same_after_a_roll(world: &mut World) {
+    run(world, &["check"]);
+    assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
+    assert!(
+        !world.stderr.contains("resist: same before any resist roll"),
+        "{}",
+        world.stderr
+    );
 }
 
 fn pc_probe(move_name: &str) -> Intent {
