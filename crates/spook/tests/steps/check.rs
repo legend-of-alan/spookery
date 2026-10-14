@@ -250,11 +250,9 @@ fn worked_example_row() -> String {
 
 /// Home-directory paths in every file git tracks.
 ///
-/// One line in this file names both prefixes the scan searches for, so
-/// that line is skipped. A home path on any other line, including the
-/// rest of this file, still counts. A drive letter and a backslash are
-/// not enough: Rust string escapes use that shape, so the Windows check
-/// requires the home directory after the drive.
+/// A drive letter and a backslash are not enough: Rust string escapes
+/// use that shape, so the Windows check requires the home directory
+/// after the drive.
 fn absolute_path_hits() -> Vec<String> {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let output = Command::new("git")
@@ -295,6 +293,8 @@ fn is_scanner_needle(rel: &str, line: &str) -> bool {
         && line.contains(concat!("/home", "/"))
 }
 
+/// The line below names both prefixes the scan searches for, so the
+/// scan skips that line. A home path on any other line still counts.
 fn has_home_path(line: &str) -> bool {
     if line.contains("/Users/") || line.contains("/home/") {
         return true;
