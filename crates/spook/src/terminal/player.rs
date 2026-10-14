@@ -179,7 +179,7 @@ fn frame_effect(message: &PlayerMessage) -> FrameEffect {
 
 fn refused_code(line: &str) -> Option<String> {
     match crate::protocol::read_player(line) {
-        Ok(PlayerMessage::Refused { code }) => Some(code),
+        Ok(PlayerMessage::Refused { code, .. }) => Some(code),
         _ => None,
     }
 }

@@ -29,16 +29,16 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
     }
     let rule = match gate(draft.canon(), draft.now(), intent) {
         Ok(rule) => rule.clone(),
-        Err(code) => return Ok(refused(code.jsonl_reason(), None)),
+        Err(miss) => return Ok(refused(&miss.named(), None)),
     };
     if let Some(roll) = rule.roll.clone() {
         round.trace.push("resolve_check".to_string());
-        return roll_row(round, draft, intent, &roll);
+        return roll_check(round, draft, intent, &roll);
     }
     Ok(Resolution::Ready { rolled: None })
 }
 
-fn roll_row(
+fn roll_check(
     round: &mut Round,
     draft: &Draft,
     intent: &Intent,

@@ -102,14 +102,14 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
     None
 }
 
-fn mint(now: &Now, actor_id: &str, row: &str) -> Intent {
+fn mint(now: &Now, actor_id: &str, local_id: &str) -> Intent {
     Intent {
-        id: kernel_intent_id(&now.shard_id, now.tick_index, actor_id, row),
+        id: kernel_intent_id(&now.shard_id, now.tick_index, actor_id, local_id),
         tick_index: now.tick_index,
         actor_id: actor_id.to_string(),
         actor_kind: ActorKind::Npc,
         source: Source::Kernel,
-        move_name: row.to_string(),
+        move_name: local_id.to_string(),
         target: Target::Empty,
         args: IntentArgs::default(),
         rationale_code: String::new(),

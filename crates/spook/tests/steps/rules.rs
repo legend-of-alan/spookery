@@ -3,7 +3,9 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::model::{Now, PlaceLive};
+use spookery_kernel::rules::gate;
 use spookery_kernel::rules::{faces, RollKey, RollReport};
 use spookery_kernel::store::codec::{emit_save, load_save};
 use spookery_kernel::Reason;
@@ -645,17 +647,214 @@ fn the_sitter_plays_steady(world: &mut World) {
     let mut opened = open_pack(&pack);
     world.scratch =
         match spookery::host::handle_player_move(&mut opened, "pc_rowan", "steady", false) {
-            Err(err) => err.token().to_string(),
+            Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
             Ok(_) => "queued".to_string(),
         };
 }
 
-#[then(expr = "the refusal is CANT_AFFORD and world_time stays 1080")]
+#[then(expr = "the refusal is CANT_AFFORD naming grit and world_time stays 1080")]
 fn the_refusal_is_cant_afford(world: &mut World) {
-    assert_eq!(world.scratch, Reason::CantAfford.token());
+    assert_eq!(
+        world.scratch,
+        format!("{} grit", Reason::CantAfford.token())
+    );
     let now = read_now(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.tick_index, 0);
+}
+
+#[given(
+    expr = "a habit cast:mira\\/leave_door_note and a place rule place:docks_street\\/travel while the PC stays in the shop"
+)]
+fn a_far_place_rule_while_the_pc_stays(world: &mut World) {
+    let pack = temp_pack("rules-full-id");
+    insert_before_fence(
+        &pack.join("world/places/docks_street.md"),
+        "\
+rules:
+  - id: travel
+    when:
+      verb: travel
+      target: place
+    do:
+      - flag:
+          who: self
+          key: took_the_street
+          value: true
+",
+    );
+    save(&pack, |_| {});
+    let now = read_now(&pack);
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "a PC is gated on those full ids")]
+fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let opened = open_pack(&pack);
+    let mut codes = Vec::new();
+    for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
+        let intent = pc_probe(move_name);
+        let resolved = gate::resolve(opened.canon(), opened.now(), &intent);
+        let gated = gate::gate(opened.canon(), opened.now(), &intent);
+        match (resolved, gated) {
+            (Err(reason), Err(miss))
+                if reason == Reason::NotInSpec && miss.reason() == Reason::NotInSpec =>
+            {
+                codes.push(reason.token());
+            }
+            (resolved, gated) => panic!("{move_name}: resolved={resolved:?} gated={gated:?}"),
+        }
+    }
+    world.scratch = codes.join(" ");
+}
+
+#[then(expr = "both are refused with NOT_IN_SPEC and the save is unchanged")]
+fn both_full_ids_are_refused(world: &mut World) {
+    assert_eq!(
+        world.scratch,
+        format!(
+            "{} {}",
+            Reason::NotInSpec.token(),
+            Reason::NotInSpec.token()
+        )
+    );
+    let now = read_now(world.pack.as_ref().unwrap());
+    let rowan = now.actors.get("pc_rowan").unwrap();
+    assert_eq!(rowan.place(), "docks_shop");
+    assert_eq!(now.world_time, 1080);
+    assert_eq!(now.tick_index, 0);
+    assert!(
+        now.messages
+            .iter()
+            .all(|message| message.id != "note_mira_door"),
+        "the habit note was stored"
+    );
+    assert!(
+        !rowan.flags().iter().any(|flag| flag == "took_the_street"),
+        "the far place rule ran"
+    );
+}
+
+#[given(expr = "use on tonic targets an actor and the shared use takes no target")]
+fn use_on_tonic_names_the_next_token(world: &mut World) {
+    let pack = temp_pack("rules-owned");
+    write(
+        &pack.join("world/items/tonic.md"),
+        "\
+---
+schema: item
+id: tonic
+name: Tonic
+tags: []
+rules:
+  - id: use
+    when:
+      verb: use
+      target: item
+    do: []
+---
+A small bottle.
+",
+    );
+    append(
+        &pack.join("rules/verbs.yaml"),
+        r#"
+  - id: use
+    when:
+      verb: use
+    do: []
+"#,
+    );
+    save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[when(expr = "the sitter lines up use tonic")]
+fn the_sitter_lines_up_use_tonic(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    let mut opened = open_pack(&pack);
+    world.scratch =
+        match spookery::host::handle_player_move(&mut opened, "pc_rowan", "use tonic", true) {
+            Ok(spookery::host::MoveOutcome::Queued(note)) => {
+                let queued = opened
+                    .queued_intents()
+                    .iter()
+                    .find(|intent| intent.id == note.id)
+                    .unwrap();
+                format!("{:?} {}", queued.target, queued.move_name)
+            }
+            Ok(spookery::host::MoveOutcome::Committed { .. }) => "committed".to_string(),
+            Err(err) => err.token().to_string(),
+        };
+}
+
+#[then(expr = "the queued target is that actor and the save is unchanged")]
+fn the_queued_target_is_that_actor(world: &mut World) {
+    assert_eq!(world.scratch, "Actor(\"tonic\") use");
+    let now = read_now(world.pack.as_ref().unwrap());
+    assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
+    assert_eq!(now.world_time, 1080);
+    assert_eq!(now.tick_index, 0);
+}
+
+#[given(expr = "a verb with a time cost and a resist key")]
+fn a_verb_with_time_and_resist(world: &mut World) {
+    let pack = temp_pack("rules-unused");
+    append(
+        &pack.join("rules/verbs.yaml"),
+        r#"
+  - id: linger
+    when:
+      verb: linger
+    cost:
+      time: 10m
+    do:
+      - meter:
+          who: self
+          key: grit
+          add: 1
+          resist: same
+"#,
+    );
+    save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[then(expr = "spook check names both as not applied")]
+fn check_names_time_and_resist(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    open_pack(&pack);
+    run(world, &["check"]);
+    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
+    assert!(
+        world.stderr.contains("this cost time is not applied"),
+        "{}",
+        world.stderr
+    );
+    assert!(
+        world
+            .stderr
+            .contains("resist is not applied, so this effect still lands"),
+        "{}",
+        world.stderr
+    );
+    assert!(world.stderr.contains("NOT_IN_SPEC"), "{}", world.stderr);
+}
+
+fn pc_probe(move_name: &str) -> Intent {
+    Intent {
+        id: "probe".to_string(),
+        tick_index: 0,
+        actor_id: "pc_rowan".to_string(),
+        actor_kind: ActorKind::Player,
+        source: Source::Player,
+        move_name: move_name.to_string(),
+        target: Target::Empty,
+        args: IntentArgs::default(),
+        rationale_code: String::new(),
+    }
 }
 
 fn run(world: &mut World, args: &[&str]) {

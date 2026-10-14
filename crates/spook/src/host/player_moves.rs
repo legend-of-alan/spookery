@@ -1,8 +1,8 @@
 use spookery_kernel::ids::player_intent_id;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::model::ActorLive;
-use spookery_kernel::rules::gate::gate;
-use spookery_kernel::rules::rule::{Owner, TargetKind, When};
+use spookery_kernel::rules::gate::{gate, verb_for, Miss};
+use spookery_kernel::rules::rule::{TargetKind, When};
 use spookery_kernel::rules::RollReport;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
@@ -31,7 +31,7 @@ pub fn handle_player_move(
     actor_id: &str,
     line: &str,
     gm_seated: bool,
-) -> Result<MoveOutcome, Reason> {
+) -> Result<MoveOutcome, Miss> {
     let (verb, rest) = input::verb_line(line, actor_id)?;
     let note = queue_verb(world, actor_id, verb, rest)?;
     if gm_seated {
@@ -77,34 +77,34 @@ fn queue_verb(
     actor_id: &str,
     verb: &str,
     rest: &str,
-) -> Result<QueuedNote, Reason> {
+) -> Result<QueuedNote, Miss> {
     if !world
         .now()
         .actors
         .get(actor_id)
         .is_some_and(ActorLive::is_pc)
     {
-        return Err(Reason::Schema);
+        return Err(Reason::Schema.into());
     }
-    let kind = verb_target(world, actor_id, verb).ok_or(Reason::NotInSpec)?;
+    let kind = verb_target(world, actor_id, verb, rest).ok_or(Reason::NotInSpec)?;
     let target = match kind {
         TargetKind::None => {
             if !rest.is_empty() {
-                return Err(Reason::Schema);
+                return Err(Reason::Schema.into());
             }
             Target::Empty
         }
         TargetKind::Actor | TargetKind::Item => {
             let (named, extra) = input::split_token(rest);
             if named.is_empty() || !extra.is_empty() {
-                return Err(Reason::Schema);
+                return Err(Reason::Schema.into());
             }
             Target::Actor(named.to_string())
         }
         TargetKind::Place | TargetKind::Exit => {
             let (place, extra) = input::split_token(rest);
             if place.is_empty() || !extra.is_empty() {
-                return Err(Reason::Schema);
+                return Err(Reason::Schema.into());
             }
             Target::Place(place.to_string())
         }
@@ -114,7 +114,7 @@ fn queue_verb(
     let token = match &target {
         Target::Empty => "",
         Target::Actor(id) | Target::Place(id) => id.as_str(),
-        Target::Clock(_) => return Err(Reason::Schema),
+        Target::Clock(_) => return Err(Reason::Schema.into()),
     };
     let note = QueuedNote {
         id: player_line_id(world, actor_id, &canonical_line(verb, token))?,
@@ -137,21 +137,15 @@ fn queue_verb(
     Ok(note)
 }
 
-pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, Reason> {
+pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, Miss> {
     queue_verb(world, actor_id, "wait", "")
 }
 
-fn verb_target(world: &World, actor_id: &str, verb: &str) -> Option<TargetKind> {
+fn verb_target(world: &World, actor_id: &str, verb: &str, rest: &str) -> Option<TargetKind> {
     let place = world.now().actors.get(actor_id)?.place();
-    let rule = world
-        .canon()
-        .rules
-        .iter()
-        .find(|rule| {
-            rule.owner == Owner::Place(place.to_string())
-                && matches!(&rule.when, When::Verb { verb: name, .. } if name == verb)
-        })
-        .or_else(|| world.canon().rules.verb(verb))?;
+    let (token, _) = input::split_token(rest);
+    let hint = (!token.is_empty()).then_some(token);
+    let rule = verb_for(world.canon(), Some(place), verb, hint)?;
     match &rule.when {
         When::Verb { target, .. } => Some(*target),
         _ => None,

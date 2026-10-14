@@ -41,4 +41,18 @@ Feature: Rules live with their owner
   Scenario: A cost the actor cannot pay changes nothing
     Given steady costs 5 grit and the sitter has 1
     When the sitter plays steady
-    Then the refusal is CANT_AFFORD and world_time stays 1080
+    Then the refusal is CANT_AFFORD naming grit and world_time stays 1080
+
+  Scenario: A full id does not select a rule
+    Given a habit cast:mira/leave_door_note and a place rule place:docks_street/travel while the PC stays in the shop
+    When a PC is gated on those full ids
+    Then both are refused with NOT_IN_SPEC and the save is unchanged
+
+  Scenario: An owned rule names how the next token is read
+    Given use on tonic targets an actor and the shared use takes no target
+    When the sitter lines up use tonic
+    Then the queued target is that actor and the save is unchanged
+
+  Scenario: Time and resist are named when they are not applied
+    Given a verb with a time cost and a resist key
+    Then spook check names both as not applied

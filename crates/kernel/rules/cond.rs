@@ -121,3 +121,24 @@ pub fn hour_in(start: i64, end: i64, hour: i64) -> bool {
         false
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hour_window_wraps_and_a_point_is_off() {
+        assert_eq!(world_hour(1080), 18);
+        assert_eq!(world_hour(0), 0);
+        assert_eq!(world_hour(1440), 0);
+        assert!(hour_in(8, 16, 8));
+        assert!(hour_in(8, 16, 15));
+        assert!(!hour_in(8, 16, 16));
+        assert!(!hour_in(8, 16, 7));
+        assert!(hour_in(18, 6, 18));
+        assert!(hour_in(18, 6, 5));
+        assert!(!hour_in(18, 6, 6));
+        assert!(!hour_in(18, 6, 12));
+        assert!(!hour_in(8, 8, 8));
+    }
+}

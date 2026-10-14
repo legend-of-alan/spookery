@@ -46,7 +46,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             continue;
         };
         if let Some(reason) = live_gate(draft, &intent)? {
-            refuse(round, &intent.id, reason);
+            refuse(round, &intent.id, &reason);
             continue;
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
@@ -69,13 +69,13 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
 }
 
 /// Perceive and eligibility see effects already applied in this round.
-fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<&'static str>, Reason> {
+fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<String>, Reason> {
     let view = perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
     if view.known_facts.is_empty() {
-        return Ok(Some("empty_perceive"));
+        return Ok(Some("empty_perceive".to_string()));
     }
-    if let Err(code) = gate(draft.canon(), draft.now(), intent) {
-        return Ok(Some(code.jsonl_reason()));
+    if let Err(miss) = gate(draft.canon(), draft.now(), intent) {
+        return Ok(Some(miss.named()));
     }
     Ok(None)
 }

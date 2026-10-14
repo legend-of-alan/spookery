@@ -578,7 +578,12 @@ fn on_mechanical(
             print_host(world);
             refresh_players(world, seats, &notices)?;
         }
-        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
+        Err(miss) => send_player(
+            world,
+            seats,
+            conn,
+            frames::player_refused(miss.token(), miss.missing()).into_bytes(),
+        )?,
     }
     Ok(PlayerReply::Done)
 }
