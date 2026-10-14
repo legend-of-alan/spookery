@@ -4,6 +4,7 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -103,6 +104,7 @@ pub struct Pending {
     stdin: Option<ChildStdin>,
     stdout: ChildStdout,
     stderr: Arc<Mutex<String>>,
+    stderr_drain: Option<JoinHandle<()>>,
 }
 
 pub struct Listening {
@@ -175,19 +177,20 @@ pub fn spawn_table(pack: &Path, flags: &[&str], env: &[(&str, &str)]) -> Pending
         .take()
         .unwrap_or_else(|| panic!("stderr was not piped"));
     let stderr = Arc::new(Mutex::new(String::new()));
-    drain(stderr_pipe, Arc::clone(&stderr));
+    let stderr_drain = drain(stderr_pipe, Arc::clone(&stderr));
     Pending {
         child,
         stdin,
         stdout,
         stderr,
+        stderr_drain: Some(stderr_drain),
     }
 }
 
 pub fn take_report(mut pending: Pending) -> Listening {
     let (game, door, seen) = read_report(&mut pending);
     let stdout = Arc::new(Mutex::new(seen));
-    drain(pending.stdout, Arc::clone(&stdout));
+    drop(drain(pending.stdout, Arc::clone(&stdout)));
     Listening {
         game,
         door,
@@ -228,6 +231,9 @@ fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
                     .child
                     .wait()
                     .unwrap_or_else(|err| panic!("wait: {err}"));
+                if let Some(drain) = pending.stderr_drain.take() {
+                    let _ = drain.join();
+                }
                 panic!(
                     "spook run exited {status} before it reported its ports\nstdout:\n{}\nstderr:\n{}",
                     String::from_utf8_lossy(&got),
@@ -236,9 +242,8 @@ fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
             }
             Ok(n) => {
                 got.extend_from_slice(&buf[..n]);
-                if split_report(&got).is_some() {
+                if let Some((game, door)) = split_report(&got) {
                     let seen = String::from_utf8_lossy(&got).into_owned();
-                    let (game, door) = reported(&seen);
                     return (game, door, seen);
                 }
             }
@@ -247,10 +252,10 @@ fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
     }
 }
 
-fn split_report(buf: &[u8]) -> Option<()> {
+fn split_report(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
     let end = buf.iter().rposition(|byte| *byte == b'\n')? + 1;
     let text = std::str::from_utf8(&buf[..end]).unwrap_or_else(|err| panic!("stdout: {err}"));
-    text.lines().find_map(parse_line).map(|_| ())
+    text.lines().find_map(parse_line)
 }
 
 fn parse_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
@@ -263,7 +268,7 @@ fn parse_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
     Some((game, door))
 }
 
-fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
+fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHandle<()> {
     std::thread::spawn(move || {
         let mut reader = reader;
         let mut buf = [0u8; 256];
@@ -276,7 +281,7 @@ fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) {
                     .push_str(&String::from_utf8_lossy(&buf[..n])),
             }
         }
-    });
+    })
 }
 
 pub fn seat_player(pack: &Path) {

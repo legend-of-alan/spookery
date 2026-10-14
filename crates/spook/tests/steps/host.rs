@@ -106,6 +106,7 @@ fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
         .local_addr()
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
         .port();
+    // Nothing needs to listen on the game port. The client dials the door.
     let game = http
         .checked_sub(1)
         .unwrap_or_else(|| panic!("door port {http}"));
@@ -567,6 +568,7 @@ fn bind_game_and_agent() -> (String, Vec<TcpListener>) {
         .local_addr()
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
         .port();
+    // Nothing needs to listen on the game port. The client dials the door.
     let game_port = door_port
         .checked_sub(1)
         .unwrap_or_else(|| panic!("door port {door_port}"));
