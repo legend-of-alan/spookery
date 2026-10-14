@@ -266,7 +266,7 @@ The request is one chat-completions POST. The JSON body carries one user message
 ## Docs
 
 - [docs/spec.md](docs/spec.md) is the normative spec. A rule it does not state is unspecified.
-- [docs/product_spec.md](docs/product_spec.md) is product notes. Where it disagrees with the spec, the spec wins.
+- [docs/README.md](docs/README.md) has the principles, glossary and repo layout.
 - [LICENSE](LICENSE)
 
 ## License
