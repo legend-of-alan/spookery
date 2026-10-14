@@ -29,7 +29,7 @@ fn mark_needs_a_knife(world: &mut World) {
 fn gains_an_unknown_key(world: &mut World) {
     append_moves(
         world,
-        "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    item: knife\n    gear: extra\n    success:\n      - class: flag\n        key: marked\n        value: true\n",
+        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    gear: extra\n    do: []\n",
     );
 }
 
@@ -37,7 +37,7 @@ fn gains_an_unknown_key(world: &mut World) {
 fn gains_a_system_audience(world: &mut World) {
     append_moves(
         world,
-        "\n  - name: night\n    audience: system\n    token: none\n    on: speaker\n    effects: []\n",
+        "\n  - id: night\n    when: habit\n    audience: system\n    do: []\n",
     );
 }
 
@@ -45,7 +45,7 @@ fn gains_a_system_audience(world: &mut World) {
 fn gains_a_relationship_row(world: &mut World) {
     append_moves(
         world,
-        "\n  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: relationship\n        to: bram\n        delta: -1\n",
+        "\n  - id: mark\n    when: habit\n    do:\n      - relationship:\n          to: bram\n          delta: -1\n",
     );
 }
 
@@ -53,7 +53,7 @@ fn gains_a_relationship_row(world: &mut World) {
 fn gains_a_reputation_row(world: &mut World) {
     append_moves(
         world,
-        "\n  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: reputation\n        faction: harbor\n        delta: 1\n",
+        "\n  - id: mark\n    when: habit\n    do:\n      - reputation:\n          faction: harbor\n          delta: 1\n",
     );
 }
 
@@ -61,15 +61,15 @@ fn gains_a_reputation_row(world: &mut World) {
 fn gains_a_rumor_row(world: &mut World) {
     append_moves(
         world,
-        "\n  - name: mark\n    audience: habit\n    token: none\n    on: speaker\n    effects:\n      - class: rumor\n        rumor: r_184\n        to: aldric\n        heat: 1\n",
+        "\n  - id: mark\n    when: habit\n    do:\n      - rumor:\n          rumor: r_184\n          to: aldric\n          heat: 1\n",
     );
 }
 
 fn append_moves(world: &mut World, extra: &str) {
     let pack = table::pack(world);
-    let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
+    let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     moves.push_str(extra);
-    fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
+    fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
 }
 
 #[when(expr = "the player marks nell")]
@@ -149,11 +149,11 @@ fn place_of(pack: &Path) -> String {
 }
 
 fn add_knife_row(pack: &Path) {
-    let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
+    let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
-        "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    item: knife\n    success:\n      - class: flag\n        key: marked\n        value: true\n    failure:\n      - class: flag\n        key: missed\n        value: true\n",
+        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
     );
-    fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
+    fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
 }
 
 fn stamp(pack: &Path) {

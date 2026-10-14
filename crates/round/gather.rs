@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-use spookery_kernel::habit::{kernel_intents_for_eligible_npcs, stamp_for_priority};
 use spookery_kernel::intent::{ActorKind, Intent, Target};
 use spookery_kernel::model::Now;
+use spookery_kernel::rules::habits::{habit_intents, stamp_for_priority};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
@@ -23,7 +23,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         for intent in &mut candidates {
             stamp_for_priority(draft.canon(), draft.now(), intent);
         }
-        candidates.extend(kernel_intents_for_eligible_npcs(draft.canon(), draft.now()));
+        candidates.extend(habit_intents(draft.canon(), draft.now()));
         let mut candidates =
             order_intents(draft.now(), candidates, round.tick_index, &round.world_id);
         let max_intents = draft.budget().max_intents_applied as usize;

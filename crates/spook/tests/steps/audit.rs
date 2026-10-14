@@ -55,7 +55,7 @@ fn a_normal_docks_session(world: &mut World) {
 #[when(expr = "the door note text contains the ledger sentence")]
 fn the_door_note_text_contains_the_ledger_sentence(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let path = pack.join("rules/moves.yaml");
+    let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read moves: {err}"));
     let from = "text: Back at dusk. Oil on the shelf.\n";
     let to = format!("text: Back at dusk. {LEDGER}\n");

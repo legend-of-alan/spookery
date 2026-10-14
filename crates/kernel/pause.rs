@@ -1,6 +1,6 @@
+use crate::canon::world_settings::PausePolicy;
 use crate::error::Reason;
 use crate::key::StateKey;
-use crate::limits::PausePolicy;
 use crate::model::RunState;
 use crate::world::Draft;
 

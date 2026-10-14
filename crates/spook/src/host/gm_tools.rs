@@ -1,8 +1,9 @@
 use serde_json::{Map, Value};
-use spookery_kernel::intent::{ActorKind, IntentArgs, Target};
+use spookery_kernel::intent::Intent;
+use spookery_kernel::intent::{ActorKind, IntentArgs, Source, Target};
 use spookery_kernel::model::ActorLive;
-use spookery_kernel::moves::Audience;
 use spookery_kernel::perceive::perceive_budget;
+use spookery_kernel::rules::gate::resolve;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 use spookery_round::commit_moves_at;
@@ -354,21 +355,8 @@ fn queue_tool_intent(
     let actor_id = actor_id.ok_or(Reason::Schema)?;
     let actor_kind = actor_kind.ok_or(Reason::Schema)?;
     let move_name = move_name.ok_or(Reason::Schema)?;
-    let audience = match world
-        .canon()
-        .moves
-        .get(&move_name)
-        .and_then(|def| def.row.as_ref())
-    {
-        Some(row) => row.audience,
-        None if world.canon().moves.contains_key(&move_name) => return Err(Reason::NotInSpec),
-        None => return Err(Reason::UnknownMove),
-    };
     match actor_kind {
         ActorKind::Player => {
-            if audience != Some(Audience::Player) {
-                return Err(Reason::NotInSpec);
-            }
             if !world
                 .now()
                 .actors
@@ -379,9 +367,6 @@ fn queue_tool_intent(
             }
         }
         ActorKind::Npc => {
-            if audience != Some(Audience::Player) && audience != Some(Audience::Habit) {
-                return Err(Reason::NotInSpec);
-            }
             if !world
                 .now()
                 .actors
@@ -393,6 +378,18 @@ fn queue_tool_intent(
         }
         ActorKind::System => return Err(Reason::Schema),
     }
+    let probe = Intent {
+        id: "probe".to_string(),
+        tick_index: world.now().tick_index,
+        actor_id: actor_id.clone(),
+        actor_kind,
+        source: Source::Player,
+        move_name: move_name.clone(),
+        target: target.clone(),
+        args: args.clone(),
+        rationale_code: String::new(),
+    };
+    resolve(world.canon(), world.now(), &probe)?;
     let id = match id {
         Some(id) if !id.is_empty() => id,
         Some(_) => return Err(Reason::Schema),

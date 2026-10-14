@@ -11,76 +11,69 @@ use super::table;
 
 // Docks grit is 2d6 plus a meter of 1, so the total is 3..=13.
 const NOTICE_ROWS: &str = "
-  - name: notice_sure
-    audience: player
-    token: none
-    on: speaker
-    check: grit
-    difficulty: 3
+  - id: notice_sure
+    when:
+      verb: notice_sure
+    roll:
+      check: grit
+      target: 3
     success:
-      - class: flag
-        key: braced
-        value: true
+      - flag:
+          who: self
+          key: braced
+          value: true
     failure:
-      - class: flag
-        key: slipped
-        value: true
-  - name: notice_hard
-    audience: player
-    token: none
-    on: speaker
-    check: grit
-    difficulty: 14
+      - flag:
+          who: self
+          key: slipped
+          value: true
+  - id: notice_hard
+    when:
+      verb: notice_hard
+    roll:
+      check: grit
+      target: 14
     success:
-      - class: flag
-        key: braced
-        value: true
+      - flag:
+          who: self
+          key: braced
+          value: true
     failure:
-      - class: flag
-        key: slipped
-        value: true
-";
-
-const BRACE_ROW: &str = "
-  - name: brace
-    audience: habit
-    token: none
-    on: speaker
-    check: grit
-    difficulty: 14
-    success:
-      - class: flag
-        key: braced
-        value: true
-    failure:
-      - class: flag
-        key: slipped
-        value: true
+      - flag:
+          who: self
+          key: slipped
+          value: true
 ";
 
 const OPPOSE_ROWS: &str = "
-  - name: mark
-    audience: player
-    token: actor
-    on: named
-    check: grit
+  - id: mark
+    when:
+      verb: mark
+      target: actor
+    roll:
+      check: grit
+      target: 0
     success:
-      - class: flag
-        key: marked
-        value: true
+      - flag:
+          who: target
+          key: marked
+          value: true
     failure:
-      - class: flag
-        key: missed
-        value: true
-  - name: defend
-    audience: player
-    token: none
-    on: speaker
-    check: grit
+      - flag:
+          who: target
+          key: missed
+          value: true
+  - id: defend
+    when:
+      verb: defend
+    roll:
+      check: grit
+      target: 0
     success:
-      - class: flag
-        key: guarded
-        value: true
+      - flag:
+          who: self
+          key: guarded
+          value: true
 ";
 
 #[when(expr = "the player rolls grit")]
@@ -197,7 +190,6 @@ fn the_player_marks_mira(world: &mut World) {
 fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
     let pack = temp_pack("npc-habit");
     world.pack = Some(pack.clone());
-    append_moves(&pack, BRACE_ROW);
     insert_flags(&pack, "    - braced\n    - slipped\n");
     insert_brace_habit(&pack);
     stamp(&pack);
@@ -315,7 +307,7 @@ fn queue_mira(move_name: &str) {
 }
 
 fn append_moves(pack: &Path, extra: &str) {
-    let path = pack.join("rules/moves.yaml");
+    let path = pack.join("rules/verbs.yaml");
     let mut moves = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read moves: {err}"));
     moves.push_str(extra);
     fs::write(&path, moves).unwrap_or_else(|err| panic!("write moves: {err}"));
@@ -337,8 +329,8 @@ fn insert_brace_habit(pack: &Path) {
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
-        "  habits:\n    - id: door_note\n",
-        "  habits:\n    - id: brace\n      runs_while_empty: true\n      rows:\n        - brace\n    - id: door_note\n",
+        "rules:\n  - id: leave_door_note\n",
+        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: grit\n      target: 14\n    success:\n      - flag:\n          who: self\n          key: braced\n          value: true\n    failure:\n      - flag:\n          who: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
         1,
     );
     assert_ne!(next, text, "mira habit was not inserted");
@@ -482,67 +474,78 @@ fn find_checks(value: &Value) -> Option<Vec<Value>> {
 }
 
 const PRESS_ROW: &str = "
-  - name: press
-    audience: player
-    token: actor
-    on: named
-    check: band
-    difficulty: 10
-    partial_at: 7
-    effects:
-      - class: flag
-        key: touched
-        value: true
+  - id: press
+    when:
+      verb: press
+      target: actor
+    roll:
+      check: band
+      target: 10
+      partial_at: 7
+    do:
+      - flag:
+          who: target
+          key: touched
+          value: true
     success:
-      - class: flag
-        key: clean
-        value: true
+      - flag:
+          who: target
+          key: clean
+          value: true
     partial:
-      - class: flag
-        key: halfway
-        value: true
+      - flag:
+          who: target
+          key: halfway
+          value: true
     failure:
-      - class: flag
-        key: missed
-        value: true
+      - flag:
+          who: target
+          key: missed
+          value: true
 ";
 
 const NOTICE_PARTIAL: &str = "
-  - name: notice_partial
-    audience: player
-    token: none
-    on: speaker
-    check: band
-    difficulty: 10
-    partial_at: 7
-    effects:
-      - class: flag
-        key: touched
-        value: true
+  - id: notice_partial
+    when:
+      verb: notice_partial
+    roll:
+      check: band
+      target: 10
+      partial_at: 7
+    do:
+      - flag:
+          who: self
+          key: touched
+          value: true
     success:
-      - class: flag
-        key: clean
-        value: true
+      - flag:
+          who: self
+          key: clean
+          value: true
     partial:
-      - class: flag
-        key: halfway
-        value: true
+      - flag:
+          who: self
+          key: halfway
+          value: true
     failure:
-      - class: flag
-        key: missed
-        value: true
+      - flag:
+          who: self
+          key: missed
+          value: true
 ";
 
 const DEFEND_ROW: &str = "
-  - name: defend
-    audience: player
-    token: none
-    on: speaker
-    check: grit
+  - id: defend
+    when:
+      verb: defend
+    roll:
+      check: grit
+      target: 0
     success:
-      - class: flag
-        key: guarded
-        value: true
+      - flag:
+          who: self
+          key: guarded
+          value: true
 ";
 
 const BAND_CHECK: &str = "
@@ -611,16 +614,16 @@ fn the_gm_queues_miras_partial_notice(_world: &mut World) {
 fn the_moves_file_gains(world: &mut World, fault: String) {
     let row = match fault.as_str() {
         "partial_at without partial" => {
-            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial_at: 7\n    effects:\n      - class: flag\n        key: touched\n        value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      target: 10\n      partial_at: 7\n    do:\n      - flag:\n          who: self\n          key: touched\n          value: true\n"
         }
         "partial without partial_at" => {
-            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      target: 10\n    partial:\n      - flag:\n          who: self\n          key: halfway\n          value: true\n"
         }
         "partial_at above difficulty" => {
-            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    difficulty: 10\n    partial_at: 10\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    roll:\n      check: grit\n      target: 10\n      partial_at: 10\n    success:\n      - flag:\n          who: self\n          key: touched\n          value: true\n    partial:\n      - flag:\n          who: self\n          key: halfway\n          value: true\n"
         }
         "partial_at without a check" => {
-            "\n  - name: press\n    audience: player\n    token: none\n    on: speaker\n    difficulty: 10\n    partial_at: 7\n    partial:\n      - class: flag\n        key: halfway\n        value: true\n"
+            "\n  - id: press\n    when:\n      verb: press\n    partial:\n      - flag:\n          who: self\n          key: halfway\n          value: true\n"
         }
         other => panic!("unknown partial fault {other}"),
     };

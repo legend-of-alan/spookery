@@ -530,7 +530,7 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match input::parse_player_input(line, &actor_id, &world.canon().moves) {
+    match input::parse_player_input(line, &actor_id, &world.canon().rules) {
         Ok(input::PlayerLine::Speech) => match speak(world, &actor_id, line) {
             Ok(spoken) => {
                 println!("{}", spoken.tape);
@@ -578,7 +578,12 @@ fn on_mechanical(
             print_host(world);
             refresh_players(world, seats, &notices)?;
         }
-        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
+        Err(miss) => send_player(
+            world,
+            seats,
+            conn,
+            frames::player_refused(miss.token(), miss.missing()).into_bytes(),
+        )?,
     }
     Ok(PlayerReply::Done)
 }

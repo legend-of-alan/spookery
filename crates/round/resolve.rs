@@ -1,5 +1,7 @@
 use spookery_kernel::check::classify;
-use spookery_kernel::habit::allowed;
+use spookery_kernel::rules::expr::{self, Ctx};
+use spookery_kernel::rules::gate::gate;
+
 use spookery_kernel::intent::{ActorKind, Intent, Source, Target, ViewerId};
 use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::rules::{roll, RollInput, RollKey, RollReport, RollResult};
@@ -25,25 +27,22 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
     if view.known_facts.is_empty() {
         return Ok(refused("empty_perceive", None));
     }
-    if let Err(code) = allowed(draft.canon(), draft.now(), intent) {
-        return Ok(refused(code.jsonl_reason(), None));
-    }
-    if let Some(check_id) = draft.canon().row_check(&intent.move_name) {
+    let rule = match gate(draft.canon(), draft.now(), intent) {
+        Ok(rule) => rule.clone(),
+        Err(miss) => return Ok(refused(&miss.named(), None)),
+    };
+    if let Some(roll) = rule.roll.clone() {
         round.trace.push("resolve_check".to_string());
-        return roll_row(round, draft, intent, &check_id);
-    }
-    if draft.canon().needs_roll(&intent.move_name) {
-        round.trace.push("resolve_check".to_string());
-        return validate_roll(round, draft, intent);
+        return roll_check(round, draft, intent, &roll);
     }
     Ok(Resolution::Ready { rolled: None })
 }
 
-fn roll_row(
+fn roll_check(
     round: &mut Round,
     draft: &Draft,
     intent: &Intent,
-    check_id: &str,
+    roll: &spookery_kernel::rules::rule::RollSpec,
 ) -> Result<Resolution, Reason> {
     if let Err(code) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
         return Ok(refused_check(intent, code));
@@ -52,12 +51,20 @@ fn roll_row(
         Ok(total) => total,
         Err(code) => return Ok(refused_check(intent, code)),
     };
+    let ctx = Ctx { intent };
     let partial_at = if opposed.is_some() {
         None
     } else {
-        draft.canon().row_partial_at(&intent.move_name)
+        match roll.partial_at.as_ref() {
+            Some(expr) => Some(expr::eval(draft.canon(), &round.frozen, &ctx, expr)?),
+            None => None,
+        }
     };
-    let target = opposed.unwrap_or_else(|| draft.canon().row_difficulty(&intent.move_name));
+    let target = match opposed {
+        Some(total) => total,
+        None => expr::eval(draft.canon(), &round.frozen, &ctx, &roll.target)?,
+    };
+    let check_id = roll.check.as_str();
     if let Some(out) = round.opposed.get(&intent.id).cloned() {
         return Ok(Resolution::Ready {
             rolled: Some(reclassify(&out, target, partial_at)),
@@ -69,27 +76,6 @@ fn roll_row(
             Ok(Resolution::Ready { rolled: Some(out) })
         }
         Err(code) => Ok(refused_check(intent, code)),
-    }
-}
-
-/// A move that names a check and has no row. The roll is discarded; only a refusal matters.
-fn validate_roll(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolution, Reason> {
-    let check_id = draft
-        .canon()
-        .moves
-        .get(&intent.move_name)
-        .and_then(|def| def.check.clone())
-        .ok_or(Reason::UnknownKey)?;
-    ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    if !draft.canon().checks.contains_key(&check_id) {
-        return Err(Reason::UnknownKey);
-    }
-    if !round.frozen.actors.contains_key(&intent.actor_id) {
-        return Ok(refused(Reason::UnknownKey.jsonl_reason(), None));
-    }
-    match roll_for(round, draft, intent, &check_id, 0, None) {
-        Ok(_) => Ok(Resolution::Ready { rolled: None }),
-        Err(code) => Ok(refused(code.jsonl_reason(), None)),
     }
 }
 
@@ -109,7 +95,9 @@ fn supplied_target(
             other.id != intent.id
                 && other.actor_id == named
                 && other.source == Source::Player
-                && draft.canon().row_check(&other.move_name).is_some()
+                && gate(draft.canon(), draft.now(), other)
+                    .ok()
+                    .is_some_and(|rule| rule.roll.is_some())
         })
         .cloned();
     let Some(opposing) = opposing else {
@@ -118,7 +106,10 @@ fn supplied_target(
     if let Some(out) = round.opposed.get(&opposing.id) {
         return Ok(Some(out.total));
     }
-    let Some(check_id) = draft.canon().row_check(&opposing.move_name) else {
+    let Some(check_id) = gate(draft.canon(), draft.now(), &opposing)
+        .ok()
+        .and_then(|rule| rule.roll.as_ref().map(|roll| roll.check.clone()))
+    else {
         return Ok(None);
     };
     let out = roll_for(round, draft, &opposing, &check_id, 0, None)?;

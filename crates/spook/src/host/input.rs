@@ -1,10 +1,7 @@
-use std::collections::BTreeMap;
-
-use spookery_kernel::moves::{Audience, MoveDef};
+use spookery_kernel::rules::rule::RuleTable;
 use spookery_kernel::Reason;
 
-/// `say` is speech. A player-audience row is a turn.
-/// A habit or system name is `NOT_IN_SPEC` and is not queued.
+/// `say` is speech. A verb is a turn. A habit name is `NOT_IN_SPEC`.
 pub enum PlayerLine {
     Speech,
     Turn,
@@ -13,7 +10,7 @@ pub enum PlayerLine {
 pub fn parse_player_input(
     line: &str,
     seated: &str,
-    moves: &BTreeMap<String, MoveDef>,
+    rules: &RuleTable,
 ) -> Result<PlayerLine, Reason> {
     let (verb, _) = verb_line(line, seated)?;
     if verb.is_empty() {
@@ -22,10 +19,10 @@ pub fn parse_player_input(
     if verb == "say" {
         return Ok(PlayerLine::Speech);
     }
-    match moves.get(verb).and_then(|def| def.row.as_ref()) {
-        Some(row) if row.audience == Some(Audience::Player) => Ok(PlayerLine::Turn),
-        Some(_) => Err(Reason::NotInSpec),
-        None => Err(Reason::NotInSpec),
+    if rules.is_verb(verb) {
+        Ok(PlayerLine::Turn)
+    } else {
+        Err(Reason::NotInSpec)
     }
 }
 
@@ -50,7 +47,7 @@ pub fn split_token(line: &str) -> (&str, &str) {
     }
 }
 
-/// Row name, or row name plus one token, with a single space.
+/// Verb, or verb plus one token, with a single space.
 pub fn canonical_line(verb: &str, token: &str) -> String {
     if token.is_empty() {
         verb.to_string()

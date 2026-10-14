@@ -1,7 +1,8 @@
 use spookery_kernel::ids::player_intent_id;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::model::ActorLive;
-use spookery_kernel::moves::{ActionRow, Audience, MoveToken};
+use spookery_kernel::rules::gate::{gate, verb_for, Miss};
+use spookery_kernel::rules::rule::{TargetKind, When};
 use spookery_kernel::rules::RollReport;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
@@ -30,20 +31,9 @@ pub fn handle_player_move(
     actor_id: &str,
     line: &str,
     gm_seated: bool,
-) -> Result<MoveOutcome, Reason> {
+) -> Result<MoveOutcome, Miss> {
     let (verb, rest) = input::verb_line(line, actor_id)?;
-    let Some(row) = world
-        .canon()
-        .moves
-        .get(verb)
-        .and_then(|def| def.row.clone())
-    else {
-        return Err(Reason::NotInSpec);
-    };
-    if row.audience != Some(Audience::Player) {
-        return Err(Reason::NotInSpec);
-    }
-    let note = queue_row(world, actor_id, verb, rest, &row)?;
+    let note = queue_verb(world, actor_id, verb, rest)?;
     if gm_seated {
         return Ok(MoveOutcome::Queued(note));
     }
@@ -82,66 +72,49 @@ pub fn gm_check_frames(notices: &[RollReport]) -> Vec<Vec<u8>> {
         .collect()
 }
 
-/// A named item must already be on the actor. The line is refused before queue.
-fn require_item(world: &World, actor_id: &str, row: &ActionRow) -> Result<(), Reason> {
-    let Some(item) = row.item.as_deref() else {
-        return Ok(());
-    };
-    let held = world
-        .now()
-        .actors
-        .get(actor_id)
-        .is_some_and(|actor| actor.inventory().iter().any(|id| id == item));
-    if held {
-        Ok(())
-    } else {
-        Err(Reason::MissingItem)
-    }
-}
-
-/// The actor or place token is stored as typed. An unknown id stays the tick's existing refusal.
-fn queue_row(
+fn queue_verb(
     world: &mut World,
     actor_id: &str,
     verb: &str,
     rest: &str,
-    row: &ActionRow,
-) -> Result<QueuedNote, Reason> {
+) -> Result<QueuedNote, Miss> {
     if !world
         .now()
         .actors
         .get(actor_id)
         .is_some_and(ActorLive::is_pc)
     {
-        return Err(Reason::Schema);
+        return Err(Reason::Schema.into());
     }
-    let target = match row.token {
-        MoveToken::None => {
+    let kind = verb_target(world, actor_id, verb, rest).ok_or(Reason::NotInSpec)?;
+    let target = match kind {
+        TargetKind::None => {
             if !rest.is_empty() {
-                return Err(Reason::Schema);
+                return Err(Reason::Schema.into());
             }
             Target::Empty
         }
-        MoveToken::Actor => {
+        TargetKind::Actor | TargetKind::Item => {
             let (named, extra) = input::split_token(rest);
             if named.is_empty() || !extra.is_empty() {
-                return Err(Reason::Schema);
+                return Err(Reason::Schema.into());
             }
             Target::Actor(named.to_string())
         }
-        MoveToken::Place => {
+        TargetKind::Place | TargetKind::Exit => {
             let (place, extra) = input::split_token(rest);
             if place.is_empty() || !extra.is_empty() {
-                return Err(Reason::Schema);
+                return Err(Reason::Schema.into());
             }
             Target::Place(place.to_string())
         }
     };
-    require_item(world, actor_id, row)?;
+    let intent = player_intent(world, actor_id, verb, target.clone())?;
+    gate(world.canon(), world.now(), &intent)?;
     let token = match &target {
         Target::Empty => "",
         Target::Actor(id) | Target::Place(id) => id.as_str(),
-        Target::Clock(_) => return Err(Reason::Schema),
+        Target::Clock(_) => return Err(Reason::Schema.into()),
     };
     let note = QueuedNote {
         id: player_line_id(world, actor_id, &canonical_line(verb, token))?,
@@ -164,19 +137,44 @@ fn queue_row(
     Ok(note)
 }
 
-pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, Reason> {
-    let Some(row) = world
-        .canon()
-        .moves
-        .get("wait")
-        .and_then(|def| def.row.clone())
-    else {
-        return Err(Reason::NotInSpec);
-    };
-    if row.audience != Some(Audience::Player) {
-        return Err(Reason::NotInSpec);
+pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, Miss> {
+    queue_verb(world, actor_id, "wait", "")
+}
+
+fn verb_target(world: &World, actor_id: &str, verb: &str, rest: &str) -> Option<TargetKind> {
+    let place = world.now().actors.get(actor_id)?.place();
+    let (token, _) = input::split_token(rest);
+    let hint = (!token.is_empty()).then_some(token);
+    let rule = verb_for(world.canon(), Some(place), verb, hint)?;
+    match &rule.when {
+        When::Verb { target, .. } => Some(*target),
+        _ => None,
     }
-    queue_row(world, actor_id, "wait", "", &row)
+}
+
+fn player_intent(
+    world: &World,
+    actor_id: &str,
+    verb: &str,
+    target: Target,
+) -> Result<Intent, Reason> {
+    let token = match &target {
+        Target::Empty => "",
+        Target::Actor(id) | Target::Place(id) => id.as_str(),
+        Target::Clock(_) => return Err(Reason::Schema),
+    };
+    let id = player_line_id(world, actor_id, &input::canonical_line(verb, token))?;
+    Ok(Intent {
+        id,
+        tick_index: world.now().tick_index,
+        actor_id: actor_id.to_string(),
+        actor_kind: ActorKind::Player,
+        source: Source::Player,
+        move_name: verb.to_string(),
+        target,
+        args: IntentArgs::default(),
+        rationale_code: String::new(),
+    })
 }
 
 fn player_line_id(world: &World, actor_id: &str, canonical: &str) -> Result<String, Reason> {

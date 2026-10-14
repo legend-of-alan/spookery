@@ -203,7 +203,7 @@ pack/
   rules/
     checks.yaml
     meters.yaml
-    moves.yaml
+    verbs.yaml
     tick.yaml
   state/
     save.yaml                  # live world; each PC is an actor here

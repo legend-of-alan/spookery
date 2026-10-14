@@ -198,22 +198,21 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
 fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     let pack = copy_named("oneshot-docks", "rollback");
     append(
-        &pack.join("rules/moves.yaml"),
+        &pack.join("rules/verbs.yaml"),
         &format!(
             "
-  - name: overreach
-    audience: player
-    token: none
-    on: speaker
-    effects:
-      - class: stock
-        place: docks_shop
-        sku: lamp_oil
-        delta: {add}
-      - class: stock
-        place: docks_shop
-        sku: lamp_oil
-        delta: -{remove}
+  - id: overreach
+    when:
+      verb: overreach
+    do:
+      - stock:
+          place: docks_shop
+          sku: lamp_oil
+          add: {add}
+      - stock:
+          place: docks_shop
+          sku: lamp_oil
+          add: -{remove}
 "
         ),
     );
@@ -226,20 +225,20 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
     let pack = copy_named("oneshot-docks", "spilled");
     append(
-        &pack.join("rules/moves.yaml"),
+        &pack.join("rules/verbs.yaml"),
         &format!(
             "
-  - name: spilled
-    audience: player
-    token: none
-    on: speaker
-    check: grit
-    difficulty: 0
-    effects:
-      - class: stock
-        place: docks_shop
-        sku: lamp_oil
-        delta: -{remove}
+  - id: spilled
+    when:
+      verb: spilled
+    roll:
+      check: grit
+      target: 0
+    do:
+      - stock:
+          place: docks_shop
+          sku: lamp_oil
+          add: -{remove}
 "
         ),
     );
@@ -414,21 +413,20 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     assert_ne!(next, text, "cap was not lowered");
     fs::write(&tick_path, next).unwrap();
     append(
-        &pack.join("rules/moves.yaml"),
+        &pack.join("rules/verbs.yaml"),
         "
-  - name: two_stock
-    audience: player
-    token: none
-    on: speaker
-    effects:
-      - class: stock
-        place: docks_shop
-        sku: lamp_oil
-        delta: 1
-      - class: stock
-        place: docks_shop
-        sku: lamp_oil
-        delta: 1
+  - id: two_stock
+    when:
+      verb: two_stock
+    do:
+      - stock:
+          place: docks_shop
+          sku: lamp_oil
+          add: 1
+      - stock:
+          place: docks_shop
+          sku: lamp_oil
+          add: 1
 ",
     );
     stamp(&pack);
@@ -631,15 +629,15 @@ fn lark_pack() -> PathBuf {
 ",
     );
     append(
-        &pack.join("rules/moves.yaml"),
+        &pack.join("rules/verbs.yaml"),
         "
-  - name: grit
-    audience: player
-    token: none
-    on: speaker
-    check: grit
-    difficulty: 0
-    effects: []
+  - id: grit
+    when:
+      verb: grit
+    roll:
+      check: grit
+      target: 0
+    do: []
 ",
     );
     stamp(&pack);

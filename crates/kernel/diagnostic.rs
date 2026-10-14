@@ -16,7 +16,7 @@ pub struct Diagnostic {
     pub file: String,
     pub line: Option<u32>,
     pub column: Option<u32>,
-    /// Key path such as `moves[2].audience`.
+    /// Key path such as `rules[0].when`.
     pub path: Option<String>,
     pub code: String,
     pub message: String,
@@ -245,23 +245,23 @@ mod tests {
     #[test]
     fn a_diagnostic_serializes_and_prints_the_line_form() {
         let diag = schema(
-            "rules/moves.yaml",
-            "row 'grit' has no audience",
-            "add 'audience: player' or 'audience: habit'",
+            "rules/verbs.yaml",
+            "rule 'grit' is missing when",
+            "add when",
         )
-        .with_path("moves[2].audience")
+        .with_path("rules[0].when")
         .at_line(14, Some(5));
         assert_eq!(
             diag.report_line(),
-            "rules/moves.yaml:14: row 'grit' has no audience; add 'audience: player' or 'audience: habit' (SCHEMA)"
+            "rules/verbs.yaml:14: rule 'grit' is missing when; add when (SCHEMA)"
         );
         let json = serde_json::to_value(&diag).unwrap();
-        assert_eq!(json["file"], "rules/moves.yaml");
+        assert_eq!(json["file"], "rules/verbs.yaml");
         assert_eq!(json["line"], 14);
         assert_eq!(json["column"], 5);
-        assert_eq!(json["path"], "moves[2].audience");
+        assert_eq!(json["path"], "rules[0].when");
         assert_eq!(json["code"], "SCHEMA");
-        assert!(json["hint"].as_str().unwrap().contains("audience: player"));
+        assert!(json["hint"].as_str().unwrap().contains("add when"));
         assert_eq!(first_reason(&[diag]), Reason::Schema);
     }
 

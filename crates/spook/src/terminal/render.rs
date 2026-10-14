@@ -15,7 +15,7 @@ pub fn render(message: &PlayerMessage) -> String {
             Outcome::Miss => "Your roll missed.".to_string(),
         },
         PlayerMessage::Resume { text } => resume(text),
-        PlayerMessage::Refused { code } => refusal(code),
+        PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
         PlayerMessage::Perceive {
             viewer,
             place,
@@ -93,6 +93,10 @@ fn resume_row(row: &str) -> String {
 }
 
 pub(crate) fn refusal(code: &str) -> String {
+    named_refusal(code, None)
+}
+
+fn named_refusal(code: &str, missing: Option<&str>) -> String {
     let sentence = match code {
         "ILLEGAL_CLASS" => "That action is not allowed.",
         "ILLEGAL_KNOWLEDGE" => "You cannot know that.",
@@ -117,6 +121,12 @@ pub(crate) fn refusal(code: &str) -> String {
         "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
         "LINE_TOO_LONG" => "That line is too long.",
+        "CANT_AFFORD" => {
+            return match missing {
+                Some(what) if !what.is_empty() => format!("You cannot afford {what}. [{code}]"),
+                _ => format!("You cannot afford that. [{code}]"),
+            };
+        }
         _ => return format!("The table refused that. [{code}]"),
     };
     format!("{sentence} [{code}]")
@@ -346,25 +356,51 @@ Shop day: 1/1"
     fn a_refusal_is_a_sentence_with_the_code() {
         let full = render(&PlayerMessage::Refused {
             code: "SESSION_FULL".to_string(),
+            missing: None,
         });
         assert_eq!(full, "The table is full. [SESSION_FULL]");
         assert_readable(&full);
         let taken = render(&PlayerMessage::Refused {
             code: "SEAT_TAKEN".to_string(),
+            missing: None,
         });
         assert_eq!(taken, "That character is already taken. [SEAT_TAKEN]");
         assert_readable(&taken);
         let long = render(&PlayerMessage::Refused {
             code: "LINE_TOO_LONG".to_string(),
+            missing: None,
         });
         assert_eq!(long, "That line is too long. [LINE_TOO_LONG]");
         assert_readable(&long);
 
         let unknown = render(&PlayerMessage::Refused {
             code: "NEW_CODE".to_string(),
+            missing: None,
         });
         assert_eq!(unknown, "The table refused that. [NEW_CODE]");
         assert_readable(&unknown);
+
+        let afford = render(&PlayerMessage::Refused {
+            code: "CANT_AFFORD".to_string(),
+            missing: Some("grit".to_string()),
+        });
+        assert_eq!(afford, "You cannot afford grit. [CANT_AFFORD]");
+        assert_readable(&afford);
+        let wire = serde_json::to_string(&PlayerMessage::Refused {
+            code: "CANT_AFFORD".to_string(),
+            missing: Some("grit".to_string()),
+        })
+        .unwrap();
+        assert_eq!(
+            wire,
+            r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#
+        );
+        let bare = serde_json::to_string(&PlayerMessage::Refused {
+            code: "SCHEMA".to_string(),
+            missing: None,
+        })
+        .unwrap();
+        assert_eq!(bare, r#"{"kind":"refused","code":"SCHEMA"}"#);
     }
 
     #[test]

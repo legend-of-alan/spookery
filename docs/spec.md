@@ -113,84 +113,52 @@ Meter: `write` is `base`, `offset`, or `snap`. `base` adds the delta to `base` a
 
 ## Rows and habits
 
-A moves file is still a name or a row. The tag is `moves`. New fields are optional. A misspelled field is rejected because unknown fields are denied.
+A rule lives in `rules/verbs.yaml` or in the file of its owner: a place, an item, a cast member, or a story. The tag on the shared file is `verbs`. `rules/moves.yaml` does not load. Check says it was replaced by `rules/verbs.yaml`.
 
-A row has:
+One rule has `id`, `when`, an optional `if`, an optional `cost`, an optional `roll`, and the lists `do`, `success`, `partial`, and `failure`. `when` is a verb, `habit`, or a change. A verb may name a target kind: `none`, `actor`, `place`, `exit`, or `item`.
 
-- `audience`: `player` or `habit`. Omitted audience, or `system`, is `SCHEMA`. A row is not implicitly player-facing.
-- one token: `none`, `actor`, or `place`
-- one subject: `speaker` or `named`
-- `effects`: templates that run on every outcome
-- `success`, `partial`, and `failure`: templates that run on that outcome. `failure` is the miss list
-- optional `check`: an id that must exist in `checks.yaml`, or load returns `SCHEMA`
-- optional `difficulty`: `i64`, default 0, used only when `check` is set and no opposing total applies
-- optional `partial_at`: `i64`, strictly below `difficulty`. It requires `check` and a `partial` list. A `partial` list without `partial_at`, a `partial_at` without that list, a `partial_at` at or above `difficulty`, or a `partial_at` without `check`, is `SCHEMA`
-- optional `item`: an actor inventory precondition
+The full id is the owner plus the local id: `verb:travel`, `place:docks_shop/bell`, `item:tonic/use`, `cast:mira/restock_lamp_oil`, `story:smuggler/bell`. One verb intent uses the target item's rule for that verb, then the target actor's, then the rule on the actor's current place, then the rule in `rules/verbs.yaml`. A full id is not a verb word and does not select a rule. A habit is selected by its local id, and only for that NPC.
 
-`classify` queues a row only when `audience` is `player`. A `habit` name is `NOT_IN_SPEC` on a player line and is not queued. The GM intent tool queues a `player` row for a player or an NPC, and a `habit` row only when `actor_kind` is `npc`. A player actor queuing a habit row is `NOT_IN_SPEC`. `source` on that tool stays `player`. A cast habit that names a `player` row is `SCHEMA` at load. Empty-table gates still apply to a kernel habit intent. They do not apply to a player-sourced intent.
+`if` is a list. Each dash is one condition: `has_item`, `meter`, `flag`, `at`, `knows`, `clock`, `hour`, `humans`, `note_exists`, `all`, `any`, or `not`. Two conditions under one dash are `SCHEMA`. A failed `has_item` is `MISSING_ITEM` and that line is not queued.
 
-Load rejects a duplicate name, an empty name, an empty `item`, the flag key `busy`, a row named `say`, an unknown class, a search word, a template whose keys do not match its class, and any unknown shape. `say` is the speech line, so that name is not a row. `travel` is not special-cased in Rust. A travel row is whatever templates it has, and `apply_location` enforces the range. The docks grit check is a `grit` row. `attempt grit 3` is not a special parser. The player wire object is `{"kind":"check","outcome":"success"|"partial"|"miss"}`.
+`roll` names a `check` and a `target`. The target is a number, or a meter plus a number. `partial_at` is strictly below that target and needs a `partial` list. A `partial` list without `partial_at`, a `partial_at` without that list, a `partial_at` at or above the target, or an outcome list without a roll, is `SCHEMA`. An opposing total replaces the target and that roll stays binary.
 
-**Yield.** The key `effects` may be present and empty only when `success`, `partial`, and `failure` are absent. That row is a yield. Omitted `effects` together with omitted outcome lists, on a row that set `token` or `on`, is `SCHEMA`. A yield with no `check` expands to zero effects and is still an applied intent if it was allowed. A yield with a `check` rolls, emits the check notice, and writes no world key. Nothing matches on the name `wait` or `attempt`. `wait` is a yield row (`effects` present and empty). An NPC habit that does not list `wait` does not emit it. Absence of an on habit whose row expands means no kernel intent.
+`do` runs on every band. `success`, `partial`, and `failure` run on that band. `failure` is the miss. A yield is `do: []` with no outcome lists. `wait` is a yield. A yield with a roll reports the band and writes no world key. `say` is speech, so that id is not a rule.
 
-**Fields.** A template field is a literal, except `to: token` on a player travel row. That token is the queued place. Search words (`here`, `first_rate`, `rate`, `first_drift`, `toward_target`, `first_known`, `first_listener`, `keep`, `first_due_note`, `first_owned`) are `SCHEMA` at load. There is no expression language. Adding a verb is a new row in YAML.
+`cost` may name `time`, meters, and items. A cost the actor cannot pay is `CANT_AFFORD`. The refusal names the meter or the item, the journal word is `CANT_AFFORD` plus that name, and the world is unchanged. The player sentence is `You cannot afford <name>. [CANT_AFFORD]`. `time` is parsed to minutes. `spook check` reports that this time is not applied. `resist` loads. `spook check` reports that resist is not applied, so the effect still lands.
 
-Stock names `place`, `sku`, and `delta`. `apply_stock` still refuses a place outside range, an absolute delta above `stock_rate`, or a negative result. Message names `id`, `to`, `place`, `fact_ids`, and `text`. Clock names `clock` and `delta`. Location `from` is the actor's live place and is not a YAML field. A meter template is a literal key and write. There is no stock maximum in the docks profile.
+A player line queues a verb. Typing a habit name is `NOT_IN_SPEC` and is not queued. A full id is `NOT_IN_SPEC` for a PC. It does not select another actor's habit or a rule on another place. The GM intent tool queues a verb for a player or an NPC, and that NPC's habit. A habit for a PC is `NOT_IN_SPEC`. `source` on that tool stays `player`. A player-sourced habit skips `if`. A kernel habit still requires eligibility and `if`.
+
+Load rejects an empty id, a duplicate id, two verb rules for the same verb in one file, the flag key `busy`, a rule id `say`, an unknown effect key, and a retired selector (`token`, `first_rate`, `rate`, `first_drift`, `toward_target`, `first_known`, `first_listener`, `keep`, `first_due_note`, `first_owned`). `travel` is not special-cased in Rust. A travel rule is whatever effects it has, and `apply_location` enforces the range. The docks grit check is the `grit` verb. The player wire object is `{"kind":"check","outcome":"success"|"partial"|"miss"}`.
+
+An effect is `meter`, `stock`, `flag`, `location`, `note`, `narrate`, `clock`, `memory`, `item`, or `reveal`. `note` is stored with the save key `messages`. `narrate` is not stored. `item` and `reveal` load and do not apply on this pass. `location` `to: target` is the queued place. `via` does not apply on this pass. Stock names `place`, `sku`, and `add`. `apply_stock` still refuses a place outside range, an absolute delta above `stock_rate`, or a negative result. A meter `add` offsets the current pair. A meter `set` offsets by the distance from current to that number. There is no stock maximum in the docks profile.
 
 Bindings and the outcome list are different steps.
 
-1. Habit selection picks a row before the apply loop. Expand fills that row's literals against the staging `Now` it sees, including `from` taken from the actor's live place. A row that does not expand is not the kernel intent. Player travel binds the typed place.
-2. In `resolve`, `rules::roll` runs if the row has a `check`. The viewer is that intent's actor. A PC or an NPC may roll for themselves. A viewer who is not the actor is `UNKNOWN_KEY`. An unknown id is `UNKNOWN_KEY`. Templates do not run. Each roll has its own key, so another intent does not move its dice.
-3. After that roll, the selected templates are `effects`, plus `success` on success, `partial` on partial, and `failure` on miss. No roll means `effects` only. Those templates are filled from the row, not by choosing a new target. The result is a `Vec` of `EffectClass`.
-4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `parse_recorded_line` keeps the intents and does not read `effects`. `play_recorded` runs the same stages, which expand those intents again and call `rules::roll` again from each roll's key. Replay does not install the log as `Now`. A presence record restores `presence` and `state_rev`. A migrate record restores `pack_rev` and `state_rev`. Replay applies those commits. It does not install them as effects. The names `need` and `resource` are not variants. An effect that is refused rolls the whole intent back. A list longer than `max_effects_per_intent` is refused as `budget` before any of it applies.
+1. Habit selection picks one cast rule before the apply loop. Expand fills that rule's `do` list against the staging `Now`. A rule whose `do` list does not expand is not the kernel intent. Player travel binds the typed place.
+2. In `resolve`, `rules::roll` runs when the rule has a `roll`. The viewer is that intent's actor. A PC or an NPC may roll for themselves. A viewer who is not the actor is `UNKNOWN_KEY`. An unknown id is `UNKNOWN_KEY`. Each roll has its own key, so another intent does not move its dice.
+3. After that roll, the selected templates are `do`, plus `success` on success, `partial` on partial, and `failure` on miss. No roll means `do` only. The result is a `Vec` of `EffectClass`.
+4. Expand wraps that vec with `as_viewer` and `intent_id`. That post-roll vec is what `apply_effect` sees and what the tick JSONL stores. `play_recorded` runs the same stages, which expand those intents again and call `rules::roll` again from each roll's key. Replay does not install the log as `Now`. A presence record restores `presence` and `state_rev`. A migrate record restores `pack_rev` and `state_rev`. Replay applies those commits. It does not install them as effects. The names `need` and `resource` are not variants. An effect that is refused rolls the whole intent back. A list longer than `max_effects_per_intent` is refused as `budget` before any of it applies.
 
-A vec built before the roll cannot be the success list, the partial list, and the failure list at once. The post-roll value is the effect vec. Habit rows may have `success`, `partial`, and `failure`. Outcome lists are not limited to player rows.
+The post-roll value is the effect vec. Habits may have `success`, `partial`, and `failure`.
 
-The queued player value is not a struct per verb.
+The player queue on `World` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again. It also applies presence and migrate records as their commits.
 
-```rust
-pub struct Intent {
-    pub id: String,
-    pub tick_index: u64,
-    pub actor_id: String,
-    pub actor_kind: ActorKind,
-    pub source: Source,
-    pub row: String,
-    pub token: Token,
-}
+Priority, computed before the roll, is player before NPC before system, then PC-owned clocks, claimed targets, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the clock id on the expanded effect. "Claimed" means the target actor is in `actors_present`, or the target place contains a present PC, or a message's `to` hits `actors_present`.
 
-pub enum Token {
-    None,
-    Actor(String),
-    Place(String),
-}
-
-pub enum Source {
-    Kernel,
-    Player,
-    System,
-}
-```
-
-Kernel candidates and player candidates in the tick are an `Intent` plus bindings. The player queue on `World` stores `Intent` only. The post-roll effect vec is tick-local until the JSONL write. Replay keeps the recorded intents and expands them again. It also applies presence and migrate records as their commits.
-
-Priority, computed before the roll, is player before NPC before system, then PC-owned clocks, claimed targets, then `shuffle_key`. `shuffle_key` is Blake2s of shard, tick, and actor. "PC-owned clock" uses the clock id on the expanded effect. "Claimed" means the token actor is in `actors_present`, or the token place contains a present PC, or a message's `to` hits `actors_present`.
-
-Library paths return `Result`. `run`, `tick`, `status`, and `migrate` print `Reason::token()` and exit 1. `spook check` prints one diagnostic line per problem, or one JSON array when `--json` is set. `spook replay`, `spook verify`, and `spook audit` print their own lines.
+Library paths return `Result`. `run`, `tick`, `status`, and `migrate` print `Reason::token()` and exit 1. `spook check` prints one diagnostic line per problem, or one JSON array when `--json` is set. `spook check --rules` prints each full rule id in owner order when the pack has no problems. `spook replay`, `spook verify`, and `spook audit` print their own lines.
 
 ## Habits
 
-A tick profile has `habits`, a list in file order. The idle runner produces at most one kernel intent per eligible NPC. It takes the first habit that is on and whose first expanding row is an `audience: habit` row. Later habits wait. A habit that is always ready starves the ones under it. No such row means no kernel intent.
+A cast file lists that NPC's habits as rules with `when: habit`, in file order. The idle runner produces at most one kernel intent per eligible NPC. It takes the first habit whose `if` holds and whose `do` list expands. Later habits wait. A habit that is always ready starves the ones under it.
 
-A habit is on when every gate it sets is true. `runs_while_empty` is required. When `humans == 0`, only a habit with `runs_while_empty: true` can be chosen. When someone is seated, that flag does not block the runner. `from_hour` and `to_hour` are optional and come together. Each is an integer in `0..24`. The hour is `(world_time / 60) % 24`, read after the tick has advanced world time. `from < to` means `from <= hour < to`. `from > to` wraps midnight. `from == to` is never on. The check reads the hour. It does not write at the window's edge. `clock` and `at_least` are optional and come together. The habit is on when that clock exists, is not paused, and `value >= at_least`. A missing clock means the habit is off. `unless_message` is optional. The habit is off when a message with that id is already in `now.messages`.
+The hour is `(world_time / 60) % 24`, read after the tick has advanced world time. `hour.from` and `hour.to` are integers in `0..24` and must differ. `from < to` means `from <= hour < to`. `from > to` wraps midnight. `humans` compares the seated count. A habit with no `humans` condition can run while the table is empty. `note_exists` is off when that id is already in the save. A `clock` condition compares that clock's value.
 
-An empty id, a duplicate id, an empty row list, a half-set hour pair, a half-set clock pair, or an hour outside `0..24` is `SCHEMA`. A habit row name that is not an `audience: habit` row is `SCHEMA`.
+An empty id, a duplicate id, or an hour outside `0..24` is `SCHEMA`.
 
-`audience` is `player` or `habit`. The player parser queues only `player`. Habit selection queues only `habit`.
+Eligibility runs first for a kernel habit. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, and no seated PC may share that place. The NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no habit intent. A player-sourced habit does not check `if` or eligibility. Apply still checks range, stock rate, the firewall, paused clocks, and the other effect rules.
 
-Eligibility runs first. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, and no PC may be in that place. The NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no habit intent. The shop stays still while a player stands in it because that NPC is not eligible. `allowed` checks those gates only for `source: kernel`. A player-sourced intent is not checked against the hour, the clock, `unless_message`, `runs_while_empty`, or eligibility. Apply still checks range, stock rate, the firewall, paused clocks, and the other effect rules.
-
-NPC perceive includes `habits`, the ids that are on for that NPC, in file order. Player perceive sends an empty list. Queueing an intent does not consult that list.
+NPC perceive includes `habits`, the local ids that are on for that NPC, in file order. Player perceive sends an empty list. Queueing an intent does not consult that list.
 
 `tick.yaml` pause is `named_plot_clocks`. `now.pause` stores that one view. Plot clocks with `requires_presence` are paused while `humans == 0` and the policy is `pause_when_empty`.
 
@@ -202,7 +170,7 @@ Kernel habits do not emit speech. A player world line while `humans == 0` is ref
 
 ## Failure tokens
 
-`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET`, plus the log word `empty_perceive`. `run`, `tick`, `status`, and `migrate` print the token and exit 1 for an engine refusal. `spook check` prints the diagnostic line instead of the bare token. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`.
+`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET`, the log word `empty_perceive`, and a cost gap written as `CANT_AFFORD` plus the meter or item id. `run`, `tick`, `status`, and `migrate` print the token and exit 1 for an engine refusal. `spook check` prints the diagnostic line instead of the bare token. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`. A cost gap also sends `missing` with the meter or item id. `code` stays the token.
 
 `#[from]` is not used on `Reason`. I/O in the kernel collapses to `COMMIT_CONFLICT` or `SCHEMA`, so `Reason` does not wrap `std::io::Error`. The bin has its own error with `Reason` and `Io` variants. `#[from]` is used there, and only there. Tick functions return `kernel::Reason`. A tick-cause value is not an error.
 
@@ -302,7 +270,7 @@ A tool refusal prints a sentence and the token on stderr, using the same sentenc
 
 `spook new <dir>` writes a minimal pack into that directory and prints the next commands on stdout: `spook check`, `spook run`, and `spook play`. It creates `<dir>` when that path is missing and the parent directory exists. A missing parent exits 1, prints `<parent> does not exist` on stderr, and creates nothing. An existing non-empty directory, or a path that is not a directory, exits 1, prints a sentence on stderr, and writes nothing. A write that fails removes what it created: a directory that was already empty stays empty, and a directory this command created is removed. The written save has `state_rev` 0, `rules_rev` 4, and a `pack_rev` computed from `world/`, `cast/`, and `rules/`. The command writes only under `<dir>`. It does not take the lock or bind a port.
 
-`spook check <pack>` reads the pack and prints one line per problem. It loads `pack.yaml`, `world/`, `cast/`, `rules/*`, and `state/save.yaml` when that file is present, compares `pack_rev` with the canon hash, and scans Markdown bodies and message template text for hidden-fact text. It does not take the lock, bind a port, recover a transaction, or write under the pack. A clean pack prints `no problems` on stdout and exits 0. Any problem exits 1. Problems go to stderr as `file:line: message (CODE)` when a line is known, or `file: path: message (CODE)` when the location is a key path such as `moves[2].audience`. A missing file uses the key path `schema`. The message is plain English and says how to fix the problem. The code in parentheses is one of the codes in the table below. `run`, `tick`, `status`, and `migrate` still print only the token, except a rules mismatch, which prints `RULES_REV: start a fresh save`.
+`spook check <pack>` reads the pack and prints one line per problem. It loads `pack.yaml`, `world/`, `cast/`, `rules/*`, and `state/save.yaml` when that file is present, compares `pack_rev` with the canon hash, and scans Markdown bodies and message template text for hidden-fact text. It does not take the lock, bind a port, recover a transaction, or write under the pack. A clean pack prints `no problems` on stdout and exits 0. Any problem exits 1. Problems go to stderr as `file:line: message (CODE)` when a line is known, or `file: path: message (CODE)` when the location is a key path such as `rules[0].when`. A missing file uses the key path `schema`. The message is plain English and says how to fix the problem. The code in parentheses is one of the codes in the table below. `run`, `tick`, `status`, and `migrate` still print only the token, except a rules mismatch, which prints `RULES_REV: start a fresh save`.
 
 `spook check --json <pack>` runs the same checks. It prints one JSON array on stdout and writes nothing else there. Each element is a diagnostic with `file`, `line`, `column`, `path`, `code`, `message`, and `hint`. `line` and `column` are 1-based when present. An unknown `line`, `column`, `path`, or `hint` is null. The array is ordered by `file`, then `line`, then `path`. A null sorts before a value. A clean pack prints `[]` and exits 0. Any problem exits 1.
 
@@ -316,7 +284,7 @@ The codes `spook check` can emit are stable. The message and the hint may change
 | `RULES_REV` | `rules_rev` is missing or is not the engine's rules version. Start a fresh save. |
 | `HAND_EDIT` | `state/save.yaml` is not the canonical save text. |
 | `HIDDEN_FACT_IN_BODY` | A hidden fact's text appears in a Markdown body. |
-| `HIDDEN_FACT_IN_TEXT` | A hidden fact's text appears in a message template's `text`. A move row is not a body, so this is not `HIDDEN_FACT_IN_BODY`. |
+| `HIDDEN_FACT_IN_TEXT` | A hidden fact's text appears in a note. A rule file is not a body, so this is not `HIDDEN_FACT_IN_BODY`. |
 
 `spook replay <pack>` replays the journal from `state/journal/base.yaml` into a temp directory, deletes that directory, and prints `state_rev <r>, <n> records`. `spook verify <pack>` reads `save.yaml` once, replays the journal up to that `state_rev`, byte-compares, and compares logged effects with the re-run. Later records are ignored. A match prints `verified <n> records, state_rev <r>` and exits 0. A mismatch exits 1 and prints the first divergent record. When the save bytes differ, it also prints the first differing `save.yaml` line. When logged effects differ, it names the tick and the first differing effect. `--from <dir>` uses that directory's `state/save.yaml` as the base instead. Both commands write nothing under the pack, take no lock, and bind no port. A pack that has never committed has no journal and no base. Verify treats `save.yaml` as its own base, so the check passes with zero records. A path with no `pack.yaml` or no `state/save.yaml` is not a pack, and both commands print `NOT_IN_SPEC` and exit 1.
 
@@ -348,7 +316,7 @@ A host monitor is not shard behavior.
 
 `spook play <pack>` sits a player seat and dials `--addr`. `--as player:<id>` picks the actor. Without it, the client sits the pack's start PC. Each client holds one distinct PC. The player socket wire is unchanged: the client only changes how it prints frames.
 
-By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]`, `That character is already taken. [SEAT_TAKEN]`, `That line is too long. [LINE_TOO_LONG]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: a leading `npc:` or `player:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
+By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]`, `That character is already taken. [SEAT_TAKEN]`, `That line is too long. [LINE_TOO_LONG]`, `You cannot afford grit. [CANT_AFFORD]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: a leading `npc:` or `player:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
 
 `spook play --raw` prints each protocol frame as one JSON line on stdout, as the socket sent it. A `refused` frame prints only its token on stderr.
 
@@ -386,7 +354,7 @@ Speech is the table's choice. For each tape line and each recipient, a hidden fa
 
 Load fails with `SCHEMA` if `places.actors` is edited apart from `actors.place`. Emit rebuilds occupancy from `actors.*.place`.
 
-Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","outcome":"success"|"partial"|"miss"}` or `{"kind":"refused","code":"..."}` for that player's own roll. An NPC's roll sends no player frame. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` lowercased, `empty_perceive` as that word, every other token uppercase.
+Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","outcome":"success"|"partial"|"miss"}` or `{"kind":"refused","code":"..."}` for that player's own roll. An NPC's roll sends no player frame. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` lowercased, `empty_perceive` as that word, a cost gap as `CANT_AFFORD` plus the meter or item id, and every other token uppercase.
 
 ## Non-goals
 

@@ -132,8 +132,13 @@ pub fn player_resume_line(text: &str) -> String {
 }
 
 pub fn player_refused_line(code: &str) -> String {
+    player_refused(code, None)
+}
+
+pub fn player_refused(code: &str, missing: Option<&str>) -> String {
     crate::protocol::write_player(&PlayerMessage::Refused {
         code: code.to_string(),
+        missing: missing.map(str::to_string),
     })
 }
 

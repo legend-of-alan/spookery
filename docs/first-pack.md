@@ -12,7 +12,7 @@ The pack is a waystation with two places, so travel has somewhere to go.
 
 - `yard` is the start place. `lane` is the other place.
 - `pc_ada` is the player character. The cast file `cast/pc-ada.md` is a `pc_template`, and `state/save.yaml` has a live `pc_ada` actor. A template alone does not sit a player.
-- `keeper` is an NPC in the lane. One habit, `tend`, runs while the table is empty and sets the flag `tended`.
+- `keeper` is an NPC in the lane. One habit, `tend_the_yard`, runs while the table is empty and sets the flag `tended`.
 
 `rules/meters.yaml` defines the meter the check uses:
 
@@ -40,7 +40,7 @@ checks:
     stat: nerve
 ```
 
-`rules/moves.yaml` has three player rows and one habit row. `wait` is a yield: `effects: []` and no success, partial, or failure list. `travel` takes a place. `steady` names the `nerve` check. `tend_the_yard` is `audience: habit`, which is the only audience a habit may name.
+`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or failure list. `travel` takes a place. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
 
 `rules/tick.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
 
@@ -75,69 +75,58 @@ The save lists the places people can stand in. Add `porch` under `places` in `st
 
 ## Add a player move
 
-Append a yield to `rules/moves.yaml`. A yield commits a tick and changes no numbers.
+Append a yield to `rules/verbs.yaml`. A yield commits a tick and changes no numbers.
 
-```yaml path=rules/moves.yaml mode=append
-  - name: listen
-    audience: player
-    token: none
-    on: speaker
-    effects: []
+```yaml path=rules/verbs.yaml mode=append
+  - id: listen
+    when:
+      verb: listen
+    do: []
 ```
 
-`say` is speech, not a row. Do not add a move named `say`.
+`say` is speech, not a rule. Do not add a rule named `say`.
 
-## Add a check row with partial_at
+## Add a check with partial_at
 
-`partial_at` is an absolute total, strictly below `difficulty`. The row needs `check` and a `partial` list. A total at or above `difficulty` takes `success` when that list is set. A total at or above `partial_at` and below `difficulty` takes `partial`. A lower total is a miss. This row reuses the `nerve` check. `difficulty` is 8 and `partial_at` is 4, so a 2d6 plus the nerve meter can land in either band.
+`partial_at` is an absolute total, strictly below the roll `target`. The rule needs `check` and a `partial` list. A total at or above the target takes `success`. A total at or above `partial_at` and below the target takes `partial`. A lower total is a miss. This rule reuses the `nerve` check. The target is 8 and `partial_at` is 4, so a 2d6 plus the nerve meter can land in either band.
 
-```yaml path=rules/moves.yaml mode=append
-  - name: press
-    audience: player
-    token: none
-    on: speaker
-    check: nerve
-    difficulty: 8
-    partial_at: 4
+```yaml path=rules/verbs.yaml mode=append
+  - id: press
+    when:
+      verb: press
+    roll:
+      check: nerve
+      target: 8
+      partial_at: 4
     success:
-      - class: message
-        id: note_press
-        to:
-          - pc_ada
-        text: The press holds.
+      - note:
+          id: note_press
+          to:
+            - pc_ada
+          text: The press holds.
     partial:
-      - class: message
-        id: note_press_part
-        to:
-          - pc_ada
-        text: The press slips.
+      - note:
+          id: note_press_part
+          to:
+            - pc_ada
+          text: The press slips.
 ```
 
 ## Give the NPC a second habit
 
-A habit row is `audience: habit`. Append the row, then add the habit in the cast file. The cast file keeps a `# more-habits` line for this insert. `runs_while_empty: true` lets the habit run when nobody is seated. `unless_message` turns it off once that message is in the save.
+A habit is a rule on the cast file with `when: habit`. The cast file keeps a `# more-habits` line for this insert. The first habit whose `if` holds is the one that runs. This one leaves a note. It does not run while `tend_the_yard` is ahead of it and ready.
 
-```yaml path=rules/moves.yaml mode=append
-  - name: light_the_lamp
-    audience: habit
-    token: none
-    on: speaker
-    effects:
-      - class: message
-        id: note_lamp
-        to:
-          - pc_ada
-        place: yard
-        fact_ids: []
-        text: The lamp is lit.
-```
-
-```yaml path=cast/keeper.md mode=insert-before anchor=    # more-habits
-    - id: light
-      runs_while_empty: true
-      unless_message: note_lamp
-      rows:
-        - light_the_lamp
+```yaml path=cast/keeper.md mode=insert-before anchor=  # more-habits
+  - id: light_the_lamp
+    when: habit
+    do:
+      - note:
+          id: note_lamp
+          to:
+            - pc_ada
+          place: yard
+          fact_ids: []
+          text: The lamp is lit.
 ```
 
 ## Check, migrate, and play
@@ -160,4 +149,4 @@ spook run /tmp/mypack
 spook play /tmp/mypack
 ```
 
-You sit `pc_ada`. The first picture is the yard. `travel lane` leaves for the lane and commits a tick, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player rows.
+You sit `pc_ada`. The first picture is the yard. `travel lane` leaves for the lane and commits a tick, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.
