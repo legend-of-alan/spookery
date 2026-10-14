@@ -1,6 +1,8 @@
 use spookery_kernel::effect::Effect;
 use spookery_kernel::intent::{Intent, IntentArgs, Target};
 
+use crate::complete::Arrival;
+
 pub struct Rejected {
     pub id: String,
     pub reason: String,
@@ -19,6 +21,8 @@ pub struct RoundLine<'a> {
     pub intents: &'a [Intent],
     pub rejected: &'a [Rejected],
     pub effects: &'a [Effect],
+    pub arrivals: &'a [Arrival],
+    pub fast_forward: bool,
     pub tool_trace: &'a [String],
 }
 
@@ -65,7 +69,24 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         }
         push_effect(&mut out, effect);
     }
-    out.push_str("],\"tool_trace\":[");
+    out.push_str("],\"arrivals\":[");
+    for (index, arrival) in line.arrivals.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"actor_id\":");
+        push_string(&mut out, &arrival.actor_id);
+        out.push_str(",\"arrived_at\":");
+        out.push_str(&arrival.arrived_at.to_string());
+        out.push_str(",\"to\":");
+        push_string(&mut out, &arrival.to);
+        out.push_str(",\"via\":");
+        push_string(&mut out, &arrival.via);
+        out.push('}');
+    }
+    out.push_str("],\"fast_forward\":");
+    out.push_str(if line.fast_forward { "true" } else { "false" });
+    out.push_str(",\"tool_trace\":[");
     for (index, name) in line.tool_trace.iter().enumerate() {
         if index > 0 {
             out.push(',');
@@ -197,6 +218,8 @@ mod tests {
             intents: &[],
             rejected: &[],
             effects: std::slice::from_ref(&effect),
+            arrivals: &[],
+            fast_forward: false,
             tool_trace: &[],
         });
         let encoded = spookery_kernel::store::codec::emit_effect(&effect);

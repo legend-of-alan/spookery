@@ -173,7 +173,8 @@ fn frame_effect(message: &PlayerMessage) -> FrameEffect {
         PlayerMessage::Say { .. }
         | PlayerMessage::Queued { .. }
         | PlayerMessage::Check { .. }
-        | PlayerMessage::Resume { .. } => FrameEffect::Continue,
+        | PlayerMessage::Resume { .. }
+        | PlayerMessage::Lines { .. } => FrameEffect::Continue,
     }
 }
 

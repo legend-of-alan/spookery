@@ -7,7 +7,7 @@ use crate::model::Now;
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
 use crate::rules::gate;
-use crate::rules::rule::When;
+use crate::rules::rule::{TargetKind, When};
 
 pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
     let mut intents = Vec::new();
@@ -36,9 +36,29 @@ pub fn habits_on(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String> {
 }
 
 pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    if let Ok(effects) = expand_outcome(canon, now, intent, None, crate::expand::ignore_resist) {
-        stamp(intent, &effects);
+    let Ok(effects) = expand_outcome(canon, now, intent, None, crate::expand::ignore_resist) else {
+        return;
+    };
+    // A verb with no target must stay empty. Filling it from a location effect
+    // makes the later gate call report SCHEMA.
+    let keeps_empty = gate::resolve(canon, now, intent).ok().is_some_and(|rule| {
+        matches!(
+            &rule.when,
+            When::Verb {
+                target: TargetKind::None,
+                ..
+            }
+        )
+    });
+    if keeps_empty {
+        for effect in &effects {
+            if let EffectClass::Message { to, .. } = &effect.class {
+                intent.args.message_to = Some(to.clone());
+            }
+        }
+        return;
     }
+    stamp(intent, &effects);
 }
 
 pub fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
@@ -54,12 +74,10 @@ pub fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
     if !profile.eligible {
         return false;
     }
-    if actor.busy() || player_present_at(now, actor.place()) {
+    if actor.is_busy(now.world_time) || player_present_at(now, actor.place()) {
         return false;
     }
-    let Some(tick) = actor.tick() else {
-        return false;
-    };
+    let tick = actor.act();
     if tick.last_act_tick == now.tick_index {
         return false;
     }

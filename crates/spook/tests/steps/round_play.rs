@@ -217,7 +217,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
         ),
     );
     stamp(&pack);
-    set_mira_busy(&pack);
+    quiet_mira(&pack);
     world.pack = Some(pack);
 }
 
@@ -243,7 +243,7 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
         ),
     );
     stamp(&pack);
-    set_mira_busy(&pack);
+    quiet_mira(&pack);
     world.pack = Some(pack);
 }
 
@@ -338,8 +338,7 @@ fn only_the_first_wait_lands(world: &mut World) {
     assert_eq!(
         now.actors
             .get("mira")
-            .and_then(|actor| actor.tick())
-            .map(|tick| tick.last_act_tick),
+            .map(|actor| actor.act().last_act_tick),
         Some(1)
     );
 }
@@ -431,7 +430,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
 ",
     );
     stamp(&pack);
-    set_mira_busy(&pack);
+    quiet_mira(&pack);
     let (now, _rolls, tick) = play_queued(
         &pack,
         vec![queued(
@@ -710,16 +709,13 @@ fn queued(id: &str, actor: &str, kind: ActorKind, move_name: &str, target: Targe
     }
 }
 
-fn set_mira_busy(pack: &Path) {
-    let path = pack.join("state/save.yaml");
-    let mut now =
-        spookery_kernel::store::codec::load_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    *now.actors.get_mut("mira").unwrap().busy_mut() = true;
-    fs::write(
-        &path,
-        spookery_kernel::store::codec::emit_save(&now).unwrap(),
-    )
-    .unwrap();
+fn quiet_mira(pack: &Path) {
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replace("  eligible: true\n", "  eligible: false\n");
+    assert_ne!(text, next, "mira was already ineligible");
+    fs::write(&path, next).unwrap();
+    stamp(pack);
 }
 
 fn stamp(pack: &Path) {

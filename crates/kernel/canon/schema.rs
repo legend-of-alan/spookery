@@ -651,7 +651,7 @@ fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, String> {
     }
 }
 
-fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
+pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
     let mut found = 0u8;
     let mut cond = None;
     if let Some(item) = &yaml.has_item {
@@ -751,7 +751,7 @@ fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
     Err("two conditions under one dash".to_string())
 }
 
-fn cost_of(yaml: &CostYaml) -> Result<Cost, String> {
+pub(crate) fn cost_of(yaml: &CostYaml) -> Result<Cost, String> {
     let minutes = match &yaml.time {
         Some(text) => duration_minutes(text)?,
         None => 0,

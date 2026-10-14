@@ -50,6 +50,9 @@ mod check;
 #[path = "steps/rows.rs"]
 mod rows;
 
+#[path = "steps/travel.rs"]
+mod travel;
+
 #[path = "steps/digest.rs"]
 mod digest;
 

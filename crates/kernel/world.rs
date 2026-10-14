@@ -159,25 +159,17 @@ impl Draft {
     pub fn reset_idle_acts(&mut self) -> Result<(), Reason> {
         let ids: Vec<String> = self.state.actors.keys().cloned().collect();
         for id in ids {
-            let Some(current) = self
+            let current = self
                 .state
                 .actors
                 .get(&id)
-                .and_then(|actor| actor.tick())
-                .map(|tick| tick.idle_acts_today)
-            else {
-                continue;
-            };
+                .map(|actor| actor.act().idle_acts_today)
+                .unwrap_or(0);
             if current != 0 {
                 self.track(StateKey::TickIdleActs(id.clone()))?;
             }
-            if let Some(tick) = self
-                .state
-                .actors
-                .get_mut(&id)
-                .and_then(|actor| actor.tick_mut())
-            {
-                tick.idle_acts_today = 0;
+            if let Some(actor) = self.state.actors.get_mut(&id) {
+                actor.act_mut().idle_acts_today = 0;
             }
         }
         Ok(())
@@ -186,25 +178,17 @@ impl Draft {
     pub fn reset_live_acts(&mut self) -> Result<(), Reason> {
         let ids: Vec<String> = self.state.actors.keys().cloned().collect();
         for id in ids {
-            let Some(current) = self
+            let current = self
                 .state
                 .actors
                 .get(&id)
-                .and_then(|actor| actor.tick())
-                .map(|tick| tick.live_acts_this_hour)
-            else {
-                continue;
-            };
+                .map(|actor| actor.act().live_acts_this_hour)
+                .unwrap_or(0);
             if current != 0 {
                 self.track(StateKey::TickLiveActs(id.clone()))?;
             }
-            if let Some(tick) = self
-                .state
-                .actors
-                .get_mut(&id)
-                .and_then(|actor| actor.tick_mut())
-            {
-                tick.live_acts_this_hour = 0;
+            if let Some(actor) = self.state.actors.get_mut(&id) {
+                actor.act_mut().live_acts_this_hour = 0;
             }
         }
         Ok(())
@@ -217,8 +201,8 @@ impl Draft {
                 .state
                 .actors
                 .get(actor_id)
-                .and_then(|actor| actor.tick())
-                .ok_or(Reason::NoProfile)?;
+                .ok_or(Reason::UnknownKey)?
+                .act();
             (
                 tick.idle_acts_today,
                 tick.live_acts_this_hour,
@@ -242,8 +226,8 @@ impl Draft {
             .state
             .actors
             .get_mut(actor_id)
-            .and_then(|actor| actor.tick_mut())
-            .ok_or(Reason::NoProfile)?;
+            .ok_or(Reason::UnknownKey)?
+            .act_mut();
         tick.last_act_tick = tick_index;
         if humans == 0 {
             tick.idle_acts_today = new_idle;
@@ -426,7 +410,8 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     if let Some(canon) = &canon {
         diags.extend(crate::lint::body_leaks(root, canon));
         diags.extend(crate::lint::message_text_leaks(root, canon));
-        diags.extend(crate::rules::cost::unapplied(canon));
+        diags.extend(crate::map::unreachable(canon));
+        diags.extend(crate::map::teleport_in_verbs(canon));
     }
     diags
 }

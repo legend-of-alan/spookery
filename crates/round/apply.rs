@@ -2,6 +2,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::effect::Effect;
 use spookery_kernel::expand::expand_outcome;
 use spookery_kernel::intent::{ActorKind, Intent};
+use spookery_kernel::map;
 use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::rules::cost;
 use spookery_kernel::rules::gate::{self, gate};
@@ -51,6 +52,23 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             refuse(round, &intent.id, &reason);
             continue;
         }
+        let timed = gate::resolve(draft.canon(), draft.now(), &intent)
+            .ok()
+            .map(|rule| {
+                let minutes = map::span(draft.canon(), draft.now(), &intent, rule);
+                (rule.clone(), minutes)
+            });
+        if let Some((rule, minutes)) = timed {
+            if minutes > 0 {
+                if !begin_timed(round, draft, &intent, &rule, minutes) {
+                    continue;
+                }
+                if spends_slot {
+                    slots += 1;
+                }
+                continue;
+            }
+        }
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let mut resist_reports = Vec::new();
         let expanded = match expand_outcome(
@@ -93,7 +111,33 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             slots += 1;
         }
     }
+    crate::complete::finish(round, draft)?;
     Ok(())
+}
+
+fn begin_timed(
+    round: &mut Round,
+    draft: &mut Draft,
+    intent: &Intent,
+    rule: &spookery_kernel::rules::rule::Rule,
+    minutes: u64,
+) -> bool {
+    let point = draft.savepoint();
+    if let Some(cost) = &rule.cost {
+        if let Err(code) = cost::pay(draft, &intent.actor_id, cost) {
+            draft.rollback(point);
+            refuse(round, &intent.id, code.jsonl_reason());
+            return false;
+        }
+    }
+    if let Err(code) = map::begin(draft, intent, rule, round.world_time_before, minutes) {
+        draft.rollback(point);
+        refuse(round, &intent.id, code.jsonl_reason());
+        return false;
+    }
+    round.trace.push(rule.id.clone());
+    round.applied.push(intent.clone());
+    true
 }
 
 /// Perceive and eligibility see effects already applied in this round.
@@ -201,6 +245,7 @@ fn resist_roll(
             check_id,
             target,
             partial_at: None,
+            live: None,
         },
     )
 }

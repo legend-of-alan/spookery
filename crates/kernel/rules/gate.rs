@@ -13,12 +13,17 @@ use crate::rules::rule::{Owner, Rule, TargetKind, When};
 pub enum Miss {
     Code(Reason),
     CantAfford(String),
+    /// A refusal whose player text is not the token. `code` is still the token.
+    Text {
+        code: Reason,
+        text: String,
+    },
 }
 
 impl Miss {
     pub fn reason(&self) -> Reason {
         match self {
-            Miss::Code(reason) => *reason,
+            Miss::Code(reason) | Miss::Text { code: reason, .. } => *reason,
             Miss::CantAfford(_) => Reason::CantAfford,
         }
     }
@@ -31,13 +36,16 @@ impl Miss {
     pub fn named(&self) -> String {
         match self {
             Miss::CantAfford(what) => format!("CANT_AFFORD {what}"),
-            Miss::Code(reason) => reason.jsonl_reason().to_string(),
+            Miss::Code(reason) | Miss::Text { code: reason, .. } => {
+                reason.jsonl_reason().to_string()
+            }
         }
     }
 
+    /// The gap, or the sentence a locked exit shows.
     pub fn missing(&self) -> Option<&str> {
         match self {
-            Miss::CantAfford(what) => Some(what.as_str()),
+            Miss::CantAfford(what) | Miss::Text { text: what, .. } => Some(what.as_str()),
             Miss::Code(_) => None,
         }
     }
@@ -125,6 +133,12 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 /// Gate every intent. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, Miss> {
     let rule = resolve(canon, now, intent)?;
+    if let Some(actor) = now.actors.get(&intent.actor_id) {
+        if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
+            return Err(Reason::Busy.into());
+        }
+    }
+    crate::map::admit(canon, now, intent)?;
     match &intent.target {
         Target::Empty => {}
         Target::Place(id) => {

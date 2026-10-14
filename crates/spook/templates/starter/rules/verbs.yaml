@@ -8,10 +8,10 @@ rules:
   - id: travel
     when:
       verb: travel
-      target: place
+      target: exit
     do:
       - location:
-          to: target
+          via: target
 
   - id: steady
     when:

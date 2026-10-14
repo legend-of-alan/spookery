@@ -20,6 +20,10 @@ pub enum PlayerMessage {
     Resume {
         text: String,
     },
+    /// Help, look, and map. The text is already the lines to print.
+    Lines {
+        text: String,
+    },
     Refused {
         code: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -35,7 +39,19 @@ pub enum PlayerMessage {
         clocks: Vec<WireClock>,
         items: Vec<WireItem>,
         habits: Vec<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        exits: Vec<WireExit>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireExit {
+    pub name: String,
+    pub to: String,
+    pub place_name: String,
+    pub minutes: u64,
+    pub locked: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

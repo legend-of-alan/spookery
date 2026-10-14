@@ -133,7 +133,7 @@ mod tests {
     use crate::error::Reason;
     use crate::intent::ViewerId;
     use crate::meter::{MeterDef, MeterLive};
-    use crate::model::{ActorLive, TickCounters};
+    use crate::model::{ActCounters, ActorLive};
 
     fn grit_def() -> MeterDef {
         MeterDef {
@@ -148,16 +148,12 @@ mod tests {
         ActorLive::Npc {
             place: "mira_rooms".to_string(),
             flags: Vec::new(),
-            busy: false,
+
             meters: BTreeMap::from([("grit".to_string(), MeterLive { base: 1, offset: 0 })]),
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
-            tick: TickCounters {
-                last_act_tick: 0,
-                idle_acts_today: 0,
-                live_acts_this_hour: 0,
-            },
+            act: ActCounters::fresh(),
         }
     }
 

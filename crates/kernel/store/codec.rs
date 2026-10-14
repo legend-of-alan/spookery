@@ -446,11 +446,12 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
             })
         }
         "location" => {
-            allow(object, &["actor_id", "from", "to"])?;
+            allow(object, &["actor_id", "from", "to", "arrived_at"])?;
             Ok(EffectClass::Location {
                 actor_id: req_str(object, "actor_id")?,
                 from: req_str(object, "from")?,
                 to: req_str(object, "to")?,
+                arrived_at: opt_u64(object, "arrived_at")?,
             })
         }
         "memory" => {
@@ -521,6 +522,13 @@ fn opt_i64(object: &Map<String, Value>, key: &str) -> Result<Option<i64>, Reason
     match object.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(value) => value.as_i64().map(Some).ok_or(Reason::Schema),
+    }
+}
+
+fn opt_u64(object: &Map<String, Value>, key: &str) -> Result<Option<u64>, Reason> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value.as_u64().map(Some).ok_or(Reason::Schema),
     }
 }
 
@@ -697,6 +705,7 @@ messages: []
                         actor_id: "bram".to_string(),
                         from: "docks_street".to_string(),
                         to: "docks_shop".to_string(),
+                        arrived_at: None,
                     },
                     npc("bram"),
                     "i4",

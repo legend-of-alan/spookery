@@ -31,16 +31,17 @@ Feature: spook check explains a broken pack
       | pack_rev mismatch             | state/save.yaml              | PACK_REV_MISMATCH   | pack_rev            |
       | hidden fact in a place body   | world/places/docks_shop.md   | HIDDEN_FACT_IN_BODY | hidden fact         |
       | hidden fact in a message      | cast/mira.md                 | HIDDEN_FACT_IN_TEXT | hidden fact         |
-      | unknown place in a range      | cast/mira.md                 | SCHEMA              | not a place         |
+      | exit to an unknown place      | world/places/docks_shop.md   | SCHEMA              | not a place         |
+      | duplicate exit                | world/places/docks_shop.md   | SCHEMA              | listed twice        |
 
   Scenario: Two problems in two files are both reported
     Given a docks table
     When the copy is broken by "missing when"
-    And the copy is broken by "unknown place in a range"
+    And the copy is broken by "exit to an unknown place"
     And the operator runs spook check
     Then the check exits 1
     And the report names "rules/verbs.yaml"
-    And the report names "cast/mira.md"
+    And the report names "world/places/docks_shop.md"
     And stdout is empty
     And the pack bytes are unchanged
 
@@ -65,7 +66,7 @@ Feature: spook check explains a broken pack
   Scenario: JSON diagnostics stay in the same order
     Given a docks table
     When the copy is broken by "missing when"
-    And the copy is broken by "unknown place in a range"
+    And the copy is broken by "exit to an unknown place"
     And the operator runs spook check --json
     Then the check exits 1
     And stdout is a JSON array of diagnostics
@@ -74,6 +75,36 @@ Feature: spook check explains a broken pack
     Then stdout matches the earlier JSON
     And stderr is empty
     And the pack bytes are unchanged
+
+  Scenario: An unreachable place is a warning and the check still exits 0
+    Given a docks table
+    When the street exit is removed
+    And the save hash is restamped
+    And the operator runs spook check
+    Then the check exits 0
+    And the report names "WARNING"
+    And the report says "no path"
+    And stdout is empty
+    When the operator runs spook check --json
+    Then the check exits 0
+    And stdout is a JSON array of diagnostics
+    And a JSON diagnostic has code "WARNING" file "world/places" path "docks_street" and null line and column
+    And stderr is empty
+
+  Scenario: Teleport in verbs.yaml is a warning and the check still exits 0
+    Given a docks table
+    When travel in verbs.yaml teleports
+    And the save hash is restamped
+    And the operator runs spook check
+    Then the check exits 0
+    And the report names "WARNING"
+    And the report says "teleports"
+    And stdout is empty
+    When the operator runs spook check --json
+    Then the check exits 0
+    And stdout is a JSON array of diagnostics
+    And a JSON diagnostic has code "WARNING" file "rules/verbs.yaml" path "rules[1]" and null line and column
+    And stderr is empty
 
   Scenario: The authoring example move passes check
     Given a docks table

@@ -41,6 +41,40 @@ fn run_check_json(world: &mut World) {
     );
 }
 
+#[when(expr = "the street exit is removed")]
+fn the_street_exit_is_removed(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    replace_file(
+        &pack.join("world/places/docks_shop.md"),
+        "  - to: docks_street\n    name: docks_street\n",
+        "",
+    );
+}
+
+#[when(expr = "travel in verbs.yaml teleports")]
+fn travel_in_verbs_yaml_teleports(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    replace_file(
+        &pack.join("rules/verbs.yaml"),
+        "          via: target\n",
+        "          via: target\n          teleport: true\n",
+    );
+}
+
+#[when(expr = "the save hash is restamped")]
+fn the_save_hash_is_restamped(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let path = pack.join("state/save.yaml");
+    let mut now = spookery_kernel::store::codec::load_save(&fs::read_to_string(&path).unwrap())
+        .unwrap_or_else(|err| panic!("load save: {err:?}"));
+    now.pack_rev = spookery_kernel::canon::pack_rev(&pack).unwrap_or_else(|err| panic!("{err:?}"));
+    fs::write(
+        &path,
+        spookery_kernel::store::codec::emit_save(&now).unwrap(),
+    )
+    .unwrap();
+}
+
 #[when(expr = "the copy is broken by {string}")]
 fn the_copy_is_broken_by(world: &mut World, fault: String) {
     let pack = table::pack(world).to_path_buf();
@@ -372,10 +406,15 @@ fn break_pack(pack: &std::path::Path, fault: &str) {
             "text: Back at dusk. Oil on the shelf.\n",
             "text: The lamp-oil ledger is short.\n",
         ),
-        "unknown place in a range" => replace_file(
-            &pack.join("cast/mira.md"),
-            "    - docks_street\n",
-            "    - nowhere\n",
+        "exit to an unknown place" => replace_file(
+            &pack.join("world/places/docks_shop.md"),
+            "  - to: docks_street\n",
+            "  - to: nowhere\n",
+        ),
+        "duplicate exit" => replace_file(
+            &pack.join("world/places/docks_shop.md"),
+            "    name: docks_street\n",
+            "    name: docks_street\n  - to: docks_street\n    name: docks_street\n",
         ),
         "idle maybe" => replace_file(
             &pack.join("rules/tick.yaml"),

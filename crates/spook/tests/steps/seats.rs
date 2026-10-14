@@ -119,9 +119,6 @@ kind: pc_template
 facts: []
 tick:
   eligible: false
-  range:
-    - docks_shop
-    - docks_street
 ---
 Lark watches the street from a dry doorway.
 ";

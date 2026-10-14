@@ -128,14 +128,37 @@ where
                 },
             ));
         }
-        EffectTemplate::Location { to, .. } => {
+        EffectTemplate::Location { to, teleport } => {
             let place = match to {
-                LocationTo::Target => match &intent.target {
+                LocationTo::Via(via) => {
+                    let name = if via == "target" {
+                        match &intent.target {
+                            Target::Place(id) => id.clone(),
+                            _ => return Err(Reason::Schema),
+                        }
+                    } else {
+                        via.clone()
+                    };
+                    let from = now
+                        .actors
+                        .get(&intent.actor_id)
+                        .map(|actor| actor.place())
+                        .ok_or(Reason::UnknownKey)?;
+                    let exit = crate::map::named(canon, from, &name).ok_or(Reason::NoExit)?;
+                    if !crate::map::visible(canon, now, &intent.actor_id)
+                        .iter()
+                        .any(|view| view.name == exit.name)
+                    {
+                        return Err(Reason::NoExit);
+                    }
+                    exit.to.clone()
+                }
+                LocationTo::Place(id) if *teleport => id.clone(),
+                LocationTo::Target if *teleport => match &intent.target {
                     Target::Place(id) => id.clone(),
                     _ => return Err(Reason::Schema),
                 },
-                LocationTo::Place(id) => id.clone(),
-                LocationTo::Via(_) => return Err(Reason::NotInSpec),
+                LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
             };
             effects.push(location_effect(now, intent, &place)?);
         }
@@ -329,6 +352,7 @@ fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reaso
             actor_id: intent.actor_id.clone(),
             from,
             to: to.to_string(),
+            arrived_at: None,
         },
         as_viewer: viewer,
         intent_id: intent.id.clone(),

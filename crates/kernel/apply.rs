@@ -29,9 +29,9 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
         } => apply_item(draft, actor_id, place, &id, delta, max),
         EffectClass::Wield { actor_id, id } => apply_wield(draft, &actor_id, &id),
         EffectClass::Unwield { actor_id } => apply_unwield(draft, &actor_id),
-        EffectClass::Location { actor_id, from, to } => {
-            apply_location(draft, intent, &actor_id, &from, &to)
-        }
+        EffectClass::Location {
+            actor_id, from, to, ..
+        } => apply_location(draft, intent, &actor_id, &from, &to),
         EffectClass::Memory {
             actor_id,
             fact_ids,
@@ -250,20 +250,20 @@ fn apply_location(
     if actor.place() != from {
         return Err(Reason::OutOfRange);
     }
-    let profile = draft.canon().profile(actor_id).ok_or(Reason::NoProfile)?;
-    if !profile.range.iter().any(|item| item == to) {
-        return Err(Reason::OutOfRange);
+    if !draft.canon().places.contains_key(to) && !draft.now().places.contains_key(to) {
+        return Err(Reason::NoExit);
     }
     let place_changed = actor.place() != to;
     if place_changed {
         draft.track(StateKey::ActorPlace(actor_id.to_string()))?;
     }
-    *draft
+    let actor = draft
         .now_mut()
         .actors
         .get_mut(actor_id)
-        .ok_or(Reason::UnknownKey)?
-        .place_mut() = to.to_string();
+        .ok_or(Reason::UnknownKey)?;
+    *actor.place_mut() = to.to_string();
+    actor.visit(to);
     Ok(())
 }
 
@@ -320,27 +320,12 @@ fn apply_memory(
 }
 
 fn apply_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
-    if key != "busy" {
-        let listed = draft
-            .canon()
-            .profile(actor_id)
-            .is_some_and(|profile| profile.flags.iter().any(|flag| flag == key));
-        if !listed {
-            return Err(Reason::UnknownKey);
-        }
-    }
-    if key == "busy" {
-        let current = draft.now().actors.get(actor_id).map(|actor| actor.busy());
-        if current != Some(value) {
-            draft.track(StateKey::ActorBusy(actor_id.to_string()))?;
-        }
-        *draft
-            .now_mut()
-            .actors
-            .get_mut(actor_id)
-            .ok_or(Reason::UnknownKey)?
-            .busy_mut() = value;
-        return Ok(());
+    let listed = draft
+        .canon()
+        .profile(actor_id)
+        .is_some_and(|profile| profile.flags.iter().any(|flag| flag == key));
+    if !listed {
+        return Err(Reason::UnknownKey);
     }
     let has = draft
         .now()

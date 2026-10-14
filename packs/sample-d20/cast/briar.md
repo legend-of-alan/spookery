@@ -5,10 +5,6 @@ kind: npc
 facts: []
 tick:
   eligible: true
-  range:
-    - gate_yard
-    - mill_lane
-    - loft
 rules:
   - id: watch_the_gate
     when: habit

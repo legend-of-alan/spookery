@@ -22,15 +22,13 @@ pub enum RoundCause {
     Flush,
     Manual,
     Replay,
+    FastForward,
 }
 
 pub struct RecordedRound {
     pub intents: Vec<spookery_kernel::intent::Intent>,
     pub presence_humans: u32,
 }
-
-/// Off until W1. One pass today.
-const FAST_FORWARD: bool = false;
 
 pub fn commit_moves(world: &mut World) -> Result<spookery_kernel::commit::CommitOutcome, Reason> {
     let wall = world.now().last_tick_at.clone();
@@ -62,6 +60,61 @@ pub fn catch_up(world: &mut World, now_wall: &str, downtime_hours: u64) -> Resul
     Ok(())
 }
 
+/// Keep playing while a seated PC is still busy. The burst starts only when every
+/// seated PC is busy. `already` counts a tick this call did not play, and the burst
+/// stops at `max_fastforward_ticks` including that tick.
+pub fn advance_while_busy(world: &mut World, wall: &str, already: u32) -> Result<u32, Reason> {
+    let cap = world.budget().max_fastforward_ticks;
+    if !all_seated_busy(world) {
+        return Ok(already);
+    }
+    let mut ran = already;
+    while u64::from(ran) < cap && any_seated_busy(world) && world.queued_intents().is_empty() {
+        play(world, RoundCause::FastForward, wall)?;
+        ran += 1;
+    }
+    Ok(ran)
+}
+
+fn seated_pcs(world: &World) -> Vec<String> {
+    world
+        .now()
+        .presence
+        .actors_present
+        .iter()
+        .filter(|id| {
+            world
+                .now()
+                .actors
+                .get(id.as_str())
+                .is_some_and(spookery_kernel::model::ActorLive::is_pc)
+        })
+        .cloned()
+        .collect()
+}
+
+fn all_seated_busy(world: &World) -> bool {
+    let pcs = seated_pcs(world);
+    !pcs.is_empty()
+        && pcs.iter().all(|id| {
+            world
+                .now()
+                .actors
+                .get(id)
+                .is_some_and(|actor| actor.is_busy(world.now().world_time))
+        })
+}
+
+fn any_seated_busy(world: &World) -> bool {
+    seated_pcs(world).iter().any(|id| {
+        world
+            .now()
+            .actors
+            .get(id)
+            .is_some_and(|actor| actor.is_busy(world.now().world_time))
+    })
+}
+
 pub fn play(world: &mut World, cause: RoundCause, now_wall: &str) -> Result<(), Reason> {
     play_with(world, cause, now_wall, None).map(|_| ())
 }
@@ -72,14 +125,6 @@ pub(crate) fn play_recorded(
     recorded: RecordedRound,
 ) -> Result<Vec<Effect>, Reason> {
     play_with(world, RoundCause::Replay, now_wall, Some(recorded))
-}
-
-fn stage_passes() -> u32 {
-    if FAST_FORWARD {
-        64
-    } else {
-        1
-    }
 }
 
 fn play_with(
@@ -93,7 +138,6 @@ fn play_with(
     } else {
         Some(lock_world(world)?)
     };
-    let passes = stage_passes();
     let mut draft_slot = Some(Draft::begin(world));
     let mut round = Round::prepare(
         world,
@@ -102,19 +146,14 @@ fn play_with(
         now_wall,
         recorded,
     );
-    for pass in 1..=passes {
-        let draft = draft_slot.as_mut().expect("draft");
-        advance::run(&mut round, draft)?;
-        complete::run(&mut round, draft)?;
-        gather::run(&mut round, draft)?;
-        resolve::run(&mut round, draft)?;
-        apply::run(&mut round, draft)?;
-        run_triggers::run(&mut round, draft)?;
-        observe::run(&mut round, draft)?;
-        if pass == passes {
-            record::run(world, &mut round, draft_slot.take().expect("draft"))?;
-            return Ok(std::mem::take(&mut round.effects));
-        }
-    }
-    Ok(Vec::new())
+    let draft = draft_slot.as_mut().expect("draft");
+    advance::run(&mut round, draft)?;
+    complete::run(&mut round, draft)?;
+    gather::run(&mut round, draft)?;
+    resolve::run(&mut round, draft)?;
+    apply::run(&mut round, draft)?;
+    run_triggers::run(&mut round, draft)?;
+    observe::run(&mut round, draft)?;
+    record::run(world, &mut round, draft_slot.take().expect("draft"))?;
+    Ok(std::mem::take(&mut round.effects))
 }

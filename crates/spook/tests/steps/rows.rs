@@ -202,7 +202,7 @@ Nell keeps a guard up.
         ActorLive::Pc {
             place: "docks_shop".to_string(),
             flags: Vec::new(),
-            busy: false,
+
             meters: BTreeMap::from([
                 (
                     "grit".to_string(),
@@ -216,6 +216,8 @@ Nell keeps a guard up.
             inventory: BTreeMap::new(),
             wielded: None,
             known_facts: Vec::new(),
+            visited: vec!["docks_shop".to_string()],
+            act: spookery_kernel::model::ActCounters::fresh(),
         },
     );
     fs::write(

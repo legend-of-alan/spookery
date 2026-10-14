@@ -6,7 +6,7 @@ use spookery_kernel::perceive::perceive_budget;
 use spookery_kernel::rules::gate::resolve;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
-use spookery_round::commit_moves_at;
+use spookery_round::{advance_while_busy, commit_moves_at};
 
 use super::frames;
 use super::idle_clock::wall_now;
@@ -272,11 +272,20 @@ fn commit_tool(
         return Err(Reason::NotInSpec);
     }
     if world.queued_intents().is_empty() {
-        return Ok(noop(world));
+        let wall = wall_now()?;
+        let ran = advance_while_busy(world, &wall, 0)?;
+        if ran == 0 {
+            return Ok(noop(world));
+        }
+        let mut done = GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None));
+        done.advanced = true;
+        done.ticked = true;
+        return Ok(done);
     }
     let before = world.now().world_time;
     let wall = wall_now()?;
     let outcome = commit_moves_at(world, &wall)?;
+    advance_while_busy(world, &wall, 1)?;
     let advanced = world.now().world_time != before;
     let mut done = GmToolReply::new(frames::commit_reply(
         outcome.state_rev,

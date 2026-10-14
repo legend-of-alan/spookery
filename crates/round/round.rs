@@ -6,6 +6,7 @@ use spookery_kernel::model::Now;
 use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::{session_status, Draft, World};
 
+use crate::complete::Arrival;
 use crate::log::Rejected;
 use crate::play::{RecordedRound, RoundCause};
 
@@ -26,6 +27,8 @@ pub struct Round {
     pub applied: Vec<Intent>,
     pub rejected: Vec<Rejected>,
     pub effects: Vec<Effect>,
+    pub arrivals: Vec<Arrival>,
+    pub fast_forward: bool,
     pub trace: Vec<String>,
     pub notices: Vec<RollReport>,
     pub roll_reports: Vec<RollReport>,
@@ -77,6 +80,8 @@ impl Round {
             applied: Vec::new(),
             rejected: Vec::new(),
             effects: Vec::new(),
+            arrivals: Vec::new(),
+            fast_forward: cause == RoundCause::FastForward,
             trace: Vec::new(),
             notices: Vec::new(),
             roll_reports: Vec::new(),
