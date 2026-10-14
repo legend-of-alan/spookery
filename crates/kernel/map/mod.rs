@@ -1,6 +1,8 @@
 //! Exits and the journeys that follow them.
 
-use crate::canon::Canon;
+use std::collections::BTreeMap;
+
+use crate::canon::{Canon, FactCanon, ItemCanon, PlaceCanon};
 use crate::diagnostic::{schema, Diagnostic};
 use crate::error::Reason;
 use crate::firewall::allows;
@@ -240,9 +242,9 @@ pub fn begin(
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
 pub fn broken(
-    places: &std::collections::BTreeMap<String, crate::canon::PlaceCanon>,
-    facts: &std::collections::BTreeMap<String, crate::canon::FactCanon>,
-    items: &std::collections::BTreeMap<String, crate::canon::ItemCanon>,
+    places: &BTreeMap<String, PlaceCanon>,
+    facts: &BTreeMap<String, FactCanon>,
+    items: &BTreeMap<String, ItemCanon>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for place in places.values() {
