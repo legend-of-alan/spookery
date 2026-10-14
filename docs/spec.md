@@ -170,7 +170,7 @@ Kernel habits do not emit speech. A player world line while `humans == 0` is ref
 
 ## Failure tokens
 
-`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET`, plus the log word `empty_perceive`. `run`, `tick`, `status`, and `migrate` print the token and exit 1 for an engine refusal. `spook check` prints the diagnostic line instead of the bare token. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`. A cost gap also sends `missing` with the meter or item id. `code` stays the token.
+`Reason` is one `thiserror` enum in the kernel. It stays fieldless and `Copy`. `Display` and `token()` are the wire words. There is no parallel code enum. JSONL lowers only `BUDGET`, the log word `empty_perceive`, and a cost gap written as `CANT_AFFORD` plus the meter or item id. `run`, `tick`, `status`, and `migrate` print the token and exit 1 for an engine refusal. `spook check` prints the diagnostic line instead of the bare token. A usage error prints clap's message and exits 2. The player socket sends `{"kind":"refused","code":...}`. A cost gap also sends `missing` with the meter or item id. `code` stays the token.
 
 `#[from]` is not used on `Reason`. I/O in the kernel collapses to `COMMIT_CONFLICT` or `SCHEMA`, so `Reason` does not wrap `std::io::Error`. The bin has its own error with `Reason` and `Io` variants. `#[from]` is used there, and only there. Tick functions return `kernel::Reason`. A tick-cause value is not an error.
 
@@ -354,7 +354,7 @@ Speech is the table's choice. For each tape line and each recipient, a hidden fa
 
 Load fails with `SCHEMA` if `places.actors` is edited apart from `actors.place`. Emit rebuilds occupancy from `actors.*.place`.
 
-Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","outcome":"success"|"partial"|"miss"}` or `{"kind":"refused","code":"..."}` for that player's own roll. An NPC's roll sends no player frame. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` lowercased, `empty_perceive` as that word, every other token uppercase.
+Faces of a roll go to the GM socket only. The player socket gets `{"kind":"check","outcome":"success"|"partial"|"miss"}` or `{"kind":"refused","code":"..."}` for that player's own roll. An NPC's roll sends no player frame. No faces. The tick JSONL lists `resolve_check` and `apply_effect` without faces. A refused tick records `rejected[].reason` as the token: `BUDGET` lowercased, `empty_perceive` as that word, a cost gap as `CANT_AFFORD` plus the meter or item id, and every other token uppercase.
 
 ## Non-goals
 
