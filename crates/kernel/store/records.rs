@@ -430,153 +430,16 @@ fn meter_write(write: WriteKind, delta: Option<i64>) -> Result<MeterWrite, Recor
     }
 }
 
-#[derive(Serialize)]
-#[serde(untagged)]
-enum Payload {
-    Clock {
-        clock_id: String,
-        delta: i64,
-    },
-    Meter {
-        actor_id: String,
-        key: String,
-        write: WriteKind,
-        #[serde(skip_serializing_if = "absent")]
-        delta: Option<i64>,
-    },
-    Item {
-        #[serde(skip_serializing_if = "absent")]
-        actor_id: Option<String>,
-        #[serde(skip_serializing_if = "absent")]
-        place: Option<String>,
-        id: String,
-        delta: i64,
-        #[serde(skip_serializing_if = "absent")]
-        max: Option<i64>,
-    },
-    Wield {
-        actor_id: String,
-        id: String,
-    },
-    Unwield {
-        actor_id: String,
-    },
-    Location {
-        actor_id: String,
-        from: String,
-        to: String,
-        #[serde(skip_serializing_if = "absent")]
-        arrived_at: Option<u64>,
-    },
-    Memory {
-        actor_id: String,
-        fact_ids: Vec<String>,
-        tags: Vec<String>,
-        #[serde(skip_serializing_if = "absent")]
-        text: Option<String>,
-    },
-    Flag {
-        actor_id: String,
-        key: String,
-        value: bool,
-    },
-    Message {
-        message_id: String,
-        to: Vec<String>,
-        #[serde(skip_serializing_if = "absent")]
-        place: Option<String>,
-        fact_ids: Vec<String>,
-        text: String,
-    },
-    Narrate {
-        to: Vec<String>,
-        fact_ids: Vec<String>,
-        text: String,
-    },
-}
-
-pub(crate) fn payload_json(class: &EffectClass) -> String {
-    let payload = match class.clone() {
-        EffectClass::Clock { clock_id, delta } => Payload::Clock { clock_id, delta },
-        EffectClass::Meter {
-            actor_id,
-            key,
-            write,
-        } => {
-            let (write, delta) = match write {
-                MeterWrite::Base(delta) => (WriteKind::Base, Some(delta)),
-                MeterWrite::Offset(delta) => (WriteKind::Offset, Some(delta)),
-                MeterWrite::Snap => (WriteKind::Snap, None),
-            };
-            Payload::Meter {
-                actor_id,
-                key,
-                write,
-                delta,
-            }
-        }
-        EffectClass::Item {
-            actor_id,
-            place,
-            id,
-            delta,
-            max,
-        } => Payload::Item {
-            actor_id,
-            place,
-            id,
-            delta,
-            max,
-        },
-        EffectClass::Wield { actor_id, id } => Payload::Wield { actor_id, id },
-        EffectClass::Unwield { actor_id } => Payload::Unwield { actor_id },
-        EffectClass::Location {
-            actor_id,
-            from,
-            to,
-            arrived_at,
-        } => Payload::Location {
-            actor_id,
-            from,
-            to,
-            arrived_at,
-        },
-        EffectClass::Memory {
-            actor_id,
-            fact_ids,
-            tags,
-            text,
-        } => Payload::Memory {
-            actor_id,
-            fact_ids,
-            tags,
-            text,
-        },
-        EffectClass::Flag {
-            actor_id,
-            key,
-            value,
-        } => Payload::Flag {
-            actor_id,
-            key,
-            value,
-        },
-        EffectClass::Message {
-            message_id,
-            to,
-            place,
-            fact_ids,
-            text,
-        } => Payload::Message {
-            message_id,
-            to,
-            place,
-            fact_ids,
-            text,
-        },
-        EffectClass::Narrate { to, fact_ids, text } => Payload::Narrate { to, fact_ids, text },
+/// The effect's record minus `class`, `as` and `intent_id`, keys in declaration order.
+pub(crate) fn payload_json(effect: &Effect) -> String {
+    let record = serde_json::to_value(effect).expect("effect payload");
+    let serde_json::Value::Object(mut fields) = record else {
+        unreachable!("effect records are objects")
     };
-    serde_json::to_string(&payload).expect("effect payload")
+    for key in ["class", "as", "intent_id"] {
+        fields.shift_remove(key);
+    }
+    serde_json::to_string(&fields).expect("effect payload")
 }
 
 #[derive(Serialize, Deserialize)]

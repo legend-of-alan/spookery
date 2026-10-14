@@ -181,7 +181,7 @@ pub fn emit_effect(effect: &Effect) -> String {
 
 /// Payload fields only, in declaration order. Absent options are omitted.
 pub fn emit_effect_payload(effect: &Effect) -> String {
-    super::records::payload_json(&effect.class)
+    super::records::payload_json(effect)
 }
 
 pub fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
