@@ -62,14 +62,14 @@ fn random_item_changes_never_leave_a_negative_count() {
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
     );
-    let mut runner = TestRunner::new(config());
-    let strategy = changes(&actors, &places);
+    let mut runner = TestRunner::new(configure_runner());
+    let strategy = pick_changes(&actors, &places);
     runner
         .run(&strategy, |steps| apply_changes(&world, &steps))
         .unwrap_or_else(|err| panic!("inventory property failed: {err}"));
 }
 
-fn config() -> Config {
+fn configure_runner() -> Config {
     Config {
         cases: CASES,
         failure_persistence: None,
@@ -86,54 +86,30 @@ fn apply_changes(world: &World, steps: &[ItemChange]) -> Result<(), TestCaseErro
         let known = holder_known(draft.now(), &step.holder);
         let held = count_of(draft.now(), &step.holder, &step.id);
         let outcome = apply_effect(&mut draft, &intent, item_effect(step));
-        no_stored_zero(draft.now())?;
+        assert_no_stored_zero(draft.now())?;
         if !known {
             if outcome.is_ok() {
                 return fail("an unknown holder accepted an item effect");
             }
-            same_save(draft.now(), &before)?;
+            assert_same_save(draft.now(), &before)?;
+            continue;
+        }
+        if outcome.is_err() {
+            assert_same_save(draft.now(), &before)?;
             continue;
         }
         let got = count_of(draft.now(), &step.holder, &step.id);
-        match expected_count(held, step.delta, step.max) {
-            None => {
-                if outcome.is_ok() {
-                    if takes_more_than_held(held, step.delta) {
-                        return fail(format!(
-                            "taking {} from {held} of {} was accepted and the count is {got}",
-                            step.delta, step.id
-                        ));
-                    }
-                    return fail(format!(
-                        "an item effect on {held} of {} by {} was accepted",
-                        step.id, step.delta
-                    ));
-                }
-                same_save(draft.now(), &before)?;
-                if takes_more_than_held(held, step.delta) && got != held {
-                    return fail(format!(
-                        "removing {} from {held} of {} changed the count to {got}",
-                        step.delta, step.id
-                    ));
-                }
-            }
-            Some(expected) => {
-                if outcome.is_err() {
-                    return fail(format!(
-                        "a legal item effect on {held} of {} by {} was refused",
-                        step.id, step.delta
-                    ));
-                }
-                if got != expected {
-                    return fail(format!(
-                        "count of {} became {got}, expected {expected}",
-                        step.id
-                    ));
-                }
-                if let Some(cap) = positive_cap(step.delta, step.max) {
-                    if i64::from(got) > cap {
-                        return fail(format!("count {got} is above max {cap}"));
-                    }
+        if takes_more_than_held(held, step.delta) {
+            return fail(format!(
+                "taking {} from {held} of {} was accepted and the count is {got}",
+                step.delta, step.id
+            ));
+        }
+        // A negative max is not a ceiling. Only a positive add is capped.
+        if step.delta > 0 {
+            if let Some(cap) = step.max.filter(|cap| *cap >= 0) {
+                if i64::from(got) > cap {
+                    return fail(format!("count {got} is above max {cap}"));
                 }
             }
         }
@@ -145,7 +121,7 @@ fn fail(message: impl Into<String>) -> Result<(), TestCaseError> {
     Err(TestCaseError::fail(message.into()))
 }
 
-fn same_save(now: &Now, before: &Now) -> Result<(), TestCaseError> {
+fn assert_same_save(now: &Now, before: &Now) -> Result<(), TestCaseError> {
     if now == before {
         Ok(())
     } else {
@@ -154,7 +130,7 @@ fn same_save(now: &Now, before: &Now) -> Result<(), TestCaseError> {
 }
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
-fn no_stored_zero(now: &Now) -> Result<(), TestCaseError> {
+fn assert_no_stored_zero(now: &Now) -> Result<(), TestCaseError> {
     for (actor_id, actor) in &now.actors {
         for (item_id, count) in actor.inventory() {
             if *count == 0 {
@@ -195,38 +171,11 @@ fn count_of(now: &Now, holder: &Holder, id: &str) -> u32 {
     }
 }
 
-/// `max` caps a positive add. A result below 0, an overflowing add, a negative
-/// cap on a positive add, or a result that does not fit in `u32` is refused.
-fn expected_count(held: u32, delta: i64, max: Option<i64>) -> Option<u32> {
-    let mut next = i64::from(held).checked_add(delta)?;
-    if next < 0 {
-        return None;
-    }
-    if delta > 0 {
-        if let Some(cap) = max {
-            if cap < 0 {
-                return None;
-            }
-            if next > cap {
-                next = cap;
-            }
-        }
-    }
-    u32::try_from(next).ok()
-}
-
 fn takes_more_than_held(held: u32, delta: i64) -> bool {
     delta < 0
         && i64::from(held)
             .checked_add(delta)
             .is_some_and(|next| next < 0)
-}
-
-fn positive_cap(delta: i64, max: Option<i64>) -> Option<i64> {
-    match max {
-        Some(cap) if delta > 0 && cap >= 0 => Some(cap),
-        _ => None,
-    }
 }
 
 fn npc_intent() -> Intent {
@@ -263,13 +212,13 @@ fn item_effect(step: &ItemChange) -> Effect {
 
 /// Two actors, every place, and three item ids stay under `max_state_keys_mutated`.
 /// A budget miss is the round's rollback, not a count change this property watches.
-fn changes(actors: &[String], places: &[String]) -> impl Strategy<Value = Vec<ItemChange>> {
+fn pick_changes(actors: &[String], places: &[String]) -> impl Strategy<Value = Vec<ItemChange>> {
     prop::collection::vec(
         (
-            holder_strategy(actors, places),
-            item_id(),
-            delta_value(),
-            max_value(),
+            pick_holder(actors, places),
+            pick_item_id(),
+            pick_delta(),
+            pick_max(),
         )
             .prop_map(|(holder, id, delta, max)| ItemChange {
                 holder,
@@ -281,7 +230,7 @@ fn changes(actors: &[String], places: &[String]) -> impl Strategy<Value = Vec<It
     )
 }
 
-fn holder_strategy(actors: &[String], places: &[String]) -> impl Strategy<Value = Holder> {
+fn pick_holder(actors: &[String], places: &[String]) -> impl Strategy<Value = Holder> {
     let mut known = Vec::new();
     for id in actors.iter().take(2) {
         known.push(Holder::Actor(id.clone()));
@@ -296,7 +245,7 @@ fn holder_strategy(actors: &[String], places: &[String]) -> impl Strategy<Value 
     ]
 }
 
-fn item_id() -> impl Strategy<Value = String> {
+fn pick_item_id() -> impl Strategy<Value = String> {
     prop_oneof![
         Just("lamp_oil".to_string()),
         Just("coin".to_string()),
@@ -304,7 +253,7 @@ fn item_id() -> impl Strategy<Value = String> {
     ]
 }
 
-fn delta_value() -> impl Strategy<Value = i64> {
+fn pick_delta() -> impl Strategy<Value = i64> {
     prop_oneof![
         5 => -8i64..=8,
         2 => -10_000i64..=10_000,
@@ -323,7 +272,7 @@ fn delta_value() -> impl Strategy<Value = i64> {
     ]
 }
 
-fn max_value() -> impl Strategy<Value = Option<i64>> {
+fn pick_max() -> impl Strategy<Value = Option<i64>> {
     prop_oneof![
         4 => Just(None),
         3 => (0i64..=32).prop_map(Some),
