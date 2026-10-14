@@ -1,9 +1,10 @@
-use std::collections::BTreeSet;
 use std::fs;
 use std::io::{Read, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
+use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
@@ -98,62 +99,189 @@ pub fn tick_names(pack: &Path) -> Vec<String> {
     names
 }
 
-pub fn listen(pack: &Path, bind: &str, port: u16) {
-    listen_with(pack, bind, port, &[]);
+pub struct Pending {
+    child: Child,
+    stdin: Option<ChildStdin>,
+    stdout: ChildStdout,
+    stderr: Arc<Mutex<String>>,
+    stderr_drain: Option<JoinHandle<()>>,
 }
 
-/// `spook run --mcp-http` on a port that is not the game port plus one.
+pub struct Listening {
+    pub game: SocketAddr,
+    pub door: SocketAddr,
+    pub server: Proc,
+}
+
+pub fn listen(pack: &Path) {
+    let _ = listen_flags(pack, &["--addr", "127.0.0.1:0"], &[]);
+}
+
+/// `spook run` with an agent door the operating system chooses on its own.
 pub fn listen_door(pack: &Path) -> u16 {
-    let game = free_port();
-    let http = loop {
-        let port = free_port();
-        if port != game && port != game.saturating_add(1) {
-            break port;
-        }
-    };
-    let pack_arg = support::pack_arg(pack);
-    let addr = format!("127.0.0.1:{game}");
-    let http_addr = format!("127.0.0.1:{http}");
-    let mut server = support::spawn(&["run", &pack_arg, "--addr", &addr, "--mcp-http", &http_addr]);
-    wait_listen(game, &mut server);
-    wait_listen(http, &mut server);
-    let opened_now = fs::read(pack.join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    crate::set_live(Live {
-        port: game,
-        player_write: None,
-        player_text: Arc::new(Mutex::new(String::new())),
-        players: Vec::new(),
-        gm: None,
-        http_port: http,
-        gm_text: Arc::new(Mutex::new(String::new())),
-        opened_now: opened_now.clone(),
-        seated_now: opened_now,
-        seated_rev: 0,
-        server: Some(server),
-    });
-    http
+    listen_flags(
+        pack,
+        &["--addr", "127.0.0.1:0", "--mcp-http", "127.0.0.1:0"],
+        &[],
+    )
+    .1
 }
 
-pub fn listen_with(pack: &Path, bind: &str, port: u16, env: &[(&str, &str)]) {
-    let pack_arg = support::pack_arg(pack);
-    let mut server = support::spawn_env(&["run", &pack_arg, "--addr", bind], env);
-    wait_listen(port, &mut server);
+pub fn listen_with(pack: &Path, env: &[(&str, &str)]) {
+    let _ = listen_flags(pack, &["--addr", "127.0.0.1:0"], env);
+}
+
+pub fn listen_flags(pack: &Path, flags: &[&str], env: &[(&str, &str)]) -> (u16, u16) {
+    let listening = take_report(spawn_table(pack, flags, env));
+    let ports = (listening.game.port(), listening.door.port());
+    install(pack, listening);
+    ports
+}
+
+pub fn game_addr() -> String {
+    crate::with_live(|live| format!("127.0.0.1:{}", live.port))
+}
+
+pub fn door_addr() -> String {
+    crate::with_live(|live| format!("127.0.0.1:{}", live.http_port))
+}
+
+/// The listening line `spook run` wrote, as the addresses it bound.
+pub fn reported(stdout: &str) -> (SocketAddr, SocketAddr) {
+    stdout
+        .lines()
+        .find_map(parse_line)
+        .unwrap_or_else(|| panic!("no listening line\n{stdout}"))
+}
+
+pub fn spawn_table(pack: &Path, flags: &[&str], env: &[(&str, &str)]) -> Pending {
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command.arg("run").arg(support::pack_arg(pack)).args(flags);
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn spook: {err}"));
+    let stdin = child.stdin.take();
+    let stdout = child
+        .stdout
+        .take()
+        .unwrap_or_else(|| panic!("stdout was not piped"));
+    let stderr_pipe = child
+        .stderr
+        .take()
+        .unwrap_or_else(|| panic!("stderr was not piped"));
+    let stderr = Arc::new(Mutex::new(String::new()));
+    let stderr_drain = drain(stderr_pipe, Arc::clone(&stderr));
+    Pending {
+        child,
+        stdin,
+        stdout,
+        stderr,
+        stderr_drain: Some(stderr_drain),
+    }
+}
+
+pub fn take_report(mut pending: Pending) -> Listening {
+    let (game, door, seen) = read_report(&mut pending);
+    let stdout = Arc::new(Mutex::new(seen));
+    drop(drain(pending.stdout, Arc::clone(&stdout)));
+    Listening {
+        game,
+        door,
+        server: Proc {
+            child: pending.child,
+            stdin: pending.stdin,
+            stdout,
+            stderr: pending.stderr,
+        },
+    }
+}
+
+fn install(pack: &Path, listening: Listening) {
     let opened_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     crate::set_live(Live {
-        port,
+        port: listening.game.port(),
         player_write: None,
         player_text: Arc::new(Mutex::new(String::new())),
         players: Vec::new(),
         gm: None,
-        http_port: port.saturating_add(1),
+        http_port: listening.door.port(),
         gm_text: Arc::new(Mutex::new(String::new())),
         opened_now: opened_now.clone(),
         seated_now: opened_now,
         seated_rev: 0,
-        server: Some(server),
+        server: Some(listening.server),
     });
+}
+
+fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
+    let mut got = Vec::new();
+    let mut buf = [0u8; 256];
+    loop {
+        match pending.stdout.read(&mut buf) {
+            Ok(0) => {
+                let status = pending
+                    .child
+                    .wait()
+                    .unwrap_or_else(|err| panic!("wait: {err}"));
+                if let Some(drain) = pending.stderr_drain.take() {
+                    let _ = drain.join();
+                }
+                panic!(
+                    "spook run exited {status} before it reported its ports\nstdout:\n{}\nstderr:\n{}",
+                    String::from_utf8_lossy(&got),
+                    support::text_of(&pending.stderr)
+                );
+            }
+            Ok(n) => {
+                got.extend_from_slice(&buf[..n]);
+                if let Some((game, door)) = split_report(&got) {
+                    let seen = String::from_utf8_lossy(&got).into_owned();
+                    return (game, door, seen);
+                }
+            }
+            Err(err) => panic!("read stdout: {err}"),
+        }
+    }
+}
+
+fn split_report(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
+    let end = buf.iter().rposition(|byte| *byte == b'\n')? + 1;
+    let text = std::str::from_utf8(&buf[..end]).unwrap_or_else(|err| panic!("stdout: {err}"));
+    text.lines().find_map(parse_line)
+}
+
+fn parse_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
+    let value: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
+    if value.get("kind")?.as_str() != Some("listening") {
+        return None;
+    }
+    let game = value.get("game")?.as_str()?.parse().ok()?;
+    let door = value.get("door")?.as_str()?.parse().ok()?;
+    Some((game, door))
+}
+
+fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHandle<()> {
+    std::thread::spawn(move || {
+        let mut reader = reader;
+        let mut buf = [0u8; 256];
+        loop {
+            match reader.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => slot
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .push_str(&String::from_utf8_lossy(&buf[..n])),
+            }
+        }
+    })
 }
 
 pub fn seat_player(pack: &Path) {
@@ -186,12 +314,8 @@ pub fn seat_actor(pack: &Path, actor_id: &str) {
 }
 
 pub fn seat_gm() {
-    let http = crate::with_live(|live| live.http_port);
-    let below = http
-        .checked_sub(1)
-        .unwrap_or_else(|| panic!("http port {http}"));
-    let gm = GmConnection::connect(&format!("127.0.0.1:{below}"))
-        .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let gm =
+        GmConnection::connect_door(&door_addr()).unwrap_or_else(|err| panic!("seat GM: {err}"));
     let opened = gm.opened_line().to_string();
     crate::with_live(|live| {
         push_line(&live.gm_text, &opened);
@@ -391,93 +515,13 @@ pub fn second_hello(line: &str) -> String {
     read_line(&mut stream)
 }
 
-/// Ports already handed to a scenario in this test process, each with its agent door (port + 1).
-/// Scenarios run concurrently, and the OS may hand a just-probed port + 1 to the next probe
-/// (Windows allocates ephemeral ports in order), so a probe alone cannot keep two tables apart.
-static RESERVED: Mutex<BTreeSet<u16>> = Mutex::new(BTreeSet::new());
-
-pub fn free_port() -> u16 {
-    loop {
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-        let port = listener
-            .local_addr()
-            .unwrap_or_else(|err| panic!("local_addr: {err}"))
-            .port();
-        drop(listener);
-        // The documented default is 127.0.0.1:9737. A free-port scenario asserts it was not chosen.
-        // The agent door is the next port, so that port has to bind too.
-        if port == 9737 || port.saturating_add(1) == 9737 {
-            continue;
-        }
-        let agent = match std::net::TcpListener::bind(("127.0.0.1", port.saturating_add(1))) {
-            Ok(agent) => agent,
-            Err(_) => continue,
-        };
-        drop(agent);
-        if std::net::TcpListener::bind(("127.0.0.1", port)).is_err() {
-            continue;
-        }
-        let door = port.saturating_add(1);
-        let mut reserved = RESERVED
-            .lock()
-            .unwrap_or_else(|err| panic!("reserved: {err}"));
-        if reserved.contains(&port) || reserved.contains(&door) {
-            continue;
-        }
-        reserved.insert(port);
-        reserved.insert(door);
-        return port;
-    }
-}
-
-fn wait_listen(port: u16, server: &mut Proc) {
-    let start = Instant::now();
-    let addr = format!("127.0.0.1:{port}");
-    loop {
-        if TcpStream::connect(&addr).is_ok() {
-            return;
-        }
-        if let Some(status) = server
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            panic!(
-                "spook run exited {:?}\n{}",
-                status.code(),
-                support::text_of(&server.stderr)
-            );
-        }
-        if start.elapsed() > Duration::from_secs(10) {
-            panic!(
-                "listener did not open\n{}",
-                support::text_of(&server.stderr)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
 fn connect(port: u16) -> TcpStream {
-    let start = Instant::now();
     let addr = format!("127.0.0.1:{port}");
-    loop {
-        match TcpStream::connect(&addr) {
-            Ok(stream) => {
-                stream
-                    .set_nodelay(true)
-                    .unwrap_or_else(|err| panic!("nodelay: {err}"));
-                return stream;
-            }
-            Err(err) => {
-                if start.elapsed() > Duration::from_secs(5) {
-                    panic!("connect {addr}: {err}");
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        }
-    }
+    let stream = TcpStream::connect(&addr).unwrap_or_else(|err| panic!("connect {addr}: {err}"));
+    stream
+        .set_nodelay(true)
+        .unwrap_or_else(|err| panic!("nodelay: {err}"));
+    stream
 }
 
 fn connect_actor(port: u16, actor_id: &str) -> (TcpStream, Arc<Mutex<String>>) {

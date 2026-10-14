@@ -162,7 +162,7 @@ The `Live AI` workflow runs it against Ollama on pull requests that touch the mo
 
 ### Human GM
 
-`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first. Both dial the agent door on the next port, `http://127.0.0.1:9738/mcp` when the game is on `9737`. `--mcp-http 127.0.0.1:<port>` dials that door instead.
+`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first. Both dial the agent door on the next port, `http://127.0.0.1:9738/mcp` when the game is on `9737`. `--mcp-http 127.0.0.1:<port>` dials that door instead. `spook run --addr 127.0.0.1:0` lets the operating system choose the game port and a separate door port, then prints `{"kind":"listening","game":"127.0.0.1:<game>","door":"127.0.0.1:<door>"}`. Pass that door to `--mcp-http`. A fixed game port still uses the next port.
 
 ```sh
 spook gm /tmp/docks
@@ -172,7 +172,7 @@ Type `help` for the seat commands. `spook gm --raw` prints each protocol frame a
 
 ### Coding agent
 
-`spook run` serves one agent door at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--mcp-http 127.0.0.1:<port>` overrides it. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
+`spook run` serves one agent door at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--mcp-http 127.0.0.1:<port>` overrides it, and `--mcp-http 127.0.0.1:0` lets the operating system choose. `--addr 127.0.0.1:0` does the same for the game port and chooses the door on its own. The process prints the bound addresses once, as one JSON line on stdout, before it serves. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
 
 ```sh
 spook run packs/oneshot-docks

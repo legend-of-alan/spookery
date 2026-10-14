@@ -12,9 +12,7 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
     let pack = temp_pack("gm-seat");
     let opened = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
     table::seat_gm();
     crate::with_live(|live| live.opened_now = opened);
     world.pack = Some(pack);
@@ -27,16 +25,14 @@ fn a_second_player_connects(world: &mut World) {
 
 #[when(expr = "a second GM connects over HTTP")]
 fn a_second_gm_connects_over_http(world: &mut World) {
-    let game = crate::with_live(|live| live.port);
-    let http = game.saturating_add(1);
+    let http = crate::with_live(|live| live.http_port);
     world.scratch = super::mcp::http_post(http, "127.0.0.1", None);
 }
 
 #[when(expr = "a socket sends gm on the game port")]
 fn a_socket_sends_gm_on_the_game_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     world.scratch = table::second_hello("gm");
 }
 
@@ -195,9 +191,7 @@ fn a_one_player_docks_table(world: &mut World) {
     now.actors.remove("pc_wren");
     store_now(&pack, now);
     spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     world.pack = Some(pack);
 }
@@ -205,9 +199,7 @@ fn a_one_player_docks_table(world: &mut World) {
 #[given(expr = "a docks table with three seated players")]
 fn a_docks_table_with_three_seated_players(world: &mut World) {
     let pack = crate::support::temp_pack("three-players");
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
     seat_three(&pack);
     world.pack = Some(pack);
 }
@@ -260,9 +252,7 @@ fn only_that_pcs_perceive_shows_the_hidden_fact(_world: &mut World) {
 #[given(expr = "a docks table with a GM and two seated players")]
 fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
     let pack = crate::support::temp_pack("two-queue");
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
     table::seat_gm();
     table::seat_actor(&pack, "pc_rowan");
     table::seat_actor(&pack, "pc_harbormouse");
@@ -272,9 +262,7 @@ fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
 #[given(expr = "a docks table with two seated players")]
 fn a_docks_table_with_two_seated_players(world: &mut World) {
     let pack = crate::support::temp_pack("two-live");
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     table::seat_actor(&pack, "pc_harbormouse");
     world.pack = Some(pack);
@@ -352,9 +340,7 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
         .unwrap_or_else(|| panic!("pc_harbormouse"))
         .place_mut() = "docks_shop".to_string();
     store_now(&pack, now);
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
     seat_three(&pack);
     world.pack = Some(pack);
 }
@@ -392,11 +378,9 @@ fn only_the_shop_players_receive_the_say(_world: &mut World) {
 
 #[when(expr = "three play clients sit on a free port")]
 fn three_play_clients_sit_on_a_free_port(world: &mut World) {
-    let port = table::free_port();
-    assert_ne!(port, 9737);
-    let addr = format!("127.0.0.1:{port}");
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack, &addr, port);
+    table::listen(&pack);
+    let addr = table::game_addr();
     let pack_arg = crate::support::pack_arg(&pack);
     for id in DOCKS_PCS {
         let as_arg = format!("player:{id}");
@@ -416,9 +400,7 @@ fn each_play_client_shows_its_first_perceive(world: &mut World) {
 
 fn listen_pack(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
 }
 
 fn seat_three(pack: &std::path::Path) {

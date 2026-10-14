@@ -18,25 +18,16 @@ pub enum Error {
 }
 
 pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Result<(), Error> {
-    let http_addr = match mcp_http {
-        Some(http_addr) => http_addr,
-        None => SocketAddr::new(
-            addr.ip(),
-            addr.port()
-                .checked_add(1)
-                .ok_or(Error::Reason(Reason::NotInSpec))?,
-        ),
-    };
-    let http_listener = {
-        let listener = TcpListener::bind(http_addr).map_err(Error::Io)?;
-        listener.set_nonblocking(true).map_err(Error::Io)?;
-        listener
-    };
     let listener = TcpListener::bind(addr).map_err(Error::Io)?;
+    let http_listener = TcpListener::bind(door_request(addr, mcp_http)?).map_err(Error::Io)?;
+    http_listener.set_nonblocking(true).map_err(Error::Io)?;
+    let game_addr = listener.local_addr().map_err(Error::Io)?;
+    let door_addr = http_listener.local_addr().map_err(Error::Io)?;
     let mut world = World::open(pack).map_err(Error::Reason)?;
     if world_loop::clear_crashed(&mut world).map_err(Error::Reason)? {
         world_loop::print_host(&world);
     }
+    report_bound(game_addr, door_addr)?;
     // Keepalive stays the pack interval. The idle switch does not change it.
     let keepalive_secs = world.budget().tick_every_real_seconds;
     let arm_idle_timer = world.budget().idle_ticking;
@@ -123,6 +114,32 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
         let _ = tx_stdin.send(Msg::StdinEof);
     });
     world_loop::run_world_loop(world, rx, &restart_tx)
+}
+
+/// The agent door to bind. A fixed game port keeps the next port. Port 0, on
+/// the game address or on `--mcp-http`, asks the OS for a port of its own.
+fn door_request(game: SocketAddr, mcp_http: Option<SocketAddr>) -> Result<SocketAddr, Error> {
+    if let Some(door) = mcp_http {
+        return Ok(door);
+    }
+    if game.port() == 0 {
+        return Ok(SocketAddr::new(game.ip(), 0));
+    }
+    let port = game
+        .port()
+        .checked_add(1)
+        .ok_or(Error::Reason(Reason::NotInSpec))?;
+    Ok(SocketAddr::new(game.ip(), port))
+}
+
+fn report_bound(game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
+    let line = serde_json::json!({
+        "kind": "listening",
+        "game": game.to_string(),
+        "door": door.to_string(),
+    });
+    println!("{line}");
+    io::Write::flush(&mut io::stdout()).map_err(Error::Io)
 }
 
 fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
@@ -335,4 +352,36 @@ async fn refuse(stream: &mut tokio::net::TcpStream, line: &[u8]) {
         }
     };
     let _ = tokio::time::timeout(REFUSE_DRAIN, drain).await;
+}
+
+#[cfg(test)]
+mod tests {
+    use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+
+    use super::door_request;
+
+    fn addr(port: u16) -> SocketAddr {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), port)
+    }
+
+    #[test]
+    fn a_fixed_game_port_uses_the_next_port() {
+        assert_eq!(door_request(addr(9737), None).ok(), Some(addr(9738)));
+    }
+
+    #[test]
+    fn port_zero_asks_for_a_door_of_its_own() {
+        assert_eq!(door_request(addr(0), None).ok(), Some(addr(0)));
+    }
+
+    #[test]
+    fn an_explicit_door_wins() {
+        assert_eq!(door_request(addr(0), Some(addr(9))).ok(), Some(addr(9)));
+        assert_eq!(door_request(addr(9737), Some(addr(0))).ok(), Some(addr(0)));
+    }
+
+    #[test]
+    fn the_last_port_has_no_next_port() {
+        assert!(door_request(addr(65535), None).is_err());
+    }
 }
