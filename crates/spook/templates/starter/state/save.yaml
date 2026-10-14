@@ -1,6 +1,6 @@
 schema: now
 shard_id: starter
-pack_rev: blake2s:dc439952e811b3966702e7c1fa903bb11e71054f980ae1483b674c8172f8a657
+pack_rev: blake2s:a9b7ad7590b2c2aef9e699ada1cb43b5ebc1be2098929440b0c28e0520b548b6
 rules_rev: 4
 state_rev: 0
 tick_index: 0
@@ -13,12 +13,12 @@ pause:
   named_plot_clocks: paused
 places:
   lane:
-    stock: {}
+    items: {}
     notes: []
     actors:
       - keeper
   yard:
-    stock: {}
+    items: {}
     notes: []
     actors:
       - pc_ada
@@ -32,7 +32,7 @@ actors:
       nerve:
         base: 1
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
     tick:
       last_act_tick: 0
@@ -47,7 +47,7 @@ actors:
       nerve:
         base: 1
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
 clocks: {}
 messages: []

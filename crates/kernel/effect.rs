@@ -23,10 +23,19 @@ pub enum EffectClass {
         key: String,
         write: MeterWrite,
     },
-    Stock {
-        place: String,
-        sku: String,
+    Item {
+        actor_id: Option<String>,
+        place: Option<String>,
+        id: String,
         delta: i64,
+        max: Option<i64>,
+    },
+    Wield {
+        actor_id: String,
+        id: String,
+    },
+    Unwield {
+        actor_id: String,
     },
     Location {
         actor_id: String,
@@ -77,7 +86,9 @@ impl EffectClass {
         match self {
             EffectClass::Clock { .. } => "clock",
             EffectClass::Meter { .. } => "meter",
-            EffectClass::Stock { .. } => "stock",
+            EffectClass::Item { .. } => "item",
+            EffectClass::Wield { .. } => "wield",
+            EffectClass::Unwield { .. } => "unwield",
             EffectClass::Location { .. } => "location",
             EffectClass::Memory { .. } => "memory",
             EffectClass::Flag { .. } => "flag",
@@ -117,7 +128,10 @@ fn payload_len(class: &EffectClass) -> usize {
             MeterWrite::Snap => 3,
             MeterWrite::Base(_) | MeterWrite::Offset(_) => 4,
         },
-        EffectClass::Stock { .. } | EffectClass::Location { .. } | EffectClass::Flag { .. } => 3,
+        EffectClass::Item { max, .. } => 3 + usize::from(max.is_some()),
+        EffectClass::Wield { .. } => 2,
+        EffectClass::Unwield { .. } => 1,
+        EffectClass::Location { .. } | EffectClass::Flag { .. } => 3,
         EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
         EffectClass::Message { place, .. } => 4 + usize::from(place.is_some()),
         EffectClass::Narrate { .. } => 3,
@@ -154,10 +168,31 @@ where
                 }
             }
         }
-        EffectClass::Stock { place, sku, delta } => {
-            state.serialize_field("place", place)?;
-            state.serialize_field("sku", sku)?;
+        EffectClass::Item {
+            actor_id,
+            place,
+            id,
+            delta,
+            max,
+        } => {
+            if let Some(actor_id) = actor_id {
+                state.serialize_field("actor_id", actor_id)?;
+            }
+            if let Some(place) = place {
+                state.serialize_field("place", place)?;
+            }
+            state.serialize_field("id", id)?;
             state.serialize_field("delta", delta)?;
+            if let Some(max) = max {
+                state.serialize_field("max", max)?;
+            }
+        }
+        EffectClass::Wield { actor_id, id } => {
+            state.serialize_field("actor_id", actor_id)?;
+            state.serialize_field("id", id)?;
+        }
+        EffectClass::Unwield { actor_id } => {
+            state.serialize_field("actor_id", actor_id)?;
         }
         EffectClass::Location { actor_id, from, to } => {
             state.serialize_field("actor_id", actor_id)?;

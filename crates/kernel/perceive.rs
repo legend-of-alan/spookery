@@ -19,7 +19,7 @@ pub struct Perceive {
     pub messages: Vec<Message>,
     pub unknown_mentioned: Vec<String>,
     pub clocks: Vec<ClockView>,
-    pub stocks: Vec<StockView>,
+    pub items: Vec<ItemStack>,
     pub habits: Vec<String>,
 }
 
@@ -39,9 +39,9 @@ pub struct ClockView {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct StockView {
-    pub sku: String,
-    pub qty: i64,
+pub struct ItemStack {
+    pub id: String,
+    pub count: u32,
 }
 
 pub fn perceive(world: &World, as_arg: &str) -> Result<Perceive, Reason> {
@@ -150,16 +150,16 @@ fn perceive_at_budget(
         .collect();
     clocks.sort_by(|a, b| a.id.cmp(&b.id));
 
-    let stocks = now
+    let items = now
         .places
         .get(&place)
         .map(|place_live| {
             place_live
-                .stock
+                .items
                 .iter()
-                .map(|(sku, qty)| StockView {
-                    sku: sku.clone(),
-                    qty: *qty,
+                .map(|(id, count)| ItemStack {
+                    id: id.clone(),
+                    count: *count,
                 })
                 .collect()
         })
@@ -178,7 +178,7 @@ fn perceive_at_budget(
         messages,
         unknown_mentioned,
         clocks,
-        stocks,
+        items,
         habits,
     })
 }

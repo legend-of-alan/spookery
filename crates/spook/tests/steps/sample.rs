@@ -150,9 +150,9 @@ fn set_lark_might(pack: &Path, base: i64) {
 fn take_tonic(pack: &Path) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "    inventory:\n      - tonic\n";
+    let from = "    inventory:\n      tonic: 1\n";
     assert_eq!(text.matches(from).count(), 1, "tonic was not listed once");
-    let next = text.replacen(from, "    inventory: []\n", 1);
+    let next = text.replacen(from, "    inventory: {}\n", 1);
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 

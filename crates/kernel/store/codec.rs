@@ -409,12 +409,40 @@ fn parse_class(name: &str, object: &Map<String, Value>) -> Result<EffectClass, R
                 write,
             })
         }
-        "stock" => {
-            allow(object, &["place", "sku", "delta"])?;
-            Ok(EffectClass::Stock {
-                place: req_str(object, "place")?,
-                sku: req_str(object, "sku")?,
+        "item" => {
+            allow(object, &["actor_id", "place", "id", "delta", "max"])?;
+            let actor_id = opt_str(object, "actor_id")?;
+            let place = opt_str(object, "place")?;
+            if actor_id.is_some() == place.is_some() {
+                return Err(Reason::Schema);
+            }
+            Ok(EffectClass::Item {
+                actor_id,
+                place,
+                id: req_str(object, "id")?,
                 delta: req_i64(object, "delta")?,
+                max: opt_i64(object, "max")?,
+            })
+        }
+        "wield" => {
+            allow(object, &["actor_id", "id"])?;
+            Ok(EffectClass::Wield {
+                actor_id: req_str(object, "actor_id")?,
+                id: req_str(object, "id")?,
+            })
+        }
+        "unwield" => {
+            allow(object, &["actor_id"])?;
+            Ok(EffectClass::Unwield {
+                actor_id: req_str(object, "actor_id")?,
+            })
+        }
+        "narrate" => {
+            allow(object, &["to", "fact_ids", "text"])?;
+            Ok(EffectClass::Narrate {
+                to: req_strs(object, "to")?,
+                fact_ids: req_strs(object, "fact_ids")?,
+                text: req_str(object, "text")?,
             })
         }
         "location" => {
@@ -487,6 +515,13 @@ fn req_u64(object: &Map<String, Value>, key: &str) -> Result<u64, Reason> {
         .get(key)
         .and_then(Value::as_u64)
         .ok_or(Reason::Schema)
+}
+
+fn opt_i64(object: &Map<String, Value>, key: &str) -> Result<Option<i64>, Reason> {
+    match object.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value.as_i64().map(Some).ok_or(Reason::Schema),
+    }
 }
 
 fn req_i64(object: &Map<String, Value>, key: &str) -> Result<i64, Reason> {
@@ -564,7 +599,7 @@ pause:
   named_plot_clocks: paused
 places:
   gate:
-    stock: {{}}
+    items: {{}}
     notes: []
     actors: []
 actors: {{}}
@@ -644,15 +679,17 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Stock {
-                        place: "docks_shop".to_string(),
-                        sku: "lamp_oil".to_string(),
+                    EffectClass::Item {
+                        actor_id: None,
+                        place: Some("docks_shop".to_string()),
+                        id: "lamp_oil".to_string(),
                         delta: 4,
+                        max: Some(8),
                     },
                     npc("mira"),
                     "i3",
                 ),
-                r#"{"class":"stock","as":"npc:mira","intent_id":"i3","place":"docks_shop","sku":"lamp_oil","delta":4}"#,
+                r#"{"class":"item","as":"npc:mira","intent_id":"i3","place":"docks_shop","id":"lamp_oil","delta":4,"max":8}"#,
             ),
             (
                 effect(
@@ -794,12 +831,12 @@ messages: []
 
     #[test]
     fn effect_payload_object_keeps_declaration_order_and_a_negative_delta() {
-        let text = r#"{"tick_index":1,"effects":[{"class":"stock","as":"npc:n","intent_id":"i","place":"p","sku":"s","delta":-1}]}"#;
+        let text = r#"{"tick_index":1,"effects":[{"class":"item","as":"npc:n","intent_id":"i","place":"p","id":"s","delta":-1}]}"#;
         let (tick_index, effects) = super::parse_tick_effects(text).unwrap();
         assert_eq!(tick_index, 1);
         assert_eq!(
             super::emit_effect_payload(&effects[0]),
-            r#"{"place":"p","sku":"s","delta":-1}"#
+            r#"{"place":"p","id":"s","delta":-1}"#
         );
     }
 

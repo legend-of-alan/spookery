@@ -25,7 +25,7 @@ No releases yet. No compatibility guarantees.
 - One GM seat (AI or human) and 1 to 3 player seats. Each player sits a distinct pack PC. A 4th player gets `SESSION_FULL`. A hello for a PC another seat holds gets `SEAT_TAKEN`. That seat model is built.
 - Players walk around and take basic actions.
 - Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor), so the format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint (`spook check`, `spook check --json`, and generated schemas later). `spook check` is not built yet (#24). `spook check --json` is not built yet (#26). Generated schemas are not built yet (#29).
-- The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. `packs/sample-d20` is that sample. Known gaps: a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, a condition when hit points reach zero, and consume an item (drink checks for the tonic but never uses it up, so it heals forever).
+- The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. `packs/sample-d20` is that sample. Known gaps: a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, and a condition when hit points reach zero. Drinking the tonic uses that tonic up.
 
 ---
 
@@ -161,7 +161,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 - World tick loop
 - One official one-shot pack that is both a conformance fixture **and** pleasant to leave running for a week
 - Terminal play: one GM seat and up to three player seats. A fourth player gets `SESSION_FULL`. A held character gets `SEAT_TAKEN`. Built.
-- Rules primitives able to express a 5e-style game in a pack, with no 5e-specific code and no SRD text. `packs/sample-d20` is that sample. Known gaps: a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, a condition when hit points reach zero, and consume an item (drink checks for the tonic but never uses it up, so it heals forever).
+- Rules primitives able to express a 5e-style game in a pack, with no 5e-specific code and no SRD text. `packs/sample-d20` is that sample. Known gaps: a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, and a condition when hit points reach zero. Drinking the tonic uses that tonic up.
 - Conformance tests
 
 ### Out of scope
@@ -244,7 +244,7 @@ An SRD/ORC **pack** may exist later as a different `rules/` folder. The runtime 
 
 ### 8.2 Docks fixture, a week later
 
-The fixture is a world a host can leave running and a player can return to. The host can tell the week happened. The player finds the shop by being there. Off-screen stock is not announced on login.
+The fixture is a world a host can leave running and a player can return to. The host can tell the week happened. The player finds the shop by being there. Off-screen goods are not announced on login.
 
 ---
 
@@ -302,9 +302,9 @@ Players never see MCP, keys, or YAML in the intended UX. A terminal-only build s
 
 Overnight, shops keep living and the plot waits. Idle life must be **legible**. Legible does not mean a player wakes up omniscient.
 
-A host can tell the week happened. A player finds the shop by walking there. A returning player is not handed a newspaper of the whole harbor, and is not told the shop's stock while they are still in their room.
+A host can tell the week happened. A player finds the shop by walking there. A returning player is not handed a newspaper of the whole harbor, and is not told the shop's goods while they are still in their room.
 
-No model writes that summary. If the only way for a host to know the world moved is to diff files by hand, the fixture failed its demo. If a player learns off-screen stock without going there, the product's promise failed.
+No model writes that summary. If the only way for a host to know the world moved is to diff files by hand, the fixture failed its demo. If a player learns off-screen goods without going there, the product's promise failed.
 
 ---
 
@@ -330,7 +330,7 @@ Website is a skin. Do not start there. A prettier client does not make this the 
 A reviewer should treat the kernel as shipped only if all of these pass:
 
 1. Load a pack from a folder.
-2. One bundled one-shot pack plays in the CLI without editing code and is pleasant to leave running for a week. A host can tell the week happened. A player resume does not hand them off-screen stock. Walking to the shop is how they find the restock and the door note.
+2. One bundled one-shot pack plays in the CLI without editing code and is pleasant to leave running for a week. A host can tell the week happened. A player resume does not hand them off-screen goods. Walking to the shop is how they find the restocked oil and the door note.
 3. A second author can add a move to the pack without a kernel change.
 
 ### 13.2 Company gates (not the same checkbox)

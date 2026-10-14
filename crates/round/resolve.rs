@@ -1,4 +1,7 @@
-use spookery_kernel::check::classify;
+use std::collections::BTreeMap;
+
+use spookery_kernel::check::{classify, CheckDef};
+use spookery_kernel::meter::MeterDef;
 use spookery_kernel::rules::expr::{self, Ctx};
 use spookery_kernel::rules::gate::gate;
 
@@ -118,6 +121,45 @@ fn supplied_target(
     Ok(Some(total))
 }
 
+pub(crate) struct SubjectRoll<'a> {
+    pub rule_id: &'a str,
+    pub actor_kind: ActorKind,
+    pub actor_id: &'a str,
+    pub check_id: &'a str,
+    pub target: i64,
+    pub partial_at: Option<i64>,
+}
+
+/// The one `rules::roll` call. Action checks and resist rolls both come through here.
+pub(crate) fn roll_subject(
+    round: &mut Round,
+    checks: &BTreeMap<String, CheckDef>,
+    meters: &BTreeMap<String, MeterDef>,
+    spec: &SubjectRoll<'_>,
+) -> Result<RollResult, Reason> {
+    let actor = round
+        .frozen
+        .actors
+        .get(spec.actor_id)
+        .cloned()
+        .ok_or(Reason::UnknownKey)?;
+    let viewer = ViewerId::from_kind(spec.actor_kind, spec.actor_id)?;
+    let check = checks.get(spec.check_id).ok_or(Reason::UnknownKey)?;
+    let key = next_key(round, spec.rule_id, spec.actor_id);
+    roll(
+        RollInput {
+            check,
+            defs: meters,
+            actor_id: spec.actor_id,
+            actor: &actor,
+            viewer: &viewer,
+            target: spec.target,
+            partial_at: spec.partial_at,
+        },
+        &key,
+    )
+}
+
 fn roll_for(
     round: &mut Round,
     draft: &Draft,
@@ -126,35 +168,23 @@ fn roll_for(
     target: i64,
     partial_at: Option<i64>,
 ) -> Result<RollResult, Reason> {
-    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
-    let check = draft
-        .canon()
-        .checks
-        .get(check_id)
-        .cloned()
-        .ok_or(Reason::UnknownKey)?;
-    let actor = round
-        .frozen
-        .actors
-        .get(&intent.actor_id)
-        .cloned()
-        .ok_or(Reason::UnknownKey)?;
-    let key = next_key(round, &intent.move_name, &intent.actor_id);
-    roll(
-        RollInput {
-            check: &check,
-            defs: &draft.canon().meters,
+    let canon = draft.canon();
+    roll_subject(
+        round,
+        &canon.checks,
+        &canon.meters,
+        &SubjectRoll {
+            rule_id: &intent.move_name,
+            actor_kind: intent.actor_kind,
             actor_id: &intent.actor_id,
-            actor: &actor,
-            viewer: &viewer,
+            check_id,
             target,
             partial_at,
         },
-        &key,
     )
 }
 
-fn next_key(round: &mut Round, rule: &str, subject: &str) -> RollKey {
+pub(crate) fn next_key(round: &mut Round, rule: &str, subject: &str) -> RollKey {
     let roll_index = {
         let index = round
             .roll_counts

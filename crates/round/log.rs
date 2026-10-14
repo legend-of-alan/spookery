@@ -174,10 +174,12 @@ mod tests {
     #[test]
     fn round_line_embeds_the_flat_effect() {
         let effect = Effect {
-            class: EffectClass::Stock {
-                place: "docks_shop".to_string(),
-                sku: "lamp_oil".to_string(),
+            class: EffectClass::Item {
+                actor_id: None,
+                place: Some("docks_shop".to_string()),
+                id: "lamp_oil".to_string(),
                 delta: -1,
+                max: None,
             },
             as_viewer: ViewerId::Npc("mira".to_string()),
             intent_id: "i".to_string(),

@@ -3,12 +3,12 @@
 
 use crate::protocol::{
     CommitBody, FactNote, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus,
-    StatusPause, StatusPresence, WireClock, WireFact, WireStock,
+    StatusPause, StatusPresence, WireClock, WireFact, WireItem,
 };
 use serde_json::Value;
 use spookery_kernel::intent::Intent;
 use spookery_kernel::model::{Message, Now, RunState};
-use spookery_kernel::perceive::{ClockView, KnownFact, Perceive, StockView};
+use spookery_kernel::perceive::{ClockView, ItemStack, KnownFact, Perceive};
 use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::Reason;
 
@@ -233,7 +233,7 @@ fn player_view(view: &Perceive) -> PlayerMessage {
         messages: view.messages.iter().map(wire_note).collect(),
         unknown_mentioned: view.unknown_mentioned.clone(),
         clocks: view.clocks.iter().map(wire_clock).collect(),
-        stocks: view.stocks.iter().map(wire_stock).collect(),
+        items: view.items.iter().map(wire_item).collect(),
         habits: view.habits.clone(),
     }
 }
@@ -265,10 +265,10 @@ fn wire_clock(clock: &ClockView) -> WireClock {
     }
 }
 
-fn wire_stock(stock: &StockView) -> WireStock {
-    WireStock {
-        sku: stock.sku.clone(),
-        qty: stock.qty,
+fn wire_item(item: &ItemStack) -> WireItem {
+    WireItem {
+        id: item.id.clone(),
+        count: item.count,
     }
 }
 

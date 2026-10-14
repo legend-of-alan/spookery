@@ -12,9 +12,6 @@ tick:
     - docks_shop
     - docks_street
     - mira_rooms
-  stock_rate:
-    docks_shop:
-      lamp_oil: 4
 rules:
   - id: leave_door_note
     when: habit
@@ -41,9 +38,10 @@ rules:
           from: 8
           to: 16
     do:
-      - stock:
-          place: docks_shop
-          sku: lamp_oil
+      - item:
+          who: place:docks_shop
+          id: lamp_oil
           add: 4
+          max: 8
 ---
 Mira keeps the shop neat and the tin out of sight.

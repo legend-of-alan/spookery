@@ -149,6 +149,13 @@ fn place_of(pack: &Path) -> String {
 }
 
 fn add_knife_row(pack: &Path) {
+    let item = pack.join("world/items/knife.md");
+    fs::create_dir_all(item.parent().unwrap()).unwrap();
+    fs::write(
+        &item,
+        "---\nschema: item\nid: knife\nname: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
+    )
+    .unwrap();
     let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
         "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
@@ -207,7 +214,8 @@ Nell keeps a guard up.
                 ),
                 ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
             ]),
-            inventory: Vec::new(),
+            inventory: BTreeMap::new(),
+            wielded: None,
             known_facts: Vec::new(),
         },
     );

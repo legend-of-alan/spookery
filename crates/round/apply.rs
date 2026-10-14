@@ -10,7 +10,7 @@ use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
 use crate::log::Rejected;
-use crate::resolve::viewer_token;
+use crate::resolve::{roll_subject, viewer_token, SubjectRoll};
 use crate::round::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
@@ -19,6 +19,8 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     let max_npcs = draft.budget().max_npcs_acting;
     let mut slots = 0u64;
     let frozen = round.frozen.clone();
+    let checks = draft.canon().checks.clone();
+    let meters = draft.canon().meters.clone();
     let candidates = round.candidates.clone();
     for intent in candidates {
         if round.budget_stop {
@@ -50,7 +52,33 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             continue;
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
-        let expanded = match expand_outcome(draft.canon(), &frozen, &intent, outcome) {
+        let mut resist_reports = Vec::new();
+        let expanded = match expand_outcome(
+            draft.canon(),
+            &frozen,
+            &intent,
+            outcome,
+            |actor_id, check_id, target| {
+                let out = resist_roll(
+                    round,
+                    &ResistCtx {
+                        checks: &checks,
+                        meters: &meters,
+                        frozen: &frozen,
+                        intent: &intent,
+                    },
+                    actor_id,
+                    check_id,
+                    target,
+                )?;
+                let band = out.outcome;
+                resist_reports.push(RollReport::Rolled {
+                    actor_id: actor_id.to_string(),
+                    out,
+                });
+                Ok(band)
+            },
+        ) {
             Ok(effects) => effects,
             Err(code) => {
                 refuse(round, &intent.id, code.jsonl_reason());
@@ -61,7 +89,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             refuse(round, &intent.id, Reason::Budget.jsonl_reason());
             continue;
         }
-        if commit_intent(round, draft, &intent, &expanded, &rolled) && spends_slot {
+        if commit_intent(round, draft, &intent, &expanded, &rolled, resist_reports) && spends_slot {
             slots += 1;
         }
     }
@@ -86,15 +114,18 @@ fn commit_intent(
     intent: &Intent,
     expanded: &[Effect],
     rolled: &Option<RollResult>,
+    resist_reports: Vec<RollReport>,
 ) -> bool {
     let point = draft.savepoint();
-    if let Ok(rule) = gate::resolve(draft.canon(), draft.now(), intent) {
-        if let Some(cost) = rule.cost.clone() {
-            if let Err(code) = cost::pay(draft, &intent.actor_id, &cost) {
-                draft.rollback(point);
-                refuse(round, &intent.id, code.jsonl_reason());
-                return false;
-            }
+    let (rule_id, cost) = match gate::resolve(draft.canon(), draft.now(), intent) {
+        Ok(rule) => (Some(rule.id.clone()), rule.cost.clone()),
+        Err(_) => (None, None),
+    };
+    if let Some(cost) = cost {
+        if let Err(code) = cost::pay(draft, &intent.actor_id, &cost) {
+            draft.rollback(point);
+            refuse(round, &intent.id, code.jsonl_reason());
+            return false;
         }
     }
     let mut accepted = Vec::new();
@@ -126,8 +157,52 @@ fn commit_intent(
     }
     round.effects.extend(accepted);
     keep_roll(round, rolled, &intent.actor_id);
+    round.roll_reports.extend(resist_reports);
+    if let Some(rule_id) = rule_id {
+        round.trace.push(rule_id);
+    }
     round.applied.push(intent.clone());
     true
+}
+
+struct ResistCtx<'a> {
+    checks: &'a std::collections::BTreeMap<String, spookery_kernel::check::CheckDef>,
+    meters: &'a std::collections::BTreeMap<String, spookery_kernel::meter::MeterDef>,
+    frozen: &'a spookery_kernel::model::Now,
+    intent: &'a Intent,
+}
+
+fn resist_roll(
+    round: &mut Round,
+    ctx: &ResistCtx<'_>,
+    actor_id: &str,
+    check_id: &str,
+    target: i64,
+) -> Result<RollResult, Reason> {
+    let kind = if ctx
+        .frozen
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .is_pc()
+    {
+        ActorKind::Player
+    } else {
+        ActorKind::Npc
+    };
+    roll_subject(
+        round,
+        ctx.checks,
+        ctx.meters,
+        &SubjectRoll {
+            rule_id: &ctx.intent.move_name,
+            actor_kind: kind,
+            actor_id,
+            check_id,
+            target,
+            partial_at: None,
+        },
+    )
 }
 
 fn refuse(round: &mut Round, id: &str, reason: &str) {

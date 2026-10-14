@@ -28,6 +28,7 @@ pub enum Reason {
     MissingItem,
     LineTooLong,
     CantAfford,
+    NotAWeapon,
 }
 
 impl Reason {
@@ -58,6 +59,7 @@ impl Reason {
             Reason::MissingItem => "MISSING_ITEM",
             Reason::LineTooLong => "LINE_TOO_LONG",
             Reason::CantAfford => "CANT_AFFORD",
+            Reason::NotAWeapon => "NOT_A_WEAPON",
         }
     }
 
@@ -88,6 +90,7 @@ impl Reason {
             "MISSING_ITEM" => Reason::MissingItem,
             "LINE_TOO_LONG" => Reason::LineTooLong,
             "CANT_AFFORD" => Reason::CantAfford,
+            "NOT_A_WEAPON" => Reason::NotAWeapon,
             _ => return None,
         })
     }
@@ -116,7 +119,7 @@ impl std::error::Error for Reason {}
 mod tests {
     use super::Reason;
 
-    const ALL: [Reason; 25] = [
+    const ALL: [Reason; 26] = [
         Reason::IllegalClass,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
@@ -142,6 +145,7 @@ mod tests {
         Reason::MissingItem,
         Reason::LineTooLong,
         Reason::CantAfford,
+        Reason::NotAWeapon,
     ];
 
     /// A new variant fails to compile here until it is added to `ALL`.
@@ -171,7 +175,8 @@ mod tests {
             | Reason::SeatTaken
             | Reason::MissingItem
             | Reason::LineTooLong
-            | Reason::CantAfford => ALL.contains(&reason),
+            | Reason::CantAfford
+            | Reason::NotAWeapon => ALL.contains(&reason),
         }
     }
 

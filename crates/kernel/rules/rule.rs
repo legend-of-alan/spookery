@@ -158,6 +158,10 @@ pub enum Cond {
         value: i64,
     },
     NoteExists(String),
+    Wielding {
+        who: Who,
+        id: String,
+    },
     All(Vec<Cond>),
     Any(Vec<Cond>),
     Not(Box<Cond>),
@@ -215,11 +219,6 @@ pub enum EffectTemplate {
         set: Option<i64>,
         resist: Option<ResistSpec>,
     },
-    Stock {
-        place: String,
-        sku: String,
-        add: i64,
-    },
     Flag {
         who: Who,
         key: String,
@@ -263,6 +262,13 @@ pub enum EffectTemplate {
     Reveal {
         who: Who,
         fact: String,
+    },
+    Wield {
+        who: Who,
+        id: String,
+    },
+    Unwield {
+        who: Who,
     },
 }
 

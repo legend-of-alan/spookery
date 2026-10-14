@@ -1,6 +1,6 @@
 schema: now
 shard_id: sample-d20
-pack_rev: blake2s:cd6b77583e9907fbaea87daaaa2dbe7a01deab2bed6c7cdb2102e5937f1b9741
+pack_rev: blake2s:e7920ae906c7eab1edcfbe51c94cb9c9adcda9d1fc32424406622ccb21ba601d
 rules_rev: 4
 state_rev: 0
 tick_index: 0
@@ -13,17 +13,17 @@ pause:
   named_plot_clocks: paused
 places:
   gate_yard:
-    stock: {}
+    items: {}
     notes: []
     actors:
       - npc_briar
       - pc_lark
   loft:
-    stock: {}
+    items: {}
     notes: []
     actors: []
   mill_lane:
-    stock: {}
+    items: {}
     notes: []
     actors:
       - npc_oden
@@ -47,7 +47,7 @@ actors:
       might:
         base: 2
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
     tick:
       last_act_tick: 0
@@ -71,7 +71,7 @@ actors:
       might:
         base: 1
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
     tick:
       last_act_tick: 0
@@ -96,7 +96,7 @@ actors:
         base: 40
         offset: 0
     inventory:
-      - tonic
+      tonic: 1
     known_facts: []
   pc_nell:
     kind: pc
@@ -116,7 +116,7 @@ actors:
       might:
         base: 1
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
 clocks: {}
 messages: []

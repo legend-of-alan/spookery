@@ -66,7 +66,7 @@ The save lists the places people can stand in. Add `porch` under `places` in `st
 
 ```yaml path=state/save.yaml mode=insert-before anchor=actors:
   porch:
-    stock: {}
+    items: {}
     notes: []
     actors: []
 ```

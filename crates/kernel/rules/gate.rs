@@ -79,17 +79,27 @@ fn verb_rule<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Option<&'a Rul
         Target::Actor(token) => Some(token.as_str()),
         _ => None,
     };
-    let place = now.actors.get(&intent.actor_id).map(|actor| actor.place());
-    verb_for(canon, place, &intent.move_name, hint)
+    let actor = now.actors.get(&intent.actor_id);
+    let place = actor.map(|actor| actor.place());
+    let wielded = actor.and_then(|actor| actor.wielded());
+    verb_for(canon, place, &intent.move_name, hint, wielded)
 }
 
-/// Owned rule for `hint`, then the actor's place, then the shared verb.
+/// A wielded weapon's `attack` rule, then the owned rule for `hint`, then the place, then the shared verb.
 pub fn verb_for<'a>(
     canon: &'a Canon,
     place: Option<&str>,
     verb: &str,
     hint: Option<&str>,
+    wielded: Option<&str>,
 ) -> Option<&'a Rule> {
+    if verb == "attack" {
+        if let Some(item) = wielded.filter(|item| !item.is_empty()) {
+            if let Some(rule) = owner_verb(canon, &Owner::Item(item.to_string()), verb) {
+                return Some(rule);
+            }
+        }
+    }
     if let Some(token) = hint.filter(|token| !token.is_empty()) {
         if let Some(rule) = owner_verb(canon, &Owner::Item(token.to_string()), verb) {
             return Some(rule);

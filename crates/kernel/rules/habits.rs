@@ -36,7 +36,7 @@ pub fn habits_on(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String> {
 }
 
 pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    if let Ok(effects) = expand_outcome(canon, now, intent, None) {
+    if let Ok(effects) = expand_outcome(canon, now, intent, None, crate::expand::ignore_resist) {
         stamp(intent, &effects);
     }
 }
@@ -90,7 +90,7 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
         if gate::gate(canon, now, &intent).is_err() {
             continue;
         }
-        match expand_outcome(canon, now, &intent, None) {
+        match expand_outcome(canon, now, &intent, None, crate::expand::ignore_resist) {
             Ok(effects) => {
                 let mut intent = intent;
                 stamp(&mut intent, &effects);

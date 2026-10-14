@@ -1,5 +1,5 @@
 use cucumber::{then, when};
-use spookery_kernel::perceive::StockView;
+use spookery_kernel::perceive::ItemStack;
 use spookery_kernel::DigestViewer;
 
 use crate::support::spook;
@@ -55,9 +55,9 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(
         now.places
             .get("docks_shop")
-            .and_then(|place| place.stock.get("lamp_oil"))
+            .and_then(|place| place.items.get("lamp_oil"))
             .copied(),
-        Some(4)
+        Some(4u32)
     );
     let debt = now.clocks.get("assassination_debt").unwrap();
     assert_eq!(debt.value, 2);
@@ -82,10 +82,10 @@ fn the_shop_lists_the_oil(world: &mut World) {
     let shop = spookery_kernel::perceive(&shard, "player:pc_rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(
-        shop.stocks,
-        vec![StockView {
-            sku: "lamp_oil".to_string(),
-            qty: 4,
+        shop.items,
+        vec![ItemStack {
+            id: "lamp_oil".to_string(),
+            count: 4,
         }]
     );
     let mut away = shard.now().clone();
@@ -93,5 +93,5 @@ fn the_shop_lists_the_oil(world: &mut World) {
     let rooms =
         spookery_kernel::perceive::perceive_at(shard.canon(), &away, "player:pc_rowan").unwrap();
     assert_eq!(rooms.place, "mira_rooms");
-    assert!(rooms.stocks.iter().all(|stock| stock.sku != "lamp_oil"));
+    assert!(rooms.items.iter().all(|item| item.id != "lamp_oil"));
 }
