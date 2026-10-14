@@ -1,0 +1,9 @@
+# The only finding is a unit-test stand-in for a model key in
+# crates/spook/src/ai/http.rs (provider_detail_is_one_short_line_without_the_key),
+# introduced in ff4ca659. It was never a credential. Main history stays.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Unit-test stand-in for a model key. Not a credential."
+regexes = ['''xai-SECRETKEY123''']
