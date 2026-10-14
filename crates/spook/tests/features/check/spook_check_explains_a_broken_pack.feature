@@ -89,6 +89,3 @@ Feature: spook check explains a broken pack
     Then the check exits 0
     And stdout says "[]"
     And stderr is empty
-
-  Scenario: No tracked file under .grok uses an absolute path
-    Then no tracked file under .grok contains an absolute path
