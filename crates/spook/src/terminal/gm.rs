@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use spookery_kernel::canon::{Canon, CastKind};
-use spookery_kernel::moves::MoveToken;
+use spookery_kernel::rules::rule::{TargetKind, When};
 
 use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
 use crate::protocol::PlayerMessage;
@@ -442,14 +442,14 @@ fn target_value(canon: &Canon, move_name: &str, target: Option<&str>) -> Value {
     let Some(target) = target else {
         return json!({});
     };
-    let token = canon
-        .moves
-        .get(move_name)
-        .and_then(|def| def.row.as_ref())
-        .map(|row| row.token);
-    match token {
-        Some(MoveToken::Actor) => json!({ "actor": target }),
-        Some(MoveToken::Place) | Some(MoveToken::None) | None => json!({ "place": target }),
+    let kind = canon.rules.iter().find_map(|rule| match &rule.when {
+        When::Verb { verb, target } if verb == move_name => Some(*target),
+        When::Habit if rule.local_id == move_name => Some(TargetKind::None),
+        _ => None,
+    });
+    match kind {
+        Some(TargetKind::Actor) | Some(TargetKind::Item) => json!({ "actor": target }),
+        _ => json!({ "place": target }),
     }
 }
 

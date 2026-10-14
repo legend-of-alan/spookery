@@ -117,6 +117,7 @@ pub(crate) fn refusal(code: &str) -> String {
         "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
         "LINE_TOO_LONG" => "That line is too long.",
+        "CANT_AFFORD" => "You cannot afford that.",
         _ => return format!("The table refused that. [{code}]"),
     };
     format!("{sentence} [{code}]")

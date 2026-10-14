@@ -1,0 +1,46 @@
+schema: verbs
+rules:
+  - id: wait
+    when:
+      verb: wait
+    do: []
+
+  - id: travel
+    when:
+      verb: travel
+      target: place
+    do:
+      - location:
+          to: target
+
+  - id: strike
+    when:
+      verb: strike
+      target: actor
+    roll:
+      check: strike
+      target: 41
+      partial_at: 21
+    success:
+      - meter:
+          who: target
+          key: hp
+          add: -4
+    partial:
+      - meter:
+          who: target
+          key: hp
+          add: -1
+
+  - id: drink
+    when:
+      verb: drink
+    if:
+      - has_item:
+          who: self
+          id: tonic
+    do:
+      - meter:
+          who: self
+          key: hp
+          add: 4

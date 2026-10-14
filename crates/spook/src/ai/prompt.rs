@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 use spookery_kernel::canon::{Canon, CastKind};
-use spookery_kernel::moves::{Audience, MoveOn, MoveToken};
+use spookery_kernel::rules::rule::{Owner, TargetKind, When};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuRow {
@@ -193,19 +193,24 @@ pub struct PromptSide {
 
 pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>) {
     let mut menu = Vec::new();
-    for (name, def) in &canon.moves {
-        let Some(row) = &def.row else {
-            continue;
-        };
-        let Some(audience) = row.audience else {
-            continue;
-        };
-        menu.push(MenuRow {
-            name: name.clone(),
-            audience: audience_name(audience).to_string(),
-            token: token_name(row.token).to_string(),
-            on: on_name(row.on).to_string(),
-        });
+    for rule in canon.rules.iter() {
+        match &rule.when {
+            When::Verb { verb, target } if matches!(rule.owner, Owner::Verb) => {
+                menu.push(MenuRow {
+                    name: verb.clone(),
+                    audience: "verb".to_string(),
+                    token: target.word().to_string(),
+                    on: "self".to_string(),
+                });
+            }
+            When::Habit => menu.push(MenuRow {
+                name: rule.local_id.clone(),
+                audience: "habit".to_string(),
+                token: TargetKind::None.word().to_string(),
+                on: "self".to_string(),
+            }),
+            _ => {}
+        }
     }
     let mut kinds = BTreeMap::new();
     for (id, cast) in &canon.cast {
@@ -722,28 +727,6 @@ fn roll_value(roll: &RollLine) -> Value {
     ])
 }
 
-fn audience_name(audience: Audience) -> &'static str {
-    match audience {
-        Audience::Player => "player",
-        Audience::Habit => "habit",
-    }
-}
-
-fn token_name(token: MoveToken) -> &'static str {
-    match token {
-        MoveToken::None => "none",
-        MoveToken::Actor => "actor",
-        MoveToken::Place => "place",
-    }
-}
-
-fn on_name(on: MoveOn) -> &'static str {
-    match on {
-        MoveOn::Speaker => "speaker",
-        MoveOn::Named => "named",
-    }
-}
-
 fn obj<const N: usize>(entries: [(&str, Value); N]) -> Value {
     let mut map = Map::new();
     for (key, value) in entries {
@@ -985,9 +968,9 @@ mod tests {
         let (menu, kinds) = from_canon(&canon);
         assert!(menu.iter().all(|row| row.audience != "system"));
         assert!(menu.iter().any(|row| row.name == "travel"
-            && row.audience == "player"
+            && row.audience == "verb"
             && row.token == "place"
-            && row.on == "speaker"));
+            && row.on == "self"));
         assert!(menu
             .iter()
             .any(|row| row.name == "restock_lamp_oil" && row.audience == "habit"));

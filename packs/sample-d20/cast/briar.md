@@ -9,11 +9,19 @@ tick:
     - gate_yard
     - mill_lane
     - loft
-  habits:
-    - id: watch_the_gate
-      runs_while_empty: true
-      unless_message: note_gate_watch
-      rows:
-        - watch_the_gate
+rules:
+  - id: watch_the_gate
+    when: habit
+    if:
+      - not:
+          note_exists: note_gate_watch
+    do:
+      - note:
+          id: note_gate_watch
+          to:
+            - pc_lark
+          place: gate_yard
+          fact_ids: []
+          text: The yard stays watched.
 ---
 Briar blocks the yard and does not step aside.

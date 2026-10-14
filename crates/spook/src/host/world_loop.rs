@@ -530,7 +530,7 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match input::parse_player_input(line, &actor_id, &world.canon().moves) {
+    match input::parse_player_input(line, &actor_id, &world.canon().rules) {
         Ok(input::PlayerLine::Speech) => match speak(world, &actor_id, line) {
             Ok(spoken) => {
                 println!("{}", spoken.tape);

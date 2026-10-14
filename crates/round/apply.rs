@@ -1,9 +1,10 @@
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::effect::Effect;
 use spookery_kernel::expand::expand_outcome;
-use spookery_kernel::habit::allowed;
 use spookery_kernel::intent::{ActorKind, Intent};
 use spookery_kernel::perceive::perceive_at;
+use spookery_kernel::rules::cost;
+use spookery_kernel::rules::gate::{self, gate};
 use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
@@ -73,7 +74,7 @@ fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<&'static str>, Rea
     if view.known_facts.is_empty() {
         return Ok(Some("empty_perceive"));
     }
-    if let Err(code) = allowed(draft.canon(), draft.now(), intent) {
+    if let Err(code) = gate(draft.canon(), draft.now(), intent) {
         return Ok(Some(code.jsonl_reason()));
     }
     Ok(None)
@@ -87,6 +88,15 @@ fn commit_intent(
     rolled: &Option<RollResult>,
 ) -> bool {
     let point = draft.savepoint();
+    if let Ok(rule) = gate::resolve(draft.canon(), draft.now(), intent) {
+        if let Some(cost) = rule.cost.clone() {
+            if let Err(code) = cost::pay(draft, &intent.actor_id, &cost) {
+                draft.rollback(point);
+                refuse(round, &intent.id, code.jsonl_reason());
+                return false;
+            }
+        }
+    }
     let mut accepted = Vec::new();
     for effect in expanded {
         match apply_effect(draft, intent, effect.clone()) {

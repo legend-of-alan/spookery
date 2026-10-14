@@ -61,7 +61,7 @@ impl Budget {
     }
 }
 
-pub fn load_tick_rules(text: &str) -> Result<Budget, Vec<Diagnostic>> {
+pub fn load_world_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
     if let Some(diag) = tag_diagnostic(text, crate::format::TICK, TICK_FILE, 0) {
         return Err(vec![diag]);
     }
@@ -296,7 +296,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::load_tick_rules;
+    use super::load_world_settings;
     use crate::error::Reason;
 
     fn text(tag: &str) -> String {
@@ -306,11 +306,11 @@ mod tests {
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
         use crate::diagnostic::reason_of;
-        assert!(load_tick_rules(&text("tick")).is_ok());
-        let old = load_tick_rules(&text(concat!("tick/", "v0"))).unwrap_err();
+        assert!(load_world_settings(&text("tick")).is_ok());
+        let old = load_world_settings(&text(concat!("tick/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(reason_of(old), Reason::Schema);
-        let bogus = load_tick_rules(&text("bogus")).unwrap_err();
+        let bogus = load_world_settings(&text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(reason_of(bogus), Reason::Schema);
     }
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn a_negative_budget_names_the_field() {
         let text = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_ticks: -3\n";
-        let err = load_tick_rules(text).unwrap_err();
+        let err = load_world_settings(text).unwrap_err();
         assert!(err
             .iter()
             .any(|diag| diag.message.contains("max_npcs_acting") && diag.line.is_some()));
@@ -332,20 +332,20 @@ mod tests {
         use crate::diagnostic::reason_of;
         let mut stale = text("tick");
         stale.push_str("live_tick_every_real_seconds: 60\n");
-        let err = load_tick_rules(&stale).unwrap_err();
+        let err = load_world_settings(&stale).unwrap_err();
         assert_eq!(reason_of(err), Reason::Schema);
     }
 
     #[test]
     fn idle_defaults_to_on_and_off_is_loaded() {
-        let on = load_tick_rules(&text("tick")).unwrap();
+        let on = load_world_settings(&text("tick")).unwrap();
         assert!(on.idle_ticking);
         let mut explicit = text("tick");
         explicit.push_str("idle: on\n");
-        assert!(load_tick_rules(&explicit).unwrap().idle_ticking);
+        assert!(load_world_settings(&explicit).unwrap().idle_ticking);
         let mut off = text("tick");
         off.push_str("idle: off\n");
-        assert!(!load_tick_rules(&off).unwrap().idle_ticking);
+        assert!(!load_world_settings(&off).unwrap().idle_ticking);
     }
 
     #[test]
@@ -353,7 +353,7 @@ mod tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/rules/tick.yaml");
         let text = std::fs::read_to_string(path).unwrap();
-        let budget = load_tick_rules(&text).unwrap();
+        let budget = load_world_settings(&text).unwrap();
         assert!(budget.idle_ticking);
         assert_eq!(budget.tick_every_real_seconds, 300);
         assert_eq!(budget.idle_minutes_per_tick, 60);
@@ -364,7 +364,7 @@ mod tests {
         use crate::diagnostic::reason_of;
         let mut maybe = text("tick");
         maybe.push_str("idle: maybe\n");
-        let err = load_tick_rules(&maybe).unwrap_err();
+        let err = load_world_settings(&maybe).unwrap_err();
         assert_eq!(reason_of(err.clone()), Reason::Schema);
         assert_eq!(err[0].file, "rules/tick.yaml");
         assert!(err[0].line.is_some(), "{err:?}");
@@ -372,7 +372,7 @@ mod tests {
         assert!(err[0].message.contains("on or off"), "{err:?}");
 
         let zero = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\ntick_every_real_seconds: 0\n";
-        let err = load_tick_rules(zero).unwrap_err();
+        let err = load_world_settings(zero).unwrap_err();
         assert_eq!(err[0].code, "SCHEMA");
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(
@@ -382,13 +382,13 @@ mod tests {
         assert!(err[0].message.contains('0'), "{err:?}");
 
         let minutes = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle_minutes_per_tick: 0\n";
-        let err = load_tick_rules(minutes).unwrap_err();
+        let err = load_world_settings(minutes).unwrap_err();
         assert_eq!(err[0].code, "SCHEMA");
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(err[0].message.contains("idle_minutes_per_tick"), "{err:?}");
 
         let empty = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle:\n";
-        let err = load_tick_rules(empty).unwrap_err();
+        let err = load_world_settings(empty).unwrap_err();
         assert_eq!(reason_of(err), Reason::Schema);
     }
 }

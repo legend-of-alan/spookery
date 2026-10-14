@@ -51,6 +51,11 @@ pub enum EffectClass {
         fact_ids: Vec<String>,
         text: String,
     },
+    Narrate {
+        to: Vec<String>,
+        fact_ids: Vec<String>,
+        text: String,
+    },
 }
 
 impl Effect {
@@ -77,6 +82,7 @@ impl EffectClass {
             EffectClass::Memory { .. } => "memory",
             EffectClass::Flag { .. } => "flag",
             EffectClass::Message { .. } => "message",
+            EffectClass::Narrate { .. } => "narrate",
         }
     }
 }
@@ -114,6 +120,7 @@ fn payload_len(class: &EffectClass) -> usize {
         EffectClass::Stock { .. } | EffectClass::Location { .. } | EffectClass::Flag { .. } => 3,
         EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
         EffectClass::Message { place, .. } => 4 + usize::from(place.is_some()),
+        EffectClass::Narrate { .. } => 3,
     }
 }
 
@@ -191,6 +198,11 @@ where
             if let Some(place) = place {
                 state.serialize_field("place", place)?;
             }
+            state.serialize_field("fact_ids", fact_ids)?;
+            state.serialize_field("text", text)?;
+        }
+        EffectClass::Narrate { to, fact_ids, text } => {
+            state.serialize_field("to", to)?;
             state.serialize_field("fact_ids", fact_ids)?;
             state.serialize_field("text", text)?;
         }

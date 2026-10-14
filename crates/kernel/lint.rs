@@ -5,7 +5,6 @@ use std::path::Path;
 use crate::canon::{load_canon, Canon};
 use crate::diagnostic::{locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
-use crate::moves::RowEffect;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LintHit {
@@ -51,39 +50,35 @@ pub fn body_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
 /// Hidden-fact sentences found in a message template's `text`.
 /// `HIDDEN_FACT_IN_BODY` stays the Markdown scan. A move row is not a body.
 pub fn message_text_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
-    let rel = "rules/moves.yaml";
-    let Ok(file) = fs::read_to_string(root.join(rel)) else {
-        return Vec::new();
-    };
     let needles = hidden_needles(canon);
     if needles.is_empty() {
         return Vec::new();
     }
-    let mut texts = Vec::new();
-    for def in canon.moves.values() {
-        let Some(row) = &def.row else {
-            continue;
-        };
-        for effect in row
-            .effects
+    let mut hits = Vec::new();
+    for rule in canon.rules.iter() {
+        for effect in rule
+            .do_
             .iter()
-            .chain(row.success.iter())
-            .chain(row.partial.iter())
-            .chain(row.failure.iter())
+            .chain(rule.success.iter())
+            .chain(rule.partial.iter())
+            .chain(rule.failure.iter())
         {
-            let RowEffect::Message { text, .. } = effect else {
+            let Some(text) = effect.note_text() else {
                 continue;
             };
             if needles.iter().any(|needle| text.contains(needle)) {
-                texts.push(text.clone());
+                hits.push((rule.file.clone(), text.to_string()));
             }
         }
     }
-    texts.sort();
+    hits.sort();
     let mut seen: BTreeMap<String, usize> = BTreeMap::new();
     let mut problems = Vec::new();
-    for text in texts {
-        let nth = seen.entry(text.clone()).or_insert(0);
+    for (rel, text) in hits {
+        let Ok(file) = fs::read_to_string(root.join(&rel)) else {
+            continue;
+        };
+        let nth = seen.entry(format!("{rel}:{text}")).or_insert(0);
         let spot = locate_nth(&file, &text, *nth);
         *nth += 1;
         for needle in &needles {
@@ -91,10 +86,10 @@ pub fn message_text_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
                 continue;
             }
             let mut diag = Diagnostic::new(
-                rel,
+                &rel,
                 "HIDDEN_FACT_IN_TEXT",
-                &format!("hidden fact '{needle}' is in a message row"),
-                "rewrite that message text, or set hidden: false",
+                &format!("hidden fact '{needle}' is in a note"),
+                "rewrite that note, or set hidden: false",
             );
             if let Some((line, column)) = spot {
                 diag = diag.at_line(line, Some(column));

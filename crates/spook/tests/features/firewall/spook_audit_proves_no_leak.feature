@@ -19,10 +19,10 @@ Feature: spook audit proves no hidden fact reached a player
     Then Rowan does not perceive the ledger sentence
     When the operator runs spook check
     Then the check exits 1
-    And the report names "rules/moves.yaml"
+    And the report names "cast/mira.md"
     And the report names "HIDDEN_FACT_IN_TEXT"
     And the report says "hidden fact"
-    And the report has a location for "rules/moves.yaml"
+    And the report has a location for "cast/mira.md"
     When the operator runs audit
     Then the audit exits 0
     And stdout has a pass line for "pc_rowan"

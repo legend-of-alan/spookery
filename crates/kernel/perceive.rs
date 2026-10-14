@@ -3,9 +3,9 @@ use std::collections::BTreeSet;
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::firewall::allows;
-use crate::habit::habits_on;
 use crate::intent::ViewerId;
 use crate::model::{Message, Now};
+use crate::rules::habits::habits_on;
 use crate::world::World;
 
 const BUDGET_TOKENS: usize = 800;

@@ -23,8 +23,8 @@ const FILES: &[(&str, &str)] = &[
         include_str!("../templates/starter/cast/pc-ada.md"),
     ),
     (
-        "rules/moves.yaml",
-        include_str!("../templates/starter/rules/moves.yaml"),
+        "rules/verbs.yaml",
+        include_str!("../templates/starter/rules/verbs.yaml"),
     ),
     (
         "rules/checks.yaml",

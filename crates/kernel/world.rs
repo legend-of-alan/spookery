@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::canon::world_settings::Budget;
 use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::StateKey;
-use crate::limits::Budget;
 use crate::model::{MemoryLine, Now, PauseView};
 use crate::rules::RollReport;
 use crate::store::codec::{emit_save, load_save};

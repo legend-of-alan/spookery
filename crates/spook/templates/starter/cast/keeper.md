@@ -10,11 +10,14 @@ tick:
     - lane
   flags:
     - tended
-  habits:
-    - id: tend
-      runs_while_empty: true
-      rows:
-        - tend_the_yard
-    # more-habits
+rules:
+  - id: tend_the_yard
+    when: habit
+    do:
+      - flag:
+          who: self
+          key: tended
+          value: true
+  # more-habits
 ---
 The keeper watches the lane when the yard is empty.

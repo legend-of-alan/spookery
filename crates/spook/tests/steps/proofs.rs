@@ -378,7 +378,7 @@ facts: []
 Rowan.
 ",
     );
-    for name in ["moves.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
+    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
         fs::copy(rules.join(name), {
             let dest = pack.join("rules").join(name);
             fs::create_dir_all(dest.parent().unwrap()).unwrap();
@@ -724,11 +724,10 @@ tick:
   eligible: true
   range:
     - yard
-  habits:
-    - id: hold_still
-      runs_while_empty: true
-      rows:
-        - hold
+rules:
+  - id: hold
+    when: habit
+    do: []
 ---
 {id}
 "
@@ -751,17 +750,11 @@ tick:
             },
         );
     }
-    for name in ["moves.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
+    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
         let dest = pack.join("rules").join(name);
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
     }
-    let moves_path = pack.join("rules/moves.yaml");
-    let mut moves = fs::read_to_string(&moves_path).unwrap();
-    moves.push_str(
-        "\n  - name: hold\n    audience: habit\n    token: none\n    on: speaker\n    effects: []\n",
-    );
-    fs::write(&moves_path, moves).unwrap();
     let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
@@ -1489,11 +1482,11 @@ fn play_mark(pack: &Path, line: &str) -> Now {
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     for (label, difficulty, success) in [("effects-pass", 0, true), ("effects-fail", 14, false)] {
         let pack = temp_pack(label);
-        let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
+        let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
-            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    difficulty: {difficulty}\n    effects:\n      - class: flag\n        key: marked\n        value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    do:\n      - flag:\n          who: target\n          key: marked\n          value: true\n",
         ));
-        fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
+        fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags(&pack, "    - marked\n");
         stamp_pack_rev(&pack);
         let now = play_mark(&pack, "mark mira");
@@ -1519,11 +1512,11 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
 
     for (label, difficulty, flag) in [("lists-pass", 0, "marked"), ("lists-fail", 14, "missed")] {
         let pack = temp_pack(label);
-        let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
+        let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
-            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    difficulty: {difficulty}\n    success:\n      - class: flag\n        key: marked\n        value: true\n    failure:\n      - class: flag\n        key: missed\n        value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
         ));
-        fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
+        fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags(&pack, "    - marked\n    - missed\n");
         stamp_pack_rev(&pack);
         let now = play_mark(&pack, "mark mira");
@@ -1583,11 +1576,11 @@ fn opposing_total_reused() {
     for opposed in [false, true] {
         let label = if opposed { "opposed" } else { "open-check" };
         let pack = temp_pack(label);
-        let mut moves = fs::read_to_string(pack.join("rules/moves.yaml")).unwrap();
+        let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(
-            "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    success:\n      - class: flag\n        key: marked\n        value: true\n    failure:\n      - class: flag\n        key: missed\n        value: true\n  - name: defend\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    success:\n      - class: flag\n        key: guarded\n        value: true\n",
+            "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
         );
-        fs::write(pack.join("rules/moves.yaml"), moves).unwrap();
+        fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         insert_nell(&pack);
         stamp_pack_rev(&pack);
         let mut shard = open(&pack);
@@ -1638,11 +1631,11 @@ fn opposing_total_reused() {
 
 fn a_held_knife_still_runs_the_opposed_row() {
     let held = temp_pack("item-held");
-    let mut moves = fs::read_to_string(held.join("rules/moves.yaml")).unwrap();
+    let mut moves = fs::read_to_string(held.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
-        "\n  - name: mark\n    audience: player\n    token: actor\n    on: named\n    check: grit\n    item: knife\n    success:\n      - class: flag\n        key: marked\n        value: true\n    failure:\n      - class: flag\n        key: missed\n        value: true\n  - name: defend\n    audience: player\n    token: none\n    on: speaker\n    check: grit\n    success:\n      - class: flag\n        key: guarded\n        value: true\n",
+        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
     );
-    fs::write(held.join("rules/moves.yaml"), moves).unwrap();
+    fs::write(held.join("rules/verbs.yaml"), moves).unwrap();
     insert_nell(&held);
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();

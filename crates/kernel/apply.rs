@@ -42,6 +42,7 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
             fact_ids,
             text,
         } => apply_message(draft, message_id, to, place, fact_ids, text),
+        EffectClass::Narrate { .. } => Ok(()),
     }
 }
 

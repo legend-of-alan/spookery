@@ -103,6 +103,12 @@ impl ActorLive {
         }
     }
 
+    pub fn flags(&self) -> &[String] {
+        match self {
+            ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. } => flags,
+        }
+    }
+
     pub fn flags_mut(&mut self) -> &mut Vec<String> {
         match self {
             ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. } => flags,
@@ -156,6 +162,12 @@ impl ActorLive {
     }
 
     pub fn inventory(&self) -> &[String] {
+        match self {
+            ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
+        }
+    }
+
+    pub fn inventory_mut(&mut self) -> &mut Vec<String> {
         match self {
             ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
         }

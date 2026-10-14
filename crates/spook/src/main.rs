@@ -97,6 +97,9 @@ enum Command {
         /// Print problems as one JSON array on stdout.
         #[arg(long)]
         json: bool,
+        /// Print each rule id in the resolved order.
+        #[arg(long)]
+        rules: bool,
         /// Pack directory.
         pack: PathBuf,
     },
@@ -204,8 +207,16 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                 std::process::exit(1);
             }
         },
-        Command::Check { pack, json } => {
+        Command::Check { pack, json, rules } => {
             let mut found = spookery_kernel::check_pack(&pack);
+            if rules && found.is_empty() {
+                let canon = spookery_kernel::canon::load_canon(&pack)
+                    .map_err(|diags| spookery::Error::Reason(spookery_kernel::reason_of(diags)))?;
+                for id in canon.rules.ids_in_order() {
+                    println!("{id}");
+                }
+                return Ok(());
+            }
             if json {
                 found.sort_by(|left, right| {
                     left.file

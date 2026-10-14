@@ -69,15 +69,15 @@ Feature: A roll can partly succeed
     When the moves file gains "<fault>"
     And the operator runs spook check
     Then the check exits 1
-    And the report names "rules/moves.yaml"
+    And the report names "rules/verbs.yaml"
     And the report names "SCHEMA"
     And the report says "<phrase>"
-    And the report has a location for "rules/moves.yaml"
+    And the report has a location for "rules/verbs.yaml"
     And stdout is empty
 
     Examples:
       | fault                       | phrase                 |
       | partial_at without partial  | without a partial      |
       | partial without partial_at  | without partial_at     |
-      | partial_at above difficulty | at or above difficulty |
-      | partial_at without a check  | without a check        |
+      | partial_at above difficulty | at or above the target |
+      | partial_at without a check  | without a roll         |

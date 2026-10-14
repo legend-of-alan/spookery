@@ -1,0 +1,22 @@
+schema: verbs
+rules:
+  - id: wait
+    when:
+      verb: wait
+    do: []
+
+  - id: travel
+    when:
+      verb: travel
+      target: place
+    do:
+      - location:
+          to: target
+
+  - id: grit
+    when:
+      verb: grit
+    roll:
+      check: grit
+      target: 0
+    do: []

@@ -62,6 +62,16 @@ pub struct RollInput<'a> {
     pub partial_at: Option<i64>,
 }
 
+/// The faces this key would roll, without a stat or a band.
+pub fn faces(key: &RollKey, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
+    let seed = blake2s_256(key.preimage().as_bytes());
+    let mut faces = Vec::with_capacity(count as usize);
+    for n in 0..count {
+        faces.push(face_at(&seed, n as usize, sides)?);
+    }
+    Ok(faces)
+}
+
 /// The only roll. The viewer must be the actor. Each die reads this key's own seed.
 pub fn roll(input: RollInput<'_>, key: &RollKey) -> Result<RollResult, Reason> {
     if input.viewer.actor_id() != input.actor_id {

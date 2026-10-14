@@ -183,7 +183,7 @@ fn the_json_array_is_one_diagnostic(world: &mut World, code: String, file: Strin
 #[when(expr = "the worked example row is appended to the moves file")]
 fn the_worked_example_row_is_appended(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let path = pack.join("rules/moves.yaml");
+    let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     if !text.ends_with('\n') {
         text.push('\n');
@@ -238,8 +238,8 @@ fn worked_example_row() -> String {
         .unwrap_or_else(|| panic!("the skill yaml example is not closed"));
     let body = rest[..end].replace('\r', "");
     assert!(
-        body.contains("audience: player") && body.contains("- name:"),
-        "the worked example is not a player move:\n{body}"
+        body.contains("- id: scan_the_street") && body.contains("when:"),
+        "the worked example is not a player verb:\n{body}"
     );
     let mut row = body;
     if !row.ends_with('\n') {
@@ -290,30 +290,30 @@ fn has_absolute_path(line: &str) -> bool {
 
 fn break_pack(pack: &std::path::Path, fault: &str) {
     match fault {
-        "no audience" => replace_file(
-            &pack.join("rules/moves.yaml"),
-            "  - name: grit\n    audience: player\n",
-            "  - name: grit\n",
+        "missing when" => replace_file(
+            &pack.join("rules/verbs.yaml"),
+            "  - id: grit\n    when:\n      verb: grit\n",
+            "  - id: grit\n",
         ),
         "unknown field" => replace_file(
-            &pack.join("rules/moves.yaml"),
-            "  - name: grit\n    audience: player\n",
-            "  - name: grit\n    audiance: player\n",
+            &pack.join("rules/verbs.yaml"),
+            "  - id: grit\n    when:\n",
+            "  - id: grit\n    audiance: player\n    when:\n",
         ),
         "unknown check" => replace_file(
-            &pack.join("rules/moves.yaml"),
+            &pack.join("rules/verbs.yaml"),
             "    check: grit\n",
             "    check: courage\n",
         ),
         "duplicate move" => replace_file(
-            &pack.join("rules/moves.yaml"),
-            "  - name: wait\n",
-            "  - name: grit\n",
+            &pack.join("rules/verbs.yaml"),
+            "  - id: wait\n",
+            "  - id: grit\n",
         ),
         "old format tag" => replace_file(
-            &pack.join("rules/moves.yaml"),
-            "schema: moves\n",
-            "schema: moves/v0\n",
+            &pack.join("rules/verbs.yaml"),
+            "schema: verbs\n",
+            &format!("schema: verbs/{}\n", "v0"),
         ),
         "missing meters" => {
             fs::remove_file(pack.join("rules/meters.yaml")).unwrap();
@@ -333,7 +333,7 @@ fn break_pack(pack: &std::path::Path, fault: &str) {
             fs::write(path, text).unwrap();
         }
         "hidden fact in a message" => replace_file(
-            &pack.join("rules/moves.yaml"),
+            &pack.join("cast/mira.md"),
             "text: Back at dusk. Oil on the shelf.\n",
             "text: The lamp-oil ledger is short.\n",
         ),
