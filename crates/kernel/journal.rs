@@ -272,17 +272,7 @@ fn read_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, JournalFa
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
     match serde_path_to_error::deserialize(&mut de) {
         Ok(value) => Ok(value),
-        Err(err) => Err(fault_name(name, &fault_detail(&err.to_string()))),
-    }
-}
-
-fn fault_detail(message: &str) -> String {
-    if message.contains("ILLEGAL_CLASS") {
-        message.to_string()
-    } else if message.contains("unknown variant") && message.contains("`clock`") {
-        format!("ILLEGAL_CLASS: {message}")
-    } else {
-        message.to_string()
+        Err(err) => Err(fault_name(name, &err.to_string())),
     }
 }
 

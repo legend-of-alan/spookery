@@ -684,9 +684,7 @@ pub(crate) mod args_as {
 
 /// `need`, `resource`, and `inventory` stay [`crate::error::Reason::IllegalClass`].
 pub(crate) fn effect_reason(message: &str) -> crate::error::Reason {
-    if message.contains("ILLEGAL_CLASS")
-        || (message.contains("unknown variant") && message.contains("`clock`"))
-    {
+    if message.contains("ILLEGAL_CLASS") {
         crate::error::Reason::IllegalClass
     } else {
         crate::error::Reason::Schema

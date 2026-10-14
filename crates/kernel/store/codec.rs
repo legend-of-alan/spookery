@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use serde_saphyr::SerializerOptions;
 
 use crate::diagnostic::{coded, locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};
@@ -196,8 +195,8 @@ pub fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
     Ok((parsed.tick_index, parsed.effects))
 }
 
-pub fn parse_effect(value: &Value) -> Result<Effect, Reason> {
-    Effect::deserialize(value).map_err(|err| super::records::effect_reason(&err.to_string()))
+pub fn parse_effect(text: &str) -> Result<Effect, Reason> {
+    serde_json::from_str(text).map_err(|err| super::records::effect_reason(&err.to_string()))
 }
 
 pub fn emit_memory_line(line: &MemoryLine) -> String {
@@ -459,10 +458,7 @@ messages: []
             let encoded = super::emit_effect(&effect);
             assert_eq!(encoded, expected);
             assert!(!encoded.contains("\"payload\""), "{encoded}");
-            assert_eq!(
-                super::parse_effect(&serde_json::from_str(&encoded).unwrap()).unwrap(),
-                effect
-            );
+            assert_eq!(super::parse_effect(&encoded).unwrap(), effect);
         }
         for name in ["need", "resource", "inventory"] {
             let value = serde_json::json!({
@@ -471,7 +467,7 @@ messages: []
                 "intent_id": "i",
             });
             assert_eq!(
-                super::parse_effect(&value).unwrap_err(),
+                super::parse_effect(&value.to_string()).unwrap_err(),
                 Reason::IllegalClass
             );
         }
@@ -485,7 +481,7 @@ messages: []
             "delta": 1,
         });
         assert_eq!(
-            super::parse_effect(&snap_delta).unwrap_err(),
+            super::parse_effect(&snap_delta.to_string()).unwrap_err(),
             Reason::Schema
         );
         let missing_delta = serde_json::json!({
@@ -497,7 +493,7 @@ messages: []
             "write": "base",
         });
         assert_eq!(
-            super::parse_effect(&missing_delta).unwrap_err(),
+            super::parse_effect(&missing_delta.to_string()).unwrap_err(),
             Reason::Schema
         );
     }
@@ -516,9 +512,9 @@ messages: []
     #[test]
     fn nested_payload_and_external_tag_are_not_effects() {
         let nested = r#"{"class":"clock","as":"npc:mira","intent_id":"i","payload":{"clock_id":"c","delta":1}}"#;
-        assert!(super::parse_effect(&serde_json::from_str(nested).unwrap()).is_err());
+        assert!(super::parse_effect(nested).is_err());
         let external = r#"{"Clock":{"clock_id":"c","delta":1},"as":"npc:mira","intent_id":"i"}"#;
-        assert!(super::parse_effect(&serde_json::from_str(external).unwrap()).is_err());
+        assert!(super::parse_effect(external).is_err());
     }
 
     #[test]
