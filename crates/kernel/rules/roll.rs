@@ -150,7 +150,8 @@ mod tests {
             flags: Vec::new(),
             busy: false,
             meters: BTreeMap::from([("grit".to_string(), MeterLive { base: 1, offset: 0 })]),
-            inventory: Vec::new(),
+            inventory: BTreeMap::new(),
+            wielded: None,
             known_facts: Vec::new(),
             tick: TickCounters {
                 last_act_tick: 0,

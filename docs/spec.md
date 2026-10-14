@@ -14,7 +14,7 @@ No releases yet. No compatibility guarantees.
 - One GM seat (AI or human) and 1 to 3 player seats. Each player sits a distinct pack PC. A 4th player gets `SESSION_FULL`. A hello for a PC another seat holds gets `SEAT_TAKEN`. That seat model is built.
 - Players walk around and take basic actions.
 - Packs are written and updated by people and by coding agents (Grok, Claude Code, Cursor), so the format must be machine-checkable: every refusal has a file, a location, a stable code and a fix hint. `spook check <pack>` prints those in plain text. `spook check --json <pack>` prints the same diagnostics as one JSON array. Generated schemas are not built yet (#29).
-- The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. `packs/sample-d20` is that sample. It plays a fixed-damage fight against a literal difficulty. It does not yet express a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, a condition when hit points reach zero, or consume an item (drink checks for the tonic but never uses it up, so it heals forever).
+- The rules primitives must be able to express a 5e-style game with no 5e-specific code. Generic engine, not a 5e replacement, and no SRD text. `packs/sample-d20` is that sample. It plays a fixed-damage fight against a literal difficulty, and drinking the tonic uses that tonic up. It does not yet express a difficulty taken from the target's defense meter, rolled effect amounts, advantage-style rolls, a modifier from equipment, or a condition when hit points reach zero.
 
 This spec records one writer, the crate boundary, the threat list, loopback and the seat cap, and the rule that a host monitor is not shard behavior.
 
@@ -25,7 +25,7 @@ These fourteen rules are the referee, in this order. Later sections are the deta
 1. **Import boundary.** `spookery-kernel` and `spookery-round` do not link a runtime, a database, or a model SDK.
 2. **`!Send` `Draft`.** One `std::thread` owns `Now`. The tick is not spawned on a runtime.
 3. **Atomic commit.** `save.yaml` is renamed last. A crash cannot apply a partial tick.
-4. **Closed effect, one apply.** Seven effect classes. `apply_effect` is the only mutator of world numbers. A rule's effects apply all together. If one effect is refused, or the list is longer than `max_effects_per_intent`, that intent is rolled back and none of its effects are saved. The tick names the refusal. That intent does not report its roll. The effect cap's reason is `budget`.
+4. **Closed effect, one apply.** The effect classes are `clock`, `meter`, `item`, `wield`, `unwield`, `location`, `memory`, `flag`, `message`, and `narrate`. `apply_effect` is the only mutator of world numbers. A rule's effects apply all together. If one effect is refused, or the list is longer than `max_effects_per_intent`, that intent is rolled back and none of its effects are saved. The tick names the refusal. That intent does not report its roll. The effect cap's reason is `budget`.
 5. **Firewall.** `firewall::allows` is the visibility test. A hidden fact does not leak through place or cast prose.
 6. **Deterministic tick.** A row's literals are filled before the apply loop. `round::play` runs `advance`, `complete`, `gather`, `resolve`, `apply`, `run_triggers`, `observe`, and `record` in that order. Replay runs those same stages. Each roll's seed is Blake2s of `{world}|{tick}|{rule}|{subject}|{roll_index}`. The tick line keeps `seed` as `{world}|{tick}`. Replay re-expands the recorded intents and rolls again from those keys. It also replays every journaled commit since the base: a presence commit restores that presence, and a migrate commit restores `pack_rev`.
 7. **Canon versus `Now`.** Canon is frozen. `Now` is the live snapshot.
@@ -73,7 +73,7 @@ Tokio in `spook` is the accept loop, keepalive, and scheduler sleep. The tick fu
 
 ## Effect envelope
 
-`Effect` is one struct. The class is the payload. Rows emit the seven classes below.
+`Effect` is one struct. The class is the payload. Rows emit the classes below.
 
 ```rust
 pub struct Effect {
@@ -85,21 +85,24 @@ pub struct Effect {
 pub enum EffectClass {
     Clock { clock_id: String, delta: i64 },
     Meter { actor_id: String, key: String, write: MeterWrite },
-    Stock { place: String, sku: String, delta: i64 },
+    Item { actor_id: Option<String>, place: Option<String>, id: String, delta: i64, max: Option<i64> },
+    Wield { actor_id: String, id: String },
+    Unwield { actor_id: String },
     Location { actor_id: String, from: String, to: String },
     Memory { actor_id: String, fact_ids: Vec<String>, tags: Vec<String>, text: Option<String> },
     Flag { actor_id: String, key: String, value: bool },
     Message { message_id: String, to: Vec<String>, place: Option<String>, fact_ids: Vec<String>, text: String },
+    Narrate { to: Vec<String>, fact_ids: Vec<String>, text: String },
 }
 ```
 
 `ViewerId` is `Player` or `Npc`. There is no `Gm` variant. The JSON token is `player:{id}` or `npc:{id}`.
 
-JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `meter`, `stock`, `location`, `memory`, `flag`, or `message`. `MeterWrite` is `Base(i64)`, `Offset(i64)`, or `Snap`. The wire writes `write` as `base`, `offset`, or `snap`, and writes `delta` only for `base` and `offset`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `save.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
+JSONL and MCP write one flat object per effect. The object is internally tagged and flattened. `class` is a string: `clock`, `meter`, `item`, `wield`, `unwield`, `location`, `memory`, `flag`, `message`, or `narrate`. `MeterWrite` is `Base(i64)`, `Offset(i64)`, or `Snap`. The wire writes `write` as `base`, `offset`, or `snap`, and writes `delta` only for `base` and `offset`. Payload fields are siblings of `as` and `intent_id`. They are not nested under `class`. An externally tagged object is not the codec. Key order is fixed: `class`, then `as`, then `intent_id`, then payload fields in the order declared on that `EffectClass` variant. A custom serializer writes that order. serde's default enum encoding does not. `save.yaml` byte-stability does not depend on this object. It is the tick JSONL shape only. Tests assert this order.
 
 ## Apply
 
-`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. A meter write clamps a sum that fits in `i64`. Stock refuses a negative result. Memory text longer than 240 characters is `SCHEMA`. Memory facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
+`apply_effect` is the only mutator of world numbers. Arithmetic stays `checked_add`. A meter write clamps a sum that fits in `i64`. An item count below 0 is `OUT_OF_RANGE`. Memory text longer than 240 characters is `SCHEMA`. Memory facts the viewer may not know are `ILLEGAL_KNOWLEDGE`. The flag key `busy` is `SCHEMA` at load and is not a template. `busy` remains the eligibility bit on the actor.
 
 The effect's viewer must be the active intent's actor. Failure is `VIEWER_MISMATCH`.
 
@@ -107,7 +110,7 @@ Clocks do not clamp. An unknown clock is `UNKNOWN_KEY`. A paused clock, or a clo
 
 Location: `from` must equal the live place, and `to` must be in the profile range. Otherwise `OUT_OF_RANGE`. An `actor_id` other than the intent actor is `ACTOR_MISMATCH`. A PC location while `humans == 0` is `TABLE_EMPTY`. An NPC with no tick profile is `NO_PROFILE`.
 
-Stock: a missing profile is `NO_PROFILE`. A place outside range, an absolute delta above `stock_rate`, or a negative result, is `OUT_OF_RANGE`.
+An `item` effect adds or removes a count on an actor or a place. `who: place:<id>` and `who: here` name a place. A result below 0 is `OUT_OF_RANGE` and the intent rolls back. `max` caps a positive add. A count that lands on 0 is omitted. Dropping or spending the wielded item clears that actor's wielded slot in the same tick.
 
 Meter: `write` is `base`, `offset`, or `snap`. `base` adds the delta to `base` and clamps that base into `[min, base_cap]`, and keeps `offset`. `offset` adds the delta to `offset` and keeps `base`. `snap` sets the next pair to `(base, 0)`. The live pair is assigned only when `base` is inside `[min, base_cap]` and `base + offset` fits in `i64`. A sum that fits and passes `max` is clamped when `current` is read. `current` is `clamp(base + offset, min, max)`. It is not stored. An add that does not fit in `i64`, or a next pair that fails that check, is `OUT_OF_RANGE` and the record is unchanged. An unknown meter id is `UNKNOWN_KEY`. A PC and an NPC take the same write.
 
@@ -117,21 +120,21 @@ A rule lives in `rules/verbs.yaml` or in the file of its owner: a place, an item
 
 One rule has `id`, `when`, an optional `if`, an optional `cost`, an optional `roll`, and the lists `do`, `success`, `partial`, and `failure`. `when` is a verb, `habit`, or a change. A verb may name a target kind: `none`, `actor`, `place`, `exit`, or `item`.
 
-The full id is the owner plus the local id: `verb:travel`, `place:docks_shop/bell`, `item:tonic/use`, `cast:mira/restock_lamp_oil`, `story:smuggler/bell`. One verb intent uses the target item's rule for that verb, then the target actor's, then the rule on the actor's current place, then the rule in `rules/verbs.yaml`. A full id is not a verb word and does not select a rule. A habit is selected by its local id, and only for that NPC.
+The full id is the owner plus the local id: `verb:travel`, `place:docks_shop/bell`, `item:tonic/use`, `cast:mira/restock_lamp_oil`, `story:smuggler/bell`. For `attack`, the wielded weapon's rule wins when that item has one. Otherwise one verb intent uses the target item's rule for that verb, then the target actor's, then the rule on the actor's current place, then the rule in `rules/verbs.yaml`. A full id is not a verb word and does not select a rule. A habit is selected by its local id, and only for that NPC.
 
-`if` is a list. Each dash is one condition: `has_item`, `meter`, `flag`, `at`, `knows`, `clock`, `hour`, `humans`, `note_exists`, `all`, `any`, or `not`. Two conditions under one dash are `SCHEMA`. A failed `has_item` is `MISSING_ITEM` and that line is not queued.
+`if` is a list. Each dash is one condition: `has_item`, `wielding`, `meter`, `flag`, `at`, `knows`, `clock`, `hour`, `humans`, `note_exists`, `all`, `any`, or `not`. Two conditions under one dash are `SCHEMA`. A failed `has_item` is `MISSING_ITEM` and that line is not queued. `wielding` is true when that actor's wielded slot holds that item.
 
 `roll` names a `check` and a `target`. The target is a number, or a meter plus a number. `partial_at` is strictly below that target and needs a `partial` list. A `partial` list without `partial_at`, a `partial_at` without that list, a `partial_at` at or above the target, or an outcome list without a roll, is `SCHEMA`. An opposing total replaces the target and that roll stays binary.
 
 `do` runs on every band. `success`, `partial`, and `failure` run on that band. `failure` is the miss. A yield is `do: []` with no outcome lists. `wait` is a yield. A yield with a roll reports the band and writes no world key. `say` is speech, so that id is not a rule.
 
-`cost` may name `time`, meters, and items. A cost the actor cannot pay is `CANT_AFFORD`. The refusal names the meter or the item, the journal word is `CANT_AFFORD` plus that name, and the world is unchanged. The player sentence is `You cannot afford <name>. [CANT_AFFORD]`. `time` is parsed to minutes. `spook check` reports that this time is not applied. `resist` loads. `spook check` reports that resist is not applied, so the effect still lands.
+`cost` may name `time`, meters, and items. A cost the actor cannot pay is `CANT_AFFORD`. The refusal names the meter or the item, the journal word is `CANT_AFFORD` plus that name, and the world is unchanged. The player sentence is `You cannot afford <name>. [CANT_AFFORD]`. Items in `cost` are paid when the intent commits, before its effects, and a spent wielded item clears the slot. `time` is parsed to minutes. `spook check` reports that this time is not applied. `resist` on an effect gives its subject a keyed roll. A success shrugs that effect off and runs `resisted` instead. `resist: same` reuses the previous resist roll in that list. A resist is an outcome. The tick does not record it as a refusal. Both the action roll and the resist roll use the per-roll seed, so `spook verify` reproduces them.
 
 A player line queues a verb. Typing a habit name is `NOT_IN_SPEC` and is not queued. A full id is `NOT_IN_SPEC` for a PC. It does not select another actor's habit or a rule on another place. The GM intent tool queues a verb for a player or an NPC, and that NPC's habit. A habit for a PC is `NOT_IN_SPEC`. `source` on that tool stays `player`. A player-sourced habit skips `if`. A kernel habit still requires eligibility and `if`.
 
 Load rejects an empty id, a duplicate id, two verb rules for the same verb in one file, the flag key `busy`, a rule id `say`, an unknown effect key, and a retired selector (`token`, `first_rate`, `rate`, `first_drift`, `toward_target`, `first_known`, `first_listener`, `keep`, `first_due_note`, `first_owned`). `travel` is not special-cased in Rust. A travel rule is whatever effects it has, and `apply_location` enforces the range. The docks grit check is the `grit` verb. The player wire object is `{"kind":"check","outcome":"success"|"partial"|"miss"}`.
 
-An effect is `meter`, `stock`, `flag`, `location`, `note`, `narrate`, `clock`, `memory`, `item`, or `reveal`. `note` is stored with the save key `messages`. `narrate` is not stored. `item` and `reveal` load and do not apply on this pass. `location` `to: target` is the queued place. `via` does not apply on this pass. Stock names `place`, `sku`, and `add`. `apply_stock` still refuses a place outside range, an absolute delta above `stock_rate`, or a negative result. A meter `add` offsets the current pair. A meter `set` offsets by the distance from current to that number. There is no stock maximum in the docks profile.
+An effect is `meter`, `item`, `wield`, `unwield`, `flag`, `location`, `note`, `narrate`, `clock`, `memory`, or `reveal`. `note` is stored with the save key `messages`. `narrate` is one-off text. It is written on the tick for the people it names and is not stored in the save. `reveal` loads and does not apply on this pass. `location` `to: target` is the queued place. `via` does not apply on this pass. A meter `add` offsets the current pair. A meter `set` offsets by the distance from current to that number. `wield` puts a held weapon in the actor's one wielded slot. An item that is not tagged `weapon` is `NOT_A_WEAPON` and the slot stays as it was. Wielding an item the actor does not hold is `MISSING_ITEM`. `unwield` empties the slot. Item definitions live in `world/items/<id>.md` with `id`, `name`, `tags`, prose, and rules. An actor's inventory and a place's `items` are `{id: count}`. The save's `wielded` is an item id or absent. `spook check` reports an unknown item id in a save or a rule.
 
 Bindings and the outcome list are different steps.
 
@@ -156,7 +159,7 @@ The hour is `(world_time / 60) % 24`, read after the tick has advanced world tim
 
 An empty id, a duplicate id, or an hour outside `0..24` is `SCHEMA`.
 
-Eligibility runs first for a kernel habit. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, and no seated PC may share that place. The NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no habit intent. A player-sourced habit does not check `if` or eligibility. Apply still checks range, stock rate, the firewall, paused clocks, and the other effect rules.
+Eligibility runs first for a kernel habit. The NPC must be an NPC, the profile must say eligible, the NPC must not be `busy`, and no seated PC may share that place. The NPC must not have already acted this tick, and the idle-day or live-hour cap must be unspent. An ineligible NPC produces no habit intent. A player-sourced habit does not check `if` or eligibility. Apply still checks range, item counts, the firewall, paused clocks, and the other effect rules.
 
 NPC perceive includes `habits`, the local ids that are on for that NPC, in file order. Player perceive sends an empty list. Queueing an intent does not consult that list.
 
@@ -181,9 +184,9 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 | `NOT_OWNER` when the viewer is not the intent actor | `VIEWER_MISMATCH` | Effect viewer is not the intent actor |
 | `NOT_OWNER` when a kernel source acts for a player | `KERNEL_ON_PLAYER` | A kernel habit tried to act for a PC |
 | `NOT_OWNER` when a kernel source acts for an ineligible NPC | `INELIGIBLE` | NPC failed eligibility |
-| `NOT_OWNER` when stock, location, or NPC counters need a tick profile and there is none | `NO_PROFILE` | The effect needed a tick profile and there is none |
+| `NOT_OWNER` when location or NPC counters need a tick profile and there is none | `NO_PROFILE` | The effect needed a tick profile and there is none |
 | `NOT_OWNER` when location, memory, or a system memory names an actor other than the intent actor | `ACTOR_MISMATCH` | The effect names an actor other than the intent actor |
-| `NOT_OWNER` when a stock place is outside range, or missing a rate | `OUT_OF_RANGE` | The same bounds token location already uses |
+| `NOT_OWNER` when an item count would go below 0 | `OUT_OF_RANGE` | The same bounds token location already uses |
 | `NOT_OWNER` when a PC changes location while `humans == 0` | `TABLE_EMPTY` | This change requires a seated human |
 | `LIVE_ONLY` on the five-name denylist | retired | Those names are not a denylist |
 | `LIVE_ONLY` on a player world line while `humans == 0` | `TABLE_EMPTY` | A world line needs a seated human |
@@ -191,13 +194,13 @@ Library and tick paths do not panic. Exhaustive matches replace `unreachable`. T
 
 `NOT_OWNER` and `LIVE_ONLY` are not variants. Nothing emits them.
 
-Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `SEAT_TAKEN`, `MISSING_ITEM`, `LINE_TOO_LONG`.
+Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLEDGE`, `OUT_OF_RANGE`, `BUDGET`, `PAUSED_CLOCK`, `UNKNOWN_KEY`, `PACK_REV_MISMATCH`, `UNKNOWN_MOVE`, `UNSCOPED_PERCEIVE`, `COMMIT_CONFLICT`, `HAND_EDIT`, `SCHEMA`, `NOT_IN_SPEC`, `SESSION_FULL`, `SEAT_TAKEN`, `MISSING_ITEM`, `NOT_A_WEAPON`, `LINE_TOO_LONG`.
 
 `LINE_TOO_LONG` is a hello, a player line, or a GM TCP line over its cap.
 
 `SEAT_TAKEN` is a hello for a PC another player seat already holds. `SESSION_FULL` is a fourth player hello, or a second GM. The fourth-player check runs before the held-PC check.
 
-`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `item` precondition. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`. `EffectClass` has seven variants.
+`NOT_IN_SPEC` stays for a non-loopback bind, an unknown verb, `include_tick: false` with a pending queue, and an unknown tool. It is not the expand result for `give`. `MISSING_ITEM` stays the one meaning of a failed `has_item` precondition, and of wielding an item the actor does not hold. `NOT_A_WEAPON` is wielding an item that is not tagged `weapon`. `ILLEGAL_CLASS` is an unknown class at `parse_effect`, including `need` and `resource`. A field-shape error on a known class is `SCHEMA`. A moves-file unknown class is `SCHEMA`.
 
 ## Commit
 
@@ -222,7 +225,7 @@ The first commit on a pack with no `journal/base.yaml` writes that file in the s
 
 `migrate_pack` is the only writer that changes `pack_rev`. It goes through `write_commit`, writes the migrate journal record and the new base in that plan, and then appends one studio line. Replay does not read the studio line. A hand edit of `save.yaml` that is not `spook migrate` remains `HAND_EDIT` on the next tick. Studio tools do not write `state/`.
 
-`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Draft` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev` and stock at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `save.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `save.yaml` and deletes a journal record and a memory line that do not belong to it.
+`write_commit` has no fault parameter. The crash hook is not an environment variable and not `process::abort`. No production path reads `SPOOK_CRASH_AFTER`. Dropping the `Draft` after `apply_effect` without calling `write_commit` leaves no `state/.txn`, and leaves `state_rev` and place items at the bytes from before `begin`. Recovery on the three directory shapes above is the other half of the same proof: an incomplete `.txn` leaves the previous `save.yaml`, `COMPLETE` with an unmoved `state_rev` restores `prev`, and `COMPLETE` with the new `state_rev` keeps the new `save.yaml` and deletes a journal record and a memory line that do not belong to it.
 
 Replay byte-compares `save.yaml` produced by this kernel, for every journaled commit since the base. It also compares the effects logged on a tick with the effects the re-run produced, and names the tick and the first effect that differs. It does not pin a frozen docks hash. A pack that has never committed has no base and no journal. `spook verify` then compares `save.yaml` to itself and reports zero records.
 
@@ -316,7 +319,7 @@ A host monitor is not shard behavior.
 
 `spook play <pack>` sits a player seat and dials `--addr`. `--as player:<id>` picks the actor. Without it, the client sits the pack's start PC. Each client holds one distinct PC. The player socket wire is unchanged: the client only changes how it prints frames.
 
-By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Stock:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]`, `That character is already taken. [SEAT_TAKEN]`, `That line is too long. [LINE_TOO_LONG]`, `You cannot afford grit. [CANT_AFFORD]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: a leading `npc:` or `player:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
+By default each frame is decoded and printed as readable text, one rendering per `PlayerMessage`, with no protocol JSON. A say is the speaker and the text: `GM: evening`, `You: hello` for the seated player, `Mira: the lamp is lit` for `npc:mira`. `queued` is `Your action is queued.` and does not print the queue id. `check` is `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.`. `perceive` prints `You are in <place>.`, `Here: <actors>`, and the `You know:`, `Notes:`, `Clocks:` (`Assassination debt: 2/6, paused`), and `Items:` sections, skipping empty ones. It does not print fact bodies, unknown mentions, habits, or ids. `resume` is `While you were away:` followed by one line per player digest row. A message row is its text, without the message id, and an owned clock row reads like a perceive clock (`Assassination debt: 2/6, paused`). A row the client cannot read is shown as it came. A refusal is a sentence and the token, such as `The table is full. [SESSION_FULL]`, `That character is already taken. [SEAT_TAKEN]`, `That line is too long. [LINE_TOO_LONG]`, `You cannot afford grit. [CANT_AFFORD]`, on stderr. A token without a sentence is `The table refused that. [<TOKEN>]`. Ids are shown as names: a leading `npc:` or `player:` is dropped, `_` becomes a space, and the first letter is capitalized. A line the client cannot decode is written to stderr unchanged.
 
 `spook play --raw` prints each protocol frame as one JSON line on stdout, as the socket sent it. A `refused` frame prints only its token on stderr.
 
@@ -393,7 +396,7 @@ The player line grammar does change. The check wire object does not. That split 
 | Feature `llm` | No such feature. |
 | Tokio task per shard inside the kernel | Kernel and tick cannot name the runtime. The scan stays. |
 | `rand::thread_rng` or a hand-rolled die | `rules::roll` is Blake2s. One copy, in `rules/roll.rs`. |
-| Markdown body used as a stock count or a hidden fact | `strip_body` and `lint`. |
+| Markdown body used as an item count or a hidden fact | `strip_body` and `lint`. |
 | A second snapshot beside `save.yaml` | `state/journal/base.yaml` is replay input written in the commit. It is never read as the live save. One emit path still writes `save.yaml`. |
 | Non-loopback bind, accounts, second GM, fourth player, held PC | `NOT_IN_SPEC` for a non-loopback bind. No account store. `SESSION_FULL` for a second GM or a fourth player. `SEAT_TAKEN` for a held PC. |
 | Hidden fact in a perceive body | `allows` plus lint. |

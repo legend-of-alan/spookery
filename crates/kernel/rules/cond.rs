@@ -32,9 +32,16 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
             let held = now
                 .actors
                 .get(&actor)
-                .map(|actor| actor.inventory().iter().filter(|item| *item == id).count())
+                .map(|actor| actor.count(id))
                 .unwrap_or(0);
-            Ok(held >= usize::try_from(*count).unwrap_or(usize::MAX))
+            Ok(held >= *count)
+        }
+        Cond::Wielding { who, id } => {
+            let actor = expr::actor_of(now, ctx, who)?;
+            Ok(now
+                .actors
+                .get(&actor)
+                .is_some_and(|actor| actor.wielded() == Some(id.as_str())))
         }
         Cond::Meter {
             who,

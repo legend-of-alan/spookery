@@ -49,7 +49,7 @@ pub struct PauseView {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlaceLive {
-    pub stock: BTreeMap<String, i64>,
+    pub items: BTreeMap<String, u32>,
     pub notes: Vec<String>,
     pub actors: Vec<String>,
 }
@@ -63,7 +63,9 @@ pub enum ActorLive {
         flags: Vec<String>,
         busy: bool,
         meters: BTreeMap<String, MeterLive>,
-        inventory: Vec<String>,
+        inventory: BTreeMap<String, u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wielded: Option<String>,
         known_facts: Vec<String>,
         tick: TickCounters,
     },
@@ -73,7 +75,9 @@ pub enum ActorLive {
         flags: Vec<String>,
         busy: bool,
         meters: BTreeMap<String, MeterLive>,
-        inventory: Vec<String>,
+        inventory: BTreeMap<String, u32>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        wielded: Option<String>,
         known_facts: Vec<String>,
     },
 }
@@ -161,17 +165,79 @@ impl ActorLive {
         }
     }
 
-    pub fn inventory(&self) -> &[String] {
+    pub fn inventory(&self) -> &BTreeMap<String, u32> {
         match self {
             ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
         }
     }
 
-    pub fn inventory_mut(&mut self) -> &mut Vec<String> {
+    pub fn inventory_mut(&mut self) -> &mut BTreeMap<String, u32> {
         match self {
             ActorLive::Npc { inventory, .. } | ActorLive::Pc { inventory, .. } => inventory,
         }
     }
+
+    pub fn count(&self, id: &str) -> u32 {
+        self.inventory().get(id).copied().unwrap_or(0)
+    }
+
+    pub fn wielded(&self) -> Option<&str> {
+        match self {
+            ActorLive::Npc { wielded, .. } | ActorLive::Pc { wielded, .. } => wielded.as_deref(),
+        }
+    }
+
+    pub fn wielded_mut(&mut self) -> &mut Option<String> {
+        match self {
+            ActorLive::Npc { wielded, .. } | ActorLive::Pc { wielded, .. } => wielded,
+        }
+    }
+
+    /// Drop the wielded id once the actor no longer holds it.
+    pub fn release_wielded(&mut self) -> bool {
+        let Some(id) = self.wielded().map(str::to_string) else {
+            return false;
+        };
+        if self.count(&id) > 0 {
+            return false;
+        }
+        *self.wielded_mut() = None;
+        true
+    }
+}
+
+/// Add `delta` to a count. A negative result is refused. A positive `max` caps the result.
+pub fn shift_count(
+    counts: &mut BTreeMap<String, u32>,
+    id: &str,
+    delta: i64,
+    max: Option<i64>,
+) -> Result<bool, crate::error::Reason> {
+    let current = i64::from(counts.get(id).copied().unwrap_or(0));
+    let mut next = current
+        .checked_add(delta)
+        .ok_or(crate::error::Reason::OutOfRange)?;
+    if next < 0 {
+        return Err(crate::error::Reason::OutOfRange);
+    }
+    if delta > 0 {
+        if let Some(cap) = max {
+            if cap < 0 {
+                return Err(crate::error::Reason::OutOfRange);
+            }
+            if next > cap {
+                next = cap;
+            }
+        }
+    }
+    let stored = u32::try_from(next).map_err(|_| crate::error::Reason::OutOfRange)?;
+    let changed = stored != u32::try_from(current).unwrap_or(0);
+    if stored == 0 {
+        counts.remove(id);
+    } else {
+        counts.insert(id.to_string(), stored);
+    }
+    Ok(changed)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

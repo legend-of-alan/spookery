@@ -32,6 +32,9 @@ mod replay;
 #[path = "steps/rules.rs"]
 mod rules;
 
+#[path = "steps/items.rs"]
+mod items;
+
 #[path = "steps/checks.rs"]
 mod checks;
 

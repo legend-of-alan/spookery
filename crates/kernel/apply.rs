@@ -4,7 +4,7 @@ use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, ViewerId};
 use crate::key::StateKey;
 use crate::meter::{self, MeterWrite};
-use crate::model::{MemoryLine, Message};
+use crate::model::{self, MemoryLine, Message};
 use crate::world::Draft;
 
 pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Result<(), Reason> {
@@ -20,7 +20,15 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
             key,
             write,
         } => apply_meter(draft, &actor_id, &key, write),
-        EffectClass::Stock { place, sku, delta } => apply_stock(draft, intent, &place, &sku, delta),
+        EffectClass::Item {
+            actor_id,
+            place,
+            id,
+            delta,
+            max,
+        } => apply_item(draft, actor_id, place, &id, delta, max),
+        EffectClass::Wield { actor_id, id } => apply_wield(draft, &actor_id, &id),
+        EffectClass::Unwield { actor_id } => apply_unwield(draft, &actor_id),
         EffectClass::Location { actor_id, from, to } => {
             apply_location(draft, intent, &actor_id, &from, &to)
         }
@@ -116,54 +124,117 @@ fn apply_meter(
     Ok(())
 }
 
-fn stock_next(current: i64, delta: i64) -> Result<i64, Reason> {
-    let next = current.checked_add(delta).ok_or(Reason::OutOfRange)?;
-    if next < 0 {
-        return Err(Reason::OutOfRange);
+fn apply_item(
+    draft: &mut Draft,
+    actor_id: Option<String>,
+    place: Option<String>,
+    id: &str,
+    delta: i64,
+    max: Option<i64>,
+) -> Result<(), Reason> {
+    match (actor_id, place) {
+        (Some(actor_id), None) => {
+            let changed = {
+                let inventory = draft
+                    .now_mut()
+                    .actors
+                    .get_mut(&actor_id)
+                    .ok_or(Reason::UnknownKey)?
+                    .inventory_mut();
+                model::shift_count(inventory, id, delta, max)?
+            };
+            if changed {
+                draft.track(StateKey::ActorItem(actor_id.clone(), id.to_string()))?;
+            }
+            let released = draft
+                .now_mut()
+                .actors
+                .get_mut(&actor_id)
+                .ok_or(Reason::UnknownKey)?
+                .release_wielded();
+            if released {
+                draft.track(StateKey::ActorWielded(actor_id))?;
+            }
+            Ok(())
+        }
+        (None, Some(place)) => {
+            let changed = {
+                let items = &mut draft
+                    .now_mut()
+                    .places
+                    .get_mut(&place)
+                    .ok_or(Reason::UnknownKey)?
+                    .items;
+                model::shift_count(items, id, delta, max)?
+            };
+            if changed {
+                draft.track(StateKey::PlaceItem(place, id.to_string()))?;
+            }
+            Ok(())
+        }
+        _ => Err(Reason::Schema),
     }
-    Ok(next)
 }
 
-fn apply_stock(
-    draft: &mut Draft,
-    intent: &Intent,
-    place: &str,
-    sku: &str,
-    delta: i64,
-) -> Result<(), Reason> {
-    let profile = draft
+fn apply_wield(draft: &mut Draft, actor_id: &str, item_id: &str) -> Result<(), Reason> {
+    let weapon = draft
         .canon()
-        .profile(&intent.actor_id)
-        .ok_or(Reason::NoProfile)?;
-    if !profile.range.iter().any(|item| item == place) {
-        return Err(Reason::OutOfRange);
+        .items
+        .get(item_id)
+        .is_some_and(|item| item.tags.iter().any(|tag| tag == "weapon"));
+    if !draft.canon().items.contains_key(item_id) {
+        return Err(Reason::UnknownKey);
     }
-    let rate = profile
-        .stock_rate
-        .get(place)
-        .and_then(|rates| rates.get(sku))
-        .copied()
-        .ok_or(Reason::OutOfRange)?;
-    if delta.abs() > rate.abs() {
-        return Err(Reason::OutOfRange);
+    if !weapon {
+        return Err(Reason::NotAWeapon);
+    }
+    let held = draft
+        .now()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .count(item_id);
+    if held == 0 {
+        return Err(Reason::MissingItem);
     }
     let current = draft
         .now()
-        .places
-        .get(place)
-        .and_then(|place_live| place_live.stock.get(sku))
-        .copied()
-        .unwrap_or(0);
-    let next = stock_next(current, delta)?;
-    if next != current {
-        draft.track(StateKey::PlaceStock(place.to_string(), sku.to_string()))?;
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .wielded()
+        .map(str::to_string);
+    if current.as_deref() == Some(item_id) {
+        return Ok(());
     }
-    let place_live = draft
+    draft.track(StateKey::ActorWielded(actor_id.to_string()))?;
+    *draft
         .now_mut()
-        .places
-        .get_mut(place)
-        .ok_or(Reason::OutOfRange)?;
-    place_live.stock.insert(sku.to_string(), next);
+        .actors
+        .get_mut(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .wielded_mut() = Some(item_id.to_string());
+    Ok(())
+}
+
+fn apply_unwield(draft: &mut Draft, actor_id: &str) -> Result<(), Reason> {
+    let set = draft
+        .now()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .wielded()
+        .is_some();
+    if !set {
+        return Ok(());
+    }
+    draft.track(StateKey::ActorWielded(actor_id.to_string()))?;
+    *draft
+        .now_mut()
+        .actors
+        .get_mut(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .wielded_mut() = None;
     Ok(())
 }
 

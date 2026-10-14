@@ -471,8 +471,8 @@ fn strip_player(view: &Value) -> Value {
                 .unwrap_or(Value::Array(Vec::new())),
         ),
         (
-            "stocks",
-            view.get("stocks")
+            "items",
+            view.get("items")
                 .cloned()
                 .unwrap_or(Value::Array(Vec::new())),
         ),
@@ -524,8 +524,8 @@ fn strip_npc(view: &Value) -> Value {
                 .unwrap_or(Value::Array(Vec::new())),
         ),
         (
-            "stocks",
-            view.get("stocks")
+            "items",
+            view.get("items")
                 .cloned()
                 .unwrap_or(Value::Array(Vec::new())),
         ),
@@ -804,7 +804,7 @@ mod tests {
                     "messages": [{"id": "m", "text": "MESSAGE-SENTINEL"}],
                     "unknown_mentioned": ["UNKNOWN-SENTINEL"],
                     "clocks": [],
-                    "stocks": [],
+                    "items": [],
                     "habits": []
                 }));
             }
@@ -817,7 +817,7 @@ mod tests {
                     "messages": [],
                     "unknown_mentioned": [],
                     "clocks": [],
-                    "stocks": [],
+                    "items": [],
                     "habits": []
                 }));
             }
@@ -946,7 +946,7 @@ mod tests {
                 "messages": [],
                 "unknown_mentioned": [],
                 "clocks": [],
-                "stocks": [],
+                "items": [],
                 "habits": []
             }))
         });

@@ -205,13 +205,13 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     when:
       verb: overreach
     do:
-      - stock:
-          place: docks_shop
-          sku: lamp_oil
+      - item:
+          who: place:docks_shop
+          id: lamp_oil
           add: {add}
-      - stock:
-          place: docks_shop
-          sku: lamp_oil
+      - item:
+          who: place:docks_shop
+          id: lamp_oil
           add: -{remove}
 "
         ),
@@ -235,9 +235,9 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
       check: grit
       target: 0
     do:
-      - stock:
-          place: docks_shop
-          sku: lamp_oil
+      - item:
+          who: place:docks_shop
+          id: lamp_oil
           add: -{remove}
 "
         ),
@@ -264,8 +264,9 @@ fn mira_plays(world: &mut World, move_name: String) {
     let oil = now
         .places
         .get("docks_shop")
-        .and_then(|place| place.stock.get("lamp_oil"))
+        .and_then(|place| place.items.get("lamp_oil"))
         .copied()
+        .map(i64::from)
         .unwrap_or(-1);
     world.now_bytes = oil.to_string().into_bytes();
     world.player_added = id;
@@ -419,13 +420,13 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     when:
       verb: two_stock
     do:
-      - stock:
-          place: docks_shop
-          sku: lamp_oil
+      - item:
+          who: place:docks_shop
+          id: lamp_oil
           add: 1
-      - stock:
-          place: docks_shop
-          sku: lamp_oil
+      - item:
+          who: place:docks_shop
+          id: lamp_oil
           add: 1
 ",
     );
@@ -445,8 +446,9 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
         "{}",
         now.places
             .get("docks_shop")
-            .and_then(|place| place.stock.get("lamp_oil"))
+            .and_then(|place| place.items.get("lamp_oil"))
             .copied()
+            .map(i64::from)
             .unwrap_or(-1)
     )
     .into_bytes();

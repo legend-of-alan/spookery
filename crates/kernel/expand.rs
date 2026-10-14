@@ -7,20 +7,29 @@ use crate::meter::{self, MeterWrite};
 use crate::model::Now;
 use crate::rules::expr::{self, Ctx};
 use crate::rules::gate;
-use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, Who};
+use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Who};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
-    expand_outcome(canon, now, intent, None)
+    expand_outcome(canon, now, intent, None, ignore_resist)
+}
+
+/// A resist roll that does not shrug the effect off. Habit preview uses this.
+pub fn ignore_resist(_actor: &str, _check: &str, _target: i64) -> Result<Outcome, Reason> {
+    Ok(Outcome::Miss)
 }
 
 /// `outcome` selects `success`, `partial`, or `failure`. `None` means the rule did not roll.
-/// `do` is included either way.
-pub fn expand_outcome(
+/// `do` is included either way. `resist_roll` returns the subject's band. Success shrugs the effect off.
+pub fn expand_outcome<F>(
     canon: &Canon,
     now: &Now,
     intent: &Intent,
     outcome: Option<Outcome>,
-) -> Result<Vec<Effect>, Reason> {
+    mut resist_roll: F,
+) -> Result<Vec<Effect>, Reason>
+where
+    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
+{
     let rule = gate::resolve(canon, now, intent)?;
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let mut selected = Vec::new();
@@ -32,21 +41,77 @@ pub fn expand_outcome(
         None => {}
     }
     let ctx = Ctx { intent };
+    let expand = ExpandCtx {
+        canon,
+        now,
+        ctx: &ctx,
+        viewer: &viewer,
+    };
     let mut effects = Vec::with_capacity(selected.len());
+    let mut last_resist = None;
     for template in selected {
-        expand_template(canon, now, &ctx, &viewer, template, &mut effects)?;
+        expand_template(
+            &expand,
+            template,
+            &mut effects,
+            &mut last_resist,
+            &mut resist_roll,
+        )?;
     }
     Ok(effects)
 }
 
-fn expand_template(
-    canon: &Canon,
-    now: &Now,
-    ctx: &Ctx<'_>,
-    viewer: &ViewerId,
+struct ExpandCtx<'a> {
+    canon: &'a Canon,
+    now: &'a Now,
+    ctx: &'a Ctx<'a>,
+    viewer: &'a ViewerId,
+}
+
+fn expand_template<F>(
+    expand: &ExpandCtx<'_>,
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
-) -> Result<(), Reason> {
+    last_resist: &mut Option<Outcome>,
+    resist_roll: &mut F,
+) -> Result<(), Reason>
+where
+    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
+{
+    let canon = expand.canon;
+    let now = expand.now;
+    let ctx = expand.ctx;
+    let viewer = expand.viewer;
+    if let Some(spec) = template.resist() {
+        let shrugged = match spec {
+            ResistSpec::Same => match last_resist {
+                Some(Outcome::Success) => true,
+                Some(_) => false,
+                None => return Err(Reason::Schema),
+            },
+            ResistSpec::Roll {
+                who,
+                check,
+                target,
+                resisted,
+            } => {
+                let actor = expr::actor_of(now, ctx, who)?;
+                let number = expr::eval(canon, now, ctx, target)?;
+                let band = resist_roll(&actor, check, number)?;
+                *last_resist = Some(band);
+                if band == Outcome::Success {
+                    for alt in resisted {
+                        expand_template(expand, alt, effects, last_resist, resist_roll)?;
+                    }
+                    return Ok(());
+                }
+                false
+            }
+        };
+        if shrugged {
+            return Ok(());
+        }
+    }
     let intent = ctx.intent;
     match template {
         EffectTemplate::Flag {
@@ -89,16 +154,37 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Stock { place, sku, add } => {
+        EffectTemplate::Item {
+            who, id, add, max, ..
+        } => {
+            let item_id = named_id(intent, id)?;
+            let (actor_id, place) = holder(now, ctx, who)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Stock {
-                    place: place.clone(),
-                    sku: sku.clone(),
+                EffectClass::Item {
+                    actor_id,
+                    place,
+                    id: item_id,
                     delta: *add,
+                    max: *max,
                 },
             ));
+        }
+        EffectTemplate::Wield { who, id } => {
+            let actor_id = expr::actor_of(now, ctx, who)?;
+            effects.push(wrap(
+                viewer,
+                &intent.id,
+                EffectClass::Wield {
+                    actor_id,
+                    id: named_id(intent, id)?,
+                },
+            ));
+        }
+        EffectTemplate::Unwield { who } => {
+            let actor_id = expr::actor_of(now, ctx, who)?;
+            effects.push(wrap(viewer, &intent.id, EffectClass::Unwield { actor_id }));
         }
         EffectTemplate::Clock { id, add, .. } => {
             effects.push(wrap(
@@ -133,7 +219,7 @@ fn expand_template(
             to, text, fact_ids, ..
         } => {
             let to = match to {
-                NarrateTo::Here => vec![expr::actor_of(now, ctx, &Who::Here)?],
+                NarrateTo::Here => actors_here(now, ctx)?,
                 NarrateTo::Self_ => vec![intent.actor_id.clone()],
                 NarrateTo::Actors(ids) => ids.clone(),
             };
@@ -164,7 +250,7 @@ fn expand_template(
                 },
             ));
         }
-        EffectTemplate::Item { .. } | EffectTemplate::Reveal { .. } => {
+        EffectTemplate::Reveal { .. } => {
             return Err(Reason::NotInSpec);
         }
     }
@@ -195,6 +281,38 @@ fn meter_write(
     Ok(MeterWrite::Offset(
         desired.checked_sub(current).ok_or(Reason::OutOfRange)?,
     ))
+}
+
+fn named_id(intent: &Intent, id: &str) -> Result<String, Reason> {
+    if id == "target" {
+        return match &intent.target {
+            Target::Actor(token) | Target::Place(token) => Ok(token.clone()),
+            _ => Err(Reason::Schema),
+        };
+    }
+    Ok(id.to_string())
+}
+
+/// An item holder. `place:` and `here` are the place. Anyone else is an actor.
+fn holder(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<(Option<String>, Option<String>), Reason> {
+    match who {
+        Who::Place(id) => Ok((None, Some(id.clone()))),
+        Who::Here => Ok((None, Some(expr::actor_of(now, ctx, &Who::Here)?))),
+        Who::World => Err(Reason::Schema),
+        other => Ok((Some(expr::actor_of(now, ctx, other)?), None)),
+    }
+}
+
+fn actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> {
+    let place = expr::actor_of(now, ctx, &Who::Here)?;
+    let mut ids: Vec<String> = now
+        .actors
+        .iter()
+        .filter(|(_, actor)| actor.place() == place)
+        .map(|(id, _)| id.clone())
+        .collect();
+    ids.sort();
+    Ok(ids)
 }
 
 fn wrap(viewer: &ViewerId, intent_id: &str, class: EffectClass) -> Effect {

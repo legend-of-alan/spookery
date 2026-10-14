@@ -1,4 +1,4 @@
-use cucumber::when;
+use cucumber::{then, when};
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -88,10 +88,10 @@ fn stamp_pack_rev(pack: &Path) {
     fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn lamp_oil(now: &Now) -> i64 {
+fn lamp_oil(now: &Now) -> u32 {
     now.places
         .get("docks_shop")
-        .and_then(|place| place.stock.get("lamp_oil"))
+        .and_then(|place| place.items.get("lamp_oil"))
         .copied()
         .unwrap_or_else(|| panic!("lamp_oil missing"))
 }
@@ -212,6 +212,28 @@ fn morning_restock() {
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
     assert_eq!(now.messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
+}
+
+fn capped_restock() -> u32 {
+    let pack = temp_pack("capped");
+    {
+        let shard = open(&pack);
+        let mut now = shard.now().clone();
+        drop(shard);
+        now.world_time = 600;
+        now.messages.push(door_message());
+        *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
+        now.places
+            .get_mut("docks_shop")
+            .unwrap()
+            .items
+            .insert("lamp_oil".to_string(), 6);
+        save_now(&pack, &now);
+    }
+    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    let oil = lamp_oil(&now_of(&pack));
+    let _ = fs::remove_dir_all(&pack);
+    oil
 }
 
 fn off_hours_hold() {
@@ -391,7 +413,7 @@ Rowan.
     places.insert(
         "gate".to_string(),
         PlaceLive {
-            stock: BTreeMap::new(),
+            items: BTreeMap::new(),
             notes: Vec::new(),
             actors: vec!["pc_rowan".to_string()],
         },
@@ -404,7 +426,8 @@ Rowan.
             flags: Vec::new(),
             busy: false,
             meters: meters(1),
-            inventory: Vec::new(),
+            inventory: BTreeMap::new(),
+            wielded: None,
             known_facts: Vec::new(),
         },
     );
@@ -496,7 +519,7 @@ fn mira_intent() -> Intent {
         actor_id: "mira".to_string(),
         actor_kind: ActorKind::Npc,
         source: Source::Kernel,
-        move_name: "stock".to_string(),
+        move_name: "restock_lamp_oil".to_string(),
         target: Target::Place("docks_shop".to_string()),
         args: IntentArgs::default(),
         rationale_code: String::new(),
@@ -505,10 +528,12 @@ fn mira_intent() -> Intent {
 
 fn stock_effect(delta: i64) -> Effect {
     Effect {
-        class: EffectClass::Stock {
-            place: "docks_shop".to_string(),
-            sku: "lamp_oil".to_string(),
+        class: EffectClass::Item {
+            actor_id: None,
+            place: Some("docks_shop".to_string()),
+            id: "lamp_oil".to_string(),
             delta,
+            max: None,
         },
         as_viewer: ViewerId::Npc("mira".to_string()),
         intent_id: "drop-txn".to_string(),
@@ -523,9 +548,10 @@ fn an_open_transaction_writes_nothing() {
     let state_rev = shard.now().state_rev;
     let oil = lamp_oil(shard.now());
     let delta = if oil > 0 { -1 } else { 1 };
+    let expected = if oil > 0 { oil - 1 } else { oil + 1 };
     let mut draft = Draft::begin(&shard);
     apply_effect(&mut draft, &mira_intent(), stock_effect(delta)).unwrap();
-    assert_eq!(lamp_oil(draft.now()), oil + delta);
+    assert_eq!(lamp_oil(draft.now()), expected);
     drop(draft);
     drop(shard);
     assert!(!dropped.join("state/.txn").exists());
@@ -568,7 +594,7 @@ fn the_same_revision_restores_the_previous_save() {
         .places
         .get_mut("docks_shop")
         .unwrap()
-        .stock
+        .items
         .insert("lamp_oil".to_string(), 999);
     fs::write(&now_path, emit_save(&dirty).unwrap()).unwrap();
     let txn = same.join("state/.txn");
@@ -599,7 +625,7 @@ fn the_next_revision_keeps_the_new_save() {
     live.places
         .get_mut("docks_shop")
         .unwrap()
-        .stock
+        .items
         .insert("lamp_oil".to_string(), kept_oil);
     fs::write(next.join("state/save.yaml"), emit_save(&live).unwrap()).unwrap();
     let txn = next.join("state/.txn");
@@ -740,7 +766,8 @@ rules:
                 flags: Vec::new(),
                 busy: false,
                 meters: meters(1),
-                inventory: Vec::new(),
+                inventory: BTreeMap::new(),
+                wielded: None,
                 known_facts: Vec::new(),
                 tick: TickCounters {
                     last_act_tick: 0,
@@ -760,7 +787,7 @@ rules:
     places.insert(
         "yard".to_string(),
         PlaceLive {
-            stock: BTreeMap::new(),
+            items: BTreeMap::new(),
             notes: Vec::new(),
             actors: Vec::new(),
         },
@@ -1555,7 +1582,8 @@ Nell keeps a guard up.
             flags: Vec::new(),
             busy: false,
             meters: meters(100),
-            inventory: Vec::new(),
+            inventory: BTreeMap::new(),
+            wielded: None,
             known_facts: Vec::new(),
         },
     );
@@ -1636,12 +1664,19 @@ fn a_held_knife_still_runs_the_opposed_row() {
         "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
     );
     fs::write(held.join("rules/verbs.yaml"), moves).unwrap();
+    let knife = held.join("world/items/knife.md");
+    fs::create_dir_all(knife.parent().unwrap()).unwrap();
+    fs::write(
+        &knife,
+        "---\nschema: item\nid: knife\nname: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
+    )
+    .unwrap();
     insert_nell(&held);
     let now_path = held.join("state/save.yaml");
     let text = fs::read_to_string(&now_path).unwrap();
     let next = text.replacen(
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: []\n",
-        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      - knife\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n",
+        "  pc_rowan:\n    kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory:\n      knife: 1\n",
         1,
     );
     assert_ne!(next, text);
@@ -1734,6 +1769,16 @@ fn the_evening_tick_runs(_world: &mut World) {
 #[when(expr = "the morning tick runs with the note already left")]
 fn the_morning_tick_runs(_world: &mut World) {
     morning_restock();
+}
+
+#[when(expr = "the morning tick runs and the shelf already holds 6 lamp oil")]
+fn the_morning_tick_caps_the_shelf(world: &mut World) {
+    world.scratch = capped_restock().to_string();
+}
+
+#[then(expr = "the shop holds 8 lamp oil")]
+fn the_shop_holds_8_lamp_oil(world: &mut World) {
+    assert_eq!(world.scratch, "8");
 }
 
 #[when(expr = "an off-hours tick runs with the note already left")]

@@ -39,8 +39,61 @@ rules:
       - has_item:
           who: self
           id: tonic
+    cost:
+      items:
+        tonic: 1
     do:
       - meter:
           who: self
           key: hp
           add: 4
+
+  - id: take
+    when:
+      verb: take
+      target: item
+    do:
+      - item:
+          who: here
+          id: target
+          add: -1
+      - item:
+          who: self
+          id: target
+          add: 1
+
+  - id: drop
+    when:
+      verb: drop
+      target: item
+    do:
+      - item:
+          who: self
+          id: target
+          add: -1
+      - item:
+          who: here
+          id: target
+          add: 1
+
+  - id: use
+    when:
+      verb: use
+      target: item
+    do: []
+
+  - id: wield
+    when:
+      verb: wield
+      target: item
+    do:
+      - wield:
+          who: self
+          id: target
+
+  - id: unwield
+    when:
+      verb: unwield
+    do:
+      - unwield:
+          who: self

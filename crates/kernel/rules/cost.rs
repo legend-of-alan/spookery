@@ -3,7 +3,7 @@ use crate::diagnostic::{coded, Diagnostic};
 use crate::error::Reason;
 use crate::key::StateKey;
 use crate::meter::{self, MeterWrite};
-use crate::model::Now;
+use crate::model::{self, Now};
 use crate::rules::rule::Cost;
 use crate::world::Draft;
 
@@ -37,9 +37,9 @@ pub fn can_pay(canon: &Canon, now: &Now, who: &str, cost: &Cost) -> Result<(), G
         let held = now
             .actors
             .get(who)
-            .map(|actor| actor.inventory().iter().filter(|item| *item == id).count())
+            .map(|actor| actor.count(id))
             .unwrap_or(0);
-        if held < usize::try_from(*count).unwrap_or(usize::MAX) {
+        if held < *count {
             return Err(Gap { what: id.clone() });
         }
     }
@@ -70,21 +70,29 @@ pub fn pay(draft: &mut Draft, who: &str, cost: &Cost) -> Result<(), Reason> {
             .get_mut(key)
             .ok_or(Reason::UnknownKey)? = live;
     }
-    if !cost.items.is_empty() {
-        let inventory = draft
-            .now_mut()
-            .actors
-            .get_mut(who)
-            .ok_or(Reason::UnknownKey)?
-            .inventory_mut();
-        for (id, count) in &cost.items {
-            for _ in 0..*count {
-                let Some(index) = inventory.iter().position(|item| item == id) else {
-                    return Err(Reason::CantAfford);
-                };
-                inventory.remove(index);
-            }
+    for (id, count) in &cost.items {
+        let changed = {
+            let inventory = draft
+                .now_mut()
+                .actors
+                .get_mut(who)
+                .ok_or(Reason::UnknownKey)?
+                .inventory_mut();
+            model::shift_count(inventory, id, -i64::from(*count), None)
+                .map_err(|_| Reason::CantAfford)?
+        };
+        if changed {
+            draft.track(StateKey::ActorItem(who.to_string(), id.clone()))?;
         }
+    }
+    let released = draft
+        .now_mut()
+        .actors
+        .get_mut(who)
+        .ok_or(Reason::UnknownKey)?
+        .release_wielded();
+    if released {
+        draft.track(StateKey::ActorWielded(who.to_string()))?;
     }
     Ok(())
 }
@@ -93,7 +101,7 @@ pub fn duration(cost: &Cost) -> u64 {
     cost.minutes
 }
 
-/// `time` and `resist` load and do not change the world on this pass.
+/// `time` loads and does not change the world on this pass.
 pub(crate) fn unapplied(canon: &Canon) -> Vec<Diagnostic> {
     let mut found = Vec::new();
     for rule in canon.rules.iter() {
@@ -107,26 +115,6 @@ pub(crate) fn unapplied(canon: &Canon) -> Vec<Diagnostic> {
                 )
                 .with_path(format!("rules[{}].cost.time", rule.index)),
             );
-        }
-        for (list, effects) in [
-            ("do", rule.do_.as_slice()),
-            ("success", rule.success.as_slice()),
-            ("partial", rule.partial.as_slice()),
-            ("failure", rule.failure.as_slice()),
-        ] {
-            for (index, effect) in effects.iter().enumerate() {
-                if effect.resist().is_some() {
-                    found.push(
-                        coded(
-                            &rule.file,
-                            Reason::NotInSpec,
-                            "resist is not applied, so this effect still lands",
-                            "resist loads and does not change the effect on this pass",
-                        )
-                        .with_path(format!("rules[{}].{list}[{index}].resist", rule.index)),
-                    );
-                }
-            }
         }
     }
     found

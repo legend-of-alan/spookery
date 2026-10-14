@@ -1,6 +1,6 @@
 schema: now
 shard_id: docks-001
-pack_rev: blake2s:afdd9809676aedee99954a5a30f3e43ed93f5ece4fe907e99f8b9d05b2fc2e0f
+pack_rev: blake2s:1186db9dd5db16cd4b6a8ff48b0b3b743389daf00debea9017783b1c59003de5
 rules_rev: 4
 state_rev: 0
 tick_index: 0
@@ -13,21 +13,21 @@ pause:
   named_plot_clocks: paused
 places:
   docks_shop:
-    stock:
+    items:
       lamp_oil: 4
     notes: []
     actors:
       - aldric
       - pc_rowan
   docks_street:
-    stock: {}
+    items: {}
     notes: []
     actors:
       - bram
       - pc_harbormouse
       - pc_wren
   mira_rooms:
-    stock: {}
+    items: {}
     notes: []
     actors:
       - mira
@@ -44,7 +44,7 @@ actors:
       rest:
         base: 3
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
     tick:
       last_act_tick: 0
@@ -62,7 +62,7 @@ actors:
       rest:
         base: 3
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
     tick:
       last_act_tick: 0
@@ -80,7 +80,7 @@ actors:
       rest:
         base: 3
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts:
       - fact_ledger_short
     tick:
@@ -99,7 +99,7 @@ actors:
       rest:
         base: 3
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
   pc_rowan:
     kind: pc
@@ -113,7 +113,7 @@ actors:
       rest:
         base: 3
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
   pc_wren:
     kind: pc
@@ -127,7 +127,7 @@ actors:
       rest:
         base: 3
         offset: 0
-    inventory: []
+    inventory: {}
     known_facts: []
 clocks:
   assassination_debt:

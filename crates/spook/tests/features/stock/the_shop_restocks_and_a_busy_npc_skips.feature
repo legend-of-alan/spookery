@@ -1,4 +1,4 @@
-Feature: Habits keep the shop and leave the door note
+Feature: Habits keep the shop's items and leave the door note
 
   Scenario: The evening tick leaves the door note and the oil
     When the evening tick runs with Rowan away
@@ -23,3 +23,7 @@ Feature: Habits keep the shop and leave the door note
 
   Scenario: Fifty NPCs stay inside the tick budget
     When fifty NPCs share one tick
+
+  Scenario: Mira's restock adds lamp_oil to docks_shop's items, capped by max
+    When the morning tick runs and the shelf already holds 6 lamp oil
+    Then the shop holds 8 lamp oil

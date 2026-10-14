@@ -145,7 +145,12 @@ fn verb_target(world: &World, actor_id: &str, verb: &str, rest: &str) -> Option<
     let place = world.now().actors.get(actor_id)?.place();
     let (token, _) = input::split_token(rest);
     let hint = (!token.is_empty()).then_some(token);
-    let rule = verb_for(world.canon(), Some(place), verb, hint)?;
+    let wielded = world
+        .now()
+        .actors
+        .get(actor_id)
+        .and_then(|actor| actor.wielded());
+    let rule = verb_for(world.canon(), Some(place), verb, hint, wielded)?;
     match &rule.when {
         When::Verb { target, .. } => Some(*target),
         _ => None,

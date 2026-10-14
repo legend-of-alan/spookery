@@ -103,6 +103,7 @@ pub struct CondYaml {
     pub hour: Option<HourYaml>,
     pub humans: Option<HumansYaml>,
     pub note_exists: Option<String>,
+    pub wielding: Option<WieldingYaml>,
     pub all: Option<Vec<CondYaml>>,
     pub any: Option<Vec<CondYaml>>,
     pub not: Option<Box<CondYaml>>,
@@ -115,6 +116,13 @@ pub struct HasItemYaml {
     pub id: String,
     #[serde(default = "one_count")]
     pub count: u32,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WieldingYaml {
+    pub who: String,
+    pub id: String,
 }
 
 fn one_count() -> u32 {
@@ -236,7 +244,6 @@ pub struct MeterWhoYaml {
 #[serde(deny_unknown_fields)]
 pub struct EffectYaml {
     pub meter: Option<MeterEffectYaml>,
-    pub stock: Option<StockYaml>,
     pub flag: Option<FlagEffectYaml>,
     pub location: Option<LocationYaml>,
     pub note: Option<NoteYaml>,
@@ -245,6 +252,8 @@ pub struct EffectYaml {
     pub memory: Option<MemoryYaml>,
     pub item: Option<ItemEffectYaml>,
     pub reveal: Option<RevealYaml>,
+    pub wield: Option<WieldYaml>,
+    pub unwield: Option<UnwieldYaml>,
 }
 
 #[derive(Deserialize)]
@@ -256,14 +265,6 @@ pub struct MeterEffectYaml {
     pub set: Option<i64>,
     #[serde(default)]
     pub resist: Option<ResistYaml>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StockYaml {
-    pub place: String,
-    pub sku: String,
-    pub add: i64,
 }
 
 #[derive(Deserialize)]
@@ -348,6 +349,19 @@ pub struct ItemEffectYaml {
 pub struct RevealYaml {
     pub who: String,
     pub fact: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WieldYaml {
+    pub who: String,
+    pub id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UnwieldYaml {
+    pub who: String,
 }
 
 #[derive(Deserialize)]
@@ -708,6 +722,13 @@ fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
         found += 1;
         cond = Some(Cond::NoteExists(id.clone()));
     }
+    if let Some(wielding) = &yaml.wielding {
+        found += 1;
+        cond = Some(Cond::Wielding {
+            who: who_of(&wielding.who)?,
+            id: wielding.id.clone(),
+        });
+    }
     if let Some(all) = &yaml.all {
         found += 1;
         cond = Some(Cond::All(
@@ -817,14 +838,6 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, String> {
             resist: resist_of(meter.resist.as_ref())?,
         });
     }
-    if let Some(stock) = &yaml.stock {
-        found += 1;
-        effect = Some(EffectTemplate::Stock {
-            place: stock.place.clone(),
-            sku: stock.sku.clone(),
-            add: stock.add,
-        });
-    }
     if let Some(flag) = &yaml.flag {
         found += 1;
         if flag.key == "busy" {
@@ -911,6 +924,19 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, String> {
         effect = Some(EffectTemplate::Reveal {
             who: who_of(&reveal.who)?,
             fact: reveal.fact.clone(),
+        });
+    }
+    if let Some(wield) = &yaml.wield {
+        found += 1;
+        effect = Some(EffectTemplate::Wield {
+            who: who_of(&wield.who)?,
+            id: wield.id.clone(),
+        });
+    }
+    if let Some(unwield) = &yaml.unwield {
+        found += 1;
+        effect = Some(EffectTemplate::Unwield {
+            who: who_of(&unwield.who)?,
         });
     }
     if found == 1 {

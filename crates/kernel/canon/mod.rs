@@ -35,7 +35,15 @@ pub struct Canon {
     pub rules: RuleTable,
     pub checks: BTreeMap<String, CheckDef>,
     pub meters: BTreeMap<String, MeterDef>,
+    pub items: BTreeMap<String, ItemCanon>,
     pub budget: Budget,
+}
+
+#[derive(Clone, Debug)]
+pub struct ItemCanon {
+    pub name: String,
+    pub tags: Vec<String>,
+    pub body: String,
 }
 
 #[derive(Clone, Debug)]
@@ -69,7 +77,6 @@ pub struct CastCanon {
 pub struct TickProfile {
     pub eligible: bool,
     pub range: Vec<String>,
-    pub stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
     pub flags: Vec<String>,
 }
 
@@ -129,6 +136,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     };
     let mut places = BTreeMap::new();
     let mut facts = BTreeMap::new();
+    let mut items = BTreeMap::new();
     let mut loaded: Vec<crate::rules::rule::Rule> = Vec::new();
     let mut place_files = Vec::new();
     if let Err(reason) = collect_files(&root.join("world"), root, &mut place_files) {
@@ -154,10 +162,37 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         };
         if rel.starts_with("world/items/") {
             match load_item(&rel, yaml) {
-                Ok(item) => match schema::compile(&rel, item.rules, &Owner::Item(item.id)) {
-                    Ok(rules) => loaded.extend(rules),
-                    Err(more) => diags.extend(more),
-                },
+                Ok(item) => {
+                    if item.id.is_empty() {
+                        diags.push(schema_error(
+                            &rel,
+                            "an item id is empty",
+                            "set id to a short name",
+                        ));
+                        continue;
+                    }
+                    if items.contains_key(&item.id) {
+                        diags.push(schema_error(
+                            &rel,
+                            &format!("item '{}' is already defined", item.id),
+                            "keep one item with this id",
+                        ));
+                        continue;
+                    }
+                    let id = item.id.clone();
+                    match schema::compile(&rel, item.rules, &Owner::Item(id.clone())) {
+                        Ok(rules) => loaded.extend(rules),
+                        Err(more) => diags.extend(more),
+                    }
+                    items.insert(
+                        id,
+                        ItemCanon {
+                            name: item.name,
+                            tags: item.tags,
+                            body: body.trim().to_string(),
+                        },
+                    );
+                }
                 Err(more) => diags.extend(more),
             }
             continue;
@@ -436,6 +471,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     if let (Some(meters), Some(checks)) = (&meters, &checks) {
         diags.extend(unknown_meters(meters, checks, &rules));
     }
+    diags.extend(unknown_rule_items(&rules, &items));
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -452,6 +488,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         rules,
         checks: checks.expect("checks loaded"),
         meters: meters.expect("meters loaded"),
+        items,
         budget: budget.expect("tick loaded"),
     })
 }
@@ -533,7 +570,6 @@ fn validate_tick(file: &str, text: &str, tick: TickFile) -> Result<TickProfile, 
     Ok(TickProfile {
         eligible: tick.eligible,
         range: tick.range,
-        stock_rate: tick.stock_rate,
         flags: tick.flags,
     })
 }
@@ -698,13 +734,11 @@ pub fn bind_meters(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> 
     Ok(())
 }
 
-/// An empty id or a duplicate is `SCHEMA`. This does not fill and does not
-/// look at meter pairs.
+/// An empty id or a count of zero is `SCHEMA`.
 pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &now.actors {
-        let mut seen = BTreeSet::new();
-        for item in actor.inventory() {
+        for (item, count) in actor.inventory() {
             if item.is_empty() {
                 diags.push(
                     schema_error(
@@ -714,14 +748,29 @@ pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
                     )
                     .with_path(format!("actors.{id}.inventory")),
                 );
-            } else if !seen.insert(item.as_str()) {
+            }
+            if *count == 0 {
                 diags.push(
                     schema_error(
                         "state/save.yaml",
-                        &format!("actor '{id}' lists item '{item}' twice"),
-                        "keep one of that item",
+                        &format!("actor '{id}' lists item '{item}' with a count of 0"),
+                        "omit an item the actor does not hold",
                     )
-                    .with_path(format!("actors.{id}.inventory")),
+                    .with_path(format!("actors.{id}.inventory.{item}")),
+                );
+            }
+        }
+    }
+    for (place, live) in &now.places {
+        for (item, count) in &live.items {
+            if *count == 0 {
+                diags.push(
+                    schema_error(
+                        "state/save.yaml",
+                        &format!("place '{place}' lists item '{item}' with a count of 0"),
+                        "omit an item that is not there",
+                    )
+                    .with_path(format!("places.{place}.items.{item}")),
                 );
             }
         }
@@ -730,6 +779,160 @@ pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
         Ok(())
     } else {
         Err(diags)
+    }
+}
+
+/// Item ids in the save that have no `world/items/<id>.md`.
+pub fn unknown_save_items(canon: &Canon, now: &Now) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for (actor_id, actor) in &now.actors {
+        for item in actor.inventory().keys() {
+            if !canon.items.contains_key(item) {
+                diags.push(unknown_item(
+                    "state/save.yaml",
+                    item,
+                    &format!("actors.{actor_id}.inventory.{item}"),
+                ));
+            }
+        }
+        if let Some(wielded) = actor.wielded() {
+            if !canon.items.contains_key(wielded) {
+                diags.push(unknown_item(
+                    "state/save.yaml",
+                    wielded,
+                    &format!("actors.{actor_id}.wielded"),
+                ));
+            } else if !canon
+                .items
+                .get(wielded)
+                .is_some_and(|item| item.tags.iter().any(|tag| tag == "weapon"))
+            {
+                diags.push(
+                    schema_error(
+                        "state/save.yaml",
+                        &format!("actor '{actor_id}' wields '{wielded}', which is not a weapon"),
+                        "wield an item tagged weapon, or leave the slot empty",
+                    )
+                    .with_path(format!("actors.{actor_id}.wielded")),
+                );
+            } else if actor.count(wielded) == 0 {
+                diags.push(
+                    schema_error(
+                        "state/save.yaml",
+                        &format!("actor '{actor_id}' wields '{wielded}' without holding it"),
+                        "put the item in inventory or clear wielded",
+                    )
+                    .with_path(format!("actors.{actor_id}.wielded")),
+                );
+            }
+        }
+    }
+    for (place, live) in &now.places {
+        for item in live.items.keys() {
+            if !canon.items.contains_key(item) {
+                diags.push(unknown_item(
+                    "state/save.yaml",
+                    item,
+                    &format!("places.{place}.items.{item}"),
+                ));
+            }
+        }
+    }
+    diags
+}
+
+fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
+    schema_error(
+        file,
+        &format!("unknown item '{id}'"),
+        &format!("add world/items/{id}.md"),
+    )
+    .with_path(path)
+}
+
+fn unknown_rule_items(rules: &RuleTable, items: &BTreeMap<String, ItemCanon>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for rule in rules.iter() {
+        let mut ids = Vec::new();
+        for cond in &rule.if_ {
+            cond_items(cond, &mut ids);
+        }
+        if let Some(cost) = &rule.cost {
+            for (id, _) in &cost.items {
+                if id != "target" {
+                    ids.push(id.clone());
+                }
+            }
+        }
+        for effect in rule
+            .do_
+            .iter()
+            .chain(rule.success.iter())
+            .chain(rule.partial.iter())
+            .chain(rule.failure.iter())
+        {
+            effect_items(effect, &mut ids);
+        }
+        ids.sort();
+        ids.dedup();
+        for id in ids {
+            if items.contains_key(&id) {
+                continue;
+            }
+            diags.push(unknown_item(
+                &rule.file,
+                &id,
+                &format!("rules[{}]", rule.index),
+            ));
+        }
+    }
+    diags
+}
+
+fn cond_items(cond: &crate::rules::rule::Cond, ids: &mut Vec<String>) {
+    use crate::rules::rule::Cond;
+    match cond {
+        Cond::HasItem { id, .. } | Cond::Wielding { id, .. } => {
+            if id != "target" {
+                ids.push(id.clone());
+            }
+        }
+        Cond::All(inner) | Cond::Any(inner) => {
+            for cond in inner {
+                cond_items(cond, ids);
+            }
+        }
+        Cond::Not(inner) => cond_items(inner, ids),
+        _ => {}
+    }
+}
+
+fn effect_items(effect: &EffectTemplate, ids: &mut Vec<String>) {
+    match effect {
+        EffectTemplate::Item { id, resist, .. } => {
+            if id != "target" {
+                ids.push(id.clone());
+            }
+            resist_items(resist.as_ref(), ids);
+        }
+        EffectTemplate::Wield { id, .. } => {
+            if id != "target" {
+                ids.push(id.clone());
+            }
+        }
+        EffectTemplate::Meter { resist, .. }
+        | EffectTemplate::Flag { resist, .. }
+        | EffectTemplate::Narrate { resist, .. } => resist_items(resist.as_ref(), ids),
+        _ => {}
+    }
+}
+
+fn resist_items(resist: Option<&crate::rules::rule::ResistSpec>, ids: &mut Vec<String>) {
+    let Some(crate::rules::rule::ResistSpec::Roll { resisted, .. }) = resist else {
+        return;
+    };
+    for effect in resisted {
+        effect_items(effect, ids);
     }
 }
 
@@ -1154,8 +1357,6 @@ struct TickFile {
     eligible: bool,
     #[serde(default)]
     range: Vec<String>,
-    #[serde(default)]
-    stock_rate: BTreeMap<String, BTreeMap<String, i64>>,
     #[serde(default)]
     flags: Vec<String>,
 }
