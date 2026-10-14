@@ -14,7 +14,7 @@ description: >
 
 - New pack: `spook new <dir>`. To change an existing pack, copy it first and edit the copy.
 - Leave `packs/oneshot-docks` as it is. `spook run` writes `state/` into the pack you pass.
-- File formats and a walkthrough: `docs/first-pack.md`. Rule, habit, and effect behaviour: `docs/spec.md`.
+- There is no separate file-format reference. `spook check` reports any unknown or missing key. Walkthrough: `docs/first-pack.md`. Rule, habit, and effect behaviour: `docs/spec.md` ("Rows and habits", "Habits", "Effect envelope").
 
 ## The loop
 
@@ -27,7 +27,7 @@ description: >
 ## What check cannot teach
 
 - `state/save.yaml` is the save. Don't hand-edit its keys. `pack_rev` in it is a hash of `world/`, `cast/`, and `rules/`, and only `spook migrate <pack>` stores a new one.
-- After any canon edit, check reports `PACK_REV_MISMATCH`. Run `spook migrate <pack>`, then check again. Migrate does not fix a shape error.
+- After you edit anything under `world/`, `cast/`, or `rules/`, check reports `PACK_REV_MISMATCH` until you run `spook migrate <pack>`, then check again. Editing `pack.yaml` does not, because it is not hashed. Migrate does not fix a shape error.
 
 ## Worked example
 
