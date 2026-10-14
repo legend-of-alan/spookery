@@ -14,9 +14,7 @@ fn command_bound_to(world: &mut World, command: String, addr: String) {
 
 #[when(expr = "the table listens on a free loopback port")]
 fn listens_on_a_free_port(world: &mut World) {
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(table::pack(world), &bind, port);
+    table::listen(table::pack(world));
 }
 
 #[then(expr = "a connection to the table succeeds")]

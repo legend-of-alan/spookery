@@ -78,8 +78,7 @@ fn the_operator_runs_n_ticks(world: &mut World, count: usize) {
 #[when(expr = "two players play, a GM commits one round, and the players leave")]
 fn two_players_play_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     table::seat_actor(&pack, "pc_harbormouse");
     let _ = table::actor_send("pc_rowan", "wait", "\"kind\":");
@@ -97,13 +96,11 @@ fn two_players_play_a_round(world: &mut World) {
 #[when(expr = "a seated player's server is killed and restarted")]
 fn a_seated_player_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     table::wait_humans(&pack, 1);
     table::stop_server();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::wait_humans(&pack, 0);
     table::stop_server();
 }
@@ -111,8 +108,7 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
 #[when(expr = "a player sits and the server stops")]
 fn a_player_sits_and_the_server_stops(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     table::wait_humans(&pack, 1);
     table::stop_server();

@@ -19,8 +19,7 @@ fn mark_needs_a_knife(world: &mut World) {
     add_knife_row(&pack);
     insert_nell(&pack);
     stamp(&pack);
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_player(&pack);
     world.pack = Some(pack);
 }

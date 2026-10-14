@@ -124,11 +124,9 @@ fn the_operator_runs_spook_check_json_on_the_starter_template(world: &mut World)
 
 #[when(expr = "play joins that pack on a free loopback address")]
 fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
-    let port = table::free_port();
-    assert_ne!(port, 9737);
-    let addr = format!("127.0.0.1:{port}");
     let pack = table::pack(world);
-    table::listen(pack, &addr, port);
+    table::listen(pack);
+    let addr = table::game_addr();
     let pack_arg = support::pack_arg(pack);
     world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
     wait_play(world, "You are in Yard.");

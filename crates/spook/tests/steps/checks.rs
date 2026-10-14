@@ -291,8 +291,7 @@ fn replaying_the_tick_reproduces_the_save(world: &mut World) {
 }
 
 fn listen_both(pack: &Path) {
-    let port = table::free_port();
-    table::listen(pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(pack);
     table::seat_gm();
     table::seat_player(pack);
 }

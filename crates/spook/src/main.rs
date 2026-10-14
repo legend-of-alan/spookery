@@ -10,7 +10,7 @@ mod starter;
 #[derive(Parser)]
 #[command(name = "spook", version)]
 struct Cli {
-    /// Loopback address. `127.0.0.1` means port 9737.
+    /// Loopback address. `127.0.0.1` means port 9737. On `run`, port 0 lets the OS choose.
     #[arg(long, global = true, default_value = "127.0.0.1:9737")]
     addr: String,
 
@@ -24,7 +24,7 @@ enum Command {
     Run {
         /// Pack directory.
         pack: PathBuf,
-        /// Loopback streamable HTTP for the GM seat. Defaults to the game port plus one.
+        /// Agent door. Defaults to the next port. Port 0 lets the OS choose.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
     },
@@ -316,6 +316,10 @@ mod tests {
         assert!(matches!(
             parse_loopback(&cli.addr),
             Ok(addr) if addr.port() == 9737
+        ));
+        assert!(matches!(
+            parse_loopback("127.0.0.1:0"),
+            Ok(addr) if addr.port() == 0
         ));
     }
 

@@ -43,7 +43,7 @@ Feature: Coding agents reach the GM seat
   Scenario: spook run serves /mcp without a flag
     Given a docks table
     When spook run listens with no MCP flag
-    Then the next port serves /mcp
+    Then the reported agent door serves /mcp
 
   Scenario: A request with an unknown MCP-Protocol-Version is refused
     Given a docks table

@@ -34,8 +34,7 @@ fn a_save_with_rules_rev_3_and_an_engine_at_4(world: &mut World) {
 fn spook_run_or_spook_verify_opens_it(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
-    let port = table::free_port();
-    let run = crate::support::spook(&["run", arg, "--addr", &format!("127.0.0.1:{port}")]);
+    let run = crate::support::spook(&["run", arg, "--addr", "127.0.0.1:0"]);
     let verify = crate::support::spook(&["verify", arg]);
     let run_err = String::from_utf8_lossy(&run.stderr);
     let verify_err = String::from_utf8_lossy(&verify.stderr);

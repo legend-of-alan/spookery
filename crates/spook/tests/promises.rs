@@ -5,6 +5,9 @@ mod support;
 #[path = "steps/table.rs"]
 mod table;
 
+#[path = "steps/ports.rs"]
+mod ports;
+
 #[path = "steps/harness.rs"]
 mod harness;
 

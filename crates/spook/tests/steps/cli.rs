@@ -159,10 +159,9 @@ fn stderr_has_no_protocol_json(world: &mut World) {
 }
 
 fn join_play(world: &mut World, raw: bool) {
-    let port = table::free_port();
-    let addr = format!("127.0.0.1:{port}");
     let pack = table::pack(world);
-    table::listen(pack, &addr, port);
+    table::listen(pack);
+    let addr = table::game_addr();
     let pack_arg = support::pack_arg(pack);
     let mut args = vec!["play".to_string(), pack_arg, "--addr".to_string(), addr];
     if raw {

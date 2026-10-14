@@ -81,10 +81,10 @@ fn the_gm_commits(world: &mut World) {
 
 #[when(expr = "another GM joins that seat")]
 fn another_gm_joins(world: &mut World) {
-    let port = crate::with_live(|live| live.port);
-    let addr = format!("127.0.0.1:{port}");
+    let addr = table::game_addr();
+    let door = table::door_addr();
     let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["gm", &pack, "--addr", &addr]);
+    let output = support::spook(&["gm", &pack, "--addr", &addr, "--mcp-http", &door]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -143,11 +143,8 @@ fn a_human_gm_dials_that_door(world: &mut World) {
 
 #[when(expr = "the operator runs gm with nothing listening")]
 fn gm_with_nothing_listening(world: &mut World) {
-    let port = table::free_port();
-    assert_ne!(port, 9737);
-    let addr = format!("127.0.0.1:{port}");
     let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["gm", &pack, "--addr", &addr]);
+    let output = support::spook(&["gm", &pack, "--addr", "127.0.0.1:1"]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -258,17 +255,18 @@ fn the_gm_stderr_shows(world: &mut World, text: String) {
 }
 
 fn sit_gm(world: &mut World, raw: bool) -> String {
-    let port = table::free_port();
-    assert_ne!(port, 9737);
-    let addr = format!("127.0.0.1:{port}");
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack, &addr, port);
+    table::listen(&pack);
+    let addr = table::game_addr();
+    let door = table::door_addr();
     let pack_arg = support::pack_arg(&pack);
     let mut args = vec![
         "gm".to_string(),
         pack_arg,
         "--addr".to_string(),
         addr.clone(),
+        "--mcp-http".to_string(),
+        door,
     ];
     if raw {
         args.push("--raw".to_string());

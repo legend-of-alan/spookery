@@ -31,8 +31,7 @@ fn the_operator_runs_audit_strict(world: &mut World) {
 #[when(expr = "two players play, a GM commits a round, ticks pass, and one player drops")]
 fn a_normal_docks_session(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     table::seat_actor(&pack, "pc_harbormouse");
     let _ = table::actor_send("pc_rowan", "wait", "\"kind\":");
@@ -97,8 +96,7 @@ fn a_visible_notes_id_is_the_ledger_fact(world: &mut World) {
 #[when(expr = "two players sit and the GM says the ledger fact")]
 fn the_gm_says_the_ledger_fact(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     table::seat_actor(&pack, "pc_harbormouse");
     table::seat_gm();
@@ -118,8 +116,7 @@ fn the_gm_says_the_ledger_fact(world: &mut World) {
 #[when(expr = "two players sit and one says the ledger fact")]
 fn one_player_says_the_ledger_fact(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     table::seat_actor(&pack, "pc_harbormouse");
     let _ = table::actor_send("pc_rowan", &format!("say {LEDGER}"), "\"kind\":\"say\"");

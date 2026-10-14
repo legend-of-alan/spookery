@@ -46,10 +46,9 @@ fn the_player_drinks(world: &mut World) {
 
 #[when(expr = "play joins the sample table")]
 fn play_joins_the_sample_table(world: &mut World) {
-    let port = table::free_port();
-    let addr = format!("127.0.0.1:{port}");
     let pack = table::pack(world);
-    table::listen(pack, &addr, port);
+    table::listen(pack);
+    let addr = table::game_addr();
     let pack_arg = support::pack_arg(pack);
     world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
     wait_play(world, "Gate yard");
@@ -113,8 +112,7 @@ fn sit(world: &mut World, might: Option<i64>, tonic: bool) {
     if !tonic {
         take_tonic(&pack);
     }
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_actor(&pack, "pc_lark");
     world.pack = Some(pack);
 }

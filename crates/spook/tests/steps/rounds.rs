@@ -9,9 +9,7 @@ use super::table;
 #[given(expr = "a docks table with a GM and a seated player")]
 fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
     let pack = temp_pack("round");
-    let port = table::free_port();
-    let bind = format!("127.0.0.1:{port}");
-    table::listen(&pack, &bind, port);
+    table::listen(&pack);
     table::seat_gm();
     table::seat_player(&pack);
     world.pack = Some(pack);

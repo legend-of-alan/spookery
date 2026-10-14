@@ -1,6 +1,5 @@
 use std::io::{Read, Write};
 use std::net::TcpStream;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
@@ -12,7 +11,7 @@ use rmcp::ServiceExt;
 use serde_json::{json, Map, Value};
 use std::sync::Mutex;
 
-use crate::support::{self, Proc};
+use crate::support;
 use crate::World;
 
 use super::table;
@@ -121,13 +120,20 @@ fn request_with_host(world: &mut World, host: String) {
 
 #[when(expr = "a human GM sits on the default agent door")]
 fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
-    let port = table::free_port();
-    let addr = format!("127.0.0.1:{port}");
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack, &addr, port);
+    table::listen(&pack);
+    let addr = table::game_addr();
+    let door = table::door_addr();
     let pack_arg = support::pack_arg(&pack);
-    world.gm = Some(support::spawn(&["gm", &pack_arg, "--addr", &addr]));
-    world.mark = usize::from(port.saturating_add(1));
+    world.gm = Some(support::spawn(&[
+        "gm",
+        &pack_arg,
+        "--addr",
+        &addr,
+        "--mcp-http",
+        &door,
+    ]));
+    world.mark = usize::from(crate::with_live(|live| live.http_port));
     let start = Instant::now();
     loop {
         let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
@@ -192,16 +198,14 @@ fn a_coding_agent_can_sit_that_door(world: &mut World) {
 
 #[when(expr = "spook run listens with no MCP flag")]
 fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
-    let port = table::free_port();
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
-    world.mark = usize::from(port);
+    table::listen(&pack);
+    world.mark = usize::from(crate::with_live(|live| live.http_port));
 }
 
-#[then(regex = "^the next port serves /mcp$")]
-fn the_next_port_serves_mcp(world: &mut World) {
-    let game = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no game port"));
-    let http = game.saturating_add(1);
+#[then(expr = "the reported agent door serves \\/mcp")]
+fn the_reported_agent_door_serves_mcp(world: &mut World) {
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no door port"));
     let raw = http_post(http, "127.0.0.1", None);
     assert!(
         raw.lines().next().unwrap_or("").contains(" 200 "),
@@ -493,62 +497,11 @@ async fn connect_http(
 }
 
 fn listen_http(pack: &std::path::Path) -> (u16, u16) {
-    let tcp = table::free_port();
-    let http = loop {
-        let port = table::free_port();
-        if port != tcp {
-            break port;
-        }
-    };
-    let pack_arg = support::pack_arg(pack);
-    let addr = format!("127.0.0.1:{tcp}");
-    let http_addr = format!("127.0.0.1:{http}");
-    let mut server = support::spawn(&["run", &pack_arg, "--addr", &addr, "--mcp-http", &http_addr]);
-    wait_port(tcp, &mut server);
-    wait_port(http, &mut server);
-    let opened_now = std::fs::read(pack.join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    crate::set_live(table::Live {
-        port: tcp,
-        player_write: None,
-        player_text: Arc::new(std::sync::Mutex::new(String::new())),
-        players: Vec::new(),
-        gm: None,
-        http_port: http,
-        gm_text: Arc::new(std::sync::Mutex::new(String::new())),
-        opened_now: opened_now.clone(),
-        seated_now: opened_now,
-        seated_rev: 0,
-        server: Some(server),
-    });
-    (tcp, http)
-}
-
-fn wait_port(port: u16, server: &mut Proc) {
-    let start = Instant::now();
-    let addr = format!("127.0.0.1:{port}");
-    loop {
-        if TcpStream::connect(&addr).is_ok() {
-            return;
-        }
-        if let Some(status) = server
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("wait: {err}"))
-        {
-            panic!(
-                "spook run exited {status} before {addr} listened\nstderr:\n{}",
-                support::text_of(&server.stderr)
-            );
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!(
-                "{addr} did not listen\nstderr:\n{}",
-                support::text_of(&server.stderr)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    table::listen_flags(
+        pack,
+        &["--addr", "127.0.0.1:0", "--mcp-http", "127.0.0.1:0"],
+        &[],
+    )
 }
 
 fn http_post_version(port: u16, version: &str) -> String {

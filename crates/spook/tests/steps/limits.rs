@@ -19,8 +19,7 @@ const SAY_TEXT_BYTES: usize = 4 * 1024;
 #[when(expr = "a player sends a 1 MiB line with no newline")]
 fn a_player_sends_a_mebibyte_line(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_player(&pack);
     let text = crate::with_live(|live| Arc::clone(&live.player_text));
     let writer = crate::with_live(|live| {
@@ -65,9 +64,8 @@ fn a_second_player_can_sit_and_wait(world: &mut World) {
 #[when(expr = "a socket sends an oversized hello")]
 fn a_socket_sends_an_oversized_hello(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
-    let stream = connect(port);
+    table::listen(&pack);
+    let stream = connect(crate::with_live(|live| live.port));
     let text = spawn_reader(&stream);
     let join = std::thread::spawn(move || write_all_ignoring(stream, vec![b'a'; MIB]));
     world.scratch = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
@@ -77,9 +75,8 @@ fn a_socket_sends_an_oversized_hello(world: &mut World) {
 #[when(expr = "an HTTP body over 1 MiB is posted")]
 fn an_http_body_over_a_mebibyte(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
-    let http = port.saturating_add(1);
+    table::listen(&pack);
+    let http = crate::with_live(|live| live.http_port);
     let body = vec![b'x'; MIB + 1];
     let request = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{http}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -103,7 +100,7 @@ fn an_http_body_over_a_mebibyte(world: &mut World) {
 
 #[then(expr = "a new GM can sit")]
 fn a_new_gm_can_sit(_world: &mut World) {
-    let port = crate::with_live(|live| live.port);
+    let port = crate::with_live(|live| live.http_port);
     let start = Instant::now();
     loop {
         match try_gm(port) {
@@ -155,14 +152,8 @@ fn the_player_can_wait(world: &mut World) {
 #[when(expr = "a socket connects and sends nothing")]
 fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen_with(
-        &pack,
-        &format!("127.0.0.1:{port}"),
-        port,
-        &[("SPOOK_HELLO_TIMEOUT_MS", "200")],
-    );
-    let mut stream = connect(port);
+    table::listen_with(&pack, &[("SPOOK_HELLO_TIMEOUT_MS", "200")]);
+    let mut stream = connect(crate::with_live(|live| live.port));
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
@@ -268,11 +259,10 @@ fn the_other_player_commits_within_2_seconds(world: &mut World) {
 #[when(expr = "one player stops reading and the GM says many lines")]
 fn one_player_stops_reading(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let port = table::free_port();
-    table::listen(&pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(&pack);
     table::seat_gm();
     table::seat_actor(&pack, "pc_harbormouse");
-    let (mut quiet, recv) = connect_small_window(port);
+    let (mut quiet, recv) = connect_small_window(crate::with_live(|live| live.port));
     let send = granted_send_buffer(REQUESTED_SEND_BUFFER);
     writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
     quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
@@ -426,24 +416,12 @@ fn granted_send_buffer(requested: usize) -> usize {
 }
 
 fn connect(port: u16) -> TcpStream {
-    let start = Instant::now();
     let addr = format!("127.0.0.1:{port}");
-    loop {
-        match TcpStream::connect(&addr) {
-            Ok(stream) => {
-                stream
-                    .set_nodelay(true)
-                    .unwrap_or_else(|err| panic!("nodelay: {err}"));
-                return stream;
-            }
-            Err(err) => {
-                if start.elapsed() > Duration::from_secs(5) {
-                    panic!("connect {addr}: {err}");
-                }
-                std::thread::sleep(Duration::from_millis(20));
-            }
-        }
-    }
+    let stream = TcpStream::connect(&addr).unwrap_or_else(|err| panic!("connect {addr}: {err}"));
+    stream
+        .set_nodelay(true)
+        .unwrap_or_else(|err| panic!("nodelay: {err}"));
+    stream
 }
 
 fn spawn_reader(stream: &TcpStream) -> Arc<Mutex<String>> {
@@ -510,7 +488,7 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 }
 
 fn try_gm(port: u16) -> Result<(), String> {
-    match spookery::gm_connection::GmConnection::connect(&format!("127.0.0.1:{port}")) {
+    match spookery::gm_connection::GmConnection::connect_door(&format!("127.0.0.1:{port}")) {
         Ok(gm) => {
             drop(gm);
             Ok(())
