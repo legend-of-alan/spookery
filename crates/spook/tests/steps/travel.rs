@@ -49,8 +49,7 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
 }
 
 fn listen(pack: &Path) {
-    let port = table::free_port();
-    table::listen(pack, &format!("127.0.0.1:{port}"), port);
+    table::listen(pack);
 }
 
 fn tick_file(pack: &Path, name: &str) -> Value {

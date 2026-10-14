@@ -222,7 +222,8 @@ pub fn begin(
         via: travel.as_ref().map(|(_, _, name)| name.clone()),
         source: match intent.source {
             Source::Kernel => "kernel".to_string(),
-            Source::Player | Source::System => "player".to_string(),
+            Source::Player => "player".to_string(),
+            Source::System => "system".to_string(),
         },
     };
     draft.track(StateKey::ActorBusy(intent.actor_id.clone()))?;
@@ -238,11 +239,15 @@ pub fn begin(
 }
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
-pub fn broken(canon: &Canon) -> Vec<Diagnostic> {
+pub fn broken(
+    places: &std::collections::BTreeMap<String, crate::canon::PlaceCanon>,
+    facts: &std::collections::BTreeMap<String, crate::canon::FactCanon>,
+    items: &std::collections::BTreeMap<String, crate::canon::ItemCanon>,
+) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    for place in canon.places.values() {
+    for place in places.values() {
         for exit in &place.exits {
-            if !canon.places.contains_key(&exit.to) {
+            if !places.contains_key(&exit.to) {
                 diags.push(
                     schema(
                         &exit.file,
@@ -266,7 +271,7 @@ pub fn broken(canon: &Canon) -> Vec<Diagnostic> {
                 );
             }
             if let Some(fact) = &exit.revealed_by {
-                if !canon.facts.contains_key(fact) {
+                if !facts.contains_key(fact) {
                     diags.push(
                         schema(
                             &exit.file,
@@ -277,19 +282,19 @@ pub fn broken(canon: &Canon) -> Vec<Diagnostic> {
                     );
                 }
             }
-            let mut items = Vec::new();
+            let mut named = Vec::new();
             for (id, _) in &exit.cost.items {
                 if id != "target" {
-                    items.push(id.clone());
+                    named.push(id.clone());
                 }
             }
             for cond in &exit.if_ {
-                cond_items(cond, &mut items);
+                cond_items(cond, &mut named);
             }
-            items.sort();
-            items.dedup();
-            for id in items {
-                if !canon.items.contains_key(&id) {
+            named.sort();
+            named.dedup();
+            for id in named {
+                if !items.contains_key(&id) {
                     diags.push(
                         schema(
                             &exit.file,

@@ -466,21 +466,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(find_bare_resist(&rules));
-    diags.extend(crate::map::broken(&Canon {
-        pack_id: String::new(),
-        title: String::new(),
-        system: String::new(),
-        start_place: String::new(),
-        start_pc: String::new(),
-        places: places.clone(),
-        cast: BTreeMap::new(),
-        facts: facts.clone(),
-        rules: crate::rules::rule::RuleTable::new(Vec::new()),
-        checks: BTreeMap::new(),
-        meters: BTreeMap::new(),
-        items: items.clone(),
-        budget: crate::canon::world_settings::Budget::defaults(),
-    }));
+    diags.extend(crate::map::broken(&places, &facts, &items));
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -585,11 +571,23 @@ fn validate_tick(file: &str, text: &str, tick: TickFile) -> Result<TickProfile, 
 fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<crate::map::Exit>, Vec<Diagnostic>> {
     let mut diags = Vec::new();
     let mut compiled = Vec::new();
+    let mut names = BTreeSet::new();
     for (index, exit) in exits.iter().enumerate() {
         if exit.name.is_empty() || exit.to.is_empty() {
             diags.push(
                 schema_error(file, "an exit needs a name and a to", "set both")
                     .with_path(format!("exits[{index}]")),
+            );
+            continue;
+        }
+        if !names.insert(exit.name.clone()) {
+            diags.push(
+                schema_error(
+                    file,
+                    &format!("exit '{}' is listed twice", exit.name),
+                    "keep one exit with this name",
+                )
+                .with_path(format!("exits[{index}].name")),
             );
             continue;
         }

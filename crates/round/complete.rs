@@ -187,10 +187,10 @@ fn arrival_intent(round: &Round, actor_id: &str, kind: ActorKind, pending: &Pend
         tick_index: round.tick_index,
         actor_id: actor_id.to_string(),
         actor_kind: kind,
-        source: if pending.source == "kernel" {
-            Source::Kernel
-        } else {
-            Source::Player
+        source: match pending.source.as_str() {
+            "kernel" => Source::Kernel,
+            "system" => Source::System,
+            _ => Source::Player,
         },
         move_name: pending.verb.clone(),
         target: if pending.target.is_empty() {

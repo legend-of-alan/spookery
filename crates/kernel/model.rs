@@ -294,7 +294,7 @@ pub struct Pending {
     pub arrive: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
-    /// `player` or `kernel`.
+    /// `player`, `kernel`, or `system`.
     pub source: String,
 }
 
