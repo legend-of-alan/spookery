@@ -135,32 +135,42 @@ pub struct GmConnection {
 impl GmConnection {
     /// Dial `http://127.0.0.1:<port + 1>/mcp` and finish the handshake.
     pub fn connect(addr: &str) -> Result<Self, GmConnectionError> {
-        let url = http_url(addr)?;
-        let (commands, commands_rx) = tokio::sync::mpsc::channel(4);
-        let (events, incoming) = mpsc::channel();
-        let (ready_tx, ready_rx) = mpsc::channel();
-        let worker = thread::spawn(move || worker(url, commands_rx, events, ready_tx));
-        let (opened, worker) = park(move || match ready_rx.recv() {
-            Ok(Ok(opened)) => Ok((opened, worker)),
-            Ok(Err(err)) => {
-                let _ = worker.join();
-                Err(err)
-            }
-            Err(_) => {
-                let _ = worker.join();
-                Err(GmConnectionError::Closed)
-            }
-        })?;
-        Ok(GmConnection {
-            commands,
-            incoming,
-            buffered: VecDeque::new(),
-            next_id: 2,
-            opened,
-            worker: Some(worker),
-        })
+        dial(http_url(addr)?)
     }
 
+    /// Dial `http://127.0.0.1:<port>/mcp`. `addr` is the agent door, not the game port.
+    pub fn connect_door(addr: &str) -> Result<Self, GmConnectionError> {
+        dial(door_url(addr)?)
+    }
+}
+
+fn dial(url: String) -> Result<GmConnection, GmConnectionError> {
+    let (commands, commands_rx) = tokio::sync::mpsc::channel(4);
+    let (events, incoming) = mpsc::channel();
+    let (ready_tx, ready_rx) = mpsc::channel();
+    let worker = thread::spawn(move || worker(url, commands_rx, events, ready_tx));
+    let (opened, worker) = park(move || match ready_rx.recv() {
+        Ok(Ok(opened)) => Ok((opened, worker)),
+        Ok(Err(err)) => {
+            let _ = worker.join();
+            Err(err)
+        }
+        Err(_) => {
+            let _ = worker.join();
+            Err(GmConnectionError::Closed)
+        }
+    })?;
+    Ok(GmConnection {
+        commands,
+        incoming,
+        buffered: VecDeque::new(),
+        next_id: 2,
+        opened,
+        worker: Some(worker),
+    })
+}
+
+impl GmConnection {
     /// The initialize result line, without a trailing newline.
     pub fn opened_line(&self) -> &str {
         &self.opened
@@ -424,15 +434,23 @@ fn agent_addr(url: &str) -> Option<std::net::SocketAddr> {
     host.parse().ok()
 }
 
-fn http_url(addr: &str) -> Result<String, GmConnectionError> {
-    let port = addr
-        .strip_prefix("127.0.0.1:")
+fn loopback_port(addr: &str) -> Result<u16, GmConnectionError> {
+    addr.strip_prefix("127.0.0.1:")
         .and_then(|text| text.parse::<u16>().ok())
-        .ok_or_else(|| GmConnectionError::Bad(addr.to_string()))?;
+        .ok_or_else(|| GmConnectionError::Bad(addr.to_string()))
+}
+
+fn http_url(addr: &str) -> Result<String, GmConnectionError> {
+    let port = loopback_port(addr)?;
     let http = port
         .checked_add(1)
         .ok_or_else(|| GmConnectionError::Bad(addr.to_string()))?;
     Ok(format!("http://127.0.0.1:{http}/mcp"))
+}
+
+fn door_url(addr: &str) -> Result<String, GmConnectionError> {
+    let port = loopback_port(addr)?;
+    Ok(format!("http://127.0.0.1:{port}/mcp"))
 }
 
 async fn read_seat_refusal(url: &str) -> Option<GmConnectionError> {
@@ -440,15 +458,18 @@ async fn read_seat_refusal(url: &str) -> Option<GmConnectionError> {
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .ok()?;
-    let body = concat!(
-        r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":""#,
-        "2025-11-25",
-        r#"","capabilities":{},"clientInfo":{"name":"spook-host","version":"0"}}}"#
+    // Same version the seated client negotiated, so the probe cannot drift.
+    // This initialize can sit a seat that freed after the first attempt.
+    // The DELETE below gives that seat back.
+    let version = ProtocolVersion::LATEST.as_str();
+    let body = format!(
+        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"{version}","capabilities":{{}},"clientInfo":{{"name":"spook-host","version":"0"}}}}}}"#
     );
     let response = client
         .post(url)
         .header("accept", "application/json, text/event-stream")
         .header("content-type", "application/json")
+        .header("mcp-protocol-version", version)
         .body(body)
         .send()
         .await
@@ -632,6 +653,10 @@ mod tests {
         );
         assert!(http_url("127.0.0.1:65535").is_err());
         assert!(http_url("10.0.0.1:9").is_err());
+        assert_eq!(
+            door_url("127.0.0.1:9801").unwrap(),
+            "http://127.0.0.1:9801/mcp"
+        );
     }
 
     #[test]

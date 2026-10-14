@@ -36,8 +36,17 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub fn run_gm_terminal(pack: &Path, addr: &str, raw: bool) -> Result<(), super::TerminalError> {
-    let client = match GmConnection::connect(addr) {
+pub fn run_gm_terminal(
+    pack: &Path,
+    addr: &str,
+    door: Option<&str>,
+    raw: bool,
+) -> Result<(), super::TerminalError> {
+    let connected = match door {
+        Some(door) => GmConnection::connect_door(door),
+        None => GmConnection::connect(addr),
+    };
+    let client = match connected {
         Ok(client) => client,
         Err(gm_connection::GmConnectionError::Io(err)) => {
             return Err(super::TerminalError::Io(err))
@@ -240,9 +249,9 @@ impl Session {
             return;
         };
         let checks = render_checks(&outcome.body);
-        // HTTP delivers this commit's check events before the tool result.
-        // The result text is what prints each roll. Swallow a matching event
-        // that is already buffered, and skip one that arrives afterwards.
+        // This commit's check events can arrive before or after the tool
+        // result. The result text prints each roll. A matching event on
+        // either side is shown once.
         if outcome.refused || self.raw {
             self.show_arrived(&[]);
         } else {

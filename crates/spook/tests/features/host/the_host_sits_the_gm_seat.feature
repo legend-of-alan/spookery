@@ -72,3 +72,8 @@ Feature: The host sits the GM seat
     Given a docks table
     When the host is pointed at a free loopback address
     Then the host dialed that address
+
+  Scenario: The host dials an overridden agent door
+    Given a docks table
+    When the host is pointed at an overridden agent door
+    Then the host dialed that address

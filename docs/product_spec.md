@@ -135,7 +135,7 @@ Viewer-scoped perception, deterministic commits, replayable tick log, plot clock
 | **World** | A running pack with durable `state/`, zero humans allowed |
 | **Session** | A presence window on a shard (people are typed in) |
 | **Play door** | Human client on the CLI, over loopback |
-| **Agent door** | MCP tools at `http://127.0.0.1:9738/mcp` from `spook run`. `--mcp-http` overrides that port |
+| **Agent door** | MCP tools at `http://127.0.0.1:9738/mcp` from `spook run`. `--mcp-http` overrides that port on `run`, `gm`, and `ai-gm` |
 | **Canon** | Immutable-at-runtime files under `world/`, `cast/`, `rules/` |
 | **Wedge** | First paid offer: always-on shard + lint/conformance, host pays |
 

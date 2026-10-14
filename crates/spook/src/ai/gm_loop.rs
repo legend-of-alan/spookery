@@ -36,6 +36,7 @@ impl Default for Watch {
 pub fn run_ai_gm<M: Model>(
     pack: &Path,
     addr: &str,
+    door: Option<&str>,
     model: &mut M,
     watch: &Watch,
 ) -> Result<(), HostError> {
@@ -45,7 +46,7 @@ pub fn run_ai_gm<M: Model>(
         from_canon(&canon)
     };
     let rev = canon::pack_rev(pack).map_err(|err| fail(err.to_string()))?;
-    let mut seat = GmLoop::connect(addr)?;
+    let mut seat = GmLoop::connect(addr, door)?;
     let status = call_status(&mut seat, None)?;
     if status.pack_rev != rev {
         return Err(fail("PACK_REV_MISMATCH".to_string()));
@@ -304,8 +305,12 @@ struct GmLoop {
 }
 
 impl GmLoop {
-    fn connect(addr: &str) -> Result<Self, HostError> {
-        let client = gm_connection::GmConnection::connect(addr).map_err(host_err)?;
+    fn connect(addr: &str, door: Option<&str>) -> Result<Self, HostError> {
+        let client = match door {
+            Some(door) => gm_connection::GmConnection::connect_door(door),
+            None => gm_connection::GmConnection::connect(addr),
+        }
+        .map_err(host_err)?;
         Ok(GmLoop {
             client,
             wakes: VecDeque::new(),

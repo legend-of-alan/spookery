@@ -16,7 +16,7 @@ use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
 pub(super) const PLAYER_LINE_CAP: usize = 8 * 1024;
 
 /// HTTP POST body cap for the GM seat.
-pub(super) const GM_LINE_CAP: usize = 1024 * 1024;
+pub(super) const GM_BODY_CAP: usize = 1024 * 1024;
 
 /// Player lines accepted per second after the burst is spent.
 pub(super) const RATE_PER_SEC: u64 = 5;

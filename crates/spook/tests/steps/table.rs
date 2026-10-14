@@ -101,6 +101,39 @@ pub fn listen(pack: &Path, bind: &str, port: u16) {
     listen_with(pack, bind, port, &[]);
 }
 
+/// `spook run --mcp-http` on a port that is not the game port plus one.
+pub fn listen_door(pack: &Path) -> u16 {
+    let game = free_port();
+    let http = loop {
+        let port = free_port();
+        if port != game && port != game.saturating_add(1) {
+            break port;
+        }
+    };
+    let pack_arg = support::pack_arg(pack);
+    let addr = format!("127.0.0.1:{game}");
+    let http_addr = format!("127.0.0.1:{http}");
+    let mut server = support::spawn(&["run", &pack_arg, "--addr", &addr, "--mcp-http", &http_addr]);
+    wait_listen(game, &mut server);
+    wait_listen(http, &mut server);
+    let opened_now = fs::read(pack.join("state/save.yaml"))
+        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
+    crate::set_live(Live {
+        port: game,
+        player_write: None,
+        player_text: Arc::new(Mutex::new(String::new())),
+        players: Vec::new(),
+        gm: None,
+        http_port: http,
+        gm_text: Arc::new(Mutex::new(String::new())),
+        opened_now: opened_now.clone(),
+        seated_now: opened_now,
+        seated_rev: 0,
+        server: Some(server),
+    });
+    http
+}
+
 pub fn listen_with(pack: &Path, bind: &str, port: u16, env: &[(&str, &str)]) {
     let pack_arg = support::pack_arg(pack);
     let mut server = support::spawn_env(&["run", &pack_arg, "--addr", bind], env);

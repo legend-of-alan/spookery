@@ -57,3 +57,15 @@ Feature: A human GM runs a round
     When the operator runs gm with nothing listening
     Then the command exits 1
     And the pack bytes are unchanged
+
+  Scenario: spook gm exits when spook run stops
+    Given a docks table
+    When a human GM sits on a free loopback port
+    And spook run stops
+    Then the GM exits
+
+  Scenario: spook gm dials an overridden agent door
+    Given a docks table
+    When spook run listens with an overridden agent door
+    And a human GM dials that door
+    Then the GM shows "Commands:"

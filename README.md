@@ -162,7 +162,7 @@ The `Live AI` workflow runs it against Ollama on pull requests that touch the mo
 
 ### Human GM
 
-`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first. Both dial the agent door on the next port, `http://127.0.0.1:9738/mcp` when the game is on `9737`.
+`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first. Both dial the agent door on the next port, `http://127.0.0.1:9738/mcp` when the game is on `9737`. `--mcp-http 127.0.0.1:<port>` dials that door instead.
 
 ```sh
 spook gm /tmp/docks

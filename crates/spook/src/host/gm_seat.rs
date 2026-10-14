@@ -20,7 +20,9 @@ const RELEASE_WAIT: Duration = Duration::from_secs(2);
 struct HttpSeat {
     conn: u64,
     held: Arc<AtomicBool>,
-    peer: Arc<tokio::sync::Mutex<Option<Peer<RoleServer>>>>,
+    /// Clone of the seat's outbound queue. Say and check frames go here, in
+    /// order, and the one forwarder below writes them.
+    out: std::sync::Mutex<Option<super::limits::OutTx>>,
 }
 
 pub(super) struct GmHost {
@@ -34,7 +36,7 @@ pub(super) fn http_host(tx: Sender<Msg>, conn: u64) -> GmHost {
         http: Some(HttpSeat {
             conn,
             held: Arc::new(AtomicBool::new(false)),
-            peer: Arc::new(tokio::sync::Mutex::new(None)),
+            out: std::sync::Mutex::new(None),
         }),
     }
 }
@@ -94,7 +96,6 @@ impl ServerHandler for GmHost {
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
         let tx = self.tx.clone();
-        let peer = self.http.as_ref().map(|http| Arc::clone(&http.peer));
         let name = request.name.into_owned();
         let arguments = request.arguments;
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
@@ -107,20 +108,10 @@ impl ServerHandler for GmHost {
         let ToolReply { value, after } = reply_rx
             .await
             .map_err(|_| McpError::internal_error("shard closed", None))?;
-        // Say and check events follow the tool result. Waiting for those
-        // writes here stalls the client: it is blocked on this result, so it
-        // never reads the event that this handler is waiting to finish.
-        tokio::spawn(async move {
-            let Some(peer) = peer else {
-                return;
-            };
-            for frame in after {
-                let guard = peer.lock().await;
-                if let Some(peer) = guard.as_ref() {
-                    emit_event(peer, &frame).await;
-                }
-            }
-        });
+        // Queue the events and return. Waiting here for the write stalls the
+        // client: it is blocked on this result, so it never reads the event.
+        // The forwarder started in `claim` drains this queue in order.
+        self.enqueue_after(after);
         Ok(CallToolResult::structured(value).into())
     }
 }
@@ -131,6 +122,7 @@ impl GmHost {
             return Ok(());
         };
         let (out_tx, mut out_rx, cancel_tx, mut cancel_rx) = super::limits::outbound();
+        let queued = out_tx.clone();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(Msg::Claim {
@@ -146,10 +138,7 @@ impl GmHost {
         match reply {
             Ok(()) => {
                 http.held.store(true, Ordering::Release);
-                {
-                    let mut slot = http.peer.lock().await;
-                    *slot = Some(context.peer.clone());
-                }
+                *http.out.lock().unwrap_or_else(|err| err.into_inner()) = Some(queued);
                 let peer = context.peer.clone();
                 tokio::spawn(async move {
                     loop {
@@ -192,6 +181,33 @@ impl GmHost {
                 Ok(())
             }
             Err(line) => Err(refusal_error(&line)),
+        }
+    }
+
+    /// One forwarder writes this queue, so two tool calls cannot pass each
+    /// other. A full queue drops the seat.
+    fn enqueue_after(&self, frames: Vec<Vec<u8>>) {
+        let Some(http) = &self.http else {
+            return;
+        };
+        // Hold the queue lock across every frame of this call, then drop it
+        // before a full queue releases the seat.
+        let full = {
+            let guard = http.out.lock().unwrap_or_else(|err| err.into_inner());
+            let Some(out) = guard.as_ref() else {
+                return;
+            };
+            let mut full = false;
+            for frame in frames {
+                if !super::limits::try_frame(out, frame) {
+                    full = true;
+                    break;
+                }
+            }
+            full
+        };
+        if full {
+            self.release();
         }
     }
 

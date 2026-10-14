@@ -156,8 +156,10 @@ fn a_fourth_player_connects(world: &mut World) {
 
 #[then(expr = "the hello is refused with {string}")]
 fn the_hello_is_refused_with(world: &mut World, code: String) {
+    let tcp = format!("\"code\":\"{code}\"");
+    let http = format!("[{code}]");
     assert!(
-        world.scratch.contains(&code),
+        world.scratch.contains(&tcp) || world.scratch.contains(&http),
         "hello reply:\n{}",
         world.scratch
     );

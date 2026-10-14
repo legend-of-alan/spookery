@@ -138,6 +138,52 @@ fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
     }
 }
 
+#[when(expr = "the host is pointed at an overridden agent door")]
+fn the_host_is_pointed_at_an_overridden_agent_door(world: &mut World) {
+    let game = table::free_port();
+    let door = loop {
+        let port = table::free_port();
+        if port != game && port != game.saturating_add(1) {
+            break port;
+        }
+    };
+    let listener =
+        TcpListener::bind(("127.0.0.1", door)).unwrap_or_else(|err| panic!("bind: {err}"));
+    listener
+        .set_nonblocking(true)
+        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
+    let addr = format!("127.0.0.1:{game}");
+    let http = format!("127.0.0.1:{door}");
+    let pack = pack_arg(table::pack(world));
+    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    command
+        .args(["ai-gm", &pack, "--addr", &addr, "--mcp-http", &http])
+        .stdin(Stdio::null());
+    apply_model_env(&mut command, None);
+    let child = command
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap_or_else(|err| panic!("spawn host: {err}"));
+    crate::track_child(child);
+    let start = Instant::now();
+    loop {
+        match listener.accept() {
+            Ok(_) => {
+                world.scratch = "dialed".to_string();
+                return;
+            }
+            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
+                if start.elapsed() > Duration::from_secs(5) {
+                    panic!("ai-gm did not dial {http}");
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(err) => panic!("accept: {err}"),
+        }
+    }
+}
+
 #[then(expr = "the host dialed that address")]
 fn the_host_dialed_that_address(world: &mut World) {
     assert_eq!(world.scratch, "dialed");
@@ -394,7 +440,7 @@ fn with_host(label: &str, body: impl FnOnce(&Path, u16, &Script, &Watch)) {
     let addr = format!("127.0.0.1:{port}");
     let handle = thread::spawn(move || {
         let mut script = script_bg;
-        run_ai_gm(&pack_bg, &addr, &mut script, &watch_bg)
+        run_ai_gm(&pack_bg, &addr, None, &mut script, &watch_bg)
     });
     wait_listening(&watch);
     body(&pack, port, &script, &watch);
@@ -427,7 +473,7 @@ fn start_after_gm(
         let addr = format!("127.0.0.1:{port}");
         let handle = thread::spawn(move || {
             let mut script = script_bg;
-            run_ai_gm(&pack_bg, &addr, &mut script, &watch_bg)
+            run_ai_gm(&pack_bg, &addr, None, &mut script, &watch_bg)
         });
         let start = Instant::now();
         while start.elapsed() < Duration::from_millis(500) {
@@ -838,7 +884,7 @@ where
     // The client owns a runtime. Build and drop it off the cucumber thread.
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);
-        run_ai_gm(&pack_bg, &addr, &mut model, &watch_bg)
+        run_ai_gm(&pack_bg, &addr, None, &mut model, &watch_bg)
     });
     (handle, watch)
 }

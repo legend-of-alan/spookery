@@ -6,10 +6,10 @@ use rmcp::transport::streamable_http_server::session::local::LocalSessionManager
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 
 use super::gm_seat;
-use super::limits::GM_LINE_CAP;
+use super::limits::GM_BODY_CAP;
 use super::world_loop::Msg;
 
-// The HTTP body cap matches a GM TCP line. The seat tape has the same cap.
+// HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
     tx: Sender<Msg>,
@@ -31,6 +31,6 @@ fn http_config() -> StreamableHttpServerConfig {
     let mut config = StreamableHttpServerConfig::default()
         .with_allowed_hosts(["127.0.0.1"])
         .with_allowed_origins(["http://127.0.0.1:*"]);
-    config.max_request_body_bytes = GM_LINE_CAP;
+    config.max_request_body_bytes = GM_BODY_CAP;
     config
 }
