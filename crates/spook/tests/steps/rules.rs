@@ -134,6 +134,9 @@ const KINDS: &[&str] = &[
     "humans",
     "hour",
     "stock",
+    "wield",
+    "unwield",
+    "wielding",
     "at",
     "knows",
     "all",
@@ -248,7 +251,7 @@ The ferry waits at the dock.
         now.places.insert(
             "ferry_dock".to_string(),
             PlaceLive {
-                stock: Default::default(),
+                items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
             },
@@ -294,9 +297,6 @@ tick:
   eligible: true
   range:
     - docks_shop
-  stock_rate:
-    docks_shop:
-      lamp_oil: 4
 rules:
   - id: restock
     when: habit
@@ -308,9 +308,9 @@ rules:
           op: \"==\"
           value: 0
     do:
-      - stock:
-          place: docks_shop
-          sku: lamp_oil
+      - item:
+          who: place:docks_shop
+          id: lamp_oil
           add: 4
 ---
 Briar tops up the oil before the shop opens.
@@ -350,9 +350,9 @@ fn lamp_oil_increases_by_4(world: &mut World) {
     let oil = now
         .places
         .get("docks_shop")
-        .and_then(|place| place.stock.get("lamp_oil"))
+        .and_then(|place| place.items.get("lamp_oil"))
         .copied();
-    assert_eq!(oil, Some(8), "world_time {}", now.world_time);
+    assert_eq!(oil, Some(8u32), "world_time {}", now.world_time);
 }
 
 #[given(expr = "attack targets defense + 10 and briar's defense is 12")]
@@ -758,15 +758,28 @@ rules:
 A small bottle.
 ",
     );
-    append(
-        &pack.join("rules/verbs.yaml"),
-        r#"
-  - id: use
+    let verbs = pack.join("rules/verbs.yaml");
+    let text = fs::read_to_string(&verbs).unwrap();
+    let from = "  - id: use
+    when:
+      verb: use
+      target: item
+    if:
+      - has_item:
+          who: self
+          id: target
+    do: []
+";
+    let to = "  - id: use
     when:
       verb: use
     do: []
-"#,
+";
+    assert!(
+        text.contains(from),
+        "shared use was not the item-target fallback"
     );
+    fs::write(&verbs, text.replacen(from, to, 1)).unwrap();
     save(&pack, |_| {});
     world.pack = Some(pack);
 }
@@ -799,7 +812,7 @@ fn the_queued_target_is_that_actor(world: &mut World) {
     assert_eq!(now.tick_index, 0);
 }
 
-#[given(expr = "a verb with a time cost and a resist key")]
+#[given(expr = "a verb with a time cost and a resist roll")]
 fn a_verb_with_time_and_resist(world: &mut World) {
     let pack = temp_pack("rules-unused");
     append(
@@ -815,15 +828,18 @@ fn a_verb_with_time_and_resist(world: &mut World) {
           who: self
           key: grit
           add: 1
-          resist: same
+          resist:
+            who: self
+            check: grit
+            target: 2
 "#,
     );
     save(&pack, |_| {});
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook check names both as not applied")]
-fn check_names_time_and_resist(world: &mut World) {
+#[then(expr = "spook check names the time and not the resist")]
+fn check_names_time_and_not_resist(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     open_pack(&pack);
     run(world, &["check"]);
@@ -834,13 +850,83 @@ fn check_names_time_and_resist(world: &mut World) {
         world.stderr
     );
     assert!(
-        world
-            .stderr
-            .contains("resist is not applied, so this effect still lands"),
+        !world.stderr.contains("resist is not applied"),
         "{}",
         world.stderr
     );
     assert!(world.stderr.contains("NOT_IN_SPEC"), "{}", world.stderr);
+}
+
+const BARE_SAME: &str = "
+  - id: shrug
+    when:
+      verb: shrug
+    do:
+      - meter:
+          who: self
+          key: grit
+          add: 1
+          resist: same
+";
+
+const SAME_AFTER_ROLL: &str = "
+  - id: shrug
+    when:
+      verb: shrug
+    do:
+      - meter:
+          who: self
+          key: grit
+          add: -1
+          resist:
+            who: self
+            check: grit
+            target: 2
+            resisted: []
+      - meter:
+          who: self
+          key: grit
+          add: 1
+          resist: same
+";
+
+#[given(expr = "a verb whose only resist is same")]
+fn a_verb_whose_only_resist_is_same(world: &mut World) {
+    let pack = temp_pack("rules-bare-same");
+    append(&pack.join("rules/verbs.yaml"), BARE_SAME);
+    save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[then(expr = "spook check reports resist: same with no earlier roll")]
+fn check_reports_bare_resist_same(world: &mut World) {
+    run(world, &["check"]);
+    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
+    assert!(
+        world.stderr.contains("resist: same before any resist roll"),
+        "{}",
+        world.stderr
+    );
+    assert!(world.stderr.contains("SCHEMA"), "{}", world.stderr);
+}
+
+#[given(expr = "a verb whose resist same follows a roll")]
+fn a_verb_whose_resist_same_follows_a_roll(world: &mut World) {
+    let pack = temp_pack("rules-same-after");
+    append(&pack.join("rules/verbs.yaml"), SAME_AFTER_ROLL);
+    save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[then(expr = "spook check does not report a bare resist same")]
+fn check_accepts_resist_same_after_a_roll(world: &mut World) {
+    run(world, &["check"]);
+    assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
+    assert!(
+        !world.stderr.contains("resist: same before any resist roll"),
+        "{}",
+        world.stderr
+    );
 }
 
 fn pc_probe(move_name: &str) -> Intent {

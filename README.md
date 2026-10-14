@@ -73,7 +73,7 @@ Oil is on the shelf.
 Clocks:
 Assassination debt: 2/6, paused
 
-Stock:
+Items:
 Lamp oil: 4
 You: The lamp is out.
 ```

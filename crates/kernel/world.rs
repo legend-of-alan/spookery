@@ -347,6 +347,10 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     }
     bind_meters(&canon, &mut now).map_err(reason_of)?;
     bind_inventory(&now).map_err(reason_of)?;
+    let unknown = crate::canon::unknown_save_items(&canon, &now);
+    if !unknown.is_empty() {
+        return Err(reason_of(unknown));
+    }
     Ok(World {
         root: root.to_path_buf(),
         canon,
@@ -416,6 +420,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             if let Err(more) = bind_inventory(&copy) {
                 diags.extend(more);
             }
+            diags.extend(crate::canon::unknown_save_items(canon, &copy));
         }
     }
     if let Some(canon) = &canon {

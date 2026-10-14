@@ -27,6 +27,17 @@ pub fn eval(canon: &Canon, now: &Now, ctx: &Ctx<'_>, expr: &NumberExpr) -> Resul
     }
 }
 
+/// `id: target` is the intent's target token. Any other id is itself.
+pub fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reason> {
+    if id == "target" {
+        return match &intent.target {
+            Target::Actor(token) | Target::Place(token) => Ok(token.clone()),
+            _ => Err(Reason::Schema),
+        };
+    }
+    Ok(id.to_string())
+}
+
 pub fn actor_of(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
     match who {
         Who::Self_ | Who::Subject => Ok(ctx.intent.actor_id.clone()),

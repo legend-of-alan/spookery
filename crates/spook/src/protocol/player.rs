@@ -33,7 +33,7 @@ pub enum PlayerMessage {
         messages: Vec<FactNote>,
         unknown_mentioned: Vec<String>,
         clocks: Vec<WireClock>,
-        stocks: Vec<WireStock>,
+        items: Vec<WireItem>,
         habits: Vec<String>,
     },
 }
@@ -68,9 +68,9 @@ pub struct WireClock {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct WireStock {
-    pub sku: String,
-    pub qty: i64,
+pub struct WireItem {
+    pub id: String,
+    pub count: u32,
 }
 
 pub fn write_player(message: &PlayerMessage) -> String {

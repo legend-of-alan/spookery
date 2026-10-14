@@ -59,8 +59,8 @@ fn the_save_is_hand_edited(world: &mut World) {
     let mut text = fs::read_to_string(&now_path).unwrap();
     text = text.replace("world_time: 1080", "world_time: 7");
     text = text.replace(
-        "kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: []\n    known_facts: []",
-        "kind: pc\n    place: mira_rooms\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: []\n    known_facts: []",
+        "kind: pc\n    place: docks_shop\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
+        "kind: pc\n    place: mira_rooms\n    flags: []\n    busy: false\n    meters:\n      grit:\n        base: 1\n        offset: 0\n      rest:\n        base: 3\n        offset: 0\n    inventory: {}\n    known_facts: []",
     );
     text = text.replace(
         "    actors:\n      - aldric\n      - pc_rowan\n",
@@ -125,10 +125,10 @@ fn state_rev_is_2(world: &mut World) {
         now.places
             .get("docks_shop")
             .unwrap()
-            .stock
+            .items
             .get("lamp_oil")
             .copied(),
-        Some(4)
+        Some(4u32)
     );
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
 }

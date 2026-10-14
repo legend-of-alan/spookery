@@ -31,7 +31,7 @@ pub use gm::{
 };
 pub use player::{
     read_player, read_player_hello, write_player, write_player_hello, FactNote, PlayerMessage,
-    WireClock, WireFact, WireStock,
+    WireClock, WireFact, WireItem,
 };
 
 /// A line that is not one of the two message sets.

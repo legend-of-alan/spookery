@@ -1,4 +1,4 @@
-use crate::protocol::{FactNote, Outcome, PlayerMessage, WireClock, WireFact, WireStock};
+use crate::protocol::{FactNote, Outcome, PlayerMessage, WireClock, WireFact, WireItem};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -24,7 +24,7 @@ pub fn render(message: &PlayerMessage) -> String {
             messages,
             unknown_mentioned: _,
             clocks,
-            stocks,
+            items,
             habits: _,
         } => perceive(
             viewer,
@@ -33,7 +33,7 @@ pub fn render(message: &PlayerMessage) -> String {
             known_facts,
             messages,
             clocks,
-            stocks,
+            items,
         ),
     }
 }
@@ -120,6 +120,7 @@ fn named_refusal(code: &str, missing: Option<&str>) -> String {
         "SESSION_FULL" => "The table is full.",
         "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
+        "NOT_A_WEAPON" => "That is not a weapon.",
         "LINE_TOO_LONG" => "That line is too long.",
         "CANT_AFFORD" => {
             return match missing {
@@ -139,7 +140,7 @@ fn perceive(
     known_facts: &[WireFact],
     messages: &[FactNote],
     clocks: &[WireClock],
-    stocks: &[WireStock],
+    items: &[WireItem],
 ) -> String {
     let mut sections = Vec::new();
     if !place.is_empty() {
@@ -176,12 +177,12 @@ fn perceive(
         }
         sections.push(format!("Clocks:\n{}", lines.join("\n")));
     }
-    if !stocks.is_empty() {
+    if !items.is_empty() {
         let mut lines = Vec::new();
-        for stock in stocks {
-            lines.push(format!("{}: {}", humanize(&stock.sku), stock.qty));
+        for item in items {
+            lines.push(format!("{}: {}", humanize(&item.id), item.count));
         }
-        sections.push(format!("Stock:\n{}", lines.join("\n")));
+        sections.push(format!("Items:\n{}", lines.join("\n")));
     }
     sections.join("\n\n")
 }
@@ -436,9 +437,9 @@ Shop day: 1/1"
                     paused: false,
                 },
             ],
-            stocks: vec![WireStock {
-                sku: "lamp_oil".to_string(),
-                qty: 4,
+            items: vec![WireItem {
+                id: "lamp_oil".to_string(),
+                count: 4,
             }],
             habits: vec!["tend_shop".to_string()],
         });
@@ -459,7 +460,7 @@ Clocks:
 Assassination debt: 2/6, paused
 Shop day: 1/1
 
-Stock:
+Items:
 Lamp oil: 4"
         );
         assert!(!text.contains("CANON-BODY"), "{text}");
@@ -477,14 +478,14 @@ Lamp oil: 4"
             messages: Vec::new(),
             unknown_mentioned: Vec::new(),
             clocks: Vec::new(),
-            stocks: Vec::new(),
+            items: Vec::new(),
             habits: Vec::new(),
         });
         assert_eq!(quiet, "You are in Docks street.\n\nHere: Bram");
         assert!(!quiet.contains("You know:"), "{quiet}");
         assert!(!quiet.contains("Notes:"), "{quiet}");
         assert!(!quiet.contains("Clocks:"), "{quiet}");
-        assert!(!quiet.contains("Stock:"), "{quiet}");
+        assert!(!quiet.contains("Items:"), "{quiet}");
         assert_readable(&quiet);
     }
 }
