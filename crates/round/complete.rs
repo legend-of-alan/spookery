@@ -2,6 +2,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::effect::{Effect, EffectClass};
 use spookery_kernel::expand::expand_outcome;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::journal::Arrival;
 use spookery_kernel::model::Pending;
 use spookery_kernel::rules::expr::{self, Ctx};
 use spookery_kernel::rules::RollReport;
@@ -16,15 +17,6 @@ use crate::round::Round;
 pub(crate) fn run(round: &mut Round, _draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("complete".to_string());
     Ok(())
-}
-
-/// One arrival written on the tick line.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Arrival {
-    pub actor_id: String,
-    pub arrived_at: u64,
-    pub to: String,
-    pub via: String,
 }
 
 /// Apply every journey whose minute has been reached, earliest first.

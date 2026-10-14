@@ -2,6 +2,7 @@ use spookery_kernel::apply::apply_effect;
 use spookery_kernel::effect::Effect;
 use spookery_kernel::expand::expand_outcome;
 use spookery_kernel::intent::{ActorKind, Intent};
+use spookery_kernel::journal::Rejected;
 use spookery_kernel::map;
 use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::rules::cost;
@@ -10,7 +11,6 @@ use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::log::Rejected;
 use crate::resolve::{roll_subject, viewer_token, SubjectRoll};
 use crate::round::{Resolution, Round};
 

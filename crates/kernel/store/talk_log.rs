@@ -68,7 +68,7 @@ pub fn read_session(
     };
     let mut out = Vec::new();
     for line in load_kept(root)? {
-        let seq = session_seq(line.as_bytes()).ok_or(Reason::Schema)?;
+        let seq = line_seq(&line).ok_or(Reason::Schema)?;
         if seq > after_seq && out.len() < limit {
             out.push(line);
         }
@@ -79,7 +79,7 @@ pub fn read_session(
 /// Last complete `seq`, or 0 when the tape has no record.
 pub fn session_end_seq(root: &Path) -> Result<u64, Reason> {
     match load_kept(root)?.last() {
-        Some(line) => session_seq(line.as_bytes()).ok_or(Reason::Schema),
+        Some(line) => line_seq(line).ok_or(Reason::Schema),
         None => Ok(0),
     }
 }
@@ -105,7 +105,7 @@ fn load_kept(root: &Path) -> Result<Vec<String>, Reason> {
     for line in text.split_inclusive('\n') {
         let line = line.strip_suffix('\n').unwrap_or(line);
         let line = line.strip_suffix('\r').unwrap_or(line);
-        if session_seq(line.as_bytes()).is_none() {
+        if line_seq(line).is_none() {
             return Err(Reason::Schema);
         }
         lines.push(line.to_string());
@@ -151,7 +151,8 @@ fn tail_seq(file: &mut File, len: u64) -> Result<(u64, u64), Reason> {
     if line.last() == Some(&b'\r') {
         line = &line[..line.len() - 1];
     }
-    let seq = session_seq(line).ok_or(Reason::Schema)?;
+    let seq =
+        line_seq(std::str::from_utf8(line).map_err(|_| Reason::Schema)?).ok_or(Reason::Schema)?;
     Ok((kept_end, seq))
 }
 
@@ -162,17 +163,12 @@ fn last_line_in_suffix(suffix: &[u8], at_start: bool) -> bool {
     at_start || suffix[..last_nl].contains(&b'\n')
 }
 
-fn session_seq(line: &[u8]) -> Option<u64> {
-    let rest = line.strip_prefix(br#"{"seq":"#)?;
-    if rest.first().is_none_or(|byte| !byte.is_ascii_digit()) {
-        return None;
+fn line_seq(line: &str) -> Option<u64> {
+    #[derive(serde::Deserialize)]
+    struct SessionHead {
+        seq: u64,
     }
-    let mut value: u64 = 0;
-    for byte in rest {
-        if !byte.is_ascii_digit() {
-            return Some(value);
-        }
-        value = value.checked_mul(10)?.checked_add(u64::from(byte - b'0'))?;
-    }
-    Some(value)
+    serde_json::from_str::<SessionHead>(line)
+        .ok()
+        .map(|head| head.seq)
 }

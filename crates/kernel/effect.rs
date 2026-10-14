@@ -1,11 +1,14 @@
-use serde::ser::{Serialize, SerializeStruct, Serializer};
+use serde::{Deserialize, Serialize};
 
 use crate::intent::ViewerId;
 use crate::meter::MeterWrite;
 
-/// One effect. `class` is the payload. JSON for this value is written by the
-/// serializer below: `class`, `as`, `intent_id`, then the fields of `class`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One effect. JSON is `class`, `as`, `intent_id`, then the fields of `class`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    try_from = "crate::store::records::EffectRecord",
+    into = "crate::store::records::EffectRecord"
+)]
 pub struct Effect {
     pub class: EffectClass,
     pub as_viewer: ViewerId,
@@ -98,160 +101,4 @@ impl EffectClass {
             EffectClass::Narrate { .. } => "narrate",
         }
     }
-}
-
-impl Serialize for Effect {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let viewer = self.as_viewer.token();
-        let mut state = serializer.serialize_struct("Effect", 3 + payload_len(&self.class))?;
-        state.serialize_field("class", self.class.name())?;
-        state.serialize_field("as", &viewer)?;
-        state.serialize_field("intent_id", &self.intent_id)?;
-        write_payload_fields(&mut state, &self.class)?;
-        state.end()
-    }
-}
-
-/// Payload object only. Digest rows print this, not the envelope.
-pub(crate) struct EffectPayload<'a>(pub &'a EffectClass);
-
-impl Serialize for EffectPayload<'_> {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let mut state = serializer.serialize_struct("EffectPayload", payload_len(self.0))?;
-        write_payload_fields(&mut state, self.0)?;
-        state.end()
-    }
-}
-
-fn payload_len(class: &EffectClass) -> usize {
-    match class {
-        EffectClass::Clock { .. } => 2,
-        EffectClass::Meter { write, .. } => match write {
-            MeterWrite::Snap => 3,
-            MeterWrite::Base(_) | MeterWrite::Offset(_) => 4,
-        },
-        EffectClass::Item { max, .. } => 3 + usize::from(max.is_some()),
-        EffectClass::Wield { .. } => 2,
-        EffectClass::Unwield { .. } => 1,
-        EffectClass::Location { arrived_at, .. } => 3 + usize::from(arrived_at.is_some()),
-        EffectClass::Flag { .. } => 3,
-        EffectClass::Memory { text, .. } => 3 + usize::from(text.is_some()),
-        EffectClass::Message { place, .. } => 4 + usize::from(place.is_some()),
-        EffectClass::Narrate { .. } => 3,
-    }
-}
-
-fn write_payload_fields<S>(state: &mut S, class: &EffectClass) -> Result<(), S::Error>
-where
-    S: SerializeStruct,
-{
-    match class {
-        EffectClass::Clock { clock_id, delta } => {
-            state.serialize_field("clock_id", clock_id)?;
-            state.serialize_field("delta", delta)?;
-        }
-        EffectClass::Meter {
-            actor_id,
-            key,
-            write,
-        } => {
-            state.serialize_field("actor_id", actor_id)?;
-            state.serialize_field("key", key)?;
-            match write {
-                MeterWrite::Base(delta) => {
-                    state.serialize_field("write", "base")?;
-                    state.serialize_field("delta", delta)?;
-                }
-                MeterWrite::Offset(delta) => {
-                    state.serialize_field("write", "offset")?;
-                    state.serialize_field("delta", delta)?;
-                }
-                MeterWrite::Snap => {
-                    state.serialize_field("write", "snap")?;
-                }
-            }
-        }
-        EffectClass::Item {
-            actor_id,
-            place,
-            id,
-            delta,
-            max,
-        } => {
-            if let Some(actor_id) = actor_id {
-                state.serialize_field("actor_id", actor_id)?;
-            }
-            if let Some(place) = place {
-                state.serialize_field("place", place)?;
-            }
-            state.serialize_field("id", id)?;
-            state.serialize_field("delta", delta)?;
-            if let Some(max) = max {
-                state.serialize_field("max", max)?;
-            }
-        }
-        EffectClass::Wield { actor_id, id } => {
-            state.serialize_field("actor_id", actor_id)?;
-            state.serialize_field("id", id)?;
-        }
-        EffectClass::Unwield { actor_id } => {
-            state.serialize_field("actor_id", actor_id)?;
-        }
-        EffectClass::Location {
-            actor_id,
-            from,
-            to,
-            arrived_at,
-        } => {
-            state.serialize_field("actor_id", actor_id)?;
-            state.serialize_field("from", from)?;
-            state.serialize_field("to", to)?;
-            if let Some(arrived_at) = arrived_at {
-                state.serialize_field("arrived_at", arrived_at)?;
-            }
-        }
-        EffectClass::Memory {
-            actor_id,
-            fact_ids,
-            tags,
-            text,
-        } => {
-            state.serialize_field("actor_id", actor_id)?;
-            state.serialize_field("fact_ids", fact_ids)?;
-            state.serialize_field("tags", tags)?;
-            if let Some(text) = text {
-                state.serialize_field("text", text)?;
-            }
-        }
-        EffectClass::Flag {
-            actor_id,
-            key,
-            value,
-        } => {
-            state.serialize_field("actor_id", actor_id)?;
-            state.serialize_field("key", key)?;
-            state.serialize_field("value", value)?;
-        }
-        EffectClass::Message {
-            message_id,
-            to,
-            place,
-            fact_ids,
-            text,
-        } => {
-            state.serialize_field("message_id", message_id)?;
-            state.serialize_field("to", to)?;
-            if let Some(place) = place {
-                state.serialize_field("place", place)?;
-            }
-            state.serialize_field("fact_ids", fact_ids)?;
-            state.serialize_field("text", text)?;
-        }
-        EffectClass::Narrate { to, fact_ids, text } => {
-            state.serialize_field("to", to)?;
-            state.serialize_field("fact_ids", fact_ids)?;
-            state.serialize_field("text", text)?;
-        }
-    }
-    Ok(())
 }

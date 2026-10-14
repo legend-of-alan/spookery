@@ -1,9 +1,9 @@
-use std::fs;
 use std::path::Path;
 
 use crate::error::Reason;
+use crate::journal::{self, JournalEntry};
 use crate::model::Clock;
-use crate::store::codec::{emit_effect_payload, parse_tick_effects};
+use crate::store::codec::emit_effect_payload;
 use crate::world::World;
 
 pub enum DigestViewer {
@@ -51,25 +51,20 @@ fn clock_line(id: &str, clock: &Clock) -> String {
 }
 
 fn effect_rows(root: &Path) -> Result<Vec<String>, Reason> {
-    let log_dir = root.join("state/journal");
-    if !log_dir.is_dir() {
-        return Ok(Vec::new());
-    }
-    let mut paths = Vec::new();
-    for entry in fs::read_dir(&log_dir).map_err(|_| Reason::Schema)? {
-        let entry = entry.map_err(|_| Reason::Schema)?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with("tick-") && name.ends_with(".jsonl") {
-            paths.push(entry.path());
+    let entries = journal::load_journal(root).map_err(|fault| {
+        if fault.detail.contains("ILLEGAL_CLASS") {
+            Reason::IllegalClass
+        } else {
+            Reason::Schema
         }
-    }
-    paths.sort();
+    })?;
     let mut rows = Vec::new();
-    for path in paths {
-        let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-        let (tick_index, effects) = parse_tick_effects(&text)?;
-        for effect in effects {
+    for entry in entries {
+        let JournalEntry::Tick(record) = entry else {
+            continue;
+        };
+        let tick_index = record.tick_index;
+        for effect in record.effects {
             rows.push((
                 tick_index,
                 format!(
