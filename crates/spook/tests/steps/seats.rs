@@ -281,11 +281,16 @@ fn both_players_wait(world: &mut World) {
 
 #[then(expr = "both lines are queued for the GM")]
 fn both_lines_are_queued_for_the_gm(_world: &mut World) {
-    let text = table::wait_gm("\"kind\":\"queued\"");
-    assert!(text.contains("\"kind\":\"queued\""), "{text}");
-    assert!(text.contains("\"actor_id\":\"pc_rowan\""), "{text}");
-    assert!(text.contains("\"actor_id\":\"pc_harbormouse\""), "{text}");
-    assert!(text.contains("\"move\":\"wait\""), "{text}");
+    let queued = |text: &str, id: &str| {
+        text.lines().any(|line| {
+            line.contains("\"kind\":\"queued\"")
+                && line.contains(&format!("\"actor_id\":\"{id}\""))
+                && line.contains("\"move\":\"wait\"")
+        })
+    };
+    table::wait_gm_until("queued waits for pc_rowan and pc_harbormouse", |text| {
+        queued(text, "pc_rowan") && queued(text, "pc_harbormouse")
+    });
 }
 
 #[then(expr = "session status lists both queued lines")]

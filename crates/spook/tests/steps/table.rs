@@ -373,14 +373,19 @@ pub fn gm_call(id: u64, name: &str, arguments: &str) -> String {
 }
 
 pub fn wait_gm(needle: &str) -> String {
+    wait_gm_until(needle, |text| text.contains(needle))
+}
+
+/// Waits until `done` holds for the GM text; `want` names the condition in the panic.
+pub fn wait_gm_until(want: &str, done: impl Fn(&str) -> bool) -> String {
     let start = Instant::now();
     loop {
         let text = gm_text();
-        if text.contains(needle) {
+        if done(&text) {
             return text;
         }
         if start.elapsed() > Duration::from_secs(5) {
-            panic!("missing {needle}\n{text}");
+            panic!("missing {want}\n{text}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
