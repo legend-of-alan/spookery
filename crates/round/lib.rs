@@ -20,3 +20,10 @@ pub use replay::{
     from_journal, replay_states, verify_pack, ReplayError, ReplayReport, ReplayStep, VerifyError,
     VerifyReport,
 };
+
+#[cfg(test)]
+mod prop_play;
+#[cfg(test)]
+mod prop_replay;
+#[cfg(test)]
+mod prop_rerun;
