@@ -44,3 +44,7 @@ harness = false
 [[test]]
 name = "live_round"
 path = "tests/live_round.rs"
+
+[[test]]
+name = "pack_reference"
+path = "tests/pack_reference.rs"

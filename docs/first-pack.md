@@ -1,6 +1,6 @@
 # Write your first pack
 
-`spook new <dir>` writes a small pack and prints the next three commands. This page edits that pack. Each change is a fenced block the test can apply. A larger example is `packs/sample-d20`, a short fight with a fixed-damage strike.
+`spook new <dir>` writes a small pack and prints the next three commands. This page edits that pack. Each change is a fenced block the test can apply. A larger example is `packs/sample-d20`, a short fight with a fixed-damage strike. Field reference: [Pack reference](pack-reference.md).
 
 ## Start
 
