@@ -24,7 +24,7 @@ fn the_player_waits(world: &mut World) {
 
 #[when(expr = "the GM commits the round")]
 fn the_gm_commits_the_round(_world: &mut World) {
-    let _ = table::gm_call(2, "commit_turn", r#"{"include_tick":true}"#);
+    let _ = table::gm_call(2, "commit_round", r#"{"include_tick":true}"#);
 }
 
 #[then(expr = "world_time is 1085")]
