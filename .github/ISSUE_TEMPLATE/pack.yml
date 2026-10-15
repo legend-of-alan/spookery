@@ -1,5 +1,6 @@
 name: Pack question
 description: A question about writing or running a pack.
+labels: [question]
 body:
   - type: textarea
     id: question
