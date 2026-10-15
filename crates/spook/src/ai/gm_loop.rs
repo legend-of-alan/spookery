@@ -9,7 +9,7 @@ use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
 use crate::ai::prompt::{
     from_canon, keep, parse_actions, prepare_with, push_handled, render_prompt, HandledSay, Kept,
-    MenuRow, OutgoingSay, Prepared, PromptSide, Wake,
+    MenuRow, OutgoingSay, Prepared, PromptSide, Prose, Wake,
 };
 use crate::ai::wire::{self, Status};
 use crate::ai::HostError;
@@ -40,7 +40,7 @@ pub fn run_ai_gm<M: Model>(
     model: &mut M,
     watch: &Watch,
 ) -> Result<(), HostError> {
-    let (menu, kinds) = {
+    let (menu, kinds, prose) = {
         let canon = canon::load_canon(pack)
             .map_err(|err| fail(spookery_kernel::reason_of(err).to_string()))?;
         from_canon(&canon)
@@ -65,6 +65,7 @@ pub fn run_ai_gm<M: Model>(
             seat: &mut seat,
             menu: &menu,
             kinds: &kinds,
+            prose: &prose,
             buffer: &mut buffer,
             high: &mut high,
             wake: Wake::Sit,
@@ -82,6 +83,7 @@ pub fn run_ai_gm<M: Model>(
             seat: &mut seat,
             menu: &menu,
             kinds: &kinds,
+            prose: &prose,
             buffer: &mut buffer,
             high: &mut high,
             wake,
@@ -96,6 +98,7 @@ struct TurnIn<'a, M: Model> {
     seat: &'a mut GmLoop,
     menu: &'a [MenuRow],
     kinds: &'a std::collections::BTreeMap<String, CastKind>,
+    prose: &'a Prose,
     buffer: &'a mut Vec<HandledSay>,
     high: &'a mut u64,
     wake: Wake,
@@ -108,6 +111,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         seat,
         menu,
         kinds,
+        prose,
         buffer,
         high,
         wake,
@@ -116,15 +120,19 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
     } = turn;
     let status = call_status(seat, Some(*high))?;
     let mut seat_err = None;
-    let prepared = prepare_with(kinds, &wake, &status.present, &mut |viewer| match perceive(
-        seat, viewer,
-    ) {
-        Ok(result) => result,
-        Err(err) => {
-            seat_err = Some(err);
-            Err("seat".to_string())
-        }
-    });
+    let prepared = prepare_with(
+        kinds,
+        prose,
+        &wake,
+        &status.present,
+        &mut |viewer| match perceive(seat, viewer) {
+            Ok(result) => result,
+            Err(err) => {
+                seat_err = Some(err);
+                Err("seat".to_string())
+            }
+        },
+    );
     if let Some(err) = seat_err {
         return Err(err);
     }

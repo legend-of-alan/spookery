@@ -357,7 +357,7 @@ An addressed actor who is not in the room gets one table say, `They are not here
 
 Speech already on the tape at sit is not answered. High water starts at the current last seq. A queue that is already waiting still commits.
 
-The POST body is the bounded prompt: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up. A restart remembers nothing. A player view that is only a room census drops `known_facts`, `messages`, and `unknown_mentioned`. An NPC view keeps each fact's `id` and `text`. Every fact `body` is dropped. The prompt does not receive a canon or a cast body. The tape file stays on disk under the pack. The POST does not carry the tape file, `save.yaml`, or a cast file.
+The POST body is the bounded prompt: the last 16 says this process has handled, the new player lines, the move menu, the stripped views, and roll faces on a follow-up. A restart remembers nothing. A player view that is only a room census drops `known_facts`, `messages`, and `unknown_mentioned`. An NPC view keeps each fact's `id` and `text`. Every fact `body` is dropped. The prompt includes the Markdown body of the current place and of each cast member in the views. The tape file stays on disk under the pack. The POST does not carry the tape file, `save.yaml`, or a cast file.
 
 ## Firewall, lint, and digest
 

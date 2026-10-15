@@ -285,7 +285,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     assert_eq!(world_time(&pack), 1080, "speech ticked");
     let first = posts.lock().unwrap()[0].clone();
     assert!(first.contains("act"), "{first}");
-    assert!(!first.contains("CASTBODYONLY-FIXTURE"), "{first}");
+    assert!(first.contains("CASTBODYONLY-FIXTURE"), "{first}");
     assert_chat_post(&first);
     writeln!(play_in, "travel docks_street").unwrap();
     play_in.flush().unwrap();
@@ -301,7 +301,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     assert_eq!(place.as_deref(), Some("docks_street"));
     let second = posts.lock().unwrap()[1].clone();
     assert!(second.contains("act"), "{second}");
-    assert!(!second.contains("CASTBODYONLY-FIXTURE"), "{second}");
+    assert!(second.contains("CASTBODYONLY-FIXTURE"), "{second}");
     assert_chat_post(&second);
     thread::sleep(Duration::from_millis(200));
     assert_eq!(world_time(&pack), 1085, "travel ticked twice");
