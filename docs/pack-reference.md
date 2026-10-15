@@ -1,6 +1,6 @@
 # Pack reference
 
-Reference for people and agents writing a pack. The walkthrough is [Write your first pack](first-pack.md). What the engine does with a loaded pack is [the spec](spec.md).
+Reference for people and agents writing a pack. The walkthrough is [Write your first pack](first-pack.md). What the engine promises is [Engine guarantees](engine-guarantees.md).
 
 `spook check <pack>` is the authority for keys. An unknown key is rejected. `spook check --json <pack>` prints one array of `file`, `line`, `column`, `path`, `code`, `message`, and `hint`. The fences below are one pack, and that check accepts them. A rule that names `oil`, `knife`, or `nerve` uses the item and meter files on this page.
 

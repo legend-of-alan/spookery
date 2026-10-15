@@ -265,7 +265,7 @@ The request is one chat-completions POST. The JSON body carries one user message
 
 ## Docs
 
-- [docs/spec.md](docs/spec.md) is the normative spec. A rule it does not state is unspecified.
+- [docs/engine-guarantees.md](docs/engine-guarantees.md) states what the engine promises. The feature files test them. Where the doc and the feature files disagree, the feature files win.
 - [docs/README.md](docs/README.md) has the principles, glossary and repo layout.
 - [LICENSE](LICENSE)
 

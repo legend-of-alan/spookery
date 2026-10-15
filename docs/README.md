@@ -1,8 +1,8 @@
 # Docs
 
-Read [docs/spec.md](spec.md). It is the only normative spec.
+[Engine guarantees](engine-guarantees.md) states what the engine promises. The feature files test them. Where the doc and the feature files disagree, the feature files win.
 
-[Write your first pack](first-pack.md) walks through `spook new` and the first edits. [Pack reference](pack-reference.md) is the field reference for authors and agents.
+[Write your first pack](first-pack.md) walks through `spook new` and the first edits. [Pack reference](pack-reference.md) is the field reference for authors and agents. [Seat protocol](seat-protocol.md) is the wire for a player client or a GM integration.
 
 Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
@@ -35,7 +35,7 @@ Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
 ```text
 README.md              how to build and play
-docs/                  spec, first-pack guide, pack reference, this file
+docs/                  guarantees, first-pack guide, pack reference, seat protocol, this file
 packs/                 sample packs (oneshot-docks is the official fixture)
 .grok/skills/          the author-pack skill
 crates/
