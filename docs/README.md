@@ -2,7 +2,7 @@
 
 Read [docs/spec.md](spec.md). It is the only normative spec.
 
-[Write your first pack](first-pack.md) walks through `spook new` and the first edits.
+[Write your first pack](first-pack.md) walks through `spook new` and the first edits. [Pack reference](pack-reference.md) is the field reference for authors and agents.
 
 Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
@@ -35,7 +35,7 @@ Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
 ```text
 README.md              how to build and play
-docs/                  spec, first-pack guide, this file
+docs/                  spec, first-pack guide, pack reference, this file
 packs/                 sample packs (oneshot-docks is the official fixture)
 .grok/skills/          the author-pack skill
 crates/
