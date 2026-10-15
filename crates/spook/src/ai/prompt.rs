@@ -4,6 +4,9 @@ use serde_json::{Map, Value};
 use spookery_kernel::canon::{Canon, CastKind};
 use spookery_kernel::rules::rule::{Owner, TargetKind, When};
 
+/// Characters. The same budget `perceive` uses when it trims this prose.
+const PROSE_BUDGET: usize = 800;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuRow {
     pub name: String,
@@ -221,17 +224,41 @@ pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>, P
             _ => {}
         }
     }
+    let hidden = hidden_lines(canon);
     let mut kinds = BTreeMap::new();
     let mut cast = BTreeMap::new();
     for (id, member) in &canon.cast {
         kinds.insert(id.clone(), member.kind);
-        cast.insert(id.clone(), member.body.clone());
+        if let Some(body) = clip_prose(&member.body, &hidden) {
+            cast.insert(id.clone(), body);
+        }
     }
     let mut places = BTreeMap::new();
     for (id, place) in &canon.places {
-        places.insert(id.clone(), place.body.clone());
+        if let Some(body) = clip_prose(&place.body, &hidden) {
+            places.insert(id.clone(), body);
+        }
     }
     (menu, kinds, Prose { places, cast })
+}
+
+fn hidden_lines(canon: &Canon) -> Vec<String> {
+    let mut lines: Vec<String> = canon
+        .facts
+        .values()
+        .filter(|fact| fact.hidden && !fact.text.is_empty())
+        .map(|fact| fact.text.clone())
+        .collect();
+    lines.sort();
+    lines.dedup();
+    lines
+}
+
+fn clip_prose(body: &str, hidden: &[String]) -> Option<String> {
+    if hidden.iter().any(|text| body.contains(text.as_str())) {
+        return None;
+    }
+    Some(body.chars().take(PROSE_BUDGET).collect())
 }
 
 pub fn push_handled(buffer: &mut Vec<HandledSay>, say: HandledSay) {
@@ -943,9 +970,32 @@ mod tests {
     }
 
     #[test]
+    fn a_body_that_quotes_a_hidden_fact_stays_out() {
+        let mut canon = docks();
+        let secret = canon.facts["fact_ledger_short"].text.clone();
+        assert!(canon.facts["fact_ledger_short"].hidden);
+        canon.cast.get_mut("mira").unwrap().body = format!("Mira wrote: {secret}");
+        canon.places.get_mut("docks_shop").unwrap().body = format!("The shelf says: {secret}");
+        let prompt = prompt_for(&canon, |viewer| {
+            Ok(shop(viewer, &["aldric", "mira", "pc_rowan"]))
+        });
+        assert!(!prompt.contains(&secret), "{prompt}");
+        assert!(prompt.contains("Aldric sweeps the shop"), "{prompt}");
+    }
+
+    #[test]
+    fn a_long_cast_body_is_cut_at_the_budget() {
+        let mut canon = docks();
+        canon.cast.get_mut("aldric").unwrap().body = "Z".repeat(PROSE_BUDGET + 1);
+        let prompt = prompt_for(&canon, |viewer| Ok(shop(viewer, &["aldric", "pc_rowan"])));
+        assert!(prompt.contains(&"Z".repeat(PROSE_BUDGET)), "{prompt}");
+        assert!(!prompt.contains(&"Z".repeat(PROSE_BUDGET + 1)), "{prompt}");
+    }
+
+    #[test]
     fn prompt_omits_dropped_strings_and_keeps_fact_text() {
         let mut canon = docks();
-        canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
+        canon.cast.get_mut("mira").unwrap().body = "MIRA-PROSE-SENTINEL".to_string();
         let (menu, ..) = from_canon(&canon);
         let mut calls = 0;
         let prepared = prepare(&canon, &table_wake(), &[], &mut |viewer| {
@@ -984,8 +1034,8 @@ mod tests {
         let prompt = render_prompt(&menu, &PromptSide::default(), &view, &[]);
         assert!(!prompt.contains("KNOWN-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("KNOWN-BODY"), "{prompt}");
-        assert!(!prompt.contains("\"BODY-SENTINEL\""), "{prompt}");
-        assert!(prompt.contains("CAST-BODY-SENTINEL"), "{prompt}");
+        assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
+        assert!(prompt.contains("MIRA-PROSE-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("MESSAGE-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("UNKNOWN-SENTINEL"), "{prompt}");
         assert!(prompt.contains("FACT-TEXT-SENTINEL"), "{prompt}");
