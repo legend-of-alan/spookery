@@ -16,6 +16,7 @@ pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
         .open(path)
         .map_err(|_| Reason::CommitConflict)?;
     file.sync_all().map_err(|_| Reason::CommitConflict)?;
+    note_file(path);
     Ok(())
 }
 
@@ -31,12 +32,97 @@ pub(crate) fn fsync_dir(path: &Path) -> Result<(), Reason> {
             .open(path)
             .map_err(|_| Reason::CommitConflict)?;
         file.sync_all().map_err(|_| Reason::CommitConflict)?;
+        note_dir(path);
         Ok(())
     }
     #[cfg(not(windows))]
     {
         let file = std::fs::File::open(path).map_err(|_| Reason::CommitConflict)?;
         file.sync_all().map_err(|_| Reason::CommitConflict)?;
+        note_dir(path);
         Ok(())
+    }
+}
+
+pub(crate) fn rename(from: &Path, to: &Path) -> Result<(), Reason> {
+    std::fs::rename(from, to).map_err(|_| Reason::CommitConflict)?;
+    note_rename(to);
+    Ok(())
+}
+
+// Deeper directories first, so entries land before the link in the parent.
+pub(crate) fn fsync_dirs(dirs: &[PathBuf]) -> Result<(), Reason> {
+    let mut ordered: Vec<&Path> = dirs.iter().map(PathBuf::as_path).collect();
+    ordered.sort_by(|left, right| {
+        right
+            .components()
+            .count()
+            .cmp(&left.components().count())
+            .then_with(|| left.cmp(right))
+    });
+    ordered.dedup();
+    for dir in ordered {
+        fsync_dir(dir)?;
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+fn note_file(path: &Path) {
+    trace::record(Mark::File(path.to_path_buf()));
+}
+
+#[cfg(not(test))]
+fn note_file(_: &Path) {}
+
+#[cfg(test)]
+fn note_dir(path: &Path) {
+    trace::record(Mark::Dir(path.to_path_buf()));
+}
+
+#[cfg(not(test))]
+fn note_dir(_: &Path) {}
+
+#[cfg(test)]
+fn note_rename(path: &Path) {
+    trace::record(Mark::Rename(path.to_path_buf()));
+}
+
+#[cfg(not(test))]
+fn note_rename(_: &Path) {}
+
+#[cfg(test)]
+pub(crate) use trace::{start as start_trace, take as take_trace, Mark};
+
+#[cfg(test)]
+mod trace {
+    use std::cell::RefCell;
+    use std::path::PathBuf;
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(crate) enum Mark {
+        File(PathBuf),
+        Dir(PathBuf),
+        Rename(PathBuf),
+    }
+
+    thread_local! {
+        static LOG: RefCell<Option<Vec<Mark>>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn record(mark: Mark) {
+        LOG.with(|log| {
+            if let Some(marks) = log.borrow_mut().as_mut() {
+                marks.push(mark);
+            }
+        });
+    }
+
+    pub(crate) fn start() {
+        LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
+    }
+
+    pub(crate) fn take() -> Vec<Mark> {
+        LOG.with(|log| log.borrow_mut().take().unwrap_or_default())
     }
 }
