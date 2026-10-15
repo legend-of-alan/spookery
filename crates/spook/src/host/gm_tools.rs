@@ -47,7 +47,7 @@ pub(super) struct GmTool {
     run: fn(&mut World, Option<Map<String, Value>>) -> GmToolReply,
 }
 
-const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_turn. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
+const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
 
 impl GmTool {
     pub(super) fn description(&self) -> String {
@@ -81,10 +81,10 @@ pub(super) const GM_LIST: &[GmTool] = &[
         run: run_say,
     },
     GmTool {
-        name: "commit_turn",
-        about: "commit_turn requires include_tick. session_id may be a string.",
+        name: "commit_round",
+        about: "commit_round requires include_tick. session_id may be a string.",
         schema: commit_schema,
-        run: run_commit_turn,
+        run: run_commit_round,
     },
 ];
 
@@ -106,7 +106,7 @@ fn run_intent(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToo
     }
 }
 
-fn run_commit_turn(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_commit_round(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match commit_tool(world, arguments) {
         Ok(done) => done,
         Err(code) => refused_tool(code),

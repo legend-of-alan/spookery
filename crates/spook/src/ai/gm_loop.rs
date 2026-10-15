@@ -173,7 +173,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
     let committed = if after.queued.is_empty() {
         false
     } else {
-        let outcome = seat.call("commit_turn", json!({ "include_tick": true }))?;
+        let outcome = seat.call("commit_round", json!({ "include_tick": true }))?;
         if outcome.refused {
             false
         } else {
@@ -300,7 +300,7 @@ struct GmLoop {
     wakes: VecDeque<Wake>,
     /// Say events at or below this seq are not a wake. Starts closed.
     high_water: u64,
-    /// Advances when a `commit_turn` result arrives, before later events.
+    /// Advances when a `commit_round` result arrives, before later events.
     gen: u64,
 }
 
@@ -324,7 +324,7 @@ impl GmLoop {
     }
 
     fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, HostError> {
-        let commit = name == "commit_turn";
+        let commit = name == "commit_round";
         let outcome = self.client.call(name, arguments).map_err(host_err)?;
         // Lines already on the socket are folded in before the commit generation
         // moves, which is the order the seat used to stamp them.

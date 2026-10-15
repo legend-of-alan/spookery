@@ -245,7 +245,7 @@ impl Session {
     }
 
     fn on_commit(&mut self) {
-        let Some(outcome) = self.call_tool("commit_turn", json!({ "include_tick": true })) else {
+        let Some(outcome) = self.call_tool("commit_round", json!({ "include_tick": true })) else {
             return;
         };
         let checks = render_checks(&outcome.body);

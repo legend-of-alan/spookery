@@ -496,7 +496,7 @@ fn nothing_advances_until_commit(world: &mut World) {
     let (_mark, added) = table::player_send("wait", "BUSY");
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(table::now_of(&pack).world_time, before);
-    let _ = table::gm_call(9, "commit_turn", r#"{"include_tick":true}"#);
+    let _ = table::gm_call(9, "commit_round", r#"{"include_tick":true}"#);
     assert!(table::now_of(&pack).world_time > before);
 }
 

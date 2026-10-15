@@ -428,7 +428,7 @@ async fn exercise(running: &impl ToolClient) {
             "say",
             Some(json!({"address": "table", "text": "good evening"})),
         ),
-        ("commit_turn", Some(json!({"include_tick": true}))),
+        ("commit_round", Some(json!({"include_tick": true}))),
     ] {
         let result = call(running, name, arguments).await;
         assert_sat(&result, name);

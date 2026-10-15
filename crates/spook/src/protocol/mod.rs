@@ -3,7 +3,7 @@ mod player;
 
 use serde::{Deserialize, Serialize};
 
-/// A check band on the player wire, the GM wire, and `commit_turn` checks.
+/// A check band on the player wire, the GM wire, and `commit_round` checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Outcome {

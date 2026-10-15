@@ -1413,7 +1413,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn idle_off_commit_turn_still_commits() {
+fn idle_off_commit_round_still_commits() {
     let pack = temp_pack("idle-off-commit");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
@@ -1426,7 +1426,7 @@ fn idle_off_commit_turn_still_commits() {
     assert!(tick_names(&pack).is_empty());
     let done = call_gm_tool(
         &mut shard,
-        "commit_turn",
+        "commit_round",
         Some(json!({ "include_tick": true }).as_object().unwrap().clone()),
     );
     assert!(done.value.get("code").is_none(), "{}", done.value);
@@ -1888,7 +1888,7 @@ fn idle_is_off_and_a_player_waits(_world: &mut World) {
 
 #[when(expr = "idle is off and the GM commits a queued wait")]
 fn idle_is_off_and_the_gm_commits(_world: &mut World) {
-    idle_off_commit_turn_still_commits();
+    idle_off_commit_round_still_commits();
 }
 
 #[when(expr = "effect rows and outcome lists are played")]
