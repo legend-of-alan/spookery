@@ -53,8 +53,8 @@ pub fn observe(
         }
     }
     let lines = match actor {
-        None => narrations(effects, None),
-        Some(id) => narrations(effects, Some(id)),
+        None => narrations(canon, now, effects, None),
+        Some(id) => narrations(canon, now, effects, Some(id)),
     };
     Delivery {
         changes: keys.into_iter().collect(),
@@ -62,17 +62,39 @@ pub fn observe(
     }
 }
 
-fn narrations(effects: &[Effect], viewer: Option<&str>) -> Vec<String> {
+fn narrations(canon: &Canon, now: &Now, effects: &[Effect], viewer: Option<&str>) -> Vec<String> {
     let mut lines = Vec::new();
     for effect in effects {
-        let EffectClass::Narrate { to, text, .. } = &effect.class else {
+        let EffectClass::Narrate { to, fact_ids, text } = &effect.class else {
             continue;
         };
-        if viewer.is_none_or(|id| to.iter().any(|name| name == id)) {
+        let Some(id) = viewer else {
+            lines.push(text.clone());
+            continue;
+        };
+        if to.iter().any(|name| name == id) && narrate_allowed(canon, now, id, fact_ids, text) {
             lines.push(text.clone());
         }
     }
     lines
+}
+
+fn narrate_allowed(
+    canon: &Canon,
+    now: &Now,
+    viewer: &str,
+    fact_ids: &[String],
+    text: &str,
+) -> bool {
+    let Some(seat) = viewer_of(now, viewer) else {
+        return false;
+    };
+    if fact_ids.iter().any(|fact| !allows(canon, now, &seat, fact)) {
+        return false;
+    }
+    !canon.facts.iter().any(|(fact_id, fact)| {
+        !fact.text.is_empty() && text.contains(&fact.text) && !allows(canon, now, &seat, fact_id)
+    })
 }
 
 fn can_see(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> bool {

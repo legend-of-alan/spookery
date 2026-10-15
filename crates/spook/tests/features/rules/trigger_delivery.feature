@@ -34,5 +34,18 @@ Feature: Trigger delivery
     And "pc_nell"'s summary lists "actor_flag pc_nell heard_bell"
     And "pc_wren"'s summary does not list "actor_flag pc_nell heard_bell"
 
+  Scenario: An idle round does not linger for the next player
+    When the empty table narrates and then Rowan narrates
+    Then "pc_rowan" is told "You are back."
+    And "pc_rowan" is not told "The shop is quiet."
+
+  Scenario: Check rejects a reserved world actor and a reveal that cannot apply
+    Given a cast id world and a reveal of a missing fact
+    When the operator runs spook check
+    Then the check exits 1
+    And the report says "reserved"
+    And the report says "not a fact"
+    And the report says "reveals to the world"
+
   Scenario: Replay
     Then spook verify passes after ticks that fired triggers

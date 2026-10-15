@@ -453,6 +453,18 @@ fn the_tick_does_not_narrate_to(world: &mut World, text: String, viewer: String)
     );
 }
 
+#[then(expr = "{string} is not told {string}")]
+fn the_viewer_is_not_told(world: &mut World, viewer: String, text: String) {
+    assert!(
+        world
+            .told
+            .iter()
+            .all(|(to, line)| to != &viewer || line != &text),
+        "{viewer} was told {text:?}\n{:?}",
+        world.told
+    );
+}
+
 #[then(expr = "{string} is told {string}")]
 fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
     assert!(
@@ -665,6 +677,70 @@ fn verify_passes_on_this_pack(world: &mut World) {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
+}
+
+#[when(expr = "the empty table narrates and then Rowan narrates")]
+fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
+    let pack = temp_pack("trigger-idle-narrate");
+    add_verb(
+        &pack,
+        "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
+    );
+    edit_save(&pack, |now| {
+        now.presence.humans = 0;
+        now.presence.actors_present.clear();
+    });
+    let mut kernel =
+        spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
+    let wall = kernel.now().last_tick_at.clone();
+    spookery_round::play(&mut kernel, RoundCause::Manual, &wall).unwrap_or_else(|err| {
+        panic!("quiet: {err}");
+    });
+    spookery_kernel::commit::commit_presence(
+        &mut kernel,
+        spookery_kernel::model::Presence {
+            humans: 1,
+            actors_present: vec!["pc_rowan".to_string()],
+        },
+    )
+    .unwrap_or_else(|err| panic!("seat: {err}"));
+    kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
+    let wall = kernel.now().last_tick_at.clone();
+    spookery_round::play(&mut kernel, RoundCause::Manual, &wall)
+        .unwrap_or_else(|err| panic!("back: {err}"));
+    world.told = kernel
+        .take_lines()
+        .into_iter()
+        .map(|line| (line.to, line.text))
+        .collect();
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a cast id world and a reveal of a missing fact")]
+fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
+    let pack = temp_pack("trigger-check-reveal");
+    fs::write(
+        pack.join("cast/world.md"),
+        "\
+---
+schema: cast
+id: world
+kind: npc
+facts: []
+tick:
+  eligible: false
+---
+Reserved.
+",
+    )
+    .unwrap();
+    add_verb(
+        &pack,
+        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          who: world\n          fact: missing_fact\n      - reveal:\n          who: self\n          fact: missing_fact\n",
+    );
+    edit_save(&pack, |_| {});
+    world.pack = Some(pack);
 }
 
 fn seen_of(world: &World, viewer: &str) -> Vec<String> {

@@ -465,6 +465,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(unknown_meters(meters, checks, &rules));
     }
     diags.extend(unknown_rule_items(&rules, &items));
+    diags.extend(reveal_problems(&rules, &facts));
     diags.extend(find_bare_resist(&rules));
     diags.extend(crate::map::broken(&places, &facts, &items));
     if !diags.is_empty() {
@@ -1050,6 +1051,60 @@ fn resist_items(resist: Option<&crate::rules::rule::ResistSpec>, ids: &mut Vec<S
     }
 }
 
+fn reveal_problems(rules: &RuleTable, facts: &BTreeMap<String, FactCanon>) -> Vec<Diagnostic> {
+    use crate::rules::rule::{EffectTemplate, Who};
+    let mut diags = Vec::new();
+    for rule in rules.iter() {
+        let mut effects = Vec::new();
+        collect_effects(&rule.do_, &mut effects);
+        collect_effects(&rule.success, &mut effects);
+        collect_effects(&rule.partial, &mut effects);
+        collect_effects(&rule.failure, &mut effects);
+        for effect in effects {
+            let EffectTemplate::Reveal { who, fact } = effect else {
+                continue;
+            };
+            if matches!(who, Who::World) {
+                diags.push(
+                    schema_error(
+                        &rule.file,
+                        &format!("rule '{}' reveals to the world", rule.local_id),
+                        "name the actor who learns the fact",
+                    )
+                    .with_path(format!("rules[{}]", rule.index)),
+                );
+            }
+            if !facts.contains_key(fact) {
+                diags.push(
+                    schema_error(
+                        &rule.file,
+                        &format!(
+                            "rule '{}' reveals '{fact}', which is not a fact",
+                            rule.local_id
+                        ),
+                        "name a fact from this pack",
+                    )
+                    .with_path(format!("rules[{}]", rule.index)),
+                );
+            }
+        }
+    }
+    diags
+}
+
+fn collect_effects<'a>(
+    effects: &'a [crate::rules::rule::EffectTemplate],
+    out: &mut Vec<&'a crate::rules::rule::EffectTemplate>,
+) {
+    use crate::rules::rule::ResistSpec;
+    for effect in effects {
+        out.push(effect);
+        if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
+            collect_effects(resisted, out);
+        }
+    }
+}
+
 fn unknown_checks(rules: &RuleTable, checks: &BTreeMap<String, CheckDef>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
@@ -1307,6 +1362,17 @@ fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Dia
                     "id",
                     "id is empty",
                     "set id to a short cast id",
+                ));
+            }
+            if parsed.id == crate::effect::WORLD {
+                diags.push(headed_schema_error(
+                    file,
+                    yaml,
+                    line_base,
+                    "id:",
+                    "id",
+                    "id world is reserved",
+                    "rename this cast member",
                 ));
             }
             if parsed.kind != "npc" && parsed.kind != "pc_template" {

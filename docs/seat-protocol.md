@@ -287,7 +287,7 @@ travel stairs
 
 `missing` is omitted when the refusal does not name one. A cost the actor cannot pay is `CANT_AFFORD`, and `missing` is the meter or item id.
 
-When the GM commits the round, a player who rolled receives `check`, then a fresh `resume`, then a fresh `perceive`, then a `lines` frame of the changes that player can see. The check has the outcome only. The `lines` text is one changed key on each line. It is omitted when that player can see no change.
+When the GM commits the round, every seated player receives a fresh `resume`, then a fresh `perceive`, then one `lines` frame for each narrate line they may hear, then a `lines` frame of the changes that player can see. A player who rolled also receives `check` before the `resume`. The change text is one changed key on each line, and that frame is omitted when that player can see no change. A narrate line is omitted when it would show a fact that player is not allowed to know. Empty rounds, with nobody seated, do not leave lines for the next person who sits.
 
 <!-- example: player-check -->
 ```json

@@ -95,7 +95,7 @@ impl World {
         &self.summary
     }
 
-    /// Change keys each actor can see, from rounds since the last take.
+    /// Change keys each actor can see, from seated rounds since the last take.
     pub fn seen(&self) -> &[Seen] {
         &self.seen
     }
@@ -128,8 +128,13 @@ impl World {
         delivered: Delivered,
     ) -> Result<(), Reason> {
         self.summary = delivered.summary.clone();
-        self.lines.extend(delivered.lines);
-        self.seen.extend(delivered.seen);
+        if draft.now().presence.humans == 0 {
+            self.lines.clear();
+            self.seen.clear();
+        } else {
+            self.lines.extend(delivered.lines);
+            self.seen.extend(delivered.seen);
+        }
         if flush {
             let tick_index = draft.now().tick_index;
             self.pending = Some(UncommittedRound {
@@ -659,6 +664,16 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
             )
             .with_path("pack_rev"),
         ),
+    }
+    if now.actors.contains_key(crate::effect::WORLD) {
+        diags.push(
+            schema(
+                "state/save.yaml",
+                "actor id world is reserved",
+                "rename that actor",
+            )
+            .with_path("actors.world"),
+        );
     }
     match emit_save(now) {
         Ok(emitted) if emitted.as_bytes() != bytes => {
