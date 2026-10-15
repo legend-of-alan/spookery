@@ -223,14 +223,15 @@ Tokens that already have one meaning and stay: `ILLEGAL_CLASS`, `ILLEGAL_KNOWLED
 
 `write_commit` is the only rename protocol for world bytes:
 
-1. Copy each live target that already exists into `state/.txn/prev`, and fsync the copies and the `prev` directory.
-2. Create `state/.txn/COMPLETE`, and fsync the file and the `.txn` directory.
-3. Write each new body to a temp file, fsync, and fsync the parent.
+1. Copy each live target that already exists into `state/.txn/prev`, and fsync each copy. A file that is not on disk yet is not copied.
+2. Create `state/.txn/COMPLETE` and fsync that file, then fsync `prev/` and `.txn` once each.
+3. Write each new body to a temp file and fsync the file. Fsync a parent in this step only when the commit created a directory, so that new directory is durable.
 4. Rename side files first (`journal/tick-NNNN.jsonl`, `journal/presence-NNNN.json`, `journal/migrate-NNNN.json`, `journal/base.yaml`, `memories/*.jsonl`).
-5. Rename `save.yaml` last.
-6. Fsync `state/`. Remove `.txn`. `state_rev` was incremented in memory before the bytes were emitted, and it hits disk only in that last rename.
+5. Fsync the parents of those side files (`state/journal/` and any memory directory).
+6. Rename `save.yaml` last.
+7. Fsync `state/`. Remove `.txn`. `state_rev` was incremented in memory before the bytes were emitted, and it hits disk only in that last rename.
 
-Every commit that writes `save.yaml` also writes one journal record in that same plan. A tick writes `journal/tick-NNNN.jsonl`. A presence change writes `journal/presence-NNNN.json` with the new presence and the `state_rev` after the commit. A migrate writes `journal/migrate-NNNN.json` with `pack_rev` before and after and the `state_rev` after the commit. `NNNN` on a tick file is the tick index. `NNNN` on a presence or migrate file is the `state_rev` after the commit. Each record carries `now_hash`, the Blake2s of the `save.yaml` bytes that commit wrote. `save.yaml` is still renamed last, so a crash cannot leave it ahead of its record.
+Every commit that writes `save.yaml` also writes one journal record in that same plan. A tick writes `journal/tick-NNNN.jsonl`. A presence change writes `journal/presence-NNNN.json` with the new presence and the `state_rev` after the commit. A migrate writes `journal/migrate-NNNN.json` with `pack_rev` before and after and the `state_rev` after the commit. `NNNN` on a tick file is the tick index. `NNNN` on a presence or migrate file is the `state_rev` after the commit. Each record carries `now_hash`, the Blake2s of the `save.yaml` bytes that commit wrote. `save.yaml` is still renamed last, and only after the other target directories have been flushed, so a crash cannot leave the save ahead of its journal record.
 
 `rules_rev` is the engine rules version. The constant `RULES_REV` lives in the store and is 6. `save.yaml` and every tick record carry it. `spook run`, `spook verify`, and `spook replay` refuse a save or a tick whose `rules_rev` is missing or different. The refusal is `RULES_REV: start a fresh save`. There is no migration.
 

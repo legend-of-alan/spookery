@@ -9,7 +9,7 @@ use crate::journal::{self, hash_now};
 use crate::lock::{lock_pack, lock_world};
 use crate::model::{MemoryLine, Now, Presence};
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
-use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
+use crate::store::durable::{fsync_dir, fsync_dirs, fsync_file, rename, tmp_path};
 use crate::world::{Draft, World};
 
 pub struct CommitOutcome {
@@ -247,57 +247,73 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Reason> {
     let txn_dir = state.join(".txn");
     let prev = txn_dir.join("prev");
     fs::create_dir_all(&prev).map_err(|_| Reason::CommitConflict)?;
+    let mut backup_dirs = vec![prev.clone(), txn_dir.clone()];
     for item in planned {
-        if item.target.is_file() {
-            let rel = item
-                .target
-                .strip_prefix(state)
-                .map_err(|_| Reason::CommitConflict)?;
-            let dest = prev.join(rel);
-            if let Some(parent) = dest.parent() {
+        if !item.target.is_file() {
+            continue;
+        }
+        let rel = item
+            .target
+            .strip_prefix(state)
+            .map_err(|_| Reason::CommitConflict)?;
+        let dest = prev.join(rel);
+        if let Some(parent) = dest.parent() {
+            if !parent.is_dir() {
                 fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
             }
-            fs::copy(&item.target, &dest).map_err(|_| Reason::CommitConflict)?;
-            fsync_file(&dest)?;
+            backup_dirs.push(parent.to_path_buf());
         }
+        fs::copy(&item.target, &dest).map_err(|_| Reason::CommitConflict)?;
+        fsync_file(&dest)?;
     }
-    fsync_dir(&prev)?;
-    fsync_dir(&txn_dir)?;
     let complete = txn_dir.join("COMPLETE");
-    {
-        let file = File::create(&complete).map_err(|_| Reason::CommitConflict)?;
-        file.sync_all().map_err(|_| Reason::CommitConflict)?;
-    }
-    fsync_dir(&txn_dir)?;
+    File::create(&complete).map_err(|_| Reason::CommitConflict)?;
+    fsync_file(&complete)?;
+    fsync_dirs(&backup_dirs)?;
 
     let mut temps = Vec::new();
+    let mut created_parents = Vec::new();
     for item in planned {
         let tmp = tmp_path(&item.target);
-        if let Some(parent) = tmp.parent() {
-            fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+        if let Some(parent) = item.target.parent() {
+            if !parent.is_dir() {
+                fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+                if let Some(dir_parent) = parent.parent() {
+                    created_parents.push(dir_parent.to_path_buf());
+                }
+            }
         }
         {
             let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
             file.write_all(&item.bytes)
                 .map_err(|_| Reason::CommitConflict)?;
-            file.sync_all().map_err(|_| Reason::CommitConflict)?;
         }
-        if let Some(parent) = item.target.parent() {
-            fsync_dir(parent)?;
-        }
+        fsync_file(&tmp)?;
         temps.push((tmp, item));
     }
-    for (tmp, item) in &temps {
-        if !item.is_now {
-            fs::rename(tmp, &item.target).map_err(|_| Reason::CommitConflict)?;
-        }
-    }
+    // The new directory is durable only after its parent is flushed.
+    fsync_dirs(&created_parents)?;
+
+    let mut side_parents = Vec::new();
     for (tmp, item) in &temps {
         if item.is_now {
-            fs::rename(tmp, &item.target).map_err(|_| Reason::CommitConflict)?;
+            continue;
+        }
+        rename(tmp, &item.target)?;
+        if let Some(parent) = item.target.parent() {
+            if parent != state {
+                side_parents.push(parent.to_path_buf());
+            }
         }
     }
-    fsync_dir(state)?;
+    fsync_dirs(&side_parents)?;
+    for (tmp, item) in &temps {
+        if !item.is_now {
+            continue;
+        }
+        rename(tmp, &item.target)?;
+    }
+    fsync_dirs(&[state.to_path_buf()])?;
     let _ = fs::remove_dir_all(&txn_dir);
     Ok(())
 }
@@ -328,4 +344,280 @@ fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, 
         out.insert(actor, body);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
+    use crate::model::{MemoryLine, Presence};
+    use crate::store::durable::{self, Mark};
+    use crate::world::{Draft, World};
+
+    use super::{commit_presence, commit_round};
+
+    #[test]
+    fn a_commit_flushes_each_parent_after_the_rename() {
+        let root = temp_docks("flush-parents");
+        let mut world = World::open(&root).unwrap();
+
+        // Seven flushes besides the temp bodies. Creating state/journal adds the early parent flush.
+        durable::start_trace();
+        let changed = commit_presence(
+            &mut world,
+            Presence {
+                humans: 1,
+                actors_present: vec!["pc_rowan".to_string()],
+            },
+        )
+        .unwrap();
+        assert!(changed);
+        let first = durable::take_trace();
+        assert_eq!(
+            labels(&first),
+            [
+                "file save",
+                "file complete",
+                "dir prev",
+                "dir txn",
+                "file save.tmp",
+                "file base.tmp",
+                "file presence.tmp",
+                "dir state",
+                "rename base",
+                "rename presence",
+                "dir journal",
+                "rename save",
+                "dir state",
+            ],
+            "{}",
+            show(&first)
+        );
+        assert!(!root.join("state/.txn").exists());
+
+        // Six flushes besides the temp bodies. The new presence file is not backed up.
+        durable::start_trace();
+        let changed = commit_presence(
+            &mut world,
+            Presence {
+                humans: 0,
+                actors_present: vec![],
+            },
+        )
+        .unwrap();
+        assert!(changed);
+        let second = durable::take_trace();
+        assert_eq!(
+            labels(&second),
+            [
+                "file save",
+                "file complete",
+                "dir prev",
+                "dir txn",
+                "file save.tmp",
+                "file presence.tmp",
+                "rename presence",
+                "dir journal",
+                "rename save",
+                "dir state",
+            ],
+            "{}",
+            show(&second)
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
+        let root = temp_docks("journal-reopen");
+        let mut world = World::open(&root).unwrap();
+        let pre = fs::read(root.join("state/save.yaml")).unwrap();
+        let mut draft = Draft::begin(&world);
+        draft.memories.push(MemoryLine {
+            tick_index: 0,
+            actor_id: "mira".to_string(),
+            intent_id: "rest".to_string(),
+            fact_ids: vec![],
+            tags: vec![],
+            text: Some("kept".to_string()),
+        });
+        durable::start_trace();
+        commit_round(
+            &mut world,
+            draft,
+            r#"{"tick_index":0,"state_rev_after":1,"rules_rev":6}"#,
+        )
+        .unwrap();
+        let marks = durable::take_trace();
+        // Journal and the memory directory are flushed before save.yaml is renamed.
+        assert_eq!(
+            labels(&marks),
+            [
+                "file save",
+                "file complete",
+                "dir prev",
+                "dir txn",
+                "file save.tmp",
+                "file tick.tmp",
+                "file memory.tmp",
+                "file base.tmp",
+                "dir state",
+                "rename tick",
+                "rename memory",
+                "rename base",
+                "dir journal",
+                "dir memories",
+                "rename save",
+                "dir state",
+            ],
+            "{}",
+            show(&marks)
+        );
+        assert!(!root.join("state/.txn").exists());
+        assert_no_tmp(&root);
+        let tick = root.join("state/journal/tick-0000.jsonl");
+        let base = root.join("state/journal/base.yaml");
+        let memory = root.join("state/memories/mira.jsonl");
+        let tick_bytes = fs::read(&tick).unwrap();
+        let base_bytes = fs::read(&base).unwrap();
+        let memory_bytes = fs::read(&memory).unwrap();
+        assert_eq!(base_bytes, pre);
+        let tick_text = String::from_utf8(tick_bytes.clone()).unwrap();
+        assert!(tick_text.contains("\"state_rev_after\":1"), "{tick_text}");
+        assert!(tick_text.contains("now_hash"), "{tick_text}");
+        assert!(String::from_utf8(memory_bytes.clone())
+            .unwrap()
+            .contains("kept"));
+        drop(world);
+        let opened = World::open(&root).unwrap();
+        assert_eq!(opened.now().state_rev, 1);
+        assert_eq!(fs::read(&tick).unwrap(), tick_bytes);
+        assert_eq!(fs::read(&base).unwrap(), base_bytes);
+        assert_eq!(fs::read(&memory).unwrap(), memory_bytes);
+        assert!(!root.join("state/.txn").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn labels(marks: &[Mark]) -> Vec<String> {
+        marks.iter().map(label).collect()
+    }
+
+    fn label(mark: &Mark) -> String {
+        let path = match mark {
+            Mark::File(path) | Mark::Dir(path) | Mark::Rename(path) => path.as_path(),
+        };
+        let name = path
+            .file_name()
+            .and_then(|file| file.to_str())
+            .unwrap_or("");
+        match mark {
+            Mark::File(_) if name.ends_with(".tmp") => tmp_label(name, path),
+            Mark::File(_) if name == "COMPLETE" && parent_name(path, ".txn") => {
+                "file complete".to_string()
+            }
+            Mark::File(_) if name == "save.yaml" && parent_name(path, "prev") => {
+                "file save".to_string()
+            }
+            Mark::Dir(_) if name == "prev" && parent_name(path, ".txn") => "dir prev".to_string(),
+            Mark::Dir(_) if name == ".txn" => "dir txn".to_string(),
+            Mark::Dir(_) if name == "journal" && parent_name(path, "state") => {
+                "dir journal".to_string()
+            }
+            Mark::Dir(_) if name == "memories" && parent_name(path, "state") => {
+                "dir memories".to_string()
+            }
+            Mark::Dir(_) if name == "state" => "dir state".to_string(),
+            Mark::Rename(_) if name == "base.yaml" && parent_name(path, "journal") => {
+                "rename base".to_string()
+            }
+            Mark::Rename(_) if name.starts_with("presence-") => "rename presence".to_string(),
+            Mark::Rename(_) if name.starts_with("tick-") => "rename tick".to_string(),
+            Mark::Rename(_) if parent_name(path, "memories") => "rename memory".to_string(),
+            Mark::Rename(_) if name == "save.yaml" && parent_name(path, "state") => {
+                "rename save".to_string()
+            }
+            _ => format!("unexpected {}", path.display()),
+        }
+    }
+
+    fn tmp_label(name: &str, path: &Path) -> String {
+        if name.starts_with("save.yaml") {
+            "file save.tmp".to_string()
+        } else if name.starts_with("base.yaml") {
+            "file base.tmp".to_string()
+        } else if name.starts_with("presence-") {
+            "file presence.tmp".to_string()
+        } else if name.starts_with("tick-") {
+            "file tick.tmp".to_string()
+        } else if parent_name(path, "memories") {
+            "file memory.tmp".to_string()
+        } else {
+            format!("unexpected {}", path.display())
+        }
+    }
+
+    fn parent_name(path: &Path, name: &str) -> bool {
+        path.parent()
+            .and_then(|parent| parent.file_name())
+            .and_then(|file| file.to_str())
+            == Some(name)
+    }
+
+    fn show(marks: &[Mark]) -> String {
+        marks
+            .iter()
+            .map(|mark| match mark {
+                Mark::File(path) => format!("file {}", path.display()),
+                Mark::Dir(path) => format!("dir {}", path.display()),
+                Mark::Rename(path) => format!("rename {}", path.display()),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn assert_no_tmp(dir: &Path) {
+        let mut pending = vec![dir.to_path_buf()];
+        while let Some(current) = pending.pop() {
+            for entry in fs::read_dir(&current).unwrap() {
+                let entry = entry.unwrap();
+                let path = entry.path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                let name = entry.file_name();
+                let name = name.to_string_lossy();
+                assert!(!name.ends_with(".tmp"), "{}", path.display());
+            }
+        }
+    }
+
+    fn temp_docks(label: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!(
+            "spook-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        copy_dir(&source, &root);
+        root
+    }
+
+    fn copy_dir(from: &Path, to: &Path) {
+        fs::create_dir_all(to).unwrap();
+        for entry in fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let dest = to.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_dir(&entry.path(), &dest);
+            } else {
+                fs::copy(entry.path(), dest).unwrap();
+            }
+        }
+    }
 }

@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::diagnostic::reason_of;
 use crate::error::Reason;
 use crate::store::codec::load_save;
-use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
+use crate::store::durable::{fsync_dir, fsync_dirs, fsync_file, tmp_path};
 
 pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
@@ -112,16 +112,25 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
 fn restore_prev(prev: &Path, state: &Path) -> Result<(), Reason> {
     let mut files = Vec::new();
     collect_rel_files(prev, prev, &mut files)?;
+    let mut parents = Vec::new();
+    let mut created_parents = Vec::new();
     for rel in files {
         let from = prev.join(&rel);
         let to = state.join(&rel);
         if let Some(parent) = to.parent() {
-            fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+            if !parent.is_dir() {
+                fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+                if let Some(dir_parent) = parent.parent() {
+                    created_parents.push(dir_parent.to_path_buf());
+                }
+            }
+            parents.push(parent.to_path_buf());
         }
         fs::copy(&from, &to).map_err(|_| Reason::CommitConflict)?;
         fsync_file(&to)?;
     }
-    fsync_dir(state)?;
+    fsync_dirs(&created_parents)?;
+    fsync_dirs(&parents)?;
     Ok(())
 }
 
