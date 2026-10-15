@@ -273,13 +273,14 @@ The request is one chat-completions POST. The JSON body carries one user message
 
 Issue and PR titles start with a letter for the area and end with a size.
 
-- `R:` rounds and rules: the round stages, triggers, dice
+- `R:` rounds and rules: the round stages and triggers
 - `W:` world model: places, exits, travel, items, pack rule schema
 - `K:` kernel and core plumbing: journal, host, transport, CI
 - `N:` naming: renames that make a name say what it does
 - `D:` docs
 - `T:` tests and flaky-test fixes
-- `[S]` small, about one sitting · `[M]` medium, a focused PR · `[L]` large, likely split into sub-issues
+
+Sizes: `[S]` about one sitting, `[M]` a focused PR, `[L]` likely split into sub-issues.
 
 Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enhancement`, `bug`, `documentation`). Phases are milestones.
 
