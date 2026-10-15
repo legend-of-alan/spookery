@@ -294,15 +294,39 @@ rules:
     when:
       verb: mark
     do: []
+  - id: spent
+    when:
+      change:
+        meter: nerve
+        crosses: "<=0"
+    do:
+      - flag:
+          who: subject
+          key: spent
+          value: true
 ```
 
 ## Rules
 
 A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `roll`, `success`, `partial`, and `failure`.
 
-`when` is `habit`, or a map with `verb` and `target`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule and not a verb.
+`when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule and not a verb. `when` has one of `verb` or `change`, not both.
 
-Rules that fire when the world changes are coming (issue #102).
+A change rule fires when its watch becomes true. It does not fire again while the watch stays true. What the engine does with that firing is in [Engine guarantees](engine-guarantees.md). `story/samples.yaml` has a meter watch. The other watches are:
+
+| Watch | Fields |
+|---|---|
+| Arrive | `arrive` is a place id, or `here` on a place rule. `who` is `any` (the default), `pc`, `npc`, or an actor id. |
+| Leave | `leave` and `who`, same as arrive. |
+| Meter | `meter` is a meter id. `crosses` is an operator and a number, such as `<=0`. |
+| Flag | `flag` is the flag. `becomes` is `true` or `false`. |
+| Clock | `clock` is a clock id. The watch is that clock reaching its max. |
+| Item | `item` is an item id, with `gained: true` or `lost: true`. |
+| Knows | `knows` is a fact id. The watch is that fact becoming known. |
+
+A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and the outcome lists. `if` is read after the change.
+
+Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. `max_trigger_depth` in `rules/tick.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run.
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `subject`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
 
@@ -567,6 +591,7 @@ live_minutes_per_tick: 5
 idle_catchup_max_ticks: 12
 idle_max_world_hours_per_real_hour: 8
 max_fastforward_ticks: 12
+max_trigger_depth: 4
 pause:
   named_plot_clocks: pause_when_empty
 ```

@@ -52,9 +52,8 @@ place body or a note. Audit fails when a player's view contains a hidden fact
 they do not know, or a note whose id is that fact. Saying a hidden fact does not
 teach it. Audit records a note and still passes. Strict audit fails. Roll faces
 go to the GM. The player hears success, partial, or miss. An NPC's roll sends
-the player no roll line. Host status lists the clocks, and after the door note
-it lists that effect. The player's resume lists the note and leaves the effect
-row out. The shop shows its oil. The other room does not.
+the player no roll line. Host status shows the host-only trace. The player's
+resume leaves that trace out. A place lists only its own stock.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/firewall/a_hidden_fact_stays_hidden.feature`,
@@ -98,9 +97,10 @@ Tested in `features/rules/triggers.feature`.
 
 ## Travel
 
-A missing exit, a hidden exit the traveller does not know, and a locked exit
-change nothing. A locked exit shows its locked text. The traveller stays put,
-and stays busy, until the arrival minute. A move before then is refused. The
+A missing exit and a locked exit change nothing. A locked exit shows its locked
+text. A hidden exit the traveller does not know stays off perceive and help.
+The traveller stays put, and stays busy, until the arrival minute. A move before
+then is refused. The
 round does not shrink: a seated round still advances five minutes, a two-minute
 exit is recorded at its minute inside that round, and the next move is the
 following round. An empty table advances sixty minutes a round. An earlier
@@ -166,3 +166,16 @@ frames. The model client does not dial when a setting is missing.
 Tested in `features/loopback/only_loopback_binds.feature`,
 `features/limits/the_listener_bounds_input.feature`, and
 `features/host/the_host_sits_the_gm_seat.feature`.
+
+## What the engine does not do
+
+Speech does not grant a fact. A second GM is refused, and so is a fourth player.
+The table does not open on a public address. A call that is not on the GM menu
+is refused, so a seat cannot patch the save by naming a tool. A player who stops
+reading is dropped, and the other seats keep going.
+
+Tested in `features/firewall/spook_audit_proves_no_leak.feature`,
+`features/seats/one_gm_and_three_players.feature`,
+`features/loopback/only_loopback_binds.feature`,
+`features/host/the_host_sits_the_gm_seat.feature`, and
+`features/limits/the_listener_bounds_input.feature`.
