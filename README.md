@@ -269,6 +269,20 @@ The request is one chat-completions POST. The JSON body carries one user message
 - [docs/README.md](docs/README.md) has the principles, glossary and repo layout.
 - [LICENSE](LICENSE)
 
+## Issues and PRs
+
+Issue and PR titles start with a letter for the area and end with a size.
+
+- `R:` rounds and rules: the round stages, triggers, dice
+- `W:` world model: places, exits, travel, items, pack rule schema
+- `K:` kernel and core plumbing: journal, host, transport, CI
+- `N:` naming: renames that make a name say what it does
+- `D:` docs
+- `T:` tests and flaky-test fixes
+- `[S]` small, about one sitting · `[M]` medium, a focused PR · `[L]` large, likely split into sub-issues
+
+Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enhancement`, `bug`, `documentation`). Phases are milestones.
+
 ## License
 
 The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. Documentation, schemas, and packs are CC BY 4.0.
