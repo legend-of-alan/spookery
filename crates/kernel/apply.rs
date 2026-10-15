@@ -2,9 +2,9 @@ use crate::effect::{Effect, EffectClass};
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, ViewerId};
-use crate::key::StateKey;
+use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
-use crate::model::{self, MemoryLine, Message};
+use crate::model::{self, MemoryLine, Message, PlaceLive};
 use crate::world::Draft;
 
 pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Result<(), Reason> {
@@ -12,9 +12,11 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
         return Err(Reason::ViewerMismatch);
     }
     match effect.class {
-        EffectClass::Clock { clock_id, delta } => {
-            apply_clock(draft, &intent.actor_id, &clock_id, delta)
-        }
+        EffectClass::Clock {
+            clock_id,
+            delta,
+            start,
+        } => apply_clock(draft, &intent.actor_id, &clock_id, delta, start),
         EffectClass::Meter {
             actor_id,
             key,
@@ -67,11 +69,25 @@ fn apply_clock(
     actor_id: &str,
     clock_id: &str,
     delta: i64,
+    start: bool,
 ) -> Result<(), Reason> {
     let humans = draft.now().presence.humans;
     let clock = draft.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
     if !clock.owners.iter().any(|owner| owner == actor_id) {
         return Err(Reason::UnknownKey);
+    }
+    if start && clock.paused {
+        draft.track(StateKey::ClockPaused(clock_id.to_string()))?;
+        draft
+            .now_mut()
+            .clocks
+            .get_mut(clock_id)
+            .ok_or(Reason::UnknownKey)?
+            .paused = false;
+    }
+    let clock = draft.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
+    if delta == 0 && start {
+        return Ok(());
     }
     if clock.paused || (clock.requires_presence && humans == 0) {
         return Err(Reason::PausedClock);
@@ -134,6 +150,21 @@ fn apply_item(
 ) -> Result<(), Reason> {
     match (actor_id, place) {
         (Some(actor_id), None) => {
+            let before = i64::from(
+                draft
+                    .now()
+                    .actors
+                    .get(&actor_id)
+                    .ok_or(Reason::UnknownKey)?
+                    .count(id),
+            );
+            let wielded = draft
+                .now()
+                .actors
+                .get(&actor_id)
+                .ok_or(Reason::UnknownKey)?
+                .wielded()
+                .map(str::to_string);
             let changed = {
                 let inventory = draft
                     .now_mut()
@@ -144,7 +175,10 @@ fn apply_item(
                 model::shift_count(inventory, id, delta, max)?
             };
             if changed {
-                draft.track(StateKey::ActorItem(actor_id.clone(), id.to_string()))?;
+                draft.track_before(
+                    StateKey::ActorItem(actor_id.clone(), id.to_string()),
+                    StateValue::Number(before),
+                )?;
             }
             let released = draft
                 .now_mut()
@@ -153,11 +187,25 @@ fn apply_item(
                 .ok_or(Reason::UnknownKey)?
                 .release_wielded();
             if released {
-                draft.track(StateKey::ActorWielded(actor_id))?;
+                draft.track_before(
+                    StateKey::ActorWielded(actor_id),
+                    wielded.map(StateValue::Text).unwrap_or(StateValue::Empty),
+                )?;
             }
             Ok(())
         }
         (None, Some(place)) => {
+            let before = i64::from(
+                draft
+                    .now()
+                    .places
+                    .get(&place)
+                    .ok_or(Reason::UnknownKey)?
+                    .items
+                    .get(id)
+                    .copied()
+                    .unwrap_or(0),
+            );
             let changed = {
                 let items = &mut draft
                     .now_mut()
@@ -168,7 +216,10 @@ fn apply_item(
                 model::shift_count(items, id, delta, max)?
             };
             if changed {
-                draft.track(StateKey::PlaceItem(place, id.to_string()))?;
+                draft.track_before(
+                    StateKey::PlaceItem(place, id.to_string()),
+                    StateValue::Number(before),
+                )?;
             }
             Ok(())
         }
@@ -264,6 +315,16 @@ fn apply_location(
         .ok_or(Reason::UnknownKey)?;
     *actor.place_mut() = to.to_string();
     actor.visit(to);
+    if !draft.now().places.contains_key(to) {
+        draft.now_mut().places.insert(
+            to.to_string(),
+            PlaceLive {
+                items: std::collections::BTreeMap::new(),
+                notes: Vec::new(),
+                actors: Vec::new(),
+            },
+        );
+    }
     Ok(())
 }
 
@@ -305,6 +366,30 @@ fn apply_memory(
     let mut fact_ids = fact_ids;
     fact_ids.sort();
     fact_ids.dedup();
+    let known = draft
+        .now()
+        .actors
+        .get(actor_id)
+        .map(|actor| actor.known_facts().to_vec())
+        .unwrap_or_default();
+    if fact_ids
+        .iter()
+        .any(|fact| !known.iter().any(|id| id == fact))
+    {
+        draft.track(StateKey::ActorKnownFact(actor_id.to_string()))?;
+        let facts = draft
+            .now_mut()
+            .actors
+            .get_mut(actor_id)
+            .ok_or(Reason::UnknownKey)?
+            .known_facts_mut();
+        for fact in &fact_ids {
+            if !facts.iter().any(|id| id == fact) {
+                facts.push(fact.clone());
+            }
+        }
+        model::sort_unique(facts);
+    }
     let mut tags = tags;
     tags.sort();
     tags.dedup();

@@ -53,6 +53,9 @@ mod rows;
 #[path = "steps/travel.rs"]
 mod travel;
 
+#[path = "steps/triggers.rs"]
+mod triggers;
+
 #[path = "steps/digest.rs"]
 mod digest;
 
@@ -82,6 +85,9 @@ mod audit;
 
 #[path = "steps/sample.rs"]
 mod sample;
+
+#[path = "steps/contributing.rs"]
+mod contributing;
 
 #[path = "fixture/oneshot_docks.rs"]
 mod oneshot_docks;

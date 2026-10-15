@@ -10,7 +10,7 @@ pub mod talk_log;
 
 /// Rules version stamped on every save and every tick.
 /// A different version is refused. There is no migration.
-pub const RULES_REV: u64 = 5;
+pub const RULES_REV: u64 = 6;
 
 pub fn require_rules_rev(rev: u64) -> Result<(), Reason> {
     if rev == RULES_REV {

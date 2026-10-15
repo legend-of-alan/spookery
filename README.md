@@ -261,7 +261,7 @@ The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_round`.
 
 `spook ai-gm` sends table text to the host named by `SPOOK_GM_URL`. There is no default host. The API key is the bearer token from `SPOOK_GM_KEY` in the environment. The pack does not hold the key.
 
-The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt does not include a cast body, `save.yaml`, or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
+The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt includes the Markdown body of the current place and of each cast member in the views. Each of those bodies is cut at 800 characters, and a body that repeats a hidden fact is left out. It does not include `save.yaml` or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
 
 ## Docs
 
@@ -273,13 +273,14 @@ The request is one chat-completions POST. The JSON body carries one user message
 
 Issue and PR titles start with a letter for the area and end with a size.
 
-- `R:` rounds and rules: the round stages, triggers, dice
+- `R:` rounds and rules: the round stages and triggers
 - `W:` world model: places, exits, travel, items, pack rule schema
 - `K:` kernel and core plumbing: journal, host, transport, CI
 - `N:` naming: renames that make a name say what it does
 - `D:` docs
 - `T:` tests and flaky-test fixes
-- `[S]` small, about one sitting · `[M]` medium, a focused PR · `[L]` large, likely split into sub-issues
+
+Sizes: `[S]` about one sitting, `[M]` a focused PR, `[L]` likely split into sub-issues.
 
 Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enhancement`, `bug`, `documentation`). Phases are milestones.
 

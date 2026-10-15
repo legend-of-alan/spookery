@@ -1,0 +1,27 @@
+name: Bug report
+description: Something in a game or the engine went wrong.
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, and what you saw.
+    validations:
+      required: true
+  - type: textarea
+    id: save
+    attributes:
+      label: Save
+      description: Paste state/save.yaml from the pack.
+      render: yaml
+    validations:
+      required: true
+  - type: textarea
+    id: verify
+    attributes:
+      label: spook verify
+      description: Paste the output of `spook verify` on that pack.
+      render: text
+    validations:
+      required: true

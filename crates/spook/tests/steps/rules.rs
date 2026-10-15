@@ -14,18 +14,18 @@ use spookery_round::{play, RoundCause};
 use super::table;
 use crate::support::{copy_dir, spook, temp_pack};
 use crate::World;
-#[given(expr = "a save with rules_rev 4 and an engine at 5")]
-fn a_save_with_rules_rev_4_and_an_engine_at_5(world: &mut World) {
+#[given(expr = "a save with rules_rev 5 and an engine at 6")]
+fn a_save_with_rules_rev_5_and_an_engine_at_6(world: &mut World) {
     assert_eq!(
         spookery_kernel::store::RULES_REV,
-        5,
-        "the engine rules version is 5"
+        6,
+        "the engine rules version is 6"
     );
     let pack = crate::support::temp_pack("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let stamped = text.replacen("rules_rev: 5\n", "rules_rev: 4\n", 1);
-    assert_ne!(stamped, text, "save did not carry rules_rev 5\n{text}");
+    let stamped = text.replacen("rules_rev: 6\n", "rules_rev: 5\n", 1);
+    assert_ne!(stamped, text, "save did not carry rules_rev 6\n{text}");
     fs::write(&path, stamped).unwrap_or_else(|err| panic!("write save: {err}"));
     world.pack = Some(pack);
 }

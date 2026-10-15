@@ -4,6 +4,9 @@ use serde_json::{Map, Value};
 use spookery_kernel::canon::{Canon, CastKind};
 use spookery_kernel::rules::rule::{Owner, TargetKind, When};
 
+/// Characters. The same budget `perceive` uses when it trims this prose.
+const PROSE_BUDGET: usize = 800;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MenuRow {
     pub name: String,
@@ -174,6 +177,15 @@ pub struct TurnView {
     pub rule: ActionKind,
     pub player: Option<Value>,
     pub npcs: Vec<Value>,
+    pub place_body: String,
+    pub cast_bodies: BTreeMap<String, String>,
+}
+
+/// Markdown bodies copied out of the canon. The prompt never holds the canon.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Prose {
+    pub places: BTreeMap<String, String>,
+    pub cast: BTreeMap<String, String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -191,7 +203,7 @@ pub struct PromptSide {
     pub checks: Vec<RollLine>,
 }
 
-pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>) {
+pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>, Prose) {
     let mut menu = Vec::new();
     for rule in canon.rules.iter() {
         match &rule.when {
@@ -212,11 +224,41 @@ pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>) {
             _ => {}
         }
     }
+    let hidden = hidden_lines(canon);
     let mut kinds = BTreeMap::new();
-    for (id, cast) in &canon.cast {
-        kinds.insert(id.clone(), cast.kind);
+    let mut cast = BTreeMap::new();
+    for (id, member) in &canon.cast {
+        kinds.insert(id.clone(), member.kind);
+        if let Some(body) = clip_prose(&member.body, &hidden) {
+            cast.insert(id.clone(), body);
+        }
     }
-    (menu, kinds)
+    let mut places = BTreeMap::new();
+    for (id, place) in &canon.places {
+        if let Some(body) = clip_prose(&place.body, &hidden) {
+            places.insert(id.clone(), body);
+        }
+    }
+    (menu, kinds, Prose { places, cast })
+}
+
+fn hidden_lines(canon: &Canon) -> Vec<String> {
+    let mut lines: Vec<String> = canon
+        .facts
+        .values()
+        .filter(|fact| fact.hidden && !fact.text.is_empty())
+        .map(|fact| fact.text.clone())
+        .collect();
+    lines.sort();
+    lines.dedup();
+    lines
+}
+
+fn clip_prose(body: &str, hidden: &[String]) -> Option<String> {
+    if hidden.iter().any(|text| body.contains(text.as_str())) {
+        return None;
+    }
+    Some(body.chars().take(PROSE_BUDGET).collect())
 }
 
 pub fn push_handled(buffer: &mut Vec<HandledSay>, say: HandledSay) {
@@ -277,12 +319,13 @@ pub fn prepare(
     present: &[String],
     perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
 ) -> Prepared {
-    let (_, kinds) = from_canon(canon);
-    prepare_with(&kinds, wake, present, perceive)
+    let (_, kinds, prose) = from_canon(canon);
+    prepare_with(&kinds, &prose, wake, present, perceive)
 }
 
 pub fn prepare_with(
     kinds: &BTreeMap<String, CastKind>,
+    prose: &Prose,
     wake: &Wake,
     present: &[String],
     perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
@@ -311,20 +354,22 @@ pub fn prepare_with(
                 return absent();
             }
             match kinds.get(actor) {
-                Some(CastKind::Npc) => Prepared::Model(TurnView {
-                    rule: ActionKind::Actor {
+                Some(CastKind::Npc) => Prepared::Model(build_view(
+                    ActionKind::Actor {
                         actor: actor.to_string(),
                     },
-                    player: None,
-                    npcs: vec![strip_npc(&view)],
-                }),
-                Some(CastKind::PcTemplate) => Prepared::Model(TurnView {
-                    rule: ActionKind::Actor {
+                    None,
+                    vec![strip_npc(&view)],
+                    prose,
+                )),
+                Some(CastKind::PcTemplate) => Prepared::Model(build_view(
+                    ActionKind::Actor {
                         actor: actor.to_string(),
                     },
-                    player: Some(strip_player(&view)),
-                    npcs: Vec::new(),
-                }),
+                    Some(strip_player(&view)),
+                    Vec::new(),
+                    prose,
+                )),
                 None => absent(),
             }
         }
@@ -349,11 +394,12 @@ pub fn prepare_with(
                 speaker_place
             };
             let npcs = npc_views(&player, kinds, &filter, perceive);
-            Prepared::Model(TurnView {
-                rule: ActionKind::Place { place: filter },
-                player: Some(strip_player(&player)),
+            Prepared::Model(build_view(
+                ActionKind::Place { place: filter },
+                Some(strip_player(&player)),
                 npcs,
-            })
+                prose,
+            ))
         }
         Wake::Queued { .. } | Wake::Sit => {
             let pcs: Vec<&str> = present
@@ -371,11 +417,12 @@ pub fn prepare_with(
             };
             let place = place_of(&player);
             let npcs = npc_views(&player, kinds, &place, perceive);
-            Prepared::Model(TurnView {
-                rule: ActionKind::Place { place },
-                player: Some(strip_player(&player)),
+            Prepared::Model(build_view(
+                ActionKind::Place { place },
+                Some(strip_player(&player)),
                 npcs,
-            })
+                prose,
+            ))
         }
     }
 }
@@ -408,6 +455,16 @@ pub fn render_prompt(
         views.insert("player".to_string(), player.clone());
     }
     views.insert("npcs".to_string(), Value::Array(view.npcs.clone()));
+    views.insert("place_body".to_string(), json_str(&view.place_body));
+    views.insert(
+        "cast".to_string(),
+        Value::Array(
+            view.cast_bodies
+                .iter()
+                .map(|(id, body)| obj([("id", json_str(id)), ("body", json_str(body))]))
+                .collect(),
+        ),
+    );
     map.insert("views".to_string(), Value::Object(views));
     if !checks.is_empty() {
         map.insert(
@@ -536,6 +593,66 @@ fn strip_npc(view: &Value) -> Value {
                 .unwrap_or(Value::Array(Vec::new())),
         ),
     ])
+}
+
+fn build_view(
+    rule: ActionKind,
+    player: Option<Value>,
+    npcs: Vec<Value>,
+    prose: &Prose,
+) -> TurnView {
+    let place = scene_place(&rule, &player, &npcs);
+    let place_body = prose.places.get(&place).cloned().unwrap_or_default();
+    let mut cast_bodies = BTreeMap::new();
+    if let Some(view) = &player {
+        include_view(&mut cast_bodies, prose, view);
+    }
+    for view in &npcs {
+        include_view(&mut cast_bodies, prose, view);
+    }
+    TurnView {
+        rule,
+        player,
+        npcs,
+        place_body,
+        cast_bodies,
+    }
+}
+
+fn scene_place(rule: &ActionKind, player: &Option<Value>, npcs: &[Value]) -> String {
+    match rule {
+        ActionKind::Place { place } => place.clone(),
+        ActionKind::Actor { .. } => player
+            .as_ref()
+            .map(place_of)
+            .filter(|place| !place.is_empty())
+            .or_else(|| npcs.first().map(place_of))
+            .unwrap_or_default(),
+    }
+}
+
+fn include_view(bodies: &mut BTreeMap<String, String>, prose: &Prose, view: &Value) {
+    if let Some(viewer) = view.get("viewer").and_then(Value::as_str) {
+        include_cast(bodies, prose, viewer);
+    }
+    let Some(actors) = view.get("visible_actors").and_then(Value::as_array) else {
+        return;
+    };
+    for actor in actors {
+        if let Some(id) = actor.as_str() {
+            include_cast(bodies, prose, id);
+        }
+    }
+}
+
+fn include_cast(bodies: &mut BTreeMap<String, String>, prose: &Prose, raw: &str) {
+    let id = raw.split_once(':').map(|(_, id)| id).unwrap_or(raw);
+    if id.is_empty() {
+        return;
+    }
+    if let Some(body) = prose.cast.get(id) {
+        bodies.insert(id.to_string(), body.clone());
+    }
 }
 
 fn accept_say(say: &OutgoingSay, rule: &ActionKind) -> bool {
@@ -778,12 +895,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn prompt_omits_dropped_strings_and_keeps_fact_text() {
-        let mut canon = docks();
-        canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
-        let (menu, _) = from_canon(&canon);
-        let wake = Wake::Say {
+    fn table_wake() -> Wake {
+        Wake::Say {
             from: "player:pc_rowan".to_string(),
             seq: 1,
             address: "table".to_string(),
@@ -791,15 +904,107 @@ mod tests {
             actor: None,
             text: "hello".to_string(),
             gen: 0,
+        }
+    }
+
+    fn shop(viewer: &str, actors: &[&str]) -> Value {
+        serde_json::json!({
+            "viewer": viewer,
+            "place": "docks_shop",
+            "visible_actors": actors,
+            "known_facts": [],
+            "messages": [],
+            "unknown_mentioned": [],
+            "clocks": [],
+            "items": [],
+            "habits": []
+        })
+    }
+
+    fn prompt_for(
+        canon: &Canon,
+        mut perceive: impl FnMut(&str) -> Result<Value, String>,
+    ) -> String {
+        let (menu, ..) = from_canon(canon);
+        let prepared = prepare(canon, &table_wake(), &[], &mut perceive);
+        let Prepared::Model(view) = prepared else {
+            panic!("model was not called");
         };
+        render_prompt(&menu, &PromptSide::default(), &view, &[])
+    }
+
+    /// Feature: The AI GM gets non-hidden prose
+    ///
+    /// Scenario: Cast prose reaches the prompt
+    ///   Then the prompt contains mira's cast body
+    #[test]
+    fn cast_prose_reaches_the_prompt() {
+        let mut canon = docks();
+        let mira = canon.cast["mira"].body.trim().to_string();
+        let place = canon.places["docks_shop"].body.trim().to_string();
+        canon.cast.get_mut("bram").unwrap().body = "BRAM-ABSENT".to_string();
+        assert!(!mira.is_empty(), "mira has cast prose");
+        assert!(!place.is_empty(), "the shop has place prose");
+        let prompt = prompt_for(&canon, |viewer| {
+            Ok(shop(viewer, &["aldric", "mira", "pc_rowan"]))
+        });
+        assert!(prompt.contains(&mira), "{prompt}");
+        assert!(prompt.contains(&place), "{prompt}");
+        assert!(!prompt.contains("BRAM-ABSENT"), "{prompt}");
+    }
+
+    /// Scenario: Hidden facts never do
+    ///   Given a hidden fact body "BODY-SENTINEL"
+    ///   Then the prompt does not contain "BODY-SENTINEL"
+    #[test]
+    fn hidden_facts_never_reach_the_prompt() {
+        let canon = docks();
+        let prompt = prompt_for(&canon, |viewer| {
+            let mut view = shop(viewer, &["aldric", "mira", "pc_rowan"]);
+            view["known_facts"] = serde_json::json!([
+                {"id": "fact_ledger_short", "text": "The lamp-oil ledger is short.", "body": "BODY-SENTINEL"}
+            ]);
+            Ok(view)
+        });
+        assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
+    }
+
+    #[test]
+    fn a_body_that_quotes_a_hidden_fact_stays_out() {
+        let mut canon = docks();
+        let secret = canon.facts["fact_ledger_short"].text.clone();
+        assert!(canon.facts["fact_ledger_short"].hidden);
+        canon.cast.get_mut("mira").unwrap().body = format!("Mira wrote: {secret}");
+        canon.places.get_mut("docks_shop").unwrap().body = format!("The shelf says: {secret}");
+        let prompt = prompt_for(&canon, |viewer| {
+            Ok(shop(viewer, &["aldric", "mira", "pc_rowan"]))
+        });
+        assert!(!prompt.contains(&secret), "{prompt}");
+        assert!(prompt.contains("Aldric sweeps the shop"), "{prompt}");
+    }
+
+    #[test]
+    fn a_long_cast_body_is_cut_at_the_budget() {
+        let mut canon = docks();
+        canon.cast.get_mut("aldric").unwrap().body = "Z".repeat(PROSE_BUDGET + 1);
+        let prompt = prompt_for(&canon, |viewer| Ok(shop(viewer, &["aldric", "pc_rowan"])));
+        assert!(prompt.contains(&"Z".repeat(PROSE_BUDGET)), "{prompt}");
+        assert!(!prompt.contains(&"Z".repeat(PROSE_BUDGET + 1)), "{prompt}");
+    }
+
+    #[test]
+    fn prompt_omits_dropped_strings_and_keeps_fact_text() {
+        let mut canon = docks();
+        canon.cast.get_mut("mira").unwrap().body = "MIRA-PROSE-SENTINEL".to_string();
+        let (menu, ..) = from_canon(&canon);
         let mut calls = 0;
-        let prepared = prepare(&canon, &wake, &[], &mut |viewer| {
+        let prepared = prepare(&canon, &table_wake(), &[], &mut |viewer| {
             calls += 1;
             if viewer == "player:pc_rowan" {
                 return Ok(serde_json::json!({
                     "viewer": "player:pc_rowan",
                     "place": "docks_shop",
-                    "visible_actors": ["aldric", "pc_rowan"],
+                    "visible_actors": ["aldric", "mira", "pc_rowan"],
                     "known_facts": [{"id": "k", "text": "KNOWN-SENTINEL", "body": "KNOWN-BODY"}],
                     "messages": [{"id": "m", "text": "MESSAGE-SENTINEL"}],
                     "unknown_mentioned": ["UNKNOWN-SENTINEL"],
@@ -812,7 +1017,7 @@ mod tests {
                 return Ok(serde_json::json!({
                     "viewer": "npc:aldric",
                     "place": "docks_shop",
-                    "visible_actors": ["aldric", "pc_rowan"],
+                    "visible_actors": ["aldric", "mira", "pc_rowan"],
                     "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "body": "BODY-SENTINEL"}],
                     "messages": [],
                     "unknown_mentioned": [],
@@ -828,8 +1033,9 @@ mod tests {
         };
         let prompt = render_prompt(&menu, &PromptSide::default(), &view, &[]);
         assert!(!prompt.contains("KNOWN-SENTINEL"), "{prompt}");
+        assert!(!prompt.contains("KNOWN-BODY"), "{prompt}");
         assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
-        assert!(!prompt.contains("CAST-BODY-SENTINEL"), "{prompt}");
+        assert!(prompt.contains("MIRA-PROSE-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("MESSAGE-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("UNKNOWN-SENTINEL"), "{prompt}");
         assert!(prompt.contains("FACT-TEXT-SENTINEL"), "{prompt}");
@@ -838,7 +1044,7 @@ mod tests {
 
     #[test]
     fn address_rule_runs_before_the_cap() {
-        let (menu, _) = from_canon(&docks());
+        let (menu, ..) = from_canon(&docks());
         let object = ModelObject {
             says: vec![
                 say("table", None, "rejected"),
@@ -868,7 +1074,7 @@ mod tests {
 
     #[test]
     fn actor_wake_drops_a_table_say() {
-        let (menu, _) = from_canon(&docks());
+        let (menu, ..) = from_canon(&docks());
         let object = ModelObject {
             says: vec![
                 say("table", None, "nope"),
@@ -889,7 +1095,7 @@ mod tests {
 
     #[test]
     fn queued_wake_keeps_a_table_say_and_drops_an_actor_say() {
-        let (menu, _) = from_canon(&docks());
+        let (menu, ..) = from_canon(&docks());
         let object = ModelObject {
             says: vec![
                 say("table", None, "here"),
@@ -965,7 +1171,7 @@ mod tests {
     fn menu_rows_keep_player_and_habit_and_kinds() {
         let mut canon = docks();
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
-        let (menu, kinds) = from_canon(&canon);
+        let (menu, kinds, prose) = from_canon(&canon);
         assert!(menu.iter().all(|row| row.audience != "system"));
         assert!(menu.iter().any(|row| row.name == "travel"
             && row.audience == "verb"
@@ -978,6 +1184,10 @@ mod tests {
         assert_eq!(kinds.get("pc_rowan"), Some(&CastKind::PcTemplate));
         let rendered = format!("{menu:?}{kinds:?}");
         assert!(!rendered.contains("CAST-BODY-SENTINEL"));
+        assert_eq!(
+            prose.cast.get("mira").map(String::as_str),
+            Some("CAST-BODY-SENTINEL")
+        );
     }
 
     #[test]
