@@ -23,6 +23,9 @@ pub struct Now {
     pub actors: BTreeMap<String, ActorLive>,
     pub clocks: BTreeMap<String, Clock>,
     pub messages: Vec<Message>,
+    /// World flags. Omitted from the save when empty.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub flags: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

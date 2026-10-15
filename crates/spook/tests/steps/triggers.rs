@@ -409,6 +409,371 @@ fn the_bog_roll_reproduces(world: &mut World) {
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
 }
 
+#[when(expr = "nell travels into the shop and the bell narrates")]
+fn nell_travels_and_the_bell_narrates(world: &mut World) {
+    let pack = temp_pack("trigger-narrate");
+    add_door(&pack);
+    add_bell_narrate(&pack);
+    flag_pcs(&pack, "heard_bell");
+    write_nell(&pack, &["heard_bell"]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    });
+    let played = play_view(
+        &pack,
+        vec![intent(
+            "nell-door",
+            "pc_nell",
+            "travel",
+            Target::Place("door".to_string()),
+        )],
+    );
+    world.scratch = played.tick.to_string();
+    world.summary = played.summary;
+    world.seen = played.seen;
+    world.told = played.told;
+    world.pack = Some(pack);
+}
+
+#[then(expr = "the tick narrates {string} to {string}")]
+fn the_tick_narrates_to(world: &mut World, text: String, viewer: String) {
+    let tick: Value = serde_json::from_str(&world.scratch).unwrap();
+    assert!(
+        narrates(&tick, &text, &viewer),
+        "missing narrate to {viewer}\n{tick}"
+    );
+}
+
+#[then(expr = "the tick does not narrate {string} to {string}")]
+fn the_tick_does_not_narrate_to(world: &mut World, text: String, viewer: String) {
+    let tick: Value = serde_json::from_str(&world.scratch).unwrap();
+    assert!(
+        !narrates(&tick, &text, &viewer),
+        "narrate reached {viewer}\n{tick}"
+    );
+}
+
+#[then(expr = "{string} is not told {string}")]
+fn the_viewer_is_not_told(world: &mut World, viewer: String, text: String) {
+    assert!(
+        world
+            .told
+            .iter()
+            .all(|(to, line)| to != &viewer || line != &text),
+        "{viewer} was told {text:?}\n{:?}",
+        world.told
+    );
+}
+
+#[then(expr = "{string} is told {string}")]
+fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
+    assert!(
+        world
+            .told
+            .iter()
+            .any(|(to, line)| to == &viewer && line == &text),
+        "not told {viewer}: {:?}\n{:?}",
+        text,
+        world.told
+    );
+}
+
+#[given(expr = "a verb narrates the ledger fact to pc_rowan")]
+fn a_verb_narrates_the_ledger(world: &mut World) {
+    let pack = temp_pack("trigger-ledger-narrate");
+    add_verb(
+        &pack,
+        "\n  - id: blurt\n    when:\n      verb: blurt\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The lamp-oil ledger is short.\n",
+    );
+    edit_save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[when(expr = "that narrate runs")]
+fn that_narrate_runs(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap().clone();
+    play(
+        &pack,
+        vec![intent("rowan-blurt", "pc_rowan", "blurt", Target::Empty)],
+    );
+}
+
+#[given(expr = "the street has a hidden trapdoor")]
+fn the_street_has_a_hidden_trapdoor(world: &mut World) {
+    let pack = temp_pack("trigger-reveal");
+    append(
+        &pack.join("world/places/docks_street.md"),
+        "    name: docks_shop\n",
+        "    name: docks_shop\n  - to: cellar\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+    );
+    append(
+        &pack.join("world/places/docks_street.md"),
+        "    hidden: false\n",
+        "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
+    );
+    fs::write(
+        pack.join("world/places/cellar.md"),
+        "\
+---
+schema: place
+id: cellar
+name: Cellar
+facts: []
+exits: []
+---
+Under the street.
+",
+    )
+    .unwrap();
+    add_verb(
+        &pack,
+        "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
+    );
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+        now.places.insert(
+            "cellar".to_string(),
+            spookery_kernel::model::PlaceLive {
+                items: Default::default(),
+                notes: Vec::new(),
+                actors: Vec::new(),
+            },
+        );
+    });
+    world.pack = Some(pack);
+}
+
+#[when(expr = "pc_nell reveals fact_trapdoor")]
+fn nell_reveals_the_trapdoor(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap().clone();
+    let (now, _, _) = play(
+        &pack,
+        vec![intent("nell-uncover", "pc_nell", "uncover", Target::Empty)],
+    );
+    world.scratch = now.actors.get("pc_nell").unwrap().known_facts().join(",");
+    world.pack = Some(pack);
+}
+
+#[then(expr = "pc_nell knows fact_trapdoor")]
+fn nell_knows_the_trapdoor(world: &mut World) {
+    assert!(
+        world.scratch.split(',').any(|id| id == "fact_trapdoor"),
+        "{}",
+        world.scratch
+    );
+}
+
+#[then(expr = "pc_nell can see the trapdoor")]
+fn nell_can_see_the_trapdoor(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap();
+    let world_now = spookery_kernel::World::open(pack).unwrap();
+    let exits = spookery_kernel::map::visible(world_now.canon(), world_now.now(), "pc_nell");
+    assert!(
+        exits.iter().any(|exit| exit.name == "trapdoor"),
+        "trapdoor stayed hidden: {exits:?}"
+    );
+}
+
+#[given(expr = "a verb sets world flag tide_turned and a rule marks whoever is present")]
+fn a_verb_sets_the_tide(world: &mut World) {
+    let pack = temp_pack("trigger-tide");
+    add_verb(
+        &pack,
+        "\n  - id: turn_tide\n    when:\n      verb: turn_tide\n    do:\n      - flag:\n          who: world\n          key: tide_turned\n          value: true\n",
+    );
+    fs::create_dir_all(pack.join("story")).unwrap();
+    fs::write(
+        pack.join("story/tide.yaml"),
+        "\
+schema: story
+id: tide
+rules:
+  - id: mark
+    when:
+      change:
+        flag: tide_turned
+        becomes: true
+    do:
+      - flag:
+          who: subject
+          key: saw_tide
+          value: true
+",
+    )
+    .unwrap();
+    write_nell(&pack, &["saw_tide"]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    });
+    world.pack = Some(pack);
+}
+
+#[when(expr = "pc_nell sets the tide")]
+fn nell_sets_the_tide(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap().clone();
+    play(
+        &pack,
+        vec![intent("nell-tide", "pc_nell", "turn_tide", Target::Empty)],
+    );
+}
+
+#[then(expr = "the world has flag tide_turned")]
+fn the_world_has_the_tide(world: &mut World) {
+    let now = load(world.pack.as_ref().unwrap());
+    assert!(
+        now.flags.iter().any(|flag| flag == "tide_turned"),
+        "flags: {:?}",
+        now.flags
+    );
+}
+
+#[then(expr = "pc_nell has flag saw_tide")]
+fn nell_has_saw_tide(world: &mut World) {
+    let now = load(world.pack.as_ref().unwrap());
+    assert!(
+        now.actors
+            .get("pc_nell")
+            .unwrap()
+            .flags()
+            .iter()
+            .any(|flag| flag == "saw_tide"),
+        "nell flags: {:?}",
+        now.actors.get("pc_nell").unwrap().flags()
+    );
+}
+
+#[then(expr = "the GM summary lists {string}")]
+fn the_gm_summary_lists(world: &mut World, key: String) {
+    assert!(
+        world.summary.iter().any(|item| item == &key),
+        "missing {key}\n{:?}",
+        world.summary
+    );
+}
+
+#[then(expr = "{string}'s summary lists {string}")]
+fn the_viewer_summary_lists(world: &mut World, viewer: String, key: String) {
+    let changes = seen_of(world, &viewer);
+    assert!(
+        changes.iter().any(|item| item == &key),
+        "{viewer} missing {key}\n{changes:?}"
+    );
+}
+
+#[then(expr = "{string}'s summary does not list {string}")]
+fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
+    let changes = seen_of(world, &viewer);
+    assert!(
+        changes.iter().all(|item| item != &key),
+        "{viewer} saw {key}\n{changes:?}"
+    );
+}
+
+#[then(expr = "spook verify passes on this pack")]
+fn verify_passes_on_this_pack(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap();
+    let output = support::spook(&["verify", &pack.to_string_lossy()]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
+}
+
+#[when(expr = "the empty table narrates and then Rowan narrates")]
+fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
+    let pack = temp_pack("trigger-idle-narrate");
+    add_verb(
+        &pack,
+        "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
+    );
+    edit_save(&pack, |now| {
+        now.presence.humans = 0;
+        now.presence.actors_present.clear();
+    });
+    let mut kernel =
+        spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
+    let wall = kernel.now().last_tick_at.clone();
+    spookery_round::play(&mut kernel, RoundCause::Manual, &wall).unwrap_or_else(|err| {
+        panic!("quiet: {err}");
+    });
+    spookery_kernel::commit::commit_presence(
+        &mut kernel,
+        spookery_kernel::model::Presence {
+            humans: 1,
+            actors_present: vec!["pc_rowan".to_string()],
+        },
+    )
+    .unwrap_or_else(|err| panic!("seat: {err}"));
+    kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
+    let wall = kernel.now().last_tick_at.clone();
+    spookery_round::play(&mut kernel, RoundCause::Manual, &wall)
+        .unwrap_or_else(|err| panic!("back: {err}"));
+    world.told = kernel
+        .take_lines()
+        .into_iter()
+        .map(|line| (line.to, line.text))
+        .collect();
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a cast id world and a reveal of a missing fact")]
+fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
+    let pack = temp_pack("trigger-check-reveal");
+    fs::write(
+        pack.join("cast/world.md"),
+        "\
+---
+schema: cast
+id: world
+kind: npc
+facts: []
+tick:
+  eligible: false
+---
+Reserved.
+",
+    )
+    .unwrap();
+    add_verb(
+        &pack,
+        "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          who: world\n          fact: missing_fact\n      - reveal:\n          who: self\n          fact: missing_fact\n",
+    );
+    edit_save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+fn seen_of(world: &World, viewer: &str) -> Vec<String> {
+    world
+        .seen
+        .iter()
+        .filter(|(id, _)| id == viewer)
+        .flat_map(|(_, changes)| changes.clone())
+        .collect()
+}
+
+fn narrates(tick: &Value, text: &str, viewer: &str) -> bool {
+    tick["effects"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|effect| {
+            effect["class"] == "narrate"
+                && effect["text"] == text
+                && effect["to"]
+                    .as_array()
+                    .is_some_and(|to| to.iter().any(|id| id == viewer))
+        })
+}
+
+fn add_bell_narrate(pack: &Path) {
+    append(
+        &pack.join("world/places/docks_shop.md"),
+        "    locked_text: The stair door is locked.\n",
+        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: subject\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
+    );
+}
+
 fn downed_pack(label: &str, hp: i64, downed: bool, crosses: &str) -> std::path::PathBuf {
     let pack = temp_pack(label);
     append(
@@ -568,10 +933,24 @@ fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     fs::write(path, emit_save(&now).unwrap()).unwrap();
 }
 
+struct Played {
+    now: Now,
+    rolls: Vec<spookery_kernel::rules::RollReport>,
+    tick: Value,
+    summary: Vec<String>,
+    seen: Vec<(String, Vec<String>)>,
+    told: Vec<(String, String)>,
+}
+
 fn play(
     pack: &Path,
     intents: Vec<Intent>,
 ) -> (Now, Vec<spookery_kernel::rules::RollReport>, Value) {
+    let played = play_view(pack, intents);
+    (played.now, played.rolls, played.tick)
+}
+
+fn play_view(pack: &Path, intents: Vec<Intent>) -> Played {
     let mut world = spookery_kernel::World::open(pack).unwrap_or_else(|err| {
         let report = spookery_kernel::check_pack(pack)
             .iter()
@@ -587,9 +966,24 @@ fn play(
     spookery_round::play(&mut world, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = latest(pack);
-    let now = world.now().clone();
-    let rolls = world.take_rolls();
-    (now, rolls, tick)
+    let told = world
+        .take_lines()
+        .into_iter()
+        .map(|line| (line.to, line.text))
+        .collect();
+    let seen = world
+        .seen()
+        .iter()
+        .map(|item| (item.viewer.clone(), item.changes.clone()))
+        .collect();
+    Played {
+        now: world.now().clone(),
+        rolls: world.take_rolls(),
+        tick,
+        summary: world.change_summary().to_vec(),
+        seen,
+        told,
+    }
 }
 
 fn intent(id: &str, actor: &str, verb: &str, target: Target) -> Intent {

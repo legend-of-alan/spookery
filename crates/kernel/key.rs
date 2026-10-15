@@ -18,6 +18,7 @@ pub enum StateKey {
     ClockValue(String),
     ClockPaused(String),
     Message(String),
+    WorldFlag(String),
 }
 
 impl fmt::Display for StateKey {
@@ -37,6 +38,7 @@ impl fmt::Display for StateKey {
             StateKey::ClockValue(id) => write!(f, "clock_value {id}"),
             StateKey::ClockPaused(id) => write!(f, "clock_paused {id}"),
             StateKey::Message(id) => write!(f, "message {id}"),
+            StateKey::WorldFlag(key) => write!(f, "world_flag {key}"),
         }
     }
 }
@@ -58,7 +60,8 @@ impl StateKey {
             StateKey::PlaceItem(_, _)
             | StateKey::ClockValue(_)
             | StateKey::ClockPaused(_)
-            | StateKey::Message(_) => None,
+            | StateKey::Message(_)
+            | StateKey::WorldFlag(_) => None,
         }
     }
 }

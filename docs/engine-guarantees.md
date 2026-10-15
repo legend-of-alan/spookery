@@ -91,9 +91,20 @@ that round. Two rules that set each other's flags stop at depth 4, and the round
 records the stop. A change rule may roll. Verify reproduces that roll, and it
 passes after a round that fired a change rule.
 
-Trigger delivery: TBD (issue #134)
+A narrate line reaches each person it names, unless the line would show a fact
+that person is not allowed to know. Someone in another room does not hear a line
+addressed to the room. Reveal gives the person it names a fact, and a hidden exit
+that fact uncovers then shows up for them. A world flag can be set, and a later
+rule sees it for each person who is present. A change summary lists only the
+changes that viewer can see. The GM sees every change. A player sees a change
+about themselves, about someone in the same room, about an item in that room,
+about a clock they own, about a world flag, and about a person entering or
+leaving the room. Learning a fact is told only to that person. Tick counters
+stay with the GM. Audit fails when a narrate line repeats a hidden fact that
+person does not know.
 
-Tested in `features/rules/triggers.feature`.
+Tested in `features/rules/triggers.feature` and
+`features/rules/trigger_delivery.feature`.
 
 ## Travel
 

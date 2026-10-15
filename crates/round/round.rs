@@ -4,8 +4,10 @@ use crate::play::{RecordedRound, RoundCause};
 use spookery_kernel::effect::Effect;
 use spookery_kernel::intent::Intent;
 use spookery_kernel::journal::{Arrival, Rejected};
+use spookery_kernel::key::ChangeRecord;
 use spookery_kernel::model::Now;
 use spookery_kernel::rules::{RollReport, RollResult};
+use spookery_kernel::visibility::{Seen, Told};
 use spookery_kernel::world::{session_status, Draft, World};
 
 /// One pass of the rules over one tick.
@@ -30,6 +32,10 @@ pub struct Round {
     pub trace: Vec<String>,
     pub notices: Vec<RollReport>,
     pub roll_reports: Vec<RollReport>,
+    pub changes: Vec<ChangeRecord>,
+    pub summary: Vec<String>,
+    pub lines: Vec<Told>,
+    pub seen: Vec<Seen>,
     pub opposed: BTreeMap<String, RollResult>,
     pub roll_counts: BTreeMap<(String, String), u32>,
     pub resolutions: BTreeMap<String, Resolution>,
@@ -83,6 +89,10 @@ impl Round {
             trace: Vec::new(),
             notices: Vec::new(),
             roll_reports: Vec::new(),
+            changes: Vec::new(),
+            summary: Vec::new(),
+            lines: Vec::new(),
+            seen: Vec::new(),
             opposed: BTreeMap::new(),
             roll_counts: BTreeMap::new(),
             resolutions: BTreeMap::new(),

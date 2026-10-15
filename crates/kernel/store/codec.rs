@@ -112,6 +112,7 @@ pub fn canonicalize(now: &mut Now) {
         sort_unique(actor.flags_mut());
         sort_unique(actor.known_facts_mut());
     }
+    sort_unique(&mut now.flags);
     for clock in now.clocks.values_mut() {
         sort_unique(&mut clock.owners);
     }
@@ -453,6 +454,17 @@ messages: []
                     "i12b",
                 ),
                 r#"{"class":"message","as":"npc:mira","intent_id":"i12b","message_id":"n","to":[],"fact_ids":["f"],"text":"x"}"#,
+            ),
+            (
+                effect(
+                    EffectClass::Reveal {
+                        actor_id: "pc_nell".to_string(),
+                        fact: "fact_trapdoor".to_string(),
+                    },
+                    player("pc_nell"),
+                    "i13",
+                ),
+                r#"{"class":"reveal","as":"player:pc_nell","intent_id":"i13","actor_id":"pc_nell","fact":"fact_trapdoor"}"#,
             ),
         ];
         for (effect, expected) in cases {

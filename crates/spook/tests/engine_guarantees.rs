@@ -4,18 +4,12 @@
 use std::fs;
 use std::path::Path;
 
-const STUB: &str = "Trigger delivery: TBD (issue #134)";
-
 #[test]
 fn cited_feature_files_exist() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let doc_path = root.join("docs/engine-guarantees.md");
     let doc = fs::read_to_string(&doc_path)
         .unwrap_or_else(|err| panic!("read {}: {err}", doc_path.display()));
-    assert!(
-        doc.contains(STUB),
-        "the trigger-delivery stub is missing from docs/engine-guarantees.md"
-    );
 
     let mut cited = Vec::new();
     let mut sections = 0usize;

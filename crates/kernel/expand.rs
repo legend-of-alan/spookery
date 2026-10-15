@@ -132,7 +132,11 @@ where
         EffectTemplate::Flag {
             who, key, value, ..
         } => {
-            let actor_id = expr::actor_of(now, ctx, who)?;
+            let actor_id = if matches!(who, Who::World) {
+                crate::effect::WORLD.to_string()
+            } else {
+                expr::actor_of(now, ctx, who)?
+            };
             effects.push(wrap(
                 viewer,
                 &intent.id,
@@ -289,8 +293,19 @@ where
                 },
             ));
         }
-        EffectTemplate::Reveal { .. } => {
-            return Err(Reason::NotInSpec);
+        EffectTemplate::Reveal { who, fact } => {
+            if matches!(who, Who::World) {
+                return Err(Reason::Schema);
+            }
+            let actor_id = expr::actor_of(now, ctx, who)?;
+            effects.push(wrap(
+                viewer,
+                &intent.id,
+                EffectClass::Reveal {
+                    actor_id,
+                    fact: fact.clone(),
+                },
+            ));
         }
     }
     Ok(())
