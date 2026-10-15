@@ -1,0 +1,10 @@
+name: Pack question
+description: A question about writing or running a pack.
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What you are trying to do.
+    validations:
+      required: true
