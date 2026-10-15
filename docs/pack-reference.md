@@ -302,7 +302,7 @@ A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `roll`, `success`, 
 
 `when` is `habit`, or a map with `verb` and `target`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule and not a verb.
 
-Rules that fire when the world changes are coming (issue #134).
+Rules that fire when the world changes are coming (issue #102).
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `subject`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
 
