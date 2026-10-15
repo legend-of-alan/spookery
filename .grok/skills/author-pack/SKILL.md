@@ -14,7 +14,7 @@ description: >
 
 - New pack: `spook new <dir>`. To change an existing pack, copy it first and edit the copy.
 - Leave `packs/oneshot-docks` as it is. `spook run` writes `state/` into the pack you pass.
-- File shapes: `docs/pack-reference.md`. `spook check` reports any unknown or missing key. Walkthrough: `docs/first-pack.md`. Behaviour: `docs/spec.md` ("Rows and habits", "Habits", "Effect envelope").
+- File shapes: `docs/pack-reference.md`. `spook check` reports any unknown or missing key. Walkthrough: `docs/first-pack.md`. Behaviour: `docs/engine-guarantees.md`.
 
 ## The loop
 

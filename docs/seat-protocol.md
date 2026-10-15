@@ -1,6 +1,6 @@
 # Seat protocol
 
-This page is the wire for a player client or a GM integration. `spook run` is the only server. It owns both seats. `docs/spec.md` is the rules; this page is how to speak them.
+This page is the wire for a player client or a GM integration. `spook run` is the only server. It owns both seats. [Engine guarantees](engine-guarantees.md) is what the engine promises. This page is how to speak to it.
 
 The examples are one live sitting of `packs/oneshot-docks`. Rowan is the player, in the shop, at game time 1080. A test plays that sitting and fails when a fenced example and the table disagree. The `id` on a tool call is the caller's. The ports on the listening line are the ports that run chose.
 

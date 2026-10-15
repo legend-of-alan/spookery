@@ -52,3 +52,7 @@ path = "tests/pack_reference.rs"
 [[test]]
 name = "seat_protocol"
 path = "tests/seat_protocol.rs"
+
+[[test]]
+name = "engine_guarantees"
+path = "tests/engine_guarantees.rs"
