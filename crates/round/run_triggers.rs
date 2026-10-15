@@ -1,13 +1,14 @@
-use std::collections::BTreeSet;
-
 use spookery_kernel::apply::apply_effect;
+use spookery_kernel::canon::Canon;
+use spookery_kernel::effect::Effect;
 use spookery_kernel::expand::expand_rule;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::key::{ChangeRecord, StateKey, StateValue};
+use spookery_kernel::model::Now;
 use spookery_kernel::rules::cond;
 use spookery_kernel::rules::expr::{self, Ctx};
 use spookery_kernel::rules::rule::{ChangeWatch, Op, Owner, Rule, When};
-use spookery_kernel::rules::RollReport;
+use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
@@ -18,13 +19,14 @@ use crate::round::Round;
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("run_triggers".to_string());
     let max = draft.budget().max_trigger_depth;
+    let rules = change_rules(draft);
     let mut depth = 0u64;
     loop {
         let changes = draft.take_changes();
         if changes.is_empty() {
             break;
         }
-        let hits = plan(draft, &changes);
+        let hits = plan(draft, &rules, &changes);
         if hits.is_empty() {
             break;
         }
@@ -34,18 +36,18 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         }
         depth += 1;
         for hit in hits {
-            fire(round, draft, &hit.rule, &hit.subject)?;
+            fire(round, draft, hit.rule, &hit.subject);
         }
     }
     Ok(())
 }
 
-struct Hit {
-    rule: Rule,
+struct Hit<'a> {
+    rule: &'a Rule,
     subject: String,
 }
 
-fn plan(draft: &Draft, changes: &[ChangeRecord]) -> Vec<Hit> {
+fn change_rules(draft: &Draft) -> Vec<Rule> {
     let mut rules: Vec<Rule> = draft
         .canon()
         .rules
@@ -60,15 +62,18 @@ fn plan(draft: &Draft, changes: &[ChangeRecord]) -> Vec<Hit> {
             .then(left.file.cmp(&right.file))
             .then(left.index.cmp(&right.index))
     });
+    rules
+}
+
+fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<Hit<'a>> {
     let mut hits = Vec::new();
-    let mut seen = BTreeSet::new();
     for rule in rules {
         let When::Change(watch) = &rule.when else {
             continue;
         };
         let mut subjects = Vec::new();
         for change in changes {
-            if !matches_watch(draft, &rule, watch, change) {
+            if !matches_watch(draft, rule, watch, change) {
                 continue;
             }
             let Some(subject) = subject_of(draft, &change.key) else {
@@ -80,22 +85,23 @@ fn plan(draft: &Draft, changes: &[ChangeRecord]) -> Vec<Hit> {
         }
         subjects.sort();
         for subject in subjects {
-            if seen.insert((rule.id.clone(), subject.clone())) {
-                hits.push(Hit {
-                    rule: rule.clone(),
-                    subject,
-                });
-            }
+            hits.push(Hit { rule, subject });
         }
     }
     hits
 }
 
-fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) -> Result<bool, Reason> {
+struct Fired {
+    effects: Vec<Effect>,
+    rolled: Option<RollResult>,
+    resist: Vec<RollReport>,
+}
+
+fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
     let kind = match draft.now().actors.get(subject) {
         Some(actor) if actor.is_pc() => ActorKind::Player,
         Some(_) => ActorKind::Npc,
-        None => return Ok(false),
+        None => return,
     };
     let intent = intent_for(round, subject, kind, &rule.id);
     if cond::holds(
@@ -106,77 +112,87 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) -> Res
     )
     .is_err()
     {
-        return Ok(false);
+        return;
     }
     let point = draft.savepoint();
-    let now = draft.now().clone();
-    let checks = draft.canon().checks.clone();
-    let meters = draft.canon().meters.clone();
-    let rule_id = rule.id.clone();
+    let fired = {
+        let now = draft.now();
+        let canon = draft.canon();
+        expand_hit(round, now, canon, rule, &intent, subject, kind)
+    };
+    let Some(fired) = fired else {
+        draft.rollback(point);
+        return;
+    };
+    if fired.effects.len() > draft.budget().max_effects_per_intent as usize {
+        draft.rollback(point);
+        return;
+    }
+    for effect in &fired.effects {
+        if apply_effect(draft, &intent, effect.clone()).is_err() {
+            draft.rollback(point);
+            return;
+        }
+    }
+    if let Some(out) = fired.rolled {
+        round.roll_reports.push(RollReport::Rolled {
+            actor_id: subject.to_string(),
+            out,
+        });
+    }
+    round.roll_reports.extend(fired.resist);
+    round.effects.extend(fired.effects);
+    round.trace.push(rule.id.clone());
+}
+
+fn expand_hit(
+    round: &mut Round,
+    now: &Now,
+    canon: &Canon,
+    rule: &Rule,
+    intent: &Intent,
+    subject: &str,
+    kind: ActorKind,
+) -> Option<Fired> {
     let mut rolled = None;
-    let mut resist_reports = Vec::new();
+    let mut resist = Vec::new();
     let outcome = if let Some(spec) = &rule.roll {
-        let ctx = Ctx { intent: &intent };
-        let target = match expr::eval(draft.canon(), &now, &ctx, &spec.target) {
-            Ok(target) => target,
-            Err(_) => {
-                draft.rollback(point);
-                return Ok(false);
-            }
-        };
+        let ctx = Ctx { intent };
+        let target = expr::eval(canon, now, &ctx, &spec.target).ok()?;
         let partial_at = match &spec.partial_at {
-            Some(expr) => match expr::eval(draft.canon(), &now, &ctx, expr) {
-                Ok(value) => Some(value),
-                Err(_) => {
-                    draft.rollback(point);
-                    return Ok(false);
-                }
-            },
+            Some(expr) => Some(expr::eval(canon, now, &ctx, expr).ok()?),
             None => None,
         };
-        let Some(actor) = now.actors.get(subject).cloned() else {
-            draft.rollback(point);
-            return Ok(false);
-        };
-        match roll_subject(
+        let actor = now.actors.get(subject)?;
+        let out = roll_subject(
             round,
-            &checks,
-            &meters,
+            &canon.checks,
+            &canon.meters,
             &SubjectRoll {
-                rule_id: &rule_id,
+                rule_id: &rule.id,
                 actor_kind: kind,
                 actor_id: subject,
                 check_id: &spec.check,
                 target,
                 partial_at,
-                live: Some(&actor),
+                live: Some(actor),
             },
-        ) {
-            Ok(out) => {
-                let band = out.outcome;
-                rolled = Some(out);
-                Some(band)
-            }
-            Err(_) => {
-                draft.rollback(point);
-                return Ok(false);
-            }
-        }
+        )
+        .ok()?;
+        let band = out.outcome;
+        rolled = Some(out);
+        Some(band)
     } else {
         None
     };
-    let expanded = match expand_rule(
-        draft.canon(),
-        &now,
+    let effects = expand_rule(
+        canon,
+        now,
         rule,
-        &intent,
+        intent,
         outcome,
         |actor_id, check_id, target| {
-            let actor = now
-                .actors
-                .get(actor_id)
-                .cloned()
-                .ok_or(Reason::UnknownKey)?;
+            let actor = now.actors.get(actor_id).ok_or(Reason::UnknownKey)?;
             let actor_kind = if actor.is_pc() {
                 ActorKind::Player
             } else {
@@ -184,52 +200,32 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) -> Res
             };
             let out = roll_subject(
                 round,
-                &checks,
-                &meters,
+                &canon.checks,
+                &canon.meters,
                 &SubjectRoll {
-                    rule_id: &rule_id,
+                    rule_id: &rule.id,
                     actor_kind,
                     actor_id,
                     check_id,
                     target,
                     partial_at: None,
-                    live: Some(&actor),
+                    live: Some(actor),
                 },
             )?;
             let band = out.outcome;
-            resist_reports.push(RollReport::Rolled {
+            resist.push(RollReport::Rolled {
                 actor_id: actor_id.to_string(),
                 out,
             });
             Ok(band)
         },
-    ) {
-        Ok(effects) => effects,
-        Err(_) => {
-            draft.rollback(point);
-            return Ok(false);
-        }
-    };
-    if expanded.len() > draft.budget().max_effects_per_intent as usize {
-        draft.rollback(point);
-        return Ok(false);
-    }
-    for effect in &expanded {
-        if apply_effect(draft, &intent, effect.clone()).is_err() {
-            draft.rollback(point);
-            return Ok(false);
-        }
-    }
-    if let Some(out) = rolled {
-        round.roll_reports.push(RollReport::Rolled {
-            actor_id: subject.to_string(),
-            out,
-        });
-    }
-    round.roll_reports.extend(resist_reports);
-    round.effects.extend(expanded);
-    round.trace.push(rule_id);
-    Ok(true)
+    )
+    .ok()?;
+    Some(Fired {
+        effects,
+        rolled,
+        resist,
+    })
 }
 
 fn intent_for(round: &Round, actor_id: &str, kind: ActorKind, rule_id: &str) -> Intent {
@@ -283,9 +279,9 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             }
             _ => false,
         },
-        ChangeWatch::Meter { key, crosses } => match &change.key {
+        ChangeWatch::Meter { key, op, bound } => match &change.key {
             StateKey::ActorMeter(_, meter) if meter == key => {
-                crossed(&change.before, &change.after, crosses)
+                crossed(&change.before, &change.after, *op, *bound)
             }
             _ => false,
         },
@@ -308,7 +304,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Item { id, gained } => match &change.key {
-            StateKey::ActorItem(_, item) | StateKey::PlaceItem(_, item) if item == id => {
+            StateKey::ActorItem(_, item) if item == id => {
                 match (number(&change.before), number(&change.after)) {
                     (Some(before), Some(after)) if *gained => after > before,
                     (Some(before), Some(after)) => after < before,
@@ -347,32 +343,11 @@ fn who_ok(draft: &Draft, who: &str, actor_id: &str) -> bool {
     }
 }
 
-fn crossed(before: &StateValue, after: &StateValue, crosses: &str) -> bool {
+fn crossed(before: &StateValue, after: &StateValue, op: Op, bound: i64) -> bool {
     let (Some(before), Some(after)) = (number(before), number(after)) else {
         return false;
     };
-    let Some((op, bound)) = parse_cross(crosses) else {
-        return false;
-    };
     !op.holds(before, bound) && op.holds(after, bound)
-}
-
-fn parse_cross(text: &str) -> Option<(Op, i64)> {
-    let text = text.trim();
-    let (op, rest) = if let Some(rest) = text.strip_prefix("<=") {
-        (Op::Le, rest)
-    } else if let Some(rest) = text.strip_prefix(">=") {
-        (Op::Ge, rest)
-    } else if let Some(rest) = text.strip_prefix("==") {
-        (Op::Eq, rest)
-    } else if let Some(rest) = text.strip_prefix('<') {
-        (Op::Lt, rest)
-    } else if let Some(rest) = text.strip_prefix('>') {
-        (Op::Gt, rest)
-    } else {
-        return None;
-    };
-    Some((op, rest.trim().parse().ok()?))
 }
 
 fn text(value: &StateValue) -> Option<&str> {

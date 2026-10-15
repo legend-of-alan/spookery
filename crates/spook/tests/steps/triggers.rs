@@ -67,7 +67,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
 
 #[given(expr = "briar has 3 hp and a story rule on hp crosses <=0 sets flag downed")]
 fn briar_has_3_hp_and_a_downed_rule(world: &mut World) {
-    let pack = downed_pack("trigger-downed", 3, false);
+    let pack = downed_pack("trigger-downed", 3, false, "<=0");
     world.pack = Some(pack);
 }
 
@@ -109,7 +109,7 @@ fn briar_has_flag_downed(world: &mut World) {
 
 #[given(expr = "briar is already downed")]
 fn briar_is_already_downed(world: &mut World) {
-    let pack = downed_pack("trigger-already", 0, true);
+    let pack = downed_pack("trigger-already", 1, true, "<=1");
     world.pack = Some(pack);
 }
 
@@ -118,7 +118,12 @@ fn another_tick_passes(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
         &pack,
-        vec![intent("wait-tick", "pc_rowan", "wait", Target::Empty)],
+        vec![intent(
+            "nick-briar",
+            "pc_rowan",
+            "nick",
+            Target::Actor("briar".to_string()),
+        )],
     );
 }
 
@@ -404,7 +409,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
 }
 
-fn downed_pack(label: &str, hp: i64, downed: bool) -> std::path::PathBuf {
+fn downed_pack(label: &str, hp: i64, downed: bool, crosses: &str) -> std::path::PathBuf {
     let pack = temp_pack(label);
     append(
         &pack.join("rules/meters.yaml"),
@@ -413,7 +418,7 @@ fn downed_pack(label: &str, hp: i64, downed: bool) -> std::path::PathBuf {
     );
     add_verb(
         &pack,
-        "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          who: target\n          key: hp\n          add: -4\n",
+        "\n  - id: hit\n    when:\n      verb: hit\n      target: actor\n    do:\n      - meter:\n          who: target\n          key: hp\n          add: -4\n  - id: nick\n    when:\n      verb: nick\n      target: actor\n    do:\n      - meter:\n          who: target\n          key: hp\n          add: -1\n",
     );
     fs::write(
         pack.join("cast/briar.md"),
@@ -435,7 +440,8 @@ Briar keeps their feet until they cannot.
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
         pack.join("story/injury.yaml"),
-        "\
+        format!(
+            "\
 schema: story
 id: injury
 rules:
@@ -443,13 +449,14 @@ rules:
     when:
       change:
         meter: hp
-        crosses: \"<=0\"
+        crosses: \"{crosses}\"
     do:
       - flag:
           who: subject
           key: downed
           value: true
-",
+"
+        ),
     )
     .unwrap();
     edit_save(&pack, |now| {

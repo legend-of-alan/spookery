@@ -91,7 +91,7 @@ impl TargetKind {
 pub enum ChangeWatch {
     Arrive { place: String, who: String },
     Leave { place: String, who: String },
-    Meter { key: String, crosses: String },
+    Meter { key: String, op: Op, bound: i64 },
     Flag { key: String, becomes: bool },
     Clock { id: String },
     Item { id: String, gained: bool },
