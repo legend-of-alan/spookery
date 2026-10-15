@@ -283,32 +283,37 @@ fn write_commit(state: &Path, planned: &[Planned]) -> Result<(), Reason> {
                 }
             }
         }
-        let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
-        file.write_all(&item.bytes)
-            .map_err(|_| Reason::CommitConflict)?;
-        file.sync_all().map_err(|_| Reason::CommitConflict)?;
+        {
+            let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
+            file.write_all(&item.bytes)
+                .map_err(|_| Reason::CommitConflict)?;
+        }
+        fsync_file(&tmp)?;
         temps.push((tmp, item));
     }
     // The new directory is durable only after its parent is flushed.
     fsync_dirs(&created_parents)?;
 
-    for (tmp, item) in &temps {
-        if !item.is_now {
-            rename(tmp, &item.target)?;
-        }
-    }
+    let mut side_parents = Vec::new();
     for (tmp, item) in &temps {
         if item.is_now {
-            rename(tmp, &item.target)?;
+            continue;
         }
-    }
-    let mut parents = Vec::new();
-    for item in planned {
+        rename(tmp, &item.target)?;
         if let Some(parent) = item.target.parent() {
-            parents.push(parent.to_path_buf());
+            if parent != state {
+                side_parents.push(parent.to_path_buf());
+            }
         }
     }
-    fsync_dirs(&parents)?;
+    fsync_dirs(&side_parents)?;
+    for (tmp, item) in &temps {
+        if !item.is_now {
+            continue;
+        }
+        rename(tmp, &item.target)?;
+    }
+    fsync_dirs(&[state.to_path_buf()])?;
     let _ = fs::remove_dir_all(&txn_dir);
     Ok(())
 }
@@ -357,7 +362,7 @@ mod tests {
         let root = temp_docks("flush-parents");
         let mut world = World::open(&root).unwrap();
 
-        // The first commit creates state/journal, so flushing that new directory's parent makes seven.
+        // Seven flushes besides the temp bodies. Creating state/journal adds the early parent flush.
         durable::start_trace();
         let changed = commit_presence(
             &mut world,
@@ -376,11 +381,14 @@ mod tests {
                 "file complete",
                 "dir prev",
                 "dir txn",
+                "file save.tmp",
+                "file base.tmp",
+                "file presence.tmp",
                 "dir state",
                 "rename base",
                 "rename presence",
-                "rename save",
                 "dir journal",
+                "rename save",
                 "dir state",
             ],
             "{}",
@@ -388,7 +396,7 @@ mod tests {
         );
         assert!(!root.join("state/.txn").exists());
 
-        // Journal is already there, and the new presence file is not backed up.
+        // Six flushes besides the temp bodies. The new presence file is not backed up.
         durable::start_trace();
         let changed = commit_presence(
             &mut world,
@@ -407,9 +415,11 @@ mod tests {
                 "file complete",
                 "dir prev",
                 "dir txn",
+                "file save.tmp",
+                "file presence.tmp",
                 "rename presence",
-                "rename save",
                 "dir journal",
+                "rename save",
                 "dir state",
             ],
             "{}",
@@ -440,7 +450,7 @@ mod tests {
         )
         .unwrap();
         let marks = durable::take_trace();
-        // The new memory directory is flushed as well. A seat commit stays at seven, then six.
+        // Journal and the memory directory are flushed before save.yaml is renamed.
         assert_eq!(
             labels(&marks),
             [
@@ -448,13 +458,17 @@ mod tests {
                 "file complete",
                 "dir prev",
                 "dir txn",
+                "file save.tmp",
+                "file tick.tmp",
+                "file memory.tmp",
+                "file base.tmp",
                 "dir state",
                 "rename tick",
                 "rename memory",
                 "rename base",
-                "rename save",
                 "dir journal",
                 "dir memories",
+                "rename save",
                 "dir state",
             ],
             "{}",
@@ -498,6 +512,7 @@ mod tests {
             .and_then(|file| file.to_str())
             .unwrap_or("");
         match mark {
+            Mark::File(_) if name.ends_with(".tmp") => tmp_label(name, path),
             Mark::File(_) if name == "COMPLETE" && parent_name(path, ".txn") => {
                 "file complete".to_string()
             }
@@ -523,6 +538,22 @@ mod tests {
                 "rename save".to_string()
             }
             _ => format!("unexpected {}", path.display()),
+        }
+    }
+
+    fn tmp_label(name: &str, path: &Path) -> String {
+        if name.starts_with("save.yaml") {
+            "file save.tmp".to_string()
+        } else if name.starts_with("base.yaml") {
+            "file base.tmp".to_string()
+        } else if name.starts_with("presence-") {
+            "file presence.tmp".to_string()
+        } else if name.starts_with("tick-") {
+            "file tick.tmp".to_string()
+        } else if parent_name(path, "memories") {
+            "file memory.tmp".to_string()
+        } else {
+            format!("unexpected {}", path.display())
         }
     }
 
