@@ -311,6 +311,8 @@ The codes `spook check` can emit are stable. The message and the hint may change
 
 ## Loopback
 
+The wire for a player client or a GM integration is `docs/seat-protocol.md`.
+
 A fourth player hello is `SESSION_FULL`. A hello for a PC another seat holds is `SEAT_TAKEN`. A second GM is `SESSION_FULL`. A refused hello gets one refusal line. The seat then closes its write side and reads and discards whatever the client already sent, until the client hangs up or 2 seconds pass, so a client that sent more than its hello still gets the refusal.
 
 A hello line and a player line are at most 8 KiB, not counting the newline. A longer line is `LINE_TOO_LONG` and the socket closes. The server does not keep more than that cap. Invalid UTF-8 on a hello or a player line is `SCHEMA`, not a replacement character. A player connection stays up after that player-line refusal. A hello that is `SCHEMA` or `LINE_TOO_LONG` is refused and closed. A socket that has not sent a complete hello within 10 seconds is closed, and nothing is committed.
@@ -325,7 +327,7 @@ The bind does not grow past loopback. `--addr 127.0.0.1` and `--addr 127.0.0.1:<
 
 One GM seat has one agent door. `spook run` serves streamable HTTP at `/mcp` on `127.0.0.1:<game port + 1>` when the game port is fixed. The default game port `9737` makes that `http://127.0.0.1:9738/mcp`. `--addr 127.0.0.1:0` asks the operating system for the game port, and the agent door is an operating-system port of its own, not the game port plus one. `--mcp-http 127.0.0.1:<port>` overrides the door, including `--mcp-http 127.0.0.1:0`. The override uses the same loopback parser as `--addr`, so any other host is `NOT_IN_SPEC` before the pack opens. After both sockets are bound, and before it serves, `spook run` prints one line on stdout: `{"kind":"listening","game":"127.0.0.1:<game>","door":"127.0.0.1:<door>"}`. `spook gm` and `spook ai-gm` dial `http://127.0.0.1:<game port + 1>/mcp` unless `--mcp-http` names the door. A port-0 table's reported door is that name. The game port accepts only player hellos. A line `gm` on that port is `NOT_IN_SPEC` and writes nothing.
 
-Initialize on the agent door claims the GM seat. A second GM is `SESSION_FULL`. On HTTP that refusal is a JSON-RPC error whose message contains the token. A refused seat prints a sentence and the token on stderr, writes nothing to stdout, and exits 1. `SESSION_FULL` prints `The table is full. [SESSION_FULL]`. HTTP DELETE, or the session ending, releases the seat. A request whose `Host` is not `127.0.0.1` is refused with 403. That includes `localhost`, so a client must address the endpoint as `http://127.0.0.1:<port>/mcp`. A request whose `Origin` header is present and is not `http://127.0.0.1` is refused with 403. A missing `Origin` is accepted. There is still no auth. A POST body larger than 1 MiB is refused with 413. An `MCP-Protocol-Version` header that names an unknown version is refused with 400. A missing header is accepted. `spook/event` notifications may be ignored by a generic client. `session_status` with `since` is the pull path.
+Initialize on the agent door claims the GM seat. A second GM is `SESSION_FULL`. On HTTP that refusal is a JSON-RPC error whose message contains the token. A refused seat prints a sentence and the token on stderr, writes nothing to stdout, and exits 1. `SESSION_FULL` prints `The table is full. [SESSION_FULL]`. HTTP DELETE, or the session ending, releases the seat. A request whose `Host` is not `127.0.0.1` is refused with 403. That includes `localhost`, so a client must address the endpoint as `http://127.0.0.1:<port>/mcp`. A request whose `Origin` header is present and is not `http://127.0.0.1` on any port is refused with 403. A missing `Origin` is accepted. There is still no auth. A POST body larger than 1 MiB is refused with 413. An `MCP-Protocol-Version` header that names an unknown version is refused with 400. A missing header is accepted. `spook/event` notifications may be ignored by a generic client. `session_status` with `since` is the pull path.
 
 ## Host monitor
 
@@ -334,6 +336,8 @@ A host monitor is not shard behavior.
 `idle_digest` takes a host viewer or a player viewer. The host sees effect rows and clocks. A player sees only their messages and owned clocks. `spook status` prints the host digest. Player resume is the player digest. The host digest is not a player resume, and it does not write the shard.
 
 ## Player client
+
+The frames on this socket are in `docs/seat-protocol.md`.
 
 `spook play <pack>` sits a player seat and dials `--addr`. `--as player:<id>` picks the actor. Without it, the client sits the pack's start PC. Each client holds one distinct PC. The player socket wire is unchanged: the client only changes how it prints frames.
 

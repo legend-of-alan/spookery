@@ -30,7 +30,7 @@ After both sockets are bound, and before the table serves, `spook run` prints on
 The door requires:
 
 - `Host: 127.0.0.1`. `localhost` is 403.
-- `Origin`, when the request sends one, is `http://127.0.0.1`. Anything else is 403. A missing `Origin` is accepted.
+- `Origin`, when the request sends one, is `http://127.0.0.1` on any port. Anything else is 403. A missing `Origin` is accepted.
 - `Accept` lists both `application/json` and `text/event-stream`.
 - `Content-Type: application/json` on a POST.
 - A body of at most 1 MiB. A longer body is 413 and does not take the seat.
@@ -813,7 +813,7 @@ HTTP statuses, before a seat token:
 | Status | What the client should do |
 |---|---|
 | 400 | `MCP-Protocol-Version` names a version the server does not know. Omit the header, or send a version from a previous handshake. |
-| 403 | `Host` is not `127.0.0.1`, or `Origin` is present and is not `http://127.0.0.1`. Dial `http://127.0.0.1:<door>/mcp`. |
+| 403 | `Host` is not `127.0.0.1`, or `Origin` is present and is not `http://127.0.0.1` on any port. Dial `http://127.0.0.1:<door>/mcp`. |
 | 405 | DELETE named a protocol version that has no session to delete. Send the negotiated `protocolVersion` from the initialize result. |
-| 413 | The POST body is over 1 MiB. Shrink it. The seat was not taken. |
 | 406 | `Accept` did not list both `application/json` and `text/event-stream`. |
+| 413 | The POST body is over 1 MiB. Shrink it. The seat was not taken. |
