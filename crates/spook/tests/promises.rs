@@ -86,6 +86,9 @@ mod audit;
 #[path = "steps/sample.rs"]
 mod sample;
 
+#[path = "steps/contributing.rs"]
+mod contributing;
+
 #[path = "fixture/oneshot_docks.rs"]
 mod oneshot_docks;
 

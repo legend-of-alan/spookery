@@ -1,0 +1,11 @@
+name: Feature request
+description: Something you want the engine to do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: Request
+      description: What you want, and why.
+    validations:
+      required: true
