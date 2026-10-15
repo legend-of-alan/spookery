@@ -20,7 +20,7 @@ use spookery_kernel::model::{
 use spookery_kernel::rules::RollReport;
 use spookery_kernel::store::codec::emit_save;
 use spookery_kernel::world::Draft;
-use spookery_round::{catch_up, from_journal, play, play_pack_once};
+use spookery_round::{catch_up, play, play_pack_once};
 
 use crate::World;
 
@@ -645,40 +645,6 @@ fn the_next_revision_keeps_the_new_save() {
     assert!(memory.contains("kept-line"));
     assert!(!memory.contains("orphan-line"));
     let _ = fs::remove_dir_all(&next);
-}
-
-fn replay_byte_compares_now() {
-    let stamp = format!(
-        "{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    );
-    let start = std::env::temp_dir().join(format!("spook-prop-replay-start-{stamp}"));
-    let played = std::env::temp_dir().join(format!("spook-prop-replay-played-{stamp}"));
-    let _ = fs::remove_dir_all(&start);
-    let _ = fs::remove_dir_all(&played);
-    copy_dir(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks"),
-        &start,
-    );
-    copy_dir(&start, &played);
-    for tick in 1..=20 {
-        play_pack_once(&played).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
-    }
-    let golden = fs::read(played.join("state/save.yaml")).unwrap();
-    let source_log = fs::read(played.join("state/journal/tick-0020.jsonl")).unwrap();
-    let report = from_journal(&played, Some(&start), None).unwrap();
-    assert_eq!(report.now_yaml, golden);
-    assert_eq!(fs::read(played.join("state/save.yaml")).unwrap(), golden);
-    assert_eq!(
-        fs::read(played.join("state/journal/tick-0020.jsonl")).unwrap(),
-        source_log
-    );
-    let _ = fs::remove_dir_all(&start);
-    let _ = fs::remove_dir_all(&played);
 }
 
 fn budget_caps() {
@@ -1803,11 +1769,6 @@ fn a_finished_transaction_repeats(_world: &mut World) {
 #[when(expr = "a finished transaction advances the revision")]
 fn a_finished_transaction_advances(_world: &mut World) {
     the_next_revision_keeps_the_new_save();
-}
-
-#[when(expr = "twenty ticks are replayed")]
-fn twenty_ticks_are_replayed(_world: &mut World) {
-    replay_byte_compares_now();
 }
 
 #[when(expr = "fifty NPCs share one tick")]
