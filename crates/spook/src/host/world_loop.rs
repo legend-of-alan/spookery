@@ -391,6 +391,32 @@ fn handle(
     Ok(())
 }
 
+fn narrate_for(lines: &[spookery_kernel::visibility::Told], viewer: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines {
+        if line.to == viewer && !out.contains(&line.text) {
+            out.push(line.text.clone());
+        }
+    }
+    out
+}
+
+fn changes_for(seen: &[spookery_kernel::visibility::Seen], viewer: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for item in seen {
+        if item.viewer != viewer {
+            continue;
+        }
+        for key in &item.changes {
+            if !out.contains(key) {
+                out.push(key.clone());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
 fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
     let next = restart.borrow().wrapping_add(1);
     let _ = restart.send(next);
@@ -401,12 +427,21 @@ fn refresh_players(
     seats: &mut Seats,
     notices: &[spookery_kernel::rules::RollReport],
 ) -> Result<(), Reason> {
+    let lines = world.take_lines();
+    let seen = world.take_seen();
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
         let bytes = match player_refresh(world, &player.actor_id) {
             Ok(text) => {
                 let mut out = player_moves::player_notice_lines(notices, &player.actor_id);
                 out.push_str(&text);
+                for line in narrate_for(&lines, &player.actor_id) {
+                    out.push_str(&frames::player_lines(&line));
+                }
+                let changes = changes_for(&seen, &player.actor_id);
+                if !changes.is_empty() {
+                    out.push_str(&frames::player_lines(&changes.join("\n")));
+                }
                 out.into_bytes()
             }
             Err(code) => refused_line(code).into_bytes(),

@@ -53,6 +53,15 @@ fn the_tape_names_the_actor(world: &mut World, actor: String) {
     assert!(tape.contains(&format!("\"actor\":\"{actor}\"")), "{tape}");
 }
 
+#[then(expr = "the tape recipients are {string}")]
+fn the_tape_recipients_are(world: &mut World, id: String) {
+    let tape = tape_text(world);
+    assert!(
+        tape.contains(&format!("\"recipients\":[\"{id}\"]")),
+        "{tape}"
+    );
+}
+
 #[then(expr = "the tape names the place {string}")]
 fn the_tape_names_the_place(world: &mut World, place: String) {
     let tape = tape_text(world);

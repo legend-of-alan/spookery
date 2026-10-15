@@ -1,4 +1,4 @@
-use spookery_kernel::world::{Draft, World};
+use spookery_kernel::world::{Delivered, Draft, World};
 use spookery_kernel::Reason;
 
 use crate::log::{render_round_line, RoundLine};
@@ -35,5 +35,10 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         jsonl,
         std::mem::take(&mut round.notices),
         round.recorded.is_some(),
+        Delivered {
+            summary: std::mem::take(&mut round.summary),
+            lines: std::mem::take(&mut round.lines),
+            seen: std::mem::take(&mut round.seen),
+        },
     )
 }

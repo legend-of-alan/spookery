@@ -1,4 +1,4 @@
-use crate::effect::{Effect, EffectClass};
+use crate::effect::{Effect, EffectClass, WORLD};
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, ViewerId};
@@ -53,6 +53,7 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
             text,
         } => apply_message(draft, message_id, to, place, fact_ids, text),
         EffectClass::Narrate { .. } => Ok(()),
+        EffectClass::Reveal { actor_id, fact } => apply_reveal(draft, &actor_id, &fact),
     }
 }
 
@@ -405,6 +406,9 @@ fn apply_memory(
 }
 
 fn apply_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Result<(), Reason> {
+    if actor_id == WORLD {
+        return apply_world_flag(draft, key, value);
+    }
     let listed = draft
         .canon()
         .profile(actor_id)
@@ -436,6 +440,50 @@ fn apply_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Resu
     } else {
         flags.retain(|flag| flag != key);
     }
+    Ok(())
+}
+
+fn apply_world_flag(draft: &mut Draft, key: &str, value: bool) -> Result<(), Reason> {
+    if key.is_empty() || key == "busy" {
+        return Err(Reason::UnknownKey);
+    }
+    let has = draft.now().flags.iter().any(|flag| flag == key);
+    if has != value {
+        draft.track(StateKey::WorldFlag(key.to_string()))?;
+    }
+    let flags = &mut draft.now_mut().flags;
+    if value {
+        if !flags.iter().any(|flag| flag == key) {
+            flags.push(key.to_string());
+        }
+    } else {
+        flags.retain(|flag| flag != key);
+    }
+    Ok(())
+}
+
+fn apply_reveal(draft: &mut Draft, actor_id: &str, fact: &str) -> Result<(), Reason> {
+    if !draft.canon().facts.contains_key(fact) {
+        return Err(Reason::UnknownKey);
+    }
+    let known = draft
+        .now()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .known_facts();
+    if known.iter().any(|id| id == fact) {
+        return Ok(());
+    }
+    draft.track(StateKey::ActorKnownFact(actor_id.to_string()))?;
+    let facts = draft
+        .now_mut()
+        .actors
+        .get_mut(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .known_facts_mut();
+    facts.push(fact.to_string());
+    model::sort_unique(facts);
     Ok(())
 }
 

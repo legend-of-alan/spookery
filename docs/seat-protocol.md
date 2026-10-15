@@ -287,7 +287,7 @@ travel stairs
 
 `missing` is omitted when the refusal does not name one. A cost the actor cannot pay is `CANT_AFFORD`, and `missing` is the meter or item id.
 
-When the GM commits the round, a player who rolled receives `check`, then a fresh `resume`, then a fresh `perceive`. The check has the outcome only.
+When the GM commits the round, every seated player receives a fresh `resume`, then a fresh `perceive`, then one `lines` frame for each narrate line they may hear, then a `lines` frame of the changes that player can see. A player who rolled also receives `check` before the `resume`. The change text is one changed key on each line, and that frame is omitted when that player can see no change. A narrate line is omitted when it would show a fact that player is not allowed to know. Empty rounds, with nobody seated, do not leave lines for the next person who sits.
 
 <!-- example: player-check -->
 ```json
@@ -298,6 +298,14 @@ When the GM commits the round, a player who rolled receives `check`, then a fres
 ```
 
 `outcome` is `success`, `partial`, or `miss`. An NPC's roll sends no player frame.
+
+<!-- example: player-changes -->
+```json
+{
+  "kind": "lines",
+  "text": "clock_paused assassination_debt\nmessage note_mira_door"
+}
+```
 
 `close` leaves the seat. It has no reply.
 
@@ -660,7 +668,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 }
 ```
 
-`diff_summary` is the state keys the round changed. `log_path` is the journal file for that round, or null when the round wrote no tick file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
+`diff_summary` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `log_path` is the journal file for that round, or null when the round wrote no tick file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
 
 An unknown tool:
 

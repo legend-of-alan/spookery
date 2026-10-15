@@ -22,7 +22,9 @@ pub mod model;
 pub mod pause;
 pub mod perceive;
 pub mod rules;
+pub mod speech;
 pub mod store;
+pub mod visibility;
 pub mod world;
 
 pub use diagnostic::{first_reason, reason_of, Diagnostic};
