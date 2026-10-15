@@ -13,7 +13,7 @@ pub(crate) mod hash;
 pub mod ids;
 pub mod intent;
 pub mod journal;
-pub(crate) mod key;
+pub mod key;
 pub mod lint;
 pub mod lock;
 pub mod map;

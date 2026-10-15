@@ -53,6 +53,9 @@ mod rows;
 #[path = "steps/travel.rs"]
 mod travel;
 
+#[path = "steps/triggers.rs"]
+mod triggers;
+
 #[path = "steps/digest.rs"]
 mod digest;
 

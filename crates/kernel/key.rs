@@ -40,3 +40,43 @@ impl fmt::Display for StateKey {
         }
     }
 }
+
+impl StateKey {
+    /// The actor this key belongs to, when it has one.
+    pub fn actor(&self) -> Option<&str> {
+        match self {
+            StateKey::ActorPlace(id)
+            | StateKey::ActorFlag(id, _)
+            | StateKey::ActorMeter(id, _)
+            | StateKey::ActorBusy(id)
+            | StateKey::ActorKnownFact(id)
+            | StateKey::TickLastAct(id)
+            | StateKey::TickIdleActs(id)
+            | StateKey::TickLiveActs(id)
+            | StateKey::ActorItem(id, _)
+            | StateKey::ActorWielded(id) => Some(id),
+            StateKey::PlaceItem(_, _)
+            | StateKey::ClockValue(_)
+            | StateKey::ClockPaused(_)
+            | StateKey::Message(_) => None,
+        }
+    }
+}
+
+/// One watched value. `Empty` means the key was absent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StateValue {
+    Empty,
+    Text(String),
+    Number(i64),
+    Mark(bool),
+    List(Vec<String>),
+}
+
+/// A key that changed, with the value before the change and the value after it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ChangeRecord {
+    pub key: StateKey,
+    pub before: StateValue,
+    pub after: StateValue,
+}
