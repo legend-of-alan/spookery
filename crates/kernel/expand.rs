@@ -7,7 +7,7 @@ use crate::meter::{self, MeterWrite};
 use crate::model::Now;
 use crate::rules::expr::{self, Ctx};
 use crate::rules::gate;
-use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Who};
+use crate::rules::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, Who};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
     expand_outcome(canon, now, intent, None, ignore_resist)
@@ -25,12 +25,27 @@ pub fn expand_outcome<F>(
     now: &Now,
     intent: &Intent,
     outcome: Option<Outcome>,
-    mut resist_roll: F,
+    resist_roll: F,
 ) -> Result<Vec<Effect>, Reason>
 where
     F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
 {
     let rule = gate::resolve(canon, now, intent)?;
+    expand_rule(canon, now, rule, intent, outcome, resist_roll)
+}
+
+/// Expand one rule's lists. Change rules are not verbs, so they pass the rule in.
+pub fn expand_rule<F>(
+    canon: &Canon,
+    now: &Now,
+    rule: &Rule,
+    intent: &Intent,
+    outcome: Option<Outcome>,
+    mut resist_roll: F,
+) -> Result<Vec<Effect>, Reason>
+where
+    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
+{
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let mut selected = Vec::new();
     selected.extend(rule.do_.iter());
@@ -209,13 +224,14 @@ where
             let actor_id = expr::actor_of(now, ctx, who)?;
             effects.push(wrap(viewer, &intent.id, EffectClass::Unwield { actor_id }));
         }
-        EffectTemplate::Clock { id, add, .. } => {
+        EffectTemplate::Clock { id, add, start } => {
             effects.push(wrap(
                 viewer,
                 &intent.id,
                 EffectClass::Clock {
                     clock_id: id.clone(),
                     delta: add.unwrap_or(0),
+                    start: *start,
                 },
             ));
         }

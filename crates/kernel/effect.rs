@@ -20,6 +20,8 @@ pub enum EffectClass {
     Clock {
         clock_id: String,
         delta: i64,
+        /// Clear `paused` before applying `delta`.
+        start: bool,
     },
     Meter {
         actor_id: String,

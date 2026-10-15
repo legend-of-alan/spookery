@@ -10,7 +10,7 @@ use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
-use crate::key::StateKey;
+use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::{MemoryLine, Now, PauseView};
 use crate::rules::RollReport;
 use crate::store::codec::{emit_save, load_save};
@@ -44,6 +44,7 @@ pub struct Draft {
     budget: Budget,
     pub(crate) state: Now,
     keys: BTreeSet<StateKey>,
+    pending: Vec<Noted>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
@@ -124,6 +125,7 @@ impl Draft {
             budget: world.canon.budget,
             state: world.now.clone(),
             keys: BTreeSet::new(),
+            pending: Vec::new(),
             memories: Vec::new(),
             memory_writes: 0,
             _nosend: PhantomData,
@@ -241,23 +243,188 @@ impl Draft {
         self.track_many(std::slice::from_ref(&key))
     }
 
+    /// Record `before` as this key's value from before the write that just landed.
+    pub fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
+        self.note(key, Some(before))
+    }
+
     pub fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
         let max = self.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         for key in keys {
-            if self.keys.contains(key) {
-                continue;
+            self.admit(key, &mut added, max)?;
+            if !self.pending.iter().any(|noted| &noted.key == key) {
+                let before = self.read_value(key);
+                self.pending.push(Noted {
+                    key: key.clone(),
+                    before,
+                });
             }
-            if self.keys.len() >= max {
-                for key in &added {
-                    self.keys.remove(key);
-                }
-                return Err(Reason::Budget);
-            }
-            self.keys.insert(key.clone());
-            added.push(key.clone());
         }
         Ok(())
+    }
+
+    fn note(&mut self, key: StateKey, before: Option<StateValue>) -> Result<(), Reason> {
+        let max = self.budget.max_state_keys_mutated as usize;
+        let mut added = Vec::new();
+        self.admit(&key, &mut added, max)?;
+        if !self.pending.iter().any(|noted| noted.key == key) {
+            let before = before.unwrap_or_else(|| self.read_value(&key));
+            self.pending.push(Noted { key, before });
+        }
+        Ok(())
+    }
+
+    fn admit(
+        &mut self,
+        key: &StateKey,
+        added: &mut Vec<StateKey>,
+        max: usize,
+    ) -> Result<(), Reason> {
+        if self.keys.contains(key) {
+            return Ok(());
+        }
+        if self.keys.len() >= max {
+            for key in added {
+                self.keys.remove(key);
+                self.pending.retain(|noted| &noted.key != key);
+            }
+            return Err(Reason::Budget);
+        }
+        self.keys.insert(key.clone());
+        added.push(key.clone());
+        Ok(())
+    }
+
+    /// Changes since the last take. The cumulative key set used by `changes` stays.
+    pub fn take_changes(&mut self) -> Vec<ChangeRecord> {
+        let pending = std::mem::take(&mut self.pending);
+        let mut records = Vec::new();
+        for noted in pending {
+            let after = self.read_value(&noted.key);
+            if after == noted.before {
+                continue;
+            }
+            records.push(ChangeRecord {
+                key: noted.key,
+                before: noted.before,
+                after,
+            });
+        }
+        records.sort_by(|left, right| left.key.cmp(&right.key));
+        records
+    }
+
+    fn read_value(&self, key: &StateKey) -> StateValue {
+        match key {
+            StateKey::ActorPlace(id) => self
+                .state
+                .actors
+                .get(id)
+                .map(|actor| StateValue::Text(actor.place().to_string()))
+                .unwrap_or(StateValue::Empty),
+            StateKey::ActorFlag(id, flag) => self
+                .state
+                .actors
+                .get(id)
+                .map(|actor| StateValue::Mark(actor.flags().iter().any(|item| item == flag)))
+                .unwrap_or(StateValue::Empty),
+            StateKey::ActorMeter(id, meter) => self.meter_value(id, meter),
+            StateKey::ActorBusy(id) => self
+                .state
+                .actors
+                .get(id)
+                .map(|actor| match actor.act().busy_until {
+                    Some(until) => StateValue::Number(i64::try_from(until).unwrap_or(i64::MAX)),
+                    None => StateValue::Empty,
+                })
+                .unwrap_or(StateValue::Empty),
+            StateKey::ActorKnownFact(id) => self
+                .state
+                .actors
+                .get(id)
+                .map(|actor| StateValue::List(actor.known_facts().to_vec()))
+                .unwrap_or(StateValue::Empty),
+            StateKey::TickLastAct(id) => self.act_number(id, |act| {
+                i64::try_from(act.last_act_tick).unwrap_or(i64::MAX)
+            }),
+            StateKey::TickIdleActs(id) => self.act_number(id, |act| i64::from(act.idle_acts_today)),
+            StateKey::TickLiveActs(id) => {
+                self.act_number(id, |act| i64::from(act.live_acts_this_hour))
+            }
+            StateKey::ActorItem(id, item) => self
+                .state
+                .actors
+                .get(id)
+                .map(|actor| StateValue::Number(i64::from(actor.count(item))))
+                .unwrap_or(StateValue::Empty),
+            StateKey::PlaceItem(place, item) => self
+                .state
+                .places
+                .get(place)
+                .map(|place| {
+                    StateValue::Number(i64::from(place.items.get(item).copied().unwrap_or(0)))
+                })
+                .unwrap_or(StateValue::Empty),
+            StateKey::ActorWielded(id) => self
+                .state
+                .actors
+                .get(id)
+                .map(|actor| match actor.wielded() {
+                    Some(item) => StateValue::Text(item.to_string()),
+                    None => StateValue::Empty,
+                })
+                .unwrap_or(StateValue::Empty),
+            StateKey::ClockValue(id) => self
+                .state
+                .clocks
+                .get(id)
+                .map(|clock| StateValue::Number(clock.value))
+                .unwrap_or(StateValue::Empty),
+            StateKey::ClockPaused(id) => self
+                .state
+                .clocks
+                .get(id)
+                .map(|clock| StateValue::Mark(clock.paused))
+                .unwrap_or(StateValue::Empty),
+            StateKey::Message(id) => {
+                if self.state.messages.iter().any(|message| &message.id == id) {
+                    StateValue::Mark(true)
+                } else {
+                    StateValue::Empty
+                }
+            }
+        }
+    }
+
+    fn meter_value(&self, actor_id: &str, key: &str) -> StateValue {
+        let Some(def) = self.canon.meters.get(key) else {
+            return StateValue::Empty;
+        };
+        let Some(live) = self
+            .state
+            .actors
+            .get(actor_id)
+            .and_then(|actor| actor.meters().get(key))
+        else {
+            return StateValue::Empty;
+        };
+        match crate::meter::current(def, live) {
+            Ok(current) => StateValue::Number(current),
+            Err(_) => StateValue::Empty,
+        }
+    }
+
+    fn act_number(
+        &self,
+        actor_id: &str,
+        read: impl FnOnce(&crate::model::ActCounters) -> i64,
+    ) -> StateValue {
+        self.state
+            .actors
+            .get(actor_id)
+            .map(|actor| StateValue::Number(read(actor.act())))
+            .unwrap_or(StateValue::Empty)
     }
 
     pub(crate) fn bump_memory(&mut self) -> Result<(), Reason> {
@@ -286,6 +453,7 @@ impl Draft {
         DraftPoint {
             state: self.state.clone(),
             keys: self.keys.clone(),
+            pending: self.pending.clone(),
             memories: self.memories.clone(),
             memory_writes: self.memory_writes,
         }
@@ -294,14 +462,22 @@ impl Draft {
     pub fn rollback(&mut self, point: DraftPoint) {
         self.state = point.state;
         self.keys = point.keys;
+        self.pending = point.pending;
         self.memories = point.memories;
         self.memory_writes = point.memory_writes;
     }
 }
 
+#[derive(Clone)]
+struct Noted {
+    key: StateKey,
+    before: StateValue,
+}
+
 pub struct DraftPoint {
     state: Now,
     keys: BTreeSet<StateKey>,
+    pending: Vec<Noted>,
     memories: Vec<MemoryLine>,
     memory_writes: u32,
 }

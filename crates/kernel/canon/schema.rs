@@ -608,11 +608,13 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
     if let Some(key) = &yaml.meter {
         let crosses = yaml
             .crosses
-            .clone()
+            .as_deref()
             .ok_or_else(|| "a meter change needs crosses".to_string())?;
+        let (op, bound) = cross_of(crosses)?;
         return Ok(When::Change(ChangeWatch::Meter {
             key: key.clone(),
-            crosses,
+            op,
+            bound,
         }));
     }
     if let Some(key) = &yaml.flag {
@@ -1004,6 +1006,28 @@ fn retired_selector(word: &str) -> bool {
 
 fn op_of(word: &str) -> Result<Op, String> {
     Op::parse(word).ok_or_else(|| format!("op '{word}' is not <, <=, ==, >=, or >"))
+}
+
+fn cross_of(text: &str) -> Result<(Op, i64), String> {
+    let text = text.trim();
+    let (op, rest) = if let Some(rest) = text.strip_prefix("<=") {
+        (Op::Le, rest)
+    } else if let Some(rest) = text.strip_prefix(">=") {
+        (Op::Ge, rest)
+    } else if let Some(rest) = text.strip_prefix("==") {
+        (Op::Eq, rest)
+    } else if let Some(rest) = text.strip_prefix('<') {
+        (Op::Lt, rest)
+    } else if let Some(rest) = text.strip_prefix('>') {
+        (Op::Gt, rest)
+    } else {
+        return Err(format!("crosses '{text}' needs an operator and a number"));
+    };
+    let bound = rest
+        .trim()
+        .parse::<i64>()
+        .map_err(|_| format!("crosses '{text}' needs an operator and a number"))?;
+    Ok((op, bound))
 }
 
 pub fn uses_teleport(rule: &Rule) -> bool {

@@ -23,6 +23,8 @@ pub struct Budget {
     pub idle_catchup_max_ticks: u64,
     pub idle_max_world_hours_per_real_hour: u64,
     pub max_fastforward_ticks: u64,
+    /// Trigger rounds in one tick. The next round logs `trigger_depth` and does not run.
+    pub max_trigger_depth: u64,
     pub pause: PausePolicies,
 }
 
@@ -56,6 +58,7 @@ impl Budget {
             idle_catchup_max_ticks: 12,
             idle_max_world_hours_per_real_hour: 8,
             max_fastforward_ticks: 12,
+            max_trigger_depth: 4,
             pause: PausePolicies {
                 named_plot_clocks: PausePolicy::PauseWhenEmpty,
             },
@@ -172,6 +175,13 @@ pub fn load_world_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         defaults.max_fastforward_ticks,
         &mut diags,
     );
+    let max_trigger_depth = take(
+        text,
+        "max_trigger_depth",
+        file.max_trigger_depth,
+        defaults.max_trigger_depth,
+        &mut diags,
+    );
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -190,6 +200,7 @@ pub fn load_world_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         idle_catchup_max_ticks,
         idle_max_world_hours_per_real_hour,
         max_fastforward_ticks,
+        max_trigger_depth,
         pause: PausePolicies {
             named_plot_clocks: file.pause.named_plot_clocks,
         },
@@ -289,6 +300,8 @@ struct TickFile {
     idle_max_world_hours_per_real_hour: Option<i64>,
     #[serde(default)]
     max_fastforward_ticks: Option<i64>,
+    #[serde(default)]
+    max_trigger_depth: Option<i64>,
     pause: PauseFile,
 }
 

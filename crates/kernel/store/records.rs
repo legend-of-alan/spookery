@@ -52,6 +52,10 @@ fn absent<T>(value: &Option<T>) -> bool {
     value.is_none()
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(tag = "class", rename_all = "snake_case", deny_unknown_fields)]
 pub(crate) enum EffectRecord {
@@ -61,6 +65,8 @@ pub(crate) enum EffectRecord {
         intent_id: String,
         clock_id: String,
         delta: i64,
+        #[serde(default, skip_serializing_if = "is_false")]
+        start: bool,
     },
     Meter {
         #[serde(rename = "as")]
@@ -154,11 +160,16 @@ impl From<Effect> for EffectRecord {
         let as_viewer = effect.as_viewer;
         let intent_id = effect.intent_id;
         match effect.class {
-            EffectClass::Clock { clock_id, delta } => Self::Clock {
+            EffectClass::Clock {
+                clock_id,
+                delta,
+                start,
+            } => Self::Clock {
                 as_viewer,
                 intent_id,
                 clock_id,
                 delta,
+                start,
             },
             EffectClass::Meter {
                 actor_id,
@@ -278,7 +289,16 @@ impl TryFrom<EffectRecord> for Effect {
                 intent_id,
                 clock_id,
                 delta,
-            } => (EffectClass::Clock { clock_id, delta }, as_viewer, intent_id),
+                start,
+            } => (
+                EffectClass::Clock {
+                    clock_id,
+                    delta,
+                    start,
+                },
+                as_viewer,
+                intent_id,
+            ),
             EffectRecord::Meter {
                 as_viewer,
                 intent_id,

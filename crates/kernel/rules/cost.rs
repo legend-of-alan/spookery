@@ -1,6 +1,6 @@
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::key::StateKey;
+use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, Now};
 use crate::rules::rule::Cost;
@@ -70,6 +70,14 @@ pub fn pay(draft: &mut Draft, who: &str, cost: &Cost) -> Result<(), Reason> {
             .ok_or(Reason::UnknownKey)? = live;
     }
     for (id, count) in &cost.items {
+        let before = i64::from(
+            draft
+                .now()
+                .actors
+                .get(who)
+                .ok_or(Reason::UnknownKey)?
+                .count(id),
+        );
         let changed = {
             let inventory = draft
                 .now_mut()
@@ -81,9 +89,19 @@ pub fn pay(draft: &mut Draft, who: &str, cost: &Cost) -> Result<(), Reason> {
                 .map_err(|_| Reason::CantAfford)?
         };
         if changed {
-            draft.track(StateKey::ActorItem(who.to_string(), id.clone()))?;
+            draft.track_before(
+                StateKey::ActorItem(who.to_string(), id.clone()),
+                StateValue::Number(before),
+            )?;
         }
     }
+    let wielded = draft
+        .now()
+        .actors
+        .get(who)
+        .ok_or(Reason::UnknownKey)?
+        .wielded()
+        .map(str::to_string);
     let released = draft
         .now_mut()
         .actors
@@ -91,7 +109,10 @@ pub fn pay(draft: &mut Draft, who: &str, cost: &Cost) -> Result<(), Reason> {
         .ok_or(Reason::UnknownKey)?
         .release_wielded();
     if released {
-        draft.track(StateKey::ActorWielded(who.to_string()))?;
+        draft.track_before(
+            StateKey::ActorWielded(who.to_string()),
+            wielded.map(StateValue::Text).unwrap_or(StateValue::Empty),
+        )?;
     }
     Ok(())
 }

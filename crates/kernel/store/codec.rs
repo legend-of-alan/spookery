@@ -330,6 +330,7 @@ messages: []
                     EffectClass::Clock {
                         clock_id: "shop_day".to_string(),
                         delta: 1,
+                        start: false,
                     },
                     npc("mira"),
                     "i1",
