@@ -151,6 +151,13 @@ pub(crate) enum EffectRecord {
         fact_ids: Vec<String>,
         text: String,
     },
+    Reveal {
+        #[serde(rename = "as")]
+        as_viewer: ViewerId,
+        intent_id: String,
+        actor_id: String,
+        fact: String,
+    },
     #[serde(other)]
     Illegal,
 }
@@ -274,6 +281,12 @@ impl From<Effect> for EffectRecord {
                 to,
                 fact_ids,
                 text,
+            },
+            EffectClass::Reveal { actor_id, fact } => Self::Reveal {
+                as_viewer,
+                intent_id,
+                actor_id,
+                fact,
             },
         }
     }
@@ -429,6 +442,12 @@ impl TryFrom<EffectRecord> for Effect {
                 as_viewer,
                 intent_id,
             ),
+            EffectRecord::Reveal {
+                as_viewer,
+                intent_id,
+                actor_id,
+                fact,
+            } => (EffectClass::Reveal { actor_id, fact }, as_viewer, intent_id),
             EffectRecord::Illegal => return Err(RecordFault::class()),
         };
         Ok(Effect {

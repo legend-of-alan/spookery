@@ -66,7 +66,8 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
         }
         Cond::Flag { who, key, is } => {
             if matches!(who, Who::World) {
-                return Ok(false);
+                let on = now.flags.iter().any(|flag| flag == key);
+                return Ok(on == *is);
             }
             let actor = expr::actor_of(now, ctx, who)?;
             let on = now

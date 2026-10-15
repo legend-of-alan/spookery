@@ -445,6 +445,7 @@ Rowan.
         actors,
         clocks: BTreeMap::new(),
         messages: Vec::new(),
+        flags: Vec::new(),
     };
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
@@ -750,6 +751,7 @@ rules:
         actors,
         clocks: BTreeMap::new(),
         messages: Vec::new(),
+        flags: Vec::new(),
     };
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));

@@ -15,6 +15,7 @@ Feature: Speech appends to the tape and does not tick
     Then the tape contains the text "the lamp is lit"
     And the tape address is "place"
     And the tape names the place "docks_shop"
+    And the tape recipients are "pc_rowan"
     And save.yaml is unchanged since the seat
     And no tick file was written
 

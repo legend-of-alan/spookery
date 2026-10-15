@@ -15,6 +15,7 @@ use crate::model::{MemoryLine, Now, PauseView};
 use crate::rules::RollReport;
 use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
+use crate::visibility::{Seen, Told};
 
 pub struct World {
     pub(crate) root: PathBuf,
@@ -23,6 +24,16 @@ pub struct World {
     pub(crate) queue: Vec<Intent>,
     pub(crate) pending: Option<UncommittedRound>,
     rolls: Vec<RollReport>,
+    summary: Vec<String>,
+    lines: Vec<Told>,
+    seen: Vec<Seen>,
+}
+
+/// What one round showed its viewers.
+pub struct Delivered {
+    pub summary: Vec<String>,
+    pub lines: Vec<Told>,
+    pub seen: Vec<Seen>,
 }
 
 /// One round played and not yet written. A tick is only the time unit.
@@ -79,6 +90,24 @@ impl World {
         std::mem::take(&mut self.rolls)
     }
 
+    /// Change keys from the latest round. The GM sees every one.
+    pub fn change_summary(&self) -> &[String] {
+        &self.summary
+    }
+
+    /// Change keys each actor can see, from rounds since the last take.
+    pub fn seen(&self) -> &[Seen] {
+        &self.seen
+    }
+
+    pub fn take_lines(&mut self) -> Vec<Told> {
+        std::mem::take(&mut self.lines)
+    }
+
+    pub fn take_seen(&mut self) -> Vec<Seen> {
+        std::mem::take(&mut self.seen)
+    }
+
     pub fn open(root: &Path) -> Result<Self, Reason> {
         load_world(root, false)
     }
@@ -96,7 +125,11 @@ impl World {
         record: String,
         notices: Vec<RollReport>,
         keep_queue: bool,
+        delivered: Delivered,
     ) -> Result<(), Reason> {
+        self.summary = delivered.summary.clone();
+        self.lines.extend(delivered.lines);
+        self.seen.extend(delivered.seen);
         if flush {
             let tick_index = draft.now().tick_index;
             self.pending = Some(UncommittedRound {
@@ -104,7 +137,7 @@ impl World {
                 round_jsonl: record,
                 tick_index,
                 memories: draft.memories().to_vec(),
-                paths: draft.changes(),
+                paths: delivered.summary,
             });
             self.rolls = notices;
             return Ok(());
@@ -394,6 +427,9 @@ impl Draft {
                     StateValue::Empty
                 }
             }
+            StateKey::WorldFlag(key) => {
+                StateValue::Mark(self.state.flags.iter().any(|flag| flag == key))
+            }
         }
     }
 
@@ -518,6 +554,9 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         queue: Vec::new(),
         pending: None,
         rolls: Vec::new(),
+        summary: Vec::new(),
+        lines: Vec::new(),
+        seen: Vec::new(),
     })
 }
 

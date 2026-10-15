@@ -26,6 +26,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         if changes.is_empty() {
             break;
         }
+        round.changes.extend(changes.iter().cloned());
         let hits = plan(draft, &rules, &changes);
         if hits.is_empty() {
             break;
@@ -76,11 +77,10 @@ fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<H
             if !matches_watch(draft, rule, watch, change) {
                 continue;
             }
-            let Some(subject) = subject_of(draft, &change.key) else {
-                continue;
-            };
-            if !subjects.contains(&subject) {
-                subjects.push(subject);
+            for subject in subjects_of(draft, &change.key) {
+                if !subjects.contains(&subject) {
+                    subjects.push(subject);
+                }
             }
         }
         subjects.sort();
@@ -242,6 +242,20 @@ fn intent_for(round: &Round, actor_id: &str, kind: ActorKind, rule_id: &str) -> 
     }
 }
 
+fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
+    if let StateKey::WorldFlag(_) = key {
+        return draft
+            .now()
+            .presence
+            .actors_present
+            .iter()
+            .filter(|id| draft.now().actors.contains_key(id.as_str()))
+            .cloned()
+            .collect();
+    }
+    subject_of(draft, key).into_iter().collect()
+}
+
 fn subject_of(draft: &Draft, key: &StateKey) -> Option<String> {
     match key {
         StateKey::ClockValue(id) | StateKey::ClockPaused(id) => draft
@@ -286,7 +300,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
-            StateKey::ActorFlag(_, flag) if flag == key => {
+            StateKey::ActorFlag(_, flag) | StateKey::WorldFlag(flag) if flag == key => {
                 mark(&change.before) == Some(!becomes) && mark(&change.after) == Some(*becomes)
             }
             _ => false,

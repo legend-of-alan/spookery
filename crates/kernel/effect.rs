@@ -72,7 +72,14 @@ pub enum EffectClass {
         fact_ids: Vec<String>,
         text: String,
     },
+    Reveal {
+        actor_id: String,
+        fact: String,
+    },
 }
+
+/// Actor id on a flag effect that names the world, not a person.
+pub const WORLD: &str = "world";
 
 impl Effect {
     pub fn as_viewer(&self) -> &ViewerId {
@@ -101,6 +108,7 @@ impl EffectClass {
             EffectClass::Flag { .. } => "flag",
             EffectClass::Message { .. } => "message",
             EffectClass::Narrate { .. } => "narrate",
+            EffectClass::Reveal { .. } => "reveal",
         }
     }
 }

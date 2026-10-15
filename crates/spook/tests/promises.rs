@@ -149,6 +149,9 @@ pub struct World {
     pub play: Option<support::Proc>,
     pub plays: Vec<support::Proc>,
     pub gm: Option<support::Proc>,
+    pub summary: Vec<String>,
+    pub seen: Vec<(String, Vec<String>)>,
+    pub told: Vec<(String, String)>,
 }
 
 #[tokio::main]

@@ -1,7 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 use spookery_kernel::model::ActorLive;
+use spookery_kernel::speech::Heard;
 use spookery_kernel::store::talk_log::{append_session, read_session};
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
@@ -236,49 +237,11 @@ fn recipients(
     place: Option<&str>,
     actor: Option<&str>,
 ) -> Vec<String> {
-    let mut ids = BTreeSet::new();
-    match address {
-        "table" => {
-            for id in seated_players(world) {
-                ids.insert(id);
-            }
-        }
-        "place" => {
-            if let Some(place) = place {
-                for id in seated_players(world) {
-                    if world
-                        .now()
-                        .actors
-                        .get(&id)
-                        .is_some_and(|actor| actor.place() == place)
-                    {
-                        ids.insert(id);
-                    }
-                }
-            }
-        }
-        "actor" => {
-            if let Some(actor) = actor {
-                if seated_players(world).iter().any(|id| id == actor) {
-                    ids.insert(actor.to_string());
-                }
-            }
-        }
-        _ => {}
-    }
-    if let Some(speaker) = speaker {
-        ids.insert(speaker.to_string());
-    }
-    ids.into_iter().collect()
-}
-
-fn seated_players(world: &World) -> Vec<String> {
-    world
-        .now()
-        .presence
-        .actors_present
-        .iter()
-        .filter(|id| world.now().actors.get(*id).is_some_and(ActorLive::is_pc))
-        .cloned()
-        .collect()
+    let heard = match address {
+        "table" => Heard::Table,
+        "place" => Heard::Place(place.unwrap_or("")),
+        "actor" => Heard::Actor(actor.unwrap_or("")),
+        _ => return Vec::new(),
+    };
+    spookery_kernel::speech::recipients(world.now(), speaker, heard)
 }

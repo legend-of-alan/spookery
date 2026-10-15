@@ -401,12 +401,22 @@ fn refresh_players(
     seats: &mut Seats,
     notices: &[spookery_kernel::rules::RollReport],
 ) -> Result<(), Reason> {
+    let lines = world.take_lines();
+    let seen = world.take_seen();
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
         let bytes = match player_refresh(world, &player.actor_id) {
             Ok(text) => {
                 let mut out = player_moves::player_notice_lines(notices, &player.actor_id);
                 out.push_str(&text);
+                for line in lines.iter().filter(|line| line.to == player.actor_id) {
+                    out.push_str(&frames::player_lines(&line.text));
+                }
+                if let Some(changes) = seen.iter().find(|item| item.viewer == player.actor_id) {
+                    if !changes.changes.is_empty() {
+                        out.push_str(&frames::player_lines(&changes.changes.join("\n")));
+                    }
+                }
                 out.into_bytes()
             }
             Err(code) => refused_line(code).into_bytes(),

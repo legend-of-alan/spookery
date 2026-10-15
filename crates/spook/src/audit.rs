@@ -9,7 +9,8 @@ use std::path::Path;
 
 use spookery_kernel::canon::{load_canon, Canon};
 use spookery_kernel::diagnostic::reason_of;
-use spookery_kernel::journal;
+use spookery_kernel::effect::EffectClass;
+use spookery_kernel::journal::{self, JournalEntry, TickRecord};
 use spookery_kernel::model::Now;
 use spookery_kernel::perceive::perceive_at;
 use spookery_kernel::store::codec::load_save;
@@ -68,20 +69,27 @@ pub fn audit_pack(pack: &Path, strict: bool) -> Result<AuditReport, AuditError> 
         return Err(AuditError::Reason(Reason::NotInSpec));
     }
     let canon = load_canon(pack).map_err(|diags| AuditError::Reason(reason_of(diags)))?;
-    let snaps = load_snaps(pack)?;
+    let (snaps, ticks) = load_snaps(pack)?;
     let tape = read_tape(pack)?;
-    report_of(&canon, &snaps, &tape, strict)
+    report_of(&canon, &snaps, &ticks, &tape, strict)
 }
 
-fn load_snaps(pack: &Path) -> Result<Vec<Snap>, AuditError> {
+fn load_snaps(pack: &Path) -> Result<(Vec<Snap>, Vec<TickRecord>), AuditError> {
     let records = journal::load_journal(pack)
         .map_err(|fault| AuditError::Replay(format!("{}: {}", fault.file, fault.detail)))?;
+    let ticks = records
+        .iter()
+        .filter_map(|entry| match entry {
+            JournalEntry::Tick(record) => Some(record.clone()),
+            _ => None,
+        })
+        .collect();
     let mut snaps = Vec::new();
     if records.is_empty() {
         let bytes = fs::read(pack.join("state/save.yaml"))
             .map_err(|_| AuditError::Reason(Reason::NotInSpec))?;
         snaps.push(snap_of(&bytes)?);
-        return Ok(snaps);
+        return Ok((snaps, ticks));
     }
     let base = pack.join("state").join(journal::base_rel());
     if !base.is_file() {
@@ -93,7 +101,7 @@ fn load_snaps(pack: &Path) -> Result<Vec<Snap>, AuditError> {
     for step in replay_states(pack).map_err(replay_error)? {
         snaps.push(snap_of(&step.save_yaml)?);
     }
-    Ok(snaps)
+    Ok((snaps, ticks))
 }
 
 fn snap_of(bytes: &[u8]) -> Result<Snap, AuditError> {
@@ -141,6 +149,7 @@ fn read_tape(pack: &Path) -> Result<Vec<TapeLine>, AuditError> {
 fn report_of(
     canon: &Canon,
     snaps: &[Snap],
+    ticks: &[TickRecord],
     tape: &[TapeLine],
     strict: bool,
 ) -> Result<AuditReport, AuditError> {
@@ -169,6 +178,11 @@ fn report_of(
             }
         }
     }
+    let narrated = narrate_findings(canon, snaps, ticks);
+    for finding in &narrated {
+        failed_pcs.insert(finding.pc.clone());
+    }
+    findings.extend(narrated);
     findings.sort_by(|left, right| {
         left.state_rev
             .cmp(&right.state_rev)
@@ -261,6 +275,45 @@ fn contains_rendered(line: &str, needle: &str) -> bool {
     let encoded = serde_json::to_string(needle).expect("string");
     let fragment = &encoded[1..encoded.len() - 1];
     fragment != needle && line.contains(fragment)
+}
+
+fn narrate_findings(canon: &Canon, snaps: &[Snap], ticks: &[TickRecord]) -> Vec<Finding> {
+    let mut findings = Vec::new();
+    for tick in ticks {
+        let Some(snap) = snaps
+            .iter()
+            .find(|snap| snap.state_rev == tick.state_rev_after)
+        else {
+            continue;
+        };
+        for effect in &tick.effects {
+            let EffectClass::Narrate { to, fact_ids, text } = &effect.class else {
+                continue;
+            };
+            for pc in to {
+                let Some(actor) = snap.now.actors.get(pc) else {
+                    continue;
+                };
+                if !actor.is_pc() {
+                    continue;
+                }
+                let secrets = unknown_hidden(canon, actor.known_facts());
+                let leaked = secrets.iter().any(|secret| {
+                    fact_ids.iter().any(|id| id == &secret.id)
+                        || (!secret.text.is_empty() && text.contains(&secret.text))
+                });
+                if !leaked {
+                    continue;
+                }
+                findings.push(Finding {
+                    state_rev: tick.state_rev_after,
+                    pc: pc.clone(),
+                    line: text.clone(),
+                });
+            }
+        }
+    }
+    findings
 }
 
 fn notes_of(canon: &Canon, snaps: &[Snap], tape: &[TapeLine]) -> (Vec<Note>, bool) {
