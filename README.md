@@ -2,7 +2,77 @@
 
 > Early work in progress, not a playable release yet.
 
-Spookery is a generic RPG referee engine. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and up to three players walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. Spookery is pre-alpha, with no releases yet.
+Spookery is a generic RPG referee engine for living worlds. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and up to three players walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. Spookery is pre-alpha, with no releases yet.
+
+## Words used here
+
+- **Pack**: a folder of text that is the world: its places, people, rules and current state.
+- **Seat**: one place at the table. Each player character is a seat, and the GM is one more.
+- **GM**: the storyteller seat. A person, a coding agent, or the built-in model GM can sit it. It can also stay empty.
+- **Tick**: one step of game time on the world clock. Talking does not take a tick; moving and acting do.
+
+The full glossary is in [docs/README.md](docs/README.md#glossary).
+
+## Play in 5 minutes
+
+You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also need `pkg-config` and `libssl-dev` (on Debian or Ubuntu: `sudo apt install pkg-config libssl-dev`). You do not need an AI key.
+
+On Windows, clone with LF line endings, or the pack will not load:
+
+```sh
+git clone -c core.autocrlf=false https://github.com/legend-of-alan/spookery.git
+```
+
+Build, put `spook` on your `PATH`, and copy the docks pack. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo.
+
+```sh
+cd spookery
+cargo build --release
+export PATH="$PWD/target/release:$PATH"
+cp -r packs/oneshot-docks /tmp/docks
+```
+
+Terminal 1 hosts the game:
+
+```sh
+spook run /tmp/docks
+```
+
+It prints one line, `{"kind":"listening","game":"127.0.0.1:9737","door":"127.0.0.1:9738"}`, and stays in the foreground. Type `stop` to shut it down.
+
+Terminal 2 (run the same `export PATH=...` line first, from the repo folder) sits you at the table:
+
+```sh
+spook play /tmp/docks
+```
+
+You are Rowan, in the Docks Shop. Try:
+
+```text
+help
+look
+say The lamp is out.
+travel docks_street
+wait
+grit
+```
+
+`help` lists what you can do. `travel docks_street` walks you outside. `grit` rolls the pack's check and prints `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.` Press Ctrl+D or close the terminal to leave.
+
+The docks pack is a small test world. It shows a clock, Assassination debt, but it does not state a goal. For a short fight instead, copy the Gate Yard pack and play it the same way:
+
+```sh
+cp -r packs/sample-d20 /tmp/d20
+spook run /tmp/d20
+```
+
+```sh
+spook play /tmp/d20
+```
+
+There you are Lark. Type `strike npc_briar` to attack, `drink` while you carry a tonic, `travel mill_lane` to leave the yard, and `wait` to pass the turn.
+
+The sections below go into detail.
 
 ## Build from source
 
@@ -16,7 +86,12 @@ cargo build --release
 
 The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`.
 
-Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools. On Windows, check the repository out with LF line endings (`core.autocrlf` false). A CRLF checkout rewrites the pack, and `spook run` then exits 1 with `PACK_REV_MISMATCH`. CI sets `core.autocrlf` false before checkout.
+Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools. 
+On Windows, check the repository out with LF line endings. A CRLF checkout rewrites the pack, and `spook run` then exits 1 with `PACK_REV_MISMATCH`. CI sets `core.autocrlf` false before checkout. Clone with:
+
+```sh
+git clone -c core.autocrlf=false https://github.com/legend-of-alan/spookery.git
+```
 
 CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Rust 1.89.0. That workflow does not install extra packages. The GitHub Ubuntu image already includes `pkg-config` and `libssl-dev`. A minimal Linux install does not.
 
@@ -24,18 +99,18 @@ CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest
 
 The docks pack is `packs/oneshot-docks`. Copy it first. `spook run` writes the save into the pack you pass (`state/`: the snapshot, the tape, and lock files). A copy leaves the fixture in the repo alone.
 
-The fight pack is `packs/sample-d20`. Copy it before you host it, the same way as the docks pack.
+The fight pack is `packs/sample-d20` (`cp -r packs/sample-d20 /tmp/d20`). Copy it before you host it, the same way as the docks pack.
 `spook play` sits `pc_lark`. Type `strike npc_briar` to attack, `drink` while you carry a tonic, `travel mill_lane` to leave the yard, and `wait` to pass the turn.
 
 `spook new` writes a smaller pack. The walkthrough is [docs/first-pack.md](docs/first-pack.md).
 
 ```sh
+export PATH="$PWD/target/release:$PATH"
 cp -r packs/oneshot-docks /tmp/docks
 spook new /tmp/mypack
-export PATH="$PWD/target/release:$PATH"
 ```
 
-Run that `export` in each terminal. `spook --help` lists the commands and the flags. `spook check /tmp/docks` prints any pack problem in plain English and writes nothing. `spook check /tmp/mypack` prints `no problems`. `spook play /tmp/mypack` sits `pc_ada` and prints `You are in Yard.` `travel lane` prints `You are in Lane.`
+Run that `export` in each terminal. `spook --help` lists the commands and the flags. `spook check /tmp/docks` prints any pack problem in plain English and writes nothing. `spook check /tmp/mypack` prints `no problems`. To play it, run `spook run /tmp/mypack` in its own terminal first, then `spook play /tmp/mypack` in another. That sits `pc_ada` and prints `You are in Yard.` `travel lane` prints `You are in Lane.`
 
 Terminal 1, from the repository root:
 
@@ -43,7 +118,7 @@ Terminal 1, from the repository root:
 spook run /tmp/docks
 ```
 
-The process stays in the foreground and listens on `127.0.0.1:9737`. It prints nothing while it waits. When the player sits, and again when a tick commits, it prints the host digest. Type `stop` to shut it down.
+The process stays in the foreground and listens on `127.0.0.1:9737`. It first prints one JSON line with the bound addresses, `{"kind":"listening","game":"127.0.0.1:9737","door":"127.0.0.1:9738"}`. After that it prints the host digest, lines such as `clock assassination_debt 2 6 paused` and `effect location ...`, when the player sits and again when a tick commits. Type `stop` to shut it down.
 
 Terminal 2:
 
@@ -111,24 +186,8 @@ spook migrate /tmp/docks
 
 `tick` advances the pack one tick and prints nothing when it succeeds. `migrate` stores the current canon hash in the save and bumps the save counter. It also prints nothing when it succeeds.
 
-## Prove the log
 
-Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook replay` replays that journal and prints the final save counter. `spook verify` replays it and checks the save byte for byte. Neither command writes the pack, takes the lock, or binds a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
-
-```sh
-spook tick /tmp/docks
-spook replay /tmp/docks
-spook verify /tmp/docks
-```
-
-`replay` prints `state_rev <r>, <n> records`. `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`.
-
-`spook audit` replays that same journal and checks each player character's view for a hidden fact. A clean table prints `pass` and the character id, one line each, and exits 0. Speech that repeats a hidden fact is a note and does not fail the command. `--strict` makes those notes fail.
-
-```sh
-spook audit /tmp/docks
-spook audit --strict /tmp/docks
-```
+`spook replay`, `spook verify` and `spook audit` check a save's journal. They are described in [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
 
 ## Game master
 
@@ -166,7 +225,8 @@ SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.
   cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
 ```
 
-The `Live AI` workflow runs it against Ollama on pull requests that touch the model host. It also runs it against xAI weekly and on demand, never on pull requests, with the `XAI_API_KEY` repo secret passed in as `SPOOK_GM_KEY`. Without that secret the xAI job skips with a notice. The xAI model is `grok-4.20-0309-non-reasoning` unless the `SPOOK_XAI_MODEL` repo variable names another.
+
+CI runs this test too; see [CONTRIBUTING.md](CONTRIBUTING.md#live-ai-ci).
 
 ### Human GM
 
@@ -180,90 +240,14 @@ Type `help` for the seat commands. `spook gm --raw` prints each protocol frame a
 
 ### Coding agent
 
-`spook run` serves one agent door at `/mcp` on the game port plus one. The default is `http://127.0.0.1:9738/mcp`. `--mcp-http 127.0.0.1:<port>` overrides it, and `--mcp-http 127.0.0.1:0` lets the operating system choose. `--addr 127.0.0.1:0` does the same for the game port and chooses the door on its own. The process prints the bound addresses once, as one JSON line on stdout, before it serves. Point the agent at `127.0.0.1`, not `localhost`. The endpoint checks the `Host` header, and `http://localhost:9738/mcp` gets a 403.
+`spook run` also serves an agent door, an MCP endpoint at `http://127.0.0.1:9738/mcp` by default. Copy the pack first, as above:
 
 ```sh
-spook run packs/oneshot-docks
+cp -r packs/oneshot-docks /tmp/docks
+spook run /tmp/docks
 ```
 
-Register `http://127.0.0.1:9738/mcp`. The key names below are the ones each client documents for streamable HTTP.
-
-Claude Code:
-
-```sh
-claude mcp add --transport http spook http://127.0.0.1:9738/mcp
-```
-
-Or in `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "spook": {
-      "type": "http",
-      "url": "http://127.0.0.1:9738/mcp"
-    }
-  }
-}
-```
-
-Grok Build, in `~/.grok/config.toml`. The key is `url` under `[mcp_servers]`, not a `mcpServers` JSON file.
-
-```toml
-[mcp_servers.spook]
-url = "http://127.0.0.1:9738/mcp"
-```
-
-Cursor, in `.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "spook": {
-      "url": "http://127.0.0.1:9738/mcp"
-    }
-  }
-}
-```
-
-Gemini CLI, in `~/.gemini/settings.json`. `httpUrl` is the streamable HTTP key. `url` is SSE.
-
-```json
-{
-  "mcpServers": {
-    "spook": {
-      "httpUrl": "http://127.0.0.1:9738/mcp"
-    }
-  }
-}
-```
-
-Windsurf, in `~/.codeium/windsurf/mcp_config.json`. The key is `serverUrl`.
-
-```json
-{
-  "mcpServers": {
-    "spook": {
-      "serverUrl": "http://127.0.0.1:9738/mcp"
-    }
-  }
-}
-```
-
-Claude Desktop's config file only takes stdio. `mcp-remote` reaches the HTTP door:
-
-```json
-{
-  "mcpServers": {
-    "spook": {
-      "command": "npx",
-      "args": ["mcp-remote", "http://127.0.0.1:9738/mcp"]
-    }
-  }
-}
-```
-
-The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_round`. A client may ignore `spook/event` notifications. `session_status` with `since` returns the speech it missed.
+Register `http://127.0.0.1:9738/mcp` in your coding agent. Use `127.0.0.1`, not `localhost`. Config snippets for Claude Code, Grok Build, Cursor, Gemini CLI, Windsurf and Claude Desktop are in [CONTRIBUTING.md](CONTRIBUTING.md#coding-agent-clients).
 
 ## Privacy
 
@@ -276,21 +260,7 @@ The request is one chat-completions POST. The JSON body carries one user message
 - [docs/engine-guarantees.md](docs/engine-guarantees.md) states what the engine promises. The feature files test them. Where the doc and the feature files disagree, the feature files win.
 - [docs/README.md](docs/README.md) has the principles, glossary and repo layout.
 - [LICENSE](LICENSE)
-
-## Issues and PRs
-
-Issue and PR titles start with a letter for the area and end with a size.
-
-- `R:` rounds and rules: the round stages and triggers
-- `W:` world model: places, exits, travel, items, pack rule schema
-- `K:` kernel and core plumbing: journal, host, transport, CI
-- `N:` naming: renames that make a name say what it does
-- `D:` docs
-- `T:` tests and flaky-test fixes
-
-Sizes: `[S]` about one sitting, `[M]` a focused PR, `[L]` likely split into sub-issues.
-
-Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enhancement`, `bug`, `documentation`). Phases are milestones.
+- [CONTRIBUTING.md](CONTRIBUTING.md) has issue and PR conventions and maintainer notes.
 
 ## License
 
