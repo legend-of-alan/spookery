@@ -549,9 +549,10 @@ fn public_kernel_fns(names: &[&str]) -> Vec<String> {
     for path in files {
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let code_only = without_comments_or_strings(&production_source(&text));
         let mut in_use = false;
-        for (index, line) in text.lines().enumerate() {
-            let code = line.split("//").next().unwrap_or("").trim();
+        for (index, line) in code_only.lines().enumerate() {
+            let code = line.trim();
             if code.starts_with("pub use ") {
                 in_use = true;
             }
@@ -579,20 +580,7 @@ fn is_public_item(code: &str) -> bool {
 }
 
 fn declares_fn(code: &str, name: &str) -> bool {
-    let marker = format!("fn {name}");
-    let bytes = code.as_bytes();
-    let mut start = 0;
-    while let Some(at) = code[start..].find(&marker) {
-        let abs = start + at;
-        let before_ok = abs == 0 || bytes[abs - 1].is_ascii_whitespace();
-        let after = abs + marker.len();
-        let after_ok = after >= bytes.len() || !is_ident_byte(bytes[after]);
-        if before_ok && after_ok {
-            return true;
-        }
-        start = abs + marker.len();
-    }
-    false
+    has_ident(code, &format!("fn {name}"))
 }
 
 fn has_ident(code: &str, name: &str) -> bool {

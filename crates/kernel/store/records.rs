@@ -593,13 +593,3 @@ pub(crate) mod args_as {
         Ok(IntentArgs::from(ArgsWire::deserialize(deserializer)?))
     }
 }
-
-/// `need`, `resource`, and `inventory` stay [`crate::error::Reason::IllegalClass`].
-#[cfg(test)]
-pub(crate) fn effect_reason(message: &str) -> crate::error::Reason {
-    if message.contains("ILLEGAL_CLASS") {
-        crate::error::Reason::IllegalClass
-    } else {
-        crate::error::Reason::Schema
-    }
-}
