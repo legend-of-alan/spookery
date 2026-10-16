@@ -2,6 +2,7 @@
 schema: place
 id: yard
 name: Yard
+display_name: Yard
 exits:
   - to: lane
     name: lane

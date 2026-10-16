@@ -178,6 +178,18 @@ Tested in `features/loopback/only_loopback_binds.feature`,
 `features/limits/the_listener_bounds_input.feature`, and
 `features/host/the_host_sits_the_gm_seat.feature`.
 
+## The place
+
+A player arriving in a place sees its display name, the prose they are allowed
+to read, the display names of who is there, and the visible exits with travel
+time. A hidden exit stays off that list. `help` lists the verbs whose `if`
+holds and those exits, and it does not take a round. `look` reprints the prose
+and the exits, and it does not take a round. A traveller who has not arrived
+sees where the journey ends, as `on the stairs until 21:40`. A pack that omits
+`display_name` fails check. An unknown word tells the player to type help.
+
+Tested in `features/seats/a_player_knows_the_place.feature`.
+
 ## What the engine does not do
 
 Speech does not grant a fact. A second GM is refused, and so is a fourth player.

@@ -2,6 +2,7 @@
 schema: cast
 id: pc_harbormouse
 kind: pc_template
+display_name: Harbormouse
 facts: []
 tick:
   eligible: false

@@ -379,6 +379,7 @@ start:
 ---
 schema: place
 id: gate
+display_name: Gate
 facts:
   - id: fact_gate
     text: The gate is shut.
@@ -394,6 +395,7 @@ A gate.
 schema: cast
 id: pc_rowan
 kind: pc_template
+display_name: Rowan
 facts: []
 ---
 Rowan.
@@ -678,6 +680,7 @@ start:
 ---
 schema: place
 id: yard
+display_name: Yard
 facts:
   - id: fact_yard
     text: The yard is open.
@@ -697,6 +700,7 @@ A yard.
 schema: cast
 id: {id}
 kind: npc
+display_name: {id}
 facts: []
 tick:
   eligible: true
@@ -1512,6 +1516,7 @@ fn insert_nell(pack: &Path) {
 schema: cast
 id: pc_nell
 kind: pc_template
+display_name: Nell
 facts: []
 tick:
   eligible: false

@@ -277,7 +277,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     crate::track_child(host);
     wait_text(&host_stderr, "listening");
     let mut play = support::spawn(&["play", &pack_arg, "--addr", &addr]);
-    wait_text(&play.stdout, "Docks shop");
+    wait_text(&play.stdout, "Docks Shop");
     let mut play_in = play.stdin.take().unwrap();
     writeln!(play_in, "say hello").unwrap();
     play_in.flush().unwrap();

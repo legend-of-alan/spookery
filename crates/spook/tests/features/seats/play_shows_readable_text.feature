@@ -3,7 +3,7 @@ Feature: Play shows readable text
   Scenario: A docks session shows the place and who is present
     Given a docks table
     When play joins the table on a free loopback address
-    Then play shows "You are in Docks shop."
+    Then play shows "You are in Docks Shop."
     And play shows "Here: Aldric, You"
     And play shows no protocol JSON
 

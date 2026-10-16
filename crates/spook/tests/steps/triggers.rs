@@ -388,6 +388,7 @@ fn nell_enters_the_bog(world: &mut World) {
 schema: place
 id: bog
 name: Bog
+display_name: Bog
 facts: []
 exits: []
 rules:
@@ -566,6 +567,7 @@ fn the_street_has_a_hidden_trapdoor(world: &mut World) {
 schema: place
 id: cellar
 name: Cellar
+display_name: Cellar
 facts: []
 exits: []
 ---
@@ -771,6 +773,7 @@ fn a_cast_id_world_and_a_bad_reveal(world: &mut World) {
 schema: cast
 id: world
 kind: npc
+display_name: World
 facts: []
 tick:
   eligible: false
@@ -836,6 +839,7 @@ fn downed_pack(label: &str, hp: i64, downed: bool, crosses: &str) -> std::path::
 schema: cast
 id: briar
 kind: npc
+display_name: Briar
 facts: []
 tick:
   eligible: false
@@ -949,6 +953,7 @@ fn write_nell(pack: &Path, flags: &[&str]) {
 schema: cast
 id: pc_nell
 kind: pc_template
+display_name: Nell
 facts: []
 tick:
   eligible: false

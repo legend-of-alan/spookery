@@ -96,13 +96,43 @@ fn another_play_joins_that_table(world: &mut World) {
 #[then(expr = "play received the first perceive")]
 fn play_received_the_first_perceive(world: &mut World) {
     let stdout = play_stdout(world);
-    assert!(stdout.contains("Docks shop"), "{stdout}");
+    assert!(stdout.contains("Docks Shop"), "{stdout}");
     assert!(!stdout.contains("\"kind\":\"perceive\""), "{stdout}");
 }
 
 #[then(expr = "play shows {string}")]
 fn play_shows(world: &mut World, text: String) {
     wait_play(world, &text);
+}
+
+#[then(expr = "play does not show {string}")]
+fn play_does_not_show(world: &mut World, text: String) {
+    let stdout = play_stdout(world);
+    assert!(!stdout.contains(&text), "{stdout}");
+}
+
+#[then(expr = "play does not show the line {string}")]
+fn play_does_not_show_the_line(world: &mut World, text: String) {
+    let stdout = play_stdout(world);
+    assert!(stdout.lines().all(|line| line != text), "{stdout}");
+}
+
+#[then(expr = "play's error shows {string}")]
+fn play_error_shows(world: &mut World, text: String) {
+    let start = Instant::now();
+    loop {
+        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+        let stderr = support::text_of(&play.stderr);
+        if stderr.contains(&text) {
+            world.stderr = stderr;
+            return;
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            let stdout = play_stdout(world);
+            panic!("missing {text}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 #[then(expr = "play shows no protocol JSON")]
@@ -172,7 +202,7 @@ fn join_play(world: &mut World, raw: bool) {
     let needle = if raw {
         "\"kind\":\"perceive\""
     } else {
-        "Docks shop"
+        "You are in"
     };
     wait_play(world, needle);
 }

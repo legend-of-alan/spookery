@@ -2,6 +2,7 @@
 schema: cast
 id: bram
 kind: npc
+display_name: Bram
 facts: []
 tick:
   eligible: true

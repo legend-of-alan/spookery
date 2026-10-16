@@ -2,6 +2,7 @@
 schema: place
 id: docks_shop
 name: Docks Shop
+display_name: Docks Shop
 facts:
   - id: fact_oil_on_shelf
     text: Oil is on the shelf.

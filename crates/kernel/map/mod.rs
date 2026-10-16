@@ -1,6 +1,6 @@
 //! Exits and the journeys that follow them.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::{Canon, FactCanon, ItemCanon, PlaceCanon};
 use crate::diagnostic::{schema, Diagnostic};
@@ -12,8 +12,8 @@ use crate::model::{Now, Pending};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::expr::Ctx;
-use crate::rules::gate::Miss;
-use crate::rules::rule::{Cost, EffectTemplate, LocationTo, Rule};
+use crate::rules::gate::{self, Miss};
+use crate::rules::rule::{Cost, EffectTemplate, LocationTo, Rule, TargetKind, When};
 use crate::world::Draft;
 
 /// One way out of a place. `minutes` is the world time the walk takes.
@@ -385,16 +385,215 @@ pub fn player_lines(canon: &Canon, now: &Now, actor_id: &str) -> String {
     lines.join("\n")
 }
 
+/// Verbs whose `if` holds for this actor, then the visible exits, then a busy line.
 pub fn help_lines(canon: &Canon, now: &Now, actor_id: &str) -> String {
+    let mut lines = open_verbs(canon, now, actor_id);
+    lines.extend(exit_phrases(canon, now, actor_id));
+    if let Some(status) = busy_line(now, actor_id) {
+        lines.push(status);
+    }
+    lines.join("\n")
+}
+
+/// The place name, the prose this actor may read, and the visible exits.
+pub fn look_lines(canon: &Canon, now: &Now, actor_id: &str) -> String {
+    let mut head = Vec::new();
+    if let Some(actor) = now.actors.get(actor_id) {
+        let name = place_name(canon, actor.place());
+        if !name.is_empty() {
+            head.push(name);
+        }
+    }
+    let prose = place_prose(canon, now, actor_id);
+    if !prose.is_empty() {
+        head.push(prose);
+    }
+    let exits = exit_phrases(canon, now, actor_id).join("\n");
+    let head = head.join("\n");
+    if head.is_empty() {
+        exits
+    } else {
+        format!("{head}\n\n{exits}")
+    }
+}
+
+/// `on the stairs until 21:40` while a journey is still running.
+pub fn busy_line(now: &Now, actor_id: &str) -> Option<String> {
+    let actor = now.actors.get(actor_id)?;
+    if !actor.is_busy(now.world_time) {
+        return None;
+    }
+    let until = actor.act().busy_until?;
+    let via = actor
+        .act()
+        .busy_for
+        .as_ref()
+        .and_then(|pending| pending.via.as_deref())
+        .filter(|name| !name.is_empty())?;
+    Some(format!("on the {via} until {}", clock_face(until)))
+}
+
+/// Place prose with hidden fact text this actor cannot read removed.
+pub fn place_prose(canon: &Canon, now: &Now, actor_id: &str) -> String {
+    let Some(actor) = now.actors.get(actor_id) else {
+        return String::new();
+    };
+    let Some(place) = canon.places.get(actor.place()) else {
+        return String::new();
+    };
+    let kind = if actor.is_pc() {
+        ActorKind::Player
+    } else {
+        ActorKind::Npc
+    };
+    let Ok(viewer) = ViewerId::from_kind(kind, actor_id) else {
+        return String::new();
+    };
+    let mut body = place.body.clone();
+    for (id, fact) in &canon.facts {
+        if fact.text.is_empty() || allows(canon, now, &viewer, id) {
+            continue;
+        }
+        if body.contains(fact.text.as_str()) {
+            body = body.replace(fact.text.as_str(), "");
+        }
+    }
+    body.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+pub fn cast_name(canon: &Canon, id: &str) -> String {
+    canon
+        .cast
+        .get(id)
+        .map(|cast| cast.display_name.clone())
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| id.to_string())
+}
+
+pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
+    if locked {
+        format!("{name} (locked) — {minutes} min")
+    } else {
+        format!("{name} — {minutes} min")
+    }
+}
+
+/// Minutes from midnight as `21:40`.
+pub fn clock_face(minutes: u64) -> String {
+    let hour = (minutes / 60) % 24;
+    let minute = minutes % 60;
+    format!("{hour:02}:{minute:02}")
+}
+
+fn exit_phrases(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String> {
     let views = visible(canon, now, actor_id);
     if views.is_empty() {
-        return "Exits:\nnone".to_string();
+        return vec!["Exits:".to_string(), "none".to_string()];
     }
     let mut lines = vec!["Exits:".to_string()];
     for view in views {
-        lines.push(format_view(&view));
+        lines.push(exit_phrase(&view.name, view.minutes, view.locked));
     }
-    lines.join("\n")
+    lines
+}
+
+fn open_verbs(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String> {
+    if !now.actors.contains_key(actor_id) {
+        return Vec::new();
+    }
+    let mut seen = BTreeSet::new();
+    let mut names = Vec::new();
+    for rule in canon.rules.player_verbs() {
+        let When::Verb { verb, target } = &rule.when else {
+            continue;
+        };
+        if !seen.insert(verb.clone()) {
+            continue;
+        }
+        if verb_open(canon, now, actor_id, verb, *target) {
+            names.push(verb.clone());
+        }
+    }
+    names
+}
+
+fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: TargetKind) -> bool {
+    let Some(actor) = now.actors.get(actor_id) else {
+        return false;
+    };
+    let place = actor.place().to_string();
+    let wielded = actor.wielded().map(str::to_string);
+    let kind = if actor.is_pc() {
+        ActorKind::Player
+    } else {
+        ActorKind::Npc
+    };
+    for hint in verb_hints(canon, now, actor_id, target) {
+        let Some(rule) = gate::verb_for(
+            canon,
+            Some(place.as_str()),
+            verb,
+            hint.as_deref(),
+            wielded.as_deref(),
+        ) else {
+            continue;
+        };
+        if rule.if_.is_empty() {
+            return true;
+        }
+        let When::Verb { target: chosen, .. } = &rule.when else {
+            continue;
+        };
+        let token = hint.unwrap_or_default();
+        let intent = Intent {
+            id: String::new(),
+            tick_index: now.tick_index,
+            actor_id: actor_id.to_string(),
+            actor_kind: kind,
+            source: Source::Player,
+            move_name: verb.to_string(),
+            target: chosen.store(&token),
+            args: IntentArgs::default(),
+            rationale_code: String::new(),
+        };
+        if cond::holds(canon, now, &Ctx { intent: &intent }, &rule.if_).is_ok() {
+            return true;
+        }
+    }
+    false
+}
+
+fn verb_hints(canon: &Canon, now: &Now, actor_id: &str, target: TargetKind) -> Vec<Option<String>> {
+    let hints = match target {
+        TargetKind::None => Vec::new(),
+        TargetKind::Exit => visible(canon, now, actor_id)
+            .into_iter()
+            .map(|exit| exit.name)
+            .collect(),
+        TargetKind::Place => canon.places.keys().cloned().collect(),
+        TargetKind::Item => now
+            .actors
+            .get(actor_id)
+            .map(|actor| actor.inventory().keys().cloned().collect())
+            .unwrap_or_default(),
+        TargetKind::Actor => {
+            let here = now.actors.get(actor_id).map(|actor| actor.place());
+            now.actors
+                .iter()
+                .filter(|(_, actor)| here.is_some_and(|place| actor.place() == place))
+                .map(|(id, _)| id.clone())
+                .collect()
+        }
+    };
+    if hints.is_empty() {
+        vec![None]
+    } else {
+        hints.into_iter().map(Some).collect()
+    }
 }
 
 pub fn graph(canon: &Canon) -> String {
@@ -420,29 +619,8 @@ pub fn graph(canon: &Canon) -> String {
     format!("{text}\n```mermaid\n{mermaid}```\n")
 }
 
-fn format_view(view: &ExitView) -> String {
-    let mut line = format!("{} → {}", view.name, view.place_name);
-    let mut notes = Vec::new();
-    if view.minutes > 0 {
-        notes.push(format!("{} min", view.minutes));
-    }
-    if view.locked {
-        notes.push("locked".to_string());
-    }
-    if !notes.is_empty() {
-        line.push_str(&format!(" ({})", notes.join(", ")));
-    }
-    line
-}
-
 fn exit_line(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> String {
-    format_view(&ExitView {
-        name: exit.name.clone(),
-        to: exit.to.clone(),
-        place_name: place_name(canon, &exit.to),
-        minutes: exit.minutes,
-        locked: locked(canon, now, actor_id, exit),
-    })
+    exit_phrase(&exit.name, exit.minutes, locked(canon, now, actor_id, exit))
 }
 
 fn minutes_label(minutes: u64) -> String {
@@ -525,5 +703,37 @@ fn cond_items(cond: &crate::rules::rule::Cond, ids: &mut Vec<String>) {
         }
         Cond::Not(inner) => cond_items(inner, ids),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::path::Path;
+
+    use super::*;
+
+    #[test]
+    fn help_and_look_name_the_shop() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let canon = crate::canon::load_canon(&root).unwrap();
+        let now = crate::store::codec::load_save(
+            &fs::read_to_string(root.join("state/save.yaml")).unwrap(),
+        )
+        .unwrap();
+        let help = help_lines(&canon, &now, "pc_rowan");
+        assert!(help.lines().any(|line| line == "wait"), "{help}");
+        assert!(help.lines().any(|line| line == "travel"), "{help}");
+        assert!(!help.lines().any(|line| line == "use"), "{help}");
+        assert!(help.contains("stairs (locked) — 2 min"), "{help}");
+        assert!(help.contains("docks_street — 0 min"), "{help}");
+        assert!(!help.contains("→"), "{help}");
+        let look = look_lines(&canon, &now, "pc_rowan");
+        assert!(look.contains("Docks Shop"), "{look}");
+        assert!(
+            look.contains("The shop faces the water. Tins sit in a row."),
+            "{look}"
+        );
+        assert!(look.contains("stairs (locked) — 2 min"), "{look}");
     }
 }

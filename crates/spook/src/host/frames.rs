@@ -235,6 +235,12 @@ fn player_view(view: &View) -> PlayerMessage {
     PlayerMessage::View {
         viewer: view.viewer.clone(),
         place: view.place.clone(),
+        shown: Box::new(crate::protocol::Shown {
+            place_name: view.place_name.clone(),
+            prose: view.prose.clone(),
+            actor_names: view.actor_names.clone(),
+            status: view.status.clone(),
+        }),
         visible_actors: view.visible_actors.clone(),
         known_facts: view.known_facts.iter().map(wire_fact).collect(),
         messages: view.messages.iter().map(wire_note).collect(),

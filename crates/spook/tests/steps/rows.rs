@@ -182,6 +182,7 @@ fn insert_nell(pack: &Path) {
 schema: cast
 id: pc_nell
 kind: pc_template
+display_name: Nell
 facts: []
 tick:
   eligible: false

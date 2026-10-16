@@ -15,7 +15,10 @@ const BUDGET_TOKENS: usize = 800;
 pub struct View {
     pub viewer: String,
     pub place: String,
+    pub place_name: String,
+    pub prose: String,
     pub visible_actors: Vec<String>,
+    pub actor_names: Vec<String>,
     pub known_facts: Vec<KnownFact>,
     pub messages: Vec<Message>,
     pub unknown_mentioned: Vec<String>,
@@ -23,6 +26,7 @@ pub struct View {
     pub items: Vec<ItemStack>,
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
+    pub status: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -168,11 +172,21 @@ fn perceive_at_budget(
         ViewerId::Npc(id) => habits_on(canon, now, id),
     };
     let exits = crate::map::visible(canon, now, viewer.actor_id());
+    let actor_names = visible_actors
+        .iter()
+        .map(|id| crate::map::cast_name(canon, id))
+        .collect();
+    let place_name = crate::map::place_name(canon, &place);
+    let prose = crate::map::place_prose(canon, now, viewer.actor_id());
+    let status = crate::map::busy_line(now, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.token(),
         place,
+        place_name,
+        prose,
         visible_actors,
+        actor_names,
         known_facts,
         messages,
         unknown_mentioned,
@@ -180,6 +194,7 @@ fn perceive_at_budget(
         items,
         habits,
         exits,
+        status,
     })
 }
 

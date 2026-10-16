@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::protocol::{Outcome, ProtocolError};
 
+/// Names and prose for one place view. Boxed on the wire so the message stays small.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Shown {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub place_name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub prose: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub actor_names: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub status: String,
+}
+
 /// A line on the player socket. No GM field, and no roll faces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
@@ -33,6 +46,8 @@ pub enum PlayerMessage {
     View {
         viewer: String,
         place: String,
+        #[serde(flatten, default)]
+        shown: Box<Shown>,
         visible_actors: Vec<String>,
         known_facts: Vec<WireFact>,
         messages: Vec<FactNote>,

@@ -17,6 +17,9 @@ mod speech;
 #[path = "steps/seats.rs"]
 mod seats;
 
+#[path = "steps/place.rs"]
+mod place;
+
 #[path = "steps/limits.rs"]
 mod limits;
 

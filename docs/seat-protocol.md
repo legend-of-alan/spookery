@@ -67,9 +67,15 @@ A legal hello sits that PC. The table then sends a `resume` line and a `perceive
   "kind": "perceive",
   "viewer": "player:pc_rowan",
   "place": "docks_shop",
+  "place_name": "Docks Shop",
+  "prose": "The shop faces the water. Tins sit in a row.",
   "visible_actors": [
     "aldric",
     "pc_rowan"
+  ],
+  "actor_names": [
+    "Aldric",
+    "Rowan"
   ],
   "known_facts": [
     {
@@ -114,7 +120,7 @@ A legal hello sits that PC. The table then sends a `resume` line and a `perceive
 }
 ```
 
-`resume.text` is the player digest, already text. `perceive` is what that viewer can see. `viewer` is `player:<id>`. `exits` is omitted when the place has none. Fact bodies are the place prose the viewer is allowed to read.
+`resume.text` is the player digest, already text. `perceive` is what that viewer can see. `viewer` is `player:<id>`. `place_name` and `actor_names` are the pack's display names. `prose` is the place body with hidden fact text removed. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
 
 Sitting keeps presence in memory and does not bump `state_rev`. The cap is three player seats, in the engine, not in the pack.
 
@@ -176,7 +182,7 @@ A hello that is `SCHEMA` or `LINE_TOO_LONG` closes. Invalid UTF-8 is `SCHEMA`, n
 
 After the hello, each command is one text line. The server does not wrap it in JSON.
 
-`look`, `help`, and `map` do not take a round. The reply is `lines`. `text` is the words to print, with newlines already in the string.
+`look`, `help`, and `map` do not take a round. The reply is `lines`. `text` is the words to print, with newlines already in the string. `look` reprints the place name, its prose, and the exits. `help` lists each verb whose `if` holds, then those exits. An exit is `stairs (locked) — 2 min`. A destination is not printed.
 
 <!-- example: player-look -->
 ```text
@@ -187,7 +193,7 @@ look
 ```json
 {
   "kind": "lines",
-  "text": "Exits:\ndocks_street → Docks Street\nstairs → Mira's Rooms (2 min, locked)"
+  "text": "Docks Shop\nThe shop faces the water. Tins sit in a row.\n\nExits:\ndocks_street — 0 min\nstairs (locked) — 2 min"
 }
 ```
 
@@ -408,7 +414,7 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
   "world_time": 1080,
   "tick_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:3420ea68de387a1c67363a925e0bf02a5e9d2b950b45a9080ebdb452b9ae8b05",
+  "pack_rev": "blake2s:40d98d71113b35f4889efd64eab3eb4e616beb12d7a1f071ba6eaa318c23f482",
   "last_tick_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 0
@@ -449,7 +455,7 @@ After the two says above, `since` 0 returns them:
   "world_time": 1080,
   "tick_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:3420ea68de387a1c67363a925e0bf02a5e9d2b950b45a9080ebdb452b9ae8b05",
+  "pack_rev": "blake2s:40d98d71113b35f4889efd64eab3eb4e616beb12d7a1f071ba6eaa318c23f482",
   "last_tick_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 2,

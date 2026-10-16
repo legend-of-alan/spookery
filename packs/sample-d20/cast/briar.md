@@ -2,6 +2,7 @@
 schema: cast
 id: npc_briar
 kind: npc
+display_name: Briar
 facts: []
 tick:
   eligible: true
