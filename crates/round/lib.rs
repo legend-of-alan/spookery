@@ -1,18 +1,9 @@
-mod advance;
-mod apply;
-mod complete;
-mod gather;
-mod log;
-mod observe;
 mod play;
-mod record;
 mod replay;
-mod resolve;
-mod round;
-mod round_seed;
-mod run_triggers;
+mod seed;
+mod stage;
+mod state;
 
-pub use advance::plan_catchup;
 pub use play::{
     advance_while_busy, catch_up, commit_moves, commit_moves_at, play, play_pack_once, RoundCause,
 };
@@ -20,10 +11,7 @@ pub use replay::{
     from_journal, replay_states, verify_pack, ReplayError, ReplayReport, ReplayStep, VerifyError,
     VerifyReport,
 };
+pub use stage::advance::plan_catchup;
 
 #[cfg(test)]
-mod prop_play;
-#[cfg(test)]
-mod prop_replay;
-#[cfg(test)]
-mod prop_rerun;
+mod prop;

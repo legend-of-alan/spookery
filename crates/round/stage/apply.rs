@@ -11,8 +11,8 @@ use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::resolve::{roll_subject, viewer_token, SubjectRoll};
-use crate::round::{Resolution, Round};
+use super::resolve::{roll_subject, viewer_token, SubjectRoll};
+use crate::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("apply".to_string());
@@ -111,7 +111,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             slots += 1;
         }
     }
-    crate::complete::finish(round, draft)?;
+    super::complete::finish(round, draft)?;
     Ok(())
 }
 

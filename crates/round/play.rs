@@ -6,15 +6,9 @@ use spookery_kernel::model::Presence;
 use spookery_kernel::world::{Draft, World};
 use spookery_kernel::Reason;
 
-use crate::advance::{self, plan_catchup};
-use crate::apply;
-use crate::complete;
-use crate::gather;
-use crate::observe;
-use crate::record;
-use crate::resolve;
-use crate::round::Round;
-use crate::run_triggers;
+use crate::stage::advance::{self, plan_catchup};
+use crate::stage::{apply, complete, gather, observe, record, resolve, triggers};
+use crate::state::Round;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RoundCause {
@@ -160,7 +154,7 @@ fn play_with(
     gather::run(&mut round, draft)?;
     resolve::run(&mut round, draft)?;
     apply::run(&mut round, draft)?;
-    run_triggers::run(&mut round, draft)?;
+    triggers::run(&mut round, draft)?;
     observe::run(&mut round, draft)?;
     record::run(world, &mut round, draft_slot.take().expect("draft"))?;
     Ok(std::mem::take(&mut round.effects))

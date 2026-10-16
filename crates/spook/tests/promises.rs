@@ -32,6 +32,9 @@ mod rounds;
 #[path = "steps/round_play.rs"]
 mod round_play;
 
+#[path = "steps/round_layout.rs"]
+mod round_layout;
+
 #[path = "steps/replay.rs"]
 mod replay;
 

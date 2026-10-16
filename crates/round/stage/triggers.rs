@@ -12,8 +12,8 @@ use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::resolve::{roll_subject, SubjectRoll};
-use crate::round::Round;
+use super::resolve::{roll_subject, SubjectRoll};
+use crate::state::Round;
 
 /// Change rules, edge-triggered, to a fixpoint.
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
