@@ -48,7 +48,6 @@ const NARROWED: &[&str] = &[
     "emit_memory_line",
     "emit_migrate",
     "emit_presence",
-    "exit_token",
     "from_token",
     "habits_of",
     "habits_on",

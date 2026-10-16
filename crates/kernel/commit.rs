@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
-use crate::lock::lock_pack;
+use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
 use crate::rules::RollReport;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
@@ -112,7 +112,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
-    let _lock = lock_pack(root)?;
+    let _lock = lock_world(root)?;
     now.pack_rev = pack_rev_after;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);

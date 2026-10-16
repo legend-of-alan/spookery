@@ -15,7 +15,7 @@ use crate::format;
 use crate::hash::blake2s_hex;
 use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
-use crate::rule::{Cond, Cost, EffectTemplate, Owner, RuleTable};
+use crate::rule::{Cond, Cost, EffectTemplate, Owner, ResistSpec, Rule, RuleTable, Who};
 
 pub mod schema;
 pub mod world_settings;
@@ -150,7 +150,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut places = BTreeMap::new();
     let mut facts = BTreeMap::new();
     let mut items = BTreeMap::new();
-    let mut loaded: Vec<crate::rule::Rule> = Vec::new();
+    let mut loaded: Vec<Rule> = Vec::new();
     let mut place_files = Vec::new();
     if let Err(reason) = collect_files(&root.join("world"), root, &mut place_files) {
         diags.push(io_schema_error("world", reason, "could not read world/"));
@@ -616,7 +616,7 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
                     continue;
                 }
             },
-            None => crate::rule::Cost {
+            None => Cost {
                 minutes: 0,
                 meters: Vec::new(),
                 items: Vec::new(),
@@ -1060,8 +1060,7 @@ fn unknown_rule_items(rules: &RuleTable, items: &BTreeMap<String, ItemCanon>) ->
     diags
 }
 
-fn cond_items(cond: &crate::rule::Cond, ids: &mut Vec<String>) {
-    use crate::rule::Cond;
+fn cond_items(cond: &Cond, ids: &mut Vec<String>) {
     match cond {
         Cond::HasItem { id, .. } | Cond::Wielding { id, .. } => {
             if id != "target" {
@@ -1112,10 +1111,9 @@ fn find_bare_resist(rules: &RuleTable) -> Vec<Diagnostic> {
 fn scan_resist(
     effects: &[EffectTemplate],
     mut seen: bool,
-    rule: &crate::rule::Rule,
+    rule: &Rule,
     diags: &mut Vec<Diagnostic>,
 ) -> bool {
-    use crate::rule::ResistSpec;
     for effect in effects {
         match effect.resist() {
             Some(ResistSpec::Same) if !seen => {
@@ -1141,8 +1139,8 @@ fn scan_resist(
     seen
 }
 
-fn resist_items(resist: Option<&crate::rule::ResistSpec>, ids: &mut Vec<String>) {
-    let Some(crate::rule::ResistSpec::Roll { resisted, .. }) = resist else {
+fn resist_items(resist: Option<&ResistSpec>, ids: &mut Vec<String>) {
+    let Some(ResistSpec::Roll { resisted, .. }) = resist else {
         return;
     };
     for effect in resisted {
@@ -1151,7 +1149,6 @@ fn resist_items(resist: Option<&crate::rule::ResistSpec>, ids: &mut Vec<String>)
 }
 
 fn reveal_problems(rules: &RuleTable, facts: &BTreeMap<String, FactCanon>) -> Vec<Diagnostic> {
-    use crate::rule::{EffectTemplate, Who};
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut effects = Vec::new();
@@ -1191,11 +1188,7 @@ fn reveal_problems(rules: &RuleTable, facts: &BTreeMap<String, FactCanon>) -> Ve
     diags
 }
 
-fn collect_effects<'a>(
-    effects: &'a [crate::rule::EffectTemplate],
-    out: &mut Vec<&'a crate::rule::EffectTemplate>,
-) {
-    use crate::rule::ResistSpec;
+fn collect_effects<'a>(effects: &'a [EffectTemplate], out: &mut Vec<&'a EffectTemplate>) {
     for effect in effects {
         out.push(effect);
         if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
@@ -1285,7 +1278,7 @@ fn unknown_meters(
     diags
 }
 
-fn load_verbs(text: &str) -> Result<Vec<crate::rule::Rule>, Vec<Diagnostic>> {
+fn load_verbs(text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     const FILE: &str = "rules/verbs.yaml";
     if let Some(diag) = tag_diagnostic(text, format::VERBS, FILE, 0) {
         return Err(vec![diag]);

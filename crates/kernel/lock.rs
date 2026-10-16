@@ -65,10 +65,6 @@ impl Drop for LockGuard {
 }
 
 pub fn lock_world(root: &Path) -> Result<LockGuard, Reason> {
-    lock_pack(root)
-}
-
-pub(crate) fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
     let path = root.join("state/.tick.lock");
     let file = OpenOptions::new()
         .read(true)

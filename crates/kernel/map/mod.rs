@@ -2,8 +2,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::canon::Canon;
-pub use crate::canon::Exit;
+use crate::canon::{Canon, Exit};
 use crate::diagnostic::Diagnostic;
 use crate::draft::Draft;
 use crate::error::Reason;
@@ -25,10 +24,6 @@ pub struct ExitView {
     pub place_name: String,
     pub minutes: u64,
     pub locked: bool,
-}
-
-pub fn named<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {
-    exit::named(canon, from, name)
 }
 
 /// Exits this actor is allowed to see. A hidden exit stays off the list.
@@ -68,9 +63,9 @@ pub(crate) fn used_exit<'a>(
     intent: &Intent,
     rule: &Rule,
 ) -> Option<&'a Exit> {
-    let token = exit::exit_token(rule, intent)?;
+    let token = exit::token(rule, intent)?;
     let from = now.actors.get(&intent.actor_id)?.place();
-    named(canon, from, &token)
+    exit::named(canon, from, &token)
 }
 
 /// One journey whose minute has been reached. The actor is no longer busy.

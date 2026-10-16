@@ -6,7 +6,9 @@ use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::model::Now;
 use crate::rule::{EffectTemplate, LocationTo, Rule};
+use crate::rules::cond;
 use crate::rules::cost;
+use crate::rules::expr::Ctx;
 use crate::rules::gate::{self, Miss};
 
 pub(crate) fn named<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {
@@ -17,7 +19,7 @@ pub(crate) fn named<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a 
 }
 
 /// The exit a `location via` effect names, if this rule travels.
-pub(crate) fn exit_token(rule: &Rule, intent: &Intent) -> Option<String> {
+pub(crate) fn token(rule: &Rule, intent: &Intent) -> Option<String> {
     for effect in rule
         .do_
         .iter()
@@ -47,7 +49,7 @@ pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Mis
     let Ok(rule) = gate::resolve(canon, now, intent) else {
         return Ok(());
     };
-    let Some(token) = exit_token(rule, intent) else {
+    let Some(token) = token(rule, intent) else {
         return Ok(());
     };
     let from = now
@@ -122,11 +124,5 @@ pub(crate) fn locked(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> b
         args: IntentArgs::default(),
         rationale_code: String::new(),
     };
-    crate::rules::cond::holds(
-        canon,
-        now,
-        &crate::rules::expr::Ctx { intent: &intent },
-        &exit.if_,
-    )
-    .is_err()
+    cond::holds(canon, now, &Ctx { intent: &intent }, &exit.if_).is_err()
 }

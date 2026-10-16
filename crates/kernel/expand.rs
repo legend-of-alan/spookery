@@ -167,7 +167,8 @@ where
                         .get(&intent.actor_id)
                         .map(|actor| actor.place())
                         .ok_or(Reason::UnknownKey)?;
-                    let exit = crate::map::named(canon, from, &name).ok_or(Reason::NoExit)?;
+                    let exit =
+                        crate::rules::exit::named(canon, from, &name).ok_or(Reason::NoExit)?;
                     if !crate::map::visible(canon, now, &intent.actor_id)
                         .iter()
                         .any(|view| view.name == exit.name)
