@@ -256,7 +256,6 @@ The ferry waits at the dock.
             },
         );
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "ferry_dock".to_string();
-        now.presence.humans = 1;
     });
     world.pack = Some(pack);
 }
@@ -265,6 +264,10 @@ The ferry waits at the dock.
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
+    opened.set_presence(spookery_kernel::model::Presence {
+        humans: 1,
+        actors_present: Vec::new(),
+    });
     spookery::host::handle_player_move(&mut opened, "pc_rowan", "travel docks_street", false)
         .unwrap_or_else(|err| panic!("travel {}", err.token()));
 }

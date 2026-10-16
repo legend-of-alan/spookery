@@ -26,6 +26,8 @@ pub struct Live {
     pub player_text: Arc<Mutex<String>>,
     pub players: Vec<Seated>,
     pub gm: Option<GmConnection>,
+    /// Set when `live_presence` opened a GM only to read seats.
+    pub gm_probe: bool,
     pub http_port: u16,
     pub gm_text: Arc<Mutex<String>>,
     pub opened_now: Vec<u8>,
@@ -212,6 +214,7 @@ fn install(pack: &Path, listening: Listening) {
         player_text: Arc::new(Mutex::new(String::new())),
         players: Vec::new(),
         gm: None,
+        gm_probe: false,
         http_port: listening.door.port(),
         gm_text: Arc::new(Mutex::new(String::new())),
         opened_now: opened_now.clone(),
@@ -498,16 +501,54 @@ pub fn close_actor(actor_id: &str) {
     });
 }
 
-pub fn wait_humans(pack: &Path, expected: u32) {
+pub fn release_status_gm() {
+    crate::with_live(|live| {
+        if live.gm_probe {
+            live.gm = None;
+            live.gm_probe = false;
+        }
+    });
+}
+
+pub fn live_presence() -> (u32, Vec<String>) {
+    let body = status_body();
+    let humans = body["presence"]["humans"]
+        .as_u64()
+        .unwrap_or_else(|| panic!("humans\n{body}")) as u32;
+    let actors = body["presence"]["actors_present"]
+        .as_array()
+        .unwrap_or_else(|| panic!("actors\n{body}"))
+        .iter()
+        .map(|id| {
+            id.as_str()
+                .unwrap_or_else(|| panic!("actor\n{body}"))
+                .to_string()
+        })
+        .collect();
+    (humans, actors)
+}
+
+fn status_body() -> Value {
+    if crate::with_live(|live| live.gm.is_none()) {
+        let gm =
+            GmConnection::connect_door(&door_addr()).unwrap_or_else(|err| panic!("status: {err}"));
+        crate::with_live(|live| {
+            live.gm = Some(gm);
+            live.gm_probe = true;
+        });
+    }
+    let text = gm_call(1, "session_status", "{}");
+    let value: Value =
+        serde_json::from_str(&text).unwrap_or_else(|err| panic!("status json: {err}"));
+    value["result"]["structuredContent"].clone()
+}
+
+pub fn wait_humans(_pack: &Path, expected: u32) {
     let start = Instant::now();
-    let path = pack.join("state/save.yaml");
     loop {
-        if let Ok(text) = fs::read_to_string(&path) {
-            if let Ok(now) = spookery_kernel::store::codec::load_save(&text) {
-                if now.presence.humans == expected {
-                    return;
-                }
-            }
+        let (humans, _) = live_presence();
+        if humans == expected {
+            return;
         }
         if start.elapsed() > Duration::from_secs(5) {
             panic!("humans did not become {expected}");

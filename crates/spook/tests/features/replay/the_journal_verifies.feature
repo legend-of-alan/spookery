@@ -51,14 +51,6 @@ Feature: The journal verifies
     And stderr names that record
     And stderr names the first differing save line
 
-  Scenario: A deleted presence record fails verify
-    Given a docks table
-    When a player sits and the server stops
-    And one presence record is deleted
-    And the operator runs verify
-    Then the command exits 1
-    And stderr names that record
-
   Scenario: Verify and replay leave the pack unchanged
     Given a docks table
     When the operator runs tick

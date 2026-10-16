@@ -17,6 +17,8 @@ pub struct Now {
     pub tick_index: u64,
     pub world_time: u64,
     pub last_tick_at: String,
+    /// Live seats. Not written. An old save may still carry this field; the next commit drops it.
+    #[serde(default, skip_serializing)]
     pub presence: Presence,
     pub pause: PauseView,
     pub places: BTreeMap<String, PlaceLive>,
@@ -28,7 +30,7 @@ pub struct Now {
     pub flags: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Presence {
     pub humans: u32,

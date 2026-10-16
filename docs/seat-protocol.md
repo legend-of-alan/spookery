@@ -116,7 +116,7 @@ A legal hello sits that PC. The table then sends a `resume` line and a `perceive
 
 `resume.text` is the player digest, already text. `perceive` is what that viewer can see. `viewer` is `player:<id>`. `exits` is omitted when the place has none. Fact bodies are the place prose the viewer is allowed to read.
 
-Sitting writes presence and bumps `state_rev`. The cap is three player seats, in the engine, not in the pack.
+Sitting keeps presence in memory and does not bump `state_rev`. The cap is three player seats, in the engine, not in the pack.
 
 A refused hello is one JSON line. The seat then closes its write side.
 
@@ -407,7 +407,7 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
   },
   "world_time": 1080,
   "tick_index": 0,
-  "state_rev": 1,
+  "state_rev": 0,
   "pack_rev": "blake2s:3420ea68de387a1c67363a925e0bf02a5e9d2b950b45a9080ebdb452b9ae8b05",
   "last_tick_at": "2026-01-01T00:00:00Z",
   "queued": [],
@@ -448,7 +448,7 @@ After the two says above, `since` 0 returns them:
   },
   "world_time": 1080,
   "tick_index": 0,
-  "state_rev": 1,
+  "state_rev": 0,
   "pack_rev": "blake2s:3420ea68de387a1c67363a925e0bf02a5e9d2b950b45a9080ebdb452b9ae8b05",
   "last_tick_at": "2026-01-01T00:00:00Z",
   "queued": [],
@@ -645,7 +645,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 <!-- example: commit-result -->
 ```json
 {
-  "state_rev": 2,
+  "state_rev": 1,
   "diff_summary": [
     "clock_paused assassination_debt",
     "message note_mira_door",

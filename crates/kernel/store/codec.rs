@@ -60,6 +60,68 @@ pub fn emit_save(now: &Now) -> Result<String, Reason> {
     Ok(one_trailing_lf(text))
 }
 
+/// Drop a top-level `presence` block. Old saves still carry one.
+pub fn without_presence(yaml: &str) -> String {
+    let mut out = String::new();
+    let mut skipping = false;
+    for line in yaml.split_inclusive('\n') {
+        let text = line.trim_end_matches(['\n', '\r']);
+        if !skipping && text == "presence:" {
+            skipping = true;
+            continue;
+        }
+        if skipping {
+            if text.is_empty() || text.starts_with(' ') || text.starts_with('\t') {
+                continue;
+            }
+            skipping = false;
+        }
+        out.push_str(line);
+    }
+    out
+}
+
+/// Put `presence` back where the old emitter wrote it, before `pause`.
+pub fn with_presence(yaml: &str, humans: u32, actors: &[String]) -> String {
+    let stripped = without_presence(yaml);
+    let block = presence_block(humans, actors);
+    let mut out = String::new();
+    let mut inserted = false;
+    for line in stripped.split_inclusive('\n') {
+        let text = line.trim_end_matches(['\n', '\r']);
+        if !inserted && text == "pause:" {
+            out.push_str(&block);
+            inserted = true;
+        }
+        out.push_str(line);
+    }
+    if !inserted {
+        if !out.ends_with('\n') {
+            out.push('\n');
+        }
+        out.push_str(&block);
+    }
+    out
+}
+
+fn presence_block(humans: u32, actors: &[String]) -> String {
+    let mut actors = actors.to_vec();
+    actors.sort();
+    actors.dedup();
+    let mut block = format!("presence:\n  humans: {humans}\n  actors_present:");
+    if actors.is_empty() {
+        block.push_str(" []\n");
+    } else {
+        block.push('\n');
+        for id in actors {
+            block.push_str("    - ");
+            block.push_str(&id);
+            block.push('\n');
+        }
+    }
+    block
+}
+
 fn rules_rev_diagnostic(text: &str) -> Diagnostic {
     let mut diag = coded(
         "state/save.yaml",
@@ -250,7 +312,12 @@ mod tests {
         let original = fs::read_to_string(&path).unwrap();
         let now = load_save(&original).unwrap();
         let emitted = emit_save(&now).unwrap();
-        assert_eq!(emitted, original);
+        assert_eq!(emitted, without_presence(&original));
+        assert_eq!(
+            with_presence(&emitted, now.presence.humans, &now.presence.actors_present),
+            original
+        );
+        assert_eq!(load_save(&emitted).unwrap(), now);
     }
 
     fn now_text(tag: &str) -> String {

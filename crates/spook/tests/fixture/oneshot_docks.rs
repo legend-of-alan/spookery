@@ -13,7 +13,12 @@ pub(crate) fn docks_save_round_trips() {
         .unwrap_or_else(|err| panic!("load now: {err:?}"));
     let emitted = spookery_kernel::store::codec::emit_save(&now)
         .unwrap_or_else(|err| panic!("emit now: {err}"));
-    assert_eq!(emitted.as_bytes(), now_bytes.as_slice());
+    let stripped = spookery_kernel::store::codec::without_presence(now_text);
+    assert_eq!(emitted, stripped);
+    assert_eq!(
+        spookery_kernel::store::codec::load_save(&emitted).unwrap_or_else(|err| panic!("{err:?}")),
+        now
+    );
     assert_eq!(now.pack_rev, rev);
     assert_eq!(now.state_rev, 0);
     assert_eq!(now.world_time, 1080);

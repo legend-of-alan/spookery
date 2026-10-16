@@ -68,7 +68,6 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
                 }
             }
         }
-        drop_ahead(&log_dir, "presence-", ".json", now.state_rev)?;
         drop_ahead(&log_dir, "migrate-", ".json", now.state_rev)?;
         drop_future_base(&log_dir, now.state_rev)?;
     }
@@ -267,46 +266,21 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::commit::commit_presence;
-    use crate::journal::hash_now;
-    use crate::model::Presence;
+    use crate::commit::commit_round;
     use crate::store::codec::{emit_save, load_save};
+    use crate::world::Draft;
     use crate::World;
-
-    #[test]
-    fn a_presence_commit_journals_the_new_presence_and_the_base() {
-        let root = temp_docks("presence-journal");
-        let mut world = World::open(&root).unwrap();
-        let pre = fs::read(root.join("state/save.yaml")).unwrap();
-        let changed = commit_presence(
-            &mut world,
-            Presence {
-                humans: 1,
-                actors_present: vec!["pc_rowan".to_string()],
-            },
-        )
-        .unwrap();
-        assert!(changed);
-        assert_eq!(fs::read(root.join("state/journal/base.yaml")).unwrap(), pre);
-        let now = fs::read(root.join("state/save.yaml")).unwrap();
-        let record = fs::read_to_string(root.join("state/journal/presence-0001.json")).unwrap();
-        assert!(record.contains(&hash_now(&now)), "{record}");
-        assert!(record.contains("\"state_rev_after\":1"), "{record}");
-        assert_eq!(world.now().state_rev, 1);
-        let _ = fs::remove_dir_all(&root);
-    }
 
     #[test]
     fn a_crash_between_the_journal_rename_and_now_rolls_back() {
         let root = temp_docks("crash-window");
         let mut world = World::open(&root).unwrap();
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
-        commit_presence(
+        let draft = Draft::begin(&world);
+        commit_round(
             &mut world,
-            Presence {
-                humans: 1,
-                actors_present: vec!["pc_rowan".to_string()],
-            },
+            draft,
+            r#"{"tick_index":0,"state_rev_after":1,"rules_rev":6}"#,
         )
         .unwrap();
         drop(world);
@@ -318,7 +292,7 @@ mod tests {
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
         assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
-        assert!(!root.join("state/journal/presence-0001.json").exists());
+        assert!(!root.join("state/journal/tick-0000.jsonl").exists());
         assert_eq!(fs::read(root.join("state/journal/base.yaml")).unwrap(), pre);
         assert!(!txn.exists());
         let _ = fs::remove_dir_all(&root);

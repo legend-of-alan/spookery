@@ -1,6 +1,5 @@
 use std::io::{self, Write};
 
-use spookery_kernel::commit::commit_presence;
 use spookery_kernel::model::{ActorLive, Presence};
 use spookery_kernel::perceive::perceive;
 use spookery_kernel::world::World;
@@ -38,9 +37,7 @@ pub fn seat_player(world: &mut World, actor_id: &str) -> Result<String, Reason> 
     }
     ids.push(actor_id.to_string());
     commit_held(world, &ids)?;
-    // Seating always changes presence, so `state_rev` has just moved and
-    // never repeats. A seat count would reuse an id after a drop.
-    Ok(format!("s{}", world.now().state_rev))
+    world.mint_session()
 }
 
 pub fn release_player_seat(
@@ -65,13 +62,10 @@ pub fn release_player_seat(
 }
 
 fn commit_held(world: &mut World, ids: &[String]) -> Result<bool, Reason> {
-    commit_presence(
-        world,
-        Presence {
-            humans: u32::try_from(ids.len()).map_err(|_| Reason::Schema)?,
-            actors_present: ids.to_vec(),
-        },
-    )
+    Ok(world.set_presence(Presence {
+        humans: u32::try_from(ids.len()).map_err(|_| Reason::Schema)?,
+        actors_present: ids.to_vec(),
+    }))
 }
 
 fn is_live_pc(world: &World, actor_id: &str) -> bool {
@@ -87,13 +81,10 @@ pub(super) fn clear_crashed(world: &mut World) -> Result<bool, Reason> {
     if presence.humans == 0 && presence.actors_present.is_empty() {
         return Ok(false);
     }
-    commit_presence(
-        world,
-        Presence {
-            humans: 0,
-            actors_present: Vec::new(),
-        },
-    )
+    Ok(world.set_presence(Presence {
+        humans: 0,
+        actors_present: Vec::new(),
+    }))
 }
 
 pub(super) fn run_world_loop(
@@ -102,7 +93,6 @@ pub(super) fn run_world_loop(
     restart: &tokio::sync::watch::Sender<u64>,
 ) -> ! {
     let mut seats = Seats::default();
-    let mut next_session = 1u64;
     debug_seats(&seats, &world);
     loop {
         let msg = match rx.recv() {
@@ -112,7 +102,7 @@ pub(super) fn run_world_loop(
                 std::process::exit(1);
             }
         };
-        if let Err(code) = handle(&mut world, &mut seats, &mut next_session, restart, msg) {
+        if let Err(code) = handle(&mut world, &mut seats, restart, msg) {
             eprintln!("{code}");
             std::process::exit(1);
         }
@@ -310,7 +300,6 @@ pub(super) enum PlayerReply {
 fn handle(
     world: &mut World,
     seats: &mut Seats,
-    next_session: &mut u64,
     restart: &tokio::sync::watch::Sender<u64>,
     msg: Msg,
 ) -> Result<(), Reason> {
@@ -322,7 +311,7 @@ fn handle(
             cancel,
             reply,
         } => {
-            let answer = on_hello(world, seats, next_session, conn, &line, out, cancel)?;
+            let answer = on_hello(world, seats, conn, &line, out, cancel)?;
             let _ = reply.send(answer);
         }
         Msg::Claim {
@@ -476,7 +465,6 @@ fn shutdown(world: &mut World, seats: &mut Seats) -> ! {
 fn on_hello(
     world: &mut World,
     seats: &mut Seats,
-    next_session: &mut u64,
     conn: u64,
     line: &str,
     out: OutTx,
@@ -495,13 +483,15 @@ fn on_hello(
         if !is_live_pc(world, id) {
             return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
         }
-        let session_id = format!("s{next_session}");
-        *next_session = next_session.checked_add(1).ok_or(Reason::Schema)?;
         let mut ids = seats.players.actor_ids();
         ids.push(id.to_string());
         if let Err(code) = commit_held(world, &ids) {
             return Ok(HelloReply::Refused(refused_line(code)));
         }
+        let session_id = match world.mint_session() {
+            Ok(session_id) => session_id,
+            Err(code) => return Ok(HelloReply::Refused(refused_line(code))),
+        };
         let bytes = match welcome(world, id) {
             Ok(bytes) => bytes,
             Err(code) => {

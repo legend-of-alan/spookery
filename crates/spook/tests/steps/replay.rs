@@ -105,15 +105,6 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
     table::stop_server();
 }
 
-#[when(expr = "a player sits and the server stops")]
-fn a_player_sits_and_the_server_stops(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::wait_humans(&pack, 1);
-    table::stop_server();
-}
-
 #[when(expr = "one intent in a tick record is changed")]
 fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
     let path = table::pack(world).join("state/journal/tick-0001.jsonl");
@@ -135,12 +126,71 @@ fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
     fs::write(&path, serde_json::to_string(&tick).unwrap()).unwrap();
 }
 
-#[when(expr = "one presence record is deleted")]
-fn one_presence_record_is_deleted(world: &mut World) {
-    let path = table::pack(world).join("state/journal/presence-0001.json");
-    assert!(path.is_file(), "no presence record at {}", path.display());
-    fs::remove_file(&path).unwrap_or_else(|err| panic!("remove presence: {err}"));
-    world.scratch = "state_rev 1".to_string();
+#[when(expr = "the world has an old presence record and a tick")]
+fn the_world_has_an_old_presence_record(world: &mut World) {
+    plant_old_presence(table::pack(world));
+}
+
+#[then(expr = "the tick now_hash matches the save")]
+fn the_tick_now_hash_matches_the_save(world: &mut World) {
+    let pack = table::pack(world);
+    let tick = fs::read_to_string(pack.join("state/journal/tick-0001.jsonl"))
+        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    let value: Value = serde_json::from_str(tick.trim_end()).unwrap_or_else(|err| panic!("{err}"));
+    let expected = value["now_hash"]
+        .as_str()
+        .unwrap_or_else(|| panic!("now_hash\n{tick}"));
+    let save =
+        fs::read(pack.join("state/save.yaml")).unwrap_or_else(|err| panic!("read save: {err}"));
+    assert_eq!(spookery_kernel::journal::hash_now(&save), expected);
+}
+
+fn plant_old_presence(pack: &std::path::Path) {
+    let mut world = spookery_kernel::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    world.set_presence(spookery_kernel::model::Presence {
+        humans: 1,
+        actors_present: vec!["pc_rowan".to_string()],
+    });
+    let wall = world.now().last_tick_at.clone();
+    spookery_round::play(&mut world, spookery_round::RoundCause::Manual, &wall)
+        .unwrap_or_else(|err| panic!("play: {err}"));
+    drop(world);
+
+    let save_path = pack.join("state/save.yaml");
+    let played = fs::read_to_string(&save_path).unwrap_or_else(|err| panic!("read save: {err}"));
+    assert!(played.contains("state_rev: 1\n"), "{played}");
+    let at_two = played.replacen("state_rev: 1\n", "state_rev: 2\n", 1);
+    let actors = ["pc_rowan".to_string()];
+    let live = spookery_kernel::store::codec::with_presence(&at_two, 1, &actors);
+    fs::write(&save_path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
+
+    let tick_path = pack.join("state/journal/tick-0001.jsonl");
+    let tick_text = fs::read_to_string(&tick_path).unwrap_or_else(|err| panic!("read tick: {err}"));
+    let mut tick: Value =
+        serde_json::from_str(tick_text.trim_end()).unwrap_or_else(|err| panic!("{err}"));
+    tick["state_rev_before"] = Value::from(1);
+    tick["state_rev_after"] = Value::from(2);
+    tick["now_hash"] = Value::String(spookery_kernel::journal::hash_now(live.as_bytes()));
+    fs::write(
+        &tick_path,
+        format!("{}\n", serde_json::to_string(&tick).unwrap()),
+    )
+    .unwrap_or_else(|err| panic!("write tick: {err}"));
+
+    let base = fs::read_to_string(pack.join("state/journal/base.yaml"))
+        .unwrap_or_else(|err| panic!("read base: {err}"));
+    let mut base_now =
+        spookery_kernel::store::codec::load_save(&base).unwrap_or_else(|err| panic!("{err:?}"));
+    base_now.state_rev = 1;
+    let gap_emit =
+        spookery_kernel::store::codec::emit_save(&base_now).unwrap_or_else(|err| panic!("{err}"));
+    let gap_legacy = spookery_kernel::store::codec::with_presence(&gap_emit, 1, &actors);
+    let gap_hash = spookery_kernel::journal::hash_now(gap_legacy.as_bytes());
+    let record = format!(
+        "{{\"kind\":\"presence\",\"state_rev_before\":0,\"state_rev_after\":1,\"humans\":1,\"actors_present\":[\"pc_rowan\"],\"now_hash\":\"{gap_hash}\"}}\n"
+    );
+    fs::write(pack.join("state/journal/presence-0001.json"), record)
+        .unwrap_or_else(|err| panic!("write presence: {err}"));
 }
 
 #[when(expr = "the pack bytes are remembered")]

@@ -8,10 +8,12 @@ use spookery_kernel::commit::replay_write_now;
 use spookery_kernel::diagnostic::reason_of;
 use spookery_kernel::effect::Effect;
 use spookery_kernel::journal::{
-    self, hash_now, JournalEntry, MigrateRecord, PresenceRecord, TickRecord,
+    self, hash_now, JournalEntry, MigrateRecord, OldPresence, TickRecord,
 };
-use spookery_kernel::model::Now;
-use spookery_kernel::store::codec::{canonicalize, emit_effect, emit_save, load_save};
+use spookery_kernel::model::{Now, Presence};
+use spookery_kernel::store::codec::{
+    canonicalize, emit_effect, emit_save, load_save, with_presence, without_presence,
+};
 use spookery_kernel::store::require_rules_rev;
 use spookery_kernel::world::World;
 use spookery_kernel::Reason;
@@ -142,21 +144,14 @@ fn replay_walking(
     if !pack.join("pack.yaml").is_file() || !pack.join("state/save.yaml").is_file() {
         return Err(ReplayError::Reason(Reason::NotInSpec));
     }
-    let records = journal::load_journal(pack).map_err(|fault| {
-        ReplayError::Diverged(diverge(
-            0,
-            "journal",
-            None,
-            format!("{}: {}", fault.file, fault.detail),
-            None,
-        ))
-    })?;
+    let records = load_entries(pack)?;
+    let gaps = load_gaps(pack)?;
     let base_path = pack.join("state").join(journal::base_rel());
     let base_bytes = if let Some(from) = from {
         read_from_now(from)?
     } else if base_path.is_file() {
         fs::read(&base_path).map_err(|_| ReplayError::Reason(Reason::Schema))?
-    } else if records.is_empty() {
+    } else if records.is_empty() && gaps.is_empty() {
         let now_yaml = fs::read(pack.join("state/save.yaml"))
             .map_err(|_| ReplayError::Reason(Reason::NotInSpec))?;
         return Ok(ReplayReport {
@@ -178,17 +173,20 @@ fn replay_walking(
         records
             .iter()
             .map(JournalEntry::state_rev_after)
+            .chain(gaps.iter().map(|gap| gap.state_rev_after))
             .filter(|rev| until_allows(*rev, until))
             .max()
             .unwrap_or(base_rev)
     });
-    check_sequence(&records, cap, base_rev, from.is_none(), &base_bytes)?;
+    check_sequence(&records, &gaps, cap, base_rev, from.is_none(), &base_bytes)?;
     let mut applied = 0u64;
     let mut saved = Vec::new();
     let needs_apply = records.iter().any(|entry| {
         let rev = entry.state_rev_after();
         rev > base_rev && rev <= cap
-    });
+    }) || gaps
+        .iter()
+        .any(|gap| gap.state_rev_after > base_rev && gap.state_rev_after <= cap);
     if !needs_apply {
         return Ok(ReplayReport {
             state_rev: base_rev,
@@ -202,14 +200,25 @@ fn replay_walking(
     fs::write(temp.0.join("state/save.yaml"), &base_bytes)
         .map_err(|_| ReplayError::Reason(Reason::Schema))?;
     let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
-    for entry in &records {
-        let record_rev = entry.state_rev_after();
-        if record_rev > cap {
-            break;
-        }
-        if record_rev <= base_rev {
+    for rev in (base_rev + 1)..=cap {
+        if let Some(gap) = gaps.iter().find(|gap| gap.state_rev_after == rev) {
+            apply_gap(&mut world, gap)?;
+            saved = fs::read(temp.0.join("state/save.yaml"))
+                .map_err(|_| ReplayError::Reason(Reason::Schema))?;
             continue;
         }
+        let entry = records
+            .iter()
+            .find(|entry| entry.state_rev_after() == rev)
+            .ok_or_else(|| {
+                ReplayError::Diverged(diverge(
+                    rev,
+                    "missing",
+                    None,
+                    "no journal record".to_string(),
+                    None,
+                ))
+            })?;
         apply(&mut world, entry)?;
         applied += 1;
         let now_yaml = fs::read(temp.0.join("state/save.yaml"))
@@ -234,23 +243,13 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Ver
         .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
     let until = state_rev_of(&live).map_err(VerifyError::Replay)?;
     if from.is_none() && !pack.join("state").join(journal::base_rel()).is_file() {
-        match journal::load_journal(pack) {
-            Ok(records) if records.is_empty() => {
-                return Ok(VerifyReport {
-                    state_rev: until,
-                    applied: 0,
-                });
-            }
-            Ok(_) => {}
-            Err(fault) => {
-                return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
-                    0,
-                    "journal",
-                    None,
-                    format!("{}: {}", fault.file, fault.detail),
-                    None,
-                ))));
-            }
+        let records = load_entries(pack).map_err(VerifyError::Replay)?;
+        let gaps = load_gaps(pack).map_err(VerifyError::Replay)?;
+        if records.is_empty() && gaps.is_empty() {
+            return Ok(VerifyReport {
+                state_rev: until,
+                applied: 0,
+            });
         }
     }
     let report = match from_journal(pack, from, Some(until)) {
@@ -258,7 +257,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Ver
         Err(ReplayError::Diverged(diverged)) => return Err(with_diff(diverged, &live)),
         Err(err) => return Err(VerifyError::Replay(err)),
     };
-    if report.now_yaml != live {
+    if !saves_match(&report.now_yaml, &live) {
         let diverged = diverge(
             report.state_rev,
             "save",
@@ -278,19 +277,73 @@ fn until_allows(rev: u64, until: Option<u64>) -> bool {
     until.is_none_or(|cap| rev <= cap)
 }
 
+fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
+    journal::load_journal(pack).map_err(journal_fault)
+}
+
+fn load_gaps(pack: &Path) -> Result<Vec<OldPresence>, ReplayError> {
+    journal::load_old_presence(pack).map_err(journal_fault)
+}
+
+fn journal_fault(fault: spookery_kernel::journal::JournalFault) -> ReplayError {
+    ReplayError::Diverged(diverge(
+        0,
+        "journal",
+        None,
+        format!("{}: {}", fault.file, fault.detail),
+        None,
+    ))
+}
+
+/// New saves hash without presence. Old saves hashed the same bytes with the
+/// presence block still in the file.
+fn save_hash_matches(bytes: &[u8], expected: &str, presence: &Presence) -> bool {
+    if hash_now(bytes) == expected {
+        return true;
+    }
+    let Ok(text) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let stripped = without_presence(text);
+    if hash_now(stripped.as_bytes()) == expected {
+        return true;
+    }
+    let legacy = with_presence(&stripped, presence.humans, &presence.actors_present);
+    hash_now(legacy.as_bytes()) == expected
+}
+
+fn saves_match(replayed: &[u8], live: &[u8]) -> bool {
+    match (std::str::from_utf8(replayed), std::str::from_utf8(live)) {
+        (Ok(left), Ok(right)) => without_presence(left) == without_presence(right),
+        _ => replayed == live,
+    }
+}
+
 fn check_sequence(
     records: &[JournalEntry],
+    gaps: &[OldPresence],
     cap: u64,
     base_rev: u64,
     engine_base: bool,
     base_bytes: &[u8],
 ) -> Result<(), ReplayError> {
-    let mut expected = 1u64;
-    for entry in records {
+    let mut marks: Vec<(u64, u64, Option<usize>)> = Vec::new();
+    for gap in gaps {
+        if gap.state_rev_after > cap {
+            continue;
+        }
+        marks.push((gap.state_rev_after, gap.state_rev_before, None));
+    }
+    for (index, entry) in records.iter().enumerate() {
         let rev = entry.state_rev_after();
         if rev > cap {
-            break;
+            continue;
         }
+        marks.push((rev, entry.state_rev_before(), Some(index)));
+    }
+    marks.sort_by_key(|mark| mark.0);
+    let mut expected = 1u64;
+    for (rev, before, entry) in marks {
         if rev != expected {
             return Err(ReplayError::Diverged(diverge(
                 expected,
@@ -300,17 +353,23 @@ fn check_sequence(
                 Some(base_bytes.to_vec()),
             )));
         }
-        if entry.state_rev_before().saturating_add(1) != rev {
+        if before.saturating_add(1) != rev {
+            let kind = entry
+                .map(|index| records[index].kind_name())
+                .unwrap_or("presence");
+            let tick = entry.and_then(|index| records[index].tick_index());
             return Err(ReplayError::Diverged(diverge(
                 rev,
-                entry.kind_name(),
-                entry.tick_index(),
+                kind,
+                tick,
                 "state_rev differed".to_string(),
                 Some(base_bytes.to_vec()),
             )));
         }
         if engine_base && rev == base_rev {
-            check_mark(entry, base_bytes)?;
+            if let Some(index) = entry {
+                check_mark(&records[index], base_bytes)?;
+            }
         }
         expected += 1;
     }
@@ -361,7 +420,6 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
 fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
     match entry {
         JournalEntry::Tick(record) => apply_recorded_round(world, record),
-        JournalEntry::Presence(record) => apply_presence(world, record),
         JournalEntry::Migrate(record) => apply_migrate(world, record),
     }
 }
@@ -394,6 +452,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         RecordedRound {
             intents: record.intents.clone(),
             presence_humans: record.presence_humans,
+            actors_present: record.actors_present.clone(),
         },
     )
     .map_err(|code| {
@@ -416,7 +475,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         )));
     }
     let written = read_now_bytes(world)?;
-    if hash_now(&written) != record.now_hash {
+    if !save_hash_matches(&written, &record.now_hash, world.presence()) {
         let detail = effect_diff.unwrap_or_else(|| "now_hash differed".to_string());
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -462,16 +521,18 @@ fn effect_text(effect: Option<&Effect>) -> String {
     }
 }
 
-fn apply_presence(world: &mut World, record: &PresenceRecord) -> Result<(), ReplayError> {
+fn apply_gap(world: &mut World, gap: &OldPresence) -> Result<(), ReplayError> {
+    world.set_presence(Presence {
+        humans: gap.humans,
+        actors_present: gap.actors_present.clone(),
+    });
     let mut next = world.now().clone();
-    next.presence.humans = record.humans;
-    next.presence.actors_present = record.actors_present.clone();
+    next.state_rev = gap.state_rev_after;
     canonicalize(&mut next);
-    next.state_rev = record.state_rev_after;
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
-    if hash_now(&bytes) != record.now_hash {
+    if !save_hash_matches(&bytes, &gap.now_hash, world.presence()) {
         return Err(ReplayError::Diverged(diverge(
-            record.state_rev_after,
+            gap.state_rev_after,
             "presence",
             None,
             "now_hash differed".to_string(),
@@ -508,7 +569,7 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
     next.state_rev = record.state_rev_after;
     canonicalize(&mut next);
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
-    if hash_now(&bytes) != record.now_hash {
+    if !save_hash_matches(&bytes, &record.now_hash, world.presence()) {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "migrate",
