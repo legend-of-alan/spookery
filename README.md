@@ -86,7 +86,8 @@ cargo build --release
 
 The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`.
 
-Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools. 
+Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools.
+
 On Windows, check the repository out with LF line endings. A CRLF checkout rewrites the pack, and `spook run` then exits 1 with `PACK_REV_MISMATCH`. CI sets `core.autocrlf` false before checkout. Clone with:
 
 ```sh
@@ -186,7 +187,6 @@ spook migrate /tmp/docks
 
 `tick` advances the pack one tick and prints nothing when it succeeds. `migrate` stores the current canon hash in the save and bumps the save counter. It also prints nothing when it succeeds.
 
-
 `spook replay`, `spook verify` and `spook audit` check a save's journal. They are described in [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
 
 ## Game master
@@ -224,7 +224,6 @@ ollama pull qwen2.5:0.5b
 SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b \
   cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
 ```
-
 
 CI runs this test too; see [CONTRIBUTING.md](CONTRIBUTING.md#live-ai-ci).
 

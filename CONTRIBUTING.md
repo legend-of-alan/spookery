@@ -28,6 +28,7 @@ Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enha
 Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook replay` replays that journal and prints the final save counter. `spook verify` replays it and checks the save byte for byte. Neither command writes the pack, takes the lock, or binds a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
 
 ```sh
+cp -r packs/oneshot-docks /tmp/docks
 spook tick /tmp/docks
 spook replay /tmp/docks
 spook verify /tmp/docks
