@@ -5,7 +5,7 @@
 //!
 //! ```sh
 //! SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://localhost:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b \
-//!   cargo test -p spook --test live_round --locked -- --ignored --nocapture
+//!   cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
 //! ```
 //!
 //! The test hosts a copy of the docks pack with `spook run`, sits `spook ai-gm`,
@@ -15,10 +15,6 @@
 //! printed no model-call failure, stayed up, and the queued move committed one
 //! tick. What the model says does not matter.
 
-#[path = "support.rs"]
-#[allow(dead_code)]
-mod support;
-
 use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -27,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use support::{pack_arg, temp_pack, text_of, Proc};
+use crate::support::{pack_arg, temp_pack, text_of, Proc};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -50,7 +46,7 @@ fn a_live_model_plays_one_round() {
     let port = free_port();
     let addr = format!("127.0.0.1:{port}");
 
-    let mut server = support::spawn(&["--addr", &addr, "run", &pack_text]);
+    let mut server = crate::support::spawn(&["--addr", &addr, "run", &pack_text]);
     wait_port(&addr, &mut server);
 
     let (proxy, calls) = proxy(upstream);
@@ -58,7 +54,7 @@ fn a_live_model_plays_one_round() {
     wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
 
     let sit = world_time(&pack);
-    let mut player = support::spawn(&["--addr", &addr, "play", &pack_text]);
+    let mut player = crate::support::spawn(&["--addr", &addr, "play", &pack_text]);
     wait_text(
         &player,
         &player.stdout,

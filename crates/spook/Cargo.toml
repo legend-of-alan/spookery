@@ -42,17 +42,5 @@ path = "tests/promises.rs"
 harness = false
 
 [[test]]
-name = "live_round"
-path = "tests/live_round.rs"
-
-[[test]]
-name = "pack_reference"
-path = "tests/pack_reference.rs"
-
-[[test]]
-name = "seat_protocol"
-path = "tests/seat_protocol.rs"
-
-[[test]]
-name = "engine_guarantees"
-path = "tests/engine_guarantees.rs"
+name = "integration"
+path = "tests/integration/main.rs"

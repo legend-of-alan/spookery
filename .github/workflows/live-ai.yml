@@ -1,7 +1,7 @@
 name: Live AI
 
 # Plays one real `spook ai-gm` round against live chat-completions providers.
-# The round itself is crates/spook/tests/live_round.rs (ignored by default).
+# The round itself is crates/spook/tests/integration/live_round.rs (ignored by default).
 #
 # - ollama: a tiny local model on the runner. No key, no cost. Runs on PRs and
 #   main pushes that touch the model host, and on demand.
@@ -18,7 +18,7 @@ on:
       - crates/spook/src/ai/**
       - crates/spook/src/gm_client/**
       - crates/spook/src/protocol/gm.rs
-      - crates/spook/tests/live_round.rs
+      - crates/spook/tests/integration/live_round.rs
       - .github/workflows/live-ai.yml
   push:
     branches: [main]
@@ -26,7 +26,7 @@ on:
       - crates/spook/src/ai/**
       - crates/spook/src/gm_client/**
       - crates/spook/src/protocol/gm.rs
-      - crates/spook/tests/live_round.rs
+      - crates/spook/tests/integration/live_round.rs
       - .github/workflows/live-ai.yml
   schedule:
     - cron: "17 9 * * 1"
@@ -58,7 +58,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build the live round
-        run: cargo test -p spook --test live_round --locked --no-run
+        run: cargo test -p spook --test integration --locked --no-run
 
       - name: Cache Ollama and the model
         uses: actions/cache@v4
@@ -93,7 +93,7 @@ jobs:
           SPOOK_GM_KEY: ollama
           SPOOK_GM_URL: http://127.0.0.1:11434/v1
           SPOOK_GM_MODEL: ${{ env.OLLAMA_MODEL }}
-        run: cargo test -p spook --test live_round --locked -- --ignored --nocapture
+        run: cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
 
       - name: Ollama log
         if: failure()
@@ -132,4 +132,4 @@ jobs:
           SPOOK_GM_KEY: ${{ secrets.XAI_API_KEY }}
           SPOOK_GM_URL: https://api.x.ai/v1
           SPOOK_GM_MODEL: ${{ vars.SPOOK_XAI_MODEL || env.XAI_DEFAULT_MODEL }}
-        run: cargo test -p spook --test live_round --locked -- --ignored --nocapture
+        run: cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
