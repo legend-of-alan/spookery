@@ -8,7 +8,6 @@ on:
       # Any other doc runs CI, since tests read some docs.
       - "README.md"
       - "docs/README.md"
-      - "docs/first-pack.md"
       - "**/*.png"
       - "**/*.svg"
   pull_request:
@@ -16,7 +15,6 @@ on:
     paths-ignore:
       - "README.md"
       - "docs/README.md"
-      - "docs/first-pack.md"
       - "**/*.png"
       - "**/*.svg"
 
