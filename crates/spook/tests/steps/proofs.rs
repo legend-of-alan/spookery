@@ -175,6 +175,13 @@ fn door_message() -> Message {
     }
 }
 
+fn seat_rowan(world: &mut spookery_kernel::world::World) {
+    world.set_presence(spookery_kernel::model::Presence {
+        humans: 1,
+        actors_present: vec!["pc_rowan".to_string()],
+    });
+}
+
 fn save_now(pack: &Path, now: &Now) {
     fs::write(pack.join("state/save.yaml"), emit_save(now).unwrap()).unwrap();
 }
@@ -259,13 +266,15 @@ fn player_in_the_shop() {
         let mut now = shard.now().clone();
         drop(shard);
         now.world_time = 600;
-        now.presence.humans = 1;
-        now.presence.actors_present = vec!["pc_rowan".to_string()];
         now.messages.push(door_message());
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         save_now(&pack, &now);
     }
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    let mut shard = open(&pack);
+    seat_rowan(&mut shard);
+    let wall = shard.now().last_tick_at.clone();
+    play(&mut shard, spookery_round::RoundCause::Manual, &wall)
+        .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
@@ -280,13 +289,12 @@ fn gm_restocks() {
         let mut now = shard.now().clone();
         drop(shard);
         now.world_time = 600;
-        now.presence.humans = 1;
-        now.presence.actors_present = vec!["pc_rowan".to_string()];
         now.messages.push(door_message());
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         save_now(&pack, &now);
     }
     let mut shard = open(&pack);
+    seat_rowan(&mut shard);
     let wall = shard.now().last_tick_at.clone();
     let args = json!({
         "actor_id": "mira",
@@ -312,12 +320,11 @@ fn claimed_note_sorts_first() {
         let shard = open(&pack);
         let mut now = shard.now().clone();
         drop(shard);
-        now.presence.humans = 1;
-        now.presence.actors_present = vec!["pc_rowan".to_string()];
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         save_now(&pack, &now);
     }
     let mut shard = open(&pack);
+    seat_rowan(&mut shard);
     let wall = shard.now().last_tick_at.clone();
     for (actor, move_name) in [("bram", "wait"), ("mira", "leave_door_note")] {
         let args = json!({
@@ -1252,17 +1259,16 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let _ = fs::remove_dir_all(&dropped);
 }
 
-fn session_ids_are_not_reused_after_a_drop() {
+/// Seat Rowan and Wren, drop Rowan, seat Rowan again. Returns the three session ids in order.
+fn seat_drop_and_reseat() -> [String; 3] {
     let pack = temp_pack("session-ids");
     let mut shard = open(&pack);
     let rowan = seat_player(&mut shard, "pc_rowan").unwrap();
     let wren = seat_player(&mut shard, "pc_wren").unwrap();
-    assert_ne!(rowan, wren);
     assert!(release_player_seat(&mut shard, &rowan, "pc_rowan", SocketEnd::Close).unwrap());
     let again = seat_player(&mut shard, "pc_rowan").unwrap();
-    assert_ne!(again, wren);
-    assert_ne!(again, rowan);
     let _ = fs::remove_dir_all(&pack);
+    [rowan, wren, again]
 }
 
 fn early_wake_does_not_tick_again() {
@@ -1370,7 +1376,11 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     assert_eq!(shard.now().tick_index, 1);
     drop(shard);
     assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
-    play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    let mut again = open(&pack);
+    seat_player(&mut again, "pc_rowan").unwrap();
+    let wall = again.now().last_tick_at.clone();
+    play(&mut again, spookery_round::RoundCause::Manual, &wall)
+        .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 2);
     assert_eq!(now.world_time, 1090);
@@ -1820,8 +1830,8 @@ fn the_player_drops_and_sits_again(_world: &mut World) {
 }
 
 #[when(expr = "two players sit, one drops, and that PC sits again")]
-fn a_player_drops_and_sits_again_beside_another(_world: &mut World) {
-    session_ids_are_not_reused_after_a_drop();
+fn a_player_drops_and_sits_again_beside_another(world: &mut World) {
+    world.scratch = seat_drop_and_reseat().join("\n");
 }
 
 #[when(expr = "a committed wait wakes early")]

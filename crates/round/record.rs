@@ -12,6 +12,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         round.trace.push("commit_round".to_string());
     }
     let seed = round_seed(&round.world_id, round.tick_index);
+    let actors = world.presence().actors_present.clone();
     let jsonl = render_round_line(&RoundLine {
         tick_index: round.tick_index,
         rules_rev: spookery_kernel::store::RULES_REV,
@@ -20,6 +21,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         world_time_before: round.world_time_before,
         world_time_after: round.world_time_after,
         presence_humans: round.humans,
+        actors_present: &actors,
         seed: &seed,
         last_tick_at: &round.now_wall,
         intents: &round.applied,

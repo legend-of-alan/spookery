@@ -105,15 +105,6 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
     table::stop_server();
 }
 
-#[when(expr = "a player sits and the server stops")]
-fn a_player_sits_and_the_server_stops(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::wait_humans(&pack, 1);
-    table::stop_server();
-}
-
 #[when(expr = "one intent in a tick record is changed")]
 fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
     let path = table::pack(world).join("state/journal/tick-0001.jsonl");
@@ -135,12 +126,18 @@ fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
     fs::write(&path, serde_json::to_string(&tick).unwrap()).unwrap();
 }
 
-#[when(expr = "one presence record is deleted")]
-fn one_presence_record_is_deleted(world: &mut World) {
-    let path = table::pack(world).join("state/journal/presence-0001.json");
-    assert!(path.is_file(), "no presence record at {}", path.display());
-    fs::remove_file(&path).unwrap_or_else(|err| panic!("remove presence: {err}"));
-    world.scratch = "state_rev 1".to_string();
+#[then(expr = "the tick now_hash matches the save")]
+fn the_tick_now_hash_matches_the_save(world: &mut World) {
+    let pack = table::pack(world);
+    let tick = fs::read_to_string(pack.join("state/journal/tick-0001.jsonl"))
+        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    let value: Value = serde_json::from_str(tick.trim_end()).unwrap_or_else(|err| panic!("{err}"));
+    let expected = value["now_hash"]
+        .as_str()
+        .unwrap_or_else(|| panic!("now_hash\n{tick}"));
+    let save =
+        fs::read(pack.join("state/save.yaml")).unwrap_or_else(|err| panic!("read save: {err}"));
+    assert_eq!(spookery_kernel::journal::hash_now(&save), expected);
 }
 
 #[when(expr = "the pack bytes are remembered")]

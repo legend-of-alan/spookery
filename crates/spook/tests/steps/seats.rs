@@ -45,21 +45,74 @@ fn now_unchanged_since_open(world: &mut World) {
 }
 
 #[then(expr = "humans is 1")]
-fn humans_is_1(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).presence.humans, 1);
+fn humans_is_1(_world: &mut World) {
+    assert_eq!(table::live_presence().0, 1);
 }
 
 #[then(expr = "the present actor is pc_rowan")]
-fn the_present_actor_is_pc_rowan(world: &mut World) {
-    assert_eq!(
-        table::now_of(table::pack(world)).presence.actors_present,
-        vec!["pc_rowan".to_string()]
-    );
+fn the_present_actor_is_pc_rowan(_world: &mut World) {
+    assert_eq!(table::live_presence().1, vec!["pc_rowan".to_string()]);
 }
 
 #[then(expr = "state_rev is 1")]
 fn state_rev_is_1(world: &mut World) {
     assert_eq!(table::now_of(table::pack(world)).state_rev, 1);
+}
+
+#[then(expr = "state_rev is 0")]
+fn state_rev_is_0(world: &mut World) {
+    assert_eq!(table::now_of(table::pack(world)).state_rev, 0);
+}
+
+#[when(expr = "the state directory is remembered")]
+fn the_state_directory_is_remembered(world: &mut World) {
+    world.before = table::files(&table::pack(world).join("state"));
+}
+
+#[then(expr = "the state directory is unchanged")]
+fn the_state_directory_is_unchanged(world: &mut World) {
+    assert_eq!(
+        table::files(&table::pack(world).join("state")),
+        world.before
+    );
+}
+
+#[when(expr = "a player sits")]
+fn a_player_sits(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::listen(&pack);
+    table::seat_actor(&pack, "pc_rowan");
+}
+
+#[when(expr = "the player leaves")]
+fn the_player_leaves(world: &mut World) {
+    table::close_actor("pc_rowan");
+    table::wait_humans(table::pack(world), 0);
+}
+
+#[when(expr = "the host restarts")]
+fn the_host_restarts(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::stop_server();
+    table::listen(&pack);
+}
+
+#[then(expr = "nobody is present")]
+fn nobody_is_present(_world: &mut World) {
+    let (humans, actors) = table::live_presence();
+    assert_eq!(humans, 0);
+    assert!(actors.is_empty(), "{actors:?}");
+}
+
+#[then(expr = "the session ids differ")]
+fn the_session_ids_differ(world: &mut World) {
+    let ids: Vec<&str> = world.scratch.lines().collect();
+    let [rowan, wren, again] = ids[..] else {
+        panic!("expected three session ids, got {:?}", world.scratch);
+    };
+    assert_ne!(rowan, wren);
+    assert_ne!(again, wren);
+    assert_ne!(again, rowan);
 }
 
 #[then(expr = "tick index is 0")]
@@ -73,8 +126,8 @@ fn world_time_is_1080(world: &mut World) {
 }
 
 #[then(expr = "humans is 0")]
-fn humans_is_0(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).presence.humans, 0);
+fn humans_is_0(_world: &mut World) {
+    assert_eq!(table::live_presence().0, 0);
 }
 
 #[then(expr = "the command exits 1")]
@@ -159,19 +212,19 @@ fn the_hello_is_refused_with(world: &mut World, code: String) {
 }
 
 #[then(expr = "humans is 3")]
-fn humans_is_3(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).presence.humans, 3);
+fn humans_is_3(_world: &mut World) {
+    assert_eq!(table::live_presence().0, 3);
 }
 
 #[then(expr = "humans is 2")]
-fn humans_is_2(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).presence.humans, 2);
+fn humans_is_2(_world: &mut World) {
+    assert_eq!(table::live_presence().0, 2);
 }
 
 #[then(expr = "the present actors are the three docks PCs")]
-fn the_present_actors_are_the_three_docks_pcs(world: &mut World) {
+fn the_present_actors_are_the_three_docks_pcs(_world: &mut World) {
     assert_eq!(
-        table::now_of(table::pack(world)).presence.actors_present,
+        table::live_presence().1,
         DOCKS_PCS.map(str::to_string).to_vec()
     );
 }
@@ -208,9 +261,9 @@ fn the_first_player_drops(world: &mut World) {
 }
 
 #[then(expr = "the present actors are pc_harbormouse and pc_wren")]
-fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
+fn the_present_actors_are_harbormouse_and_wren(_world: &mut World) {
     assert_eq!(
-        table::now_of(table::pack(world)).presence.actors_present,
+        table::live_presence().1,
         vec!["pc_harbormouse".to_string(), "pc_wren".to_string()]
     );
 }

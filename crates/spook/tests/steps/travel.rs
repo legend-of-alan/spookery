@@ -59,7 +59,11 @@ fn tick_file(pack: &Path, name: &str) -> Value {
 }
 
 fn tick_names(pack: &Path) -> Vec<String> {
-    let mut names: Vec<String> = fs::read_dir(pack.join("state/journal"))
+    let dir = pack.join("state/journal");
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+    let mut names: Vec<String> = fs::read_dir(dir)
         .unwrap()
         .filter_map(|entry| {
             let name = entry.ok()?.file_name().to_string_lossy().into_owned();
@@ -405,8 +409,14 @@ fn the_next_tick_accepts_a_move(world: &mut World) {
 )]
 fn ticks_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
-    edit_save(&seated, |now| now.presence.humans = 1);
-    spookery_round::play_pack_once(&seated).unwrap();
+    let mut seated_world = spookery_kernel::World::open(&seated).unwrap();
+    seated_world.set_presence(spookery_kernel::model::Presence {
+        humans: 1,
+        actors_present: Vec::new(),
+    });
+    let wall = seated_world.now().last_tick_at.clone();
+    spookery_round::play(&mut seated_world, spookery_round::RoundCause::Manual, &wall).unwrap();
+    drop(seated_world);
     let idle = temp_pack("idle-length");
     spookery_round::play_pack_once(&idle).unwrap();
     let seated_tick = tick_file(&seated, "tick-0001.jsonl");

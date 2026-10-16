@@ -7,9 +7,7 @@ use spookery_kernel::canon::{bind_inventory, bind_meters, pack_rev};
 use spookery_kernel::commit::replay_write_now;
 use spookery_kernel::diagnostic::reason_of;
 use spookery_kernel::effect::Effect;
-use spookery_kernel::journal::{
-    self, hash_now, JournalEntry, MigrateRecord, PresenceRecord, TickRecord,
-};
+use spookery_kernel::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
 use spookery_kernel::model::Now;
 use spookery_kernel::store::codec::{canonicalize, emit_effect, emit_save, load_save};
 use spookery_kernel::store::require_rules_rev;
@@ -142,15 +140,7 @@ fn replay_walking(
     if !pack.join("pack.yaml").is_file() || !pack.join("state/save.yaml").is_file() {
         return Err(ReplayError::Reason(Reason::NotInSpec));
     }
-    let records = journal::load_journal(pack).map_err(|fault| {
-        ReplayError::Diverged(diverge(
-            0,
-            "journal",
-            None,
-            format!("{}: {}", fault.file, fault.detail),
-            None,
-        ))
-    })?;
+    let records = load_entries(pack)?;
     let base_path = pack.join("state").join(journal::base_rel());
     let base_bytes = if let Some(from) = from {
         read_from_now(from)?
@@ -202,14 +192,22 @@ fn replay_walking(
     fs::write(temp.0.join("state/save.yaml"), &base_bytes)
         .map_err(|_| ReplayError::Reason(Reason::Schema))?;
     let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
-    for entry in &records {
-        let record_rev = entry.state_rev_after();
-        if record_rev > cap {
-            break;
-        }
-        if record_rev <= base_rev {
-            continue;
-        }
+    let mut entries = records
+        .iter()
+        .skip_while(|entry| entry.state_rev_after() <= base_rev)
+        .peekable();
+    for rev in (base_rev + 1)..=cap {
+        let entry = entries
+            .next_if(|entry| entry.state_rev_after() == rev)
+            .ok_or_else(|| {
+                ReplayError::Diverged(diverge(
+                    rev,
+                    "missing",
+                    None,
+                    "no journal record".to_string(),
+                    None,
+                ))
+            })?;
         apply(&mut world, entry)?;
         applied += 1;
         let now_yaml = fs::read(temp.0.join("state/save.yaml"))
@@ -234,23 +232,12 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Ver
         .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
     let until = state_rev_of(&live).map_err(VerifyError::Replay)?;
     if from.is_none() && !pack.join("state").join(journal::base_rel()).is_file() {
-        match journal::load_journal(pack) {
-            Ok(records) if records.is_empty() => {
-                return Ok(VerifyReport {
-                    state_rev: until,
-                    applied: 0,
-                });
-            }
-            Ok(_) => {}
-            Err(fault) => {
-                return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
-                    0,
-                    "journal",
-                    None,
-                    format!("{}: {}", fault.file, fault.detail),
-                    None,
-                ))));
-            }
+        let records = load_entries(pack).map_err(VerifyError::Replay)?;
+        if records.is_empty() {
+            return Ok(VerifyReport {
+                state_rev: until,
+                applied: 0,
+            });
         }
     }
     let report = match from_journal(pack, from, Some(until)) {
@@ -278,6 +265,20 @@ fn until_allows(rev: u64, until: Option<u64>) -> bool {
     until.is_none_or(|cap| rev <= cap)
 }
 
+fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
+    journal::load_journal(pack).map_err(journal_fault)
+}
+
+fn journal_fault(fault: spookery_kernel::journal::JournalFault) -> ReplayError {
+    ReplayError::Diverged(diverge(
+        0,
+        "journal",
+        None,
+        format!("{}: {}", fault.file, fault.detail),
+        None,
+    ))
+}
+
 fn check_sequence(
     records: &[JournalEntry],
     cap: u64,
@@ -285,12 +286,17 @@ fn check_sequence(
     engine_base: bool,
     base_bytes: &[u8],
 ) -> Result<(), ReplayError> {
-    let mut expected = 1u64;
-    for entry in records {
+    let mut marks: Vec<(u64, u64, usize)> = Vec::new();
+    for (index, entry) in records.iter().enumerate() {
         let rev = entry.state_rev_after();
         if rev > cap {
-            break;
+            continue;
         }
+        marks.push((rev, entry.state_rev_before(), index));
+    }
+    marks.sort_by_key(|mark| mark.0);
+    let mut expected = 1u64;
+    for (rev, before, index) in marks {
         if rev != expected {
             return Err(ReplayError::Diverged(diverge(
                 expected,
@@ -300,17 +306,17 @@ fn check_sequence(
                 Some(base_bytes.to_vec()),
             )));
         }
-        if entry.state_rev_before().saturating_add(1) != rev {
+        if before.saturating_add(1) != rev {
             return Err(ReplayError::Diverged(diverge(
                 rev,
-                entry.kind_name(),
-                entry.tick_index(),
+                records[index].kind_name(),
+                records[index].tick_index(),
                 "state_rev differed".to_string(),
                 Some(base_bytes.to_vec()),
             )));
         }
         if engine_base && rev == base_rev {
-            check_mark(entry, base_bytes)?;
+            check_mark(&records[index], base_bytes)?;
         }
         expected += 1;
     }
@@ -361,7 +367,6 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
 fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
     match entry {
         JournalEntry::Tick(record) => apply_recorded_round(world, record),
-        JournalEntry::Presence(record) => apply_presence(world, record),
         JournalEntry::Migrate(record) => apply_migrate(world, record),
     }
 }
@@ -394,6 +399,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         RecordedRound {
             intents: record.intents.clone(),
             presence_humans: record.presence_humans,
+            actors_present: record.actors_present.clone(),
         },
     )
     .map_err(|code| {
@@ -460,25 +466,6 @@ fn effect_text(effect: Option<&Effect>) -> String {
         Some(effect) => emit_effect(effect),
         None => "none".to_string(),
     }
-}
-
-fn apply_presence(world: &mut World, record: &PresenceRecord) -> Result<(), ReplayError> {
-    let mut next = world.now().clone();
-    next.presence.humans = record.humans;
-    next.presence.actors_present = record.actors_present.clone();
-    canonicalize(&mut next);
-    next.state_rev = record.state_rev_after;
-    let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
-    if hash_now(&bytes) != record.now_hash {
-        return Err(ReplayError::Diverged(diverge(
-            record.state_rev_after,
-            "presence",
-            None,
-            "now_hash differed".to_string(),
-            Some(bytes),
-        )));
-    }
-    replay_write_now(world, next).map_err(ReplayError::Reason)
 }
 
 fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {

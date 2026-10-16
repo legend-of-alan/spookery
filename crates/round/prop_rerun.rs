@@ -64,6 +64,7 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
             RecordedRound {
                 intents: record.intents.clone(),
                 presence_humans: record.presence_humans,
+                actors_present: record.actors_present.clone(),
             },
         )
         .map_err(|err| fail_msg(format!("tick {} did not re-run: {err}", record.tick_index)))?;

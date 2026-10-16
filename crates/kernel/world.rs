@@ -11,7 +11,7 @@ use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::{ChangeRecord, StateKey, StateValue};
-use crate::model::{MemoryLine, Now, PauseView};
+use crate::model::{sort_unique, MemoryLine, Now, PauseView, Presence};
 use crate::rules::RollReport;
 use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
@@ -27,6 +27,7 @@ pub struct World {
     summary: Vec<String>,
     lines: Vec<Told>,
     seen: Vec<Seen>,
+    next_session: u64,
 }
 
 /// What one round showed its viewers.
@@ -72,6 +73,27 @@ impl World {
 
     pub fn now(&self) -> &Now {
         &self.now
+    }
+
+    pub fn presence(&self) -> &Presence {
+        &self.now.presence
+    }
+
+    /// Remember who is seated. This does not write the save.
+    pub fn set_presence(&mut self, mut presence: Presence) -> bool {
+        sort_unique(&mut presence.actors_present);
+        if presence == self.now.presence {
+            return false;
+        }
+        self.now.presence = presence;
+        true
+    }
+
+    /// The next seat id. Ids start at 1 and are not reused in this process.
+    pub fn mint_session(&mut self) -> Result<String, Reason> {
+        let id = format!("s{}", self.next_session);
+        self.next_session = self.next_session.checked_add(1).ok_or(Reason::Schema)?;
+        Ok(id)
     }
 
     pub fn budget(&self) -> &Budget {
@@ -562,6 +584,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         summary: Vec::new(),
         lines: Vec::new(),
         seen: Vec::new(),
+        next_session: 1,
     })
 }
 

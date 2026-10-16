@@ -880,9 +880,11 @@ fn a_rule_sets_the_tide(world: &mut World) {
 
 #[then(expr = "every seated player's summary lists {string}")]
 fn every_seated_summary_lists(world: &mut World, key: String) {
-    let now = load(world.pack.as_ref().unwrap());
-    let seated: Vec<String> = now
-        .presence
+    let pack = world.pack.as_ref().unwrap();
+    let now = load(pack);
+    // Seats live in memory, not in the save, so read the ones `edit_save` remembered.
+    let presence = remembered_presence(pack).unwrap_or_default();
+    let seated: Vec<String> = presence
         .actors_present
         .iter()
         .filter(|id| now.actors.get(*id).is_some_and(|actor| actor.is_pc()))
@@ -963,14 +965,10 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     spookery_round::play(&mut kernel, RoundCause::Manual, &wall).unwrap_or_else(|err| {
         panic!("quiet: {err}");
     });
-    spookery_kernel::commit::commit_presence(
-        &mut kernel,
-        spookery_kernel::model::Presence {
-            humans: 1,
-            actors_present: vec!["pc_rowan".to_string()],
-        },
-    )
-    .unwrap_or_else(|err| panic!("seat: {err}"));
+    kernel.set_presence(spookery_kernel::model::Presence {
+        humans: 1,
+        actors_present: vec!["pc_rowan".to_string()],
+    });
     kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
     spookery_round::play(&mut kernel, RoundCause::Manual, &wall)
@@ -1217,8 +1215,31 @@ fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let path = pack.join("state/save.yaml");
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     edit(&mut now);
+    remember_presence(pack, now.presence.clone());
     now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
+}
+
+fn remember_presence(pack: &Path, presence: spookery_kernel::model::Presence) {
+    let mut seated = seated_packs().lock().expect("seated packs");
+    seated.retain(|(path, _)| path != pack);
+    seated.push((pack.to_path_buf(), presence));
+}
+
+fn remembered_presence(pack: &Path) -> Option<spookery_kernel::model::Presence> {
+    seated_packs()
+        .lock()
+        .expect("seated packs")
+        .iter()
+        .find(|(path, _)| path == pack)
+        .map(|(_, presence)| presence.clone())
+}
+
+fn seated_packs(
+) -> &'static std::sync::Mutex<Vec<(std::path::PathBuf, spookery_kernel::model::Presence)>> {
+    static SEATED: std::sync::Mutex<Vec<(std::path::PathBuf, spookery_kernel::model::Presence)>> =
+        std::sync::Mutex::new(Vec::new());
+    &SEATED
 }
 
 struct Played {
@@ -1247,6 +1268,9 @@ fn play_view(pack: &Path, intents: Vec<Intent>) -> Played {
             .join("\n");
         panic!("open: {err}\n{report}");
     });
+    if let Some(presence) = remembered_presence(pack) {
+        world.set_presence(presence);
+    }
     let wall = world.now().last_tick_at.clone();
     for intent in intents {
         world.queue(intent);

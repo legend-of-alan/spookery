@@ -2,6 +2,7 @@ use std::path::Path;
 
 use spookery_kernel::effect::Effect;
 use spookery_kernel::lock::lock_world;
+use spookery_kernel::model::Presence;
 use spookery_kernel::world::{Draft, World};
 use spookery_kernel::Reason;
 
@@ -28,6 +29,7 @@ pub enum RoundCause {
 pub struct RecordedRound {
     pub intents: Vec<spookery_kernel::intent::Intent>,
     pub presence_humans: u32,
+    pub actors_present: Vec<String>,
 }
 
 pub fn commit_moves(world: &mut World) -> Result<spookery_kernel::commit::CommitOutcome, Reason> {
@@ -138,6 +140,12 @@ fn play_with(
     } else {
         Some(lock_world(world)?)
     };
+    if let Some(recorded) = &recorded {
+        world.set_presence(Presence {
+            humans: recorded.presence_humans,
+            actors_present: recorded.actors_present.clone(),
+        });
+    }
     let mut draft_slot = Some(Draft::begin(world));
     let mut round = Round::prepare(
         world,

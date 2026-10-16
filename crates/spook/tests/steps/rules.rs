@@ -14,19 +14,63 @@ use spookery_round::{play, RoundCause};
 use super::table;
 use crate::support::{copy_dir, spook, temp_pack};
 use crate::World;
-#[given(expr = "a save with rules_rev 5 and an engine at 6")]
-fn a_save_with_rules_rev_5_and_an_engine_at_6(world: &mut World) {
+#[given(expr = "a save with rules_rev 6 and an engine at 7")]
+fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
     assert_eq!(
         spookery_kernel::store::RULES_REV,
-        6,
-        "the engine rules version is 6"
+        7,
+        "the engine rules version is 7"
     );
     let pack = crate::support::temp_pack("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let stamped = text.replacen("rules_rev: 6\n", "rules_rev: 5\n", 1);
-    assert_ne!(stamped, text, "save did not carry rules_rev 6\n{text}");
+    let stamped = text.replacen("rules_rev: 7\n", "rules_rev: 6\n", 1);
+    assert_ne!(stamped, text, "save did not carry rules_rev 7\n{text}");
     fs::write(&path, stamped).unwrap_or_else(|err| panic!("write save: {err}"));
+    world.pack = Some(pack);
+}
+
+/// The save shape rules_rev 6 wrote, with `presence` still in the save.
+#[given(expr = "an old save from rules_rev 6 with seat presence in it")]
+fn an_old_save_from_rules_rev_6(world: &mut World) {
+    let pack = crate::support::temp_pack("rules-rev-old-save");
+    let path = pack.join("state/save.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
+    let old = text
+        .replacen("rules_rev: 7\n", "rules_rev: 6\n", 1)
+        .replacen(
+            "pause:\n",
+            "presence:\n  humans: 1\n  actors_present:\n    - pc_rowan\npause:\n",
+            1,
+        );
+    assert!(
+        old.contains("rules_rev: 6\n") && old.contains("\npresence:\n"),
+        "{text}"
+    );
+    fs::write(&path, old).unwrap_or_else(|err| panic!("write save: {err}"));
+    world.pack = Some(pack);
+}
+
+/// A current save whose journal still holds a `presence-NNNN.json` from rules_rev 6.
+#[given(expr = "a current save with a stray presence-0001.json in its journal")]
+fn a_current_save_with_a_stray_presence_record(world: &mut World) {
+    let pack = crate::support::temp_pack("rules-rev-presence-record");
+    let path = pack.join("state/save.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
+    assert!(text.contains("rules_rev: 7\n"), "{text}");
+    let journal = pack.join("state/journal");
+    fs::create_dir_all(&journal).unwrap_or_else(|err| panic!("mkdir journal: {err}"));
+    fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
+    let live = text.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
+    fs::write(&path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
+    let hash = spookery_kernel::journal::hash_now(live.as_bytes());
+    fs::write(
+        journal.join("presence-0001.json"),
+        format!(
+            "{{\"kind\":\"presence\",\"state_rev_before\":0,\"state_rev_after\":1,\"humans\":1,\"actors_present\":[\"pc_rowan\"],\"now_hash\":\"{hash}\"}}\n"
+        ),
+    )
+    .unwrap_or_else(|err| panic!("write presence: {err}"));
     world.pack = Some(pack);
 }
 
@@ -256,7 +300,6 @@ The ferry waits at the dock.
             },
         );
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "ferry_dock".to_string();
-        now.presence.humans = 1;
     });
     world.pack = Some(pack);
 }
@@ -265,6 +308,10 @@ The ferry waits at the dock.
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
+    opened.set_presence(spookery_kernel::model::Presence {
+        humans: 1,
+        actors_present: Vec::new(),
+    });
     spookery::host::handle_player_move(&mut opened, "pc_rowan", "travel docks_street", false)
         .unwrap_or_else(|err| panic!("travel {}", err.token()));
 }

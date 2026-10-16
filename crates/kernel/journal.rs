@@ -1,11 +1,11 @@
 //! One record per `save.yaml` commit, plus the replay base.
 //!
-//! A tick record stays `journal/tick-NNNN.jsonl`. A presence commit writes
-//! `journal/presence-NNNN.json`. A migrate commit writes `journal/migrate-NNNN.json`.
-//! `NNNN` is `state_rev` after the commit for presence and migrate, and the
-//! tick index for a tick file, which is the name the rest of the tree already
-//! reads. Each record carries `now_hash`, the Blake2s of the `save.yaml` bytes
-//! that commit wrote. `journal/base.yaml` is replay input, not the live save.
+//! A tick record stays `journal/tick-NNNN.jsonl`. A migrate commit writes
+//! `journal/migrate-NNNN.json`. `NNNN` is `state_rev` after the commit for a
+//! migrate, and the tick index for a tick file, which is the name the rest of
+//! the tree already reads. Each record carries `now_hash`, the Blake2s of the
+//! `save.yaml` bytes that commit wrote. `journal/base.yaml` is replay input,
+//! not the live save.
 
 use std::fs;
 use std::path::Path;
@@ -20,10 +20,6 @@ use crate::intent::Intent;
 
 pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
-}
-
-pub fn presence_file(state_rev: u64) -> String {
-    format!("presence-{state_rev:04}.json")
 }
 
 pub fn migrate_file(state_rev: u64) -> String {
@@ -45,23 +41,6 @@ pub fn stamp_now_hash(jsonl: &str, now_bytes: &[u8]) -> Result<String, Reason> {
     Ok(format!("{body},\"now_hash\":\"{hash}\"}}\n"))
 }
 
-pub fn emit_presence(
-    state_rev_before: u64,
-    state_rev_after: u64,
-    humans: u32,
-    actors_present: &[String],
-    now_hash: &str,
-) -> String {
-    emit_entry(&JournalEntry::Presence(PresenceRecord {
-        kind: PresenceKind::Presence,
-        state_rev_before,
-        state_rev_after,
-        humans,
-        actors_present: actors_present.to_vec(),
-        now_hash: now_hash.to_string(),
-    }))
-}
-
 pub fn emit_migrate(
     pack_rev_before: &str,
     pack_rev_after: &str,
@@ -81,25 +60,8 @@ pub fn emit_migrate(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum PresenceKind {
-    Presence,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
 enum MigrateKind {
     Migrate,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PresenceRecord {
-    kind: PresenceKind,
-    pub state_rev_before: u64,
-    pub state_rev_after: u64,
-    pub humans: u32,
-    pub actors_present: Vec<String>,
-    pub now_hash: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +106,8 @@ pub struct TickRecord {
     pub world_time_before: u64,
     pub world_time_after: u64,
     pub presence_humans: u32,
+    /// Seated actor ids when the round ran.
+    pub actors_present: Vec<String>,
     pub seed: String,
     pub last_tick_at: String,
     pub intents: Vec<Intent>,
@@ -159,7 +123,6 @@ pub struct TickRecord {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum JournalEntry {
     Tick(TickRecord),
-    Presence(PresenceRecord),
     Migrate(MigrateRecord),
 }
 
@@ -167,7 +130,6 @@ impl JournalEntry {
     pub fn state_rev_after(&self) -> u64 {
         match self {
             Self::Tick(record) => record.state_rev_after,
-            Self::Presence(record) => record.state_rev_after,
             Self::Migrate(record) => record.state_rev_after,
         }
     }
@@ -175,7 +137,6 @@ impl JournalEntry {
     pub fn state_rev_before(&self) -> u64 {
         match self {
             Self::Tick(record) => record.state_rev_before,
-            Self::Presence(record) => record.state_rev_before,
             Self::Migrate(record) => record.state_rev_before,
         }
     }
@@ -183,7 +144,6 @@ impl JournalEntry {
     pub fn now_hash(&self) -> &str {
         match self {
             Self::Tick(record) => &record.now_hash,
-            Self::Presence(record) => &record.now_hash,
             Self::Migrate(record) => &record.now_hash,
         }
     }
@@ -191,7 +151,6 @@ impl JournalEntry {
     pub fn kind_name(&self) -> &'static str {
         match self {
             Self::Tick(_) => "tick",
-            Self::Presence(_) => "presence",
             Self::Migrate(_) => "migrate",
         }
     }
@@ -233,10 +192,13 @@ pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
         };
         if name.starts_with("tick-") && name.ends_with(".jsonl") {
             entries.push(JournalEntry::Tick(parse_tick(&name, &text)?));
-        } else if name.starts_with("presence-") && name.ends_with(".json") {
-            entries.push(JournalEntry::Presence(parse_presence(&name, &text)?));
         } else if name.starts_with("migrate-") && name.ends_with(".json") {
             entries.push(JournalEntry::Migrate(parse_migrate(&name, &text)?));
+        } else if name.starts_with("presence-") && name.ends_with(".json") {
+            return Err(fault(
+                &path,
+                "RULES_REV: presence records were written by older rules; start a fresh save",
+            ));
         }
     }
     entries.sort_by(|left, right| {
@@ -250,17 +212,12 @@ pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
 pub fn emit_entry(entry: &JournalEntry) -> String {
     let json = match entry {
         JournalEntry::Tick(record) => serde_json::to_string(record).expect("tick"),
-        JournalEntry::Presence(record) => serde_json::to_string(record).expect("presence"),
         JournalEntry::Migrate(record) => serde_json::to_string(record).expect("migrate"),
     };
     format!("{json}\n")
 }
 
 pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {
-    read_json(name, text)
-}
-
-pub fn parse_presence(name: &str, text: &str) -> Result<PresenceRecord, JournalFault> {
     read_json(name, text)
 }
 
@@ -295,25 +252,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn presence_and_migrate_records_round_trip() {
-        let presence = emit_presence(0, 1, 1, &["pc_rowan".to_string()], "blake2s:aa");
-        let parsed = parse_presence("presence-0001.json", &presence).unwrap();
-        assert_eq!(parsed.state_rev_before, 0);
-        assert_eq!(parsed.state_rev_after, 1);
-        assert_eq!(parsed.humans, 1);
-        assert_eq!(parsed.actors_present, vec!["pc_rowan".to_string()]);
-        assert_eq!(parsed.now_hash, "blake2s:aa");
-        assert_eq!(
-            emit_presence(
-                parsed.state_rev_before,
-                parsed.state_rev_after,
-                parsed.humans,
-                &parsed.actors_present,
-                &parsed.now_hash
-            ),
-            presence
-        );
-
+    fn migrate_records_round_trip() {
         let migrate = emit_migrate("blake2s:aa", "blake2s:bb", 1, 2, "blake2s:cc");
         let parsed = parse_migrate("migrate-0002.json", &migrate).unwrap();
         assert_eq!(parsed.pack_rev_before, "blake2s:aa");
@@ -344,7 +283,7 @@ mod tests {
     }
 
     #[test]
-    fn golden_tick_presence_and_migrate_round_trip() {
+    fn golden_tick_and_migrate_round_trip() {
         let tick = include_str!("fixtures/tick.jsonl");
         let parsed = parse_tick("tick.jsonl", tick).unwrap();
         assert_eq!(emit_entry(&JournalEntry::Tick(parsed.clone())), tick);
@@ -359,10 +298,6 @@ mod tests {
                 }
             )
         }));
-
-        let presence = include_str!("fixtures/presence.json");
-        let parsed = parse_presence("presence.json", presence).unwrap();
-        assert_eq!(emit_entry(&JournalEntry::Presence(parsed)), presence);
 
         let migrate = include_str!("fixtures/migrate.json");
         let parsed = parse_migrate("migrate.json", migrate).unwrap();

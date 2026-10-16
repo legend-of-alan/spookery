@@ -43,15 +43,13 @@ fn refused_and_disconnected(world: &mut World, code: String) {
         "{}",
         world.player_added
     );
-    assert_eq!(
-        table::now_of(table::pack(world)).presence.humans,
-        0,
-        "the seat was not released"
-    );
+    assert_eq!(table::live_presence().0, 0, "the seat was not released");
+    table::release_status_gm();
 }
 
 #[then(expr = "a second player can sit and wait")]
 fn a_second_player_can_sit_and_wait(world: &mut World) {
+    table::release_status_gm();
     let pack = table::pack(world).to_path_buf();
     table::seat_actor(&pack, "pc_harbormouse");
     let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
@@ -293,7 +291,7 @@ fn one_player_stops_reading(world: &mut World) {
     let mut sent = 0usize;
     let args = format!(r#"{{"address":"table","text":"{say}"}}"#);
     loop {
-        let present = table::now_of(&pack).presence.actors_present.clone();
+        let (_, present) = table::live_presence();
         if !present.iter().any(|actor| actor == "pc_rowan") {
             break;
         }
@@ -329,11 +327,8 @@ fn one_player_stops_reading(world: &mut World) {
 }
 
 #[then(expr = "that player is disconnected")]
-fn that_player_is_disconnected(world: &mut World) {
-    let present = table::now_of(table::pack(world))
-        .presence
-        .actors_present
-        .clone();
+fn that_player_is_disconnected(_world: &mut World) {
+    let (_, present) = table::live_presence();
     assert!(
         !present.iter().any(|actor| actor == "pc_rowan"),
         "{present:?}"
@@ -342,6 +337,7 @@ fn that_player_is_disconnected(world: &mut World) {
         present.iter().any(|actor| actor == "pc_harbormouse"),
         "{present:?}"
     );
+    table::release_status_gm();
 }
 
 #[then(expr = "the other player keeps receiving frames")]

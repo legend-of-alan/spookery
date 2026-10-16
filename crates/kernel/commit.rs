@@ -6,8 +6,8 @@ use std::path::{Path, PathBuf};
 use crate::canon::pack_rev;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
-use crate::lock::{lock_pack, lock_world};
-use crate::model::{MemoryLine, Now, Presence};
+use crate::lock::lock_pack;
+use crate::model::{MemoryLine, Now};
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
 use crate::store::durable::{fsync_dir, fsync_dirs, fsync_file, rename, tmp_path};
 use crate::world::{Draft, World};
@@ -40,49 +40,6 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
     write_commit(&state, &planned)?;
     world.now = draft.state;
     Ok(())
-}
-
-/// `include_tick: false` for a presence change. No tick file and no clock advance.
-/// Identical presence writes nothing and does not bump `state_rev`.
-pub fn commit_presence(world: &mut World, presence: Presence) -> Result<bool, Reason> {
-    let mut next = world.now.clone();
-    next.presence = presence;
-    canonicalize(&mut next);
-    if next.presence == world.now.presence {
-        return Ok(false);
-    }
-    let _lock = lock_world(world)?;
-    let state_rev_before = next.state_rev;
-    next.state_rev = next
-        .state_rev
-        .checked_add(1)
-        .ok_or(Reason::CommitConflict)?;
-    let now_bytes = emit_save(&next)?.into_bytes();
-    let state = world.root.join("state");
-    let pre = read_pre_now(&state)?;
-    let record = journal::emit_presence(
-        state_rev_before,
-        next.state_rev,
-        next.presence.humans,
-        &next.presence.actors_present,
-        &hash_now(&now_bytes),
-    );
-    let mut planned = vec![Planned {
-        target: state.join("save.yaml"),
-        bytes: now_bytes.clone(),
-        is_now: true,
-    }];
-    push_base(&mut planned, &state, &pre, &now_bytes, false);
-    planned.push(Planned {
-        target: state
-            .join("journal")
-            .join(journal::presence_file(next.state_rev)),
-        bytes: record.into_bytes(),
-        is_now: false,
-    });
-    write_commit(&state, &planned)?;
-    world.now = next;
-    Ok(true)
 }
 
 pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
@@ -351,82 +308,11 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::model::{MemoryLine, Presence};
+    use crate::model::MemoryLine;
     use crate::store::durable::{self, Mark};
     use crate::world::{Draft, World};
 
-    use super::{commit_presence, commit_round};
-
-    #[test]
-    fn a_commit_flushes_each_parent_after_the_rename() {
-        let root = temp_docks("flush-parents");
-        let mut world = World::open(&root).unwrap();
-
-        // Seven flushes besides the temp bodies. Creating state/journal adds the early parent flush.
-        durable::start_trace();
-        let changed = commit_presence(
-            &mut world,
-            Presence {
-                humans: 1,
-                actors_present: vec!["pc_rowan".to_string()],
-            },
-        )
-        .unwrap();
-        assert!(changed);
-        let first = durable::take_trace();
-        assert_eq!(
-            labels(&first),
-            [
-                "file save",
-                "file complete",
-                "dir prev",
-                "dir txn",
-                "file save.tmp",
-                "file base.tmp",
-                "file presence.tmp",
-                "dir state",
-                "rename base",
-                "rename presence",
-                "dir journal",
-                "rename save",
-                "dir state",
-            ],
-            "{}",
-            show(&first)
-        );
-        assert!(!root.join("state/.txn").exists());
-
-        // Six flushes besides the temp bodies. The new presence file is not backed up.
-        durable::start_trace();
-        let changed = commit_presence(
-            &mut world,
-            Presence {
-                humans: 0,
-                actors_present: vec![],
-            },
-        )
-        .unwrap();
-        assert!(changed);
-        let second = durable::take_trace();
-        assert_eq!(
-            labels(&second),
-            [
-                "file save",
-                "file complete",
-                "dir prev",
-                "dir txn",
-                "file save.tmp",
-                "file presence.tmp",
-                "rename presence",
-                "dir journal",
-                "rename save",
-                "dir state",
-            ],
-            "{}",
-            show(&second)
-        );
-        let _ = fs::remove_dir_all(&root);
-    }
+    use super::commit_round;
 
     #[test]
     fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
@@ -446,7 +332,7 @@ mod tests {
         commit_round(
             &mut world,
             draft,
-            r#"{"tick_index":0,"state_rev_after":1,"rules_rev":6}"#,
+            r#"{"tick_index":0,"state_rev_after":1,"rules_rev":7}"#,
         )
         .unwrap();
         let marks = durable::take_trace();
@@ -531,7 +417,6 @@ mod tests {
             Mark::Rename(_) if name == "base.yaml" && parent_name(path, "journal") => {
                 "rename base".to_string()
             }
-            Mark::Rename(_) if name.starts_with("presence-") => "rename presence".to_string(),
             Mark::Rename(_) if name.starts_with("tick-") => "rename tick".to_string(),
             Mark::Rename(_) if parent_name(path, "memories") => "rename memory".to_string(),
             Mark::Rename(_) if name == "save.yaml" && parent_name(path, "state") => {
@@ -546,8 +431,6 @@ mod tests {
             "file save.tmp".to_string()
         } else if name.starts_with("base.yaml") {
             "file base.tmp".to_string()
-        } else if name.starts_with("presence-") {
-            "file presence.tmp".to_string()
         } else if name.starts_with("tick-") {
             "file tick.tmp".to_string()
         } else if parent_name(path, "memories") {

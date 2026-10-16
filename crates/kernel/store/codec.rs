@@ -27,10 +27,19 @@ pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
     if let Some(diag) = tag_diagnostic(text, crate::format::NOW, FILE, 0) {
         return Err(vec![diag]);
     }
-    let now: Now = parse_file(FILE, text, 0)?;
-    if super::require_rules_rev(now.rules_rev).is_err() {
-        return Err(vec![rules_rev_diagnostic(text)]);
+    // Check the rules version before the full shape, so a save from older rules
+    // (for example one that still carries `presence`) is refused as RULES_REV.
+    #[derive(Deserialize)]
+    struct RulesProbe {
+        #[serde(default)]
+        rules_rev: u64,
     }
+    if let Ok(probe) = serde_saphyr::from_str::<RulesProbe>(text) {
+        if super::require_rules_rev(probe.rules_rev).is_err() {
+            return Err(vec![rules_rev_diagnostic(text)]);
+        }
+    }
+    let now: Now = parse_file(FILE, text, 0)?;
     let mut diags = Vec::new();
     if now.schema != crate::format::NOW {
         diags.push(
@@ -251,6 +260,7 @@ mod tests {
         let now = load_save(&original).unwrap();
         let emitted = emit_save(&now).unwrap();
         assert_eq!(emitted, original);
+        assert_eq!(load_save(&emitted).unwrap(), now);
     }
 
     fn now_text(tag: &str) -> String {
@@ -264,9 +274,6 @@ state_rev: 0
 tick_index: 0
 world_time: 0
 last_tick_at: \"2026-01-01T00:00:00Z\"
-presence:
-  humans: 0
-  actors_present: []
 pause:
   named_plot_clocks: paused
 places:
