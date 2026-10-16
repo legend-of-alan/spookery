@@ -9,8 +9,8 @@ use spookery_kernel::rules::RollReport;
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::resolve::{roll_subject, SubjectRoll};
-use crate::round::Round;
+use super::resolve::{roll_subject, SubjectRoll};
+use crate::state::Round;
 
 /// The stage mark. Arrivals land in [`finish`], after this tick's intents,
 /// so a traveller acts again on the next tick.

@@ -21,10 +21,8 @@ use spookery_kernel::journal::{self, JournalEntry};
 use spookery_kernel::store::codec::emit_effect;
 use spookery_kernel::world::World;
 
+use super::play::{configure_runner, copy_docks, copy_pack, pick_rounds, play_rounds, TempPack};
 use crate::play::{play_recorded, RecordedRound};
-use crate::prop_play::{
-    configure_runner, copy_docks, copy_pack, pick_rounds, play_rounds, TempPack,
-};
 
 #[test]
 fn running_a_round_again_matches_the_logged_effects() {

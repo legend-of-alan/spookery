@@ -6,8 +6,8 @@ use spookery_kernel::rules::habits::{habit_intents, stamp_for_priority};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::round::Round;
-use crate::round_seed::shuffle_key;
+use crate::seed::shuffle_key;
+use crate::state::Round;
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("gather".to_string());

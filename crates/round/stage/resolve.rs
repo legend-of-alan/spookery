@@ -11,7 +11,7 @@ use spookery_kernel::rules::{roll, RollInput, RollKey, RollReport, RollResult};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::round::{Resolution, Round};
+use crate::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("resolve".to_string());

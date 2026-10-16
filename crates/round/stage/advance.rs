@@ -3,7 +3,7 @@ use spookery_kernel::pause::apply_pause_policy;
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::round::Round;
+use crate::state::Round;
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.trace.push("advance".to_string());

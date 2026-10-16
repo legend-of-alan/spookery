@@ -15,7 +15,7 @@ use spookery_kernel::world::World;
 use spookery_kernel::Reason;
 
 use crate::play::{play_recorded, RecordedRound};
-use crate::round_seed::round_seed;
+use crate::seed::round_seed;
 
 #[derive(Debug)]
 pub struct ReplayReport {

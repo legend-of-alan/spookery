@@ -5,7 +5,7 @@ use spookery_kernel::visibility::{self, Seat, Seen, Told};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
 
-use crate::round::Round;
+use crate::state::Round;
 
 /// Deliver narrate lines and build each viewer's change summary.
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {

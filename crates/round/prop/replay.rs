@@ -19,8 +19,8 @@ use std::fs;
 
 use proptest::test_runner::{TestCaseError, TestRunner};
 
+use super::play::{configure_runner, copy_docks, pick_rounds, play_rounds, TempPack};
 use crate::from_journal;
-use crate::prop_play::{configure_runner, copy_docks, pick_rounds, play_rounds, TempPack};
 
 #[test]
 fn random_play_replays_to_the_same_save() {
