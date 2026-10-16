@@ -13,7 +13,7 @@ use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
 use crate::visibility::{Seen, Told};
 
-pub use crate::draft::{Draft, DraftPoint};
+use crate::draft::Draft;
 
 pub struct World {
     pub(crate) root: PathBuf,

@@ -5,13 +5,11 @@ use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::meter::{self, MeterWrite};
 use crate::model::Now;
+use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who};
 use crate::rules::cond;
 use crate::rules::expr::{self, Ctx};
 use crate::rules::gate;
 use crate::rules::habits;
-use crate::rules::rule::{
-    EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who,
-};
 
 pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
     expand_outcome(canon, now, intent, None, ignore_resist)

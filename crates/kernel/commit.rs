@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
+use crate::draft::Draft;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
@@ -11,7 +12,7 @@ use crate::model::{MemoryLine, Now};
 use crate::rules::RollReport;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
 use crate::store::durable::{fsync_dir, fsync_dirs, fsync_file, rename, tmp_path};
-use crate::world::{Delivered, Draft, World};
+use crate::world::{Delivered, World};
 
 pub struct CommitOutcome {
     pub state_rev: u64,
@@ -333,9 +334,10 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use crate::draft::Draft;
     use crate::model::MemoryLine;
     use crate::store::durable::{self, Mark};
-    use crate::world::{Draft, World};
+    use crate::world::World;
 
     use super::commit_round;
 

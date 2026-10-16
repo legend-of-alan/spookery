@@ -5,10 +5,10 @@ use spookery_kernel::api::meter::MeterDef;
 use spookery_kernel::api::rules::expr::{self, Ctx};
 use spookery_kernel::api::rules::gate::gate;
 
+use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::intent::{ActorKind, Intent, Source, Target, ViewerId};
 use spookery_kernel::api::perceive::perceive_at;
 use spookery_kernel::api::rules::{roll, RollInput, RollKey, RollReport, RollResult};
-use spookery_kernel::api::world::Draft;
 use spookery_kernel::api::Reason;
 
 use crate::state::{Resolution, Round};
@@ -48,7 +48,7 @@ fn roll_check(
     round: &mut Round,
     draft: &Draft,
     intent: &Intent,
-    roll: &spookery_kernel::api::rules::rule::RollSpec,
+    roll: &spookery_kernel::api::rule::RollSpec,
 ) -> Result<Resolution, Reason> {
     if let Err(code) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
         return Ok(refused_check(intent, code));

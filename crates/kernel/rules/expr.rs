@@ -3,7 +3,7 @@ use crate::error::Reason;
 use crate::intent::{Intent, Target};
 use crate::meter;
 use crate::model::Now;
-use crate::rules::rule::{NumberExpr, Who};
+use crate::rule::{NumberExpr, Who};
 
 pub struct Ctx<'a> {
     pub intent: &'a Intent,

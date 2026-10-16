@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use spookery_kernel::api::canon::{Canon, CastKind};
-use spookery_kernel::api::rules::rule::{TargetKind, When};
+use spookery_kernel::api::rule::{TargetKind, When};
 
 use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
 use crate::protocol::PlayerMessage;

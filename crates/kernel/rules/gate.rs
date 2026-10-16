@@ -2,11 +2,11 @@ use crate::canon::Canon;
 use crate::error::Reason;
 use crate::intent::{ActorKind, Intent, Source, Target};
 use crate::model::Now;
+use crate::rule::{Owner, Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
-use crate::rules::rule::{Owner, Rule, TargetKind, When};
 
 /// A gate refusal. `Reason` stays fieldless. A cost gap keeps the missing name.
 #[derive(Clone, Debug, PartialEq, Eq)]

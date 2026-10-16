@@ -1,8 +1,8 @@
 use crate::canon::world_settings::PausePolicy;
+use crate::draft::Draft;
 use crate::error::Reason;
 use crate::key::StateKey;
 use crate::model::RunState;
-use crate::world::Draft;
 
 pub fn apply_pause_policy(draft: &mut Draft) -> Result<(), Reason> {
     let humans = draft.now().presence.humans;

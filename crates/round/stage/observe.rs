@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
+use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::EffectKind;
 use spookery_kernel::api::visibility::{self, Seat, Seen, Told};
-use spookery_kernel::api::world::Draft;
 use spookery_kernel::api::Reason;
 
 use crate::state::Round;

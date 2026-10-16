@@ -10,12 +10,12 @@ use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::key::StateKey;
 use crate::model::{Now, Pending};
+use crate::rule::{Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::exit;
 use crate::rules::expr::Ctx;
 use crate::rules::gate;
-use crate::rules::rule::{Rule, TargetKind, When};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExitView {

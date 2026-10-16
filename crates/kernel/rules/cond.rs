@@ -1,8 +1,8 @@
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::model::Now;
+use crate::rule::{Cond, Who};
 use crate::rules::expr::{self, Ctx};
-use crate::rules::rule::{Cond, Who};
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
 pub fn holds(canon: &Canon, now: &Now, ctx: &Ctx<'_>, conds: &[Cond]) -> Result<(), Reason> {
