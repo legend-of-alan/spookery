@@ -145,13 +145,13 @@ fn replay_walking(
         return Err(ReplayError::Reason(Reason::NotInSpec));
     }
     let records = load_entries(pack)?;
-    let gaps = load_gaps(pack)?;
+    let old_presence = load_old_presence(pack)?;
     let base_path = pack.join("state").join(journal::base_rel());
     let base_bytes = if let Some(from) = from {
         read_from_now(from)?
     } else if base_path.is_file() {
         fs::read(&base_path).map_err(|_| ReplayError::Reason(Reason::Schema))?
-    } else if records.is_empty() && gaps.is_empty() {
+    } else if records.is_empty() && old_presence.is_empty() {
         let now_yaml = fs::read(pack.join("state/save.yaml"))
             .map_err(|_| ReplayError::Reason(Reason::NotInSpec))?;
         return Ok(ReplayReport {
@@ -173,20 +173,27 @@ fn replay_walking(
         records
             .iter()
             .map(JournalEntry::state_rev_after)
-            .chain(gaps.iter().map(|gap| gap.state_rev_after))
+            .chain(old_presence.iter().map(|presence| presence.state_rev_after))
             .filter(|rev| until_allows(*rev, until))
             .max()
             .unwrap_or(base_rev)
     });
-    check_sequence(&records, &gaps, cap, base_rev, from.is_none(), &base_bytes)?;
+    check_sequence(
+        &records,
+        &old_presence,
+        cap,
+        base_rev,
+        from.is_none(),
+        &base_bytes,
+    )?;
     let mut applied = 0u64;
     let mut saved = Vec::new();
     let needs_apply = records.iter().any(|entry| {
         let rev = entry.state_rev_after();
         rev > base_rev && rev <= cap
-    }) || gaps
+    }) || old_presence
         .iter()
-        .any(|gap| gap.state_rev_after > base_rev && gap.state_rev_after <= cap);
+        .any(|presence| presence.state_rev_after > base_rev && presence.state_rev_after <= cap);
     if !needs_apply {
         return Ok(ReplayReport {
             state_rev: base_rev,
@@ -200,16 +207,24 @@ fn replay_walking(
     fs::write(temp.0.join("state/save.yaml"), &base_bytes)
         .map_err(|_| ReplayError::Reason(Reason::Schema))?;
     let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
+    // Both lists are sorted by `state_rev_after`, so walk them together.
+    let mut entries = records
+        .iter()
+        .skip_while(|entry| entry.state_rev_after() <= base_rev)
+        .peekable();
+    let mut old = old_presence
+        .iter()
+        .skip_while(|presence| presence.state_rev_after <= base_rev)
+        .peekable();
     for rev in (base_rev + 1)..=cap {
-        if let Some(gap) = gaps.iter().find(|gap| gap.state_rev_after == rev) {
-            apply_gap(&mut world, gap)?;
+        if let Some(presence) = old.next_if(|presence| presence.state_rev_after == rev) {
+            apply_old_presence(&mut world, presence)?;
             saved = fs::read(temp.0.join("state/save.yaml"))
                 .map_err(|_| ReplayError::Reason(Reason::Schema))?;
             continue;
         }
-        let entry = records
-            .iter()
-            .find(|entry| entry.state_rev_after() == rev)
+        let entry = entries
+            .next_if(|entry| entry.state_rev_after() == rev)
             .ok_or_else(|| {
                 ReplayError::Diverged(diverge(
                     rev,
@@ -244,8 +259,8 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Ver
     let until = state_rev_of(&live).map_err(VerifyError::Replay)?;
     if from.is_none() && !pack.join("state").join(journal::base_rel()).is_file() {
         let records = load_entries(pack).map_err(VerifyError::Replay)?;
-        let gaps = load_gaps(pack).map_err(VerifyError::Replay)?;
-        if records.is_empty() && gaps.is_empty() {
+        let old_presence = load_old_presence(pack).map_err(VerifyError::Replay)?;
+        if records.is_empty() && old_presence.is_empty() {
             return Ok(VerifyReport {
                 state_rev: until,
                 applied: 0,
@@ -281,7 +296,7 @@ fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
     journal::load_journal(pack).map_err(journal_fault)
 }
 
-fn load_gaps(pack: &Path) -> Result<Vec<OldPresence>, ReplayError> {
+fn load_old_presence(pack: &Path) -> Result<Vec<OldPresence>, ReplayError> {
     journal::load_old_presence(pack).map_err(journal_fault)
 }
 
@@ -295,8 +310,8 @@ fn journal_fault(fault: spookery_kernel::journal::JournalFault) -> ReplayError {
     ))
 }
 
-/// New saves hash without presence. Old saves hashed the same bytes with the
-/// presence block still in the file.
+/// `bytes` come from `emit_save`, which no longer writes presence. New records
+/// hash those bytes. Old records hashed them with the presence block put back.
 fn save_hash_matches(bytes: &[u8], expected: &str, presence: &Presence) -> bool {
     if hash_now(bytes) == expected {
         return true;
@@ -304,11 +319,7 @@ fn save_hash_matches(bytes: &[u8], expected: &str, presence: &Presence) -> bool 
     let Ok(text) = std::str::from_utf8(bytes) else {
         return false;
     };
-    let stripped = without_presence(text);
-    if hash_now(stripped.as_bytes()) == expected {
-        return true;
-    }
-    let legacy = with_presence(&stripped, presence.humans, &presence.actors_present);
+    let legacy = with_presence(text, presence.humans, &presence.actors_present);
     hash_now(legacy.as_bytes()) == expected
 }
 
@@ -321,18 +332,18 @@ fn saves_match(replayed: &[u8], live: &[u8]) -> bool {
 
 fn check_sequence(
     records: &[JournalEntry],
-    gaps: &[OldPresence],
+    old_presence: &[OldPresence],
     cap: u64,
     base_rev: u64,
     engine_base: bool,
     base_bytes: &[u8],
 ) -> Result<(), ReplayError> {
     let mut marks: Vec<(u64, u64, Option<usize>)> = Vec::new();
-    for gap in gaps {
-        if gap.state_rev_after > cap {
+    for presence in old_presence {
+        if presence.state_rev_after > cap {
             continue;
         }
-        marks.push((gap.state_rev_after, gap.state_rev_before, None));
+        marks.push((presence.state_rev_after, presence.state_rev_before, None));
     }
     for (index, entry) in records.iter().enumerate() {
         let rev = entry.state_rev_after();
@@ -521,18 +532,19 @@ fn effect_text(effect: Option<&Effect>) -> String {
     }
 }
 
-fn apply_gap(world: &mut World, gap: &OldPresence) -> Result<(), ReplayError> {
+/// Restore who was seated from an old presence record and check its `now_hash`.
+fn apply_old_presence(world: &mut World, old: &OldPresence) -> Result<(), ReplayError> {
     world.set_presence(Presence {
-        humans: gap.humans,
-        actors_present: gap.actors_present.clone(),
+        humans: old.humans,
+        actors_present: old.actors_present.clone(),
     });
     let mut next = world.now().clone();
-    next.state_rev = gap.state_rev_after;
+    next.state_rev = old.state_rev_after;
     canonicalize(&mut next);
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
-    if !save_hash_matches(&bytes, &gap.now_hash, world.presence()) {
+    if !save_hash_matches(&bytes, &old.now_hash, world.presence()) {
         return Err(ReplayError::Diverged(diverge(
-            gap.state_rev_after,
+            old.state_rev_after,
             "presence",
             None,
             "now_hash differed".to_string(),

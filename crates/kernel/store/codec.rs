@@ -320,6 +320,18 @@ mod tests {
         assert_eq!(load_save(&emitted).unwrap(), now);
     }
 
+    /// Written by the emitter from before presence left the save, with two PCs seated.
+    /// Old journal hashes cover these exact bytes, so `with_presence` must rebuild them.
+    #[test]
+    fn with_presence_rebuilds_an_old_seated_save() {
+        let original = include_str!("../fixtures/old-save-seated.yaml");
+        let now = load_save(original).unwrap();
+        let emitted = emit_save(&now).unwrap();
+        assert!(!emitted.contains("\npresence:"), "{emitted}");
+        let actors = ["pc_wren".to_string(), "pc_rowan".to_string()];
+        assert_eq!(with_presence(&emitted, 2, &actors), original);
+    }
+
     fn now_text(tag: &str) -> String {
         format!(
             "\

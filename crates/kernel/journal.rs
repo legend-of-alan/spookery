@@ -5,8 +5,9 @@
 //! migrate, and the tick index for a tick file, which is the name the rest of
 //! the tree already reads. Each record carries `now_hash`, the Blake2s of the
 //! `save.yaml` bytes that commit wrote. `journal/base.yaml` is replay input,
-//! not the live save. Old `journal/presence-NNNN.json` files are not records;
-//! replay skips them.
+//! not the live save. Old `journal/presence-NNNN.json` files are not journal
+//! records, but replay still applies them to restore who was seated and checks
+//! their `now_hash`.
 
 use std::fs;
 use std::path::Path;
@@ -206,7 +207,8 @@ pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
     Ok(entries)
 }
 
-/// One old `presence-NNNN.json`. Replay skips these and still checks `now_hash`.
+/// One old `presence-NNNN.json`. Replay applies it to restore who was seated and
+/// checks its `now_hash`. Nothing writes these anymore.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OldPresence {
     pub state_rev_before: u64,
@@ -235,7 +237,7 @@ pub fn load_old_presence(pack: &Path) -> Result<Vec<OldPresence>, JournalFault> 
         .collect::<Result<Vec<_>, _>>()
         .map_err(|_| fault(&dir, "the log directory could not be read"))?;
     names.sort_by_key(|entry| entry.file_name());
-    let mut gaps = Vec::new();
+    let mut old = Vec::new();
     for entry in names {
         let file_name = entry.file_name();
         let name = file_name.to_string_lossy();
@@ -246,7 +248,7 @@ pub fn load_old_presence(pack: &Path) -> Result<Vec<OldPresence>, JournalFault> 
         let text = fs::read_to_string(&path)
             .map_err(|_| fault(&path, "the journal record could not be read"))?;
         let parsed: OldPresenceFile = read_json(&name, &text)?;
-        gaps.push(OldPresence {
+        old.push(OldPresence {
             state_rev_before: parsed.state_rev_before,
             state_rev_after: parsed.state_rev_after,
             humans: parsed.humans,
@@ -254,8 +256,8 @@ pub fn load_old_presence(pack: &Path) -> Result<Vec<OldPresence>, JournalFault> 
             now_hash: parsed.now_hash,
         });
     }
-    gaps.sort_by_key(|gap| gap.state_rev_after);
-    Ok(gaps)
+    old.sort_by_key(|presence| presence.state_rev_after);
+    Ok(old)
 }
 
 pub fn emit_entry(entry: &JournalEntry) -> String {
