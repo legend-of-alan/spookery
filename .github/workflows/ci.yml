@@ -37,7 +37,7 @@ jobs:
       matrix:
         # macOS and Windows minutes cost more than Linux, so PRs run Linux
         # only. Every push to main still runs all three.
-        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest", "windows-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Keep checkout line endings
         if: runner.os == 'Windows'
