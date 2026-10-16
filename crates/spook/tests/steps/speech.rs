@@ -1,19 +1,9 @@
 use std::fs;
 
-use cucumber::{given, then, when};
-
-use crate::support::temp_pack;
 use crate::World;
+use cucumber::{then, when};
 
 use super::table;
-
-#[given(expr = "a docks table with a seated player")]
-fn a_docks_table_with_a_seated_player(world: &mut World) {
-    let pack = temp_pack("speech");
-    table::listen(&pack);
-    table::seat_player(&pack);
-    world.pack = Some(pack);
-}
 
 #[when(expr = "the player says {string}")]
 fn the_player_says(_world: &mut World, text: String) {
@@ -77,19 +67,6 @@ fn tape_text(world: &World) -> String {
 fn state_rev_is_unchanged(world: &mut World) {
     let rev = crate::with_live(|live| live.seated_rev);
     assert_eq!(table::now_of(table::pack(world)).state_rev, rev);
-}
-
-#[then(expr = "save.yaml is unchanged since the seat")]
-fn now_unchanged_since_the_seat(world: &mut World) {
-    let seated = crate::with_live(|live| live.seated_now.clone());
-    let now = fs::read(table::pack(world).join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    assert_eq!(now, seated);
-}
-
-#[then(expr = "no tick file was written")]
-fn no_tick_file(world: &mut World) {
-    assert!(table::tick_names(table::pack(world)).is_empty());
 }
 
 #[then(expr = "save.yaml matches the bytes from before the line")]

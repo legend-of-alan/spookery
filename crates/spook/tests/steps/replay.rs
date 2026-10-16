@@ -28,12 +28,6 @@ fn the_operator_runs_verify(world: &mut World) {
     table::run(world, &["verify", pack.to_str().unwrap()]);
 }
 
-#[when(expr = "the operator runs replay")]
-fn the_operator_runs_replay(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["replay", pack.to_str().unwrap()]);
-}
-
 #[when(expr = "the pack is copied before the tick")]
 fn the_pack_is_copied_before_the_tick(world: &mut World) {
     let pack = table::pack(world);
@@ -124,20 +118,6 @@ fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
         .unwrap_or_else(|| panic!("{text}"));
     world.scratch = format!("state_rev {rev} tick {index}");
     fs::write(&path, serde_json::to_string(&tick).unwrap()).unwrap();
-}
-
-#[then(expr = "the tick now_hash matches the save")]
-fn the_tick_now_hash_matches_the_save(world: &mut World) {
-    let pack = table::pack(world);
-    let tick = fs::read_to_string(pack.join("state/journal/tick-0001.jsonl"))
-        .unwrap_or_else(|err| panic!("read tick: {err}"));
-    let value: Value = serde_json::from_str(tick.trim_end()).unwrap_or_else(|err| panic!("{err}"));
-    let expected = value["now_hash"]
-        .as_str()
-        .unwrap_or_else(|| panic!("now_hash\n{tick}"));
-    let save =
-        fs::read(pack.join("state/save.yaml")).unwrap_or_else(|err| panic!("read save: {err}"));
-    assert_eq!(spookery_kernel::api::journal::hash_now(&save), expected);
 }
 
 #[when(expr = "the pack bytes are remembered")]

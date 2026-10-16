@@ -6,6 +6,7 @@ use cucumber::{then, when};
 use crate::support;
 use crate::World;
 
+use super::common::{join_play, play_stdout, wait_play};
 use super::table;
 
 #[when(expr = "the operator asks spook for help")]
@@ -50,25 +51,9 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
     assert!(world.stdout.contains("127.0.0.1:9737"), "{}", world.stdout);
 }
 
-#[when(expr = "play joins the table on a free loopback address")]
-fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
-    join_play(world, false);
-}
-
 #[when(expr = "play joins the table with raw frames")]
 fn play_joins_the_table_with_raw_frames(world: &mut World) {
     join_play(world, true);
-}
-
-#[when(expr = "play types {string}")]
-fn play_types(world: &mut World, line: String) {
-    let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-    let stdin = play
-        .stdin
-        .as_mut()
-        .unwrap_or_else(|| panic!("play stdin is closed"));
-    writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("type: {err}"));
-    stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
 #[when(expr = "play says {string}")]
@@ -100,11 +85,6 @@ fn play_received_the_first_perceive(world: &mut World) {
     assert!(!stdout.contains("\"kind\":\"perceive\""), "{stdout}");
 }
 
-#[then(expr = "play shows {string}")]
-fn play_shows(world: &mut World, text: String) {
-    wait_play(world, &text);
-}
-
 #[then(expr = "play does not show {string}")]
 fn play_does_not_show(world: &mut World, text: String) {
     let stdout = play_stdout(world);
@@ -133,13 +113,6 @@ fn play_error_shows(world: &mut World, text: String) {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-}
-
-#[then(expr = "play shows no protocol JSON")]
-fn play_shows_no_protocol_json(world: &mut World) {
-    let stdout = play_stdout(world);
-    assert!(!stdout.contains('{'), "{stdout}");
-    assert!(!stdout.contains("\"kind\""), "{stdout}");
 }
 
 #[then(expr = "play shows protocol frames")]
@@ -186,58 +159,4 @@ fn stderr_shows(world: &mut World, text: String) {
 fn stderr_has_no_protocol_json(world: &mut World) {
     assert!(!world.stderr.contains('{'), "{}", world.stderr);
     assert!(!world.stderr.contains("\"kind\""), "{}", world.stderr);
-}
-
-fn join_play(world: &mut World, raw: bool) {
-    let pack = table::pack(world);
-    table::listen(pack);
-    let addr = table::game_addr();
-    let pack_arg = support::pack_arg(pack);
-    let mut args = vec!["play".to_string(), pack_arg, "--addr".to_string(), addr];
-    if raw {
-        args.push("--raw".to_string());
-    }
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    world.play = Some(support::spawn(&refs));
-    let needle = if raw {
-        "\"kind\":\"perceive\""
-    } else {
-        "You are in"
-    };
-    wait_play(world, needle);
-}
-
-fn wait_play(world: &mut World, needle: &str) {
-    let start = Instant::now();
-    loop {
-        let stdout = play_stdout(world);
-        if stdout.contains(needle) {
-            return;
-        }
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        if let Some(status) = play
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = support::text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = world
-                .play
-                .as_ref()
-                .map(|play| support::text_of(&play.stderr))
-                .unwrap_or_default();
-            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn play_stdout(world: &mut World) -> String {
-    let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-    let text = support::text_of(&play.stdout);
-    world.stdout = text.clone();
-    text
 }

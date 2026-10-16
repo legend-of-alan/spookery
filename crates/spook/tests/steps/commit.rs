@@ -88,25 +88,9 @@ fn the_save_is_replaced(world: &mut World) {
     world.before = table::files(pack);
 }
 
-#[then(expr = "the command exits 0")]
-fn the_command_exits_0(world: &mut World) {
-    assert_eq!(
-        world.code,
-        Some(0),
-        "stdout:\n{}\nstderr:\n{}",
-        world.stdout,
-        world.stderr
-    );
-}
-
 #[then(expr = "stderr is SCHEMA")]
 fn stderr_is_schema(world: &mut World) {
     assert_eq!(world.stderr.trim(), "SCHEMA", "{}", world.stdout);
-}
-
-#[then(expr = "stderr is empty")]
-fn stderr_is_empty(world: &mut World) {
-    assert!(world.stderr.is_empty(), "{}", world.stderr);
 }
 
 #[then(expr = "the tick writes nothing")]
