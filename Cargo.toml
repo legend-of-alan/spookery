@@ -16,3 +16,9 @@ inherits = "release"
 strip = true
 lto = "fat"
 codegen-units = 1
+
+# Line tables keep file:line in backtraces; full debug info made test
+# binaries huge and Windows links very slow. Set CARGO_PROFILE_DEV_DEBUG=true
+# locally if you need a debugger.
+[profile.dev]
+debug = "line-tables-only"
