@@ -2,7 +2,7 @@
 
 > Early work in progress, not a playable release yet.
 
-Spookery is a generic RPG referee engine. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and up to three players walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. The crate version is `0.0.0`, there are no releases, and this tree is pre-v0.1.
+Spookery is a generic RPG referee engine. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and up to three players walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. Spookery is pre-alpha, with no releases yet.
 
 ## Build from source
 
