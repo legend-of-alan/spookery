@@ -30,10 +30,10 @@ fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
     world.pack = Some(pack);
 }
 
-/// The shape rules_rev 6 wrote: `presence` in the save and a `presence-NNNN.json` record.
-#[given(expr = "a journal written by rules_rev 6 with seat presence in the save")]
-fn a_journal_written_by_rules_rev_6(world: &mut World) {
-    let pack = crate::support::temp_pack("rules-rev-journal");
+/// The save shape rules_rev 6 wrote, with `presence` still in the save.
+#[given(expr = "an old save from rules_rev 6 with seat presence in it")]
+fn an_old_save_from_rules_rev_6(world: &mut World) {
+    let pack = crate::support::temp_pack("rules-rev-old-save");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let old = text
@@ -44,13 +44,24 @@ fn a_journal_written_by_rules_rev_6(world: &mut World) {
             1,
         );
     assert!(
-        old.contains("rules_rev: 6\n"),
-        "save did not carry rules_rev 7\n{text}"
+        old.contains("rules_rev: 6\n") && old.contains("\npresence:\n"),
+        "{text}"
     );
+    fs::write(&path, old).unwrap_or_else(|err| panic!("write save: {err}"));
+    world.pack = Some(pack);
+}
+
+/// A current save whose journal still holds a `presence-NNNN.json` from rules_rev 6.
+#[given(expr = "a current save with a stray presence-0001.json in its journal")]
+fn a_current_save_with_a_stray_presence_record(world: &mut World) {
+    let pack = crate::support::temp_pack("rules-rev-presence-record");
+    let path = pack.join("state/save.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
+    assert!(text.contains("rules_rev: 7\n"), "{text}");
     let journal = pack.join("state/journal");
     fs::create_dir_all(&journal).unwrap_or_else(|err| panic!("mkdir journal: {err}"));
-    fs::write(journal.join("base.yaml"), &old).unwrap_or_else(|err| panic!("write base: {err}"));
-    let live = old.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
+    fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
+    let live = text.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
     fs::write(&path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
     let hash = spookery_kernel::journal::hash_now(live.as_bytes());
     fs::write(

@@ -880,9 +880,11 @@ fn a_rule_sets_the_tide(world: &mut World) {
 
 #[then(expr = "every seated player's summary lists {string}")]
 fn every_seated_summary_lists(world: &mut World, key: String) {
-    let now = load(world.pack.as_ref().unwrap());
-    let seated: Vec<String> = now
-        .presence
+    let pack = world.pack.as_ref().unwrap();
+    let now = load(pack);
+    // Seats live in memory, not in the save, so read the ones `edit_save` remembered.
+    let presence = remembered_presence(pack).unwrap_or_default();
+    let seated: Vec<String> = presence
         .actors_present
         .iter()
         .filter(|id| now.actors.get(*id).is_some_and(|actor| actor.is_pc()))
