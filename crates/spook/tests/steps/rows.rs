@@ -4,9 +4,9 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::meter::MeterLive;
-use spookery_kernel::model::ActorLive;
-use spookery_kernel::Reason;
+use spookery_kernel::api::meter::MeterLive;
+use spookery_kernel::api::model::ActorLive;
+use spookery_kernel::api::Reason;
 
 use crate::support::temp_pack;
 use crate::World;
@@ -87,8 +87,8 @@ fn the_player_travels_to(world: &mut World, place: String) {
 #[then(expr = "the load refusal is SCHEMA")]
 fn the_load_refusal_is_schema(world: &mut World) {
     assert_eq!(
-        spookery_kernel::reason_of(
-            spookery_kernel::canon::load_canon(table::pack(world)).unwrap_err()
+        spookery_kernel::api::reason_of(
+            spookery_kernel::api::canon::load_canon(table::pack(world)).unwrap_err()
         ),
         Reason::Schema
     );
@@ -165,11 +165,12 @@ fn add_knife_row(pack: &Path) {
 fn stamp(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
+            .unwrap();
+    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_save(&now).unwrap(),
+        spookery_kernel::api::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }
@@ -197,7 +198,8 @@ Nell keeps a guard up.
     .unwrap();
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
+            .unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         ActorLive::Pc {
@@ -218,12 +220,12 @@ Nell keeps a guard up.
             wielded: None,
             known_facts: Vec::new(),
             visited: vec!["docks_shop".to_string()],
-            act: spookery_kernel::model::ActCounters::fresh(),
+            act: spookery_kernel::api::model::ActCounters::fresh(),
         },
     );
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_save(&now).unwrap(),
+        spookery_kernel::api::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }

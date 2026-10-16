@@ -3,16 +3,16 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::canon::{bind_inventory, bind_meters, pack_rev};
-use spookery_kernel::commit::replay_write_now;
-use spookery_kernel::diagnostic::reason_of;
-use spookery_kernel::effect::Effect;
-use spookery_kernel::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
-use spookery_kernel::model::Now;
-use spookery_kernel::store::codec::{canonicalize, emit_effect, emit_save, load_save};
-use spookery_kernel::store::require_rules_rev;
-use spookery_kernel::world::World;
-use spookery_kernel::Reason;
+use spookery_kernel::api::canon::{bind_inventory, bind_meters, pack_rev};
+use spookery_kernel::api::commit::replay_write_now;
+use spookery_kernel::api::diagnostic::reason_of;
+use spookery_kernel::api::effect::Effect;
+use spookery_kernel::api::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
+use spookery_kernel::api::model::Now;
+use spookery_kernel::api::store::codec::{canonicalize, emit_effect, emit_save, load_save};
+use spookery_kernel::api::store::require_rules_rev;
+use spookery_kernel::api::world::World;
+use spookery_kernel::api::Reason;
 
 use crate::play::{play_recorded, RecordedRound};
 use crate::seed::round_seed;
@@ -269,7 +269,7 @@ fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
     journal::load_journal(pack).map_err(journal_fault)
 }
 
-fn journal_fault(fault: spookery_kernel::journal::JournalFault) -> ReplayError {
+fn journal_fault(fault: spookery_kernel::api::journal::JournalFault) -> ReplayError {
     ReplayError::Diverged(diverge(
         0,
         "journal",

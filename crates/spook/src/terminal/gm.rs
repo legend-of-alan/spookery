@@ -6,8 +6,8 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use spookery_kernel::canon::{Canon, CastKind};
-use spookery_kernel::rules::rule::{TargetKind, When};
+use spookery_kernel::api::canon::{Canon, CastKind};
+use spookery_kernel::api::rules::rule::{TargetKind, When};
 
 use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
 use crate::protocol::PlayerMessage;
@@ -65,10 +65,10 @@ pub fn run_gm_terminal(
             std::process::exit(1);
         }
     };
-    let canon = match spookery_kernel::canon::load_canon(pack) {
+    let canon = match spookery_kernel::api::canon::load_canon(pack) {
         Ok(canon) => canon,
         Err(errors) => {
-            eprintln!("{}", spookery_kernel::first_reason(&errors));
+            eprintln!("{}", spookery_kernel::api::first_reason(&errors));
             let _ = io::stderr().flush();
             std::process::exit(1);
         }

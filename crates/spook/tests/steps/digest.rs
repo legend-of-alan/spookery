@@ -1,6 +1,6 @@
 use cucumber::{then, when};
-use spookery_kernel::perceive::ItemStack;
-use spookery_kernel::DigestViewer;
+use spookery_kernel::api::perceive::ItemStack;
+use spookery_kernel::api::DigestViewer;
 
 use crate::support::spook;
 use crate::World;
@@ -67,9 +67,9 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 #[then(expr = "the player resume lists the door message")]
 fn the_player_resume_lists_the_door_message(world: &mut World) {
     let pack = table::pack(world);
-    let shard = spookery_kernel::World::open(pack).unwrap();
+    let shard = spookery_kernel::api::World::open(pack).unwrap();
     let resume =
-        spookery_kernel::host_summary(&shard, DigestViewer::Player("pc_rowan".to_string()))
+        spookery_kernel::api::host_summary(&shard, DigestViewer::Player("pc_rowan".to_string()))
             .unwrap();
     assert_eq!(resume, RESUME);
     assert!(!resume.contains("effect location"));
@@ -79,8 +79,8 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
 #[then(expr = "the shop lists the oil and the rooms do not")]
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
-    let shard = spookery_kernel::World::open(pack).unwrap();
-    let shop = spookery_kernel::perceive(&shard, "player:pc_rowan").unwrap();
+    let shard = spookery_kernel::api::World::open(pack).unwrap();
+    let shop = spookery_kernel::api::perceive(&shard, "player:pc_rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(
         shop.items,
@@ -92,7 +92,8 @@ fn the_shop_lists_the_oil(world: &mut World) {
     let mut away = shard.now().clone();
     *away.actors.get_mut("pc_rowan").unwrap().place_mut() = "mira_rooms".to_string();
     let rooms =
-        spookery_kernel::perceive::perceive_at(shard.canon(), &away, "player:pc_rowan").unwrap();
+        spookery_kernel::api::perceive::perceive_at(shard.canon(), &away, "player:pc_rowan")
+            .unwrap();
     assert_eq!(rooms.place, "mira_rooms");
     assert!(rooms.items.iter().all(|item| item.id != "lamp_oil"));
 }

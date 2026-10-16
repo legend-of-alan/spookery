@@ -210,7 +210,7 @@ fn exit_section(exits: &[WireExit]) -> String {
     }
     let lines = exits
         .iter()
-        .map(|exit| spookery_kernel::map::exit_phrase(&exit.name, exit.minutes, exit.locked))
+        .map(|exit| spookery_kernel::api::map::exit_phrase(&exit.name, exit.minutes, exit.locked))
         .collect::<Vec<_>>()
         .join("\n");
     format!("Exits:\n{lines}")

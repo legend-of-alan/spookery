@@ -6,8 +6,8 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
-use spookery_kernel::world::World;
-use spookery_kernel::Reason;
+use spookery_kernel::api::world::World;
+use spookery_kernel::api::Reason;
 
 use super::http;
 use super::world_loop::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};

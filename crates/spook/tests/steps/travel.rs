@@ -3,8 +3,8 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::model::Now;
-use spookery_kernel::store::codec::{emit_save, load_save};
+use spookery_kernel::api::model::Now;
+use spookery_kernel::api::store::codec::{emit_save, load_save};
 
 use super::table;
 use crate::support::{self, temp_pack};
@@ -23,7 +23,7 @@ fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let path = pack.join("state/save.yaml");
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     edit(&mut now);
-    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(&path, emit_save(&now).unwrap()).unwrap();
 }
 
@@ -38,7 +38,7 @@ fn give_key(now: &mut Now) {
 fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
     let act = now.actors.get_mut(actor).unwrap().act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(spookery_kernel::model::Pending {
+    act.busy_for = Some(spookery_kernel::api::model::Pending {
         rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
         target: via.to_string(),
@@ -234,7 +234,7 @@ fn a_place_rule_teleports(world: &mut World) {
     edit_save(&pack, |now| {
         now.places.insert(
             "cellar".to_string(),
-            spookery_kernel::model::PlaceLive {
+            spookery_kernel::api::model::PlaceLive {
                 items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
@@ -312,7 +312,7 @@ fn two_arrivals(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_kernel::model::ActorLive::Pc {
+            spookery_kernel::api::model::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -321,9 +321,9 @@ fn two_arrivals(world: &mut World) {
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
                 act: {
-                    let mut act = spookery_kernel::model::ActCounters::fresh();
+                    let mut act = spookery_kernel::api::model::ActCounters::fresh();
                     act.busy_until = Some(EVENING + 5);
-                    act.busy_for = Some(spookery_kernel::model::Pending {
+                    act.busy_for = Some(spookery_kernel::api::model::Pending {
                         rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
                         target: "docks_street".to_string(),
@@ -409,8 +409,8 @@ fn the_next_tick_accepts_a_move(world: &mut World) {
 )]
 fn ticks_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
-    let mut seated_world = spookery_kernel::World::open(&seated).unwrap();
-    seated_world.set_presence(spookery_kernel::model::Presence {
+    let mut seated_world = spookery_kernel::api::World::open(&seated).unwrap();
+    seated_world.set_presence(spookery_kernel::api::model::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });
@@ -450,7 +450,7 @@ fn both_busy_without_a_gm(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_kernel::model::ActorLive::Pc {
+            spookery_kernel::api::model::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -458,7 +458,7 @@ fn both_busy_without_a_gm(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: spookery_kernel::model::ActCounters::fresh(),
+                act: spookery_kernel::api::model::ActCounters::fresh(),
             },
         );
         set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");

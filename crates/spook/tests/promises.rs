@@ -68,6 +68,9 @@ mod digest;
 #[path = "steps/commit.rs"]
 mod commit;
 
+#[path = "steps/kernel_boundary.rs"]
+mod kernel_boundary;
+
 #[path = "steps/proofs.rs"]
 mod proofs;
 

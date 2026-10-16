@@ -1,7 +1,7 @@
 use std::fs;
 
 use cucumber::{then, when};
-use spookery_kernel::model::Message;
+use spookery_kernel::api::model::Message;
 
 use crate::support::spook;
 use crate::World;
@@ -60,7 +60,8 @@ fn the_door_note_text_contains_the_ledger_sentence(world: &mut World) {
     let to = format!("text: Back at dusk. {LEDGER}\n");
     assert!(text.contains(from), "{text}");
     fs::write(&path, text.replacen(from, &to, 1)).unwrap_or_else(|err| panic!("write: {err}"));
-    spookery_kernel::commit::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_kernel::api::commit::migrate_pack(&pack)
+        .unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
 #[when(expr = "the evening tick runs on this copy")]
@@ -88,8 +89,8 @@ fn a_visible_notes_id_is_the_ledger_fact(world: &mut World) {
         fact_ids: Vec::new(),
         text: "The shelf is stocked.".to_string(),
     });
-    let text =
-        spookery_kernel::store::codec::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}"));
+    let text = spookery_kernel::api::store::codec::emit_save(&now)
+        .unwrap_or_else(|err| panic!("emit: {err}"));
     fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
@@ -183,9 +184,10 @@ fn stdout_says_notes_follow_the_journal(world: &mut World) {
 #[then(expr = "Rowan does not perceive the ledger sentence")]
 fn rowan_does_not_perceive_the_ledger_sentence(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let shard = spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let shard =
+        spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view =
-        spookery_kernel::perceive::perceive_at(shard.canon(), shard.now(), "player:pc_rowan")
+        spookery_kernel::api::perceive::perceive_at(shard.canon(), shard.now(), "player:pc_rowan")
             .unwrap_or_else(|err| panic!("perceive: {err}"));
     let leaked = view
         .messages

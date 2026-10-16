@@ -3,12 +3,12 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::model::{Now, PlaceLive};
-use spookery_kernel::rules::gate;
-use spookery_kernel::rules::{faces, RollKey, RollReport};
-use spookery_kernel::store::codec::{emit_save, load_save};
-use spookery_kernel::Reason;
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_kernel::api::model::{Now, PlaceLive};
+use spookery_kernel::api::rules::gate;
+use spookery_kernel::api::rules::{faces, RollKey, RollReport};
+use spookery_kernel::api::store::codec::{emit_save, load_save};
+use spookery_kernel::api::Reason;
 use spookery_round::{play, RoundCause};
 
 use super::table;
@@ -17,7 +17,7 @@ use crate::World;
 #[given(expr = "a save with rules_rev 6 and an engine at 7")]
 fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
     assert_eq!(
-        spookery_kernel::store::RULES_REV,
+        spookery_kernel::api::store::RULES_REV,
         7,
         "the engine rules version is 7"
     );
@@ -63,7 +63,7 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
     let live = text.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
     fs::write(&path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
-    let hash = spookery_kernel::journal::hash_now(live.as_bytes());
+    let hash = spookery_kernel::api::journal::hash_now(live.as_bytes());
     fs::write(
         journal.join("presence-0001.json"),
         format!(
@@ -309,7 +309,7 @@ The ferry waits at the dock.
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    opened.set_presence(spookery_kernel::model::Presence {
+    opened.set_presence(spookery_kernel::api::model::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });
@@ -381,7 +381,7 @@ fn an_empty_tick_at_hour_7(world: &mut World) {
         panic!(
             "empty tick {}: {}",
             err.token(),
-            spookery_kernel::check_pack(&pack)
+            spookery_kernel::api::check_pack(&pack)
                 .iter()
                 .map(|diag| diag.report_line())
                 .collect::<Vec<_>>()
@@ -995,12 +995,12 @@ fn run(world: &mut World, args: &[&str]) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
-fn open_pack(pack: &Path) -> spookery_kernel::World {
-    spookery_kernel::World::open(pack).unwrap_or_else(|err| {
+fn open_pack(pack: &Path) -> spookery_kernel::api::World {
+    spookery_kernel::api::World::open(pack).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
             err.token(),
-            spookery_kernel::check_pack(pack)
+            spookery_kernel::api::check_pack(pack)
                 .iter()
                 .map(|diag| diag.report_line())
                 .collect::<Vec<_>>()
@@ -1013,7 +1013,7 @@ fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let path = pack.join("state/save.yaml");
     let mut now = read_now(pack);
     edit(&mut now);
-    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(&path, emit_save(&now).unwrap()).unwrap();
 }
 

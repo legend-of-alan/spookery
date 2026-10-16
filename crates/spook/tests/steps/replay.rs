@@ -137,7 +137,7 @@ fn the_tick_now_hash_matches_the_save(world: &mut World) {
         .unwrap_or_else(|| panic!("now_hash\n{tick}"));
     let save =
         fs::read(pack.join("state/save.yaml")).unwrap_or_else(|err| panic!("read save: {err}"));
-    assert_eq!(spookery_kernel::journal::hash_now(&save), expected);
+    assert_eq!(spookery_kernel::api::journal::hash_now(&save), expected);
 }
 
 #[when(expr = "the pack bytes are remembered")]
@@ -262,7 +262,7 @@ fn stderr_names_the_record_and_illegal_class(world: &mut World) {
 #[then(expr = "each journal record parses back to the bytes that were written")]
 fn each_journal_record_parses_back(world: &mut World) {
     let pack = table::pack(world);
-    let entries = spookery_kernel::journal::load_journal(pack).unwrap_or_else(|fault| {
+    let entries = spookery_kernel::api::journal::load_journal(pack).unwrap_or_else(|fault| {
         panic!("{}: {}", fault.file, fault.detail);
     });
     let ticks = entries
@@ -272,7 +272,7 @@ fn each_journal_record_parses_back(world: &mut World) {
     assert!(ticks >= 3, "ticks {ticks}");
     for entry in &entries {
         let bytes = fs::read_to_string(pack.join(journal_file(entry))).unwrap();
-        let again = spookery_kernel::journal::emit_entry(entry);
+        let again = spookery_kernel::api::journal::emit_entry(entry);
         assert_eq!(again, bytes, "{bytes}");
     }
 }
@@ -292,7 +292,7 @@ fn write_tick(path: &std::path::Path, tick: &Value) {
     fs::write(path, text).unwrap();
 }
 
-fn journal_file(entry: &spookery_kernel::journal::JournalEntry) -> String {
+fn journal_file(entry: &spookery_kernel::api::journal::JournalEntry) -> String {
     match entry.tick_index() {
         Some(index) => format!("state/journal/tick-{index:04}.jsonl"),
         None => format!(

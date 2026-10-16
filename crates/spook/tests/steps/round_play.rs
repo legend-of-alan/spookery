@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use spookery_kernel::rules::{roll, RollInput, RollKey, RollReport};
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::api::rules::{roll, RollInput, RollKey, RollReport};
 use spookery_round::RoundCause;
 
 use crate::support::{self, copy_dir};
@@ -173,7 +173,7 @@ fn a_played_d20_fight(world: &mut World) {
         Target::Actor("npc_briar".to_string()),
     )];
     let (now, _rolls, _tick) = play_queued(&pack, intents);
-    world.now_bytes = spookery_kernel::store::codec::emit_save(&now)
+    world.now_bytes = spookery_kernel::api::store::codec::emit_save(&now)
         .unwrap()
         .into_bytes();
     world.pack = Some(pack);
@@ -309,7 +309,7 @@ fn those_waits_are_played(world: &mut World) {
     second.source = Source::Kernel;
     let (now, _rolls, tick) = play_queued(&pack, vec![first, second]);
     world.scratch = tick.to_string();
-    world.now_bytes = spookery_kernel::store::codec::emit_save(&now)
+    world.now_bytes = spookery_kernel::api::store::codec::emit_save(&now)
         .unwrap()
         .into_bytes();
 }
@@ -332,9 +332,10 @@ fn only_the_first_wait_lands(world: &mut World) {
             .any(|item| item["id"] == "wait-2" && item["reason"] == "INELIGIBLE"),
         "{tick}"
     );
-    let now =
-        spookery_kernel::store::codec::load_save(std::str::from_utf8(&world.now_bytes).unwrap())
-            .unwrap();
+    let now = spookery_kernel::api::store::codec::load_save(
+        std::str::from_utf8(&world.now_bytes).unwrap(),
+    )
+    .unwrap();
     assert_eq!(
         now.actors
             .get("mira")
@@ -513,7 +514,7 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 }
 
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
-    let world = spookery_kernel::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let world = spookery_kernel::api::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let actor = world
         .now()
         .actors
@@ -681,8 +682,9 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
 fn play_queued(
     pack: &Path,
     intents: Vec<Intent>,
-) -> (spookery_kernel::model::Now, Vec<RollReport>, Value) {
-    let mut world = spookery_kernel::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
+) -> (spookery_kernel::api::model::Now, Vec<RollReport>, Value) {
+    let mut world =
+        spookery_kernel::api::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = world.now().last_tick_at.clone();
     for intent in intents {
         world.queue(intent);
@@ -721,11 +723,12 @@ fn quiet_mira(pack: &Path) {
 fn stamp(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
+            .unwrap();
+    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_save(&now).unwrap(),
+        spookery_kernel::api::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }

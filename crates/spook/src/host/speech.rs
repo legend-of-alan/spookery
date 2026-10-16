@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
-use spookery_kernel::model::ActorLive;
-use spookery_kernel::speech::Heard;
-use spookery_kernel::store::talk_log::{append_session, read_session};
-use spookery_kernel::world::World;
-use spookery_kernel::Reason;
+use spookery_kernel::api::model::ActorLive;
+use spookery_kernel::api::speech::Heard;
+use spookery_kernel::api::store::talk_log::{append_session, read_session};
+use spookery_kernel::api::world::World;
+use spookery_kernel::api::Reason;
 
 use super::frames::{self, TapeLine};
 use super::input::split_token;
@@ -100,7 +100,7 @@ pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Resul
 }
 
 pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Reason> {
-    spookery_kernel::store::talk_log::session_end_seq(root)
+    spookery_kernel::api::store::talk_log::session_end_seq(root)
 }
 
 /// Stored lines with `seq` greater than `since`, in file order, inside the tape window.
@@ -243,5 +243,5 @@ fn recipients(
         "actor" => Heard::Actor(actor.unwrap_or("")),
         _ => return Vec::new(),
     };
-    spookery_kernel::speech::recipients(world.now(), speaker, heard)
+    spookery_kernel::api::speech::recipients(world.now(), speaker, heard)
 }

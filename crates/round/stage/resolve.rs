@@ -1,15 +1,15 @@
 use std::collections::BTreeMap;
 
-use spookery_kernel::check::{classify, CheckDef};
-use spookery_kernel::meter::MeterDef;
-use spookery_kernel::rules::expr::{self, Ctx};
-use spookery_kernel::rules::gate::gate;
+use spookery_kernel::api::check::{classify, CheckDef};
+use spookery_kernel::api::meter::MeterDef;
+use spookery_kernel::api::rules::expr::{self, Ctx};
+use spookery_kernel::api::rules::gate::gate;
 
-use spookery_kernel::intent::{ActorKind, Intent, Source, Target, ViewerId};
-use spookery_kernel::perceive::perceive_at;
-use spookery_kernel::rules::{roll, RollInput, RollKey, RollReport, RollResult};
-use spookery_kernel::world::Draft;
-use spookery_kernel::Reason;
+use spookery_kernel::api::intent::{ActorKind, Intent, Source, Target, ViewerId};
+use spookery_kernel::api::perceive::perceive_at;
+use spookery_kernel::api::rules::{roll, RollInput, RollKey, RollReport, RollResult};
+use spookery_kernel::api::world::Draft;
+use spookery_kernel::api::Reason;
 
 use crate::state::{Resolution, Round};
 
@@ -34,7 +34,7 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
         Ok(rule) => rule.clone(),
         Err(miss) => return Ok(refused(&miss.named(), None)),
     };
-    if spookery_kernel::map::span(draft.canon(), draft.now(), intent, &rule) > 0 {
+    if spookery_kernel::api::map::span(draft.canon(), draft.now(), intent, &rule) > 0 {
         return Ok(Resolution::Ready { rolled: None });
     }
     if let Some(roll) = rule.roll.clone() {
@@ -48,7 +48,7 @@ fn roll_check(
     round: &mut Round,
     draft: &Draft,
     intent: &Intent,
-    roll: &spookery_kernel::rules::rule::RollSpec,
+    roll: &spookery_kernel::api::rules::rule::RollSpec,
 ) -> Result<Resolution, Reason> {
     if let Err(code) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
         return Ok(refused_check(intent, code));
@@ -132,7 +132,7 @@ pub(crate) struct SubjectRoll<'a> {
     pub target: i64,
     pub partial_at: Option<i64>,
     /// The actor at completion. Absent means the actor frozen at gather.
-    pub live: Option<&'a spookery_kernel::model::ActorLive>,
+    pub live: Option<&'a spookery_kernel::api::model::ActorLive>,
 }
 
 /// The one `rules::roll` call. Action checks and resist rolls both come through here.

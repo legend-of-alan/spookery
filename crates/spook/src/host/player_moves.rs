@@ -1,11 +1,11 @@
-use spookery_kernel::ids::player_intent_id;
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::model::ActorLive;
-use spookery_kernel::rules::gate::{gate, verb_for, Miss};
-use spookery_kernel::rules::rule::{TargetKind, When};
-use spookery_kernel::rules::RollReport;
-use spookery_kernel::world::World;
-use spookery_kernel::Reason;
+use spookery_kernel::api::ids::player_intent_id;
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_kernel::api::model::ActorLive;
+use spookery_kernel::api::rules::gate::{gate, verb_for, Miss};
+use spookery_kernel::api::rules::rule::{TargetKind, When};
+use spookery_kernel::api::rules::RollReport;
+use spookery_kernel::api::world::World;
+use spookery_kernel::api::Reason;
 use spookery_round::{advance_while_busy, commit_moves_at};
 
 use super::frames;
@@ -36,7 +36,7 @@ pub fn handle_player_move(
     let note = match queue_verb(world, actor_id, verb, rest) {
         Ok(note) => note,
         Err(miss) => {
-            if !gm_seated && miss.reason() == spookery_kernel::Reason::Busy {
+            if !gm_seated && miss.reason() == spookery_kernel::api::Reason::Busy {
                 let wall = wall_now().map_err(Miss::from)?;
                 advance_while_busy(world, &wall, 0).map_err(Miss::from)?;
             }

@@ -348,15 +348,16 @@ fn set_mira_grit(pack: &Path, base: i64) {
 
 fn stamp(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_kernel::store::codec::load_save(
+    let mut now = spookery_kernel::api::store::codec::load_save(
         &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
     )
     .unwrap_or_else(|err| panic!("load now: {err:?}"));
     now.pack_rev =
-        spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
+        spookery_kernel::api::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
     fs::write(
         &now_path,
-        spookery_kernel::store::codec::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}")),
+        spookery_kernel::api::store::codec::emit_save(&now)
+            .unwrap_or_else(|err| panic!("emit: {err}")),
     )
     .unwrap_or_else(|err| panic!("write now: {err}"));
 }
@@ -377,8 +378,8 @@ fn snapshot_of(pack: &Path) -> PathBuf {
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let mut flags = match table::now_of(table::pack(world)).actors.get(id) {
-        Some(spookery_kernel::model::ActorLive::Npc { flags, .. })
-        | Some(spookery_kernel::model::ActorLive::Pc { flags, .. }) => flags.clone(),
+        Some(spookery_kernel::api::model::ActorLive::Npc { flags, .. })
+        | Some(spookery_kernel::api::model::ActorLive::Pc { flags, .. }) => flags.clone(),
         _ => panic!("{id} missing"),
     };
     flags.sort();

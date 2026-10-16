@@ -251,7 +251,8 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     let mut body = fs::read_to_string(&aldric).unwrap();
     body.push_str("\nCASTBODYONLY-FIXTURE\n");
     fs::write(&aldric, body).unwrap();
-    spookery_kernel::commit::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_kernel::api::commit::migrate_pack(&pack)
+        .unwrap_or_else(|err| panic!("migrate: {err}"));
     let (stub_port, posts) = stub_server();
     let pack_arg = pack_arg(&pack);
     table::listen(&pack);
@@ -293,7 +294,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     table::wait_world_time(&pack, 1085);
     // The server still holds this pack. World::open runs recover and can collide with its commit.
     let text = fs::read_to_string(pack.join("state/save.yaml")).unwrap();
-    let place = spookery_kernel::store::codec::load_save(&text)
+    let place = spookery_kernel::api::store::codec::load_save(&text)
         .unwrap()
         .actors
         .get("pc_rowan")
@@ -545,7 +546,7 @@ fn wait_idle(watch: &Watch, script: &Script, calls: usize) {
 
 fn world_time(pack: &Path) -> u64 {
     let text = fs::read_to_string(pack.join("state/save.yaml")).unwrap();
-    spookery_kernel::store::codec::load_save(&text)
+    spookery_kernel::api::store::codec::load_save(&text)
         .unwrap()
         .world_time
 }
@@ -860,7 +861,7 @@ fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     let path = pack.join("state/save.yaml");
     while start.elapsed() < bound {
         if let Ok(text) = fs::read_to_string(&path) {
-            if let Ok(now) = spookery_kernel::store::codec::load_save(&text) {
+            if let Ok(now) = spookery_kernel::api::store::codec::load_save(&text) {
                 if now.world_time == expected {
                     return true;
                 }

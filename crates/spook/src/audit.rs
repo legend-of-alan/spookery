@@ -7,15 +7,15 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::Path;
 
-use spookery_kernel::canon::{load_canon, Canon};
-use spookery_kernel::diagnostic::reason_of;
-use spookery_kernel::effect::EffectKind;
-use spookery_kernel::journal::{self, JournalEntry, TickRecord};
-use spookery_kernel::model::Now;
-use spookery_kernel::perceive::perceive_at;
-use spookery_kernel::store::codec::load_save;
-use spookery_kernel::store::talk_log::MAX_TAPE_BYTES;
-use spookery_kernel::Reason;
+use spookery_kernel::api::canon::{load_canon, Canon};
+use spookery_kernel::api::diagnostic::reason_of;
+use spookery_kernel::api::effect::EffectKind;
+use spookery_kernel::api::journal::{self, JournalEntry, TickRecord};
+use spookery_kernel::api::model::Now;
+use spookery_kernel::api::perceive::perceive_at;
+use spookery_kernel::api::store::codec::load_save;
+use spookery_kernel::api::store::talk_log::MAX_TAPE_BYTES;
+use spookery_kernel::api::Reason;
 use spookery_round::{replay_states, ReplayError};
 
 use crate::host::frames::{self, TapeLine};

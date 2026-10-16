@@ -273,7 +273,7 @@ mod tests {
     use crate::commit::commit_round;
     use crate::store::codec::{emit_save, load_save};
     use crate::world::Draft;
-    use crate::World;
+    use crate::world::World;
 
     #[test]
     fn a_crash_between_the_journal_rename_and_now_rolls_back() {

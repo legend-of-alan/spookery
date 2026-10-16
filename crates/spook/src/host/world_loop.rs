@@ -1,9 +1,9 @@
 use std::io::{self, Write};
 
-use spookery_kernel::model::{ActorLive, Presence};
-use spookery_kernel::perceive::perceive;
-use spookery_kernel::world::World;
-use spookery_kernel::{host_summary, DigestViewer, Reason};
+use spookery_kernel::api::model::{ActorLive, Presence};
+use spookery_kernel::api::perceive::perceive;
+use spookery_kernel::api::world::World;
+use spookery_kernel::api::{host_summary, DigestViewer, Reason};
 
 use super::frames;
 use super::idle_clock;
@@ -380,7 +380,7 @@ fn handle(
     Ok(())
 }
 
-fn narrate_for(lines: &[spookery_kernel::visibility::Told], viewer: &str) -> Vec<String> {
+fn narrate_for(lines: &[spookery_kernel::api::visibility::Told], viewer: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in lines {
         if line.to == viewer && !out.contains(&line.text) {
@@ -390,7 +390,7 @@ fn narrate_for(lines: &[spookery_kernel::visibility::Told], viewer: &str) -> Vec
     out
 }
 
-fn changes_for(seen: &[spookery_kernel::visibility::Seen], viewer: &str) -> Vec<String> {
+fn changes_for(seen: &[spookery_kernel::api::visibility::Seen], viewer: &str) -> Vec<String> {
     let mut out = Vec::new();
     for item in seen {
         if item.viewer != viewer {
@@ -414,7 +414,7 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
 fn refresh_players(
     world: &mut World,
     seats: &mut Seats,
-    notices: &[spookery_kernel::rules::RollReport],
+    notices: &[spookery_kernel::api::rules::RollReport],
 ) -> Result<(), Reason> {
     let lines = world.take_lines();
     let seen = world.take_seen();
@@ -594,17 +594,18 @@ fn on_player(
             }
         },
         Ok(input::PlayerLine::Help) => {
-            let text = spookery_kernel::map::help_lines(world.canon(), world.now(), &actor_id);
+            let text = spookery_kernel::api::map::help_lines(world.canon(), world.now(), &actor_id);
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
             Ok(PlayerReply::Done)
         }
         Ok(input::PlayerLine::Look) => {
-            let text = spookery_kernel::map::look_lines(world.canon(), world.now(), &actor_id);
+            let text = spookery_kernel::api::map::look_lines(world.canon(), world.now(), &actor_id);
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
             Ok(PlayerReply::Done)
         }
         Ok(input::PlayerLine::Map) => {
-            let text = spookery_kernel::map::player_lines(world.canon(), world.now(), &actor_id);
+            let text =
+                spookery_kernel::api::map::player_lines(world.canon(), world.now(), &actor_id);
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
             Ok(PlayerReply::Done)
         }

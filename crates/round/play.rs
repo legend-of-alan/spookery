@@ -1,10 +1,10 @@
 use std::path::Path;
 
-use spookery_kernel::effect::Effect;
-use spookery_kernel::lock::lock_world;
-use spookery_kernel::model::Presence;
-use spookery_kernel::world::{Draft, World};
-use spookery_kernel::Reason;
+use spookery_kernel::api::effect::Effect;
+use spookery_kernel::api::lock::lock_world;
+use spookery_kernel::api::model::Presence;
+use spookery_kernel::api::world::{Draft, World};
+use spookery_kernel::api::Reason;
 
 use crate::stage::advance::{self, plan_catchup};
 use crate::stage::{apply, complete, gather, observe, record, resolve, triggers};
@@ -21,12 +21,14 @@ pub enum RoundCause {
 }
 
 pub struct RecordedRound {
-    pub intents: Vec<spookery_kernel::intent::Intent>,
+    pub intents: Vec<spookery_kernel::api::intent::Intent>,
     pub presence_humans: u32,
     pub actors_present: Vec<String>,
 }
 
-pub fn commit_moves(world: &mut World) -> Result<spookery_kernel::commit::CommitOutcome, Reason> {
+pub fn commit_moves(
+    world: &mut World,
+) -> Result<spookery_kernel::api::commit::CommitOutcome, Reason> {
     let wall = world.now().last_tick_at.clone();
     commit_moves_at(world, &wall)
 }
@@ -35,10 +37,10 @@ pub fn commit_moves(world: &mut World) -> Result<spookery_kernel::commit::Commit
 pub fn commit_moves_at(
     world: &mut World,
     wall: &str,
-) -> Result<spookery_kernel::commit::CommitOutcome, Reason> {
+) -> Result<spookery_kernel::api::commit::CommitOutcome, Reason> {
     let _lock = lock_world(world)?;
     play(world, RoundCause::Flush, wall)?;
-    spookery_kernel::commit::commit_pending(world)
+    spookery_kernel::api::commit::commit_pending(world)
 }
 
 pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
@@ -48,7 +50,7 @@ pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
 }
 
 pub fn catch_up(world: &mut World, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
-    let humans = spookery_kernel::world::session_status(world.now()).humans;
+    let humans = spookery_kernel::api::world::session_status(world.now()).humans;
     let ticks = plan_catchup(humans, world.budget(), downtime_hours)?;
     for _ in 0..ticks {
         play(world, RoundCause::Catchup, now_wall)?;
@@ -83,7 +85,7 @@ fn seated_pcs(world: &World) -> Vec<String> {
                 .now()
                 .actors
                 .get(id.as_str())
-                .is_some_and(spookery_kernel::model::ActorLive::is_pc)
+                .is_some_and(spookery_kernel::api::model::ActorLive::is_pc)
         })
         .cloned()
         .collect()

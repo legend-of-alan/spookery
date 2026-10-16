@@ -21,11 +21,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
-use spookery_kernel::apply::apply_effect;
-use spookery_kernel::effect::{Effect, EffectKind};
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use spookery_kernel::model::Now;
-use spookery_kernel::world::{Draft, World};
+use spookery_kernel::api::apply::apply_effect;
+use spookery_kernel::api::effect::{Effect, EffectKind};
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::api::model::Now;
+use spookery_kernel::api::world::{Draft, World};
 
 const CASES: u32 = 64;
 const SEED: u64 = 0x0018_0018;

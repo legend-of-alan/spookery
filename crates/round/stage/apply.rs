@@ -1,15 +1,15 @@
-use spookery_kernel::apply::apply_effect;
-use spookery_kernel::effect::Effect;
-use spookery_kernel::expand::expand_outcome;
-use spookery_kernel::intent::{ActorKind, Intent};
-use spookery_kernel::journal::Rejected;
-use spookery_kernel::map;
-use spookery_kernel::perceive::perceive_at;
-use spookery_kernel::rules::cost;
-use spookery_kernel::rules::gate::{self, gate};
-use spookery_kernel::rules::{RollReport, RollResult};
-use spookery_kernel::world::Draft;
-use spookery_kernel::Reason;
+use spookery_kernel::api::apply::apply_effect;
+use spookery_kernel::api::effect::Effect;
+use spookery_kernel::api::expand::expand_outcome;
+use spookery_kernel::api::intent::{ActorKind, Intent};
+use spookery_kernel::api::journal::Rejected;
+use spookery_kernel::api::map;
+use spookery_kernel::api::perceive::perceive_at;
+use spookery_kernel::api::rules::cost;
+use spookery_kernel::api::rules::gate::{self, gate};
+use spookery_kernel::api::rules::{RollReport, RollResult};
+use spookery_kernel::api::world::Draft;
+use spookery_kernel::api::Reason;
 
 use super::resolve::{roll_subject, viewer_token, SubjectRoll};
 use crate::state::{Resolution, Round};
@@ -119,7 +119,7 @@ fn begin_timed(
     round: &mut Round,
     draft: &mut Draft,
     intent: &Intent,
-    rule: &spookery_kernel::rules::rule::Rule,
+    rule: &spookery_kernel::api::rules::rule::Rule,
     minutes: u64,
 ) -> bool {
     let point = draft.savepoint();
@@ -210,9 +210,9 @@ fn commit_intent(
 }
 
 struct ResistCtx<'a> {
-    checks: &'a std::collections::BTreeMap<String, spookery_kernel::check::CheckDef>,
-    meters: &'a std::collections::BTreeMap<String, spookery_kernel::meter::MeterDef>,
-    frozen: &'a spookery_kernel::model::Now,
+    checks: &'a std::collections::BTreeMap<String, spookery_kernel::api::check::CheckDef>,
+    meters: &'a std::collections::BTreeMap<String, spookery_kernel::api::meter::MeterDef>,
+    frozen: &'a spookery_kernel::api::model::Now,
     intent: &'a Intent,
 }
 
