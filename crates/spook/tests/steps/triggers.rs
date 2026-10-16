@@ -387,7 +387,6 @@ fn nell_enters_the_bog(world: &mut World) {
 ---
 schema: place
 id: bog
-name: Bog
 display_name: Bog
 facts: []
 exits: []
@@ -566,7 +565,6 @@ fn the_street_has_a_hidden_trapdoor(world: &mut World) {
 ---
 schema: place
 id: cellar
-name: Cellar
 display_name: Cellar
 facts: []
 exits: []

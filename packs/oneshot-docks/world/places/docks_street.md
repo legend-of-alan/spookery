@@ -1,7 +1,6 @@
 ---
 schema: place
 id: docks_street
-name: Docks Street
 display_name: Docks Street
 exits:
   - to: docks_shop

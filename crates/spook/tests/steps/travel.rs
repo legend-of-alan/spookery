@@ -100,7 +100,7 @@ fn add_trapdoor(pack: &Path) {
     fs::write(&path, next).unwrap();
     fs::write(
         pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\nname: Cellar\ndisplay_name: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
+        "---\nschema: place\nid: cellar\ndisplay_name: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
     )
     .unwrap();
 }

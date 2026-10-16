@@ -1,6 +1,6 @@
 schema: now
 shard_id: docks-001
-pack_rev: blake2s:40d98d71113b35f4889efd64eab3eb4e616beb12d7a1f071ba6eaa318c23f482
+pack_rev: blake2s:392284a0518d57314d7a149a396beb3051f9203c5d16382869148f279c98ecde
 rules_rev: 7
 state_rev: 0
 tick_index: 0

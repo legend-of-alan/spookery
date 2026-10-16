@@ -1,7 +1,6 @@
 ---
 schema: place
 id: mira_rooms
-name: Mira's Rooms
 display_name: Mira's Rooms
 exits:
   - to: docks_shop

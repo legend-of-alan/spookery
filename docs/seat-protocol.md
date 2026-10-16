@@ -414,7 +414,7 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
   "world_time": 1080,
   "tick_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:40d98d71113b35f4889efd64eab3eb4e616beb12d7a1f071ba6eaa318c23f482",
+  "pack_rev": "blake2s:392284a0518d57314d7a149a396beb3051f9203c5d16382869148f279c98ecde",
   "last_tick_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 0
@@ -455,7 +455,7 @@ After the two says above, `since` 0 returns them:
   "world_time": 1080,
   "tick_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:40d98d71113b35f4889efd64eab3eb4e616beb12d7a1f071ba6eaa318c23f482",
+  "pack_rev": "blake2s:392284a0518d57314d7a149a396beb3051f9203c5d16382869148f279c98ecde",
   "last_tick_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 2,

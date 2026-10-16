@@ -54,7 +54,6 @@ A place is a Markdown file under `world/places/`. The header is the frontmatter.
 ---
 schema: place
 id: porch
-name: Porch
 display_name: Porch
 facts:
   - id: fact_porch_dry

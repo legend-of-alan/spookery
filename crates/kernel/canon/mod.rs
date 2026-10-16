@@ -1529,10 +1529,6 @@ struct PackStart {
 struct PlaceFile {
     schema: String,
     id: String,
-    /// Kept so an older `name` key is not an unknown field. Players see `display_name`.
-    #[serde(default)]
-    #[allow(dead_code)]
-    name: String,
     display_name: String,
     facts: Vec<FactFile>,
     #[serde(default)]

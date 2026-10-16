@@ -57,7 +57,6 @@ The traveller stays at the origin until the journey finishes. The busy time is t
 ---
 schema: place
 id: yard
-name: Yard
 display_name: Yard
 facts:
   - id: fact_yard_open
@@ -105,7 +104,6 @@ Gravel underfoot.
 ---
 schema: place
 id: lane
-name: Lane
 display_name: Lane
 facts:
   - id: fact_lane_empty
@@ -122,7 +120,6 @@ The lane runs past the yard.
 ---
 schema: place
 id: loft
-name: Loft
 display_name: Loft
 facts:
   - id: fact_loft_rope
@@ -139,7 +136,6 @@ Rope, and a view of the yard.
 ---
 schema: place
 id: cellar
-name: Cellar
 display_name: Cellar
 facts:
   - id: fact_cellar_dark
