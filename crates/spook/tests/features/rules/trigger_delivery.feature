@@ -34,6 +34,54 @@ Feature: Trigger delivery
     And "pc_nell"'s summary lists "actor_flag pc_nell heard_bell"
     And "pc_wren"'s summary does not list "actor_flag pc_nell heard_bell"
 
+  Scenario: Tick counters stay with the GM
+    When a round runs
+    Then the GM summary lists a tick counter change
+    And "pc_nell"'s summary lists no tick counter change
+
+  Scenario: A learned fact is told only to that person
+    When pc_nell learns fact_trapdoor while pc_wren is in the same room
+    Then the GM summary lists "actor_known_fact pc_nell"
+    And "pc_nell"'s summary lists "actor_known_fact pc_nell"
+    And "pc_wren"'s summary does not list "actor_known_fact pc_nell"
+
+  Scenario: An item change is seen in that room only
+    When an item is taken from docks_shop
+    Then the GM summary lists "place_item docks_shop lamp_oil"
+    And "pc_rowan"'s summary lists "place_item docks_shop lamp_oil"
+    And "pc_wren"'s summary does not list "place_item docks_shop lamp_oil"
+
+  Scenario: A clock change is seen by its owners only
+    When a clock owned by pc_nell ticks
+    Then the GM summary lists "clock_value nell_tide"
+    And "pc_nell"'s summary lists "clock_value nell_tide"
+    And "pc_wren"'s summary does not list "clock_value nell_tide"
+
+  Scenario: Entering and leaving are seen from both rooms
+    When pc_nell travels from docks_street into docks_shop
+    Then the GM summary lists "actor_place pc_nell"
+    And "pc_nell"'s summary lists "actor_place pc_nell"
+    And "pc_wren"'s summary lists "actor_place pc_nell"
+    And "pc_rowan"'s summary lists "actor_place pc_nell"
+    And "pc_harbormouse"'s summary does not list "actor_place pc_nell"
+
+  Scenario: A world flag is seen by everyone
+    When a rule sets world flag tide_turned
+    Then the GM summary lists "world_flag tide_turned"
+    And every seated player's summary lists "world_flag tide_turned"
+
+  Scenario: Another person's change is seen only in the same room
+    When pc_wren's meter changes while pc_nell is elsewhere
+    Then the GM summary lists "actor_meter pc_wren grit"
+    And "pc_harbormouse"'s summary lists "actor_meter pc_wren grit"
+    And "pc_nell"'s summary does not list "actor_meter pc_wren grit"
+
+  Scenario: A message is seen only by those allowed
+    When a message hidden from pc_wren is written
+    Then the GM summary lists "message note_private"
+    And "pc_nell"'s summary lists "message note_private"
+    And "pc_wren"'s summary does not list "message note_private"
+
   Scenario: An idle round does not linger for the next player
     When the empty table narrates and then Rowan narrates
     Then "pc_rowan" is told "You are back."
