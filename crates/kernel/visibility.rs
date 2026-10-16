@@ -49,15 +49,17 @@ pub fn observe(
         Seat::Gm => None,
         Seat::Actor(id) => Some(id.as_str()),
     };
+    let visible: Vec<ChangeRecord> = changes
+        .iter()
+        .filter(|change| actor.is_none_or(|id| can_see(canon, now, id, change)))
+        .cloned()
+        .collect();
     let mut keys = BTreeSet::new();
     let mut spoken = Vec::new();
-    for change in changes {
-        if actor.is_some_and(|id| !can_see(canon, now, id, change)) {
-            continue;
-        }
+    for change in &visible {
         keys.insert(change.key.to_string());
         if let Some(id) = actor {
-            if let Some(sentence) = sentence(canon, id, change, changes) {
+            if let Some(sentence) = sentence(canon, id, change, &visible) {
                 spoken.push(sentence);
             }
         }
@@ -149,7 +151,7 @@ fn item_sentence(
     Some(format!("{who} {name} {verb}."))
 }
 
-/// The item left one owner and showed up with another in this round.
+/// The item left one owner and showed up with another among changes this viewer can see.
 fn item_moved(changes: &[ChangeRecord], id: &str) -> bool {
     let mut down = false;
     let mut up = false;

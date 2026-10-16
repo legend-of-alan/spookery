@@ -75,6 +75,40 @@ fn lark_uses_a_tonic(world: &mut World) {
     world.stdout = change_line(&mut shard);
 }
 
+#[given(expr = "lark uses her tonic while someone out of sight gains one")]
+fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
+    let pack = pack(world).to_path_buf();
+    let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
+    verbs.push('\n');
+    verbs.push_str(
+        "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          who: npc_oden\n          id: tonic\n          add: 1\n",
+    );
+    fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
+    stamp(&pack);
+    let mut shard = seat(&pack);
+    play(&mut shard, "sip");
+    world.summary = shard.change_summary().to_vec();
+    world.stdout = change_line(&mut shard);
+}
+
+#[then(expr = "that line does not mention the unseen gain")]
+fn the_line_skips_the_unseen_gain(world: &mut World) {
+    assert!(
+        world
+            .summary
+            .iter()
+            .any(|item| item.contains("actor_item npc_oden tonic")),
+        "{:?}",
+        world.summary
+    );
+    let line = one_line(&world.stdout);
+    let lower = line.to_lowercase();
+    assert!(lower.contains("used up"), "{line}");
+    assert!(!lower.contains("lost"), "{line}");
+    assert!(!lower.contains("gained"), "{line}");
+    assert!(!lower.contains("oden"), "{line}");
+}
+
 #[when(expr = "lark drops the tonic")]
 fn lark_drops_the_tonic(world: &mut World) {
     let pack = pack(world).to_path_buf();
