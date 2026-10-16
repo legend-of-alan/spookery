@@ -22,7 +22,7 @@ pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
 }
 
-pub fn migrate_file(state_rev: u64) -> String {
+pub(crate) fn migrate_file(state_rev: u64) -> String {
     format!("migrate-{state_rev:04}.json")
 }
 
@@ -31,7 +31,7 @@ pub fn base_rel() -> &'static str {
 }
 
 /// Insert `now_hash` before the closing brace of one JSON object.
-pub fn stamp_now_hash(jsonl: &str, now_bytes: &[u8]) -> Result<String, Reason> {
+pub(crate) fn stamp_now_hash(jsonl: &str, now_bytes: &[u8]) -> Result<String, Reason> {
     let trimmed = jsonl.trim_end();
     let body = trimmed.strip_suffix('}').ok_or(Reason::Schema)?;
     if body.contains("\"now_hash\"") {
@@ -41,7 +41,7 @@ pub fn stamp_now_hash(jsonl: &str, now_bytes: &[u8]) -> Result<String, Reason> {
     Ok(format!("{body},\"now_hash\":\"{hash}\"}}\n"))
 }
 
-pub fn emit_migrate(
+pub(crate) fn emit_migrate(
     pack_rev_before: &str,
     pack_rev_after: &str,
     state_rev_before: u64,
@@ -221,7 +221,7 @@ pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFa
     read_json(name, text)
 }
 
-pub fn parse_migrate(name: &str, text: &str) -> Result<MigrateRecord, JournalFault> {
+pub(crate) fn parse_migrate(name: &str, text: &str) -> Result<MigrateRecord, JournalFault> {
     read_json(name, text)
 }
 

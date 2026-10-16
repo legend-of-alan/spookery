@@ -90,7 +90,7 @@ impl Effect {
         &self.intent_id
     }
 
-    pub fn class_name(&self) -> &'static str {
+    pub(crate) fn class_name(&self) -> &'static str {
         self.class.name()
     }
 }

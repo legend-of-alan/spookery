@@ -102,7 +102,7 @@ pub mod world {
 
 pub use crate::diagnostic::{first_reason, reason_of, Diagnostic};
 pub use crate::error::Reason;
-pub use crate::hash::{blake2s_256, blake2s_hex};
+pub use crate::hash::blake2s_256;
 pub use crate::host_summary::{host_summary, DigestViewer};
 pub use crate::perceive::perceive;
 pub use crate::world::{check_pack, World};

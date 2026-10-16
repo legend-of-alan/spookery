@@ -2,7 +2,7 @@ use crate::canon::Canon;
 use crate::intent::ViewerId;
 use crate::model::Now;
 
-pub fn allows(canon: &Canon, now: &Now, viewer: &ViewerId, fact_id: &str) -> bool {
+pub(crate) fn allows(canon: &Canon, now: &Now, viewer: &ViewerId, fact_id: &str) -> bool {
     let Some(actor) = now.actors.get(viewer.actor_id()) else {
         return false;
     };

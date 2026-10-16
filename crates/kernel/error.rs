@@ -67,7 +67,7 @@ impl Reason {
         }
     }
 
-    pub fn from_token(token: &str) -> Option<Self> {
+    pub(crate) fn from_token(token: &str) -> Option<Self> {
         Some(match token {
             "ILLEGAL_CLASS" => Reason::IllegalClass,
             "ILLEGAL_KNOWLEDGE" => Reason::IllegalKnowledge,

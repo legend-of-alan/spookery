@@ -43,7 +43,7 @@ pub struct RollKey {
 }
 
 impl RollKey {
-    pub fn preimage(&self) -> String {
+    pub(crate) fn preimage(&self) -> String {
         format!(
             "{}|{}|{}|{}|{}",
             self.world_id, self.round_index, self.rule_id, self.subject_id, self.roll_index

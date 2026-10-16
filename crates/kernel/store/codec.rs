@@ -7,7 +7,7 @@ use crate::error::Reason;
 use crate::model::{sort_unique, MemoryLine, Now};
 
 #[allow(non_snake_case)]
-pub fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
+pub(crate) fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
     serde_saphyr::ser_options! {
         empty_as_braces: true,
         indent_step: 2,
@@ -84,7 +84,8 @@ fn rules_rev_diagnostic(text: &str) -> Diagnostic {
 }
 
 /// Refuse a tick record whose `rules_rev` is missing or not the engine's.
-pub fn require_recorded_rules(text: &str) -> Result<(), Reason> {
+#[cfg(test)]
+pub(crate) fn require_recorded_rules(text: &str) -> Result<(), Reason> {
     #[derive(Deserialize)]
     struct RulesProbe {
         #[serde(default)]
@@ -190,11 +191,12 @@ pub fn emit_effect(effect: &Effect) -> String {
 }
 
 /// Payload fields only, in declaration order. Absent options are omitted.
-pub fn emit_effect_payload(effect: &Effect) -> String {
+pub(crate) fn emit_effect_payload(effect: &Effect) -> String {
     super::records::payload_json(effect)
 }
 
-pub fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
+#[cfg(test)]
+pub(crate) fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
     #[derive(Deserialize)]
     struct EffectsOnly {
         tick_index: u64,
@@ -205,11 +207,12 @@ pub fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
     Ok((parsed.tick_index, parsed.effects))
 }
 
-pub fn parse_effect(text: &str) -> Result<Effect, Reason> {
+#[cfg(test)]
+pub(crate) fn parse_effect(text: &str) -> Result<Effect, Reason> {
     serde_json::from_str(text).map_err(|err| super::records::effect_reason(&err.to_string()))
 }
 
-pub fn emit_memory_line(line: &MemoryLine) -> String {
+pub(crate) fn emit_memory_line(line: &MemoryLine) -> String {
     let json = MemoryLineJson {
         tick_index: line.tick_index,
         actor_id: &line.actor_id,

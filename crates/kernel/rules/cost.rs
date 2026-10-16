@@ -12,7 +12,7 @@ pub struct Gap {
     pub what: String,
 }
 
-pub fn can_pay(canon: &Canon, now: &Now, who: &str, cost: &Cost) -> Result<(), Gap> {
+pub(crate) fn can_pay(canon: &Canon, now: &Now, who: &str, cost: &Cost) -> Result<(), Gap> {
     for (key, amount) in &cost.meters {
         if *amount < 0 {
             return Err(Gap { what: key.clone() });

@@ -30,7 +30,7 @@ pub fn lint(root: &Path) -> Result<Vec<LintHit>, Reason> {
 }
 
 /// Hidden-fact sentences found in Markdown bodies, plus files the scan could not read.
-pub fn body_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
+pub(crate) fn body_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
     let (leaks, mut problems) = scan(root, canon);
     for leak in leaks {
         let mut diag = Diagnostic::new(
@@ -49,7 +49,7 @@ pub fn body_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
 
 /// Hidden-fact sentences found in a message template's `text`.
 /// `HIDDEN_FACT_IN_BODY` stays the Markdown scan. A move row is not a body.
-pub fn message_text_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
+pub(crate) fn message_text_leaks(root: &Path, canon: &Canon) -> Vec<Diagnostic> {
     let needles = hidden_needles(canon);
     if needles.is_empty() {
         return Vec::new();

@@ -87,7 +87,7 @@ impl Canon {
         self.cast.get(actor_id).and_then(|cast| cast.tick.as_ref())
     }
 
-    pub fn body_of_fact(&self, fact_id: &str) -> &str {
+    pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {
         let Some(fact) = self.facts.get(fact_id) else {
             return "";
         };
@@ -98,10 +98,6 @@ impl Canon {
             return &cast.body;
         }
         ""
-    }
-
-    pub fn rule_roll(&self, id: &str) -> Option<&crate::rules::rule::RollSpec> {
-        self.rules.get(id).and_then(|rule| rule.roll.as_ref())
     }
 }
 
@@ -648,7 +644,7 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<crate::map::Exit>
     }
 }
 
-pub fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
+pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
     const FILE: &str = "rules/meters.yaml";
     if let Some(diag) = tag_diagnostic(text, crate::format::METERS, FILE, 0) {
         return Err(vec![diag]);
@@ -857,7 +853,7 @@ pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
 }
 
 /// Item ids in the save that have no `world/items/<id>.md`.
-pub fn unknown_save_items(canon: &Canon, now: &Now) -> Vec<Diagnostic> {
+pub(crate) fn unknown_save_items(canon: &Canon, now: &Now) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for (actor_id, actor) in &now.actors {
         for item in actor.inventory().keys() {

@@ -1,7 +1,12 @@
 use crate::hash::blake2s_hex;
 
 /// Blake2s of `shard|tick|actor|row`. The P37 preimage stays.
-pub fn kernel_intent_id(shard_id: &str, tick_index: u64, actor_id: &str, row: &str) -> String {
+pub(crate) fn kernel_intent_id(
+    shard_id: &str,
+    tick_index: u64,
+    actor_id: &str,
+    row: &str,
+) -> String {
     blake2s_hex(format!("{shard_id}|{tick_index}|{actor_id}|{row}").as_bytes())
 }
 

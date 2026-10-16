@@ -10,3 +10,7 @@ Feature: Kernel boundaries hold
 
   Scenario: Clean tree passes
     Then the boundary check passes on main
+
+  Scenario: Unused kernel functions stay off the public surface
+    Then the listed kernel functions are crate-private or gone
+    And sort_unique stays public for the firewall tests

@@ -118,11 +118,11 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
     }
 }
 
-pub fn world_hour(world_time: u64) -> i64 {
+pub(crate) fn world_hour(world_time: u64) -> i64 {
     ((world_time / 60) % 24) as i64
 }
 
-pub fn hour_in(start: i64, end: i64, hour: i64) -> bool {
+pub(crate) fn hour_in(start: i64, end: i64, hour: i64) -> bool {
     if start < end {
         start <= hour && hour < end
     } else if start > end {
