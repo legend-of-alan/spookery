@@ -30,7 +30,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         world_time_before: line.world_time_before,
         world_time_after: line.world_time_after,
         presence_humans: line.presence_humans,
-        actors_present: Some(line.actors_present.to_vec()),
+        actors_present: line.actors_present.to_vec(),
         seed: line.seed.to_string(),
         last_tick_at: line.last_tick_at.to_string(),
         intents: line.intents.to_vec(),

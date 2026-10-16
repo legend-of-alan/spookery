@@ -17,8 +17,8 @@ pub struct Now {
     pub tick_index: u64,
     pub world_time: u64,
     pub last_tick_at: String,
-    /// Live seats. Not written. An old save may still carry this field; the next commit drops it.
-    #[serde(default, skip_serializing)]
+    /// Live seats. Memory only: never written to or read from the save.
+    #[serde(skip)]
     pub presence: Presence,
     pub pause: PauseView,
     pub places: BTreeMap<String, PlaceLive>,

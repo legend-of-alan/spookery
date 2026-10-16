@@ -27,17 +27,6 @@ Feature: Seat presence stays in memory
     And the tick now_hash matches the save
     And stderr is empty
 
-  Scenario: A world with old presence records replays and verifies
-    Given a docks table
-    When the world has an old presence record and a tick
-    And the operator runs verify
-    Then the command exits 0
-    And stdout says the save was verified
-    And stderr is empty
-    When the operator runs replay
-    Then the command exits 0
-    And stderr is empty
-
   Scenario: Two players seated and dropped one after another get different session ids
     Given a docks table
     When two players sit, one drops, and that PC sits again

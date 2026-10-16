@@ -1,14 +1,11 @@
 schema: now
 shard_id: docks-001
 pack_rev: blake2s:40d98d71113b35f4889efd64eab3eb4e616beb12d7a1f071ba6eaa318c23f482
-rules_rev: 6
+rules_rev: 7
 state_rev: 0
 tick_index: 0
 world_time: 1080
 last_tick_at: "2026-01-01T00:00:00Z"
-presence:
-  humans: 0
-  actors_present: []
 pause:
   named_plot_clocks: paused
 places:

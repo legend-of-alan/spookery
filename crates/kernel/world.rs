@@ -13,7 +13,7 @@ use crate::intent::Intent;
 use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::{sort_unique, MemoryLine, Now, PauseView, Presence};
 use crate::rules::RollReport;
-use crate::store::codec::{emit_save, load_save, with_presence};
+use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
 use crate::visibility::{Seen, Told};
 
@@ -704,30 +704,23 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
         );
     }
     match emit_save(now) {
-        Ok(emitted) => {
-            let text = std::str::from_utf8(bytes).ok();
-            let expected = text.map(|live| canonical_save(&emitted, live, now));
-            let same = match &expected {
-                Some(expected) => expected.as_bytes() == bytes,
-                None => emitted.as_bytes() == bytes,
+        Ok(emitted) if emitted.as_bytes() != bytes => {
+            let line = std::str::from_utf8(bytes)
+                .ok()
+                .and_then(|live| first_diff_line(live, &emitted));
+            let mut diag = coded(
+                "state/save.yaml",
+                Reason::HandEdit,
+                "this save does not match the canonical text",
+                "run spook migrate to keep the edit, or restore the file",
+            );
+            diag = match line {
+                Some(line) => diag.at_line(line, None),
+                None => diag.with_path("now"),
             };
-            if !same {
-                let line = text.and_then(|live| {
-                    first_diff_line(live, expected.as_deref().unwrap_or(&emitted))
-                });
-                let mut diag = coded(
-                    "state/save.yaml",
-                    Reason::HandEdit,
-                    "this save does not match the canonical text",
-                    "run spook migrate to keep the edit, or restore the file",
-                );
-                diag = match line {
-                    Some(line) => diag.at_line(line, None),
-                    None => diag.with_path("now"),
-                };
-                diags.push(diag);
-            }
+            diags.push(diag);
         }
+        Ok(_) => {}
         Err(_) => diags.push(
             coded(
                 "state/save.yaml",
@@ -739,15 +732,6 @@ fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
         ),
     }
     diags
-}
-
-/// Old saves still carry `presence`. That block is memory after load, not a hand edit.
-fn canonical_save(emitted: &str, live: &str, now: &Now) -> String {
-    if live.lines().any(|line| line == "presence:") {
-        with_presence(emitted, now.presence.humans, &now.presence.actors_present)
-    } else {
-        emitted.to_string()
-    }
 }
 
 fn first_diff_line(live: &str, emitted: &str) -> Option<u32> {

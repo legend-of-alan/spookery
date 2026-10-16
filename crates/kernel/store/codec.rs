@@ -27,10 +27,19 @@ pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
     if let Some(diag) = tag_diagnostic(text, crate::format::NOW, FILE, 0) {
         return Err(vec![diag]);
     }
-    let now: Now = parse_file(FILE, text, 0)?;
-    if super::require_rules_rev(now.rules_rev).is_err() {
-        return Err(vec![rules_rev_diagnostic(text)]);
+    // Check the rules version before the full shape, so a save from older rules
+    // (for example one that still carries `presence`) is refused as RULES_REV.
+    #[derive(Deserialize)]
+    struct RulesProbe {
+        #[serde(default)]
+        rules_rev: u64,
     }
+    if let Ok(probe) = serde_saphyr::from_str::<RulesProbe>(text) {
+        if super::require_rules_rev(probe.rules_rev).is_err() {
+            return Err(vec![rules_rev_diagnostic(text)]);
+        }
+    }
+    let now: Now = parse_file(FILE, text, 0)?;
     let mut diags = Vec::new();
     if now.schema != crate::format::NOW {
         diags.push(
@@ -58,68 +67,6 @@ pub fn emit_save(now: &Now) -> Result<String, Reason> {
     let text = serde_saphyr::to_string_with_options(&canonical, SAVE_EMIT_OPTIONS())
         .map_err(|_| Reason::Schema)?;
     Ok(one_trailing_lf(text))
-}
-
-/// Drop a top-level `presence` block. Old saves still carry one.
-pub fn without_presence(yaml: &str) -> String {
-    let mut out = String::new();
-    let mut skipping = false;
-    for line in yaml.split_inclusive('\n') {
-        let text = line.trim_end_matches(['\n', '\r']);
-        if !skipping && text == "presence:" {
-            skipping = true;
-            continue;
-        }
-        if skipping {
-            if text.is_empty() || text.starts_with(' ') || text.starts_with('\t') {
-                continue;
-            }
-            skipping = false;
-        }
-        out.push_str(line);
-    }
-    out
-}
-
-/// Put `presence` back where the old emitter wrote it, before `pause`.
-pub fn with_presence(yaml: &str, humans: u32, actors: &[String]) -> String {
-    let stripped = without_presence(yaml);
-    let block = presence_block(humans, actors);
-    let mut out = String::new();
-    let mut inserted = false;
-    for line in stripped.split_inclusive('\n') {
-        let text = line.trim_end_matches(['\n', '\r']);
-        if !inserted && text == "pause:" {
-            out.push_str(&block);
-            inserted = true;
-        }
-        out.push_str(line);
-    }
-    if !inserted {
-        if !out.ends_with('\n') {
-            out.push('\n');
-        }
-        out.push_str(&block);
-    }
-    out
-}
-
-fn presence_block(humans: u32, actors: &[String]) -> String {
-    let mut actors = actors.to_vec();
-    actors.sort();
-    actors.dedup();
-    let mut block = format!("presence:\n  humans: {humans}\n  actors_present:");
-    if actors.is_empty() {
-        block.push_str(" []\n");
-    } else {
-        block.push('\n');
-        for id in actors {
-            block.push_str("    - ");
-            block.push_str(&id);
-            block.push('\n');
-        }
-    }
-    block
 }
 
 fn rules_rev_diagnostic(text: &str) -> Diagnostic {
@@ -312,24 +259,8 @@ mod tests {
         let original = fs::read_to_string(&path).unwrap();
         let now = load_save(&original).unwrap();
         let emitted = emit_save(&now).unwrap();
-        assert_eq!(emitted, without_presence(&original));
-        assert_eq!(
-            with_presence(&emitted, now.presence.humans, &now.presence.actors_present),
-            original
-        );
+        assert_eq!(emitted, original);
         assert_eq!(load_save(&emitted).unwrap(), now);
-    }
-
-    /// Written by the emitter from before presence left the save, with two PCs seated.
-    /// Old journal hashes cover these exact bytes, so `with_presence` must rebuild them.
-    #[test]
-    fn with_presence_rebuilds_an_old_seated_save() {
-        let original = include_str!("../fixtures/old-save-seated.yaml");
-        let now = load_save(original).unwrap();
-        let emitted = emit_save(&now).unwrap();
-        assert!(!emitted.contains("\npresence:"), "{emitted}");
-        let actors = ["pc_wren".to_string(), "pc_rowan".to_string()];
-        assert_eq!(with_presence(&emitted, 2, &actors), original);
     }
 
     fn now_text(tag: &str) -> String {
@@ -343,9 +274,6 @@ state_rev: 0
 tick_index: 0
 world_time: 0
 last_tick_at: \"2026-01-01T00:00:00Z\"
-presence:
-  humans: 0
-  actors_present: []
 pause:
   named_plot_clocks: paused
 places:
