@@ -57,7 +57,7 @@ pub fn observe(
         }
         keys.insert(change.key.to_string());
         if let Some(id) = actor {
-            if let Some(sentence) = sentence(canon, id, change) {
+            if let Some(sentence) = sentence(canon, id, change, changes) {
                 spoken.push(sentence);
             }
         }
@@ -74,7 +74,12 @@ pub fn observe(
 }
 
 /// One sentence for a meter or item change this viewer may know.
-fn sentence(canon: &Canon, viewer: &str, change: &ChangeRecord) -> Option<String> {
+fn sentence(
+    canon: &Canon,
+    viewer: &str,
+    change: &ChangeRecord,
+    changes: &[ChangeRecord],
+) -> Option<String> {
     match &change.key {
         StateKey::ActorMeter(actor, key) => {
             meter_sentence(canon, actor, key, viewer, &change.after)
@@ -85,11 +90,18 @@ fn sentence(canon: &Canon, viewer: &str, change: &ChangeRecord) -> Option<String
             id,
             &change.before,
             &change.after,
+            changes,
             true,
         ),
-        StateKey::PlaceItem(_, id) => {
-            item_sentence(canon, "Here", id, &change.before, &change.after, false)
-        }
+        StateKey::PlaceItem(_, id) => item_sentence(
+            canon,
+            "Here",
+            id,
+            &change.before,
+            &change.after,
+            changes,
+            false,
+        ),
         _ => None,
     }
 }
@@ -117,7 +129,8 @@ fn item_sentence(
     id: &str,
     before: &StateValue,
     after: &StateValue,
-    own: bool,
+    changes: &[ChangeRecord],
+    inventory: bool,
 ) -> Option<String> {
     let (StateValue::Number(before), StateValue::Number(after)) = (before, after) else {
         return None;
@@ -126,7 +139,7 @@ fn item_sentence(
         return None;
     }
     let name = item_name(canon, id);
-    let verb = if own && *after == 0 {
+    let verb = if inventory && *after == 0 && !item_moved(changes, id) {
         "was used up"
     } else if after < before {
         "was lost"
@@ -134,6 +147,35 @@ fn item_sentence(
         "was gained"
     };
     Some(format!("{who} {name} {verb}."))
+}
+
+/// The item left one owner and showed up with another in this round.
+fn item_moved(changes: &[ChangeRecord], id: &str) -> bool {
+    let mut down = false;
+    let mut up = false;
+    for change in changes {
+        let Some(item) = item_of(change) else {
+            continue;
+        };
+        if item != id {
+            continue;
+        }
+        match (&change.before, &change.after) {
+            (StateValue::Number(before), StateValue::Number(after)) if after > before => up = true,
+            (StateValue::Number(before), StateValue::Number(after)) if after < before => {
+                down = true
+            }
+            _ => {}
+        }
+    }
+    down && up
+}
+
+fn item_of(change: &ChangeRecord) -> Option<&str> {
+    match &change.key {
+        StateKey::ActorItem(_, id) | StateKey::PlaceItem(_, id) => Some(id),
+        _ => None,
+    }
 }
 
 fn whose(canon: &Canon, viewer: &str, actor: &str) -> String {

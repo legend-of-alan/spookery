@@ -75,6 +75,34 @@ fn lark_uses_a_tonic(world: &mut World) {
     world.stdout = change_line(&mut shard);
 }
 
+#[when(expr = "lark drops the tonic")]
+fn lark_drops_the_tonic(world: &mut World) {
+    let pack = pack(world).to_path_buf();
+    let mut shard = seat(&pack);
+    play(&mut shard, "drop tonic");
+    world.stdout = change_line(&mut shard);
+}
+
+#[given(expr = "a tonic is on the ground")]
+fn a_tonic_is_on_the_ground(world: &mut World) {
+    let pack = pack(world).to_path_buf();
+    edit_now(&pack, |now| {
+        now.places
+            .get_mut("gate_yard")
+            .unwrap()
+            .items
+            .insert("tonic".to_string(), 1);
+    });
+}
+
+#[when(expr = "lark takes the tonic")]
+fn lark_takes_the_tonic(world: &mut World) {
+    let pack = pack(world).to_path_buf();
+    let mut shard = seat(&pack);
+    play(&mut shard, "take tonic");
+    world.stdout = change_line(&mut shard);
+}
+
 #[when(expr = "lark looks at their view")]
 fn lark_looks_at_their_view(world: &mut World) {
     let pack = pack(world).to_path_buf();
@@ -99,6 +127,16 @@ fn lark_sees_the_tonic_used_up(world: &mut World) {
         lower.contains("tonic") && lower.contains("used up"),
         "{line}"
     );
+}
+
+#[then(expr = "the tonic was moved, not used up")]
+fn the_tonic_was_moved(world: &mut World) {
+    let line = one_line(&world.stdout);
+    let lower = line.to_lowercase();
+    assert!(lower.contains("tonic"), "{line}");
+    assert!(line.contains("Your") && line.contains("Here"), "{line}");
+    assert!(lower.contains("lost") && lower.contains("gained"), "{line}");
+    assert!(!lower.contains("used up"), "{line}");
 }
 
 #[then(expr = "lark sees lark's hp and might")]
@@ -166,6 +204,12 @@ fn copy_sample(label: &str) -> PathBuf {
 }
 
 fn stamp(pack: &Path) {
+    edit_now(pack, |now| {
+        now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
+    });
+}
+
+fn edit_now(pack: &Path, edit: impl FnOnce(&mut spookery_kernel::api::model::Now)) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
     let mut now = spookery_kernel::api::store::codec::load_save(&text).unwrap_or_else(|diags| {
@@ -178,7 +222,7 @@ fn stamp(pack: &Path) {
                 .join("\n")
         )
     });
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
+    edit(&mut now);
     let emitted = spookery_kernel::api::store::codec::emit_save(&now).unwrap();
     fs::write(path, emitted).unwrap();
 }

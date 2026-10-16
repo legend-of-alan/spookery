@@ -10,6 +10,17 @@ Feature: Actions visibly matter
     When lark uses a tonic
     Then lark sees one line saying the tonic was used up
 
+  Scenario: Dropping an item is a move
+    Given sample-d20 with player "lark" seated facing "briar"
+    When lark drops the tonic
+    Then the tonic was moved, not used up
+
+  Scenario: Taking an item is a move
+    Given sample-d20 with player "lark" seated facing "briar"
+    And a tonic is on the ground
+    When lark takes the tonic
+    Then the tonic was moved, not used up
+
   Scenario: A player sees their own meters
     Given sample-d20 with player "lark" seated facing "briar"
     And lark has a hidden meter
