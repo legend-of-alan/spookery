@@ -8,6 +8,8 @@ pub struct MeterDef {
     pub base_cap: i64,
     pub max: i64,
     pub start: i64,
+    /// Kept off the player's own view.
+    pub hidden: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -88,6 +90,7 @@ mod tests {
             base_cap: 100,
             max: 110,
             start: 1,
+            hidden: false,
         }
     }
 

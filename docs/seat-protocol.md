@@ -100,6 +100,18 @@ A legal hello sits that PC. The table then sends a `resume` line and a `perceive
       "count": 4
     }
   ],
+  "meters": [
+    {
+      "id": "grit",
+      "value": 1,
+      "max": 110
+    },
+    {
+      "id": "rest",
+      "value": 3,
+      "max": 5
+    }
+  ],
   "habits": [],
   "exits": [
     {
@@ -120,7 +132,7 @@ A legal hello sits that PC. The table then sends a `resume` line and a `perceive
 }
 ```
 
-`resume.text` is the player digest, already text. `perceive` is what that viewer can see. `viewer` is `player:<id>`. `place_name` and `actor_names` are the pack's display names. `prose` is the place body with hidden fact text removed. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
+`resume.text` is the player digest, already text. `perceive` is what that viewer can see. `viewer` is `player:<id>`. `place_name` and `actor_names` are the pack's display names. `prose` is the place body with hidden fact text removed. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
 
 Sitting keeps presence in memory and does not bump `state_rev`. The cap is three player seats, in the engine, not in the pack.
 
@@ -293,7 +305,7 @@ travel stairs
 
 `missing` is omitted when the refusal does not name one. A cost the actor cannot pay is `CANT_AFFORD`, and `missing` is the meter or item id.
 
-When the GM commits the round, every seated player receives a fresh `resume`, then a fresh `perceive`, then one `lines` frame for each narrate line they may hear, then a `lines` frame of the changes that player can see. A player who rolled also receives `check` before the `resume`. The change text is one changed key on each line, and that frame is omitted when that player can see no change. A narrate line is omitted when it would show a fact that player is not allowed to know. Empty rounds, with nobody seated, do not leave lines for the next person who sits.
+When the GM commits the round, every seated player receives a fresh `resume`, then a fresh `perceive`, then one `lines` frame for each narrate line they may hear, then one `lines` frame. Its text is a single plain line of the meter changes and items gained or lost that player may know. A player who rolled also receives `check` before the `resume`. The change frame is omitted when that line is empty. A narrate line is omitted when it would show a fact that player is not allowed to know. Empty rounds, with nobody seated, do not leave lines for the next person who sits.
 
 <!-- example: player-check -->
 ```json
@@ -304,14 +316,6 @@ When the GM commits the round, every seated player receives a fresh `resume`, th
 ```
 
 `outcome` is `success`, `partial`, or `miss`. An NPC's roll sends no player frame.
-
-<!-- example: player-changes -->
-```json
-{
-  "kind": "lines",
-  "text": "clock_paused assassination_debt\nmessage note_mira_door"
-}
-```
 
 `close` leaves the seat. It has no reply.
 

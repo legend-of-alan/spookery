@@ -390,20 +390,11 @@ fn narrate_for(lines: &[spookery_kernel::api::visibility::Told], viewer: &str) -
     out
 }
 
-fn changes_for(seen: &[spookery_kernel::api::visibility::Seen], viewer: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    for item in seen {
-        if item.viewer != viewer {
-            continue;
-        }
-        for key in &item.changes {
-            if !out.contains(key) {
-                out.push(key.clone());
-            }
-        }
-    }
-    out.sort();
-    out
+fn change_line_for(seen: &[spookery_kernel::api::visibility::Seen], viewer: &str) -> String {
+    seen.iter()
+        .find(|item| item.viewer == viewer)
+        .map(|item| item.line.clone())
+        .unwrap_or_default()
 }
 
 fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
@@ -427,9 +418,9 @@ fn refresh_players(
                 for line in narrate_for(&lines, &player.actor_id) {
                     out.push_str(&frames::player_lines(&line));
                 }
-                let changes = changes_for(&seen, &player.actor_id);
-                if !changes.is_empty() {
-                    out.push_str(&frames::player_lines(&changes.join("\n")));
+                let changed = change_line_for(&seen, &player.actor_id);
+                if !changed.is_empty() {
+                    out.push_str(&frames::player_lines(&changed));
                 }
                 out.into_bytes()
             }

@@ -141,6 +141,7 @@ mod tests {
             base_cap: 100,
             max: 110,
             start: 1,
+            hidden: false,
         }
     }
 
