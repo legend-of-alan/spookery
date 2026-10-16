@@ -76,6 +76,12 @@ Feature: Trigger delivery
     And "pc_harbormouse"'s summary lists "actor_meter pc_wren grit"
     And "pc_nell"'s summary does not list "actor_meter pc_wren grit"
 
+  Scenario: Another person's item change is seen only in the same room
+    When pc_rowan takes an item while pc_nell is in the same room
+    Then the GM summary lists "actor_item pc_rowan lamp_oil"
+    And "pc_nell"'s summary lists "actor_item pc_rowan lamp_oil"
+    And "pc_wren"'s summary does not list "actor_item pc_rowan lamp_oil"
+
   Scenario: A message is seen only by those allowed
     When a message hidden from pc_wren is written
     Then the GM summary lists "message note_private"

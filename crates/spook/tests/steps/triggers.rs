@@ -683,7 +683,7 @@ fn a_round_runs(world: &mut World) {
 #[then(expr = "the GM summary lists a tick counter change")]
 fn the_gm_summary_lists_a_tick_counter(world: &mut World) {
     assert!(
-        world.summary.iter().any(|item| tick_counter(item)),
+        world.summary.iter().any(|item| is_tick_counter(item)),
         "no tick counter\n{:?}",
         world.summary
     );
@@ -693,7 +693,7 @@ fn the_gm_summary_lists_a_tick_counter(world: &mut World) {
 fn the_viewer_summary_omits_tick_counters(world: &mut World, viewer: String) {
     let changes = seen_of(world, &viewer);
     assert!(
-        changes.iter().all(|item| !tick_counter(item)),
+        changes.iter().all(|item| !is_tick_counter(item)),
         "{viewer} saw a tick counter\n{changes:?}"
     );
 }
@@ -727,6 +727,26 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
     let pack = temp_pack("trigger-place-item");
     edit_save(&pack, |now| {
         sit(now, &["pc_rowan"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent(
+            "rowan-take",
+            "pc_rowan",
+            "take",
+            Target::Actor("lamp_oil".to_string()),
+        )],
+    );
+}
+
+#[when(expr = "pc_rowan takes an item while pc_nell is in the same room")]
+fn rowan_takes_an_item_beside_nell(world: &mut World) {
+    let pack = temp_pack("trigger-actor-item");
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_shop");
+        sit(now, &["pc_rowan", "pc_nell", "pc_wren"]);
     });
     show(
         world,
@@ -950,7 +970,7 @@ fn seen_of(world: &World, viewer: &str) -> Vec<String> {
         .collect()
 }
 
-fn tick_counter(key: &str) -> bool {
+fn is_tick_counter(key: &str) -> bool {
     key.starts_with("tick_last_act ")
         || key.starts_with("tick_idle_acts ")
         || key.starts_with("tick_live_acts ")
