@@ -6,14 +6,14 @@ on:
     paths-ignore:
       # Skip CI when a change only touches plain-prose docs or images.
       # Any other doc runs CI, since tests read some docs.
-      - "README.md"
+      - "README.md" # drop once issue #89 tests the README quick start in CI
       - "docs/README.md"
       - "**/*.png"
       - "**/*.svg"
   pull_request:
     branches: [main]
     paths-ignore:
-      - "README.md"
+      - "README.md" # drop once issue #89 tests the README quick start in CI
       - "docs/README.md"
       - "**/*.png"
       - "**/*.svg"
