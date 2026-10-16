@@ -106,7 +106,13 @@ fn nobody_is_present(_world: &mut World) {
 
 #[then(expr = "the session ids differ")]
 fn the_session_ids_differ(world: &mut World) {
-    assert_eq!(world.scratch, "session ids differ");
+    let ids: Vec<&str> = world.scratch.lines().collect();
+    let [rowan, wren, again] = ids[..] else {
+        panic!("expected three session ids, got {:?}", world.scratch);
+    };
+    assert_ne!(rowan, wren);
+    assert_ne!(again, wren);
+    assert_ne!(again, rowan);
 }
 
 #[then(expr = "tick index is 0")]

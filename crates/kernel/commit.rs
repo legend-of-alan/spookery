@@ -417,7 +417,6 @@ mod tests {
             Mark::Rename(_) if name == "base.yaml" && parent_name(path, "journal") => {
                 "rename base".to_string()
             }
-            Mark::Rename(_) if name.starts_with("presence-") => "rename presence".to_string(),
             Mark::Rename(_) if name.starts_with("tick-") => "rename tick".to_string(),
             Mark::Rename(_) if parent_name(path, "memories") => "rename memory".to_string(),
             Mark::Rename(_) if name == "save.yaml" && parent_name(path, "state") => {
@@ -432,8 +431,6 @@ mod tests {
             "file save.tmp".to_string()
         } else if name.starts_with("base.yaml") {
             "file base.tmp".to_string()
-        } else if name.starts_with("presence-") {
-            "file presence.tmp".to_string()
         } else if name.starts_with("tick-") {
             "file tick.tmp".to_string()
         } else if parent_name(path, "memories") {
