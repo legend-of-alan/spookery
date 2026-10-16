@@ -2,6 +2,7 @@
 schema: cast
 id: mira
 kind: npc
+display_name: Mira
 facts:
   - id: fact_ledger_short
     text: The lamp-oil ledger is short.

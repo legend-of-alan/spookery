@@ -169,6 +169,7 @@ fn a_docks_table_whose_pack_defines_four_pcs(world: &mut World) {
 schema: cast
 id: pc_lark
 kind: pc_template
+display_name: Lark
 facts: []
 tick:
   eligible: false

@@ -100,7 +100,7 @@ fn add_trapdoor(pack: &Path) {
     fs::write(&path, next).unwrap();
     fs::write(
         pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\nname: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
+        "---\nschema: place\nid: cellar\ndisplay_name: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
     )
     .unwrap();
 }
@@ -303,7 +303,7 @@ fn two_arrivals(world: &mut World) {
     let pack = temp_pack("two-arrivals");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: pc_nell\nkind: pc_template\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {
@@ -443,7 +443,7 @@ fn both_busy_without_a_gm(world: &mut World) {
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: pc_nell\nkind: pc_template\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {

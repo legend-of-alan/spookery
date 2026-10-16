@@ -387,6 +387,9 @@ fn break_pack(pack: &std::path::Path, fault: &str) {
         "missing meters" => {
             fs::remove_file(pack.join("rules/meters.yaml")).unwrap();
         }
+        "missing display_name" => {
+            replace_file(&pack.join("cast/pc-rowan.md"), "display_name: Rowan\n", "")
+        }
         "pack_rev mismatch" => {
             let path = pack.join("state/save.yaml");
             let text = fs::read_to_string(&path).unwrap();

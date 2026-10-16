@@ -48,13 +48,13 @@ checks:
 
 ## Add a place
 
-A place is a Markdown file under `world/places/`. The header is the frontmatter. The prose after the closing `---` is what a viewer can read when the fact is public.
+A place is a Markdown file under `world/places/`. The header is the frontmatter. The prose after the closing `---` is what a viewer can read when the fact is public. `display_name` is the name they see.
 
 ```yaml path=world/places/porch.md mode=create
 ---
 schema: place
 id: porch
-name: Porch
+display_name: Porch
 facts:
   - id: fact_porch_dry
     text: The porch is dry.

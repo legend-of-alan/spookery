@@ -70,6 +70,7 @@ pub enum CastKind {
 #[derive(Clone, Debug)]
 pub struct CastCanon {
     pub kind: CastKind,
+    pub display_name: String,
     pub facts: Vec<String>,
     pub body: String,
     pub tick: Option<TickProfile>,
@@ -240,7 +241,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         places.insert(
             file.id.clone(),
             PlaceCanon {
-                name: file.name,
+                name: file.display_name,
                 facts: ids,
                 body: body.to_string(),
                 exits,
@@ -344,6 +345,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             id.clone(),
             CastCanon {
                 kind,
+                display_name: file.display_name,
                 facts: fact_ids_of(&facts, &id),
                 body: body.to_string(),
                 tick,
@@ -1322,6 +1324,17 @@ fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<D
                     "set id to a short place id",
                 ));
             }
+            if parsed.display_name.trim().is_empty() {
+                diags.push(headed_schema_error(
+                    file,
+                    yaml,
+                    line_base,
+                    "display_name:",
+                    "display_name",
+                    "display_name is empty",
+                    "set display_name to the name players see",
+                ));
+            }
             if diags.is_empty() {
                 Ok(parsed)
             } else {
@@ -1373,6 +1386,17 @@ fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Dia
                     "id",
                     "id world is reserved",
                     "rename this cast member",
+                ));
+            }
+            if parsed.display_name.trim().is_empty() {
+                diags.push(headed_schema_error(
+                    file,
+                    yaml,
+                    line_base,
+                    "display_name:",
+                    "display_name",
+                    "display_name is empty",
+                    "set display_name to the name players see",
                 ));
             }
             if parsed.kind != "npc" && parsed.kind != "pc_template" {
@@ -1505,8 +1529,7 @@ struct PackStart {
 struct PlaceFile {
     schema: String,
     id: String,
-    #[serde(default)]
-    name: String,
+    display_name: String,
     facts: Vec<FactFile>,
     #[serde(default)]
     exits: Vec<ExitFile>,
@@ -1545,6 +1568,7 @@ struct CastFile {
     schema: String,
     id: String,
     kind: String,
+    display_name: String,
     facts: Vec<FactFile>,
     #[serde(default)]
     tick: Option<TickFile>,
@@ -1688,7 +1712,7 @@ meters:
             |text| load_place("world/places/gate.md", text, 0).map(|_| ()),
             "place",
             concat!("place/", "v0"),
-            "id: gate\nfacts: []\n",
+            "id: gate\ndisplay_name: Gate\nfacts: []\n",
         );
     }
 
@@ -1698,7 +1722,7 @@ meters:
             |text| load_cast("cast/mira.md", text, 0).map(|_| ()),
             "cast",
             concat!("cast/", "v0"),
-            "id: mira\nkind: npc\nfacts: []\n",
+            "id: mira\nkind: npc\ndisplay_name: Mira\nfacts: []\n",
         );
     }
 

@@ -1,6 +1,7 @@
 ---
 schema: place
 id: loft
+display_name: Loft
 exits:
   - to: gate_yard
     name: gate_yard

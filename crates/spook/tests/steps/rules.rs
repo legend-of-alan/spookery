@@ -264,6 +264,7 @@ fn verb_travel_and_the_ferry_rule(world: &mut World) {
 ---
 schema: place
 id: ferry_dock
+display_name: Ferry Dock
 facts:
   - id: fact_ferry_waits
     text: The ferry waits.
@@ -338,6 +339,7 @@ fn briar_restocks_before_the_shop_opens(world: &mut World) {
 schema: cast
 id: briar
 kind: npc
+display_name: Briar
 facts: []
 tick:
   eligible: true

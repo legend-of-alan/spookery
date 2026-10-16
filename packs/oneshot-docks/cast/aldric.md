@@ -2,6 +2,7 @@
 schema: cast
 id: aldric
 kind: npc
+display_name: Aldric
 facts: []
 tick:
   eligible: false

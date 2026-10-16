@@ -2,6 +2,7 @@
 schema: cast
 id: npc_oden
 kind: npc
+display_name: Oden
 facts: []
 tick:
   eligible: false

@@ -51,7 +51,7 @@ fn play_joins_the_sample_table(world: &mut World) {
     let addr = table::game_addr();
     let pack_arg = support::pack_arg(pack);
     world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
-    wait_play(world, "Gate yard");
+    wait_play(world, "Gate Yard");
 }
 
 #[when(expr = "the save before the fight is kept")]

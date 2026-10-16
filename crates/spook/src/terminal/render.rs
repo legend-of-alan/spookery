@@ -1,4 +1,4 @@
-use crate::protocol::{FactNote, Outcome, PlayerMessage, WireClock, WireExit, WireFact, WireItem};
+use crate::protocol::{Outcome, PlayerMessage, WireClock, WireExit};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -17,36 +17,7 @@ pub fn render(message: &PlayerMessage) -> String {
         PlayerMessage::Resume { text } => resume(text),
         PlayerMessage::Lines { text } => text.clone(),
         PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
-        PlayerMessage::View {
-            viewer,
-            place,
-            visible_actors,
-            known_facts,
-            messages,
-            unknown_mentioned: _,
-            clocks,
-            items,
-            habits: _,
-            exits,
-        } => {
-            let mut text = perceive(
-                viewer,
-                place,
-                visible_actors,
-                known_facts,
-                messages,
-                clocks,
-                items,
-            );
-            let extra = exit_section(exits);
-            if !extra.is_empty() {
-                if !text.is_empty() {
-                    text.push_str("\n\n");
-                }
-                text.push_str(&extra);
-            }
-            text
-        }
+        PlayerMessage::View { .. } => view_text(message),
     }
 }
 
@@ -128,7 +99,7 @@ fn named_refusal(code: &str, missing: Option<&str>) -> String {
         "COMMIT_CONFLICT" => "The table was already writing. Try again.",
         "HAND_EDIT" => "The save was edited by hand.",
         "SCHEMA" => "That line is not valid.",
-        "NOT_IN_SPEC" => "The table does not understand that.",
+        "NOT_IN_SPEC" => "The table does not understand that. Type help.",
         "SESSION_FULL" => "The table is full.",
         "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
@@ -152,27 +123,53 @@ fn named_refusal(code: &str, missing: Option<&str>) -> String {
     format!("{sentence} [{code}]")
 }
 
-fn perceive(
-    viewer: &str,
-    place: &str,
-    visible_actors: &[String],
-    known_facts: &[WireFact],
-    messages: &[FactNote],
-    clocks: &[WireClock],
-    items: &[WireItem],
-) -> String {
+fn view_text(message: &PlayerMessage) -> String {
+    let PlayerMessage::View {
+        viewer,
+        place,
+        shown,
+        visible_actors,
+        known_facts,
+        messages,
+        clocks,
+        items,
+        exits,
+        unknown_mentioned: _,
+        habits: _,
+    } = message
+    else {
+        return String::new();
+    };
     let mut sections = Vec::new();
-    if !place.is_empty() {
-        sections.push(format!("You are in {}.", humanize(place)));
+    let titled = if !shown.place_name.is_empty() {
+        shown.place_name.as_str()
+    } else {
+        place.as_str()
+    };
+    if !titled.is_empty() {
+        sections.push(format!("You are in {titled}."));
+    }
+    if !shown.status.is_empty() {
+        sections.push(shown.status.clone());
+    }
+    let prose = shown.prose.trim();
+    if !prose.is_empty() {
+        sections.push(prose.to_string());
     }
     if !visible_actors.is_empty() {
         let names = visible_actors
             .iter()
-            .map(|id| {
+            .enumerate()
+            .map(|(index, id)| {
                 if is_self(id, viewer) {
                     "You".to_string()
                 } else {
-                    humanize(id)
+                    shown
+                        .actor_names
+                        .get(index)
+                        .filter(|name| !name.is_empty())
+                        .cloned()
+                        .unwrap_or_else(|| id.to_string())
                 }
             })
             .collect::<Vec<_>>()
@@ -203,29 +200,20 @@ fn perceive(
         }
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
+    sections.push(exit_section(exits));
     sections.join("\n\n")
 }
 
 fn exit_section(exits: &[WireExit]) -> String {
     if exits.is_empty() {
-        return String::new();
+        return "Exits:\nnone".to_string();
     }
-    let mut lines = Vec::new();
-    for exit in exits {
-        let mut line = format!("{} → {}", exit.name, exit.place_name);
-        let mut notes = Vec::new();
-        if exit.minutes > 0 {
-            notes.push(format!("{} min", exit.minutes));
-        }
-        if exit.locked {
-            notes.push("locked".to_string());
-        }
-        if !notes.is_empty() {
-            line.push_str(&format!(" ({})", notes.join(", ")));
-        }
-        lines.push(line);
-    }
-    format!("Exits:\n{}", lines.join("\n"))
+    let lines = exits
+        .iter()
+        .map(|exit| spookery_kernel::map::exit_phrase(&exit.name, exit.minutes, exit.locked))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!("Exits:\n{lines}")
 }
 
 fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<Item = &'a str>) {
@@ -275,6 +263,7 @@ pub(crate) fn humanize(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol::{FactNote, WireFact, WireItem};
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -450,6 +439,12 @@ Shop day: 1/1"
         let text = render(&PlayerMessage::View {
             viewer: "player:pc_rowan".to_string(),
             place: "docks_shop".to_string(),
+            shown: Box::new(crate::protocol::Shown {
+                place_name: "Docks Shop".to_string(),
+                prose: "The shop faces the water. Tins sit in a row.".to_string(),
+                actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
+                status: String::new(),
+            }),
             visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
             known_facts: vec![WireFact {
                 id: "fact_oil_on_shelf".to_string(),
@@ -483,12 +478,20 @@ Shop day: 1/1"
                 count: 4,
             }],
             habits: vec!["tend_shop".to_string()],
-            exits: Vec::new(),
+            exits: vec![crate::protocol::WireExit {
+                name: "stairs".to_string(),
+                to: "mira_rooms".to_string(),
+                place_name: "Mira's Rooms".to_string(),
+                minutes: 2,
+                locked: true,
+            }],
         });
         assert_eq!(
             text,
             "\
-You are in Docks shop.
+You are in Docks Shop.
+
+The shop faces the water. Tins sit in a row.
 
 Here: Aldric, You
 
@@ -503,7 +506,10 @@ Assassination debt: 2/6, paused
 Shop day: 1/1
 
 Items:
-Lamp oil: 4"
+Lamp oil: 4
+
+Exits:
+stairs (locked) — 2 min"
         );
         assert!(!text.contains("CANON-BODY"), "{text}");
         assert!(!text.contains("secret_fact"), "{text}");
@@ -515,6 +521,12 @@ Lamp oil: 4"
         let quiet = render(&PlayerMessage::View {
             viewer: "player:pc_rowan".to_string(),
             place: "docks_street".to_string(),
+            shown: Box::new(crate::protocol::Shown {
+                place_name: "Docks Street".to_string(),
+                prose: String::new(),
+                actor_names: vec!["Bram".to_string()],
+                status: "on the stairs until 21:40".to_string(),
+            }),
             visible_actors: vec!["bram".to_string()],
             known_facts: Vec::new(),
             messages: Vec::new(),
@@ -524,7 +536,18 @@ Lamp oil: 4"
             habits: Vec::new(),
             exits: Vec::new(),
         });
-        assert_eq!(quiet, "You are in Docks street.\n\nHere: Bram");
+        assert_eq!(
+            quiet,
+            "\
+You are in Docks Street.
+
+on the stairs until 21:40
+
+Here: Bram
+
+Exits:
+none"
+        );
         assert!(!quiet.contains("You know:"), "{quiet}");
         assert!(!quiet.contains("Notes:"), "{quiet}");
         assert!(!quiet.contains("Clocks:"), "{quiet}");

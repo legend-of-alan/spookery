@@ -1,7 +1,7 @@
 ---
 schema: place
 id: lane
-name: Lane
+display_name: Lane
 exits:
   - to: yard
     name: yard

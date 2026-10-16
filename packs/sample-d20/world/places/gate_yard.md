@@ -1,6 +1,7 @@
 ---
 schema: place
 id: gate_yard
+display_name: Gate Yard
 exits:
   - to: mill_lane
     name: mill_lane
