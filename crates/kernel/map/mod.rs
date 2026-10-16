@@ -1,9 +1,11 @@
 //! Exits and the journeys that follow them.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
-use crate::canon::{Canon, FactCanon, ItemCanon, PlaceCanon};
-use crate::diagnostic::{schema, Diagnostic};
+use crate::canon::Canon;
+pub use crate::canon::Exit;
+use crate::diagnostic::Diagnostic;
+use crate::draft::Draft;
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
@@ -11,25 +13,10 @@ use crate::key::StateKey;
 use crate::model::{Now, Pending};
 use crate::rules::cond;
 use crate::rules::cost;
+use crate::rules::exit;
 use crate::rules::expr::Ctx;
-use crate::rules::gate::{self, Miss};
-use crate::rules::rule::{Cost, EffectTemplate, LocationTo, Rule, TargetKind, When};
-use crate::world::Draft;
-
-/// One way out of a place. `minutes` is the world time the walk takes.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Exit {
-    pub name: String,
-    pub to: String,
-    pub minutes: u64,
-    pub cost: Cost,
-    pub if_: Vec<crate::rules::rule::Cond>,
-    pub locked_text: String,
-    pub hidden: bool,
-    pub revealed_by: Option<String>,
-    pub file: String,
-    pub index: usize,
-}
+use crate::rules::gate;
+use crate::rules::rule::{Rule, TargetKind, When};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExitView {
@@ -41,10 +28,7 @@ pub struct ExitView {
 }
 
 pub fn named<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {
-    canon
-        .places
-        .get(from)
-        .and_then(|place| place.exits.iter().find(|exit| exit.name == name))
+    exit::named(canon, from, name)
 }
 
 /// Exits this actor is allowed to see. A hidden exit stays off the list.
@@ -58,77 +42,15 @@ pub fn visible(canon: &Canon, now: &Now, actor_id: &str) -> Vec<ExitView> {
     place
         .exits
         .iter()
-        .filter(|exit| revealed(canon, now, actor_id, exit))
+        .filter(|exit| exit::revealed(canon, now, actor_id, exit))
         .map(|exit| ExitView {
             name: exit.name.clone(),
             to: exit.to.clone(),
             place_name: place_name(canon, &exit.to),
             minutes: exit.minutes,
-            locked: locked(canon, now, actor_id, exit),
+            locked: exit::locked(canon, now, actor_id, exit),
         })
         .collect()
-}
-
-/// The exit a `location via` effect names, if this rule travels.
-pub(crate) fn exit_token(rule: &Rule, intent: &Intent) -> Option<String> {
-    for effect in rule
-        .do_
-        .iter()
-        .chain(rule.success.iter())
-        .chain(rule.partial.iter())
-        .chain(rule.failure.iter())
-    {
-        if let EffectTemplate::Location {
-            to: LocationTo::Via(via),
-            teleport: false,
-        } = effect
-        {
-            if via == "target" {
-                if let Target::Place(name) = &intent.target {
-                    return Some(name.clone());
-                }
-                return None;
-            }
-            return Some(via.clone());
-        }
-    }
-    None
-}
-
-/// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
-pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Miss> {
-    let Ok(rule) = crate::rules::gate::resolve(canon, now, intent) else {
-        return Ok(());
-    };
-    let Some(token) = exit_token(rule, intent) else {
-        return Ok(());
-    };
-    let from = now
-        .actors
-        .get(&intent.actor_id)
-        .map(|actor| actor.place())
-        .unwrap_or("");
-    let Some(exit) = named(canon, from, &token) else {
-        return Err(Reason::NoExit.into());
-    };
-    if !revealed(canon, now, &intent.actor_id, exit) {
-        return Err(Reason::NoExit.into());
-    }
-    if locked(canon, now, &intent.actor_id, exit) {
-        let text = if exit.locked_text.is_empty() {
-            "The way is locked.".to_string()
-        } else {
-            exit.locked_text.clone()
-        };
-        return Err(Miss::Text {
-            code: Reason::NoExit,
-            text,
-        });
-    }
-    if let Err(gap) = cost::can_pay(canon, now, &intent.actor_id, &exit.cost) {
-        return Err(Miss::CantAfford(gap.what));
-    }
-    Ok(())
 }
 
 /// World minutes until the rule and its exit finish. Zero means it finishes now.
@@ -146,7 +68,7 @@ pub(crate) fn used_exit<'a>(
     intent: &Intent,
     rule: &Rule,
 ) -> Option<&'a Exit> {
-    let token = exit_token(rule, intent)?;
+    let token = exit::exit_token(rule, intent)?;
     let from = now.actors.get(&intent.actor_id)?.place();
     named(canon, from, &token)
 }
@@ -240,78 +162,6 @@ pub fn begin(
     Ok(())
 }
 
-/// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
-pub fn broken(
-    places: &BTreeMap<String, PlaceCanon>,
-    facts: &BTreeMap<String, FactCanon>,
-    items: &BTreeMap<String, ItemCanon>,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for place in places.values() {
-        for exit in &place.exits {
-            if !places.contains_key(&exit.to) {
-                diags.push(
-                    schema(
-                        &exit.file,
-                        &format!(
-                            "exit '{}' goes to '{}', which is not a place",
-                            exit.name, exit.to
-                        ),
-                        "set to: to a place id",
-                    )
-                    .with_path(format!("exits[{}].to", exit.index)),
-                );
-            }
-            if exit.hidden && exit.revealed_by.is_none() {
-                diags.push(
-                    schema(
-                        &exit.file,
-                        &format!("hidden exit '{}' has no revealed_by fact", exit.name),
-                        "set revealed_by to a fact id",
-                    )
-                    .with_path(format!("exits[{}].revealed_by", exit.index)),
-                );
-            }
-            if let Some(fact) = &exit.revealed_by {
-                if !facts.contains_key(fact) {
-                    diags.push(
-                        schema(
-                            &exit.file,
-                            &format!("exit '{}' reveals '{fact}', which is not a fact", exit.name),
-                            "use a fact id from this pack",
-                        )
-                        .with_path(format!("exits[{}].revealed_by", exit.index)),
-                    );
-                }
-            }
-            let mut named = Vec::new();
-            for (id, _) in &exit.cost.items {
-                if id != "target" {
-                    named.push(id.clone());
-                }
-            }
-            for cond in &exit.if_ {
-                cond_items(cond, &mut named);
-            }
-            named.sort();
-            named.dedup();
-            for id in named {
-                if !items.contains_key(&id) {
-                    diags.push(
-                        schema(
-                            &exit.file,
-                            &format!("exit '{}' names unknown item '{id}'", exit.name),
-                            &format!("add world/items/{id}.md"),
-                        )
-                        .with_path(format!("exits[{}]", exit.index)),
-                    );
-                }
-            }
-        }
-    }
-    diags
-}
-
 /// Places no exit path reaches from the start, including hidden and locked exits.
 pub fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
     let mut seen = std::collections::BTreeSet::new();
@@ -376,7 +226,7 @@ pub fn player_lines(canon: &Canon, now: &Now, actor_id: &str) -> String {
         };
         lines.push(place_name(canon, place_id));
         for exit in &place.exits {
-            if !revealed(canon, now, actor_id, exit) {
+            if !exit::revealed(canon, now, actor_id, exit) {
                 continue;
             }
             lines.push(format!("  {}", exit_line(canon, now, actor_id, exit)));
@@ -620,7 +470,11 @@ pub fn graph(canon: &Canon) -> String {
 }
 
 fn exit_line(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> String {
-    exit_phrase(&exit.name, exit.minutes, locked(canon, now, actor_id, exit))
+    exit_phrase(
+        &exit.name,
+        exit.minutes,
+        exit::locked(canon, now, actor_id, exit),
+    )
 }
 
 fn minutes_label(minutes: u64) -> String {
@@ -643,67 +497,6 @@ pub fn place_name(canon: &Canon, id: &str) -> String {
             }
         })
         .unwrap_or_else(|| id.to_string())
-}
-
-fn revealed(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> bool {
-    if !exit.hidden {
-        return true;
-    }
-    let Some(fact) = &exit.revealed_by else {
-        return false;
-    };
-    let Some(actor) = now.actors.get(actor_id) else {
-        return false;
-    };
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
-    let Ok(viewer) = ViewerId::from_kind(kind, actor_id) else {
-        return false;
-    };
-    allows(canon, now, &viewer, fact)
-}
-
-fn locked(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> bool {
-    if exit.if_.is_empty() {
-        return false;
-    }
-    let Some(actor) = now.actors.get(actor_id) else {
-        return true;
-    };
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
-    let intent = Intent {
-        id: String::new(),
-        tick_index: now.tick_index,
-        actor_id: actor_id.to_string(),
-        actor_kind: kind,
-        source: Source::Player,
-        move_name: "travel".to_string(),
-        target: Target::Place(exit.name.clone()),
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    };
-    cond::holds(canon, now, &Ctx { intent: &intent }, &exit.if_).is_err()
-}
-
-fn cond_items(cond: &crate::rules::rule::Cond, ids: &mut Vec<String>) {
-    use crate::rules::rule::Cond;
-    match cond {
-        Cond::HasItem { id, .. } if id != "target" => ids.push(id.clone()),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                cond_items(cond, ids);
-            }
-        }
-        Cond::Not(inner) => cond_items(inner, ids),
-        _ => {}
-    }
 }
 
 #[cfg(test)]

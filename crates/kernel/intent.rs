@@ -120,9 +120,126 @@ pub struct Intent {
     pub source: Source,
     #[serde(rename = "move")]
     pub move_name: String,
-    #[serde(with = "crate::store::records::target_as")]
+    #[serde(with = "target_as")]
     pub target: Target,
-    #[serde(with = "crate::store::records::args_as")]
+    #[serde(with = "args_as")]
     pub args: IntentArgs,
     pub rationale_code: String,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TargetWire {
+    #[serde(default, skip_serializing_if = "absent")]
+    place: Option<String>,
+    #[serde(default, skip_serializing_if = "absent")]
+    actor: Option<String>,
+    #[serde(default, skip_serializing_if = "absent")]
+    clock: Option<String>,
+}
+
+impl From<&Target> for TargetWire {
+    fn from(target: &Target) -> Self {
+        match target {
+            Target::Empty => Self {
+                place: None,
+                actor: None,
+                clock: None,
+            },
+            Target::Place(id) => Self {
+                place: Some(id.clone()),
+                actor: None,
+                clock: None,
+            },
+            Target::Actor(id) => Self {
+                place: None,
+                actor: Some(id.clone()),
+                clock: None,
+            },
+            Target::Clock(id) => Self {
+                place: None,
+                actor: None,
+                clock: Some(id.clone()),
+            },
+        }
+    }
+}
+
+impl TryFrom<TargetWire> for Target {
+    type Error = &'static str;
+
+    fn try_from(wire: TargetWire) -> Result<Self, Self::Error> {
+        match (wire.place, wire.actor, wire.clock) {
+            (None, None, None) => Ok(Target::Empty),
+            (Some(id), None, None) => Ok(Target::Place(id)),
+            (None, Some(id), None) => Ok(Target::Actor(id)),
+            (None, None, Some(id)) => Ok(Target::Clock(id)),
+            _ => Err("target"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ArgsWire {
+    #[serde(rename = "to", default, skip_serializing_if = "absent")]
+    message_to: Option<Vec<String>>,
+}
+
+impl From<&IntentArgs> for ArgsWire {
+    fn from(args: &IntentArgs) -> Self {
+        Self {
+            message_to: args.message_to.clone(),
+        }
+    }
+}
+
+impl From<ArgsWire> for IntentArgs {
+    fn from(wire: ArgsWire) -> Self {
+        Self {
+            message_to: wire.message_to,
+        }
+    }
+}
+
+pub(crate) mod target_as {
+    use super::TargetWire;
+    use crate::intent::Target;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(crate) fn serialize<S: Serializer>(
+        target: &Target,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        TargetWire::from(target).serialize(serializer)
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Target, D::Error> {
+        Target::try_from(TargetWire::deserialize(deserializer)?).map_err(serde::de::Error::custom)
+    }
+}
+
+pub(crate) mod args_as {
+    use super::ArgsWire;
+    use crate::intent::IntentArgs;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(crate) fn serialize<S: Serializer>(
+        args: &IntentArgs,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        ArgsWire::from(args).serialize(serializer)
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<IntentArgs, D::Error> {
+        Ok(IntentArgs::from(ArgsWire::deserialize(deserializer)?))
+    }
+}
+
+fn absent<T>(value: &Option<T>) -> bool {
+    value.is_none()
 }

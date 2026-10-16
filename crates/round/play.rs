@@ -38,7 +38,7 @@ pub fn commit_moves_at(
     world: &mut World,
     wall: &str,
 ) -> Result<spookery_kernel::api::commit::CommitOutcome, Reason> {
-    let _lock = lock_world(world)?;
+    let _lock = lock_world(world.root())?;
     play(world, RoundCause::Flush, wall)?;
     spookery_kernel::api::commit::commit_pending(world)
 }
@@ -134,7 +134,7 @@ fn play_with(
     let _lock = if cause == RoundCause::Flush {
         None
     } else {
-        Some(lock_world(world)?)
+        Some(lock_world(world.root())?)
     };
     if let Some(recorded) = &recorded {
         world.set_presence(Presence {

@@ -1,26 +1,9 @@
 use crate::canon::Canon;
-use crate::effect::{Effect, EffectKind};
-use crate::expand::expand_outcome;
 use crate::ids::kernel_intent_id;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use crate::model::Now;
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
-use crate::rules::gate;
-use crate::rules::rule::{TargetKind, When};
-
-pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
-    let mut intents = Vec::new();
-    for actor_id in now.actors.keys() {
-        if !is_eligible(canon, now, actor_id) {
-            continue;
-        }
-        if let Some(intent) = select_one(canon, now, actor_id) {
-            intents.push(intent);
-        }
-    }
-    intents
-}
 
 pub(crate) fn habits_on(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String> {
     canon
@@ -33,32 +16,6 @@ pub(crate) fn habits_on(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String>
         })
         .map(|rule| rule.local_id.clone())
         .collect()
-}
-
-pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    let Ok(effects) = expand_outcome(canon, now, intent, None, crate::expand::ignore_resist) else {
-        return;
-    };
-    // A verb with no target must stay empty. Filling it from a location effect
-    // makes the later gate call report SCHEMA.
-    let keeps_empty = gate::resolve(canon, now, intent).ok().is_some_and(|rule| {
-        matches!(
-            &rule.when,
-            When::Verb {
-                target: TargetKind::None,
-                ..
-            }
-        )
-    });
-    if keeps_empty {
-        for effect in &effects {
-            if let EffectKind::Message { to, .. } = &effect.class {
-                intent.args.message_to = Some(to.clone());
-            }
-        }
-        return;
-    }
-    stamp(intent, &effects);
 }
 
 pub(crate) fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
@@ -96,31 +53,7 @@ fn player_present_at(now: &Now, place: &str) -> bool {
     })
 }
 
-fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
-    for rule in canon.rules.habits_of(actor_id) {
-        if !matches!(rule.when, When::Habit) {
-            continue;
-        }
-        let intent = mint(now, actor_id, &rule.local_id);
-        if cond::holds(canon, now, &Ctx { intent: &intent }, &rule.if_).is_err() {
-            continue;
-        }
-        if gate::gate(canon, now, &intent).is_err() {
-            continue;
-        }
-        match expand_outcome(canon, now, &intent, None, crate::expand::ignore_resist) {
-            Ok(effects) => {
-                let mut intent = intent;
-                stamp(&mut intent, &effects);
-                return Some(intent);
-            }
-            Err(_) => continue,
-        }
-    }
-    None
-}
-
-fn mint(now: &Now, actor_id: &str, local_id: &str) -> Intent {
+pub(crate) fn mint(now: &Now, actor_id: &str, local_id: &str) -> Intent {
     Intent {
         id: kernel_intent_id(&now.shard_id, now.tick_index, actor_id, local_id),
         tick_index: now.tick_index,
@@ -131,24 +64,5 @@ fn mint(now: &Now, actor_id: &str, local_id: &str) -> Intent {
         target: Target::Empty,
         args: IntentArgs::default(),
         rationale_code: String::new(),
-    }
-}
-
-fn stamp(intent: &mut Intent, effects: &[Effect]) {
-    for effect in effects {
-        if intent.target == Target::Empty {
-            match &effect.class {
-                EffectKind::Location { to, .. } => {
-                    intent.target = Target::Place(to.clone());
-                }
-                EffectKind::Clock { clock_id, .. } => {
-                    intent.target = Target::Clock(clock_id.clone());
-                }
-                _ => {}
-            }
-        }
-        if let EffectKind::Message { to, .. } = &effect.class {
-            intent.args.message_to = Some(to.clone());
-        }
     }
 }

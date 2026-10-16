@@ -15,7 +15,7 @@ use crate::format;
 use crate::hash::blake2s_hex;
 use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
-use crate::rules::rule::{EffectTemplate, Owner, RuleTable};
+use crate::rule::{Cond, Cost, EffectTemplate, Owner, RuleTable};
 
 pub mod schema;
 pub mod world_settings;
@@ -53,12 +53,27 @@ pub struct FactCanon {
     pub owner_id: String,
 }
 
+/// One way out of a place. `minutes` is the world time the walk takes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Exit {
+    pub name: String,
+    pub to: String,
+    pub minutes: u64,
+    pub cost: Cost,
+    pub if_: Vec<Cond>,
+    pub locked_text: String,
+    pub hidden: bool,
+    pub revealed_by: Option<String>,
+    pub file: String,
+    pub index: usize,
+}
+
 #[derive(Clone, Debug)]
 pub struct PlaceCanon {
     pub name: String,
     pub facts: Vec<String>,
     pub body: String,
-    pub exits: Vec<crate::map::Exit>,
+    pub exits: Vec<Exit>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -135,7 +150,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut places = BTreeMap::new();
     let mut facts = BTreeMap::new();
     let mut items = BTreeMap::new();
-    let mut loaded: Vec<crate::rules::rule::Rule> = Vec::new();
+    let mut loaded: Vec<crate::rule::Rule> = Vec::new();
     let mut place_files = Vec::new();
     if let Err(reason) = collect_files(&root.join("world"), root, &mut place_files) {
         diags.push(io_schema_error("world", reason, "could not read world/"));
@@ -465,7 +480,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts));
     diags.extend(find_bare_resist(&rules));
-    diags.extend(crate::map::broken(&places, &facts, &items));
+    diags.extend(broken_exits(&places, &facts, &items));
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -567,7 +582,7 @@ fn validate_tick(file: &str, text: &str, tick: TickFile) -> Result<TickProfile, 
     })
 }
 
-fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<crate::map::Exit>, Vec<Diagnostic>> {
+fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
     let mut diags = Vec::new();
     let mut compiled = Vec::new();
     let mut names = BTreeSet::new();
@@ -601,7 +616,7 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<crate::map::Exit>
                     continue;
                 }
             },
-            None => crate::rules::rule::Cost {
+            None => crate::rule::Cost {
                 minutes: 0,
                 meters: Vec::new(),
                 items: Vec::new(),
@@ -624,7 +639,7 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<crate::map::Exit>
         if bad {
             continue;
         }
-        compiled.push(crate::map::Exit {
+        compiled.push(Exit {
             name: exit.name.clone(),
             to: exit.to.clone(),
             minutes: cost.minutes,
@@ -641,6 +656,91 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<crate::map::Exit>
         Ok(compiled)
     } else {
         Err(diags)
+    }
+}
+
+/// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
+fn broken_exits(
+    places: &BTreeMap<String, PlaceCanon>,
+    facts: &BTreeMap<String, FactCanon>,
+    items: &BTreeMap<String, ItemCanon>,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for place in places.values() {
+        for exit in &place.exits {
+            if !places.contains_key(&exit.to) {
+                diags.push(
+                    schema_error(
+                        &exit.file,
+                        &format!(
+                            "exit '{}' goes to '{}', which is not a place",
+                            exit.name, exit.to
+                        ),
+                        "set to: to a place id",
+                    )
+                    .with_path(format!("exits[{}].to", exit.index)),
+                );
+            }
+            if exit.hidden && exit.revealed_by.is_none() {
+                diags.push(
+                    schema_error(
+                        &exit.file,
+                        &format!("hidden exit '{}' has no revealed_by fact", exit.name),
+                        "set revealed_by to a fact id",
+                    )
+                    .with_path(format!("exits[{}].revealed_by", exit.index)),
+                );
+            }
+            if let Some(fact) = &exit.revealed_by {
+                if !facts.contains_key(fact) {
+                    diags.push(
+                        schema_error(
+                            &exit.file,
+                            &format!("exit '{}' reveals '{fact}', which is not a fact", exit.name),
+                            "use a fact id from this pack",
+                        )
+                        .with_path(format!("exits[{}].revealed_by", exit.index)),
+                    );
+                }
+            }
+            let mut named = Vec::new();
+            for (id, _) in &exit.cost.items {
+                if id != "target" {
+                    named.push(id.clone());
+                }
+            }
+            for cond in &exit.if_ {
+                exit_cond_items(cond, &mut named);
+            }
+            named.sort();
+            named.dedup();
+            for id in named {
+                if !items.contains_key(&id) {
+                    diags.push(
+                        schema_error(
+                            &exit.file,
+                            &format!("exit '{}' names unknown item '{id}'", exit.name),
+                            &format!("add world/items/{id}.md"),
+                        )
+                        .with_path(format!("exits[{}]", exit.index)),
+                    );
+                }
+            }
+        }
+    }
+    diags
+}
+
+fn exit_cond_items(cond: &Cond, ids: &mut Vec<String>) {
+    match cond {
+        Cond::HasItem { id, .. } if id != "target" => ids.push(id.clone()),
+        Cond::All(inner) | Cond::Any(inner) => {
+            for cond in inner {
+                exit_cond_items(cond, ids);
+            }
+        }
+        Cond::Not(inner) => exit_cond_items(inner, ids),
+        _ => {}
     }
 }
 
@@ -960,8 +1060,8 @@ fn unknown_rule_items(rules: &RuleTable, items: &BTreeMap<String, ItemCanon>) ->
     diags
 }
 
-fn cond_items(cond: &crate::rules::rule::Cond, ids: &mut Vec<String>) {
-    use crate::rules::rule::Cond;
+fn cond_items(cond: &crate::rule::Cond, ids: &mut Vec<String>) {
+    use crate::rule::Cond;
     match cond {
         Cond::HasItem { id, .. } | Cond::Wielding { id, .. } => {
             if id != "target" {
@@ -1012,10 +1112,10 @@ fn find_bare_resist(rules: &RuleTable) -> Vec<Diagnostic> {
 fn scan_resist(
     effects: &[EffectTemplate],
     mut seen: bool,
-    rule: &crate::rules::rule::Rule,
+    rule: &crate::rule::Rule,
     diags: &mut Vec<Diagnostic>,
 ) -> bool {
-    use crate::rules::rule::ResistSpec;
+    use crate::rule::ResistSpec;
     for effect in effects {
         match effect.resist() {
             Some(ResistSpec::Same) if !seen => {
@@ -1041,8 +1141,8 @@ fn scan_resist(
     seen
 }
 
-fn resist_items(resist: Option<&crate::rules::rule::ResistSpec>, ids: &mut Vec<String>) {
-    let Some(crate::rules::rule::ResistSpec::Roll { resisted, .. }) = resist else {
+fn resist_items(resist: Option<&crate::rule::ResistSpec>, ids: &mut Vec<String>) {
+    let Some(crate::rule::ResistSpec::Roll { resisted, .. }) = resist else {
         return;
     };
     for effect in resisted {
@@ -1051,7 +1151,7 @@ fn resist_items(resist: Option<&crate::rules::rule::ResistSpec>, ids: &mut Vec<S
 }
 
 fn reveal_problems(rules: &RuleTable, facts: &BTreeMap<String, FactCanon>) -> Vec<Diagnostic> {
-    use crate::rules::rule::{EffectTemplate, Who};
+    use crate::rule::{EffectTemplate, Who};
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut effects = Vec::new();
@@ -1092,10 +1192,10 @@ fn reveal_problems(rules: &RuleTable, facts: &BTreeMap<String, FactCanon>) -> Ve
 }
 
 fn collect_effects<'a>(
-    effects: &'a [crate::rules::rule::EffectTemplate],
-    out: &mut Vec<&'a crate::rules::rule::EffectTemplate>,
+    effects: &'a [crate::rule::EffectTemplate],
+    out: &mut Vec<&'a crate::rule::EffectTemplate>,
 ) {
-    use crate::rules::rule::ResistSpec;
+    use crate::rule::ResistSpec;
     for effect in effects {
         out.push(effect);
         if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
@@ -1185,7 +1285,7 @@ fn unknown_meters(
     diags
 }
 
-fn load_verbs(text: &str) -> Result<Vec<crate::rules::rule::Rule>, Vec<Diagnostic>> {
+fn load_verbs(text: &str) -> Result<Vec<crate::rule::Rule>, Vec<Diagnostic>> {
     const FILE: &str = "rules/verbs.yaml";
     if let Some(diag) = tag_diagnostic(text, format::VERBS, FILE, 0) {
         return Err(vec![diag]);

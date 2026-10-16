@@ -33,7 +33,8 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         fast_forward: round.fast_forward,
         tool_trace: &round.trace,
     });
-    world.finish_round(
+    spookery_kernel::api::commit::finish_round(
+        world,
         draft,
         round.cause == RoundCause::Flush,
         jsonl,

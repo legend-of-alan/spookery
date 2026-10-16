@@ -1,10 +1,10 @@
 use crate::canon::Canon;
+use crate::draft::Draft;
 use crate::error::Reason;
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, Now};
 use crate::rules::rule::Cost;
-use crate::world::Draft;
 
 /// What the actor cannot pay. The token is `CANT_AFFORD`; `what` names the gap.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -138,7 +138,7 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
             return Err(Reason::Busy.into());
         }
     }
-    crate::map::admit(canon, now, intent)?;
+    crate::rules::exit::admit(canon, now, intent)?;
     match &intent.target {
         Target::Empty => {}
         Target::Place(id) => {
