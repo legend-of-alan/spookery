@@ -1269,18 +1269,6 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let _ = fs::remove_dir_all(&dropped);
 }
 
-/// Seat Rowan and Wren, drop Rowan, seat Rowan again. Returns the three session ids in order.
-fn seat_drop_and_reseat() -> [String; 3] {
-    let pack = temp_pack("session-ids");
-    let mut shard = open(&pack);
-    let rowan = seat_player(&mut shard, "pc_rowan").unwrap();
-    let wren = seat_player(&mut shard, "pc_wren").unwrap();
-    assert!(release_player_seat(&mut shard, &rowan, "pc_rowan", SocketEnd::Close).unwrap());
-    let again = seat_player(&mut shard, "pc_rowan").unwrap();
-    let _ = fs::remove_dir_all(&pack);
-    [rowan, wren, again]
-}
-
 fn early_wake_does_not_tick_again() {
     let early = temp_pack("early-wake");
     let mut shard = open(&early);
@@ -1838,11 +1826,6 @@ fn a_queued_wait_meets_a_wake(_world: &mut World) {
 #[when(expr = "the player drops and sits again with a queued wait")]
 fn the_player_drops_and_sits_again(_world: &mut World) {
     a_reseated_player_keeps_the_queued_wait();
-}
-
-#[when(expr = "two players sit, one drops, and that PC sits again")]
-fn a_player_drops_and_sits_again_beside_another(world: &mut World) {
-    world.scratch = seat_drop_and_reseat().join("\n");
 }
 
 #[when(expr = "a committed wait wakes early")]

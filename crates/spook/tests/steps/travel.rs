@@ -4,35 +4,16 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_kernel::api::model::Now;
-use spookery_kernel::api::store::codec::{emit_save, load_save};
 
 use super::table;
 use crate::support::{self, temp_pack};
 use crate::World;
-
-const EVENING: u64 = 21 * 60 + 30;
 
 fn pack_of(world: &World) -> std::path::PathBuf {
     world
         .pack
         .clone()
         .unwrap_or_else(|| table::pack(world).to_path_buf())
-}
-
-fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
-    let path = pack.join("state/save.yaml");
-    let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    edit(&mut now);
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
-    fs::write(&path, emit_save(&now).unwrap()).unwrap();
-}
-
-fn give_key(now: &mut Now) {
-    now.actors
-        .get_mut("pc_rowan")
-        .unwrap()
-        .inventory_mut()
-        .insert("brass_key".to_string(), 1);
 }
 
 fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
@@ -46,10 +27,6 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
         via: Some(via.to_string()),
         source: "player".to_string(),
     });
-}
-
-fn listen(pack: &Path) {
-    table::listen(pack);
 }
 
 fn tick_file(pack: &Path, name: &str) -> Value {
@@ -85,33 +62,13 @@ fn add_toll(pack: &Path) {
     fs::write(path, next).unwrap();
 }
 
-fn add_trapdoor(pack: &Path) {
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text.replace(
-        "    hidden: false\n",
-        "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor is under the rug.\n    hidden: true\n",
-    );
-    let next = next.replace(
-        "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\n  - to: cellar\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
-    );
-    assert_ne!(text, next);
-    fs::write(&path, next).unwrap();
-    fs::write(
-        pack.join("world/places/cellar.md"),
-        "---\nschema: place\nid: cellar\ndisplay_name: Cellar\nfacts: []\nexits: []\n---\nUnder the shop.\n",
-    )
-    .unwrap();
-}
-
 #[given(expr = "docks_street has no exit to mira_rooms")]
 fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
     let pack = temp_pack("no-exit");
-    edit_save(&pack, |now| {
+    super::common::edit_save(&pack, |now| {
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
     });
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     world.pack = Some(pack);
 }
@@ -142,7 +99,7 @@ fn rejected_no_exit_and_stays(world: &mut World) {
 #[given(expr = "the stairs exit needs brass_key and rowan has none")]
 fn stairs_need_a_key(world: &mut World) {
     let pack = temp_pack("locked");
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     world.pack = Some(pack);
 }
@@ -177,9 +134,9 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
 #[when(expr = "rowan travels via stairs holding brass_key")]
 fn rowan_travels_holding_the_key(world: &mut World) {
     let pack = temp_pack("stairs-key");
-    add_trapdoor(&pack);
-    edit_save(&pack, give_key);
-    listen(&pack);
+    super::common::add_trapdoor(&pack);
+    super::common::edit_save(&pack, super::common::give_key);
+    table::listen(&pack);
     table::seat_player(&pack);
     let (_mark, added) = table::player_send("travel stairs", "mira_rooms");
     world.player_added = added;
@@ -198,40 +155,17 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     assert_eq!(tick["world_time_before"], 1080);
 }
 
-#[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]
-fn the_trapdoor_is_hidden(world: &mut World) {
-    let pack = temp_pack("trapdoor");
-    add_trapdoor(&pack);
-    edit_save(&pack, |_| {});
-    listen(&pack);
-    table::seat_player(&pack);
-    world.pack = Some(pack);
-    world.player_added = table::player_text();
-}
-
-#[then(expr = "rowan's perceive and help do not list the trapdoor")]
-fn perceive_and_help_hide_the_trapdoor(_world: &mut World) {
-    let perceive = table::player_text();
-    assert!(
-        !perceive.contains("trapdoor"),
-        "perceive listed it\n{perceive}"
-    );
-    let (_mark, help) = table::player_send("help", "Exits:");
-    assert!(!help.contains("trapdoor"), "help listed it\n{help}");
-    assert!(help.contains("stairs"), "help hid the stairs\n{help}");
-}
-
 #[given(expr = "a place rule with location to cellar, teleport true")]
 fn a_place_rule_teleports(world: &mut World) {
     let pack = temp_pack("teleport");
-    add_trapdoor(&pack);
+    super::common::add_trapdoor(&pack);
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
     let rules = "\nrules:\n  - id: slip\n    when:\n      verb: slip\n    do:\n      - location:\n          to: cellar\n          teleport: true\n";
     let text = text.replacen("\n---\n", &format!("{rules}---\n"), 1);
     assert!(text.contains("id: slip"), "{text}");
     fs::write(&path, text).unwrap();
-    edit_save(&pack, |now| {
+    super::common::edit_save(&pack, |now| {
         now.places.insert(
             "cellar".to_string(),
             spookery_kernel::api::model::PlaceLive {
@@ -241,7 +175,7 @@ fn a_place_rule_teleports(world: &mut World) {
             },
         );
     });
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     world.pack = Some(pack);
 }
@@ -260,35 +194,12 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
     );
 }
 
-#[given(expr = "the stairs exit costs 10 minutes")]
-fn the_stairs_cost_ten_minutes(world: &mut World) {
-    let pack = temp_pack("ten-minutes");
-    let path = pack.join("world/places/docks_shop.md");
-    let text = fs::read_to_string(&path)
-        .unwrap()
-        .replace("time: 2m", "time: 10m");
-    fs::write(&path, text).unwrap();
-    edit_save(&pack, |now| {
-        give_key(now);
-        now.world_time = EVENING;
-    });
-    listen(&pack);
-    table::seat_player(&pack);
-    world.pack = Some(pack);
-}
-
-#[when(expr = "rowan travels via stairs at 21:30")]
-fn rowan_travels_at_half_past(world: &mut World) {
-    let (_mark, added) = table::player_send("travel stairs", "\"kind\":");
-    world.player_added = added;
-}
-
 #[then(expr = "rowan is still in docks_shop and busy until 21:40")]
 fn rowan_is_busy_until_half_past_eight(world: &mut World) {
     let now = table::now_of(&pack_of(world));
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place(), "docks_shop");
-    assert_eq!(rowan.act().busy_until, Some(EVENING + 10));
+    assert_eq!(rowan.act().busy_until, Some(super::common::EVENING + 10));
     assert!(rowan.is_busy(now.world_time));
 }
 
@@ -306,9 +217,15 @@ fn two_arrivals(world: &mut World) {
         "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
-    edit_save(&pack, |now| {
-        now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
+    super::common::edit_save(&pack, |now| {
+        now.world_time = super::common::EVENING;
+        set_busy(
+            now,
+            "pc_rowan",
+            super::common::EVENING + 10,
+            "mira_rooms",
+            "stairs",
+        );
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
@@ -322,7 +239,7 @@ fn two_arrivals(world: &mut World) {
                 visited: vec!["docks_shop".to_string()],
                 act: {
                     let mut act = spookery_kernel::api::model::ActCounters::fresh();
-                    act.busy_until = Some(EVENING + 5);
+                    act.busy_until = Some(super::common::EVENING + 5);
                     act.busy_for = Some(spookery_kernel::api::model::Pending {
                         rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
@@ -336,7 +253,7 @@ fn two_arrivals(world: &mut World) {
             },
         );
     });
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     table::seat_actor(&pack, "pc_nell");
     world.pack = Some(pack);
@@ -350,9 +267,9 @@ fn arrivals_are_in_time_order(world: &mut World) {
     assert!(names.len() >= 2, "{names:?}");
     let first = tick_file(&pack, &names[0]);
     let second = tick_file(&pack, &names[1]);
-    assert_eq!(first["world_time_after"], EVENING + 5);
+    assert_eq!(first["world_time_after"], super::common::EVENING + 5);
     assert_eq!(first["arrivals"][0]["actor_id"], "pc_nell");
-    assert_eq!(second["world_time_after"], EVENING + 10);
+    assert_eq!(second["world_time_after"], super::common::EVENING + 10);
     assert_eq!(second["arrivals"][0]["actor_id"], "pc_rowan");
     assert!(first["tick_index"].as_u64() < second["tick_index"].as_u64());
 }
@@ -360,11 +277,11 @@ fn arrivals_are_in_time_order(world: &mut World) {
 #[given(expr = "ticks are 5 minutes while seated and the stairs exit costs 2 minutes")]
 fn seated_ticks_are_five_minutes(world: &mut World) {
     let pack = temp_pack("exact-minute");
-    edit_save(&pack, |now| {
-        give_key(now);
-        now.world_time = EVENING;
+    super::common::edit_save(&pack, |now| {
+        super::common::give_key(now);
+        now.world_time = super::common::EVENING;
     });
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     world.pack = Some(pack);
 }
@@ -378,20 +295,21 @@ fn rowan_travels_in_the_evening_tick(world: &mut World) {
 #[then(expr = "the tick still ends at 21:35")]
 fn the_tick_ends_at_half(world: &mut World) {
     let tick = tick_file(&pack_of(world), "tick-0001.jsonl");
-    assert_eq!(tick["world_time_before"], EVENING);
-    assert_eq!(tick["world_time_after"], EVENING + 5);
+    assert_eq!(tick["world_time_before"], super::common::EVENING);
+    assert_eq!(tick["world_time_after"], super::common::EVENING + 5);
 }
 
 #[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that tick's line")]
 fn arrival_is_stamped(world: &mut World) {
     let tick = tick_file(&pack_of(world), "tick-0001.jsonl");
     assert_eq!(tick["arrivals"][0]["actor_id"], "pc_rowan");
-    assert_eq!(tick["arrivals"][0]["arrived_at"], EVENING + 2);
-    let stamped = tick["effects"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|effect| effect["class"] == "location" && effect["arrived_at"] == EVENING + 2);
+    assert_eq!(
+        tick["arrivals"][0]["arrived_at"],
+        super::common::EVENING + 2
+    );
+    let stamped = tick["effects"].as_array().unwrap().iter().any(|effect| {
+        effect["class"] == "location" && effect["arrived_at"] == super::common::EVENING + 2
+    });
     assert!(stamped, "{tick}");
 }
 
@@ -400,7 +318,7 @@ fn the_next_tick_accepts_a_move(world: &mut World) {
     let (_mark, added) = table::player_send("wait", "\"kind\":");
     assert!(!added.contains("BUSY"), "{added}");
     let now = table::now_of(&pack_of(world));
-    assert_eq!(now.world_time, EVENING + 10);
+    assert_eq!(now.world_time, super::common::EVENING + 10);
     assert!(!now.actors.get("pc_rowan").unwrap().is_busy(now.world_time));
 }
 
@@ -437,16 +355,22 @@ fn ticks_never_shorten(_world: &mut World) {
 fn both_busy_without_a_gm(world: &mut World) {
     let pack = temp_pack("fast-forward");
     add_toll(&pack);
-    edit_save(&pack, |now| {
-        now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
+    super::common::edit_save(&pack, |now| {
+        now.world_time = super::common::EVENING;
+        set_busy(
+            now,
+            "pc_rowan",
+            super::common::EVENING + 10,
+            "mira_rooms",
+            "stairs",
+        );
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
         "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
-    edit_save(&pack, |now| {
+    super::common::edit_save(&pack, |now| {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
@@ -461,9 +385,15 @@ fn both_busy_without_a_gm(world: &mut World) {
                 act: spookery_kernel::api::model::ActCounters::fresh(),
             },
         );
-        set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");
+        set_busy(
+            now,
+            "pc_nell",
+            super::common::EVENING + 5,
+            "docks_street",
+            "docks_street",
+        );
     });
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     table::seat_actor(&pack, "pc_nell");
     world.pack = Some(pack);
@@ -478,8 +408,8 @@ fn the_shard_ticks_through_both_arrivals(world: &mut World) {
         .iter()
         .map(|name| tick_file(&pack, name)["world_time_after"].as_u64().unwrap())
         .collect();
-    assert!(ends.contains(&(EVENING + 5)), "{ends:?}");
-    assert!(ends.contains(&(EVENING + 10)), "{ends:?}");
+    assert!(ends.contains(&(super::common::EVENING + 5)), "{ends:?}");
+    assert!(ends.contains(&(super::common::EVENING + 10)), "{ends:?}");
 }
 
 #[then(expr = "an NPC habit due at 21:35 runs in that tick")]
@@ -487,7 +417,7 @@ fn the_habit_runs_at_half(world: &mut World) {
     let pack = pack_of(world);
     let tick = tick_names(&pack)
         .into_iter()
-        .find(|name| tick_file(&pack, name)["world_time_after"] == EVENING + 5)
+        .find(|name| tick_file(&pack, name)["world_time_after"] == super::common::EVENING + 5)
         .unwrap_or_else(|| panic!("no 21:35 tick"));
     let trace = tick_file(&pack, &tick)["tool_trace"].to_string();
     assert!(trace.contains("cast:bram/toll"), "{trace}");
@@ -513,11 +443,17 @@ fn nothing_advances_until_commit(world: &mut World) {
 #[given(expr = "busy_until is 200 ticks away and max_fastforward_ticks is 12")]
 fn a_long_journey_and_the_cap(world: &mut World) {
     let pack = temp_pack("cap");
-    edit_save(&pack, |now| {
-        now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 200 * 5, "mira_rooms", "stairs");
+    super::common::edit_save(&pack, |now| {
+        now.world_time = super::common::EVENING;
+        set_busy(
+            now,
+            "pc_rowan",
+            super::common::EVENING + 200 * 5,
+            "mira_rooms",
+            "stairs",
+        );
     });
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     world.pack = Some(pack);
 }
@@ -529,7 +465,7 @@ fn twelve_ticks_then_more(world: &mut World) {
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(tick_names(&pack).len(), 12, "first burst");
     let mid = table::now_of(&pack).world_time;
-    assert_eq!(mid, EVENING + 12 * 5);
+    assert_eq!(mid, super::common::EVENING + 12 * 5);
     assert!(table::now_of(&pack)
         .actors
         .get("pc_rowan")
@@ -544,11 +480,17 @@ fn twelve_ticks_then_more(world: &mut World) {
 #[then(expr = "spook verify passes over a fast-forwarded journey")]
 fn verify_passes(world: &mut World) {
     let pack = temp_pack("verify-journey");
-    edit_save(&pack, |now| {
-        now.world_time = EVENING;
-        set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
+    super::common::edit_save(&pack, |now| {
+        now.world_time = super::common::EVENING;
+        set_busy(
+            now,
+            "pc_rowan",
+            super::common::EVENING + 10,
+            "mira_rooms",
+            "stairs",
+        );
     });
-    listen(&pack);
+    table::listen(&pack);
     table::seat_player(&pack);
     let (_mark, _) = table::player_send("wait", "BUSY");
     world.pack = Some(pack.clone());

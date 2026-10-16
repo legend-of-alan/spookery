@@ -2,21 +2,9 @@ use std::fs;
 
 use cucumber::{given, then, when};
 
-use crate::support::temp_pack;
 use crate::World;
 
 use super::table;
-
-#[given(expr = "a docks table with a seated GM")]
-fn a_docks_table_with_a_seated_gm(world: &mut World) {
-    let pack = temp_pack("gm-seat");
-    let opened = fs::read(pack.join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    table::listen(&pack);
-    table::seat_gm();
-    crate::with_live(|live| live.opened_now = opened);
-    world.pack = Some(pack);
-}
 
 #[when(expr = "a second player connects")]
 fn a_second_player_connects(world: &mut World) {
@@ -115,40 +103,9 @@ fn the_session_ids_differ(world: &mut World) {
     assert_ne!(again, rowan);
 }
 
-#[then(expr = "tick index is 0")]
-fn tick_index_is_0(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).tick_index, 0);
-}
-
-#[then(expr = "world_time is 1080")]
-fn world_time_is_1080(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).world_time, 1080);
-}
-
 #[then(expr = "humans is 0")]
 fn humans_is_0(_world: &mut World) {
     assert_eq!(table::live_presence().0, 0);
-}
-
-#[then(expr = "the command exits 1")]
-fn the_command_exits_1(world: &mut World) {
-    assert_eq!(
-        world.code,
-        Some(1),
-        "stdout:\n{}\nstderr:\n{}",
-        world.stdout,
-        world.stderr
-    );
-}
-
-#[then(expr = "stderr is NOT_IN_SPEC")]
-fn stderr_is_not_in_spec(world: &mut World) {
-    assert_eq!(world.stderr.trim(), "NOT_IN_SPEC", "{}", world.stdout);
-}
-
-#[then(expr = "stdout is empty")]
-fn stdout_is_empty(world: &mut World) {
-    assert!(world.stdout.is_empty(), "{}", world.stdout);
 }
 
 const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
@@ -521,4 +478,43 @@ fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
+}
+
+#[then(expr = "the tick now_hash matches the save")]
+fn the_tick_now_hash_matches_the_save(world: &mut World) {
+    let pack = table::pack(world);
+    let tick = fs::read_to_string(pack.join("state/journal/tick-0001.jsonl"))
+        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    let value: serde_json::Value =
+        serde_json::from_str(tick.trim_end()).unwrap_or_else(|err| panic!("{err}"));
+    let expected = value["now_hash"]
+        .as_str()
+        .unwrap_or_else(|| panic!("now_hash\n{tick}"));
+    let save =
+        fs::read(pack.join("state/save.yaml")).unwrap_or_else(|err| panic!("read save: {err}"));
+    assert_eq!(spookery_kernel::api::journal::hash_now(&save), expected);
+}
+
+#[when(expr = "two players sit, one drops, and that PC sits again")]
+fn a_player_drops_and_sits_again_beside_another(world: &mut World) {
+    world.scratch = seat_drop_and_reseat().join("\n");
+}
+
+/// Seat Rowan and Wren, drop Rowan, seat Rowan again. Returns the three session ids in order.
+fn seat_drop_and_reseat() -> [String; 3] {
+    let pack = crate::support::temp_pack("session-ids");
+    let mut shard =
+        spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("World::open: {err}"));
+    let rowan = spookery::host::seat_player(&mut shard, "pc_rowan").unwrap();
+    let wren = spookery::host::seat_player(&mut shard, "pc_wren").unwrap();
+    assert!(spookery::host::release_player_seat(
+        &mut shard,
+        &rowan,
+        "pc_rowan",
+        spookery::host::SocketEnd::Close,
+    )
+    .unwrap());
+    let again = spookery::host::seat_player(&mut shard, "pc_rowan").unwrap();
+    let _ = fs::remove_dir_all(&pack);
+    [rowan, wren, again]
 }

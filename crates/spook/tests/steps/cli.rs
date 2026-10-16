@@ -50,25 +50,9 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
     assert!(world.stdout.contains("127.0.0.1:9737"), "{}", world.stdout);
 }
 
-#[when(expr = "play joins the table on a free loopback address")]
-fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
-    join_play(world, false);
-}
-
 #[when(expr = "play joins the table with raw frames")]
 fn play_joins_the_table_with_raw_frames(world: &mut World) {
-    join_play(world, true);
-}
-
-#[when(expr = "play types {string}")]
-fn play_types(world: &mut World, line: String) {
-    let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-    let stdin = play
-        .stdin
-        .as_mut()
-        .unwrap_or_else(|| panic!("play stdin is closed"));
-    writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("type: {err}"));
-    stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    super::common::join_play(world, true);
 }
 
 #[when(expr = "play says {string}")]
@@ -95,25 +79,20 @@ fn another_play_joins_that_table(world: &mut World) {
 
 #[then(expr = "play received the first perceive")]
 fn play_received_the_first_perceive(world: &mut World) {
-    let stdout = play_stdout(world);
+    let stdout = super::common::play_stdout(world);
     assert!(stdout.contains("Docks Shop"), "{stdout}");
     assert!(!stdout.contains("\"kind\":\"perceive\""), "{stdout}");
 }
 
-#[then(expr = "play shows {string}")]
-fn play_shows(world: &mut World, text: String) {
-    wait_play(world, &text);
-}
-
 #[then(expr = "play does not show {string}")]
 fn play_does_not_show(world: &mut World, text: String) {
-    let stdout = play_stdout(world);
+    let stdout = super::common::play_stdout(world);
     assert!(!stdout.contains(&text), "{stdout}");
 }
 
 #[then(expr = "play does not show the line {string}")]
 fn play_does_not_show_the_line(world: &mut World, text: String) {
-    let stdout = play_stdout(world);
+    let stdout = super::common::play_stdout(world);
     assert!(stdout.lines().all(|line| line != text), "{stdout}");
 }
 
@@ -128,24 +107,17 @@ fn play_error_shows(world: &mut World, text: String) {
             return;
         }
         if start.elapsed() > Duration::from_secs(8) {
-            let stdout = play_stdout(world);
+            let stdout = super::common::play_stdout(world);
             panic!("missing {text}\nstdout:\n{stdout}\nstderr:\n{stderr}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
 }
 
-#[then(expr = "play shows no protocol JSON")]
-fn play_shows_no_protocol_json(world: &mut World) {
-    let stdout = play_stdout(world);
-    assert!(!stdout.contains('{'), "{stdout}");
-    assert!(!stdout.contains("\"kind\""), "{stdout}");
-}
-
 #[then(expr = "play shows protocol frames")]
 fn play_shows_protocol_frames(world: &mut World) {
-    wait_play(world, "\"kind\":\"perceive\"");
-    let stdout = play_stdout(world);
+    super::common::wait_play(world, "\"kind\":\"perceive\"");
+    let stdout = super::common::play_stdout(world);
     assert!(stdout.contains("\"kind\":\"resume\""), "{stdout}");
     assert!(stdout.contains('{'), "{stdout}");
 }
@@ -157,8 +129,8 @@ While you were away:
 Back at dusk. Oil on the shelf.
 Assassination debt: 2/6, paused
 ";
-    wait_play(world, away);
-    let stdout = play_stdout(world);
+    super::common::wait_play(world, away);
+    let stdout = super::common::play_stdout(world);
     assert!(!stdout.contains("note_mira_door"), "{stdout}");
     assert!(!stdout.contains("clock assassination_debt"), "{stdout}");
     assert!(!stdout.contains("message "), "{stdout}");
@@ -166,8 +138,8 @@ Assassination debt: 2/6, paused
 
 #[then(expr = "play shows the raw resume digest")]
 fn play_shows_the_raw_resume_digest(world: &mut World) {
-    wait_play(world, "\"kind\":\"perceive\"");
-    let stdout = play_stdout(world);
+    super::common::wait_play(world, "\"kind\":\"perceive\"");
+    let stdout = super::common::play_stdout(world);
     let resume = stdout
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
@@ -186,58 +158,4 @@ fn stderr_shows(world: &mut World, text: String) {
 fn stderr_has_no_protocol_json(world: &mut World) {
     assert!(!world.stderr.contains('{'), "{}", world.stderr);
     assert!(!world.stderr.contains("\"kind\""), "{}", world.stderr);
-}
-
-fn join_play(world: &mut World, raw: bool) {
-    let pack = table::pack(world);
-    table::listen(pack);
-    let addr = table::game_addr();
-    let pack_arg = support::pack_arg(pack);
-    let mut args = vec!["play".to_string(), pack_arg, "--addr".to_string(), addr];
-    if raw {
-        args.push("--raw".to_string());
-    }
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    world.play = Some(support::spawn(&refs));
-    let needle = if raw {
-        "\"kind\":\"perceive\""
-    } else {
-        "You are in"
-    };
-    wait_play(world, needle);
-}
-
-fn wait_play(world: &mut World, needle: &str) {
-    let start = Instant::now();
-    loop {
-        let stdout = play_stdout(world);
-        if stdout.contains(needle) {
-            return;
-        }
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        if let Some(status) = play
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = support::text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = world
-                .play
-                .as_ref()
-                .map(|play| support::text_of(&play.stderr))
-                .unwrap_or_default();
-            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-fn play_stdout(world: &mut World) -> String {
-    let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-    let text = support::text_of(&play.stdout);
-    world.stdout = text.clone();
-    text
 }
