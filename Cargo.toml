@@ -8,3 +8,11 @@ edition = "2021"
 rust-version = "1.89"
 publish = false
 license = "AGPL-3.0-or-later"
+
+# Small binaries for release downloads: `cargo build --profile dist`.
+# Plain `release` stays fast for local builds.
+[profile.dist]
+inherits = "release"
+strip = true
+lto = "fat"
+codegen-units = 1
