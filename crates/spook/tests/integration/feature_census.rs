@@ -5,7 +5,7 @@ use std::path::Path;
 
 use crate::feature_paths::{HOST, WORLD};
 
-const SCENARIOS: usize = 333;
+const SCENARIOS: usize = 340;
 
 #[test]
 fn every_feature_folder_runs_in_one_program() {
@@ -25,7 +25,7 @@ fn every_feature_folder_runs_in_one_program() {
 }
 
 #[test]
-fn feature_scenarios_stay_at_333() {
+fn feature_scenarios_stay_at_340() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/features");
     let mut total = 0;
     for entry in walk(&root) {

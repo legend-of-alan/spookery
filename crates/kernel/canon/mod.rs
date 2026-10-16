@@ -728,6 +728,7 @@ pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
                     base_cap: entry.base_cap,
                     max: entry.max,
                     start: entry.start,
+                    hidden: entry.hidden,
                 },
             );
         }
@@ -1617,6 +1618,8 @@ struct MeterEntryFile {
     base_cap: i64,
     max: i64,
     start: i64,
+    #[serde(default)]
+    hidden: bool,
 }
 
 #[cfg(test)]

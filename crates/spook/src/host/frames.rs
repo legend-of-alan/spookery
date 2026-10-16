@@ -3,13 +3,13 @@
 
 use crate::protocol::{
     CommitBody, FactNote, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus,
-    StatusPause, StatusPresence, WireClock, WireFact, WireItem,
+    StatusPause, StatusPresence, WireClock, WireFact, WireItem, WireMeter,
 };
 use serde_json::Value;
 use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::map::ExitView;
 use spookery_kernel::api::model::{Message, Now, RunState};
-use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, View};
+use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 use spookery_kernel::api::rules::{RollReport, RollResult};
 use spookery_kernel::api::Reason;
 
@@ -247,6 +247,7 @@ fn player_view(view: &View) -> PlayerMessage {
         unknown_mentioned: view.unknown_mentioned.clone(),
         clocks: view.clocks.iter().map(wire_clock).collect(),
         items: view.items.iter().map(wire_item).collect(),
+        meters: view.meters.iter().map(wire_meter).collect(),
         habits: view.habits.clone(),
         exits: view.exits.iter().map(wire_exit).collect(),
     }
@@ -293,6 +294,14 @@ fn wire_item(item: &ItemStack) -> WireItem {
     WireItem {
         id: item.id.clone(),
         count: item.count,
+    }
+}
+
+fn wire_meter(meter: &MeterView) -> WireMeter {
+    WireMeter {
+        id: meter.id.clone(),
+        value: meter.value,
+        max: meter.max,
     }
 }
 

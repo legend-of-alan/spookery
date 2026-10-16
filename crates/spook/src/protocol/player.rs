@@ -54,6 +54,8 @@ pub enum PlayerMessage {
         unknown_mentioned: Vec<String>,
         clocks: Vec<WireClock>,
         items: Vec<WireItem>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        meters: Vec<WireMeter>,
         habits: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         exits: Vec<WireExit>,
@@ -103,6 +105,14 @@ pub struct WireClock {
 pub struct WireItem {
     pub id: String,
     pub count: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WireMeter {
+    pub id: String,
+    pub value: i64,
+    pub max: i64,
 }
 
 pub fn write_player(message: &PlayerMessage) -> String {

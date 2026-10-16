@@ -189,13 +189,18 @@ Tested in `features/loopback/only_loopback_binds.feature`,
 
 A player arriving in a place sees its display name, the prose they are allowed
 to read, the display names of who is there, and the visible exits with travel
-time. A hidden exit stays off that list. `help` lists the verbs whose `if`
+time. The same view lists that player's own meters. A meter marked hidden stays
+off it, and so does anyone else's. After a round, the player sees one line of
+what changed, built from the change records they are allowed to know. That line
+names a meter change and an item gained or lost. A hidden fact stays off the
+line. A hidden exit stays off the exit list. `help` lists the verbs whose `if`
 holds and those exits, and it does not take a round. `look` reprints the prose
 and the exits, and it does not take a round. A traveller who has not arrived
 sees where the journey ends, as `on the stairs until 21:40`. A pack that omits
 `display_name` fails check. An unknown word tells the player to type help.
 
-Tested in `features/seats/a_player_knows_the_place.feature`.
+Tested in `features/seats/a_player_knows_the_place.feature` and
+`features/seats/actions_visibly_matter.feature`.
 
 ## What the engine does not do
 

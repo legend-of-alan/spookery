@@ -41,6 +41,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             seen.push(Seen {
                 viewer: id,
                 changes: delivery.changes,
+                line: delivery.line,
             });
         }
     }
