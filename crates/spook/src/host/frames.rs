@@ -3,13 +3,13 @@
 
 use crate::protocol::{
     CommitBody, FactNote, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus,
-    StatusPause, StatusPresence, WireClock, WireFact, WireItem,
+    StatusPause, StatusPresence, WireClock, WireFact, WireItem, WireMeter,
 };
 use serde_json::Value;
 use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::map::ExitView;
 use spookery_kernel::api::model::{Message, Now, RunState};
-use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, View};
+use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 use spookery_kernel::api::rules::{RollReport, RollResult};
 use spookery_kernel::api::Reason;
 
@@ -297,8 +297,8 @@ fn wire_item(item: &ItemStack) -> WireItem {
     }
 }
 
-fn wire_meter(meter: &spookery_kernel::api::perceive::MeterView) -> crate::protocol::WireMeter {
-    crate::protocol::WireMeter {
+fn wire_meter(meter: &MeterView) -> WireMeter {
+    WireMeter {
         id: meter.id.clone(),
         value: meter.value,
         max: meter.max,

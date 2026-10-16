@@ -12,20 +12,20 @@ Feature: Actions visibly matter
 
   Scenario: An unseen gain does not turn a use into a move
     Given sample-d20 with player "lark" seated facing "briar"
-    And lark uses her tonic while someone out of sight gains one
+    When lark uses her tonic while someone out of sight gains one
     Then lark sees one line saying the tonic was used up
     And that line does not mention the unseen gain
 
   Scenario: Dropping an item is a move
     Given sample-d20 with player "lark" seated facing "briar"
     When lark drops the tonic
-    Then the tonic was moved, not used up
+    Then lark sees one line saying she dropped the tonic
 
   Scenario: Taking an item is a move
     Given sample-d20 with player "lark" seated facing "briar"
     And a tonic is on the ground
     When lark takes the tonic
-    Then the tonic was moved, not used up
+    Then lark sees one line saying she picked up the tonic
 
   Scenario: A player sees their own meters
     Given sample-d20 with player "lark" seated facing "briar"

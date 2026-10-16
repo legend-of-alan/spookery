@@ -177,23 +177,19 @@ fn perceive_at_budget(
         })
         .unwrap_or_default();
 
-    let mut meters = Vec::new();
-    for (id, live) in actor.meters() {
-        let Some(def) = canon.meters.get(id) else {
-            continue;
-        };
-        if def.hidden {
-            continue;
-        }
-        let Ok(value) = meter::current(def, live) else {
-            continue;
-        };
-        meters.push(MeterView {
-            id: id.clone(),
-            value,
-            max: def.max,
-        });
-    }
+    let meters = actor
+        .meters()
+        .iter()
+        .filter_map(|(id, live)| {
+            let def = canon.meters.get(id).filter(|def| !def.hidden)?;
+            let value = meter::current(def, live).ok()?;
+            Some(MeterView {
+                id: id.clone(),
+                value,
+                max: def.max,
+            })
+        })
+        .collect();
 
     let habits = match &viewer {
         ViewerId::Player(_) => Vec::new(),

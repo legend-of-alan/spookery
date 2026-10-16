@@ -75,7 +75,7 @@ fn lark_uses_a_tonic(world: &mut World) {
     world.stdout = change_line(&mut shard);
 }
 
-#[given(expr = "lark uses her tonic while someone out of sight gains one")]
+#[when(expr = "lark uses her tonic while someone out of sight gains one")]
 fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     let pack = pack(world).to_path_buf();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
@@ -163,14 +163,16 @@ fn lark_sees_the_tonic_used_up(world: &mut World) {
     );
 }
 
-#[then(expr = "the tonic was moved, not used up")]
-fn the_tonic_was_moved(world: &mut World) {
+#[then(expr = "lark sees one line saying she dropped the tonic")]
+fn lark_sees_she_dropped_the_tonic(world: &mut World) {
     let line = one_line(&world.stdout);
-    let lower = line.to_lowercase();
-    assert!(lower.contains("tonic"), "{line}");
-    assert!(line.contains("Your") && line.contains("Here"), "{line}");
-    assert!(lower.contains("lost") && lower.contains("gained"), "{line}");
-    assert!(!lower.contains("used up"), "{line}");
+    assert_eq!(line, "You dropped the Bitter tonic.");
+}
+
+#[then(expr = "lark sees one line saying she picked up the tonic")]
+fn lark_sees_she_picked_up_the_tonic(world: &mut World) {
+    let line = one_line(&world.stdout);
+    assert_eq!(line, "You picked up the Bitter tonic.");
 }
 
 #[then(expr = "lark sees lark's hp and might")]
