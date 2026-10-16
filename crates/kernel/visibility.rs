@@ -86,24 +86,10 @@ fn sentence(
         StateKey::ActorMeter(actor, key) => {
             meter_sentence(canon, actor, key, viewer, &change.after)
         }
-        StateKey::ActorItem(actor, id) => item_sentence(
-            canon,
-            &whose(canon, viewer, actor),
-            id,
-            &change.before,
-            &change.after,
-            changes,
-            true,
-        ),
-        StateKey::PlaceItem(_, id) => item_sentence(
-            canon,
-            "Here",
-            id,
-            &change.before,
-            &change.after,
-            changes,
-            false,
-        ),
+        StateKey::ActorItem(actor, id) => {
+            actor_item_sentence(canon, viewer, actor, id, change, changes)
+        }
+        StateKey::PlaceItem(_, id) => place_item_sentence(canon, id, change, changes),
         _ => None,
     }
 }
@@ -125,58 +111,90 @@ fn meter_sentence(
     Some(format!("{who} {key} is now {value}."))
 }
 
-fn item_sentence(
+/// A change to what one actor carries.
+fn actor_item_sentence(
     canon: &Canon,
-    who: &str,
+    viewer: &str,
+    actor: &str,
     id: &str,
-    before: &StateValue,
-    after: &StateValue,
+    change: &ChangeRecord,
     changes: &[ChangeRecord],
-    inventory: bool,
 ) -> Option<String> {
-    let (StateValue::Number(before), StateValue::Number(after)) = (before, after) else {
-        return None;
+    let (before, after) = counts(change)?;
+    let name = item_name(canon, id);
+    let who = subject(canon, viewer, actor);
+    let owner = whose(canon, viewer, actor);
+    let sentence = match (after < before, other_side(changes, change, id)) {
+        (true, Some(Holder::Place)) => format!("{who} dropped the {name}."),
+        (true, Some(Holder::Actor)) => format!("{who} handed over the {name}."),
+        (false, Some(Holder::Place)) => format!("{who} picked up the {name}."),
+        (false, Some(Holder::Actor)) => format!("{who} received the {name}."),
+        (true, None) if after == 0 => format!("{owner} {name} was used up."),
+        (true, None) => format!("{owner} {name} was lost."),
+        (false, None) => format!("{owner} {name} was gained."),
     };
-    if before == after {
+    Some(sentence)
+}
+
+/// A change to what lies in the viewer's place. A move to or from an actor is told by the actor's sentence.
+fn place_item_sentence(
+    canon: &Canon,
+    id: &str,
+    change: &ChangeRecord,
+    changes: &[ChangeRecord],
+) -> Option<String> {
+    let (before, after) = counts(change)?;
+    if other_side(changes, change, id) == Some(Holder::Actor) {
         return None;
     }
     let name = item_name(canon, id);
-    let verb = if inventory && *after == 0 && !item_moved(changes, id) {
-        "was used up"
-    } else if after < before {
-        "was lost"
+    if after < before {
+        Some(format!("The {name} here is gone."))
     } else {
-        "was gained"
-    };
-    Some(format!("{who} {name} {verb}."))
-}
-
-/// The item left one owner and showed up with another among changes this viewer can see.
-fn item_moved(changes: &[ChangeRecord], id: &str) -> bool {
-    let mut down = false;
-    let mut up = false;
-    for change in changes {
-        let Some(item) = item_of(change) else {
-            continue;
-        };
-        if item != id {
-            continue;
-        }
-        match (&change.before, &change.after) {
-            (StateValue::Number(before), StateValue::Number(after)) if after > before => up = true,
-            (StateValue::Number(before), StateValue::Number(after)) if after < before => {
-                down = true
-            }
-            _ => {}
-        }
+        Some(format!("A {name} turned up here."))
     }
-    down && up
 }
 
-fn item_of(change: &ChangeRecord) -> Option<&str> {
-    match &change.key {
-        StateKey::ActorItem(_, id) | StateKey::PlaceItem(_, id) => Some(id),
+/// The before and after counts of an item change, when the count changed.
+fn counts(change: &ChangeRecord) -> Option<(i64, i64)> {
+    match (&change.before, &change.after) {
+        (StateValue::Number(before), StateValue::Number(after)) if before != after => {
+            Some((*before, *after))
+        }
         _ => None,
+    }
+}
+
+/// Who holds an item.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Holder {
+    Actor,
+    Place,
+}
+
+/// Where the item went to or came from, among changes this viewer can see.
+fn other_side(changes: &[ChangeRecord], change: &ChangeRecord, id: &str) -> Option<Holder> {
+    let (before, after) = counts(change)?;
+    let down = after < before;
+    changes.iter().find_map(|other| {
+        let (other_before, other_after) = counts(other)?;
+        if (other_after < other_before) == down {
+            return None;
+        }
+        match &other.key {
+            StateKey::ActorItem(_, item) if item == id => Some(Holder::Actor),
+            StateKey::PlaceItem(_, item) if item == id => Some(Holder::Place),
+            _ => None,
+        }
+    })
+}
+
+/// "You" for the viewer, the display name for anyone else.
+fn subject(canon: &Canon, viewer: &str, actor: &str) -> String {
+    if actor == viewer {
+        "You".to_string()
+    } else {
+        display_name(canon, actor)
     }
 }
 

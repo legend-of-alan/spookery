@@ -236,7 +236,7 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
 }
 
 fn meter_line(meter: &WireMeter) -> String {
-    format!("{}: {}", humanize(&meter.id), meter.value)
+    format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
 }
 
 fn clock_line(clock: &WireClock) -> String {
@@ -526,7 +526,7 @@ Items:
 Lamp oil: 4
 
 Meters:
-Grit: 1
+Grit: 1/110
 
 Exits:
 stairs (locked) — 2 min"
