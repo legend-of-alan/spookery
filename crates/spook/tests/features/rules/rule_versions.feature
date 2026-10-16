@@ -5,8 +5,13 @@ Feature: Rule versions
     When spook run or spook verify opens it
     Then it refuses with RULES_REV and says to start a fresh save
 
-  Scenario: A journal from before seat presence left the save is refused
-    Given a journal written by rules_rev 6 with seat presence in the save
+  Scenario: A save from before seat presence left the save is refused
+    Given an old save from rules_rev 6 with seat presence in it
+    When spook run or spook verify opens it
+    Then it refuses with RULES_REV and says to start a fresh save
+
+  Scenario: A journal presence record from older rules is refused
+    Given a current save with a stray presence-0001.json in its journal
     When spook run or spook verify opens it
     Then it refuses with RULES_REV and says to start a fresh save
 

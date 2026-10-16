@@ -55,6 +55,10 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
             let path = entry.path();
             let name = entry.file_name();
             let name = name.to_string_lossy();
+            // Presence records were written by older rules. Refuse, do not migrate.
+            if name.starts_with("presence-") && name.ends_with(".json") {
+                return Err(Reason::RulesRev);
+            }
             if !name.starts_with("tick-") || !name.ends_with(".jsonl") {
                 continue;
             }
