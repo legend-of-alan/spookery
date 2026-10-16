@@ -69,7 +69,8 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
     let pack = table::pack(world);
     let shard = spookery_kernel::World::open(pack).unwrap();
     let resume =
-        spookery_kernel::idle_digest(&shard, DigestViewer::Player("pc_rowan".to_string())).unwrap();
+        spookery_kernel::host_summary(&shard, DigestViewer::Player("pc_rowan".to_string()))
+            .unwrap();
     assert_eq!(resume, RESUME);
     assert!(!resume.contains("effect location"));
     assert!(!resume.contains("lamp_oil"));

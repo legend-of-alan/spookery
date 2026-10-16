@@ -274,6 +274,18 @@ rules:
     world.pack = Some(pack);
 }
 
+#[then(expr = "spook check warns of a cycle, and a tick stops at depth 4 and logs trigger_depth")]
+fn check_warns_of_a_cycle_and_the_tick_stops(world: &mut World) {
+    let pack = world.pack.as_ref().unwrap().clone();
+    let output = support::spook(&["check", &pack.to_string_lossy()]);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "check failed\n{stdout}{stderr}");
+    assert!(stderr.contains("cycle"), "{stderr}");
+    assert!(stderr.contains("WARNING"), "{stderr}");
+    a_tick_stops_at_depth_4(world);
+}
+
 #[then(expr = "a tick stops at depth 4 and logs trigger_depth")]
 fn a_tick_stops_at_depth_4(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
@@ -297,6 +309,42 @@ fn a_tick_stops_at_depth_4(world: &mut World) {
         names.iter().any(|name| name == "trigger_depth"),
         "trigger_depth was not logged\n{tick}"
     );
+}
+
+#[given(expr = "a rule on a known fact narrates to the room")]
+fn a_known_fact_narrates_to_the_room(world: &mut World) {
+    world.pack = Some(knows_narrate("trigger-leak-room", "here"));
+}
+
+#[given(expr = "a rule on a known fact narrates to the subject")]
+fn a_known_fact_narrates_to_the_subject(world: &mut World) {
+    world.pack = Some(knows_narrate("trigger-leak-self", "self"));
+}
+
+fn knows_narrate(label: &str, to: &str) -> std::path::PathBuf {
+    let pack = temp_pack(label);
+    fs::create_dir_all(pack.join("story")).unwrap();
+    fs::write(
+        pack.join("story/secret.yaml"),
+        format!(
+            "\
+schema: story
+id: secret
+rules:
+  - id: tell
+    when:
+      change:
+        knows: fact_ledger
+    do:
+      - narrate:
+          to: {to}
+          text: A secret moved.
+"
+        ),
+    )
+    .unwrap();
+    edit_save(&pack, |_| {});
+    pack
 }
 
 #[then(expr = "spook verify passes after ticks that fired triggers")]

@@ -10,13 +10,13 @@ use crate::meter::MeterWrite;
     into = "crate::store::records::EffectRecord"
 )]
 pub struct Effect {
-    pub class: EffectClass,
+    pub class: EffectKind,
     pub as_viewer: ViewerId,
     pub intent_id: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EffectClass {
+pub enum EffectKind {
     Clock {
         clock_id: String,
         delta: i64,
@@ -95,20 +95,20 @@ impl Effect {
     }
 }
 
-impl EffectClass {
+impl EffectKind {
     pub fn name(&self) -> &'static str {
         match self {
-            EffectClass::Clock { .. } => "clock",
-            EffectClass::Meter { .. } => "meter",
-            EffectClass::Item { .. } => "item",
-            EffectClass::Wield { .. } => "wield",
-            EffectClass::Unwield { .. } => "unwield",
-            EffectClass::Location { .. } => "location",
-            EffectClass::Memory { .. } => "memory",
-            EffectClass::Flag { .. } => "flag",
-            EffectClass::Message { .. } => "message",
-            EffectClass::Narrate { .. } => "narrate",
-            EffectClass::Reveal { .. } => "reveal",
+            EffectKind::Clock { .. } => "clock",
+            EffectKind::Meter { .. } => "meter",
+            EffectKind::Item { .. } => "item",
+            EffectKind::Wield { .. } => "wield",
+            EffectKind::Unwield { .. } => "unwield",
+            EffectKind::Location { .. } => "location",
+            EffectKind::Memory { .. } => "memory",
+            EffectKind::Flag { .. } => "flag",
+            EffectKind::Message { .. } => "message",
+            EffectKind::Narrate { .. } => "narrate",
+            EffectKind::Reveal { .. } => "reveal",
         }
     }
 }

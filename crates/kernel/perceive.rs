@@ -12,7 +12,7 @@ use crate::world::World;
 const BUDGET_TOKENS: usize = 800;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Perceive {
+pub struct View {
     pub viewer: String,
     pub place: String,
     pub visible_actors: Vec<String>,
@@ -46,19 +46,15 @@ pub struct ItemStack {
     pub count: u32,
 }
 
-pub fn perceive(world: &World, as_arg: &str) -> Result<Perceive, Reason> {
+pub fn perceive(world: &World, as_arg: &str) -> Result<View, Reason> {
     perceive_budget(world, as_arg, BUDGET_TOKENS)
 }
 
-pub fn perceive_budget(
-    world: &World,
-    as_arg: &str,
-    budget_tokens: usize,
-) -> Result<Perceive, Reason> {
+pub fn perceive_budget(world: &World, as_arg: &str, budget_tokens: usize) -> Result<View, Reason> {
     perceive_at_budget(world.canon(), world.now(), as_arg, budget_tokens)
 }
 
-pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<Perceive, Reason> {
+pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<View, Reason> {
     perceive_at_budget(canon, now, as_arg, BUDGET_TOKENS)
 }
 
@@ -67,7 +63,7 @@ fn perceive_at_budget(
     now: &Now,
     as_arg: &str,
     budget_tokens: usize,
-) -> Result<Perceive, Reason> {
+) -> Result<View, Reason> {
     let viewer = ViewerId::parse(as_arg)?;
     let actor = now
         .actors
@@ -173,7 +169,7 @@ fn perceive_at_budget(
     };
     let exits = crate::map::visible(canon, now, viewer.actor_id());
 
-    Ok(Perceive {
+    Ok(View {
         viewer: viewer.token(),
         place,
         visible_actors,

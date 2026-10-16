@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use spookery_kernel::effect::EffectClass;
+use spookery_kernel::effect::EffectKind;
 use spookery_kernel::visibility::{self, Seat, Seen, Told};
 use spookery_kernel::world::Draft;
 use spookery_kernel::Reason;
@@ -17,7 +17,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.summary = gm.changes;
     let mut viewers: BTreeSet<String> = now.actors.keys().cloned().collect();
     for effect in &round.effects {
-        if let EffectClass::Narrate { to, .. } = &effect.class {
+        if let EffectKind::Narrate { to, .. } = &effect.class {
             viewers.extend(to.iter().cloned());
         }
     }

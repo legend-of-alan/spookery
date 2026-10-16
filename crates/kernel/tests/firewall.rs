@@ -19,7 +19,7 @@ use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
 use spookery_kernel::canon::Canon;
 use spookery_kernel::model::{sort_unique, Message, Now};
-use spookery_kernel::perceive::{perceive_at, Perceive};
+use spookery_kernel::perceive::{perceive_at, View};
 use spookery_kernel::world::World;
 
 const CASES: u32 = 64;
@@ -217,7 +217,7 @@ fn hidden_stays_hidden(canon: &Canon, now: &Now) -> Result<(), TestCaseError> {
 }
 
 /// Where a fact the player must not know showed up, if it did.
-fn shown(view: &Perceive, id: &str, text: &str) -> Option<&'static str> {
+fn shown(view: &View, id: &str, text: &str) -> Option<&'static str> {
     for fact in &view.known_facts {
         if fact.id == id {
             return Some("perceive");

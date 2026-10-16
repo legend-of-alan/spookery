@@ -4,7 +4,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::effect::{Effect, EffectClass};
+use crate::effect::{Effect, EffectKind};
 use crate::intent::{IntentArgs, Target, ViewerId};
 use crate::meter::MeterWrite;
 
@@ -167,7 +167,7 @@ impl From<Effect> for EffectRecord {
         let as_viewer = effect.as_viewer;
         let intent_id = effect.intent_id;
         match effect.class {
-            EffectClass::Clock {
+            EffectKind::Clock {
                 clock_id,
                 delta,
                 start,
@@ -178,7 +178,7 @@ impl From<Effect> for EffectRecord {
                 delta,
                 start,
             },
-            EffectClass::Meter {
+            EffectKind::Meter {
                 actor_id,
                 key,
                 write,
@@ -197,7 +197,7 @@ impl From<Effect> for EffectRecord {
                     delta,
                 }
             }
-            EffectClass::Item {
+            EffectKind::Item {
                 actor_id,
                 place,
                 id,
@@ -212,18 +212,18 @@ impl From<Effect> for EffectRecord {
                 delta,
                 max,
             },
-            EffectClass::Wield { actor_id, id } => Self::Wield {
+            EffectKind::Wield { actor_id, id } => Self::Wield {
                 as_viewer,
                 intent_id,
                 actor_id,
                 id,
             },
-            EffectClass::Unwield { actor_id } => Self::Unwield {
+            EffectKind::Unwield { actor_id } => Self::Unwield {
                 as_viewer,
                 intent_id,
                 actor_id,
             },
-            EffectClass::Location {
+            EffectKind::Location {
                 actor_id,
                 from,
                 to,
@@ -236,7 +236,7 @@ impl From<Effect> for EffectRecord {
                 to,
                 arrived_at,
             },
-            EffectClass::Memory {
+            EffectKind::Memory {
                 actor_id,
                 fact_ids,
                 tags,
@@ -249,7 +249,7 @@ impl From<Effect> for EffectRecord {
                 tags,
                 text,
             },
-            EffectClass::Flag {
+            EffectKind::Flag {
                 actor_id,
                 key,
                 value,
@@ -260,7 +260,7 @@ impl From<Effect> for EffectRecord {
                 key,
                 value,
             },
-            EffectClass::Message {
+            EffectKind::Message {
                 message_id,
                 to,
                 place,
@@ -275,14 +275,14 @@ impl From<Effect> for EffectRecord {
                 fact_ids,
                 text,
             },
-            EffectClass::Narrate { to, fact_ids, text } => Self::Narrate {
+            EffectKind::Narrate { to, fact_ids, text } => Self::Narrate {
                 as_viewer,
                 intent_id,
                 to,
                 fact_ids,
                 text,
             },
-            EffectClass::Reveal { actor_id, fact } => Self::Reveal {
+            EffectKind::Reveal { actor_id, fact } => Self::Reveal {
                 as_viewer,
                 intent_id,
                 actor_id,
@@ -304,7 +304,7 @@ impl TryFrom<EffectRecord> for Effect {
                 delta,
                 start,
             } => (
-                EffectClass::Clock {
+                EffectKind::Clock {
                     clock_id,
                     delta,
                     start,
@@ -320,7 +320,7 @@ impl TryFrom<EffectRecord> for Effect {
                 write,
                 delta,
             } => (
-                EffectClass::Meter {
+                EffectKind::Meter {
                     actor_id,
                     key,
                     write: meter_write(write, delta)?,
@@ -341,7 +341,7 @@ impl TryFrom<EffectRecord> for Effect {
                     return Err(RecordFault::field("actor_id"));
                 }
                 (
-                    EffectClass::Item {
+                    EffectKind::Item {
                         actor_id,
                         place,
                         id,
@@ -357,12 +357,12 @@ impl TryFrom<EffectRecord> for Effect {
                 intent_id,
                 actor_id,
                 id,
-            } => (EffectClass::Wield { actor_id, id }, as_viewer, intent_id),
+            } => (EffectKind::Wield { actor_id, id }, as_viewer, intent_id),
             EffectRecord::Unwield {
                 as_viewer,
                 intent_id,
                 actor_id,
-            } => (EffectClass::Unwield { actor_id }, as_viewer, intent_id),
+            } => (EffectKind::Unwield { actor_id }, as_viewer, intent_id),
             EffectRecord::Location {
                 as_viewer,
                 intent_id,
@@ -371,7 +371,7 @@ impl TryFrom<EffectRecord> for Effect {
                 to,
                 arrived_at,
             } => (
-                EffectClass::Location {
+                EffectKind::Location {
                     actor_id,
                     from,
                     to,
@@ -388,7 +388,7 @@ impl TryFrom<EffectRecord> for Effect {
                 tags,
                 text,
             } => (
-                EffectClass::Memory {
+                EffectKind::Memory {
                     actor_id,
                     fact_ids,
                     tags,
@@ -404,7 +404,7 @@ impl TryFrom<EffectRecord> for Effect {
                 key,
                 value,
             } => (
-                EffectClass::Flag {
+                EffectKind::Flag {
                     actor_id,
                     key,
                     value,
@@ -421,7 +421,7 @@ impl TryFrom<EffectRecord> for Effect {
                 fact_ids,
                 text,
             } => (
-                EffectClass::Message {
+                EffectKind::Message {
                     message_id,
                     to,
                     place,
@@ -438,7 +438,7 @@ impl TryFrom<EffectRecord> for Effect {
                 fact_ids,
                 text,
             } => (
-                EffectClass::Narrate { to, fact_ids, text },
+                EffectKind::Narrate { to, fact_ids, text },
                 as_viewer,
                 intent_id,
             ),
@@ -447,7 +447,7 @@ impl TryFrom<EffectRecord> for Effect {
                 intent_id,
                 actor_id,
                 fact,
-            } => (EffectClass::Reveal { actor_id, fact }, as_viewer, intent_id),
+            } => (EffectKind::Reveal { actor_id, fact }, as_viewer, intent_id),
             EffectRecord::Illegal => return Err(RecordFault::class()),
         };
         Ok(Effect {

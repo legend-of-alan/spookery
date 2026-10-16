@@ -1,4 +1,4 @@
-use crate::effect::{Effect, EffectClass, WORLD};
+use crate::effect::{Effect, EffectKind, WORLD};
 use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::{ActorKind, Intent, ViewerId};
@@ -12,48 +12,48 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
         return Err(Reason::ViewerMismatch);
     }
     match effect.class {
-        EffectClass::Clock {
+        EffectKind::Clock {
             clock_id,
             delta,
             start,
         } => apply_clock(draft, &intent.actor_id, &clock_id, delta, start),
-        EffectClass::Meter {
+        EffectKind::Meter {
             actor_id,
             key,
             write,
         } => apply_meter(draft, &actor_id, &key, write),
-        EffectClass::Item {
+        EffectKind::Item {
             actor_id,
             place,
             id,
             delta,
             max,
         } => apply_item(draft, actor_id, place, &id, delta, max),
-        EffectClass::Wield { actor_id, id } => apply_wield(draft, &actor_id, &id),
-        EffectClass::Unwield { actor_id } => apply_unwield(draft, &actor_id),
-        EffectClass::Location {
+        EffectKind::Wield { actor_id, id } => apply_wield(draft, &actor_id, &id),
+        EffectKind::Unwield { actor_id } => apply_unwield(draft, &actor_id),
+        EffectKind::Location {
             actor_id, from, to, ..
         } => apply_location(draft, intent, &actor_id, &from, &to),
-        EffectClass::Memory {
+        EffectKind::Memory {
             actor_id,
             fact_ids,
             tags,
             text,
         } => apply_memory(draft, intent, &actor_id, fact_ids, tags, text),
-        EffectClass::Flag {
+        EffectKind::Flag {
             actor_id,
             key,
             value,
         } => apply_flag(draft, &actor_id, &key, value),
-        EffectClass::Message {
+        EffectKind::Message {
             message_id,
             to,
             place,
             fact_ids,
             text,
         } => apply_message(draft, message_id, to, place, fact_ids, text),
-        EffectClass::Narrate { .. } => Ok(()),
-        EffectClass::Reveal { actor_id, fact } => apply_reveal(draft, &actor_id, &fact),
+        EffectKind::Narrate { .. } => Ok(()),
+        EffectKind::Reveal { actor_id, fact } => apply_reveal(draft, &actor_id, &fact),
     }
 }
 

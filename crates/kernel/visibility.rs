@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;
-use crate::effect::{Effect, EffectClass};
+use crate::effect::{Effect, EffectKind};
 use crate::firewall::allows;
 use crate::intent::{ActorKind, ViewerId};
 use crate::key::{ChangeRecord, StateKey, StateValue};
@@ -65,7 +65,7 @@ pub fn observe(
 fn narrations(canon: &Canon, now: &Now, effects: &[Effect], viewer: Option<&str>) -> Vec<String> {
     let mut lines = Vec::new();
     for effect in effects {
-        let EffectClass::Narrate { to, fact_ids, text } = &effect.class else {
+        let EffectKind::Narrate { to, fact_ids, text } = &effect.class else {
             continue;
         };
         let Some(id) = viewer else {

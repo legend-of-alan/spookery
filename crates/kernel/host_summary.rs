@@ -11,7 +11,7 @@ pub enum DigestViewer {
     Player(String),
 }
 
-pub fn idle_digest(world: &World, viewer: DigestViewer) -> Result<String, Reason> {
+pub fn host_summary(world: &World, viewer: DigestViewer) -> Result<String, Reason> {
     let mut rows = Vec::new();
     match viewer {
         DigestViewer::Host => {

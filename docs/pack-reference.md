@@ -326,7 +326,7 @@ A change rule fires when its watch becomes true. It does not fire again while th
 
 A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and the outcome lists. `if` is read after the change.
 
-Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. `max_trigger_depth` in `rules/tick.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run.
+Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. `max_trigger_depth` in `rules/tick.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `subject`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
 
@@ -623,6 +623,7 @@ The message and the hint can change. The code stays.
 | `HAND_EDIT` | `run spook migrate to keep the edit, or restore the file` |
 | `HIDDEN_FACT_IN_BODY` | `remove that sentence from the prose, or set hidden: false` |
 | `HIDDEN_FACT_IN_TEXT` | `rewrite that note, or set hidden: false` |
-| `WARNING` | An unreachable place: `add an exit that reaches it`. `teleport: true` in `rules/verbs.yaml`: `teleport belongs on an author rule, not in verbs.yaml`. |
+| `TRIGGER_LEAK` | `address that output to self, or to here when the room can see the change` |
+| `WARNING` | An unreachable place: `add an exit that reaches it`. `teleport: true` in `rules/verbs.yaml`: `teleport belongs on an author rule, not in verbs.yaml`. A trigger cycle: `stop one rule in the cycle from setting the next watched value`. |
 
 A hidden fact is matched as a case-sensitive substring of a Markdown body, and of a `note` or `narrate` `text`.

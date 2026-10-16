@@ -29,7 +29,8 @@ pub enum PlayerMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         missing: Option<String>,
     },
-    Perceive {
+    #[serde(rename = "perceive")]
+    View {
         viewer: String,
         place: String,
         visible_actors: Vec<String>,

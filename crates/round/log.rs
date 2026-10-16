@@ -44,7 +44,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use spookery_kernel::effect::{Effect, EffectClass};
+    use spookery_kernel::effect::{Effect, EffectKind};
     use spookery_kernel::intent::ViewerId;
 
     use super::{render_round_line, RoundLine};
@@ -52,7 +52,7 @@ mod tests {
     #[test]
     fn round_line_embeds_the_flat_effect() {
         let effect = Effect {
-            class: EffectClass::Item {
+            class: EffectKind::Item {
                 actor_id: None,
                 place: Some("docks_shop".to_string()),
                 id: "lamp_oil".to_string(),
