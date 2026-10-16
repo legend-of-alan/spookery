@@ -95,6 +95,9 @@ mod audit;
 #[path = "steps/sample.rs"]
 mod sample;
 
+#[path = "steps/matters.rs"]
+mod matters;
+
 #[path = "steps/contributing.rs"]
 mod contributing;
 

@@ -247,6 +247,7 @@ fn player_view(view: &View) -> PlayerMessage {
         unknown_mentioned: view.unknown_mentioned.clone(),
         clocks: view.clocks.iter().map(wire_clock).collect(),
         items: view.items.iter().map(wire_item).collect(),
+        meters: view.meters.iter().map(wire_meter).collect(),
         habits: view.habits.clone(),
         exits: view.exits.iter().map(wire_exit).collect(),
     }
@@ -293,6 +294,14 @@ fn wire_item(item: &ItemStack) -> WireItem {
     WireItem {
         id: item.id.clone(),
         count: item.count,
+    }
+}
+
+fn wire_meter(meter: &spookery_kernel::api::perceive::MeterView) -> crate::protocol::WireMeter {
+    crate::protocol::WireMeter {
+        id: meter.id.clone(),
+        value: meter.value,
+        max: meter.max,
     }
 }
 

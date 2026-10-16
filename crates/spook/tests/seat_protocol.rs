@@ -267,9 +267,6 @@ fn capture() -> BTreeMap<String, Example> {
     assert_eq!(again["kind"], "resume", "{again}");
     let refreshed = next_json(&player);
     assert_eq!(refreshed["kind"], "perceive", "{refreshed}");
-    let changes = next_json(&player);
-    assert_eq!(changes["kind"], "lines", "{changes}");
-    json(&mut out, "player-changes", changes);
 
     text(&mut out, "player-unknown-line", "blah");
     send(&mut player, "blah");

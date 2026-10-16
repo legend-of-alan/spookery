@@ -5,6 +5,7 @@ use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::ViewerId;
 use crate::map::ExitView;
+use crate::meter;
 use crate::model::{Message, Now};
 use crate::rules::habits::habits_on;
 use crate::world::World;
@@ -24,6 +25,7 @@ pub struct View {
     pub unknown_mentioned: Vec<String>,
     pub clocks: Vec<ClockView>,
     pub items: Vec<ItemStack>,
+    pub meters: Vec<MeterView>,
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
     pub status: String,
@@ -48,6 +50,14 @@ pub struct ClockView {
 pub struct ItemStack {
     pub id: String,
     pub count: u32,
+}
+
+/// One of the viewer's own meters. A hidden meter is not here.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MeterView {
+    pub id: String,
+    pub value: i64,
+    pub max: i64,
 }
 
 pub fn perceive(world: &World, as_arg: &str) -> Result<View, Reason> {
@@ -167,6 +177,24 @@ fn perceive_at_budget(
         })
         .unwrap_or_default();
 
+    let mut meters = Vec::new();
+    for (id, live) in actor.meters() {
+        let Some(def) = canon.meters.get(id) else {
+            continue;
+        };
+        if def.hidden {
+            continue;
+        }
+        let Ok(value) = meter::current(def, live) else {
+            continue;
+        };
+        meters.push(MeterView {
+            id: id.clone(),
+            value,
+            max: def.max,
+        });
+    }
+
     let habits = match &viewer {
         ViewerId::Player(_) => Vec::new(),
         ViewerId::Npc(id) => habits_on(canon, now, id),
@@ -192,6 +220,7 @@ fn perceive_at_budget(
         unknown_mentioned,
         clocks,
         items,
+        meters,
         habits,
         exits,
         status,

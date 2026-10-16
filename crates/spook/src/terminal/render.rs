@@ -1,4 +1,4 @@
-use crate::protocol::{Outcome, PlayerMessage, WireClock, WireExit};
+use crate::protocol::{Outcome, PlayerMessage, WireClock, WireExit, WireMeter};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -133,6 +133,7 @@ fn view_text(message: &PlayerMessage) -> String {
         messages,
         clocks,
         items,
+        meters,
         exits,
         unknown_mentioned: _,
         habits: _,
@@ -200,6 +201,13 @@ fn view_text(message: &PlayerMessage) -> String {
         }
         sections.push(format!("Items:\n{}", lines.join("\n")));
     }
+    if !meters.is_empty() {
+        let mut lines = Vec::new();
+        for meter in meters {
+            lines.push(meter_line(meter));
+        }
+        sections.push(format!("Meters:\n{}", lines.join("\n")));
+    }
     sections.push(exit_section(exits));
     sections.join("\n\n")
 }
@@ -225,6 +233,10 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
         return;
     }
     sections.push(format!("{title}\n{}", lines.join("\n")));
+}
+
+fn meter_line(meter: &WireMeter) -> String {
+    format!("{}: {}", humanize(&meter.id), meter.value)
 }
 
 fn clock_line(clock: &WireClock) -> String {
@@ -477,6 +489,11 @@ Shop day: 1/1"
                 id: "lamp_oil".to_string(),
                 count: 4,
             }],
+            meters: vec![WireMeter {
+                id: "grit".to_string(),
+                value: 1,
+                max: 110,
+            }],
             habits: vec!["tend_shop".to_string()],
             exits: vec![crate::protocol::WireExit {
                 name: "stairs".to_string(),
@@ -508,6 +525,9 @@ Shop day: 1/1
 Items:
 Lamp oil: 4
 
+Meters:
+Grit: 1
+
 Exits:
 stairs (locked) — 2 min"
         );
@@ -533,6 +553,7 @@ stairs (locked) — 2 min"
             unknown_mentioned: Vec::new(),
             clocks: Vec::new(),
             items: Vec::new(),
+            meters: Vec::new(),
             habits: Vec::new(),
             exits: Vec::new(),
         });
@@ -552,6 +573,7 @@ none"
         assert!(!quiet.contains("Notes:"), "{quiet}");
         assert!(!quiet.contains("Clocks:"), "{quiet}");
         assert!(!quiet.contains("Items:"), "{quiet}");
+        assert!(!quiet.contains("Meters:"), "{quiet}");
         assert_readable(&quiet);
     }
 }
