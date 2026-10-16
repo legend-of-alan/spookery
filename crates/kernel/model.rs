@@ -127,7 +127,7 @@ impl ActorLive {
         }
     }
 
-    pub fn visit(&mut self, place: &str) -> bool {
+    pub(crate) fn visit(&mut self, place: &str) -> bool {
         let ActorLive::Pc { visited, .. } = self else {
             return false;
         };
@@ -212,7 +212,7 @@ impl ActorLive {
     }
 
     /// Drop the wielded id once the actor no longer holds it.
-    pub fn release_wielded(&mut self) -> bool {
+    pub(crate) fn release_wielded(&mut self) -> bool {
         let Some(id) = self.wielded().map(str::to_string) else {
             return false;
         };
@@ -226,7 +226,7 @@ impl ActorLive {
 
 /// Add `delta` to a count. Removing from a count of 0 is `MISSING_ITEM`.
 /// A shortfall from a positive count is `OUT_OF_RANGE`. A positive `max` caps the result.
-pub fn shift_count(
+pub(crate) fn shift_count(
     counts: &mut BTreeMap<String, u32>,
     id: &str,
     delta: i64,

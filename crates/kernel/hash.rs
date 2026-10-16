@@ -7,7 +7,7 @@ pub fn blake2s_256(bytes: &[u8]) -> [u8; 32] {
     out
 }
 
-pub fn blake2s_hex(bytes: &[u8]) -> String {
+pub(crate) fn blake2s_hex(bytes: &[u8]) -> String {
     hex_encode(&blake2s_256(bytes))
 }
 

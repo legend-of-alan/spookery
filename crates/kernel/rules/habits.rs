@@ -22,7 +22,7 @@ pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
     intents
 }
 
-pub fn habits_on(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String> {
+pub(crate) fn habits_on(canon: &Canon, now: &Now, actor_id: &str) -> Vec<String> {
     canon
         .rules
         .habits_of(actor_id)
@@ -61,7 +61,7 @@ pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
     stamp(intent, &effects);
 }
 
-pub fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
+pub(crate) fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
     let Some(actor) = now.actors.get(npc_id) else {
         return false;
     };

@@ -36,13 +36,13 @@ impl Diagnostic {
         }
     }
 
-    pub fn at_line(mut self, line: u32, column: Option<u32>) -> Self {
+    pub(crate) fn at_line(mut self, line: u32, column: Option<u32>) -> Self {
         self.line = Some(line);
         self.column = column;
         self
     }
 
-    pub fn with_path(mut self, path: impl Into<String>) -> Self {
+    pub(crate) fn with_path(mut self, path: impl Into<String>) -> Self {
         self.path = Some(path.into());
         self
     }

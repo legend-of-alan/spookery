@@ -24,6 +24,69 @@ const LAYERS: &[&[&str]] = &[
     &["apply", "commit", "host_summary", "perceive"],
 ];
 
+/// Names that must not be `pub` on the kernel surface.
+const NARROWED: &[&str] = &[
+    "SAVE_EMIT_OPTIONS",
+    "actor_of",
+    "admit",
+    "allows",
+    "at_line",
+    "at_start",
+    "blake2s_hex",
+    "body_leaks",
+    "body_of_fact",
+    "can_pay",
+    "class_name",
+    "compile",
+    "defaults",
+    "deserialize",
+    "duration_minutes",
+    "emit_effect_payload",
+    "emit_memory_line",
+    "emit_migrate",
+    "emit_presence",
+    "exit_token",
+    "from_token",
+    "habits_of",
+    "habits_on",
+    "hour_in",
+    "ignore_resist",
+    "is_eligible",
+    "kernel_intent_id",
+    "load_checks",
+    "load_meters",
+    "load_world_settings",
+    "message_text_leaks",
+    "migrate_file",
+    "note_text",
+    "parse_effect",
+    "parse_migrate",
+    "parse_presence",
+    "parse_tick_effects",
+    "player_verbs",
+    "preimage",
+    "presence_file",
+    "release_wielded",
+    "replaced_moves_file",
+    "require_recorded_rules",
+    "resolve_item_id",
+    "rule_roll",
+    "serialize",
+    "set_pause_view",
+    "shift_count",
+    "stamp_now_hash",
+    "teleport_in_verbs",
+    "track",
+    "track_before",
+    "track_many",
+    "unknown_save_items",
+    "used_exit",
+    "uses_teleport",
+    "visit",
+    "with_path",
+    "world_hour",
+];
+
 /// Reaches that already climb. A new one fails the boundary check.
 const CLIMBS: &[(&str, &str)] = &[
     ("canon", "map"),
@@ -462,4 +525,81 @@ fn the_boundary_check_fails(world: &mut World) {
 #[then(expr = "the boundary check passes on main")]
 fn the_boundary_check_passes_on_main(_world: &mut World) {
     clean_tree_holds();
+}
+
+#[then(expr = "the listed kernel functions are crate-private or gone")]
+fn the_listed_kernel_functions_are_crate_private_or_gone(_world: &mut World) {
+    let leaks = public_kernel_fns(NARROWED);
+    assert!(leaks.is_empty(), "{}", leaks.join("\n"));
+}
+
+#[then(expr = "sort_unique stays public for the firewall tests")]
+fn sort_unique_stays_public_for_the_firewall_tests(_world: &mut World) {
+    let hits = public_kernel_fns(&["sort_unique"]);
+    assert!(
+        !hits.is_empty(),
+        "sort_unique is not public, and the firewall tests call it"
+    );
+}
+
+fn public_kernel_fns(names: &[&str]) -> Vec<String> {
+    let mut files = Vec::new();
+    rust_files(&workspace_root().join("crates/kernel"), &mut files);
+    let mut hits = Vec::new();
+    for path in files {
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let code_only = without_comments_or_strings(&production_source(&text));
+        let mut in_use = false;
+        for (index, line) in code_only.lines().enumerate() {
+            let code = line.trim();
+            if code.starts_with("pub use ") {
+                in_use = true;
+            }
+            for name in names {
+                if is_public_item(code) && declares_fn(code, name) {
+                    hits.push(format!("{}:{} publishes {name}", path.display(), index + 1));
+                } else if in_use && has_ident(code, name) {
+                    hits.push(format!(
+                        "{}:{} re-exports {name}",
+                        path.display(),
+                        index + 1
+                    ));
+                }
+            }
+            if code.contains(';') {
+                in_use = false;
+            }
+        }
+    }
+    hits
+}
+
+fn is_public_item(code: &str) -> bool {
+    code.starts_with("pub ")
+}
+
+fn declares_fn(code: &str, name: &str) -> bool {
+    has_ident(code, &format!("fn {name}"))
+}
+
+fn has_ident(code: &str, name: &str) -> bool {
+    let bytes = code.as_bytes();
+    let needle = name.as_bytes();
+    let mut start = 0;
+    while let Some(at) = code[start..].find(name) {
+        let abs = start + at;
+        let before_ok = abs == 0 || !is_ident_byte(bytes[abs - 1]);
+        let after = abs + needle.len();
+        let after_ok = after >= bytes.len() || !is_ident_byte(bytes[after]);
+        if before_ok && after_ok {
+            return true;
+        }
+        start = abs + 1;
+    }
+    false
+}
+
+fn is_ident_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'_'
 }

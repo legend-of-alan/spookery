@@ -44,7 +44,7 @@ pub fn classify(total: i64, target: i64, partial_at: Option<i64>) -> Outcome {
     }
 }
 
-pub fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
+pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
     if let Some(diag) = tag_diagnostic(text, crate::format::CHECKS, CHECKS_FILE, 0) {
         return Err(vec![diag]);
     }

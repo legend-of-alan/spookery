@@ -561,11 +561,16 @@ pub(crate) mod target_as {
     use crate::intent::Target;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S: Serializer>(target: &Target, serializer: S) -> Result<S::Ok, S::Error> {
+    pub(crate) fn serialize<S: Serializer>(
+        target: &Target,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
         TargetWire::from(target).serialize(serializer)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Target, D::Error> {
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Target, D::Error> {
         Target::try_from(TargetWire::deserialize(deserializer)?).map_err(serde::de::Error::custom)
     }
 }
@@ -575,20 +580,16 @@ pub(crate) mod args_as {
     use crate::intent::IntentArgs;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S: Serializer>(args: &IntentArgs, serializer: S) -> Result<S::Ok, S::Error> {
+    pub(crate) fn serialize<S: Serializer>(
+        args: &IntentArgs,
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
         ArgsWire::from(args).serialize(serializer)
     }
 
-    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<IntentArgs, D::Error> {
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<IntentArgs, D::Error> {
         Ok(IntentArgs::from(ArgsWire::deserialize(deserializer)?))
-    }
-}
-
-/// `need`, `resource`, and `inventory` stay [`crate::error::Reason::IllegalClass`].
-pub(crate) fn effect_reason(message: &str) -> crate::error::Reason {
-    if message.contains("ILLEGAL_CLASS") {
-        crate::error::Reason::IllegalClass
-    } else {
-        crate::error::Reason::Schema
     }
 }

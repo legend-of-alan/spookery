@@ -12,7 +12,7 @@ use crate::rules::rule::{
 
 const REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 
-pub fn replaced_moves_file() -> Diagnostic {
+pub(crate) fn replaced_moves_file() -> Diagnostic {
     schema(
         "rules/moves.yaml",
         REPLACED,
@@ -382,7 +382,7 @@ pub struct ResistRollYaml {
     pub resisted: Vec<EffectYaml>,
 }
 
-pub fn compile(
+pub(crate) fn compile(
     file: &str,
     entries: Vec<RuleEntry>,
     owner: &Owner,
@@ -773,7 +773,7 @@ pub(crate) fn cost_of(yaml: &CostYaml) -> Result<Cost, String> {
     })
 }
 
-pub fn duration_minutes(text: &str) -> Result<u64, String> {
+pub(crate) fn duration_minutes(text: &str) -> Result<u64, String> {
     let (count, unit) = text
         .char_indices()
         .find(|(_, ch)| !ch.is_ascii_digit())
@@ -1030,7 +1030,7 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
     Ok((op, bound))
 }
 
-pub fn uses_teleport(rule: &Rule) -> bool {
+pub(crate) fn uses_teleport(rule: &Rule) -> bool {
     rule.do_
         .iter()
         .chain(&rule.success)

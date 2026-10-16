@@ -214,7 +214,7 @@ impl Draft {
         self.state.last_tick_at = last_tick_at.to_string();
     }
 
-    pub fn set_pause_view(&mut self, pause: PauseView) {
+    pub(crate) fn set_pause_view(&mut self, pause: PauseView) {
         self.state.pause = pause;
     }
 
@@ -299,16 +299,16 @@ impl Draft {
         Ok(())
     }
 
-    pub fn track(&mut self, key: StateKey) -> Result<(), Reason> {
+    pub(crate) fn track(&mut self, key: StateKey) -> Result<(), Reason> {
         self.track_many(std::slice::from_ref(&key))
     }
 
     /// Record `before` as this key's value from before the write that just landed.
-    pub fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
+    pub(crate) fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
         self.note(key, Some(before))
     }
 
-    pub fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
+    pub(crate) fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
         let max = self.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         for key in keys {

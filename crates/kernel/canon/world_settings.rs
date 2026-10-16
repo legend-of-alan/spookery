@@ -42,7 +42,7 @@ pub enum PausePolicy {
 }
 
 impl Budget {
-    pub fn defaults() -> Self {
+    pub(crate) fn defaults() -> Self {
         Self {
             max_intents_applied: 12,
             max_npcs_acting: 8,
@@ -66,7 +66,7 @@ impl Budget {
     }
 }
 
-pub fn load_world_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
+pub(crate) fn load_world_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
     if let Some(diag) = tag_diagnostic(text, crate::format::TICK, TICK_FILE, 0) {
         return Err(vec![diag]);
     }

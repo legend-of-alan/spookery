@@ -7,7 +7,7 @@ use crate::error::Reason;
 use crate::model::{sort_unique, MemoryLine, Now};
 
 #[allow(non_snake_case)]
-pub fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
+pub(crate) fn SAVE_EMIT_OPTIONS() -> SerializerOptions {
     serde_saphyr::ser_options! {
         empty_as_braces: true,
         indent_step: 2,
@@ -81,20 +81,6 @@ fn rules_rev_diagnostic(text: &str) -> Diagnostic {
         diag = diag.at_line(line, Some(column));
     }
     diag
-}
-
-/// Refuse a tick record whose `rules_rev` is missing or not the engine's.
-pub fn require_recorded_rules(text: &str) -> Result<(), Reason> {
-    #[derive(Deserialize)]
-    struct RulesProbe {
-        #[serde(default)]
-        rules_rev: Option<u64>,
-    }
-    let probe: RulesProbe = serde_json::from_str(text.trim_end()).map_err(|_| Reason::Schema)?;
-    match probe.rules_rev {
-        Some(rev) => super::require_rules_rev(rev),
-        None => Err(Reason::RulesRev),
-    }
 }
 
 fn one_trailing_lf(mut text: String) -> String {
@@ -190,26 +176,11 @@ pub fn emit_effect(effect: &Effect) -> String {
 }
 
 /// Payload fields only, in declaration order. Absent options are omitted.
-pub fn emit_effect_payload(effect: &Effect) -> String {
+pub(crate) fn emit_effect_payload(effect: &Effect) -> String {
     super::records::payload_json(effect)
 }
 
-pub fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
-    #[derive(Deserialize)]
-    struct EffectsOnly {
-        tick_index: u64,
-        effects: Vec<Effect>,
-    }
-    let parsed: EffectsOnly = serde_json::from_str(text.trim())
-        .map_err(|err| super::records::effect_reason(&err.to_string()))?;
-    Ok((parsed.tick_index, parsed.effects))
-}
-
-pub fn parse_effect(text: &str) -> Result<Effect, Reason> {
-    serde_json::from_str(text).map_err(|err| super::records::effect_reason(&err.to_string()))
-}
-
-pub fn emit_memory_line(line: &MemoryLine) -> String {
+pub(crate) fn emit_memory_line(line: &MemoryLine) -> String {
     let json = MemoryLineJson {
         tick_index: line.tick_index,
         actor_id: &line.actor_id,
@@ -236,20 +207,27 @@ mod tests {
     use super::*;
     use std::fs;
 
-    #[test]
-    fn a_tick_with_the_wrong_rules_rev_is_refused_while_the_save_matches() {
-        let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packs/oneshot-docks/state/save.yaml");
-        let save = fs::read_to_string(&path).unwrap();
-        assert!(load_save(&save).is_ok(), "{save}");
-        let wrong = crate::store::RULES_REV + 1;
-        let record = format!(r#"{{"tick_index":1,"rules_rev":{wrong}}}"#);
-        assert_eq!(require_recorded_rules(&record), Err(Reason::RulesRev));
-        let current = format!(
-            r#"{{"tick_index":1,"rules_rev":{}}}"#,
-            crate::store::RULES_REV
-        );
-        assert_eq!(require_recorded_rules(&current), Ok(()));
+    fn effect_reason(message: &str) -> Reason {
+        if message.contains("ILLEGAL_CLASS") {
+            Reason::IllegalClass
+        } else {
+            Reason::Schema
+        }
+    }
+
+    fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
+        #[derive(Deserialize)]
+        struct EffectsOnly {
+            tick_index: u64,
+            effects: Vec<Effect>,
+        }
+        let parsed: EffectsOnly =
+            serde_json::from_str(text.trim()).map_err(|err| effect_reason(&err.to_string()))?;
+        Ok((parsed.tick_index, parsed.effects))
+    }
+
+    fn parse_effect(text: &str) -> Result<Effect, Reason> {
+        serde_json::from_str(text).map_err(|err| effect_reason(&err.to_string()))
     }
 
     #[test]
@@ -478,7 +456,7 @@ messages: []
             let encoded = super::emit_effect(&effect);
             assert_eq!(encoded, expected);
             assert!(!encoded.contains("\"payload\""), "{encoded}");
-            assert_eq!(super::parse_effect(&encoded).unwrap(), effect);
+            assert_eq!(parse_effect(&encoded).unwrap(), effect);
         }
         for name in ["need", "resource", "inventory"] {
             let value = serde_json::json!({
@@ -487,7 +465,7 @@ messages: []
                 "intent_id": "i",
             });
             assert_eq!(
-                super::parse_effect(&value.to_string()).unwrap_err(),
+                parse_effect(&value.to_string()).unwrap_err(),
                 Reason::IllegalClass
             );
         }
@@ -501,7 +479,7 @@ messages: []
             "delta": 1,
         });
         assert_eq!(
-            super::parse_effect(&snap_delta.to_string()).unwrap_err(),
+            parse_effect(&snap_delta.to_string()).unwrap_err(),
             Reason::Schema
         );
         let missing_delta = serde_json::json!({
@@ -513,7 +491,7 @@ messages: []
             "write": "base",
         });
         assert_eq!(
-            super::parse_effect(&missing_delta.to_string()).unwrap_err(),
+            parse_effect(&missing_delta.to_string()).unwrap_err(),
             Reason::Schema
         );
     }
@@ -521,7 +499,7 @@ messages: []
     #[test]
     fn effect_payload_object_keeps_declaration_order_and_a_negative_delta() {
         let text = r#"{"tick_index":1,"effects":[{"class":"item","as":"npc:n","intent_id":"i","place":"p","id":"s","delta":-1}]}"#;
-        let (tick_index, effects) = super::parse_tick_effects(text).unwrap();
+        let (tick_index, effects) = parse_tick_effects(text).unwrap();
         assert_eq!(tick_index, 1);
         assert_eq!(
             super::emit_effect_payload(&effects[0]),
@@ -532,9 +510,9 @@ messages: []
     #[test]
     fn nested_payload_and_external_tag_are_not_effects() {
         let nested = r#"{"class":"clock","as":"npc:mira","intent_id":"i","payload":{"clock_id":"c","delta":1}}"#;
-        assert!(super::parse_effect(nested).is_err());
+        assert!(parse_effect(nested).is_err());
         let external = r#"{"Clock":{"clock_id":"c","delta":1},"as":"npc:mira","intent_id":"i"}"#;
-        assert!(super::parse_effect(external).is_err());
+        assert!(parse_effect(external).is_err());
     }
 
     #[test]

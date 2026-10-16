@@ -70,7 +70,7 @@ pub fn visible(canon: &Canon, now: &Now, actor_id: &str) -> Vec<ExitView> {
 }
 
 /// The exit a `location via` effect names, if this rule travels.
-pub fn exit_token(rule: &Rule, intent: &Intent) -> Option<String> {
+pub(crate) fn exit_token(rule: &Rule, intent: &Intent) -> Option<String> {
     for effect in rule
         .do_
         .iter()
@@ -96,7 +96,7 @@ pub fn exit_token(rule: &Rule, intent: &Intent) -> Option<String> {
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
-pub fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Miss> {
+pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Miss> {
     let Ok(rule) = crate::rules::gate::resolve(canon, now, intent) else {
         return Ok(());
     };
@@ -140,7 +140,7 @@ pub fn span(canon: &Canon, now: &Now, intent: &Intent, rule: &Rule) -> u64 {
     minutes
 }
 
-pub fn used_exit<'a>(
+pub(crate) fn used_exit<'a>(
     canon: &'a Canon,
     now: &Now,
     intent: &Intent,
@@ -345,7 +345,7 @@ pub fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
 }
 
 /// `teleport: true` in the shared verbs file is a warning. Author rules may teleport.
-pub fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
+pub(crate) fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
     canon
         .rules
         .iter()

@@ -14,7 +14,7 @@ pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, 
 }
 
 /// A resist roll that does not shrug the effect off. Habit preview uses this.
-pub fn ignore_resist(_actor: &str, _check: &str, _target: i64) -> Result<Outcome, Reason> {
+pub(crate) fn ignore_resist(_actor: &str, _check: &str, _target: i64) -> Result<Outcome, Reason> {
     Ok(Outcome::Miss)
 }
 

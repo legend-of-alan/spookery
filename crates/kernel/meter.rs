@@ -18,7 +18,7 @@ pub struct MeterLive {
 }
 
 impl MeterLive {
-    pub fn at_start(def: &MeterDef) -> Self {
+    pub(crate) fn at_start(def: &MeterDef) -> Self {
         Self {
             base: def.start,
             offset: 0,

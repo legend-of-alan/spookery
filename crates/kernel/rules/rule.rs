@@ -283,7 +283,7 @@ impl EffectTemplate {
         }
     }
 
-    pub fn note_text(&self) -> Option<&str> {
+    pub(crate) fn note_text(&self) -> Option<&str> {
         match self {
             EffectTemplate::Note { text, .. } | EffectTemplate::Narrate { text, .. } => Some(text),
             _ => None,
@@ -354,7 +354,7 @@ impl RuleTable {
             .collect()
     }
 
-    pub fn habits_of(&self, actor: &str) -> Vec<&Rule> {
+    pub(crate) fn habits_of(&self, actor: &str) -> Vec<&Rule> {
         self.rules
             .iter()
             .filter(|rule| {
@@ -365,7 +365,7 @@ impl RuleTable {
     }
 
     /// Verbs the player can type, in file order.
-    pub fn player_verbs(&self) -> Vec<&Rule> {
+    pub(crate) fn player_verbs(&self) -> Vec<&Rule> {
         self.rules
             .iter()
             .filter(|rule| matches!(rule.when, When::Verb { .. }))
