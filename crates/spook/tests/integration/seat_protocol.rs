@@ -2,10 +2,6 @@
 //! Each fenced example is named. This test fails when a name is missing,
 //! extra, or different from the table.
 
-#[path = "support.rs"]
-#[allow(dead_code)]
-mod support;
-
 use std::collections::BTreeMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
@@ -324,11 +320,11 @@ fn capture() -> BTreeMap<String, Example> {
 }
 
 fn listen() -> Table {
-    let pack = support::temp_pack("seat-protocol");
+    let pack = crate::support::temp_pack("seat-protocol");
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
         .arg("run")
-        .arg(support::pack_arg(&pack))
+        .arg(crate::support::pack_arg(&pack))
         .args(["--addr", "127.0.0.1:0"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
