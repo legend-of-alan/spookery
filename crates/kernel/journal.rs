@@ -5,9 +5,7 @@
 //! migrate, and the tick index for a tick file, which is the name the rest of
 //! the tree already reads. Each record carries `now_hash`, the Blake2s of the
 //! `save.yaml` bytes that commit wrote. `journal/base.yaml` is replay input,
-//! not the live save. Old `journal/presence-NNNN.json` files are not journal
-//! records, but replay still applies them to restore who was seated and checks
-//! their `now_hash`.
+//! not the live save.
 
 use std::fs;
 use std::path::Path;
@@ -108,9 +106,8 @@ pub struct TickRecord {
     pub world_time_before: u64,
     pub world_time_after: u64,
     pub presence_humans: u32,
-    /// Seated actor ids. Missing on ticks written before presence left the save.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub actors_present: Option<Vec<String>>,
+    /// Seated actor ids when the round ran.
+    pub actors_present: Vec<String>,
     pub seed: String,
     pub last_tick_at: String,
     pub intents: Vec<Intent>,
@@ -197,6 +194,11 @@ pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
             entries.push(JournalEntry::Tick(parse_tick(&name, &text)?));
         } else if name.starts_with("migrate-") && name.ends_with(".json") {
             entries.push(JournalEntry::Migrate(parse_migrate(&name, &text)?));
+        } else if name.starts_with("presence-") && name.ends_with(".json") {
+            return Err(fault(
+                &path,
+                "RULES_REV: presence records were written by older rules; start a fresh save",
+            ));
         }
     }
     entries.sort_by(|left, right| {
@@ -205,59 +207,6 @@ pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
             .then_with(|| left.kind_name().cmp(right.kind_name()))
     });
     Ok(entries)
-}
-
-/// One old `presence-NNNN.json`. Replay applies it to restore who was seated and
-/// checks its `now_hash`. Nothing writes these anymore.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct OldPresence {
-    pub state_rev_before: u64,
-    pub state_rev_after: u64,
-    pub humans: u32,
-    pub actors_present: Vec<String>,
-    pub now_hash: String,
-}
-
-#[derive(Deserialize)]
-struct OldPresenceFile {
-    state_rev_before: u64,
-    state_rev_after: u64,
-    humans: u32,
-    actors_present: Vec<String>,
-    now_hash: String,
-}
-
-pub fn load_old_presence(pack: &Path) -> Result<Vec<OldPresence>, JournalFault> {
-    let dir = pack.join("state/journal");
-    if !dir.is_dir() {
-        return Ok(Vec::new());
-    }
-    let mut names = fs::read_dir(&dir)
-        .map_err(|_| fault(&dir, "the log directory could not be read"))?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| fault(&dir, "the log directory could not be read"))?;
-    names.sort_by_key(|entry| entry.file_name());
-    let mut old = Vec::new();
-    for entry in names {
-        let file_name = entry.file_name();
-        let name = file_name.to_string_lossy();
-        if !name.starts_with("presence-") || !name.ends_with(".json") {
-            continue;
-        }
-        let path = entry.path();
-        let text = fs::read_to_string(&path)
-            .map_err(|_| fault(&path, "the journal record could not be read"))?;
-        let parsed: OldPresenceFile = read_json(&name, &text)?;
-        old.push(OldPresence {
-            state_rev_before: parsed.state_rev_before,
-            state_rev_after: parsed.state_rev_after,
-            humans: parsed.humans,
-            actors_present: parsed.actors_present,
-            now_hash: parsed.now_hash,
-        });
-    }
-    old.sort_by_key(|presence| presence.state_rev_after);
-    Ok(old)
 }
 
 pub fn emit_entry(entry: &JournalEntry) -> String {

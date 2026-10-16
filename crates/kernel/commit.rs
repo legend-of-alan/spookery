@@ -332,7 +332,7 @@ mod tests {
         commit_round(
             &mut world,
             draft,
-            r#"{"tick_index":0,"state_rev_after":1,"rules_rev":6}"#,
+            r#"{"tick_index":0,"state_rev_after":1,"rules_rev":7}"#,
         )
         .unwrap();
         let marks = durable::take_trace();

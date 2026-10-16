@@ -29,7 +29,7 @@ pub enum RoundCause {
 pub struct RecordedRound {
     pub intents: Vec<spookery_kernel::intent::Intent>,
     pub presence_humans: u32,
-    pub actors_present: Option<Vec<String>>,
+    pub actors_present: Vec<String>,
 }
 
 pub fn commit_moves(world: &mut World) -> Result<spookery_kernel::commit::CommitOutcome, Reason> {
@@ -141,13 +141,9 @@ fn play_with(
         Some(lock_world(world)?)
     };
     if let Some(recorded) = &recorded {
-        let actors = recorded
-            .actors_present
-            .clone()
-            .unwrap_or_else(|| world.presence().actors_present.clone());
         world.set_presence(Presence {
             humans: recorded.presence_humans,
-            actors_present: actors,
+            actors_present: recorded.actors_present.clone(),
         });
     }
     let mut draft_slot = Some(Draft::begin(world));
