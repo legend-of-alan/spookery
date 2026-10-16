@@ -8,6 +8,12 @@ Title letters, sizes, and labels are below, under Issues and PRs. Build and play
 
 A contributor license agreement (CLA) and a developer certificate of origin (DCO) are deferred.
 
+Feature scenarios live under `crates/spook/tests/features`. Two programs run them:
+
+```sh
+cargo test -p spook --test features_host --test features_world
+```
+
 ## Issues and PRs
 
 Issue and PR titles start with a letter for the area and end with a size.

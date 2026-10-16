@@ -37,8 +37,13 @@ spookery-kernel = { path = "../kernel" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [[test]]
-name = "promises"
-path = "tests/promises.rs"
+name = "features_host"
+path = "tests/features_host.rs"
+harness = false
+
+[[test]]
+name = "features_world"
+path = "tests/features_world.rs"
 harness = false
 
 [[test]]
