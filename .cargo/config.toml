@@ -1,0 +1,6 @@
+# Windows CI spends much of its time linking many large test binaries.
+# rust-lld ships with the Rust toolchain and links much faster than MSVC's
+# link.exe, with the same output format. rustc finds it in its own sysroot,
+# so no extra install is needed.
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld.exe"
