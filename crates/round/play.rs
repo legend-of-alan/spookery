@@ -1,9 +1,10 @@
 use std::path::Path;
 
+use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::lock::lock_world;
 use spookery_kernel::api::model::Presence;
-use spookery_kernel::api::world::{Draft, World};
+use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 
 use crate::stage::advance::{self, plan_catchup};
@@ -38,7 +39,7 @@ pub fn commit_moves_at(
     world: &mut World,
     wall: &str,
 ) -> Result<spookery_kernel::api::commit::CommitOutcome, Reason> {
-    let _lock = lock_world(world)?;
+    let _lock = lock_world(world.root())?;
     play(world, RoundCause::Flush, wall)?;
     spookery_kernel::api::commit::commit_pending(world)
 }
@@ -134,7 +135,7 @@ fn play_with(
     let _lock = if cause == RoundCause::Flush {
         None
     } else {
-        Some(lock_world(world)?)
+        Some(lock_world(world.root())?)
     };
     if let Some(recorded) = &recorded {
         world.set_presence(Presence {

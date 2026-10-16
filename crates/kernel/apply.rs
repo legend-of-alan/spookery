@@ -1,3 +1,4 @@
+use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind, WORLD};
 use crate::error::Reason;
 use crate::firewall::allows;
@@ -5,7 +6,6 @@ use crate::intent::{ActorKind, Intent, ViewerId};
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, MemoryLine, Message, PlaceLive};
-use crate::world::Draft;
 
 pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Result<(), Reason> {
     if !viewer_matches(intent, &effect) {

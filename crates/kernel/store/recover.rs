@@ -271,8 +271,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use crate::commit::commit_round;
+    use crate::draft::Draft;
     use crate::store::codec::{emit_save, load_save};
-    use crate::world::Draft;
     use crate::world::World;
 
     #[test]

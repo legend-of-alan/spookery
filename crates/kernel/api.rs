@@ -20,6 +20,10 @@ pub mod diagnostic {
     pub use crate::diagnostic::*;
 }
 
+pub mod draft {
+    pub use crate::draft::*;
+}
+
 pub mod effect {
     pub use crate::effect::*;
 }
@@ -78,6 +82,10 @@ pub mod pause {
 
 pub mod perceive {
     pub use crate::perceive::*;
+}
+
+pub mod rule {
+    pub use crate::rule::*;
 }
 
 pub mod rules {

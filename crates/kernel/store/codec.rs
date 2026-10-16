@@ -177,7 +177,7 @@ pub fn emit_effect(effect: &Effect) -> String {
 
 /// Payload fields only, in declaration order. Absent options are omitted.
 pub(crate) fn emit_effect_payload(effect: &Effect) -> String {
-    super::records::payload_json(effect)
+    crate::effect::payload_json(effect)
 }
 
 pub(crate) fn emit_memory_line(line: &MemoryLine) -> String {

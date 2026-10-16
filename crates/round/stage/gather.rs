@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
+use spookery_kernel::api::draft::Draft;
+use spookery_kernel::api::expand::{habit_intents, stamp_for_priority};
 use spookery_kernel::api::intent::{ActorKind, Intent, Target};
 use spookery_kernel::api::model::Now;
-use spookery_kernel::api::rules::habits::{habit_intents, stamp_for_priority};
-use spookery_kernel::api::world::Draft;
 use spookery_kernel::api::Reason;
 
 use crate::seed::shuffle_key;

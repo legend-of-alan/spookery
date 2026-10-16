@@ -1,7 +1,8 @@
+use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::journal::{self, Arrival, Rejected, TickRecord};
-use spookery_kernel::api::world::{Delivered, Draft, World};
+use spookery_kernel::api::world::{Delivered, World};
 use spookery_kernel::api::Reason;
 
 use crate::play::RoundCause;
@@ -33,7 +34,8 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         fast_forward: round.fast_forward,
         tool_trace: &round.trace,
     });
-    world.finish_round(
+    spookery_kernel::api::commit::finish_round(
+        world,
         draft,
         round.cause == RoundCause::Flush,
         jsonl,

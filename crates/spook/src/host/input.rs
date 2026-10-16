@@ -1,4 +1,4 @@
-use spookery_kernel::api::rules::rule::RuleTable;
+use spookery_kernel::api::rule::RuleTable;
 use spookery_kernel::api::Reason;
 
 /// `say` is speech. A verb is a turn. A habit name is `NOT_IN_SPEC`.

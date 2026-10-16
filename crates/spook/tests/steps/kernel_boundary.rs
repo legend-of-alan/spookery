@@ -8,18 +8,21 @@ use crate::World;
 
 /// Kernel subsystems, bottom to top. A file may import a name on a lower row.
 /// `state` is the planted row: it sits under `rules`, so `crate::rules` is refused.
+/// `draft` is the staged now, under `rules`, which pays costs into it.
+/// `lint` and `map` sit under `world`: world runs them while checking a pack, and they do not call world.
 const LAYERS: &[&[&str]] = &[
     &["error", "format", "hash", "key"],
     &["diagnostic", "ids", "intent", "meter"],
-    &["effect", "model"],
+    &["effect", "model", "rule"],
     &["check", "journal", "lock", "speech"],
     &["store"],
     &["canon", "state"],
-    &["firewall"],
+    &["draft", "firewall"],
     &["rules"],
+    &["lint", "map"],
     &["visibility"],
     &["world"],
-    &["lint", "map", "pause"],
+    &["pause"],
     &["expand"],
     &["apply", "commit", "host_summary", "perceive"],
 ];
@@ -45,7 +48,6 @@ const NARROWED: &[&str] = &[
     "emit_memory_line",
     "emit_migrate",
     "emit_presence",
-    "exit_token",
     "from_token",
     "habits_of",
     "habits_on",
@@ -85,21 +87,6 @@ const NARROWED: &[&str] = &[
     "visit",
     "with_path",
     "world_hour",
-];
-
-/// Reaches that already climb. A new one fails the boundary check.
-const CLIMBS: &[(&str, &str)] = &[
-    ("canon", "map"),
-    ("canon", "rules"),
-    ("effect", "store"),
-    ("intent", "store"),
-    ("lock", "world"),
-    ("rules", "expand"),
-    ("rules", "map"),
-    ("rules", "world"),
-    ("world", "commit"),
-    ("world", "lint"),
-    ("world", "map"),
 ];
 
 pub(crate) fn clean_tree_holds() {
@@ -153,7 +140,7 @@ fn downward_violations(kernel: &Path) -> Vec<String> {
 }
 
 fn may_import(from: &str, to: &str) -> bool {
-    if from == to || CLIMBS.contains(&(from, to)) {
+    if from == to {
         return true;
     }
     match (layer_of(from), layer_of(to)) {
@@ -512,6 +499,28 @@ fn kernel_state_imports_rules(world: &mut World) {
         .unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     world.scratch = downward_violations(&kernel).join("\n");
     let _ = fs::remove_dir_all(&dir);
+}
+
+#[given(expr = "kernel\\/{word}.rs imports crate::{word}")]
+fn kernel_file_imports(world: &mut World, name: String, dep: String) {
+    let dir = scratch_dir("climb-plant");
+    let kernel = dir.join("kernel");
+    fs::create_dir_all(&kernel).unwrap_or_else(|err| panic!("mkdir {}: {err}", kernel.display()));
+    let path = kernel.join(format!("{name}.rs"));
+    fs::write(&path, format!("use crate::{dep};\n"))
+        .unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
+    world.scratch = downward_violations(&kernel).join("\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[then(expr = "the boundary check names crate::{word}")]
+fn the_boundary_check_names_the_import(world: &mut World, dep: String) {
+    let needle = format!("crate::{dep}");
+    assert!(
+        world.scratch.contains(&needle),
+        "boundary check did not name {needle}: {}",
+        world.scratch
+    );
 }
 
 #[then(expr = "the boundary check fails")]

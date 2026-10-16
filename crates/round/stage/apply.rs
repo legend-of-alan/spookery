@@ -1,4 +1,5 @@
 use spookery_kernel::api::apply::apply_effect;
+use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::expand::expand_outcome;
 use spookery_kernel::api::intent::{ActorKind, Intent};
@@ -8,7 +9,6 @@ use spookery_kernel::api::perceive::perceive_at;
 use spookery_kernel::api::rules::cost;
 use spookery_kernel::api::rules::gate::{self, gate};
 use spookery_kernel::api::rules::{RollReport, RollResult};
-use spookery_kernel::api::world::Draft;
 use spookery_kernel::api::Reason;
 
 use super::resolve::{roll_subject, viewer_token, SubjectRoll};
@@ -119,7 +119,7 @@ fn begin_timed(
     round: &mut Round,
     draft: &mut Draft,
     intent: &Intent,
-    rule: &spookery_kernel::api::rules::rule::Rule,
+    rule: &spookery_kernel::api::rule::Rule,
     minutes: u64,
 ) -> bool {
     let point = draft.savepoint();

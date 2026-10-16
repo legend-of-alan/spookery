@@ -4,18 +4,44 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
+use crate::draft::Draft;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
-use crate::lock::lock_pack;
+use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
+use crate::rules::RollReport;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
 use crate::store::durable::{fsync_dir, fsync_dirs, fsync_file, rename, tmp_path};
-use crate::world::{Draft, World};
+use crate::world::{Delivered, World};
 
 pub struct CommitOutcome {
     pub state_rev: u64,
     pub diff_summary: Vec<String>,
     pub log_path: String,
+}
+
+/// Hold one played round when the caller will write it. Spook queues intents and takes rolls; it does not write this.
+pub fn finish_round(
+    world: &mut World,
+    draft: Draft,
+    flush: bool,
+    record: String,
+    notices: Vec<RollReport>,
+    keep_queue: bool,
+    delivered: Delivered,
+) -> Result<(), Reason> {
+    let humans = draft.now().presence.humans;
+    let paths = world.store_delivery(delivered, humans);
+    if flush {
+        let tick_index = draft.now().tick_index;
+        let now = draft.now().clone();
+        let memories = draft.memories().to_vec();
+        world.hold_uncommitted(now, record, tick_index, memories, paths, notices);
+        return Ok(());
+    }
+    commit_round(world, draft, &record)?;
+    world.note_committed(notices, keep_queue);
+    Ok(())
 }
 
 pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> Result<(), Reason> {
@@ -87,7 +113,7 @@ pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
-    let _lock = lock_pack(root)?;
+    let _lock = lock_world(root)?;
     now.pack_rev = pack_rev_after;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
@@ -308,9 +334,10 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
+    use crate::draft::Draft;
     use crate::model::MemoryLine;
     use crate::store::durable::{self, Mark};
-    use crate::world::{Draft, World};
+    use crate::world::World;
 
     use super::commit_round;
 

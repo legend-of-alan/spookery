@@ -5,7 +5,7 @@ use serde::Deserialize;
 use serde_saphyr::Spanned;
 
 use crate::diagnostic::{schema, Diagnostic};
-use crate::rules::rule::{
+use crate::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, NumberExpr, Op, Owner,
     ResistSpec, RollSpec, Rule, TargetKind, When, Who,
 };

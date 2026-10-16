@@ -215,10 +215,10 @@ fn collect_markdown(
 
 /// Change rules that set each other's watched values.
 pub fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
-    let rules: Vec<&crate::rules::rule::Rule> = canon
+    let rules: Vec<&crate::rule::Rule> = canon
         .rules
         .iter()
-        .filter(|rule| matches!(rule.when, crate::rules::rule::When::Change(_)))
+        .filter(|rule| matches!(rule.when, crate::rule::When::Change(_)))
         .collect();
     let written: Vec<Vec<Mark>> = rules
         .iter()
@@ -234,7 +234,7 @@ pub fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
             if from == to {
                 continue;
             }
-            let crate::rules::rule::When::Change(watch) = &rule.when else {
+            let crate::rule::When::Change(watch) = &rule.when else {
                 continue;
             };
             if marks.iter().any(|mark| sets_watch(watch, rule, mark)) {
@@ -264,7 +264,7 @@ pub fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
 pub fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
-        let crate::rules::rule::When::Change(watch) = &rule.when else {
+        let crate::rule::When::Change(watch) = &rule.when else {
             continue;
         };
         let sight = sight_of(canon, now, watch);
@@ -317,8 +317,8 @@ enum Sight {
     Everyone,
 }
 
-fn marks_of(effect: &crate::rules::rule::EffectTemplate, out: &mut Vec<Mark>) {
-    use crate::rules::rule::{EffectTemplate, LocationTo};
+fn marks_of(effect: &crate::rule::EffectTemplate, out: &mut Vec<Mark>) {
+    use crate::rule::{EffectTemplate, LocationTo};
     match effect {
         EffectTemplate::Flag { key, value, .. } => {
             out.push(Mark::Flag {
@@ -357,12 +357,8 @@ fn marks_of(effect: &crate::rules::rule::EffectTemplate, out: &mut Vec<Mark>) {
     }
 }
 
-fn sets_watch(
-    watch: &crate::rules::rule::ChangeWatch,
-    rule: &crate::rules::rule::Rule,
-    mark: &Mark,
-) -> bool {
-    use crate::rules::rule::ChangeWatch;
+fn sets_watch(watch: &crate::rule::ChangeWatch, rule: &crate::rule::Rule, mark: &Mark) -> bool {
+    use crate::rule::ChangeWatch;
     match (watch, mark) {
         (
             ChangeWatch::Flag { key, becomes },
@@ -388,9 +384,9 @@ fn sets_watch(
     }
 }
 
-fn watched_place<'a>(rule: &'a crate::rules::rule::Rule, place: &'a str) -> &'a str {
+fn watched_place<'a>(rule: &'a crate::rule::Rule, place: &'a str) -> &'a str {
     if place == "here" {
-        if let crate::rules::rule::Owner::Place(id) = &rule.owner {
+        if let crate::rule::Owner::Place(id) = &rule.owner {
             return id;
         }
     }
@@ -400,9 +396,9 @@ fn watched_place<'a>(rule: &'a crate::rules::rule::Rule, place: &'a str) -> &'a 
 fn sight_of(
     canon: &Canon,
     now: Option<&crate::model::Now>,
-    watch: &crate::rules::rule::ChangeWatch,
+    watch: &crate::rule::ChangeWatch,
 ) -> Sight {
-    use crate::rules::rule::ChangeWatch;
+    use crate::rule::ChangeWatch;
     match watch {
         ChangeWatch::Knows { .. } => Sight::Subject,
         ChangeWatch::Clock { id } => Sight::Owners(
@@ -420,7 +416,7 @@ fn sight_of(
 }
 
 fn flag_is_public(canon: &Canon, key: &str) -> bool {
-    use crate::rules::rule::{EffectTemplate, Who};
+    use crate::rule::{EffectTemplate, Who};
     let mut world = false;
     let mut actor = false;
     for rule in canon.rules.iter() {
@@ -439,8 +435,8 @@ fn flag_is_public(canon: &Canon, key: &str) -> bool {
     world && !actor
 }
 
-fn reach_of(effect: &crate::rules::rule::EffectTemplate) -> Option<Reach> {
-    use crate::rules::rule::{EffectTemplate, NarrateTo};
+fn reach_of(effect: &crate::rule::EffectTemplate) -> Option<Reach> {
+    use crate::rule::{EffectTemplate, NarrateTo};
     match effect {
         EffectTemplate::Narrate { to, .. } => Some(match to {
             NarrateTo::Self_ => Reach::Subject,
@@ -505,10 +501,7 @@ fn walk_cycle(
     color[node] = 2;
 }
 
-fn each_effect(
-    rule: &crate::rules::rule::Rule,
-    mut visit: impl FnMut(&crate::rules::rule::EffectTemplate),
-) {
+fn each_effect(rule: &crate::rule::Rule, mut visit: impl FnMut(&crate::rule::EffectTemplate)) {
     walk(&rule.do_, &mut visit);
     walk(&rule.success, &mut visit);
     walk(&rule.partial, &mut visit);
@@ -516,10 +509,10 @@ fn each_effect(
 }
 
 fn walk(
-    effects: &[crate::rules::rule::EffectTemplate],
-    visit: &mut impl FnMut(&crate::rules::rule::EffectTemplate),
+    effects: &[crate::rule::EffectTemplate],
+    visit: &mut impl FnMut(&crate::rule::EffectTemplate),
 ) {
-    use crate::rules::rule::ResistSpec;
+    use crate::rule::ResistSpec;
     for effect in effects {
         visit(effect);
         if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {

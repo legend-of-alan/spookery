@@ -1,8 +1,8 @@
 use spookery_kernel::api::ids::player_intent_id;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::model::ActorLive;
+use spookery_kernel::api::rule::{TargetKind, When};
 use spookery_kernel::api::rules::gate::{gate, verb_for, Miss};
-use spookery_kernel::api::rules::rule::{TargetKind, When};
 use spookery_kernel::api::rules::RollReport;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
