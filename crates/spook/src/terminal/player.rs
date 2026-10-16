@@ -4,7 +4,7 @@ use std::net::TcpStream;
 use std::path::Path;
 
 use crate::protocol::PlayerMessage;
-use spookery_kernel::Reason;
+use spookery_kernel::api::Reason;
 
 use super::render;
 use super::TerminalError;
@@ -73,9 +73,9 @@ fn parse_player_as(token: &str) -> Result<String, TerminalError> {
 }
 
 fn start_pc(pack: &Path) -> Result<String, TerminalError> {
-    let id = match spookery_kernel::canon::load_canon(pack) {
+    let id = match spookery_kernel::api::canon::load_canon(pack) {
         Ok(canon) => canon.start_pc,
-        Err(errors) => match spookery_kernel::first_reason(&errors) {
+        Err(errors) => match spookery_kernel::api::first_reason(&errors) {
             Reason::NotInSpec => pack_pc_line(pack)?,
             code => return Err(TerminalError::Reason(code)),
         },

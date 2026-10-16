@@ -16,10 +16,10 @@ use std::fs;
 use std::path::Path;
 
 use proptest::test_runner::{TestCaseError, TestRunner};
-use spookery_kernel::effect::Effect;
-use spookery_kernel::journal::{self, JournalEntry};
-use spookery_kernel::store::codec::emit_effect;
-use spookery_kernel::world::World;
+use spookery_kernel::api::effect::Effect;
+use spookery_kernel::api::journal::{self, JournalEntry};
+use spookery_kernel::api::store::codec::emit_effect;
+use spookery_kernel::api::world::World;
 
 use super::play::{configure_runner, copy_docks, copy_pack, pick_rounds, play_rounds, TempPack};
 use crate::play::{play_recorded, RecordedRound};

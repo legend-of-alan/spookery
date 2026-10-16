@@ -9,7 +9,7 @@ use super::table;
 
 fn docks_rev() -> String {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    spookery_kernel::canon::pack_rev(&root).unwrap()
+    spookery_kernel::api::canon::pack_rev(&root).unwrap()
 }
 
 fn studio_matches(pack: &std::path::Path, revs: &[u64]) {
@@ -146,7 +146,7 @@ fn the_studio_log_records_two_migrates(world: &mut World) {
 #[then(expr = "migrate keeps the hand edit")]
 fn migrate_keeps_the_hand_edit(world: &mut World) {
     let pack = table::pack(world);
-    let rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+    let rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_rev());
     let now = table::now_of(pack);
     assert_eq!(now.pack_rev, rev);

@@ -6,12 +6,12 @@ use crate::protocol::{
     StatusPause, StatusPresence, WireClock, WireFact, WireItem,
 };
 use serde_json::Value;
-use spookery_kernel::intent::Intent;
-use spookery_kernel::map::ExitView;
-use spookery_kernel::model::{Message, Now, RunState};
-use spookery_kernel::perceive::{ClockView, ItemStack, KnownFact, View};
-use spookery_kernel::rules::{RollReport, RollResult};
-use spookery_kernel::Reason;
+use spookery_kernel::api::intent::Intent;
+use spookery_kernel::api::map::ExitView;
+use spookery_kernel::api::model::{Message, Now, RunState};
+use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, View};
+use spookery_kernel::api::rules::{RollReport, RollResult};
+use spookery_kernel::api::Reason;
 
 pub struct TapeLine {
     pub seq: u64,
@@ -108,17 +108,17 @@ pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
     crate::protocol::write_queued_event(id, actor_id, move_name)
 }
 
-pub fn player_check_line(outcome: spookery_kernel::check::Outcome) -> String {
+pub fn player_check_line(outcome: spookery_kernel::api::check::Outcome) -> String {
     crate::protocol::write_player(&PlayerMessage::Check {
         outcome: wire_outcome(outcome),
     })
 }
 
-fn wire_outcome(outcome: spookery_kernel::check::Outcome) -> Outcome {
+fn wire_outcome(outcome: spookery_kernel::api::check::Outcome) -> Outcome {
     match outcome {
-        spookery_kernel::check::Outcome::Success => Outcome::Success,
-        spookery_kernel::check::Outcome::Partial => Outcome::Partial,
-        spookery_kernel::check::Outcome::Miss => Outcome::Miss,
+        spookery_kernel::api::check::Outcome::Success => Outcome::Success,
+        spookery_kernel::api::check::Outcome::Partial => Outcome::Partial,
+        spookery_kernel::api::check::Outcome::Miss => Outcome::Miss,
     }
 }
 

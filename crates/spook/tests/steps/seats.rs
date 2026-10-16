@@ -186,7 +186,7 @@ Lark watches the street from a dry doorway.
     *actor.place_mut() = "docks_street".to_string();
     now.actors.insert("pc_lark".to_string(), actor);
     store_now(&pack, now);
-    spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
+    spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);
 }
 
@@ -241,7 +241,7 @@ fn a_one_player_docks_table(world: &mut World) {
     now.actors.remove("pc_harbormouse");
     now.actors.remove("pc_wren");
     store_now(&pack, now);
-    spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
+    spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(&pack);
     table::seat_actor(&pack, "pc_rowan");
     world.pack = Some(pack);
@@ -286,7 +286,8 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
         .known_facts_mut()
         .push(HIDDEN_FACT.to_string());
     store_now(&pack, now);
-    spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
+    spookery_kernel::api::World::open(&pack)
+        .unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
 }
 
@@ -465,18 +466,18 @@ fn seat_three(pack: &std::path::Path) {
     }
 }
 
-fn read_now(pack: &std::path::Path) -> spookery_kernel::model::Now {
+fn read_now(pack: &std::path::Path) -> spookery_kernel::api::model::Now {
     let text = fs::read_to_string(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    spookery_kernel::store::codec::load_save(&text)
+    spookery_kernel::api::store::codec::load_save(&text)
         .unwrap_or_else(|err| panic!("load now: {err:?}"))
 }
 
-fn store_now(pack: &std::path::Path, mut now: spookery_kernel::model::Now) {
+fn store_now(pack: &std::path::Path, mut now: spookery_kernel::api::model::Now) {
     now.pack_rev =
-        spookery_kernel::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
-    let text =
-        spookery_kernel::store::codec::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}"));
+        spookery_kernel::api::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
+    let text = spookery_kernel::api::store::codec::emit_save(&now)
+        .unwrap_or_else(|err| panic!("emit: {err}"));
     fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 

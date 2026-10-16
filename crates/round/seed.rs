@@ -1,4 +1,4 @@
-use spookery_kernel::blake2s_256;
+use spookery_kernel::api::blake2s_256;
 
 /// The round line's `seed` field. A roll uses `RollKey`, not this string.
 pub fn round_seed(world_id: &str, tick_index: u64) -> String {

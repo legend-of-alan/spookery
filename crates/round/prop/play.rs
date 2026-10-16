@@ -5,13 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed};
-use spookery_kernel::canon::pack_rev;
-use spookery_kernel::ids::player_intent_id;
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::map::visible;
-use spookery_kernel::rules::gate::gate;
-use spookery_kernel::store::codec::{emit_save, load_save};
-use spookery_kernel::world::World;
+use spookery_kernel::api::canon::pack_rev;
+use spookery_kernel::api::ids::player_intent_id;
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_kernel::api::map::visible;
+use spookery_kernel::api::rules::gate::gate;
+use spookery_kernel::api::store::codec::{emit_save, load_save};
+use spookery_kernel::api::world::World;
 
 use crate::play::{play, RoundCause};
 
@@ -207,7 +207,7 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
 }
 
 fn player_intent(
-    now: &spookery_kernel::model::Now,
+    now: &spookery_kernel::api::model::Now,
     actor: &str,
     verb: &str,
     target: Target,

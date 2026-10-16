@@ -1,11 +1,11 @@
 use serde_json::{Map, Value};
-use spookery_kernel::intent::Intent;
-use spookery_kernel::intent::{ActorKind, IntentArgs, Source, Target};
-use spookery_kernel::model::ActorLive;
-use spookery_kernel::perceive::perceive_budget;
-use spookery_kernel::rules::gate::resolve;
-use spookery_kernel::world::World;
-use spookery_kernel::Reason;
+use spookery_kernel::api::intent::Intent;
+use spookery_kernel::api::intent::{ActorKind, IntentArgs, Source, Target};
+use spookery_kernel::api::model::ActorLive;
+use spookery_kernel::api::perceive::perceive_budget;
+use spookery_kernel::api::rules::gate::resolve;
+use spookery_kernel::api::world::World;
+use spookery_kernel::api::Reason;
 use spookery_round::{advance_while_busy, commit_moves_at};
 
 use super::frames;

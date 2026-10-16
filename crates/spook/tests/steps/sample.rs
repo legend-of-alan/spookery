@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::meter;
+use spookery_kernel::api::meter;
 
 use crate::support::{self, text_of};
 use crate::World;
@@ -156,8 +156,12 @@ fn take_tonic(pack: &Path) {
 
 fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let now = table::now_of(pack);
-    let canon = spookery_kernel::canon::load_canon(pack)
-        .unwrap_or_else(|err| panic!("load canon: {}", spookery_kernel::reason_of(err).token()));
+    let canon = spookery_kernel::api::canon::load_canon(pack).unwrap_or_else(|err| {
+        panic!(
+            "load canon: {}",
+            spookery_kernel::api::reason_of(err).token()
+        )
+    });
     let actor = now
         .actors
         .get(actor_id)

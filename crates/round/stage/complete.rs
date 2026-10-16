@@ -1,13 +1,13 @@
-use spookery_kernel::apply::apply_effect;
-use spookery_kernel::effect::{Effect, EffectKind};
-use spookery_kernel::expand::expand_outcome;
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use spookery_kernel::journal::Arrival;
-use spookery_kernel::model::Pending;
-use spookery_kernel::rules::expr::{self, Ctx};
-use spookery_kernel::rules::RollReport;
-use spookery_kernel::world::Draft;
-use spookery_kernel::Reason;
+use spookery_kernel::api::apply::apply_effect;
+use spookery_kernel::api::effect::{Effect, EffectKind};
+use spookery_kernel::api::expand::expand_outcome;
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::api::journal::Arrival;
+use spookery_kernel::api::model::Pending;
+use spookery_kernel::api::rules::expr::{self, Ctx};
+use spookery_kernel::api::rules::RollReport;
+use spookery_kernel::api::world::Draft;
+use spookery_kernel::api::Reason;
 
 use super::resolve::{roll_subject, SubjectRoll};
 use crate::state::Round;
@@ -21,7 +21,7 @@ pub(crate) fn run(round: &mut Round, _draft: &mut Draft) -> Result<(), Reason> {
 
 /// Apply every journey whose minute has been reached, earliest first.
 pub(crate) fn finish(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    let due = spookery_kernel::map::take_due(draft, round.world_time_after)?;
+    let due = spookery_kernel::api::map::take_due(draft, round.world_time_after)?;
     for item in due {
         if item.pending.arrive.is_some() {
             arrive(round, draft, &item.actor_id, item.until, &item.pending)?;
@@ -79,9 +79,10 @@ fn resume(
         .is_pc();
     let kind = kind_of(is_pc);
     let intent = arrival_intent(round, actor_id, kind, pending);
-    let roll_spec = spookery_kernel::rules::gate::resolve(draft.canon(), draft.now(), &intent)?
-        .roll
-        .clone();
+    let roll_spec =
+        spookery_kernel::api::rules::gate::resolve(draft.canon(), draft.now(), &intent)?
+            .roll
+            .clone();
     let outcome = match roll_spec {
         Some(spec) => {
             let ctx = Ctx { intent: &intent };
@@ -150,7 +151,7 @@ fn live_roll(
     check_id: &str,
     target: i64,
     partial_at: Option<i64>,
-) -> Result<spookery_kernel::rules::RollResult, Reason> {
+) -> Result<spookery_kernel::api::rules::RollResult, Reason> {
     let actor = draft
         .now()
         .actors

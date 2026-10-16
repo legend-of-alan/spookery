@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::model::ActorLive;
+use spookery_kernel::api::model::ActorLive;
 
 use crate::support;
 use crate::World;

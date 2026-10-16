@@ -1,8 +1,8 @@
-use spookery_kernel::effect::Effect;
-use spookery_kernel::intent::Intent;
-use spookery_kernel::journal::{self, Arrival, Rejected, TickRecord};
-use spookery_kernel::world::{Delivered, Draft, World};
-use spookery_kernel::Reason;
+use spookery_kernel::api::effect::Effect;
+use spookery_kernel::api::intent::Intent;
+use spookery_kernel::api::journal::{self, Arrival, Rejected, TickRecord};
+use spookery_kernel::api::world::{Delivered, Draft, World};
+use spookery_kernel::api::Reason;
 
 use crate::play::RoundCause;
 use crate::seed::round_seed;
@@ -17,7 +17,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
     let actors = world.presence().actors_present.clone();
     let jsonl = render_round_line(&RoundLine {
         tick_index: round.tick_index,
-        rules_rev: spookery_kernel::store::RULES_REV,
+        rules_rev: spookery_kernel::api::store::RULES_REV,
         state_rev_before: round.rev_before,
         state_rev_after: round.rev_before + 1,
         world_time_before: round.world_time_before,
@@ -91,8 +91,8 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use spookery_kernel::effect::{Effect, EffectKind};
-    use spookery_kernel::intent::ViewerId;
+    use spookery_kernel::api::effect::{Effect, EffectKind};
+    use spookery_kernel::api::intent::ViewerId;
 
     use super::{render_round_line, RoundLine};
 
@@ -111,7 +111,7 @@ mod tests {
         };
         let line = render_round_line(&RoundLine {
             tick_index: 1,
-            rules_rev: spookery_kernel::store::RULES_REV,
+            rules_rev: spookery_kernel::api::store::RULES_REV,
             state_rev_before: 0,
             state_rev_after: 1,
             world_time_before: 0,
@@ -127,7 +127,7 @@ mod tests {
             fast_forward: false,
             tool_trace: &[],
         });
-        let encoded = spookery_kernel::store::codec::emit_effect(&effect);
+        let encoded = spookery_kernel::api::store::codec::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
         assert!(!line.contains("\"payload\""));
     }

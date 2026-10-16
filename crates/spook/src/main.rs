@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use spookery_kernel::Reason;
+use spookery_kernel::api::Reason;
 
 mod starter;
 
@@ -175,23 +175,27 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             Ok(())
         }
         Command::Map { pack } => {
-            let canon = spookery_kernel::canon::load_canon(&pack)
-                .map_err(|diags| spookery::Error::Reason(spookery_kernel::reason_of(diags)))?;
-            print!("{}", spookery_kernel::map::graph(&canon));
+            let canon = spookery_kernel::api::canon::load_canon(&pack)
+                .map_err(|diags| spookery::Error::Reason(spookery_kernel::api::reason_of(diags)))?;
+            print!("{}", spookery_kernel::api::map::graph(&canon));
             Ok(())
         }
         Command::Tick { pack } => {
             spookery_round::play_pack_once(&pack).map_err(spookery::Error::Reason)
         }
         Command::Status { pack } => {
-            let world = spookery_kernel::World::open(&pack).map_err(spookery::Error::Reason)?;
-            let text = spookery_kernel::host_summary(&world, spookery_kernel::DigestViewer::Host)
-                .map_err(spookery::Error::Reason)?;
+            let world =
+                spookery_kernel::api::World::open(&pack).map_err(spookery::Error::Reason)?;
+            let text = spookery_kernel::api::host_summary(
+                &world,
+                spookery_kernel::api::DigestViewer::Host,
+            )
+            .map_err(spookery::Error::Reason)?;
             print!("{text}");
             Ok(())
         }
         Command::Migrate { pack } => {
-            spookery_kernel::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
+            spookery_kernel::api::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
         }
         Command::Replay { pack, from } => {
             match spookery_round::from_journal(&pack, from.as_deref(), None) {
@@ -234,10 +238,11 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             }
         },
         Command::Check { pack, json, rules } => {
-            let mut found = spookery_kernel::check_pack(&pack);
+            let mut found = spookery_kernel::api::check_pack(&pack);
             if rules && found.is_empty() {
-                let canon = spookery_kernel::canon::load_canon(&pack)
-                    .map_err(|diags| spookery::Error::Reason(spookery_kernel::reason_of(diags)))?;
+                let canon = spookery_kernel::api::canon::load_canon(&pack).map_err(|diags| {
+                    spookery::Error::Reason(spookery_kernel::api::reason_of(diags))
+                })?;
                 for id in canon.rules.ids_in_order() {
                     println!("{id}");
                 }

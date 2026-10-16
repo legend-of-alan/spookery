@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
-use spookery_kernel::canon::{Canon, CastKind};
-use spookery_kernel::rules::rule::{Owner, TargetKind, When};
+use spookery_kernel::api::canon::{Canon, CastKind};
+use spookery_kernel::api::rules::rule::{Owner, TargetKind, When};
 
 /// Characters. The same budget `perceive` uses when it trims this prose.
 const PROSE_BUDGET: usize = 800;
@@ -860,7 +860,7 @@ fn json_str(text: &str) -> Value {
 mod tests {
     use std::path::PathBuf;
 
-    use spookery_kernel::canon::{load_canon, CastKind};
+    use spookery_kernel::api::canon::{load_canon, CastKind};
 
     use super::*;
 

@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
 
 use crate::play::{RecordedRound, RoundCause};
-use spookery_kernel::effect::Effect;
-use spookery_kernel::intent::Intent;
-use spookery_kernel::journal::{Arrival, Rejected};
-use spookery_kernel::key::ChangeRecord;
-use spookery_kernel::model::Now;
-use spookery_kernel::rules::{RollReport, RollResult};
-use spookery_kernel::visibility::{Seen, Told};
-use spookery_kernel::world::{session_status, Draft, World};
+use spookery_kernel::api::effect::Effect;
+use spookery_kernel::api::intent::Intent;
+use spookery_kernel::api::journal::{Arrival, Rejected};
+use spookery_kernel::api::key::ChangeRecord;
+use spookery_kernel::api::model::Now;
+use spookery_kernel::api::rules::{RollReport, RollResult};
+use spookery_kernel::api::visibility::{Seen, Told};
+use spookery_kernel::api::world::{session_status, Draft, World};
 
 /// One pass of the rules over one tick.
 pub struct Round {

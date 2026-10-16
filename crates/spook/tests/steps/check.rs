@@ -65,12 +65,14 @@ fn travel_in_verbs_yaml_teleports(world: &mut World) {
 fn the_save_hash_is_restamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("state/save.yaml");
-    let mut now = spookery_kernel::store::codec::load_save(&fs::read_to_string(&path).unwrap())
-        .unwrap_or_else(|err| panic!("load save: {err:?}"));
-    now.pack_rev = spookery_kernel::canon::pack_rev(&pack).unwrap_or_else(|err| panic!("{err:?}"));
+    let mut now =
+        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&path).unwrap())
+            .unwrap_or_else(|err| panic!("load save: {err:?}"));
+    now.pack_rev =
+        spookery_kernel::api::canon::pack_rev(&pack).unwrap_or_else(|err| panic!("{err:?}"));
     fs::write(
         &path,
-        spookery_kernel::store::codec::emit_save(&now).unwrap(),
+        spookery_kernel::api::store::codec::emit_save(&now).unwrap(),
     )
     .unwrap();
 }

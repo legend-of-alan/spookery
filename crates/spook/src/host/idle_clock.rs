@@ -1,7 +1,7 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::world::World;
-use spookery_kernel::Reason;
+use spookery_kernel::api::world::World;
+use spookery_kernel::api::Reason;
 use spookery_round::{catch_up, plan_catchup, play, RoundCause};
 
 pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {

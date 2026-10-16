@@ -1,0 +1,465 @@
+use std::collections::BTreeSet;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use cucumber::{given, then};
+
+use crate::World;
+
+/// Kernel subsystems, bottom to top. A file may import a name on a lower row.
+/// `state` is the planted row: it sits under `rules`, so `crate::rules` is refused.
+const LAYERS: &[&[&str]] = &[
+    &["error", "format", "hash", "key"],
+    &["diagnostic", "ids", "intent", "meter"],
+    &["effect", "model"],
+    &["check", "journal", "lock", "speech"],
+    &["store"],
+    &["canon", "state"],
+    &["firewall"],
+    &["rules"],
+    &["visibility"],
+    &["world"],
+    &["lint", "map", "pause"],
+    &["expand"],
+    &["apply", "commit", "host_summary", "perceive"],
+];
+
+/// Reaches that already climb. A new one fails the boundary check.
+const CLIMBS: &[(&str, &str)] = &[
+    ("canon", "map"),
+    ("canon", "rules"),
+    ("effect", "store"),
+    ("intent", "store"),
+    ("lock", "world"),
+    ("rules", "expand"),
+    ("rules", "map"),
+    ("rules", "world"),
+    ("world", "commit"),
+    ("world", "lint"),
+    ("world", "map"),
+];
+
+pub(crate) fn clean_tree_holds() {
+    let root = workspace_root();
+    let mut outside = Vec::new();
+    rust_files(&root.join("crates/spook/src"), &mut outside);
+    rust_files(&root.join("crates/spook/tests"), &mut outside);
+    rust_files(&root.join("crates/round"), &mut outside);
+    rust_files(&root.join("crates/kernel/tests"), &mut outside);
+    let api = api_violations(&outside);
+    assert!(api.is_empty(), "{}", api.join("\n"));
+    let down = downward_violations(&root.join("crates/kernel"));
+    assert!(down.is_empty(), "{}", down.join("\n"));
+    super::proofs::names_say_what_the_code_does();
+}
+
+fn api_violations(files: &[PathBuf]) -> Vec<String> {
+    let mut hits = Vec::new();
+    for path in files {
+        let text =
+            fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let code = without_comments_or_strings(&text);
+        for import in kernel_paths(&code) {
+            if import == "spookery_kernel::api" || import.starts_with("spookery_kernel::api::") {
+                continue;
+            }
+            hits.push(format!("{} imports {import}", path.display()));
+        }
+    }
+    hits
+}
+
+fn downward_violations(kernel: &Path) -> Vec<String> {
+    let mut files = Vec::new();
+    rust_files(kernel, &mut files);
+    let mut hits = Vec::new();
+    for path in files {
+        let owner = subsystem(kernel, &path);
+        if owner == "lib" || owner == "api" {
+            continue;
+        }
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        for dep in crate_deps(&production_source(&text)) {
+            if !may_import(&owner, &dep) {
+                hits.push(format!("{} imports crate::{dep}", path.display()));
+            }
+        }
+    }
+    hits
+}
+
+fn may_import(from: &str, to: &str) -> bool {
+    if from == to || CLIMBS.contains(&(from, to)) {
+        return true;
+    }
+    match (layer_of(from), layer_of(to)) {
+        (Some(from_layer), Some(to_layer)) => to_layer < from_layer,
+        _ => false,
+    }
+}
+
+fn layer_of(name: &str) -> Option<usize> {
+    LAYERS.iter().position(|row| row.contains(&name))
+}
+
+fn subsystem(kernel: &Path, path: &Path) -> String {
+    let rel = path.strip_prefix(kernel).unwrap_or(path);
+    let first = rel
+        .components()
+        .next()
+        .unwrap()
+        .as_os_str()
+        .to_string_lossy();
+    first.trim_end_matches(".rs").to_string()
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    if !dir.is_dir() {
+        return;
+    }
+    for entry in fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_string_lossy().into_owned();
+        if path.is_dir() {
+            if name == "tests" || name == "target" || name == "fixtures" {
+                continue;
+            }
+            rust_files(&path, out);
+        } else if name.ends_with(".rs") {
+            out.push(path);
+        }
+    }
+}
+
+fn kernel_paths(code: &str) -> Vec<String> {
+    let needle = "spookery_kernel::";
+    let bytes = code.as_bytes();
+    let mut hits = Vec::new();
+    let mut start = 0;
+    while let Some(at) = code[start..].find(needle) {
+        let abs = start + at;
+        if abs > 0 {
+            let prev = bytes[abs - 1];
+            if prev.is_ascii_alphanumeric() || prev == b'_' {
+                start = abs + needle.len();
+                continue;
+            }
+        }
+        let mut end = abs + needle.len();
+        loop {
+            if end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+                while end < bytes.len()
+                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
+                {
+                    end += 1;
+                }
+                continue;
+            }
+            if code[end..].starts_with("::") {
+                end += 2;
+                continue;
+            }
+            break;
+        }
+        while code[..end].ends_with("::") {
+            end -= 2;
+        }
+        if end > abs {
+            hits.push(code[abs..end].to_string());
+        }
+        start = end.max(abs + needle.len());
+    }
+    hits
+}
+
+fn crate_deps(code: &str) -> BTreeSet<String> {
+    let needle = "crate::";
+    let bytes = code.as_bytes();
+    let mut deps = BTreeSet::new();
+    let mut start = 0;
+    while let Some(at) = code[start..].find(needle) {
+        let abs = start + at;
+        if abs > 0 {
+            let prev = bytes[abs - 1];
+            if prev.is_ascii_alphanumeric() || prev == b'_' {
+                start = abs + needle.len();
+                continue;
+            }
+        }
+        let mut end = abs + needle.len();
+        if end >= bytes.len() || !(bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+            start = abs + needle.len();
+            continue;
+        }
+        let name_at = end;
+        while end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
+            end += 1;
+        }
+        deps.insert(code[name_at..end].to_string());
+        start = end;
+    }
+    deps
+}
+
+fn without_comments_or_strings(src: &str) -> String {
+    let bytes = src.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if is_char_quote(bytes, i) {
+            out.push(' ');
+            i += 3;
+            continue;
+        }
+        if is_line_comment(bytes, i) {
+            i = skip_line(bytes, i);
+            out.push('\n');
+            continue;
+        }
+        if is_block_comment(bytes, i) {
+            i = skip_block(bytes, i);
+            out.push(' ');
+            continue;
+        }
+        if bytes[i] == b'"' {
+            i = skip_string(bytes, i);
+            out.push(' ');
+            continue;
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+fn production_source(src: &str) -> String {
+    let bytes = src.as_bytes();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if is_char_quote(bytes, i) {
+            out.push(' ');
+            i += 3;
+            continue;
+        }
+        if is_line_comment(bytes, i) {
+            i = skip_line(bytes, i);
+            out.push('\n');
+            continue;
+        }
+        if is_block_comment(bytes, i) {
+            i = skip_block(bytes, i);
+            out.push(' ');
+            continue;
+        }
+        if bytes[i] == b'"' {
+            let end = skip_string(bytes, i);
+            out.push_str(&src[i..end]);
+            i = end;
+            continue;
+        }
+        if let Some(end) = cfg_test_mod_end(src, i) {
+            out.push(' ');
+            i = end;
+            continue;
+        }
+        if let Some(end) = mod_tests_end(src, i) {
+            out.push(' ');
+            i = end;
+            continue;
+        }
+        out.push(bytes[i] as char);
+        i += 1;
+    }
+    out
+}
+
+fn cfg_test_mod_end(src: &str, i: usize) -> Option<usize> {
+    let rest = src.get(i..)?;
+    let rest = rest.strip_prefix("#[cfg(test)]")?;
+    let rest = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+    let rest = rest.strip_prefix("mod ")?;
+    let mut name_len = 0;
+    for byte in rest.bytes() {
+        if byte.is_ascii_alphanumeric() || byte == b'_' {
+            name_len += 1;
+        } else {
+            break;
+        }
+    }
+    if name_len == 0 {
+        return None;
+    }
+    let after = rest[name_len..].trim_start_matches([' ', '\t', '\r', '\n']);
+    if !after.starts_with('{') {
+        return None;
+    }
+    let open = src.len() - after.len();
+    Some(skip_brace(src, open))
+}
+
+fn mod_tests_end(src: &str, i: usize) -> Option<usize> {
+    if i > 0 {
+        let prev = src.as_bytes()[i - 1];
+        if prev.is_ascii_alphanumeric() || prev == b'_' {
+            return None;
+        }
+    }
+    let rest = src.get(i..)?.strip_prefix("mod tests")?;
+    if rest
+        .bytes()
+        .next()
+        .is_some_and(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+    {
+        return None;
+    }
+    let after = rest.trim_start_matches([' ', '\t', '\r', '\n']);
+    if !after.starts_with('{') {
+        return None;
+    }
+    let open = src.len() - after.len();
+    Some(skip_brace(src, open))
+}
+
+fn skip_brace(src: &str, open: usize) -> usize {
+    let bytes = src.as_bytes();
+    let mut i = open;
+    let mut depth = 0;
+    while i < bytes.len() {
+        if is_char_quote(bytes, i) {
+            i += 3;
+            continue;
+        }
+        if is_line_comment(bytes, i) {
+            i = skip_line(bytes, i);
+            continue;
+        }
+        if is_block_comment(bytes, i) {
+            i = skip_block(bytes, i);
+            continue;
+        }
+        if bytes[i] == b'"' {
+            i = skip_string(bytes, i);
+            continue;
+        }
+        if bytes[i] == b'{' {
+            depth += 1;
+        } else if bytes[i] == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return i + 1;
+            }
+        }
+        i += 1;
+    }
+    i
+}
+
+fn is_char_quote(bytes: &[u8], i: usize) -> bool {
+    i + 2 < bytes.len() && bytes[i] == b'\'' && bytes[i + 1] == b'"' && bytes[i + 2] == b'\''
+}
+
+fn is_line_comment(bytes: &[u8], i: usize) -> bool {
+    i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'/'
+}
+
+fn is_block_comment(bytes: &[u8], i: usize) -> bool {
+    i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*'
+}
+
+fn skip_line(bytes: &[u8], i: usize) -> usize {
+    bytes
+        .iter()
+        .skip(i)
+        .position(|byte| *byte == b'\n')
+        .map_or(bytes.len(), |at| i + at)
+}
+
+fn skip_block(bytes: &[u8], i: usize) -> usize {
+    let mut at = i + 2;
+    while at + 1 < bytes.len() && !(bytes[at] == b'*' && bytes[at + 1] == b'/') {
+        at += 1;
+    }
+    (at + 2).min(bytes.len())
+}
+
+fn skip_string(bytes: &[u8], open: usize) -> usize {
+    let mut i = open + 1;
+    while i < bytes.len() {
+        if bytes[i] == b'\\' {
+            i += 2;
+            continue;
+        }
+        if bytes[i] == b'"' {
+            return i + 1;
+        }
+        i += 1;
+    }
+    bytes.len()
+}
+
+fn scratch_dir(label: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "spook-{label}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos()
+    ))
+}
+
+#[given(expr = "a spook source file that imports spookery_kernel::shard")]
+fn a_spook_file_imports_shard(world: &mut World) {
+    let dir = scratch_dir("api-plant");
+    let path = dir.join("plant.rs");
+    fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("mkdir {}: {err}", dir.display()));
+    fs::write(&path, "use spookery_kernel::shard;\n")
+        .unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
+    world.scratch = api_violations(&[path]).join("\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[then(expr = "the boundary check fails naming that file and path")]
+fn the_boundary_check_names_the_file_and_path(world: &mut World) {
+    assert!(
+        world.scratch.contains("plant.rs"),
+        "boundary check did not name the file: {}",
+        world.scratch
+    );
+    assert!(
+        world.scratch.contains("spookery_kernel::shard"),
+        "boundary check did not name the import: {}",
+        world.scratch
+    );
+}
+
+#[given(expr = "kernel\\/state imports crate::rules")]
+fn kernel_state_imports_rules(world: &mut World) {
+    let dir = scratch_dir("down-plant");
+    let kernel = dir.join("kernel");
+    fs::create_dir_all(&kernel).unwrap_or_else(|err| panic!("mkdir {}: {err}", kernel.display()));
+    let path = kernel.join("state.rs");
+    fs::write(&path, "use crate::rules;\n")
+        .unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
+    world.scratch = downward_violations(&kernel).join("\n");
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[then(expr = "the boundary check fails")]
+fn the_boundary_check_fails(world: &mut World) {
+    assert!(
+        world.scratch.contains("crate::rules"),
+        "boundary check accepted kernel/state importing crate::rules"
+    );
+}
+
+#[then(expr = "the boundary check passes on main")]
+fn the_boundary_check_passes_on_main(_world: &mut World) {
+    clean_tree_holds();
+}

@@ -1,5 +1,5 @@
-use spookery_kernel::rules::rule::RuleTable;
-use spookery_kernel::Reason;
+use spookery_kernel::api::rules::rule::RuleTable;
+use spookery_kernel::api::Reason;
 
 /// `say` is speech. A verb is a turn. A habit name is `NOT_IN_SPEC`.
 pub enum PlayerLine {

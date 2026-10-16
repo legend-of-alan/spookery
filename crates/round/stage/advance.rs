@@ -1,7 +1,7 @@
-use spookery_kernel::canon::world_settings::Budget;
-use spookery_kernel::pause::apply_pause_policy;
-use spookery_kernel::world::Draft;
-use spookery_kernel::Reason;
+use spookery_kernel::api::canon::world_settings::Budget;
+use spookery_kernel::api::pause::apply_pause_policy;
+use spookery_kernel::api::world::Draft;
+use spookery_kernel::api::Reason;
 
 use crate::state::Round;
 

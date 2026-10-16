@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
-use spookery_kernel::model::Now;
+use spookery_kernel::api::model::Now;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -81,7 +81,7 @@ pub fn now_of(pack: &Path) -> Now {
             Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
     };
-    spookery_kernel::store::codec::load_save(&text)
+    spookery_kernel::api::store::codec::load_save(&text)
         .unwrap_or_else(|err| panic!("load now: {err:?}"))
 }
 
@@ -399,7 +399,7 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
     let path = pack.join("state/save.yaml");
     loop {
         let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-        if let Ok(now) = spookery_kernel::store::codec::load_save(&text) {
+        if let Ok(now) = spookery_kernel::api::store::codec::load_save(&text) {
             if now.world_time == expected {
                 return;
             }

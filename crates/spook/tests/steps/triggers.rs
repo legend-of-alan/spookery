@@ -3,10 +3,10 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::meter::MeterLive;
-use spookery_kernel::model::{Clock, Now};
-use spookery_kernel::store::codec::{emit_save, load_save};
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_kernel::api::meter::MeterLive;
+use spookery_kernel::api::model::{Clock, Now};
+use spookery_kernel::api::store::codec::{emit_save, load_save};
 use spookery_round::RoundCause;
 
 use crate::support::{self, temp_pack};
@@ -582,7 +582,7 @@ Under the street.
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
-            spookery_kernel::model::PlaceLive {
+            spookery_kernel::api::model::PlaceLive {
                 items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
@@ -615,8 +615,8 @@ fn nell_knows_the_trapdoor(world: &mut World) {
 #[then(expr = "pc_nell can see the trapdoor")]
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let world_now = spookery_kernel::World::open(pack).unwrap();
-    let exits = spookery_kernel::map::visible(world_now.canon(), world_now.now(), "pc_nell");
+    let world_now = spookery_kernel::api::World::open(pack).unwrap();
+    let exits = spookery_kernel::api::map::visible(world_now.canon(), world_now.now(), "pc_nell");
     assert!(
         exits.iter().any(|exit| exit.name == "trapdoor"),
         "trapdoor stayed hidden: {exits:?}"
@@ -959,13 +959,13 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         now.presence.actors_present.clear();
     });
     let mut kernel =
-        spookery_kernel::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+        spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
     spookery_round::play(&mut kernel, RoundCause::Manual, &wall).unwrap_or_else(|err| {
         panic!("quiet: {err}");
     });
-    kernel.set_presence(spookery_kernel::model::Presence {
+    kernel.set_presence(spookery_kernel::api::model::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
@@ -1219,17 +1219,17 @@ fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     edit(&mut now);
     remember_presence(pack, now.presence.clone());
-    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn remember_presence(pack: &Path, presence: spookery_kernel::model::Presence) {
+fn remember_presence(pack: &Path, presence: spookery_kernel::api::model::Presence) {
     let mut seated = seated_packs().lock().expect("seated packs");
     seated.retain(|(path, _)| path != pack);
     seated.push((pack.to_path_buf(), presence));
 }
 
-fn remembered_presence(pack: &Path) -> Option<spookery_kernel::model::Presence> {
+fn remembered_presence(pack: &Path) -> Option<spookery_kernel::api::model::Presence> {
     seated_packs()
         .lock()
         .expect("seated packs")
@@ -1239,15 +1239,16 @@ fn remembered_presence(pack: &Path) -> Option<spookery_kernel::model::Presence> 
 }
 
 fn seated_packs(
-) -> &'static std::sync::Mutex<Vec<(std::path::PathBuf, spookery_kernel::model::Presence)>> {
-    static SEATED: std::sync::Mutex<Vec<(std::path::PathBuf, spookery_kernel::model::Presence)>> =
-        std::sync::Mutex::new(Vec::new());
+) -> &'static std::sync::Mutex<Vec<(std::path::PathBuf, spookery_kernel::api::model::Presence)>> {
+    static SEATED: std::sync::Mutex<
+        Vec<(std::path::PathBuf, spookery_kernel::api::model::Presence)>,
+    > = std::sync::Mutex::new(Vec::new());
     &SEATED
 }
 
 struct Played {
     now: Now,
-    rolls: Vec<spookery_kernel::rules::RollReport>,
+    rolls: Vec<spookery_kernel::api::rules::RollReport>,
     tick: Value,
     summary: Vec<String>,
     seen: Vec<(String, Vec<String>)>,
@@ -1257,14 +1258,14 @@ struct Played {
 fn play(
     pack: &Path,
     intents: Vec<Intent>,
-) -> (Now, Vec<spookery_kernel::rules::RollReport>, Value) {
+) -> (Now, Vec<spookery_kernel::api::rules::RollReport>, Value) {
     let played = play_view(pack, intents);
     (played.now, played.rolls, played.tick)
 }
 
 fn play_view(pack: &Path, intents: Vec<Intent>) -> Played {
-    let mut world = spookery_kernel::World::open(pack).unwrap_or_else(|err| {
-        let report = spookery_kernel::check_pack(pack)
+    let mut world = spookery_kernel::api::World::open(pack).unwrap_or_else(|err| {
+        let report = spookery_kernel::api::check_pack(pack)
             .iter()
             .map(|diag| diag.report_line())
             .collect::<Vec<_>>()

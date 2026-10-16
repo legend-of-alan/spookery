@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::meter;
-use spookery_kernel::model::Now;
-use spookery_kernel::rules::{faces, RollKey};
-use spookery_kernel::store::codec::{emit_save, load_save};
+use spookery_kernel::api::meter;
+use spookery_kernel::api::model::Now;
+use spookery_kernel::api::rules::{faces, RollKey};
+use spookery_kernel::api::store::codec::{emit_save, load_save};
 
 use crate::support::{self, copy_dir};
 use crate::World;
@@ -36,7 +36,7 @@ fn read_now(pack: &Path) -> Now {
 fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let mut now = read_now(pack);
     edit(&mut now);
-    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(pack.join("state/save.yaml"), emit_save(&now).unwrap()).unwrap();
 }
 
@@ -63,7 +63,7 @@ fn quiet(now: &mut Now) {
 
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = read_now(pack);
-    let canon = spookery_kernel::canon::load_canon(pack).unwrap();
+    let canon = spookery_kernel::api::canon::load_canon(pack).unwrap();
     let def = canon.meters.get("hp").unwrap();
     let live = now.actors.get(actor).unwrap().meters().get("hp").unwrap();
     meter::current(def, live).unwrap()
@@ -84,12 +84,12 @@ fn play(
     pack: &Path,
     actor: &str,
     line: &str,
-) -> Result<spookery::host::MoveOutcome, spookery_kernel::rules::gate::Miss> {
-    let mut world = spookery_kernel::World::open(pack).unwrap_or_else(|err| {
+) -> Result<spookery::host::MoveOutcome, spookery_kernel::api::rules::gate::Miss> {
+    let mut world = spookery_kernel::api::World::open(pack).unwrap_or_else(|err| {
         panic!(
             "open {line}: {}\n{}",
             err.token(),
-            spookery_kernel::check_pack(pack)
+            spookery_kernel::api::check_pack(pack)
                 .iter()
                 .map(|diag| diag.report_line())
                 .collect::<Vec<_>>()
@@ -593,7 +593,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             .base = 10;
         now.actors.get_mut("pc_nell").unwrap().meters_mut().insert(
             "constitution".to_string(),
-            spookery_kernel::meter::MeterLive {
+            spookery_kernel::api::meter::MeterLive {
                 base: stat,
                 offset: 0,
             },
@@ -612,7 +612,9 @@ fn lark_hits_with_the_dagger(world: &mut World) {
         panic!("the hit stayed queued");
     };
     let nell = notices.iter().find_map(|notice| match notice {
-        spookery_kernel::rules::RollReport::Rolled { actor_id, out } if actor_id == "pc_nell" => {
+        spookery_kernel::api::rules::RollReport::Rolled { actor_id, out }
+            if actor_id == "pc_nell" =>
+        {
             Some(out.clone())
         }
         _ => None,

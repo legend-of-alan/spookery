@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use spookery_kernel::{check_pack, Diagnostic};
+use spookery_kernel::api::{check_pack, Diagnostic};
 
 const EFFECTS: &[&str] = &[
     "- meter:",

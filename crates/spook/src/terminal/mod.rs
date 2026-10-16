@@ -1,6 +1,6 @@
 use std::io;
 
-use spookery_kernel::Reason;
+use spookery_kernel::api::Reason;
 
 mod gm;
 mod player;

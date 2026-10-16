@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{json, Value};
-use spookery_kernel::canon::{self, CastKind};
+use spookery_kernel::api::canon::{self, CastKind};
 
 use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
@@ -42,7 +42,7 @@ pub fn run_ai_gm<M: Model>(
 ) -> Result<(), HostError> {
     let (menu, kinds, prose) = {
         let canon = canon::load_canon(pack)
-            .map_err(|err| fail(spookery_kernel::reason_of(err).to_string()))?;
+            .map_err(|err| fail(spookery_kernel::api::reason_of(err).to_string()))?;
         from_canon(&canon)
     };
     let rev = canon::pack_rev(pack).map_err(|err| fail(err.to_string()))?;

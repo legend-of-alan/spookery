@@ -9,17 +9,17 @@ use spookery::host::{
     call_gm_tool, commit_queued, handle_player_move, on_scheduled_wake, queue_wait,
     release_player_seat, seat_player, MoveOutcome, SocketEnd,
 };
-use spookery_kernel::apply::apply_effect;
-use spookery_kernel::check::Outcome;
-use spookery_kernel::effect::{Effect, EffectKind};
-use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use spookery_kernel::meter::MeterLive;
-use spookery_kernel::model::{
+use spookery_kernel::api::apply::apply_effect;
+use spookery_kernel::api::check::Outcome;
+use spookery_kernel::api::effect::{Effect, EffectKind};
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::api::meter::MeterLive;
+use spookery_kernel::api::model::{
     ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
 };
-use spookery_kernel::rules::RollReport;
-use spookery_kernel::store::codec::emit_save;
-use spookery_kernel::world::Draft;
+use spookery_kernel::api::rules::RollReport;
+use spookery_kernel::api::store::codec::emit_save;
+use spookery_kernel::api::world::Draft;
 use spookery_round::{catch_up, play, play_pack_once};
 
 use crate::World;
@@ -64,8 +64,8 @@ fn temp_pack(label: &str) -> PathBuf {
     pack
 }
 
-fn open(pack: &Path) -> spookery_kernel::world::World {
-    spookery_kernel::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
+fn open(pack: &Path) -> spookery_kernel::api::world::World {
+    spookery_kernel::api::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
 }
 
 fn now_of(pack: &Path) -> Now {
@@ -83,8 +83,9 @@ fn write_text(path: &Path, text: &str) {
 fn stamp_pack_rev(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    now.pack_rev = spookery_kernel::canon::pack_rev(pack).unwrap();
+        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
+            .unwrap();
+    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
@@ -175,8 +176,8 @@ fn door_message() -> Message {
     }
 }
 
-fn seat_rowan(world: &mut spookery_kernel::world::World) {
-    world.set_presence(spookery_kernel::model::Presence {
+fn seat_rowan(world: &mut spookery_kernel::api::world::World) {
+    world.set_presence(spookery_kernel::api::model::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
@@ -409,7 +410,7 @@ Rowan.
         })
         .unwrap_or_else(|err| panic!("copy {name}: {err}"));
     }
-    let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
+    let rev = spookery_kernel::api::canon::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
         "gate".to_string(),
@@ -438,7 +439,7 @@ Rowan.
         schema: "now".to_string(),
         shard_id: "ex".to_string(),
         pack_rev: rev,
-        rules_rev: spookery_kernel::store::RULES_REV,
+        rules_rev: spookery_kernel::api::store::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -563,7 +564,7 @@ fn an_incomplete_transaction_is_discarded() {
     assert_eq!(
         lamp_oil(opened.now()),
         lamp_oil(
-            &spookery_kernel::store::codec::load_save(std::str::from_utf8(&before).unwrap())
+            &spookery_kernel::api::store::codec::load_save(std::str::from_utf8(&before).unwrap())
                 .unwrap()
         )
     );
@@ -594,7 +595,7 @@ fn the_same_revision_restores_the_previous_save() {
     assert_eq!(
         lamp_oil(opened.now()),
         lamp_oil(
-            &spookery_kernel::store::codec::load_save(std::str::from_utf8(&original).unwrap())
+            &spookery_kernel::api::store::codec::load_save(std::str::from_utf8(&original).unwrap())
                 .unwrap()
         )
     );
@@ -732,7 +733,7 @@ rules:
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
     }
-    let rev = spookery_kernel::canon::pack_rev(&pack).unwrap();
+    let rev = spookery_kernel::api::canon::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
         "yard".to_string(),
@@ -746,7 +747,7 @@ rules:
         schema: "now".to_string(),
         shard_id: "crowd".to_string(),
         pack_rev: rev,
-        rules_rev: spookery_kernel::store::RULES_REV,
+        rules_rev: spookery_kernel::api::store::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -791,9 +792,9 @@ fn tool_scope() {
     let before = snapshot(&pack);
     let shard = open(&pack);
     let call = |as_viewer: &str, budget: usize| {
-        spookery_kernel::perceive::perceive_budget(&shard, as_viewer, budget)
+        spookery_kernel::api::perceive::perceive_budget(&shard, as_viewer, budget)
     };
-    let kernel = spookery_kernel::perceive(&shard, "npc:mira").unwrap();
+    let kernel = spookery_kernel::api::perceive(&shard, "npc:mira").unwrap();
     assert_eq!(call("npc:mira", 800).unwrap(), kernel);
     let capped = call("npc:mira", 0).unwrap();
     assert!(kernel.known_facts.iter().any(|fact| !fact.body.is_empty()));
@@ -813,7 +814,7 @@ fn tool_scope() {
         .unknown_mentioned
         .iter()
         .any(|id| id == "fact_room_lamp"));
-    let unscoped = spookery_kernel::Reason::UnscopedPerceive;
+    let unscoped = spookery_kernel::api::Reason::UnscopedPerceive;
     assert_eq!(call("gm", 800).unwrap_err(), unscoped);
     drop(shard);
     assert_eq!(snapshot(&pack), before);
@@ -847,7 +848,7 @@ fn strip_bodies_and_hidden_string_lint() {
     assert!(!files.is_empty());
     for path in &files {
         let text = fs::read_to_string(path).unwrap();
-        let stripped = spookery_kernel::lint::strip_body(&text).unwrap();
+        let stripped = spookery_kernel::api::lint::strip_body(&text).unwrap();
         assert!(
             !stripped.contains("Mira keeps the shop"),
             "{}",
@@ -866,18 +867,20 @@ fn strip_bodies_and_hidden_string_lint() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
     let perceive = format!(
         "{:?}",
-        spookery_kernel::perceive(&open(&pack), "npc:aldric").unwrap()
+        spookery_kernel::api::perceive(&open(&pack), "npc:aldric").unwrap()
     );
     assert!(!perceive.contains(LEDGER));
 
     let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    assert!(spookery_kernel::lint::lint(&fixture).unwrap().is_empty());
+    assert!(spookery_kernel::api::lint::lint(&fixture)
+        .unwrap()
+        .is_empty());
     let owner = temp_pack("lint-owner");
     let mut body = fs::read_to_string(owner.join("cast/mira.md")).unwrap();
     body.push_str(LEDGER);
     body.push('\n');
     fs::write(owner.join("cast/mira.md"), body).unwrap();
-    let hits = spookery_kernel::lint::lint(&owner).unwrap();
+    let hits = spookery_kernel::api::lint::lint(&owner).unwrap();
     assert!(hits
         .iter()
         .any(|hit| hit.path == "cast/mira.md" && hit.text == LEDGER));
@@ -886,7 +889,7 @@ fn strip_bodies_and_hidden_string_lint() {
     body.push_str(LEDGER);
     body.push('\n');
     fs::write(place.join("world/places/docks_shop.md"), body).unwrap();
-    let hits = spookery_kernel::lint::lint(&place).unwrap();
+    let hits = spookery_kernel::api::lint::lint(&place).unwrap();
     assert!(hits
         .iter()
         .any(|hit| hit.path == "world/places/docks_shop.md" && hit.text == LEDGER));
@@ -894,7 +897,9 @@ fn strip_bodies_and_hidden_string_lint() {
     let mut body = fs::read_to_string(folded.join("cast/mira.md")).unwrap();
     body.push_str("the lamp-oil ledger is short.\n");
     fs::write(folded.join("cast/mira.md"), body).unwrap();
-    assert!(spookery_kernel::lint::lint(&folded).unwrap().is_empty());
+    assert!(spookery_kernel::api::lint::lint(&folded)
+        .unwrap()
+        .is_empty());
     let _ = fs::remove_dir_all(&pack);
     let _ = fs::remove_dir_all(&owner);
     let _ = fs::remove_dir_all(&place);
@@ -952,7 +957,7 @@ const KERNEL_TICK_NEEDLES: &[&str] = &[
     "ollama",
 ];
 
-fn names_say_what_the_code_does() {
+pub(crate) fn names_say_what_the_code_does() {
     let src = workspace_root().join("crates/spook/src");
     let mut files = Vec::new();
     walk_pub_names(&src, &src, &mut files);
@@ -1089,6 +1094,7 @@ fn import_boundary() {
     assert!(host_hits.is_empty(), "{}", host_hits.join("\n"));
     let audit_hits = byte_hits(&[spook_src.join("audit.rs")], &["tokio", "rmcp", "reqwest"]);
     assert!(audit_hits.is_empty(), "{}", audit_hits.join("\n"));
+    crate::kernel_boundary::clean_tree_holds();
 }
 
 fn five_e_words_under(dir: &Path) -> Vec<String> {
@@ -1529,7 +1535,8 @@ Nell keeps a guard up.
     );
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::store::codec::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
+            .unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         ActorLive::Pc {
@@ -1547,7 +1554,7 @@ Nell keeps a guard up.
     fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn rolled_stat(notices: &[RollReport], stat: i64) -> spookery_kernel::rules::RollResult {
+fn rolled_stat(notices: &[RollReport], stat: i64) -> spookery_kernel::api::rules::RollResult {
     notices
         .iter()
         .find_map(|notice| match notice {
@@ -1806,7 +1813,6 @@ fn prose_is_stripped(_world: &mut World) {
 #[when(expr = "the kernel and tick sources are scanned")]
 fn the_kernel_and_tick_sources_are_scanned(_world: &mut World) {
     import_boundary();
-    names_say_what_the_code_does();
 }
 
 #[when(expr = "reqwest is planted in kernel and tick")]
