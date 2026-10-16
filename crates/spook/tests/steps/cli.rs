@@ -6,6 +6,7 @@ use cucumber::{then, when};
 use crate::support;
 use crate::World;
 
+use super::common::{join_play, play_stdout, wait_play};
 use super::table;
 
 #[when(expr = "the operator asks spook for help")]
@@ -52,7 +53,7 @@ fn stdout_names_the_default_loopback_address(world: &mut World) {
 
 #[when(expr = "play joins the table with raw frames")]
 fn play_joins_the_table_with_raw_frames(world: &mut World) {
-    super::common::join_play(world, true);
+    join_play(world, true);
 }
 
 #[when(expr = "play says {string}")]
@@ -79,20 +80,20 @@ fn another_play_joins_that_table(world: &mut World) {
 
 #[then(expr = "play received the first perceive")]
 fn play_received_the_first_perceive(world: &mut World) {
-    let stdout = super::common::play_stdout(world);
+    let stdout = play_stdout(world);
     assert!(stdout.contains("Docks Shop"), "{stdout}");
     assert!(!stdout.contains("\"kind\":\"perceive\""), "{stdout}");
 }
 
 #[then(expr = "play does not show {string}")]
 fn play_does_not_show(world: &mut World, text: String) {
-    let stdout = super::common::play_stdout(world);
+    let stdout = play_stdout(world);
     assert!(!stdout.contains(&text), "{stdout}");
 }
 
 #[then(expr = "play does not show the line {string}")]
 fn play_does_not_show_the_line(world: &mut World, text: String) {
-    let stdout = super::common::play_stdout(world);
+    let stdout = play_stdout(world);
     assert!(stdout.lines().all(|line| line != text), "{stdout}");
 }
 
@@ -107,7 +108,7 @@ fn play_error_shows(world: &mut World, text: String) {
             return;
         }
         if start.elapsed() > Duration::from_secs(8) {
-            let stdout = super::common::play_stdout(world);
+            let stdout = play_stdout(world);
             panic!("missing {text}\nstdout:\n{stdout}\nstderr:\n{stderr}");
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -116,8 +117,8 @@ fn play_error_shows(world: &mut World, text: String) {
 
 #[then(expr = "play shows protocol frames")]
 fn play_shows_protocol_frames(world: &mut World) {
-    super::common::wait_play(world, "\"kind\":\"perceive\"");
-    let stdout = super::common::play_stdout(world);
+    wait_play(world, "\"kind\":\"perceive\"");
+    let stdout = play_stdout(world);
     assert!(stdout.contains("\"kind\":\"resume\""), "{stdout}");
     assert!(stdout.contains('{'), "{stdout}");
 }
@@ -129,8 +130,8 @@ While you were away:
 Back at dusk. Oil on the shelf.
 Assassination debt: 2/6, paused
 ";
-    super::common::wait_play(world, away);
-    let stdout = super::common::play_stdout(world);
+    wait_play(world, away);
+    let stdout = play_stdout(world);
     assert!(!stdout.contains("note_mira_door"), "{stdout}");
     assert!(!stdout.contains("clock assassination_debt"), "{stdout}");
     assert!(!stdout.contains("message "), "{stdout}");
@@ -138,8 +139,8 @@ Assassination debt: 2/6, paused
 
 #[then(expr = "play shows the raw resume digest")]
 fn play_shows_the_raw_resume_digest(world: &mut World) {
-    super::common::wait_play(world, "\"kind\":\"perceive\"");
-    let stdout = super::common::play_stdout(world);
+    wait_play(world, "\"kind\":\"perceive\"");
+    let stdout = play_stdout(world);
     let resume = stdout
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())

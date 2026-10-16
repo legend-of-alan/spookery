@@ -496,7 +496,7 @@ fn the_tick_now_hash_matches_the_save(world: &mut World) {
 }
 
 #[when(expr = "two players sit, one drops, and that PC sits again")]
-fn a_player_drops_and_sits_again_beside_another(world: &mut World) {
+fn two_players_sit_and_one_sits_again(world: &mut World) {
     world.scratch = seat_drop_and_reseat().join("\n");
 }
 
