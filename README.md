@@ -158,12 +158,12 @@ spook ai-gm /tmp/docks
 
 When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
 
-`crates/spook/tests/live_round.rs` plays one real round against whatever provider those three variables name: it hosts a copy of the docks pack, sits `spook ai-gm`, queues one player move, and passes when every model call returns 2xx and the move commits a tick. It is ignored by default. With [Ollama](https://ollama.com) running locally:
+`crates/spook/tests/integration/live_round.rs` plays one real round against whatever provider those three variables name: it hosts a copy of the docks pack, sits `spook ai-gm`, queues one player move, and passes when every model call returns 2xx and the move commits a tick. It is ignored by default. With [Ollama](https://ollama.com) running locally:
 
 ```sh
 ollama pull qwen2.5:0.5b
 SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b \
-  cargo test -p spook --test live_round --locked -- --ignored --nocapture
+  cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
 ```
 
 The `Live AI` workflow runs it against Ollama on pull requests that touch the model host. It also runs it against xAI weekly and on demand, never on pull requests, with the `XAI_API_KEY` repo secret passed in as `SPOOK_GM_KEY`. Without that secret the xAI job skips with a notice. The xAI model is `grok-4.20-0309-non-reasoning` unless the `SPOOK_XAI_MODEL` repo variable names another.
