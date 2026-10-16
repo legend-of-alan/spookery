@@ -9,7 +9,6 @@ use crate::World;
 
 const SECRET_ID: &str = "fact_sealed_name";
 const SECRET_TEXT: &str = "the sealed name";
-const PUBLIC_FLAG: &str = "gate_marked";
 
 #[given(expr = "sample-d20 with player {string} seated facing {string}")]
 fn sample_d20_with_lark_facing_briar(world: &mut World, player: String, facing: String) {
@@ -50,7 +49,7 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     fs::write(pack.join("cast/briar.md"), cast).unwrap();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(&format!(
-        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          who: npc_briar\n          fact: {SECRET_ID}\n      - flag:\n          who: world\n          key: {SECRET_ID}\n          value: true\n      - flag:\n          who: world\n          key: {PUBLIC_FLAG}\n          value: true\n"
+        "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          who: npc_briar\n          fact: {SECRET_ID}\n      - flag:\n          who: world\n          key: {SECRET_ID}\n          value: true\n      - meter:\n          who: npc_briar\n          key: hp\n          add: -1\n"
     ));
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp(&pack);
@@ -126,14 +125,20 @@ fn the_change_line_hides_the_fact(world: &mut World) {
         world.summary
     );
     assert!(
-        world.summary.iter().any(|item| item.contains(PUBLIC_FLAG)),
+        world
+            .summary
+            .iter()
+            .any(|item| item.contains("actor_meter npc_briar hp")),
         "{:?}",
         world.summary
     );
     let line = one_line(&world.stdout);
-    assert!(line.contains(PUBLIC_FLAG), "{line}");
+    let lower = line.to_lowercase();
+    assert!(lower.contains("briar") && lower.contains("hp"), "{line}");
+    assert!(line.contains('7'), "{line}");
     assert!(!line.contains(SECRET_ID), "{line}");
     assert!(!line.contains(SECRET_TEXT), "{line}");
+    assert!(!line.contains("world_flag"), "{line}");
 }
 
 fn one_line(text: &str) -> &str {

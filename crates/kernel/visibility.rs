@@ -57,7 +57,7 @@ pub fn observe(
         }
         keys.insert(change.key.to_string());
         if let Some(id) = actor {
-            if let Some(sentence) = sentence(canon, now, id, change) {
+            if let Some(sentence) = sentence(canon, id, change) {
                 spoken.push(sentence);
             }
         }
@@ -73,19 +73,23 @@ pub fn observe(
     }
 }
 
-/// One sentence for a change this viewer may know. A hidden fact stays out.
-fn sentence(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> Option<String> {
-    if names_forbidden(canon, now, viewer, change) {
-        return None;
-    }
+/// One sentence for a meter or item change this viewer may know.
+fn sentence(canon: &Canon, viewer: &str, change: &ChangeRecord) -> Option<String> {
     match &change.key {
         StateKey::ActorMeter(actor, key) => {
             meter_sentence(canon, actor, key, viewer, &change.after)
         }
-        StateKey::ActorItem(_, id) | StateKey::PlaceItem(_, id) => {
-            item_sentence(canon, id, &change.before, &change.after)
+        StateKey::ActorItem(actor, id) => item_sentence(
+            canon,
+            &whose(canon, viewer, actor),
+            id,
+            &change.before,
+            &change.after,
+            true,
+        ),
+        StateKey::PlaceItem(_, id) => {
+            item_sentence(canon, "Here", id, &change.before, &change.after, false)
         }
-        StateKey::WorldFlag(key) => Some(format!("{key} changed.")),
         _ => None,
     }
 }
@@ -103,19 +107,17 @@ fn meter_sentence(
     let StateValue::Number(value) = after else {
         return None;
     };
-    let who = if actor == viewer {
-        "Your".to_string()
-    } else {
-        format!("{}'s", display_name(canon, actor))
-    };
+    let who = whose(canon, viewer, actor);
     Some(format!("{who} {key} is now {value}."))
 }
 
 fn item_sentence(
     canon: &Canon,
+    who: &str,
     id: &str,
     before: &StateValue,
     after: &StateValue,
+    own: bool,
 ) -> Option<String> {
     let (StateValue::Number(before), StateValue::Number(after)) = (before, after) else {
         return None;
@@ -124,39 +126,21 @@ fn item_sentence(
         return None;
     }
     let name = item_name(canon, id);
-    if *after == 0 {
-        Some(format!("{name} was used up."))
+    let verb = if own && *after == 0 {
+        "was used up"
     } else if after < before {
-        Some(format!("{name} was lost."))
+        "was lost"
     } else {
-        Some(format!("{name} was gained."))
-    }
-}
-
-fn names_forbidden(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> bool {
-    let Some(seat) = viewer_of(now, viewer) else {
-        return true;
+        "was gained"
     };
-    let text = format!(
-        "{} {} {}",
-        change.key,
-        flat(&change.before),
-        flat(&change.after)
-    );
-    canon.facts.iter().any(|(id, fact)| {
-        !allows(canon, now, &seat, id)
-            && (text.contains(id.as_str())
-                || (!fact.text.is_empty() && text.contains(fact.text.as_str())))
-    })
+    Some(format!("{who} {name} {verb}."))
 }
 
-fn flat(value: &StateValue) -> String {
-    match value {
-        StateValue::Empty => String::new(),
-        StateValue::Text(text) => text.clone(),
-        StateValue::Number(number) => number.to_string(),
-        StateValue::Mark(mark) => mark.to_string(),
-        StateValue::List(items) => items.join(" "),
+fn whose(canon: &Canon, viewer: &str, actor: &str) -> String {
+    if actor == viewer {
+        "Your".to_string()
+    } else {
+        format!("{}'s", display_name(canon, actor))
     }
 }
 
