@@ -17,7 +17,7 @@ pub fn render(message: &PlayerMessage) -> String {
         PlayerMessage::Resume { text } => resume(text),
         PlayerMessage::Lines { text } => text.clone(),
         PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
-        PlayerMessage::Perceive {
+        PlayerMessage::View {
             viewer,
             place,
             visible_actors,
@@ -447,7 +447,7 @@ Shop day: 1/1"
 
     #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
-        let text = render(&PlayerMessage::Perceive {
+        let text = render(&PlayerMessage::View {
             viewer: "player:pc_rowan".to_string(),
             place: "docks_shop".to_string(),
             visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
@@ -512,7 +512,7 @@ Lamp oil: 4"
         assert!(!text.contains("docks_shop"), "{text}");
         assert_readable(&text);
 
-        let quiet = render(&PlayerMessage::Perceive {
+        let quiet = render(&PlayerMessage::View {
             viewer: "player:pc_rowan".to_string(),
             place: "docks_street".to_string(),
             visible_actors: vec!["bram".to_string()],

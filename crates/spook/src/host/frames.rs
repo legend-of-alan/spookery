@@ -9,7 +9,7 @@ use serde_json::Value;
 use spookery_kernel::intent::Intent;
 use spookery_kernel::map::ExitView;
 use spookery_kernel::model::{Message, Now, RunState};
-use spookery_kernel::perceive::{ClockView, ItemStack, KnownFact, Perceive};
+use spookery_kernel::perceive::{ClockView, ItemStack, KnownFact, View};
 use spookery_kernel::rules::{RollReport, RollResult};
 use spookery_kernel::Reason;
 
@@ -149,11 +149,11 @@ pub fn player_refused(code: &str, missing: Option<&str>) -> String {
     })
 }
 
-pub fn player_perceive_line(view: &Perceive) -> String {
+pub fn player_perceive_line(view: &View) -> String {
     crate::protocol::write_player(&player_view(view))
 }
 
-pub fn perceive_value(view: &Perceive) -> Value {
+pub fn perceive_value(view: &View) -> Value {
     serde_json::to_value(player_view(view)).expect("perceive")
 }
 
@@ -231,8 +231,8 @@ fn gm_say(tape: &TapeLine) -> GmSay {
     }
 }
 
-fn player_view(view: &Perceive) -> PlayerMessage {
-    PlayerMessage::Perceive {
+fn player_view(view: &View) -> PlayerMessage {
+    PlayerMessage::View {
         viewer: view.viewer.clone(),
         place: view.place.clone(),
         visible_actors: view.visible_actors.clone(),

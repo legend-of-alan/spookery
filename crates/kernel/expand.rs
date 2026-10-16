@@ -1,6 +1,6 @@
 use crate::canon::Canon;
 use crate::check::Outcome;
-use crate::effect::{Effect, EffectClass};
+use crate::effect::{Effect, EffectKind};
 use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::meter::{self, MeterWrite};
@@ -140,7 +140,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Flag {
+                EffectKind::Flag {
                     actor_id,
                     key: key.clone(),
                     value: *value,
@@ -189,7 +189,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Meter {
+                EffectKind::Meter {
                     actor_id,
                     key: key.clone(),
                     write,
@@ -204,7 +204,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Item {
+                EffectKind::Item {
                     actor_id,
                     place,
                     id: item_id,
@@ -218,7 +218,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Wield {
+                EffectKind::Wield {
                     actor_id,
                     id: expr::resolve_item_id(intent, id)?,
                 },
@@ -226,13 +226,13 @@ where
         }
         EffectTemplate::Unwield { who } => {
             let actor_id = expr::actor_of(now, ctx, who)?;
-            effects.push(wrap(viewer, &intent.id, EffectClass::Unwield { actor_id }));
+            effects.push(wrap(viewer, &intent.id, EffectKind::Unwield { actor_id }));
         }
         EffectTemplate::Clock { id, add, start } => {
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Clock {
+                EffectKind::Clock {
                     clock_id: id.clone(),
                     delta: add.unwrap_or(0),
                     start: *start,
@@ -249,7 +249,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Message {
+                EffectKind::Message {
                     message_id: id.clone(),
                     to: to.clone(),
                     place: place.clone(),
@@ -269,7 +269,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Narrate {
+                EffectKind::Narrate {
                     to,
                     fact_ids: fact_ids.clone(),
                     text: text.clone(),
@@ -285,7 +285,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Memory {
+                EffectKind::Memory {
                     actor_id,
                     fact_ids: fact_ids.clone(),
                     tags: Vec::new(),
@@ -301,7 +301,7 @@ where
             effects.push(wrap(
                 viewer,
                 &intent.id,
-                EffectClass::Reveal {
+                EffectKind::Reveal {
                     actor_id,
                     fact: fact.clone(),
                 },
@@ -363,7 +363,7 @@ fn resolve_actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> 
     Ok(ids)
 }
 
-fn wrap(viewer: &ViewerId, intent_id: &str, class: EffectClass) -> Effect {
+fn wrap(viewer: &ViewerId, intent_id: &str, class: EffectKind) -> Effect {
     Effect {
         class,
         as_viewer: viewer.clone(),
@@ -379,7 +379,7 @@ fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reaso
         .map(|actor| actor.place().to_string())
         .ok_or(Reason::UnknownKey)?;
     Ok(Effect {
-        class: EffectClass::Location {
+        class: EffectKind::Location {
             actor_id: intent.actor_id.clone(),
             from,
             to: to.to_string(),

@@ -4,7 +4,7 @@ use spookery_kernel::commit::commit_presence;
 use spookery_kernel::model::{ActorLive, Presence};
 use spookery_kernel::perceive::perceive;
 use spookery_kernel::world::World;
-use spookery_kernel::{idle_digest, DigestViewer, Reason};
+use spookery_kernel::{host_summary, DigestViewer, Reason};
 
 use super::frames;
 use super::idle_clock;
@@ -121,7 +121,7 @@ pub(super) fn run_world_loop(
 }
 
 pub(super) fn print_host(world: &World) {
-    if let Ok(text) = idle_digest(world, DigestViewer::Host) {
+    if let Ok(text) = host_summary(world, DigestViewer::Host) {
         if !text.is_empty() {
             print!("{text}");
             let _ = io::stdout().flush();
@@ -557,9 +557,9 @@ fn welcome(world: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
 }
 
 fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
-    let digest = idle_digest(world, DigestViewer::Player(actor_id.to_string()))?;
+    let summary = host_summary(world, DigestViewer::Player(actor_id.to_string()))?;
     let view = perceive(world, &format!("player:{actor_id}"))?;
-    let mut out = frames::player_resume_line(&digest);
+    let mut out = frames::player_resume_line(&summary);
     out.push_str(&frames::player_perceive_line(&view));
     Ok(out)
 }

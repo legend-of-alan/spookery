@@ -1,5 +1,5 @@
 use spookery_kernel::apply::apply_effect;
-use spookery_kernel::effect::{Effect, EffectClass};
+use spookery_kernel::effect::{Effect, EffectKind};
 use spookery_kernel::expand::expand_outcome;
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::journal::Arrival;
@@ -45,7 +45,7 @@ fn arrive(
     let kind = kind_of(actor.is_pc());
     let intent = arrival_intent(round, actor_id, kind, pending);
     let effect = Effect {
-        class: EffectClass::Location {
+        class: EffectKind::Location {
             actor_id: actor_id.to_string(),
             from,
             to: to.clone(),
@@ -133,7 +133,7 @@ fn resume(
         },
     )?;
     for effect in effects {
-        if matches!(effect.class, EffectClass::Location { .. }) {
+        if matches!(effect.class, EffectKind::Location { .. }) {
             continue;
         }
         apply_effect(draft, &intent, effect.clone())?;

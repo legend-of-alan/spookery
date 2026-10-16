@@ -1,5 +1,5 @@
 use crate::canon::Canon;
-use crate::effect::{Effect, EffectClass};
+use crate::effect::{Effect, EffectKind};
 use crate::expand::expand_outcome;
 use crate::ids::kernel_intent_id;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
@@ -52,7 +52,7 @@ pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
     });
     if keeps_empty {
         for effect in &effects {
-            if let EffectClass::Message { to, .. } = &effect.class {
+            if let EffectKind::Message { to, .. } = &effect.class {
                 intent.args.message_to = Some(to.clone());
             }
         }
@@ -138,16 +138,16 @@ fn stamp(intent: &mut Intent, effects: &[Effect]) {
     for effect in effects {
         if intent.target == Target::Empty {
             match &effect.class {
-                EffectClass::Location { to, .. } => {
+                EffectKind::Location { to, .. } => {
                     intent.target = Target::Place(to.clone());
                 }
-                EffectClass::Clock { clock_id, .. } => {
+                EffectKind::Clock { clock_id, .. } => {
                     intent.target = Target::Clock(clock_id.clone());
                 }
                 _ => {}
             }
         }
-        if let EffectClass::Message { to, .. } = &effect.class {
+        if let EffectKind::Message { to, .. } = &effect.class {
             intent.args.message_to = Some(to.clone());
         }
     }

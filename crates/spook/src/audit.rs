@@ -9,7 +9,7 @@ use std::path::Path;
 
 use spookery_kernel::canon::{load_canon, Canon};
 use spookery_kernel::diagnostic::reason_of;
-use spookery_kernel::effect::EffectClass;
+use spookery_kernel::effect::EffectKind;
 use spookery_kernel::journal::{self, JournalEntry, TickRecord};
 use spookery_kernel::model::Now;
 use spookery_kernel::perceive::perceive_at;
@@ -287,7 +287,7 @@ fn narrate_findings(canon: &Canon, snaps: &[Snap], ticks: &[TickRecord]) -> Vec<
             continue;
         };
         for effect in &tick.effects {
-            let EffectClass::Narrate { to, fact_ids, text } = &effect.class else {
+            let EffectKind::Narrate { to, fact_ids, text } = &effect.class else {
                 continue;
             };
             for pc in to {

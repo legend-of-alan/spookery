@@ -632,6 +632,11 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         diags.extend(crate::lint::message_text_leaks(root, canon));
         diags.extend(crate::map::unreachable(canon));
         diags.extend(crate::map::teleport_in_verbs(canon));
+        diags.extend(crate::lint::trigger_cycles(canon));
+        diags.extend(crate::lint::trigger_leaks(
+            canon,
+            loaded.as_ref().map(|(_, now)| now),
+        ));
     }
     diags
 }

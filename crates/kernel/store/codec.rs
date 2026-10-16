@@ -302,12 +302,12 @@ messages: []
         assert_eq!(load_save(&emitted).unwrap().schema, "now");
     }
 
-    use crate::effect::EffectClass;
+    use crate::effect::EffectKind;
     use crate::error::Reason;
     use crate::intent::ViewerId;
     use crate::model::MemoryLine;
 
-    fn effect(class: EffectClass, viewer: ViewerId, intent_id: &str) -> super::Effect {
+    fn effect(class: EffectKind, viewer: ViewerId, intent_id: &str) -> super::Effect {
         super::Effect {
             class,
             as_viewer: viewer,
@@ -328,7 +328,7 @@ messages: []
         let cases = [
             (
                 effect(
-                    EffectClass::Clock {
+                    EffectKind::Clock {
                         clock_id: "shop_day".to_string(),
                         delta: 1,
                         start: false,
@@ -340,7 +340,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Meter {
+                    EffectKind::Meter {
                         actor_id: "mira".to_string(),
                         key: "rest".to_string(),
                         write: crate::meter::MeterWrite::Base(1),
@@ -352,7 +352,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Item {
+                    EffectKind::Item {
                         actor_id: None,
                         place: Some("docks_shop".to_string()),
                         id: "lamp_oil".to_string(),
@@ -366,7 +366,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Location {
+                    EffectKind::Location {
                         actor_id: "bram".to_string(),
                         from: "docks_street".to_string(),
                         to: "docks_shop".to_string(),
@@ -379,7 +379,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Memory {
+                    EffectKind::Memory {
                         actor_id: "mira".to_string(),
                         fact_ids: vec!["fact_a".to_string(), "fact_b".to_string()],
                         tags: vec!["heard".to_string()],
@@ -392,7 +392,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Memory {
+                    EffectKind::Memory {
                         actor_id: "mira".to_string(),
                         fact_ids: Vec::new(),
                         tags: Vec::new(),
@@ -405,7 +405,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Meter {
+                    EffectKind::Meter {
                         actor_id: "pc_rowan".to_string(),
                         key: "grit".to_string(),
                         write: crate::meter::MeterWrite::Snap,
@@ -417,7 +417,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Flag {
+                    EffectKind::Flag {
                         actor_id: "mira".to_string(),
                         key: "marked".to_string(),
                         value: true,
@@ -429,7 +429,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Message {
+                    EffectKind::Message {
                         message_id: "note_mira_door".to_string(),
                         to: vec!["pc_rowan".to_string()],
                         place: Some("docks_shop".to_string()),
@@ -443,7 +443,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Message {
+                    EffectKind::Message {
                         message_id: "n".to_string(),
                         to: Vec::new(),
                         place: None,
@@ -457,7 +457,7 @@ messages: []
             ),
             (
                 effect(
-                    EffectClass::Reveal {
+                    EffectKind::Reveal {
                         actor_id: "pc_nell".to_string(),
                         fact: "fact_trapdoor".to_string(),
                     },

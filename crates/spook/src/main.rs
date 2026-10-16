@@ -185,7 +185,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         }
         Command::Status { pack } => {
             let world = spookery_kernel::World::open(&pack).map_err(spookery::Error::Reason)?;
-            let text = spookery_kernel::idle_digest(&world, spookery_kernel::DigestViewer::Host)
+            let text = spookery_kernel::host_summary(&world, spookery_kernel::DigestViewer::Host)
                 .map_err(spookery::Error::Reason)?;
             print!("{text}");
             Ok(())

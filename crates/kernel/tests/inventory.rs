@@ -22,7 +22,7 @@ use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
 use spookery_kernel::apply::apply_effect;
-use spookery_kernel::effect::{Effect, EffectClass};
+use spookery_kernel::effect::{Effect, EffectKind};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::model::Now;
 use spookery_kernel::world::{Draft, World};
@@ -198,7 +198,7 @@ fn item_effect(step: &ItemChange) -> Effect {
         Holder::Place(id) => (None, Some(id.clone())),
     };
     Effect {
-        class: EffectClass::Item {
+        class: EffectKind::Item {
             actor_id,
             place,
             id: step.id.clone(),

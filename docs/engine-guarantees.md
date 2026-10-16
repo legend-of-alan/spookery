@@ -88,8 +88,10 @@ while the watch stays true. Arrival fires a rule on that place, including an
 author teleport. A meter that crosses the watched line can set a flag in that
 round. An arrival that also meets a flag can grant a fact and start a clock in
 that round. Two rules that set each other's flags stop at depth 4, and the round
-records the stop. A change rule may roll. Verify reproduces that roll, and it
-passes after a round that fired a change rule.
+records the stop. Check warns when change rules set each other's watched
+values. A narrate or note on a change rule that can reach a viewer who cannot
+see that change is rejected. A change rule may roll. Verify reproduces that
+roll, and it passes after a round that fired a change rule.
 
 A narrate line reaches each person it names, unless the line would show a fact
 that person is not allowed to know. Someone in another room does not hear a line
@@ -147,8 +149,8 @@ first one makes ineligible. `NO_EXIT` is a missing exit. `BUSY` is a move while
 busy.
 
 Check's codes for a broken pack are `SCHEMA`, `NOT_IN_SPEC`,
-`PACK_REV_MISMATCH`, `HIDDEN_FACT_IN_BODY`, `HIDDEN_FACT_IN_TEXT`, and
-`WARNING`. A warning alone does not fail the check.
+`PACK_REV_MISMATCH`, `HIDDEN_FACT_IN_BODY`, `HIDDEN_FACT_IN_TEXT`,
+`TRIGGER_LEAK`, and `WARNING`. A warning alone does not fail the check.
 
 Tested in `features/rules/rules_live_with_their_owner.feature`,
 `features/items/items_are_real.feature`,

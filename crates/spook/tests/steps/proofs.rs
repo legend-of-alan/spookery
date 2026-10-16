@@ -11,7 +11,7 @@ use spookery::host::{
 };
 use spookery_kernel::apply::apply_effect;
 use spookery_kernel::check::Outcome;
-use spookery_kernel::effect::{Effect, EffectClass};
+use spookery_kernel::effect::{Effect, EffectKind};
 use spookery_kernel::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::meter::MeterLive;
 use spookery_kernel::model::{
@@ -507,7 +507,7 @@ fn mira_intent() -> Intent {
 
 fn stock_effect(delta: i64) -> Effect {
     Effect {
-        class: EffectClass::Item {
+        class: EffectKind::Item {
             actor_id: None,
             place: Some("docks_shop".to_string()),
             id: "lamp_oil".to_string(),

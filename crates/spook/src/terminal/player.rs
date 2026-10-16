@@ -33,7 +33,7 @@ pub fn run_player_terminal(
         };
         match write_frame(&line, raw) {
             FrameEffect::Refuse => std::process::exit(1),
-            FrameEffect::Perceive => break,
+            FrameEffect::View => break,
             FrameEffect::Continue => {}
         }
     }
@@ -41,7 +41,7 @@ pub fn run_player_terminal(
     std::thread::spawn(move || loop {
         match read_line(&mut reader) {
             Ok(Some(line)) => match write_frame(&line, raw) {
-                FrameEffect::Refuse | FrameEffect::Continue | FrameEffect::Perceive => {}
+                FrameEffect::Refuse | FrameEffect::Continue | FrameEffect::View => {}
             },
             Ok(None) => std::process::exit(0),
             Err(TerminalError::Io(err)) => {
@@ -119,7 +119,7 @@ fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Termin
 
 enum FrameEffect {
     Continue,
-    Perceive,
+    View,
     Refuse,
 }
 
@@ -139,7 +139,7 @@ fn write_raw(line: &str) -> FrameEffect {
     println!("{line}");
     let _ = io::stdout().flush();
     if is_perceive(line) {
-        FrameEffect::Perceive
+        FrameEffect::View
     } else {
         FrameEffect::Continue
     }
@@ -158,7 +158,7 @@ fn write_readable(line: &str) -> FrameEffect {
             eprintln!("{text}");
             let _ = io::stderr().flush();
         }
-        FrameEffect::Continue | FrameEffect::Perceive => {
+        FrameEffect::Continue | FrameEffect::View => {
             println!("{text}");
             let _ = io::stdout().flush();
         }
@@ -169,7 +169,7 @@ fn write_readable(line: &str) -> FrameEffect {
 fn frame_effect(message: &PlayerMessage) -> FrameEffect {
     match message {
         PlayerMessage::Refused { .. } => FrameEffect::Refuse,
-        PlayerMessage::Perceive { .. } => FrameEffect::Perceive,
+        PlayerMessage::View { .. } => FrameEffect::View,
         PlayerMessage::Say { .. }
         | PlayerMessage::Queued { .. }
         | PlayerMessage::Check { .. }
@@ -188,6 +188,6 @@ fn refused_code(line: &str) -> Option<String> {
 fn is_perceive(line: &str) -> bool {
     matches!(
         crate::protocol::read_player(line),
-        Ok(PlayerMessage::Perceive { .. })
+        Ok(PlayerMessage::View { .. })
     )
 }
