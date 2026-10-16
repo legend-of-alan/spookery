@@ -718,6 +718,224 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
     );
 }
 
+#[when(expr = "a round runs")]
+fn a_round_runs(world: &mut World) {
+    let pack = temp_pack("trigger-tick-counter");
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    });
+    show(world, pack, Vec::new());
+}
+
+#[then(expr = "the GM summary lists a tick counter change")]
+fn the_gm_summary_lists_a_tick_counter(world: &mut World) {
+    assert!(
+        world.summary.iter().any(|item| is_tick_counter(item)),
+        "no tick counter\n{:?}",
+        world.summary
+    );
+}
+
+#[then(expr = "{string}'s summary lists no tick counter change")]
+fn the_viewer_summary_omits_tick_counters(world: &mut World, viewer: String) {
+    let changes = seen_of(world, &viewer);
+    assert!(
+        changes.iter().all(|item| !is_tick_counter(item)),
+        "{viewer} saw a tick counter\n{changes:?}"
+    );
+}
+
+#[when(expr = "pc_nell learns fact_trapdoor while pc_wren is in the same room")]
+fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
+    let pack = temp_pack("trigger-known-fact");
+    append(
+        &pack.join("world/places/docks_street.md"),
+        "    hidden: false\n",
+        "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
+    );
+    add_verb(
+        &pack,
+        "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
+    );
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+        sit(now, &["pc_nell", "pc_wren"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent("nell-learn", "pc_nell", "learn", Target::Empty)],
+    );
+}
+
+#[when(expr = "an item is taken from docks_shop")]
+fn an_item_is_taken_from_the_shop(world: &mut World) {
+    let pack = temp_pack("trigger-place-item");
+    edit_save(&pack, |now| {
+        sit(now, &["pc_rowan"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent(
+            "rowan-take",
+            "pc_rowan",
+            "take",
+            Target::Actor("lamp_oil".to_string()),
+        )],
+    );
+}
+
+#[when(expr = "pc_rowan takes an item while pc_nell is in the same room")]
+fn rowan_takes_an_item_beside_nell(world: &mut World) {
+    let pack = temp_pack("trigger-actor-item");
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_shop");
+        sit(now, &["pc_rowan", "pc_nell", "pc_wren"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent(
+            "rowan-take",
+            "pc_rowan",
+            "take",
+            Target::Actor("lamp_oil".to_string()),
+        )],
+    );
+}
+
+#[when(expr = "a clock owned by pc_nell ticks")]
+fn a_clock_owned_by_nell_ticks(world: &mut World) {
+    let pack = temp_pack("trigger-clock");
+    add_verb(
+        &pack,
+        "\n  - id: mark_tide\n    when:\n      verb: mark_tide\n    do:\n      - clock:\n          id: nell_tide\n          add: 1\n",
+    );
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+        now.clocks.insert(
+            "nell_tide".to_string(),
+            Clock {
+                value: 0,
+                max: 6,
+                requires_presence: false,
+                owners: vec!["pc_nell".to_string()],
+                paused: false,
+            },
+        );
+        sit(now, &["pc_nell", "pc_wren"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent("nell-tide", "pc_nell", "mark_tide", Target::Empty)],
+    );
+}
+
+#[when(expr = "pc_nell travels from docks_street into docks_shop")]
+fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
+    let pack = temp_pack("trigger-both-rooms");
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+        put(now, "pc_harbormouse", "mira_rooms");
+        sit(now, &["pc_nell"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent(
+            "nell-shop",
+            "pc_nell",
+            "travel",
+            Target::Place("docks_shop".to_string()),
+        )],
+    );
+}
+
+#[when(expr = "a rule sets world flag tide_turned")]
+fn a_rule_sets_the_tide(world: &mut World) {
+    let pack = temp_pack("trigger-world-flag");
+    add_verb(
+        &pack,
+        "\n  - id: turn_tide\n    when:\n      verb: turn_tide\n    do:\n      - flag:\n          who: world\n          key: tide_turned\n          value: true\n",
+    );
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_shop");
+        put(now, "pc_rowan", "mira_rooms");
+        sit(now, &["pc_nell", "pc_wren", "pc_rowan"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent("nell-tide", "pc_nell", "turn_tide", Target::Empty)],
+    );
+}
+
+#[then(expr = "every seated player's summary lists {string}")]
+fn every_seated_summary_lists(world: &mut World, key: String) {
+    let now = load(world.pack.as_ref().unwrap());
+    let seated: Vec<String> = now
+        .presence
+        .actors_present
+        .iter()
+        .filter(|id| now.actors.get(*id).is_some_and(|actor| actor.is_pc()))
+        .cloned()
+        .collect();
+    assert!(!seated.is_empty(), "nobody is seated");
+    for id in &seated {
+        let changes = seen_of(world, id);
+        assert!(
+            changes.iter().any(|item| item == &key),
+            "{id} missing {key}\n{changes:?}"
+        );
+    }
+}
+
+#[when(expr = "pc_wren's meter changes while pc_nell is elsewhere")]
+fn wrens_meter_changes_while_nell_is_elsewhere(world: &mut World) {
+    let pack = temp_pack("trigger-meter");
+    add_verb(
+        &pack,
+        "\n  - id: spend\n    when:\n      verb: spend\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: -1\n",
+    );
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_shop");
+        sit(now, &["pc_nell", "pc_wren", "pc_harbormouse"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent("wren-spend", "pc_wren", "spend", Target::Empty)],
+    );
+}
+
+#[when(expr = "a message hidden from pc_wren is written")]
+fn a_message_hidden_from_wren_is_written(world: &mut World) {
+    let pack = temp_pack("trigger-message");
+    add_verb(
+        &pack,
+        "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - pc_nell\n          text: The tide turns at dusk.\n",
+    );
+    write_nell(&pack, &[]);
+    edit_save(&pack, |now| {
+        seat(now, "pc_rowan", "pc_nell", "docks_street");
+        sit(now, &["pc_nell", "pc_wren"]);
+    });
+    show(
+        world,
+        pack,
+        vec![intent("nell-word", "pc_nell", "pass_word", Target::Empty)],
+    );
+}
+
 #[then(expr = "spook verify passes on this pack")]
 fn verify_passes_on_this_pack(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
@@ -794,6 +1012,28 @@ fn seen_of(world: &World, viewer: &str) -> Vec<String> {
         .filter(|(id, _)| id == viewer)
         .flat_map(|(_, changes)| changes.clone())
         .collect()
+}
+
+fn is_tick_counter(key: &str) -> bool {
+    key.starts_with("tick_last_act ")
+        || key.starts_with("tick_idle_acts ")
+        || key.starts_with("tick_live_acts ")
+}
+
+fn show(world: &mut World, pack: std::path::PathBuf, intents: Vec<Intent>) {
+    let played = play_view(&pack, intents);
+    world.summary = played.summary;
+    world.seen = played.seen;
+    world.pack = Some(pack);
+}
+
+fn put(now: &mut Now, id: &str, place: &str) {
+    *now.actors.get_mut(id).unwrap().place_mut() = place.to_string();
+}
+
+fn sit(now: &mut Now, ids: &[&str]) {
+    now.presence.humans = u32::try_from(ids.len()).unwrap();
+    now.presence.actors_present = ids.iter().map(|id| (*id).to_string()).collect();
 }
 
 fn narrates(tick: &Value, text: &str, viewer: &str) -> bool {

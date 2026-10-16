@@ -99,8 +99,14 @@ addressed to the room. Audit fails when a narrate line repeats a hidden fact tha
 person does not know. Reveal gives the person it names a fact, and a hidden exit
 that fact uncovers then shows up for them. A world flag can be set, and a later
 rule sees it for a person who is present. Each viewer gets their own change
-summary: the GM sees a player move, a player sees a change to their own flag,
-and another player does not see it. Verify passes after rounds that fired these
+summary. The GM sees every change. Tick counters stay with the GM. A learned
+fact is told only to that person. An item change in a place is seen by the
+players there. A message is seen only by the people allowed to see it. A clock
+change is seen by that clock's owners. Entering and leaving are seen by the
+players in the room left, the players in the room entered, and the mover. A
+world flag is seen by every player. Another person's flag, meter, busy status,
+items, or wielded weapon is seen by the players in the same place. A player
+sees a change to their own flag. Verify passes after rounds that fired these
 rules.
 
 Tested in `features/rules/triggers.feature` and
