@@ -3,8 +3,28 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      # Skip CI when a change only touches top-level Markdown, docs or images.
+      # The three docs below are read by tests, so editing them still runs CI.
+      - "**"
+      - "!*.md"
+      - "!docs/**"
+      - "docs/pack-reference.md"
+      - "docs/seat-protocol.md"
+      - "docs/engine-guarantees.md"
+      - "!**/*.png"
+      - "!**/*.svg"
   pull_request:
     branches: [main]
+    paths:
+      - "**"
+      - "!*.md"
+      - "!docs/**"
+      - "docs/pack-reference.md"
+      - "docs/seat-protocol.md"
+      - "docs/engine-guarantees.md"
+      - "!**/*.png"
+      - "!**/*.svg"
 
 permissions:
   contents: read
