@@ -208,38 +208,27 @@ fn one_player_sends_200_lines(world: &mut World) {
     }
     // The other player's wait is its own tick. Its place among the new ticks
     // shows whether it waited behind the flood.
+    let other_waits = |key: &String| {
+        table::list_player_waits(&pack, key)
+            .iter()
+            .any(|id| id == "pc_harbormouse")
+    };
     let keys = table::wait_ticks_until(&pack, "the other player's wait", |keys| {
         keys.get(before..)
             .unwrap_or_default()
             .iter()
-            .any(|key| waits_of(&pack, key).iter().any(|id| id == "pc_harbormouse"))
+            .any(other_waits)
     });
     let other_at = keys
         .get(before..)
         .unwrap_or_default()
         .iter()
-        .position(|key| waits_of(&pack, key).iter().any(|id| id == "pc_harbormouse"))
+        .position(other_waits)
         .unwrap_or_else(|| panic!("no other player tick"))
         + 1;
     // Past the burst means a later line was kept. A drop would stop at 11 ticks.
     let ticks = table::wait_tick_count(&pack, before + 12).len() - before;
     world.scratch = format!("{ticks} {} {other_at}", started.elapsed().as_millis());
-}
-
-/// The actors whose player `wait` is in that tick.
-fn waits_of(pack: &std::path::Path, key: &str) -> Vec<String> {
-    let text = spookery_kernel::api::journal::read_record_line(pack, key)
-        .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
-    let tick: serde_json::Value =
-        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}"));
-    tick["intents"]
-        .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or_default()
-        .iter()
-        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
-        .filter_map(|intent| intent["actor_id"].as_str().map(str::to_string))
-        .collect()
 }
 
 #[then(expr = "the committed ticks stay within the rate allowance")]

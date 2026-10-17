@@ -113,6 +113,26 @@ pub fn list_tick_keys(pack: &Path) -> Vec<String> {
     spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
+/// The actors whose player `wait` is in that tick.
+pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    let tick: Value =
+        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
+    tick["intents"]
+        .as_array()
+        .unwrap_or_else(|| panic!("intents"))
+        .iter()
+        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
+        .map(|intent| {
+            intent["actor_id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("actor_id"))
+                .to_string()
+        })
+        .collect()
+}
+
 /// How long the journal may sit still before a wait calls it a hang. It bounds
 /// one commit, not the whole wait, so a slow machine only makes the wait longer.
 const JOURNAL_STALL: Duration = Duration::from_secs(10);

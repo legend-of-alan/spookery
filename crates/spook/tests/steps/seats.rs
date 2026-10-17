@@ -324,7 +324,7 @@ fn session_status_lists_both_queued_lines(world: &mut World) {
 
 #[then(expr = "the tick log records both waits")]
 fn the_tick_log_records_both_waits(world: &mut World) {
-    let actors = player_waits(table::pack(world), "tick-0001");
+    let actors = table::list_player_waits(table::pack(world), "tick-0001");
     assert_eq!(
         actors,
         vec!["pc_rowan".to_string(), "pc_harbormouse".to_string()]
@@ -341,11 +341,11 @@ fn each_wait_committed_its_own_tick(world: &mut World) {
         vec!["tick-0001".to_string(), "tick-0002".to_string()]
     );
     assert_eq!(
-        player_waits(pack, "tick-0001"),
+        table::list_player_waits(pack, "tick-0001"),
         vec!["pc_rowan".to_string()]
     );
     assert_eq!(
-        player_waits(pack, "tick-0002"),
+        table::list_player_waits(pack, "tick-0002"),
         vec!["pc_harbormouse".to_string()]
     );
 }
@@ -442,25 +442,6 @@ fn store_now(pack: &std::path::Path, mut now: spookery_kernel::api::model::Now) 
     let text = spookery_kernel::api::store::codec::emit_save(&now)
         .unwrap_or_else(|err| panic!("emit: {err}"));
     fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
-}
-
-fn player_waits(pack: &std::path::Path, name: &str) -> Vec<String> {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    let tick: serde_json::Value =
-        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
-    tick["intents"]
-        .as_array()
-        .unwrap_or_else(|| panic!("intents"))
-        .iter()
-        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
-        .map(|intent| {
-            intent["actor_id"]
-                .as_str()
-                .unwrap_or_else(|| panic!("actor_id"))
-                .to_string()
-        })
-        .collect()
 }
 
 fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
