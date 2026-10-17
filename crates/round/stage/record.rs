@@ -92,7 +92,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         effects: line.effects.to_vec(),
         arrivals: line.arrivals.to_vec(),
         fast_forward: line.fast_forward,
-        tool_trace: line.tool_trace.to_vec(),
+        tool_trace: trim_trace(line.tool_trace),
         memories: Vec::new(),
         now_hash: String::new(),
         prev: String::new(),
@@ -101,12 +101,53 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
     journal::emit_entry(&journal::JournalEntry::Tick(record))
 }
 
+/// Steps every round pushes, in order. `commit_round` may follow `record`.
+const STANDARD_STEPS: &[&str] = &[
+    "advance",
+    "complete",
+    "gather",
+    "session_status",
+    "resolve",
+    "apply",
+    "run_triggers",
+    "observe",
+    "record",
+];
+
+/// The part of `trace` worth storing. A trace that skips or reorders the
+/// standard steps is kept whole, so a broken round stays visible.
+fn trim_trace(trace: &[String]) -> Vec<String> {
+    let mut index = 0usize;
+    let mut extras = Vec::new();
+    let mut commit_seen = false;
+    for step in trace {
+        let name = step.as_str();
+        if index < STANDARD_STEPS.len() && name == STANDARD_STEPS[index] {
+            index += 1;
+            continue;
+        }
+        if name == "commit_round" && index == STANDARD_STEPS.len() && !commit_seen {
+            commit_seen = true;
+            continue;
+        }
+        if name == "commit_round" || STANDARD_STEPS.contains(&name) {
+            return trace.to_vec();
+        }
+        extras.push(step.clone());
+    }
+    if index < STANDARD_STEPS.len() {
+        trace.to_vec()
+    } else {
+        extras
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use spookery_kernel::api::effect::{Effect, EffectKind};
     use spookery_kernel::api::intent::ViewerId;
 
-    use super::{render_round_line, RoundLine};
+    use super::{render_round_line, RoundLine, STANDARD_STEPS};
 
     #[test]
     fn round_line_embeds_the_flat_effect() {
@@ -142,5 +183,83 @@ mod tests {
         let encoded = spookery_kernel::api::store::codec::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
         assert!(!line.contains("\"payload\""));
+    }
+
+    #[test]
+    fn a_standard_trace_omits_tool_trace() {
+        for commit in [true, false] {
+            let line = render(&standard_trace(commit));
+            assert!(!line.contains("tool_trace"), "{line}");
+        }
+    }
+
+    #[test]
+    fn extra_steps_are_the_only_tool_trace() {
+        let mut steps = Vec::new();
+        for name in [
+            "advance",
+            "complete",
+            "gather",
+            "session_status",
+            "resolve",
+            "perceive:mira",
+            "apply",
+            "apply_effect",
+            "cast:mira/leave_door_note",
+            "run_triggers",
+            "observe",
+            "record",
+            "commit_round",
+        ] {
+            steps.push(name.to_string());
+        }
+        let line = render(&steps);
+        assert!(line.contains(
+            "\"tool_trace\":[\"perceive:mira\",\"apply_effect\",\"cast:mira/leave_door_note\"]"
+        ));
+        assert!(!line.contains("advance"), "{line}");
+    }
+
+    #[test]
+    fn a_reordered_trace_is_stored_whole() {
+        let line = render(&["complete".to_string()]);
+        assert!(line.contains("\"tool_trace\":[\"complete\"]"), "{line}");
+        let partial = render(&["advance".to_string(), "perceive:mira".to_string()]);
+        assert!(
+            partial.contains("\"tool_trace\":[\"advance\",\"perceive:mira\"]"),
+            "{partial}"
+        );
+    }
+
+    fn standard_trace(commit: bool) -> Vec<String> {
+        let mut steps = STANDARD_STEPS
+            .iter()
+            .map(|step| step.to_string())
+            .collect::<Vec<_>>();
+        if commit {
+            steps.push("commit_round".to_string());
+        }
+        steps
+    }
+
+    fn render(trace: &[String]) -> String {
+        render_round_line(&RoundLine {
+            tick_index: 1,
+            rules_rev: spookery_kernel::api::store::RULES_REV,
+            state_rev_before: 0,
+            state_rev_after: 1,
+            world_time_before: 0,
+            world_time_after: 60,
+            presence_humans: 0,
+            actors_present: &[],
+            seed: "seed",
+            last_tick_at: "2026-01-01T00:00:00Z",
+            intents: &[],
+            rejected: &[],
+            effects: &[],
+            arrivals: &[],
+            fast_forward: false,
+            tool_trace: trace,
+        })
     }
 }

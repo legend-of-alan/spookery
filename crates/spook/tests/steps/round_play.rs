@@ -7,6 +7,7 @@ use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target
 use spookery_kernel::api::rules::{roll, RollInput, RollKey, RollReport};
 use spookery_round::RoundCause;
 
+use super::tool_trace::{assert_standard_steps_omitted, read_tick};
 use crate::support::{self, copy_dir};
 use crate::World;
 
@@ -79,34 +80,10 @@ fn a_docks_round_is_played(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(
-    expr = "the round trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order"
-)]
-fn the_round_trace_lists_the_stages(world: &mut World) {
-    let tick = tick_value(world.pack.as_ref().unwrap(), "tick-0001");
-    let trace: Vec<&str> = tick["tool_trace"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(Value::as_str)
-        .collect();
-    let stages = [
-        "advance",
-        "complete",
-        "gather",
-        "resolve",
-        "apply",
-        "run_triggers",
-        "observe",
-        "record",
-    ];
-    let mut at = 0usize;
-    for name in &trace {
-        if at < stages.len() && *name == stages[at] {
-            at += 1;
-        }
-    }
-    assert_eq!(at, stages.len(), "{trace:?}");
+#[then(expr = "the round followed the standard step order")]
+fn the_round_followed_the_standard_step_order(world: &mut World) {
+    let tick = read_tick(world.pack.as_ref().unwrap(), "tick-0001");
+    assert_standard_steps_omitted(&tick);
 }
 
 #[given(expr = "a round where Lark rolls grit")]
@@ -693,7 +670,7 @@ fn play_queued(
     }
     spookery_round::play(&mut world, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    let tick = tick_value(pack, "tick-0001");
+    let tick = read_tick(pack, "tick-0001");
     let now = world.now().clone();
     let rolls = world.take_rolls();
     (now, rolls, tick)
@@ -739,12 +716,6 @@ fn append(path: &Path, extra: &str) {
     let mut text = fs::read_to_string(path).unwrap();
     text.push_str(extra);
     fs::write(path, text).unwrap();
-}
-
-fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}\n{text}"))
 }
 
 fn copy_named(name: &str, label: &str) -> PathBuf {

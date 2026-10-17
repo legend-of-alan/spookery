@@ -9,4 +9,4 @@ Feature: A round runs named stages
 
   Scenario: Stages run in order
     When a docks round is played
-    Then the round trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order
+    Then the round followed the standard step order
