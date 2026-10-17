@@ -1,6 +1,9 @@
 //! Typed YAML for a rule. Serde picks the effect and condition variants.
 //! Kind names are enum variants, not strings compared in this module.
 
+use std::fmt;
+
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_saphyr::Spanned;
 
@@ -123,11 +126,47 @@ pub struct ChangeYaml {
     pub knows: Option<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
 pub enum IfYaml {
     List(Vec<CondYaml>),
     One(Box<CondYaml>),
+}
+
+impl<'de> Deserialize<'de> for IfYaml {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Visit;
+
+        impl<'de> Visitor<'de> for Visit {
+            type Value = IfYaml;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("one condition or a list of conditions")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<IfYaml, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut list = Vec::new();
+                while let Some(cond) = seq.next_element()? {
+                    list.push(cond);
+                }
+                Ok(IfYaml::List(list))
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<IfYaml, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let cond = CondYaml::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(IfYaml::One(Box::new(cond)))
+            }
+        }
+
+        deserializer.deserialize_any(Visit)
+    }
 }
 
 #[derive(Deserialize)]
@@ -714,7 +753,7 @@ pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             who: who_of(&meter.who)?,
             key: meter.key.clone(),
             op: op_of(&meter.op)?,
-            value: number_of(&meter.value)?,
+            value: still_number(&meter.value)?,
         });
     }
     if let Some(flag) = &yaml.flag {
@@ -744,7 +783,7 @@ pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
         cond = Some(Cond::Clock {
             id: clock.id.clone(),
             op: op_of(&clock.op)?,
-            value: number_of(&clock.value)?,
+            value: still_number(&clock.value)?,
         });
     }
     if let Some(hour) = &yaml.hour {
@@ -851,6 +890,15 @@ fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {
         target: number_of(&yaml.target)?,
         partial_at: yaml.partial_at.as_ref().map(number_of).transpose()?,
     })
+}
+
+fn still_number(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {
+    let expr = number_of(yaml)?;
+    if expr.needs_dice() {
+        let (line, column) = span_at(yaml);
+        return Err(Fault::new("a condition cannot roll dice").at(line, column));
+    }
+    Ok(expr)
 }
 
 fn number_of(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {

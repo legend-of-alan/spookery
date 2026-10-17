@@ -43,6 +43,21 @@ Feature: Dice and arithmetic in rule numbers
     And the report says "meter 'nope'"
     And the report has a location for "rules/verbs.yaml"
 
+  Scenario: An NPC habit rolls its effect dice
+    Given a docks table
+    When Mira's habit adds "1d4" to grit
+    And one round plays
+    Then Mira's grit rose by the 1d4 face
+    And the journal records the 1d4 face
+
+  Scenario: Dice in a condition fail spook check
+    Given a docks table
+    When the pack's hit requires grit of at least "1d6"
+    And the operator runs spook check
+    Then the check exits 1
+    And the report says "cannot roll dice"
+    And the report names the line holding "1d6"
+
   Scenario: Overflow refuses the effect and changes nothing
     Given a docks table
     When the pack's hit adds "9223372036854775807 + 1" to grit

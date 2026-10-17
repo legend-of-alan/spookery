@@ -5,7 +5,7 @@ A rule number is an expression. The pack loads it once. Play evaluates that tree
 These fields take an expression:
 
 - `roll.target` and `roll.partial_at`
-- a condition's `meter.value` and `clock.value`
+- a condition's `meter.value` and `clock.value` (no dice; dice fail `spook check` on that line)
 - a meter effect's `add` and `set`
 - a resist roll's `target`
 - a cost's meter amounts and item counts

@@ -51,9 +51,9 @@ run, verify names that round and the first effect that differs. Each journal
 record reads back as the bytes that were written. Replay prints the ending
 revision and leaves the pack unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
-them. A number in a rule can roll dice. Those faces are seeded with the
+them. A number in a rule can roll dice, including an NPC habit's effect. Those faces are seeded with the
 round, written on the journal line, and shown to the GM. Replay rolls them
-again. A change of who is present, and a migrate between rounds, verify too.
+again. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
 
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/replay/typed_journal_records.feature`,

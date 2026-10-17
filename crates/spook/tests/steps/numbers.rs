@@ -20,6 +20,40 @@ fn the_packs_hit_adds(world: &mut World, add: String) {
     stamp(&pack);
 }
 
+#[when(expr = "Mira's habit adds {string} to grit")]
+fn miras_habit_adds(world: &mut World, add: String) {
+    let pack = table::pack(world).to_path_buf();
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
+    let next = text.replacen(
+        "rules:\n  - id: leave_door_note\n",
+        &format!(
+            "rules:\n  - id: toss\n    when: habit\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"{add}\"\n  - id: leave_door_note\n"
+        ),
+        1,
+    );
+    assert_ne!(next, text, "mira habit was not inserted");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
+    stamp(&pack);
+}
+
+#[when(expr = "one round plays")]
+fn one_round_plays(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+}
+
+#[when(expr = "the pack's hit requires grit of at least {string}")]
+fn the_packs_hit_requires(world: &mut World, value: String) {
+    let pack = table::pack(world).to_path_buf();
+    let path = pack.join("rules/verbs.yaml");
+    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
+    text.push_str(&format!(
+        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          who: self\n          key: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: 1\n"
+    ));
+    fs::write(&path, text).unwrap_or_else(|err| panic!("write verbs: {err}"));
+}
+
 #[when(expr = "the player hits and the GM commits")]
 fn the_player_hits_and_the_gm_commits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
@@ -37,6 +71,39 @@ fn the_player_hits_and_the_gm_commits(world: &mut World) {
 #[then(expr = "Rowan's grit is {int}")]
 fn rowans_grit_is(world: &mut World, expected: i64) {
     assert_eq!(grit(world), expected);
+}
+
+#[then(expr = "Mira's grit rose by the 1d4 face")]
+fn miras_grit_rose_by_the_1d4_face(world: &mut World) {
+    let faces = dice_faces(world, "1d4");
+    assert_eq!(faces.len(), 1, "{faces:?}");
+    assert_eq!(grit_of(world, "mira"), 1 + i64::from(faces[0]));
+}
+
+#[then(expr = "the journal records the 1d4 face")]
+fn the_journal_records_the_1d4_face(world: &mut World) {
+    let line = dice_line(world);
+    assert!(line.contains("1d4 →"), "{line}");
+}
+
+#[then(expr = "the report names the line holding {string}")]
+fn the_report_names_the_line_holding(world: &mut World, needle: String) {
+    let pack = table::pack(world);
+    let text = fs::read_to_string(pack.join("rules/verbs.yaml"))
+        .unwrap_or_else(|err| panic!("read verbs: {err}"));
+    let mut line = None;
+    for (index, item) in text.lines().enumerate() {
+        if item.contains(&needle) {
+            line = Some(index + 1);
+        }
+    }
+    let line = line.unwrap_or_else(|| panic!("no line holding {needle}"));
+    let located = format!("rules/verbs.yaml:{line}:");
+    assert!(
+        world.stderr.contains(&located),
+        "missing {located}\n{}",
+        world.stderr
+    );
 }
 
 #[then(expr = "Rowan's grit rose by the 2d6 faces")]
@@ -132,11 +199,15 @@ fn stamp(pack: &std::path::Path) {
 }
 
 fn grit(world: &World) -> i64 {
+    grit_of(world, "pc_rowan")
+}
+
+fn grit_of(world: &World, actor: &str) -> i64 {
     let now = table::now_of(table::pack(world));
     let live = now
         .actors
-        .get("pc_rowan")
-        .unwrap_or_else(|| panic!("rowan missing"))
+        .get(actor)
+        .unwrap_or_else(|| panic!("{actor} missing"))
         .meters()
         .get("grit")
         .unwrap_or_else(|| panic!("grit missing"));

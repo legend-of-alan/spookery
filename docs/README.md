@@ -31,7 +31,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Round** | One batch in which queued intents are settled together and the results are logged. |
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
-| **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. |
+| **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |
 | **GM** | The storyteller seat. Usually an agent that talks to the agent door; `spook ai-gm` is the built-in model GM. |
 | **Play door** | The human client, `spook play`, over loopback. |
 | **Agent door** | The MCP endpoint `spook run` serves, `http://127.0.0.1:9738/mcp` by default. |

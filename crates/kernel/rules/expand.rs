@@ -465,7 +465,7 @@ pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
 }
 
 pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    let Ok(effects) = expand_outcome(canon, now, intent, None, ignore_resist) else {
+    let Ok(effects) = expand_with(canon, now, intent, None, &mut StandIn, ignore_resist) else {
         return;
     };
     // A verb with no target must stay empty. Filling it from a location effect
@@ -502,7 +502,7 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
         if gate::gate(canon, now, &intent).is_err() {
             continue;
         }
-        match expand_outcome(canon, now, &intent, None, ignore_resist) {
+        match expand_with(canon, now, &intent, None, &mut StandIn, ignore_resist) {
             Ok(effects) => {
                 let mut intent = intent;
                 stamp(&mut intent, &effects);
@@ -512,6 +512,20 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
         }
     }
     None
+}
+
+/// Faces of 1, and no journal line. Gather only needs the effect shape.
+/// The round rolls the real faces when it applies the intent.
+struct StandIn;
+
+impl Dice for StandIn {
+    fn begin(&mut self) {}
+
+    fn draw(&mut self, count: u32, _sides: u32) -> Result<Vec<u32>, Reason> {
+        Ok(vec![1; count as usize])
+    }
+
+    fn note(&mut self, _text: String) {}
 }
 
 fn stamp(intent: &mut Intent, effects: &[Effect]) {
