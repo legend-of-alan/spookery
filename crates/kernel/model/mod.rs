@@ -1,5 +1,4 @@
 pub(crate) mod ids;
-#[path = "state_key.rs"]
 pub(crate) mod key;
 pub(crate) mod meter;
 

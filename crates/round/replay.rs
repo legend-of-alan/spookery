@@ -4,6 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use spookery_kernel::api::canon::{bind_inventory, bind_meters, pack_rev};
+use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
@@ -272,7 +273,7 @@ fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
             Some(report.now_yaml),
         )));
     }
-    fs::write(&save, &report.now_yaml).map_err(|_| ReplayError::Reason(Reason::CommitConflict))?;
+    atomic_publish(&save, &report.now_yaml).map_err(ReplayError::Reason)?;
     Ok(())
 }
 
@@ -297,7 +298,7 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, VerifyError> {
             applied: 0,
         });
     }
-    let mut start = genesis_bytes(pack)?;
+    let mut start = read_genesis(pack)?;
     let last = bundles.len() - 1;
     for (index, (name, entries)) in bundles.iter().enumerate() {
         if index == last {
@@ -336,7 +337,7 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, VerifyError> {
     }
     let (name, entries) = &bundles[last];
     let end = replay_bundle(pack, &start, entries).map_err(|err| match err {
-        ReplayError::Diverged(diverged) => with_diff(diverged, &snapshot_bytes(pack)),
+        ReplayError::Diverged(diverged) => with_diff(diverged, &read_snapshot(pack)),
         other => VerifyError::Replay(other),
     })?;
     if let Some(mark) = journal::latest_checkpoint(entries) {
@@ -366,7 +367,7 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
         return Ok(serial);
     }
     let mut starts = Vec::new();
-    let genesis = genesis_bytes(pack)?;
+    let genesis = read_genesis(pack)?;
     let mut previous: Option<Vec<u8>> = None;
     for (index, (name, entries)) in bundles.iter().enumerate() {
         if index + 1 < bundles.len() && journal::latest_checkpoint(entries).is_none() {
@@ -379,7 +380,7 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
             ))));
         }
         let start = previous.clone().unwrap_or_else(|| genesis.clone());
-        starts.push((name.clone(), start, entries.clone()));
+        starts.push((start, entries));
         if let Some(mark) = journal::latest_checkpoint(entries) {
             let snap = pack
                 .join("state/checkpoints")
@@ -399,10 +400,8 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
         (0..starts.len()).map(|_| None).collect();
     std::thread::scope(|scope| {
         let mut handles = Vec::new();
-        for (index, (_name, start, entries)) in starts.iter().enumerate() {
-            let start = start.clone();
-            let entries = entries.clone();
-            handles.push(scope.spawn(move || (index, replay_bundle(pack, &start, &entries))));
+        for (index, (start, entries)) in starts.iter().enumerate() {
+            handles.push(scope.spawn(move || (index, replay_bundle(pack, start, entries))));
         }
         for handle in handles {
             let (index, end) = handle.join().expect("replay");
@@ -413,7 +412,7 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
     for (index, end) in ends.into_iter().enumerate() {
         let end = end.unwrap_or(Err(ReplayError::Reason(Reason::Schema)));
         let end = end.map_err(|err| match err {
-            ReplayError::Diverged(diverged) => with_diff(diverged, &snapshot_bytes(pack)),
+            ReplayError::Diverged(diverged) => with_diff(diverged, &read_snapshot(pack)),
             other => VerifyError::Replay(other),
         })?;
         let (name, entries) = &bundles[index];
@@ -468,7 +467,7 @@ fn verify_serial(pack: &Path, from: Option<&Path>) -> Result<(VerifyReport, Vec<
     let report = match from_journal(pack, from, cap) {
         Ok(report) => report,
         Err(ReplayError::Diverged(diverged)) => {
-            return Err(with_diff(diverged, &snapshot_bytes(pack)));
+            return Err(with_diff(diverged, &read_snapshot(pack)));
         }
         Err(err) => return Err(VerifyError::Replay(err)),
     };
@@ -486,13 +485,13 @@ fn verify_serial(pack: &Path, from: Option<&Path>) -> Result<(VerifyReport, Vec<
     ))
 }
 
-fn snapshot_bytes(pack: &Path) -> Vec<u8> {
+fn read_snapshot(pack: &Path) -> Vec<u8> {
     fs::read(pack.join("state/save.yaml"))
         .or_else(|_| fs::read(pack.join("state").join(journal::base_rel())))
         .unwrap_or_default()
 }
 
-fn genesis_bytes(pack: &Path) -> Result<Vec<u8>, VerifyError> {
+fn read_genesis(pack: &Path) -> Result<Vec<u8>, VerifyError> {
     let base = pack.join("state").join(journal::base_rel());
     if base.is_file() {
         return fs::read(&base)

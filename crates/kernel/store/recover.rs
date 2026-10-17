@@ -21,7 +21,7 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn journal_reason(detail: &str) -> Reason {
+fn reason_for(detail: &str) -> Reason {
     if detail.contains("RULES_REV") {
         Reason::RulesRev
     } else {
@@ -33,8 +33,8 @@ fn journal_reason(detail: &str) -> Reason {
 /// the last checkpoint. A line for a tick the live bundle does not have, and
 /// that the checkpoint does not cover, is dropped.
 fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
-    let records = journal::read_live(root).map_err(|fault| journal_reason(&fault.detail))?;
-    let head = journal::read_head(root).map_err(|fault| journal_reason(&fault.detail))?;
+    let records = journal::read_live(root).map_err(|fault| reason_for(&fault.detail))?;
+    let head = journal::read_head(root).map_err(|fault| reason_for(&fault.detail))?;
     let live_ticks: BTreeSet<u64> = records
         .iter()
         .filter_map(|entry| match entry {
@@ -121,7 +121,7 @@ fn keep_tick(tick: u64, head: Option<&journal::BundleHead>, live_ticks: &BTreeSe
 }
 
 fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
-    let Some(path) = journal::live_plain(root) else {
+    let Some(path) = journal::find_live_bundle(root) else {
         return Ok(());
     };
     let bytes = fs::read(&path).map_err(|_| Reason::Schema)?;

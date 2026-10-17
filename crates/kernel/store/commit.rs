@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -77,8 +77,7 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
         .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut draft.state);
     let now_bytes = emit_save(&draft.state)?.into_bytes();
-    let memories = draft.memories.clone();
-    let line = seal_tick(round_jsonl, &now_bytes, &world.root, &memories)?;
+    let line = seal_tick(round_jsonl, &now_bytes, &world.root, &draft.memories)?;
     let due = checkpoint_due(world.canon().checkpoint_every, draft.state.tick_index);
     let (payload, chain) = if due {
         let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
@@ -187,7 +186,7 @@ pub fn migrate_now(root: &Path, mut now: Now) -> Result<(), Reason> {
         now.state_rev,
         &hash_now(&emitted),
     );
-    let prev = journal::chain_tip(root).map_err(|_| Reason::Schema)?;
+    let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     let parsed = journal::parse_migrate("migrate.json", &record).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&journal::JournalEntry::Migrate(parsed), &prev);
     append_bundle(root, &line)?;
@@ -226,7 +225,7 @@ fn seal_tick(
     record.memories = memories.to_vec();
     record.prev.clear();
     record.chain.clear();
-    let prev = journal::chain_tip(root).map_err(|_| Reason::Schema)?;
+    let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     Ok(journal::seal(&journal::JournalEntry::Tick(record), &prev))
 }
 
@@ -235,7 +234,7 @@ fn checkpoint_due(every: u64, tick_index: u64) -> bool {
 }
 
 fn append_bundle(root: &Path, payload: &str) -> Result<String, Reason> {
-    let path = journal::append_path(root);
+    let path = journal::next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
@@ -299,7 +298,7 @@ fn store_checkpoint(
 }
 
 fn close_live(root: &Path) -> Result<(), Reason> {
-    let Some(plain) = journal::live_plain(root) else {
+    let Some(plain) = journal::find_live_bundle(root) else {
         return Ok(());
     };
     let bytes = fs::read(&plain).map_err(|_| Reason::CommitConflict)?;
@@ -321,7 +320,8 @@ fn gzip_path(plain: &Path) -> PathBuf {
     plain.with_file_name(name)
 }
 
-fn atomic_publish(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
+/// Write `bytes` to a temp file, flush it, and rename it over `target`.
+pub fn atomic_publish(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
     }
@@ -388,12 +388,15 @@ fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, 
         if !body.is_empty() && !body.ends_with('\n') {
             body.push('\n');
         }
+        let mut seen: BTreeSet<String> = body.lines().map(str::to_string).collect();
         for line in fresh {
-            let text = format!("{}\n", emit_memory_line(line));
-            if body.contains(&text) {
+            let text = emit_memory_line(line);
+            if seen.contains(&text) {
                 continue;
             }
             body.push_str(&text);
+            body.push('\n');
+            seen.insert(text);
         }
         out.insert(actor, body);
     }

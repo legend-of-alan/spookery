@@ -12,8 +12,8 @@ Feature: Hash-chained journal bundles
     Given a docks table
     And checkpoints are taken every 2 ticks
     When the operator runs 5 ticks
-    And the table is opened with a bundle trace
-    Then no closed bundle was opened
+    And every closed bundle is made unreadable
+    Then the table still opens
 
   Scenario: An edit to a closed bundle fails verification
     Given a docks table

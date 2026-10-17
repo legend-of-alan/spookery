@@ -303,8 +303,8 @@ fn checkpoints_are_taken_every_n_ticks(world: &mut World, every: u64) {
 #[when(expr = "the live bundle gains a torn tail")]
 fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
     let pack = table::pack(world);
-    let path =
-        spookery_kernel::api::journal::live_plain(pack).unwrap_or_else(|| panic!("no live bundle"));
+    let path = spookery_kernel::api::journal::find_live_bundle(pack)
+        .unwrap_or_else(|| panic!("no live bundle"));
     let entries = spookery_kernel::api::journal::read_entries(pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let last = entries
@@ -326,7 +326,7 @@ fn the_table_is_opened_again(world: &mut World) {
 
 #[then(expr = "the torn tail is gone")]
 fn the_torn_tail_is_gone(world: &mut World) {
-    let path = spookery_kernel::api::journal::live_plain(table::pack(world))
+    let path = spookery_kernel::api::journal::find_live_bundle(table::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
     let text = fs::read_to_string(&path).unwrap();
     assert!(text.ends_with('\n'), "{text}");
@@ -357,7 +357,7 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
     let plain = spookery_kernel::api::journal::gunzip_bytes(&compressed)
         .unwrap_or_else(|err| panic!("gunzip: {err}"));
     let text = String::from_utf8(plain).unwrap_or_else(|err| panic!("{err}"));
-    let next = spookery_kernel::api::journal::gzip_bytes(&flip_chain(&text))
+    let next = spookery_kernel::api::journal::gzip_bytes(&change_payload(&text))
         .unwrap_or_else(|err| panic!("gzip: {err}"));
     fs::write(&path, next).unwrap();
     world.scratch = name;
@@ -366,49 +366,47 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
 #[when(expr = "one record in the live bundle is changed")]
 fn one_record_in_the_live_bundle_is_changed(world: &mut World) {
     let pack = table::pack(world);
-    let path =
-        spookery_kernel::api::journal::live_plain(pack).unwrap_or_else(|| panic!("no live bundle"));
+    let path = spookery_kernel::api::journal::find_live_bundle(pack)
+        .unwrap_or_else(|| panic!("no live bundle"));
     let name = path
         .file_name()
         .and_then(|file| file.to_str())
         .unwrap_or("bundle")
         .to_string();
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read: {err}"));
-    fs::write(&path, flip_chain(&text)).unwrap();
+    fs::write(&path, change_payload(&text)).unwrap();
     world.scratch = name;
 }
 
-fn flip_chain(text: &str) -> Vec<u8> {
-    let needle = "\"chain\":\"blake2s:";
+/// Change a value the chain hash covers, not the stored hash itself.
+fn change_payload(text: &str) -> Vec<u8> {
+    let needle = "\"world_time_before\":";
     let at = text
         .find(needle)
-        .unwrap_or_else(|| panic!("no chain\n{text}"))
+        .unwrap_or_else(|| panic!("no world_time_before\n{text}"))
         + needle.len();
     let mut bytes = text.as_bytes().to_vec();
-    bytes[at] = if bytes[at] == b'0' { b'1' } else { b'0' };
+    bytes[at] = if bytes[at] == b'9' { b'8' } else { b'9' };
     bytes
 }
 
-#[when(expr = "the table is opened with a bundle trace")]
-fn the_table_is_opened_with_a_bundle_trace(world: &mut World) {
-    spookery_kernel::api::journal::start_bundle_trace();
-    spookery_round::resume(table::pack(world)).unwrap_or_else(|err| panic!("open: {err}"));
-    world.summary = spookery_kernel::api::journal::take_bundle_trace();
+#[when(expr = "every closed bundle is made unreadable")]
+fn every_closed_bundle_is_made_unreadable(world: &mut World) {
+    let bundles = spookery_kernel::api::journal::bundles(table::pack(world))
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let closed: Vec<_> = bundles
+        .into_iter()
+        .filter(|(name, _)| name.ends_with(".gz"))
+        .collect();
+    assert!(!closed.is_empty(), "no closed bundle");
+    for (_name, path) in closed {
+        fs::write(&path, b"not a gzip bundle").unwrap();
+    }
 }
 
-#[then(expr = "no closed bundle was opened")]
-fn no_closed_bundle_was_opened(world: &mut World) {
-    let closed: Vec<_> = world
-        .summary
-        .iter()
-        .filter(|name| name.ends_with(".gz"))
-        .cloned()
-        .collect();
-    assert!(
-        closed.is_empty(),
-        "closed bundles opened: {closed:?}\nall: {:?}",
-        world.summary
-    );
+#[then(expr = "the table still opens")]
+fn the_table_still_opens(world: &mut World) {
+    spookery_round::resume(table::pack(world)).unwrap_or_else(|err| panic!("open: {err}"));
 }
 
 #[then(expr = "stderr names that bundle")]

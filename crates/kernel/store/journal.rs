@@ -6,7 +6,6 @@
 //! `journal/base.yaml` is the genesis snapshot, written the first time a
 //! checkpoint replaces `save.yaml`. Before that, `save.yaml` is still genesis.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -24,20 +23,6 @@ pub use super::records::{
     Arrival, CheckpointRecord, JournalEntry, MigrateRecord, Rejected, TickRecord,
 };
 use super::records::{CheckpointKind, MigrateKind};
-
-thread_local! {
-    static BUNDLE_READS: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
-}
-
-/// Record each bundle file read until `take_bundle_trace`.
-pub fn start_bundle_trace() {
-    BUNDLE_READS.with(|reads| *reads.borrow_mut() = Some(Vec::new()));
-}
-
-/// Bundle file names read since `start_bundle_trace`, then stop recording.
-pub fn take_bundle_trace() -> Vec<String> {
-    BUNDLE_READS.with(|reads| reads.borrow_mut().take().unwrap_or_default())
-}
 
 pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
@@ -178,15 +163,15 @@ pub fn seal(entry: &JournalEntry, prev: &str) -> String {
 }
 
 /// Chain of the last live record, or of the checkpoint head when the live bundle is empty.
-pub fn chain_tip(pack: &Path) -> Result<String, JournalFault> {
-    if let Some(path) = live_plain(pack) {
+pub fn read_chain_tip(pack: &Path) -> Result<String, JournalFault> {
+    if let Some(path) = find_live_bundle(pack) {
         let name = path
             .file_name()
             .map(|file| file.to_string_lossy().into_owned())
             .unwrap_or_default();
         let text = read_bundle(&name, &path)?;
-        if let Some(line) = last_complete_line(&text) {
-            return line_chain(&name, line);
+        if let Some(line) = find_last_line(&text) {
+            return check_line_chain(&name, line);
         }
     }
     if let Some(head) = read_head(pack)? {
@@ -201,7 +186,7 @@ pub fn read_live(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
     if dir.is_dir() {
         refuse_old_layout(&dir)?;
     }
-    let Some(path) = live_plain(pack) else {
+    let Some(path) = find_live_bundle(pack) else {
         return Ok(Vec::new());
     };
     let name = path
@@ -303,7 +288,7 @@ pub fn bundle_entries(pack: &Path) -> Result<Vec<(String, Vec<JournalEntry>)>, J
 }
 
 /// Plain live bundle, if one is open.
-pub fn live_plain(pack: &Path) -> Option<PathBuf> {
+pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
     let files = bundle_files(&pack.join("state/journal")).ok()?;
     let (name, path) = files.last()?;
     if name.ends_with(".jsonl") {
@@ -314,7 +299,7 @@ pub fn live_plain(pack: &Path) -> Option<PathBuf> {
 }
 
 /// Next append lands here. The file may not exist yet.
-pub fn append_path(pack: &Path) -> PathBuf {
+pub fn next_bundle_path(pack: &Path) -> PathBuf {
     let dir = pack.join("state/journal");
     let files = bundle_files(&dir).unwrap_or_default();
     match files.last() {
@@ -438,12 +423,12 @@ fn bundle_index(name: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
-fn last_complete_line(text: &str) -> Option<&str> {
-    let complete = complete_text(text);
+fn find_last_line(text: &str) -> Option<&str> {
+    let complete = trim_torn_tail(text);
     complete.lines().rev().find(|line| !line.is_empty())
 }
 
-fn line_chain(name: &str, line: &str) -> Result<String, JournalFault> {
+fn check_line_chain(name: &str, line: &str) -> Result<String, JournalFault> {
     let entry = parse_line(name, line)?;
     let expect = chain_of(&entry);
     if entry.chain() != expect {
@@ -455,7 +440,7 @@ fn line_chain(name: &str, line: &str) -> Result<String, JournalFault> {
     Ok(expect)
 }
 
-fn complete_text(text: &str) -> &str {
+fn trim_torn_tail(text: &str) -> &str {
     if text.ends_with('\n') {
         text
     } else {
@@ -468,7 +453,7 @@ fn complete_text(text: &str) -> &str {
 
 fn parse_complete(name: &str, text: &str) -> Result<Vec<JournalEntry>, JournalFault> {
     let mut entries = Vec::new();
-    for line in complete_text(text).lines() {
+    for line in trim_torn_tail(text).lines() {
         if line.is_empty() {
             continue;
         }
@@ -478,11 +463,6 @@ fn parse_complete(name: &str, text: &str) -> Result<Vec<JournalEntry>, JournalFa
 }
 
 fn read_bundle(name: &str, path: &Path) -> Result<String, JournalFault> {
-    BUNDLE_READS.with(|reads| {
-        if let Some(names) = reads.borrow_mut().as_mut() {
-            names.push(name.to_string());
-        }
-    });
     if name.ends_with(".gz") {
         let file =
             File::open(path).map_err(|_| fault(path, "the journal bundle could not be read"))?;
