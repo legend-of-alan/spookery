@@ -439,6 +439,53 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
     );
 }
 
+#[then(expr = "the first tick lists cast:mira\\/leave_door_note and omits the standard steps")]
+fn the_first_tick_keeps_only_the_extra_steps(world: &mut World) {
+    let tick = tick_json(world, "tick-0001");
+    let names = tool_names(&tick);
+    assert!(names.contains(&"cast:mira/leave_door_note"), "{names:?}");
+    assert_steps_omitted(&names, &tick);
+}
+
+#[then(expr = "the second tick omits tool_trace")]
+fn the_second_tick_omits_tool_trace(world: &mut World) {
+    let tick = tick_json(world, "tick-0002");
+    assert!(tick.get("tool_trace").is_none(), "{tick}");
+}
+
+fn tick_json(world: &World, key: &str) -> Value {
+    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), key)
+        .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{key}: {err}\n{text}"))
+}
+
+fn tool_names(tick: &Value) -> Vec<&str> {
+    tick.get("tool_trace")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default()
+}
+
+fn assert_steps_omitted(names: &[&str], tick: &Value) {
+    for step in [
+        "advance",
+        "complete",
+        "gather",
+        "session_status",
+        "resolve",
+        "apply",
+        "run_triggers",
+        "observe",
+        "record",
+        "commit_round",
+    ] {
+        assert!(
+            !names.contains(&step),
+            "{step} is in the tool trace\n{tick}"
+        );
+    }
+}
+
 #[then(expr = "parallel full verification matches serial replay")]
 fn parallel_full_verification_matches_serial_replay(world: &mut World) {
     let pack = table::pack(world);

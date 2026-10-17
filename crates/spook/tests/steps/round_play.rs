@@ -79,34 +79,38 @@ fn a_docks_round_is_played(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(
-    expr = "the round trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order"
-)]
-fn the_round_trace_lists_the_stages(world: &mut World) {
+#[then(expr = "the tick record omits the standard steps")]
+fn the_tick_record_omits_the_standard_steps(world: &mut World) {
     let tick = tick_value(world.pack.as_ref().unwrap(), "tick-0001");
-    let trace: Vec<&str> = tick["tool_trace"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(Value::as_str)
-        .collect();
-    let stages = [
+    assert_standard_steps_omitted(&tick);
+}
+
+fn assert_standard_steps_omitted(tick: &Value) {
+    let names = tool_trace_names(tick);
+    for step in [
         "advance",
         "complete",
         "gather",
+        "session_status",
         "resolve",
         "apply",
         "run_triggers",
         "observe",
         "record",
-    ];
-    let mut at = 0usize;
-    for name in &trace {
-        if at < stages.len() && *name == stages[at] {
-            at += 1;
-        }
+        "commit_round",
+    ] {
+        assert!(
+            !names.contains(&step),
+            "{step} is in the tool trace\n{tick}"
+        );
     }
-    assert_eq!(at, stages.len(), "{trace:?}");
+}
+
+fn tool_trace_names(tick: &Value) -> Vec<&str> {
+    tick.get("tool_trace")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default()
 }
 
 #[given(expr = "a round where Lark rolls grit")]

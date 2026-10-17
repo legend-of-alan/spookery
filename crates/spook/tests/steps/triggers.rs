@@ -1341,10 +1341,13 @@ fn latest(pack: &Path) -> Value {
 }
 
 fn trace(tick: &Value) -> Vec<String> {
-    tick["tool_trace"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|value| value.as_str().map(str::to_string))
-        .collect()
+    tick.get("tool_trace")
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|value| value.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }

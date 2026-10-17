@@ -39,3 +39,9 @@ Feature: Journal records are typed
     Given a docks table
     When the operator runs 3 ticks
     Then each journal record parses back to the bytes that were written
+
+  Scenario: A quiet tick omits the standard tool trace
+    Given a docks table
+    When the operator runs 2 ticks
+    Then the first tick lists cast:mira/leave_door_note and omits the standard steps
+    And the second tick omits tool_trace
