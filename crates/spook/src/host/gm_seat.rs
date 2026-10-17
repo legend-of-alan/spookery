@@ -10,6 +10,7 @@ use rmcp::model::{
 };
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
+use spookery_kernel::api::Reason;
 
 use super::gm_tools;
 use super::world_loop::{Ack, Msg, SocketEnd, ToolReply};
@@ -100,9 +101,10 @@ impl ServerHandler for GmHost {
                 return Err(McpError::internal_error("no seat", None));
             };
             if !http.held.load(Ordering::Acquire) {
-                return Ok(
-                    CallToolResult::structured(super::frames::code_result("NOT_IN_SPEC")).into(),
-                );
+                return Ok(CallToolResult::structured(super::frames::code_result(
+                    Reason::NotInSpec.token(),
+                ))
+                .into());
             }
             http.conn
         };

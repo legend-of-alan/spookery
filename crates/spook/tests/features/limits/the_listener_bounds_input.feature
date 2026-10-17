@@ -55,3 +55,9 @@ Feature: The listener bounds input
     When another GM sits
     And the closed session calls say
     Then that call is refused and nothing was written
+
+  Scenario: A close with a key is refused and the GM keeps the seat
+    Given a docks table with a seated GM
+    When the GM calls close with a key
+    Then that call is refused with "SCHEMA"
+    And the GM can still say

@@ -165,7 +165,7 @@ pub fn wait_tick_count(pack: &Path, count: usize) -> Vec<String> {
 }
 
 /// Waits until a tick after `before` holds that actor's player `wait`.
-pub fn wait_actor_wait(pack: &Path, actor_id: &str, before: usize) -> Vec<String> {
+pub fn expect_wait_from(pack: &Path, actor_id: &str, before: usize) -> Vec<String> {
     wait_ticks_until(pack, &format!("{actor_id}'s wait"), |keys| {
         keys.get(before..)
             .unwrap_or_default()

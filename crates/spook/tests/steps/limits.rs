@@ -56,7 +56,7 @@ fn a_second_player_can_sit_and_wait(world: &mut World) {
     let before = table::list_tick_keys(&pack).len();
     table::seat_actor(world, &pack, "pc_harbormouse");
     table::actor_line(world, "pc_harbormouse", "wait");
-    table::wait_actor_wait(&pack, "pc_harbormouse", before);
+    table::expect_wait_from(&pack, "pc_harbormouse", before);
 }
 
 #[when(expr = "the GM releases the seat")]
@@ -172,6 +172,36 @@ fn the_player_sends_invalid_utf8(world: &mut World) {
     world.player_added = table::wait_player_from(world, mark, "\"code\":\"SCHEMA\"");
 }
 
+#[when(expr = "the GM calls close with a key")]
+fn the_gm_calls_close_with_a_key(world: &mut World) {
+    world.scratch = table::gm_call(world, 91, "close", r#"{"now":true}"#);
+}
+
+#[then(expr = "that call is refused with {string}")]
+fn that_call_is_refused_with(world: &mut World, code: String) {
+    assert!(
+        world.scratch.contains(&format!("\"code\":\"{code}\"")),
+        "{}",
+        world.scratch
+    );
+    assert!(
+        !world.scratch.contains("\"released\":true"),
+        "{}",
+        world.scratch
+    );
+}
+
+#[then(expr = "the GM can still say")]
+fn the_gm_can_still_say(world: &mut World) {
+    let text = table::gm_call(
+        world,
+        93,
+        "say",
+        r#"{"address":"table","text":"still here"}"#,
+    );
+    assert!(text.contains("\"seq\":"), "the GM lost the seat\n{text}");
+}
+
 #[then(expr = "the player is refused with {string}")]
 fn the_player_is_refused_with(world: &mut World, code: String) {
     let needle = format!("\"code\":\"{code}\"");
@@ -187,7 +217,7 @@ fn the_player_can_wait(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let before = table::list_tick_keys(&pack).len();
     table::player_write(world, "wait");
-    table::wait_actor_wait(&pack, "pc_rowan", before);
+    table::expect_wait_from(&pack, "pc_rowan", before);
 }
 
 #[when(expr = "a socket connects and sends nothing")]
