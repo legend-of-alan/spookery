@@ -52,12 +52,12 @@ pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
 }
 
 fn tip_for_migrate(path: &Path) -> Result<spookery_kernel::api::model::Now, Reason> {
-    use spookery_kernel::api::journal::{read_entries, JournalEntry};
+    use spookery_kernel::api::journal::{read_live, JournalEntry};
     use spookery_kernel::api::store::codec::load_save;
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_now = load_save(text).map_err(spookery_kernel::api::diagnostic::reason_of)?;
-    let ahead = read_entries(path)
+    let ahead = read_live(path)
         .map_err(|_| Reason::Schema)?
         .iter()
         .any(|entry| {

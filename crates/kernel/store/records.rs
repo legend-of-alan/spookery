@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::effect::Effect;
 use crate::intent::Intent;
+use crate::model::MemoryLine;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -89,6 +90,9 @@ pub struct TickRecord {
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,
     pub tool_trace: Vec<String>,
+    /// Lines for this tick. Empty on a record that stored none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub memories: Vec<MemoryLine>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub now_hash: String,
     /// Chain hash of the previous record. Empty on a record that has not been sealed.
@@ -100,6 +104,7 @@ pub struct TickRecord {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(clippy::large_enum_variant)]
 pub enum JournalEntry {
     Tick(TickRecord),
     Migrate(MigrateRecord),

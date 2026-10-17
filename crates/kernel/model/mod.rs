@@ -334,7 +334,8 @@ pub fn sort_unique(items: &mut Vec<String>) {
     items.dedup();
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct MemoryLine {
     pub tick_index: u64,
     pub actor_id: String,

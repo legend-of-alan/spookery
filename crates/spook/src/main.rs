@@ -89,6 +89,9 @@ enum Command {
         /// Directory whose `state/save.yaml` is the replay base.
         #[arg(long)]
         from: Option<PathBuf>,
+        /// Check the chain and replay only the latest bundle.
+        #[arg(long)]
+        quick: bool,
     },
     /// Replay the journal and report a hidden fact sent to a player.
     Audit {
@@ -208,8 +211,17 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                 }
             }
         }
-        Command::Verify { pack, from } => {
-            match spookery_round::verify_pack(&pack, from.as_deref()) {
+        Command::Verify { pack, from, quick } => {
+            if quick && from.is_some() {
+                eprintln!("verify --quick does not take --from");
+                std::process::exit(1);
+            }
+            let checked = if quick {
+                spookery_round::verify_quick(&pack)
+            } else {
+                spookery_round::verify_pack(&pack, from.as_deref())
+            };
+            match checked {
                 Ok(report) => {
                     println!(
                         "verified {} records, state_rev {}",
@@ -450,8 +462,14 @@ mod tests {
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();
         assert!(matches!(
             verify.command,
-            Command::Verify { from: Some(path), .. } if path == Path::new("snap")
+            Command::Verify {
+                from: Some(path),
+                quick: false,
+                ..
+            } if path == Path::new("snap")
         ));
+        let quick = Cli::try_parse_from(["spook", "verify", "--quick", "pack"]).unwrap();
+        assert!(matches!(quick.command, Command::Verify { quick: true, .. }));
         let audit = Cli::try_parse_from(["spook", "audit", "--strict", "pack"]).unwrap();
         assert!(matches!(audit.command, Command::Audit { strict: true, .. }));
     }

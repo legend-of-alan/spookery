@@ -229,7 +229,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
 
 /// The on-disk save is a checkpoint. Later journal records still have to be replayed.
 fn journal_continues(root: &Path, now: &Now) -> bool {
-    let Ok(entries) = journal::read_entries(root) else {
+    let Ok(entries) = journal::read_live(root) else {
         return false;
     };
     entries.iter().any(|entry| match entry {
@@ -240,7 +240,7 @@ fn journal_continues(root: &Path, now: &Now) -> bool {
 
 /// A migrate record past the checkpoint has already accepted the save's edit.
 fn migrate_continues(root: &Path, now: &Now) -> bool {
-    let Ok(entries) = journal::read_entries(root) else {
+    let Ok(entries) = journal::read_live(root) else {
         return false;
     };
     entries.iter().any(|entry| {

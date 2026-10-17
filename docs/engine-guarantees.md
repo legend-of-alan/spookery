@@ -39,10 +39,12 @@ bytes and the previous record's hash. Closed bundles stay, gzip-compressed.
 journal replayed from that snapshot. A missing snapshot is rebuilt from the
 bundles. History is not deleted.
 
-Full verification replays every bundle from tick 0. Bundles replay in parallel
-from the checkpoint each one starts at, and the tip matches a serial replay.
-Quick verification checks the chain and replays the latest bundle from the
-snapshot it starts at. Verify names the record and the first save line that
+Full verification (`spook verify`) replays every bundle from tick 0. Those
+bundles replay at the same time, each from the checkpoint it starts at, and the
+tip matches one serial replay. Quick verification (`spook verify --quick`)
+checks the chain and replays only the latest bundle from the snapshot it starts
+at. Startup uses that same snapshot and the live bundle, and does not open a
+closed bundle. Verify names the record and the first save line that
 differs when a logged move no longer matches. An edit in a closed bundle fails
 verification and names that bundle. When logged effects differ from a fresh
 run, verify names that round and the first effect that differs. Each journal

@@ -77,23 +77,31 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
         .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut draft.state);
     let now_bytes = emit_save(&draft.state)?.into_bytes();
-    let line = seal_tick(round_jsonl, &now_bytes, &world.root)?;
+    let memories = draft.memories.clone();
+    let line = seal_tick(round_jsonl, &now_bytes, &world.root, &memories)?;
     let due = checkpoint_due(world.canon().checkpoint_every, draft.state.tick_index);
-    let payload = if due {
+    let (payload, chain) = if due {
         let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
         let mark = journal::checkpoint_entry(
             draft.state.tick_index,
             draft.state.state_rev,
             &hash_now(&now_bytes),
         );
-        format!("{line}{}", journal::seal(&mark, &prev))
+        let sealed = journal::seal(&mark, &prev);
+        let chain = journal::sealed_chain(&sealed).map_err(|_| Reason::Schema)?;
+        (format!("{line}{sealed}"), Some(chain))
     } else {
-        line
+        (line, None)
     };
     append_bundle(&world.root, &payload)?;
-    write_memories(&world.root.join("state"), &draft.memories)?;
-    if due {
-        store_checkpoint(&world.root, &now_bytes, draft.state.state_rev)?;
+    if let Some(chain) = chain {
+        store_checkpoint(
+            &world.root,
+            &now_bytes,
+            draft.state.state_rev,
+            draft.state.tick_index,
+            &chain,
+        )?;
     }
     world.now = draft.state;
     Ok(())
@@ -105,19 +113,31 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
     canonicalize(&mut now);
     let now_bytes = emit_save(&now)?.into_bytes();
-    let line = seal_tick(&pending.round_jsonl, &now_bytes, &world.root)?;
+    let line = seal_tick(
+        &pending.round_jsonl,
+        &now_bytes,
+        &world.root,
+        &pending.memories,
+    )?;
     let due = checkpoint_due(world.canon().checkpoint_every, now.tick_index);
-    let payload = if due {
+    let (payload, chain) = if due {
         let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
         let mark = journal::checkpoint_entry(now.tick_index, now.state_rev, &hash_now(&now_bytes));
-        format!("{line}{}", journal::seal(&mark, &prev))
+        let sealed = journal::seal(&mark, &prev);
+        let chain = journal::sealed_chain(&sealed).map_err(|_| Reason::Schema)?;
+        (format!("{line}{sealed}"), Some(chain))
     } else {
-        line
+        (line, None)
     };
     let mut log_path = append_bundle(&world.root, &payload)?;
-    write_memories(&world.root.join("state"), &pending.memories)?;
-    if due {
-        store_checkpoint(&world.root, &now_bytes, now.state_rev)?;
+    if let Some(chain) = chain {
+        store_checkpoint(
+            &world.root,
+            &now_bytes,
+            now.state_rev,
+            now.tick_index,
+            &chain,
+        )?;
         if !log_path.ends_with(".gz") {
             log_path.push_str(".gz");
         }
@@ -185,7 +205,7 @@ fn load_file_now(root: &Path) -> Result<Now, Reason> {
 }
 
 fn journal_ahead(root: &Path, state_rev: u64) -> bool {
-    let Ok(entries) = journal::read_entries(root) else {
+    let Ok(entries) = journal::read_live(root) else {
         return false;
     };
     entries.iter().any(|entry| {
@@ -194,10 +214,16 @@ fn journal_ahead(root: &Path, state_rev: u64) -> bool {
     })
 }
 
-fn seal_tick(round_jsonl: &str, now_bytes: &[u8], root: &Path) -> Result<String, Reason> {
+fn seal_tick(
+    round_jsonl: &str,
+    now_bytes: &[u8],
+    root: &Path,
+    memories: &[MemoryLine],
+) -> Result<String, Reason> {
     let mut record: journal::TickRecord =
         serde_json::from_str(round_jsonl.trim_end()).map_err(|_| Reason::Schema)?;
     record.now_hash = hash_now(now_bytes);
+    record.memories = memories.to_vec();
     record.prev.clear();
     record.chain.clear();
     let prev = journal::chain_tip(root).map_err(|_| Reason::Schema)?;
@@ -236,7 +262,25 @@ fn append_bundle(root: &Path, payload: &str) -> Result<String, Reason> {
         .replace('\\', "/"))
 }
 
-fn store_checkpoint(root: &Path, now_bytes: &[u8], state_rev: u64) -> Result<(), Reason> {
+fn store_checkpoint(
+    root: &Path,
+    now_bytes: &[u8],
+    state_rev: u64,
+    tick_index: u64,
+    chain: &str,
+) -> Result<(), Reason> {
+    let head = serde_json::to_string(&journal::BundleHead {
+        state_rev,
+        tick_index,
+        state_hash: hash_now(now_bytes),
+        chain: chain.to_string(),
+    })
+    .map_err(|_| Reason::Schema)?;
+    atomic_publish(
+        &root.join("state").join(journal::head_rel()),
+        head.as_bytes(),
+    )?;
+    snapshot_memories(root)?;
     let state = root.join("state");
     let save = state.join("save.yaml");
     let base = state.join(journal::base_rel());
@@ -294,13 +338,17 @@ fn atomic_publish(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     Ok(())
 }
 
-fn write_memories(state: &Path, memories: &[MemoryLine]) -> Result<(), Reason> {
-    for (actor, body) in memory_bodies(state, memories)? {
-        let path = state.join("memories").join(format!("{actor}.jsonl"));
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+fn snapshot_memories(root: &Path) -> Result<(), Reason> {
+    let entries = journal::read_live(root).map_err(|_| Reason::Schema)?;
+    let mut lines = Vec::new();
+    for entry in entries {
+        if let journal::JournalEntry::Tick(record) = entry {
+            lines.extend(record.memories);
         }
-        fs::write(&path, body).map_err(|_| Reason::CommitConflict)?;
+    }
+    for (actor, body) in memory_bodies(&root.join("state"), &lines)? {
+        let path = root.join("state/memories").join(format!("{actor}.jsonl"));
+        atomic_publish(&path, body.as_bytes())?;
     }
     Ok(())
 }
@@ -341,8 +389,11 @@ fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, 
             body.push('\n');
         }
         for line in fresh {
-            body.push_str(&emit_memory_line(line));
-            body.push('\n');
+            let text = format!("{}\n", emit_memory_line(line));
+            if body.contains(&text) {
+                continue;
+            }
+            body.push_str(&text);
         }
         out.insert(actor, body);
     }
@@ -391,7 +442,6 @@ mod tests {
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let memory = root.join("state/memories/mira.jsonl");
         let bundle_bytes = fs::read(&bundle).unwrap();
-        let memory_bytes = fs::read(&memory).unwrap();
         assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
         let bundle_text = String::from_utf8(bundle_bytes.clone()).unwrap();
         assert!(
@@ -402,14 +452,13 @@ mod tests {
             bundle_text.contains("\"chain\":\"blake2s:"),
             "{bundle_text}"
         );
-        assert!(String::from_utf8(memory_bytes.clone())
-            .unwrap()
-            .contains("kept"));
+        assert!(bundle_text.contains("kept"), "{bundle_text}");
+        assert!(!memory.exists());
         drop(world);
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
         assert_eq!(fs::read(&bundle).unwrap(), bundle_bytes);
-        assert_eq!(fs::read(&memory).unwrap(), memory_bytes);
+        assert!(fs::read_to_string(&memory).unwrap().contains("kept"));
         assert!(!root.join("state/.txn").exists());
 
         let mut again = World::open(&root).unwrap();
@@ -534,6 +583,7 @@ mod tests {
             arrivals: Vec::new(),
             fast_forward: false,
             tool_trace: Vec::new(),
+            memories: Vec::new(),
             now_hash: String::new(),
             prev: String::new(),
             chain: String::new(),

@@ -6,6 +6,7 @@
 //! `journal/base.yaml` is the genesis snapshot, written the first time a
 //! checkpoint replaces `save.yaml`. Before that, `save.yaml` is still genesis.
 
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs::{self, File};
 use std::io::{Read, Write};
@@ -24,12 +25,49 @@ pub use super::records::{
 };
 use super::records::{CheckpointKind, MigrateKind};
 
+thread_local! {
+    static BUNDLE_READS: RefCell<Option<Vec<String>>> = const { RefCell::new(None) };
+}
+
+/// Record each bundle file read until `take_bundle_trace`.
+pub fn start_bundle_trace() {
+    BUNDLE_READS.with(|reads| *reads.borrow_mut() = Some(Vec::new()));
+}
+
+/// Bundle file names read since `start_bundle_trace`, then stop recording.
+pub fn take_bundle_trace() -> Vec<String> {
+    BUNDLE_READS.with(|reads| reads.borrow_mut().take().unwrap_or_default())
+}
+
 pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
 }
 
 pub fn base_rel() -> &'static str {
     "journal/base.yaml"
+}
+
+pub fn head_rel() -> &'static str {
+    "journal/head.json"
+}
+
+/// The latest checkpoint, written beside the bundles so startup can skip them.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BundleHead {
+    pub state_rev: u64,
+    pub tick_index: u64,
+    pub state_hash: String,
+    pub chain: String,
+}
+
+pub fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault> {
+    let path = pack.join("state").join(head_rel());
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let text = fs::read_to_string(&path)
+        .map_err(|_| fault(&path, "the checkpoint head could not be read"))?;
+    Ok(Some(read_json("head.json", &text)?))
 }
 
 pub(crate) fn emit_migrate(
@@ -66,21 +104,7 @@ pub fn read_entries(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
     refuse_old_layout(&dir)?;
     let mut entries = Vec::new();
     for (name, path) in bundle_files(&dir)? {
-        let text = read_bundle(&name, &path)?;
-        let complete = if text.ends_with('\n') {
-            text.as_str()
-        } else {
-            match text.rfind('\n') {
-                Some(at) => &text[..=at],
-                None => "",
-            }
-        };
-        for line in complete.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            entries.push(parse_line(&name, line)?);
-        }
+        entries.extend(parse_complete(&name, &read_bundle(&name, &path)?)?);
     }
     Ok(entries)
 }
@@ -153,21 +177,38 @@ pub fn seal(entry: &JournalEntry, prev: &str) -> String {
     emit_entry(&sealed)
 }
 
+/// Chain of the last live record, or of the checkpoint head when the live bundle is empty.
 pub fn chain_tip(pack: &Path) -> Result<String, JournalFault> {
-    let entries = read_entries(pack)?;
-    match entries.last() {
-        Some(entry) => {
-            let expect = chain_of(entry);
-            if entry.chain() != expect {
-                return Err(fault_name(
-                    &bundle_name_of(pack, entry),
-                    "the chain hash does not cover this record",
-                ));
-            }
-            Ok(expect)
+    if let Some(path) = live_plain(pack) {
+        let name = path
+            .file_name()
+            .map(|file| file.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        let text = read_bundle(&name, &path)?;
+        if let Some(line) = last_complete_line(&text) {
+            return line_chain(&name, line);
         }
-        None => genesis_hash(pack),
     }
+    if let Some(head) = read_head(pack)? {
+        return Ok(head.chain);
+    }
+    genesis_hash(pack)
+}
+
+/// Records in the plain live bundle. Closed bundles stay unread.
+pub fn read_live(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
+    let dir = pack.join("state/journal");
+    if dir.is_dir() {
+        refuse_old_layout(&dir)?;
+    }
+    let Some(path) = live_plain(pack) else {
+        return Ok(Vec::new());
+    };
+    let name = path
+        .file_name()
+        .map(|file| file.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    parse_complete(&name, &read_bundle(&name, &path)?)
 }
 
 pub fn genesis_hash(pack: &Path) -> Result<String, JournalFault> {
@@ -255,22 +296,7 @@ pub fn bundle_entries(pack: &Path) -> Result<Vec<(String, Vec<JournalEntry>)>, J
     refuse_old_layout(&dir)?;
     let mut out = Vec::new();
     for (name, path) in bundle_files(&dir)? {
-        let text = read_bundle(&name, &path)?;
-        let complete = if text.ends_with('\n') {
-            text.as_str()
-        } else {
-            match text.rfind('\n') {
-                Some(at) => &text[..=at],
-                None => "",
-            }
-        };
-        let mut entries = Vec::new();
-        for line in complete.lines() {
-            if line.is_empty() {
-                continue;
-            }
-            entries.push(parse_line(&name, line)?);
-        }
+        let entries = parse_complete(&name, &read_bundle(&name, &path)?)?;
         out.push((name, entries));
     }
     Ok(out)
@@ -412,7 +438,51 @@ fn bundle_index(name: &str) -> Option<u32> {
     digits.parse().ok()
 }
 
+fn last_complete_line(text: &str) -> Option<&str> {
+    let complete = complete_text(text);
+    complete.lines().rev().find(|line| !line.is_empty())
+}
+
+fn line_chain(name: &str, line: &str) -> Result<String, JournalFault> {
+    let entry = parse_line(name, line)?;
+    let expect = chain_of(&entry);
+    if entry.chain() != expect {
+        return Err(fault_name(
+            name,
+            "the chain hash does not cover this record",
+        ));
+    }
+    Ok(expect)
+}
+
+fn complete_text(text: &str) -> &str {
+    if text.ends_with('\n') {
+        text
+    } else {
+        match text.rfind('\n') {
+            Some(at) => &text[..=at],
+            None => "",
+        }
+    }
+}
+
+fn parse_complete(name: &str, text: &str) -> Result<Vec<JournalEntry>, JournalFault> {
+    let mut entries = Vec::new();
+    for line in complete_text(text).lines() {
+        if line.is_empty() {
+            continue;
+        }
+        entries.push(parse_line(name, line)?);
+    }
+    Ok(entries)
+}
+
 fn read_bundle(name: &str, path: &Path) -> Result<String, JournalFault> {
+    BUNDLE_READS.with(|reads| {
+        if let Some(names) = reads.borrow_mut().as_mut() {
+            names.push(name.to_string());
+        }
+    });
     if name.ends_with(".gz") {
         let file =
             File::open(path).map_err(|_| fault(path, "the journal bundle could not be read"))?;
@@ -430,6 +500,14 @@ pub fn gzip_bytes(plain: &[u8]) -> Result<Vec<u8>, Reason> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
     enc.write_all(plain).map_err(|_| Reason::CommitConflict)?;
     enc.finish().map_err(|_| Reason::CommitConflict)
+}
+
+pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
+    let mut out = Vec::new();
+    GzDecoder::new(bytes)
+        .read_to_end(&mut out)
+        .map_err(|_| Reason::Schema)?;
+    Ok(out)
 }
 
 pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {

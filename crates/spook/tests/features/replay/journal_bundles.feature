@@ -8,11 +8,18 @@ Feature: Hash-chained journal bundles
     Then the torn tail is gone
     And the opened state matches the last complete record
 
+  Scenario: Startup does not open a closed bundle
+    Given a docks table
+    And checkpoints are taken every 2 ticks
+    When the operator runs 5 ticks
+    And the table is opened with a bundle trace
+    Then no closed bundle was opened
+
   Scenario: An edit to a closed bundle fails verification
     Given a docks table
     And checkpoints are taken every 2 ticks
     When the operator runs 4 ticks
-    And one byte in a closed bundle is changed
+    And one record in a closed bundle is changed
     And the operator runs verify
     Then the command exits 1
     And stderr names that bundle

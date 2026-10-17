@@ -5,6 +5,8 @@ use std::path::Path;
 
 use crate::error::Reason;
 use crate::journal::{self, JournalEntry};
+use crate::model::MemoryLine;
+use crate::store::codec::emit_memory_line;
 use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
 
 pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
@@ -14,14 +16,25 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
         fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
     }
     cut_torn_tail(root)?;
+    rebuild_memory_files(root)?;
+    delete_tmp(&state);
+    Ok(())
+}
 
-    let records = journal::read_entries(root).map_err(|fault| {
-        if fault.detail.contains("RULES_REV") {
-            Reason::RulesRev
-        } else {
-            Reason::Schema
-        }
-    })?;
+fn journal_reason(detail: &str) -> Reason {
+    if detail.contains("RULES_REV") {
+        Reason::RulesRev
+    } else {
+        Reason::Schema
+    }
+}
+
+/// Memory files are a cache of the journal. The live bundle supplies lines since
+/// the last checkpoint. A line for a tick the live bundle does not have, and
+/// that the checkpoint does not cover, is dropped.
+fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
+    let records = journal::read_live(root).map_err(|fault| journal_reason(&fault.detail))?;
+    let head = journal::read_head(root).map_err(|fault| journal_reason(&fault.detail))?;
     let live_ticks: BTreeSet<u64> = records
         .iter()
         .filter_map(|entry| match entry {
@@ -29,41 +42,82 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
             _ => None,
         })
         .collect();
-
-    let memories = state.join("memories");
+    let fresh: Vec<MemoryLine> = records
+        .iter()
+        .filter_map(|entry| match entry {
+            JournalEntry::Tick(record) => Some(record.memories.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let memories = root.join("state/memories");
+    let mut actors = BTreeSet::new();
     if memories.is_dir() {
-        let entries = fs::read_dir(&memories)
+        for entry in fs::read_dir(&memories)
             .map_err(|_| Reason::Schema)?
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Reason::Schema)?;
-        for entry in entries {
+            .map_err(|_| Reason::Schema)?
+        {
             let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
-                continue;
+            if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl") {
+                if let Some(name) = path.file_stem().and_then(|stem| stem.to_str()) {
+                    actors.insert(name.to_string());
+                }
             }
+        }
+    }
+    for line in &fresh {
+        actors.insert(line.actor_id.clone());
+    }
+    if actors.is_empty() {
+        return Ok(());
+    }
+    fs::create_dir_all(&memories).map_err(|_| Reason::Schema)?;
+    for actor in actors {
+        let path = memories.join(format!("{actor}.jsonl"));
+        let mut kept = Vec::new();
+        if path.is_file() {
             let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-            let mut kept = String::new();
-            let mut changed = false;
             for line in text.lines() {
                 if line.is_empty() {
                     continue;
                 }
-                match memory_tick(line) {
-                    Some(tick_index) if live_ticks.contains(&tick_index) => {
-                        kept.push_str(line);
-                        kept.push('\n');
-                    }
-                    _ => changed = true,
+                if memory_tick(line).is_some_and(|tick| keep_tick(tick, head.as_ref(), &live_ticks))
+                {
+                    kept.push(line.to_string());
                 }
             }
-            if changed {
-                atomic_write(&path, kept.as_bytes())?;
+        }
+        for line in fresh.iter().filter(|line| line.actor_id == actor) {
+            let text = emit_memory_line(line);
+            if !kept.iter().any(|row| row == &text) {
+                kept.push(text);
             }
         }
+        let mut body = kept.join("\n");
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        let current = fs::read_to_string(&path).unwrap_or_default();
+        if path.is_file() && current == body {
+            continue;
+        }
+        if body.is_empty() && !path.is_file() {
+            continue;
+        }
+        atomic_write(&path, body.as_bytes())?;
     }
-
-    delete_tmp(&state);
     Ok(())
+}
+
+fn keep_tick(tick: u64, head: Option<&journal::BundleHead>, live_ticks: &BTreeSet<u64>) -> bool {
+    if live_ticks.contains(&tick) {
+        return true;
+    }
+    match head {
+        Some(head) => tick <= head.tick_index,
+        None => false,
+    }
 }
 
 fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
@@ -198,6 +252,7 @@ mod tests {
             arrivals: Vec::new(),
             fast_forward: false,
             tool_trace: Vec::new(),
+            memories: Vec::new(),
             now_hash: String::new(),
             prev: String::new(),
             chain: String::new(),

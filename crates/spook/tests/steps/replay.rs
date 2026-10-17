@@ -338,8 +338,8 @@ fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
     );
 }
 
-#[when(expr = "one byte in a closed bundle is changed")]
-fn one_byte_in_a_closed_bundle_is_changed(world: &mut World) {
+#[when(expr = "one record in a closed bundle is changed")]
+fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
     let pack = table::pack(world);
     let bundles =
         spookery_kernel::api::journal::bundles(pack).unwrap_or_else(|err| panic!("{}", err.detail));
@@ -347,11 +347,43 @@ fn one_byte_in_a_closed_bundle_is_changed(world: &mut World) {
         .into_iter()
         .find(|(name, _)| name.ends_with(".gz"))
         .unwrap_or_else(|| panic!("no closed bundle"));
-    let mut bytes = fs::read(&path).unwrap();
-    let at = bytes.len().saturating_sub(1);
-    bytes[at] ^= 0xff;
-    fs::write(&path, bytes).unwrap();
+    let compressed = fs::read(&path).unwrap();
+    let plain = spookery_kernel::api::journal::gunzip_bytes(&compressed)
+        .unwrap_or_else(|err| panic!("gunzip: {err}"));
+    let text = String::from_utf8(plain).unwrap_or_else(|err| panic!("{err}"));
+    let needle = "\"chain\":\"blake2s:";
+    let at = text
+        .find(needle)
+        .unwrap_or_else(|| panic!("no chain\n{text}"))
+        + needle.len();
+    let mut bytes = text.into_bytes();
+    bytes[at] = if bytes[at] == b'0' { b'1' } else { b'0' };
+    let next = spookery_kernel::api::journal::gzip_bytes(&bytes)
+        .unwrap_or_else(|err| panic!("gzip: {err}"));
+    fs::write(&path, next).unwrap();
     world.scratch = name;
+}
+
+#[when(expr = "the table is opened with a bundle trace")]
+fn the_table_is_opened_with_a_bundle_trace(world: &mut World) {
+    spookery_kernel::api::journal::start_bundle_trace();
+    spookery_round::resume(table::pack(world)).unwrap_or_else(|err| panic!("open: {err}"));
+    world.summary = spookery_kernel::api::journal::take_bundle_trace();
+}
+
+#[then(expr = "no closed bundle was opened")]
+fn no_closed_bundle_was_opened(world: &mut World) {
+    let closed: Vec<_> = world
+        .summary
+        .iter()
+        .filter(|name| name.ends_with(".gz"))
+        .cloned()
+        .collect();
+    assert!(
+        closed.is_empty(),
+        "closed bundles opened: {closed:?}\nall: {:?}",
+        world.summary
+    );
 }
 
 #[then(expr = "stderr names that bundle")]

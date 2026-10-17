@@ -93,6 +93,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         arrivals: line.arrivals.to_vec(),
         fast_forward: line.fast_forward,
         tool_trace: line.tool_trace.to_vec(),
+        memories: Vec::new(),
         now_hash: String::new(),
         prev: String::new(),
         chain: String::new(),

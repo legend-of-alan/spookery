@@ -7,7 +7,7 @@ use spookery_kernel::api::canon::{bind_inventory, bind_meters, pack_rev};
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
-use spookery_kernel::api::model::Now;
+use spookery_kernel::api::model::{Now, Presence};
 use spookery_kernel::api::store::codec::{canonicalize, emit_effect, emit_save, load_save};
 use spookery_kernel::api::store::require_rules_rev;
 use spookery_kernel::api::world::World;
@@ -211,16 +211,24 @@ fn replay_walking(
 }
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
+/// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 pub fn resume(path: &Path) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
     let mut world = World::open(path)?;
-    let report = from_journal(path, None, None).map_err(replay_reason)?;
-    if report.applied == 0 {
-        return Ok(world);
+    let entries = journal::read_live(path).map_err(|fault| replay_reason(journal_fault(fault)))?;
+    let base_rev = world.now().state_rev;
+    for entry in &entries {
+        if entry.state_rev_after() <= base_rev {
+            continue;
+        }
+        apply(&mut world, entry).map_err(replay_reason)?;
     }
-    let text = std::str::from_utf8(&report.now_yaml).map_err(|_| Reason::Schema)?;
-    let now = load_save(text).map_err(reason_of)?;
-    world.install_replayed(now);
+    // Seats are this process. The journal records who was present so the round
+    // replays, and the save leaves them out.
+    world.set_presence(Presence {
+        humans: 0,
+        actors_present: Vec::new(),
+    });
     Ok(world)
 }
 
@@ -232,8 +240,7 @@ fn replay_reason(err: ReplayError) -> Reason {
 }
 
 fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
-    let entries = journal::read_entries(path).map_err(journal_fault)?;
-    let Some(mark) = journal::latest_checkpoint(&entries) else {
+    let Some(mark) = journal::read_head(path).map_err(journal_fault)? else {
         return Ok(());
     };
     let save = path.join("state/save.yaml");
@@ -271,7 +278,7 @@ fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
 
 /// Read the journal and replay it. A stale `save.yaml` is not the tip.
 pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, VerifyError> {
-    verify_serial(pack, from)
+    verify_serial(pack, from).map(|(report, _yaml)| report)
 }
 
 /// Check every chain hash, then replay the latest bundle from the snapshot it starts at.
@@ -349,9 +356,10 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, VerifyError> {
     })
 }
 
-/// Replay every bundle from its checkpoint snapshot. The tip matches a serial replay.
+/// Replay every bundle from its checkpoint snapshot, at the same time.
+/// The tip matches one serial replay.
 pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
-    let serial = verify_serial(pack, None)?;
+    let (serial, serial_yaml) = verify_serial(pack, None)?;
     let bundles =
         journal::bundle_entries(pack).map_err(|fault| VerifyError::Replay(journal_fault(fault)))?;
     if bundles.is_empty() {
@@ -360,14 +368,18 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
     let mut starts = Vec::new();
     let genesis = genesis_bytes(pack)?;
     let mut previous: Option<Vec<u8>> = None;
-    for (name, entries) in &bundles {
+    for (index, (name, entries)) in bundles.iter().enumerate() {
+        if index + 1 < bundles.len() && journal::latest_checkpoint(entries).is_none() {
+            return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
+                0,
+                "checkpoint",
+                None,
+                format!("{name}: a closed bundle has no checkpoint"),
+                None,
+            ))));
+        }
         let start = previous.clone().unwrap_or_else(|| genesis.clone());
-        let end_rev = entries
-            .iter()
-            .filter(|entry| entry.changes_state())
-            .map(JournalEntry::state_rev_after)
-            .max();
-        starts.push((name.clone(), start, entries.clone(), end_rev));
+        starts.push((name.clone(), start, entries.clone()));
         if let Some(mark) = journal::latest_checkpoint(entries) {
             let snap = pack
                 .join("state/checkpoints")
@@ -377,19 +389,35 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
                     mark.state_rev,
                     "checkpoint",
                     Some(mark.tick_index),
-                    format!("{}: missing snapshot", name),
+                    format!("{name}: missing snapshot"),
                     None,
                 )))
             })?);
         }
     }
+    let mut ends: Vec<Option<Result<Vec<u8>, ReplayError>>> =
+        (0..starts.len()).map(|_| None).collect();
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for (index, (_name, start, entries)) in starts.iter().enumerate() {
+            let start = start.clone();
+            let entries = entries.clone();
+            handles.push(scope.spawn(move || (index, replay_bundle(pack, &start, &entries))));
+        }
+        for handle in handles {
+            let (index, end) = handle.join().expect("replay");
+            ends[index] = Some(end);
+        }
+    });
     let mut tip = genesis;
-    for (name, start, entries, _) in starts {
-        let end = replay_bundle(pack, &start, &entries).map_err(|err| match err {
+    for (index, end) in ends.into_iter().enumerate() {
+        let end = end.unwrap_or(Err(ReplayError::Reason(Reason::Schema)));
+        let end = end.map_err(|err| match err {
             ReplayError::Diverged(diverged) => with_diff(diverged, &snapshot_bytes(pack)),
             other => VerifyError::Replay(other),
         })?;
-        if let Some(mark) = journal::latest_checkpoint(&entries) {
+        let (name, entries) = &bundles[index];
+        if let Some(mark) = journal::latest_checkpoint(entries) {
             if journal::hash_now(&end) != mark.state_hash {
                 return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
                     mark.state_rev,
@@ -402,8 +430,7 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
         }
         tip = end;
     }
-    let serial_tip = from_journal(pack, None, None).map_err(VerifyError::Replay)?;
-    if serial_tip.now_yaml != tip {
+    if serial_yaml != tip {
         return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
             serial.state_rev,
             "save",
@@ -415,7 +442,7 @@ pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
     Ok(serial)
 }
 
-fn verify_serial(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, VerifyError> {
+fn verify_serial(pack: &Path, from: Option<&Path>) -> Result<(VerifyReport, Vec<u8>), VerifyError> {
     if !pack.join("pack.yaml").is_file() {
         return Err(VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)));
     }
@@ -428,10 +455,14 @@ fn verify_serial(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Verif
     if records.is_empty() && from.is_none() {
         let live = fs::read(pack.join("state/save.yaml"))
             .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
-        return Ok(VerifyReport {
-            state_rev: state_rev_of(&live).map_err(VerifyError::Replay)?,
-            applied: 0,
-        });
+        let rev = state_rev_of(&live).map_err(VerifyError::Replay)?;
+        return Ok((
+            VerifyReport {
+                state_rev: rev,
+                applied: 0,
+            },
+            live,
+        ));
     }
     let cap = records.iter().map(JournalEntry::state_rev_after).max();
     let report = match from_journal(pack, from, cap) {
@@ -446,10 +477,13 @@ fn verify_serial(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Verif
             return Err(VerifyError::Replay(journal_fault(fault)));
         }
     }
-    Ok(VerifyReport {
-        state_rev: report.state_rev,
-        applied: report.applied,
-    })
+    Ok((
+        VerifyReport {
+            state_rev: report.state_rev,
+            applied: report.applied,
+        },
+        report.now_yaml,
+    ))
 }
 
 fn snapshot_bytes(pack: &Path) -> Vec<u8> {
