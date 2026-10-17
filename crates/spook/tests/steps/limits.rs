@@ -47,18 +47,60 @@ fn refused_and_disconnected(world: &mut World, code: String) {
         0,
         "the seat was not released"
     );
-    table::release_status_gm(world);
 }
 
 #[then(expr = "a second player can sit and wait")]
 fn a_second_player_can_sit_and_wait(world: &mut World) {
     table::release_status_gm(world);
     let pack = table::pack(world).to_path_buf();
+    let before = table::list_tick_keys(&pack).len();
     table::seat_actor(world, &pack, "pc_harbormouse");
-    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
+    table::actor_line(world, "pc_harbormouse", "wait");
+    table::expect_wait_from(&pack, "pc_harbormouse", before);
+}
+
+#[when(expr = "the GM releases the seat")]
+fn the_gm_releases_the_seat(world: &mut World) {
+    world.scratch = table::release_gm(world);
+}
+
+#[then(expr = "the server confirms the seat is free")]
+fn the_server_confirms_the_seat_is_free(world: &mut World) {
     assert!(
-        !table::list_tick_keys(&pack).is_empty(),
-        "the second player did not commit a tick"
+        world.scratch.contains("\"released\":true"),
+        "{}",
+        world.scratch
+    );
+}
+
+#[when(expr = "the GM releases the seat and keeps the session")]
+fn the_gm_releases_the_seat_and_keeps_the_session(world: &mut World) {
+    world.scratch = table::release_gm_session(world);
+}
+
+#[when(expr = "another GM sits")]
+fn another_gm_sits(world: &mut World) {
+    table::seat_gm(world);
+}
+
+#[when(expr = "the closed session calls say")]
+fn the_closed_session_calls_say(world: &mut World) {
+    world.before = table::files(table::pack(world));
+    world.scratch =
+        table::closed_gm_call(world, "say", r#"{"address":"table","text":"good evening"}"#);
+}
+
+#[then(expr = "that call is refused and nothing was written")]
+fn that_call_is_refused_and_nothing_was_written(world: &mut World) {
+    assert!(
+        world.scratch.contains("\"code\":\"NOT_IN_SPEC\""),
+        "{}",
+        world.scratch
+    );
+    assert_eq!(
+        table::files(table::pack(world)),
+        world.before,
+        "the closed session wrote the pack"
     );
 }
 
@@ -130,6 +172,36 @@ fn the_player_sends_invalid_utf8(world: &mut World) {
     world.player_added = table::wait_player_from(world, mark, "\"code\":\"SCHEMA\"");
 }
 
+#[when(expr = "the GM calls close with a key")]
+fn the_gm_calls_close_with_a_key(world: &mut World) {
+    world.scratch = table::gm_call(world, 91, "close", r#"{"now":true}"#);
+}
+
+#[then(expr = "that call is refused with {string}")]
+fn that_call_is_refused_with(world: &mut World, code: String) {
+    assert!(
+        world.scratch.contains(&format!("\"code\":\"{code}\"")),
+        "{}",
+        world.scratch
+    );
+    assert!(
+        !world.scratch.contains("\"released\":true"),
+        "{}",
+        world.scratch
+    );
+}
+
+#[then(expr = "the GM can still say")]
+fn the_gm_can_still_say(world: &mut World) {
+    let text = table::gm_call(
+        world,
+        93,
+        "say",
+        r#"{"address":"table","text":"still here"}"#,
+    );
+    assert!(text.contains("\"seq\":"), "the GM lost the seat\n{text}");
+}
+
 #[then(expr = "the player is refused with {string}")]
 fn the_player_is_refused_with(world: &mut World, code: String) {
     let needle = format!("\"code\":\"{code}\"");
@@ -142,11 +214,10 @@ fn the_player_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the player can wait")]
 fn the_player_can_wait(world: &mut World) {
-    let _ = table::player_send(world, "wait", "\"kind\":");
-    assert!(
-        table::now_of(table::pack(world)).world_time > 1080,
-        "the line after invalid UTF-8 did not commit"
-    );
+    let pack = table::pack(world).to_path_buf();
+    let before = table::list_tick_keys(&pack).len();
+    table::player_write(world, "wait");
+    table::expect_wait_from(&pack, "pc_rowan", before);
 }
 
 #[when(expr = "a socket connects and sends nothing")]

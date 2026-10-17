@@ -245,6 +245,7 @@ pub(super) enum Msg {
         ack: Ack,
     },
     Tool {
+        conn: u64,
         name: String,
         arguments: Option<serde_json::Map<String, serde_json::Value>>,
         reply: tokio::sync::oneshot::Sender<ToolReply>,
@@ -285,6 +286,8 @@ impl Ack {
 pub(super) struct ToolReply {
     pub value: serde_json::Value,
     pub after: Vec<Vec<u8>>,
+    /// This call freed the GM seat. The session must not call again.
+    pub released: bool,
 }
 
 pub(super) enum HelloReply {
@@ -331,10 +334,19 @@ fn handle(
         }
         Msg::Fault { conn, end, ack } => on_fault(world, seats, conn, end, ack)?,
         Msg::Tool {
+            conn,
             name,
             arguments,
             reply,
         } => {
+            if seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
+                let _ = reply.send(ToolReply {
+                    value: frames::code_result(Reason::NotInSpec.token()),
+                    after: Vec::new(),
+                    released: false,
+                });
+                return Ok(());
+            }
             let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
             let notices = if done.ticked {
                 let notices = world.take_rolls();
@@ -362,9 +374,15 @@ fn handle(
             if done.advanced {
                 bump_sleep(restart);
             }
+            // Free the seat before the client can read this result.
+            let released = done.release_seat;
+            if released {
+                seats.gm = None;
+            }
             let _ = reply.send(ToolReply {
                 value: done.value,
                 after,
+                released,
             });
         }
         Msg::Wake => {

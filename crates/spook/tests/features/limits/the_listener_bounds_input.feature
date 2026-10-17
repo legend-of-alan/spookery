@@ -41,3 +41,23 @@ Feature: The listener bounds input
     When one player stops reading and the GM says many lines
     Then that player is disconnected
     And the other player keeps receiving frames
+
+  Scenario: The GM seat confirms it is free
+    Given a docks table with a seated GM
+    When the GM releases the seat
+    Then the server confirms the seat is free
+    And a second player can sit and wait
+
+  Scenario: A closed GM session cannot call tools
+    Given a docks table with a seated GM
+    When the GM releases the seat and keeps the session
+    Then the server confirms the seat is free
+    When another GM sits
+    And the closed session calls say
+    Then that call is refused and nothing was written
+
+  Scenario: A close with a key is refused and the GM keeps the seat
+    Given a docks table with a seated GM
+    When the GM calls close with a key
+    Then that call is refused with "SCHEMA"
+    And the GM can still say

@@ -370,7 +370,7 @@ POST the initialize body. Send `Accept` and `Content-Type` as in Connect. The re
 }
 ```
 
-The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it. Dropping the session releases it too.
+The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it. Dropping the session releases it too. Neither of those waits until the seat is free. `close` does. Its result is sent after the seat is free.
 
 A second initialize, while a GM is sat, does not sit:
 
@@ -390,7 +390,7 @@ The JSON-RPC error code is the transport's. The seat token is the bracketed word
 
 ### Tools
 
-`tools/list` is the menu. The names, in order, are `session_status`, `perceive`, `intent`, `say`, and `commit_round`. Any other name is `NOT_IN_SPEC` and writes nothing.
+`tools/list` is the menu. The names, in order, are `session_status`, `perceive`, `intent`, `say`, `commit_round`, and `close`. Any other name is `NOT_IN_SPEC` and writes nothing.
 
 A call is `tools/call`. The body below is the JSON-RPC request. The result examples are the tool's structured content, the object under `result.structuredContent` on the wire. A refusal is that object with a `code`, and the seat stays up.
 
@@ -688,6 +688,30 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 
 `diff_summary` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `log_path` is the journal file for that round, or null when the round wrote no tick file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
 
+#### close
+
+No key is accepted. An empty object is legal. A key is `SCHEMA` and the seat stays up. The result is sent after the seat is free. A player line after it commits its own round. A later tool call on that same session is `NOT_IN_SPEC` and writes nothing. Whoever holds the seat then is left as they are.
+
+<!-- example: close-request -->
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tools/call",
+  "params": {
+    "name": "close",
+    "arguments": {}
+  }
+}
+```
+
+<!-- example: close-result -->
+```json
+{
+  "released": true
+}
+```
+
 An unknown tool:
 
 <!-- example: unknown-tool-request -->
@@ -808,7 +832,7 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `SESSION_FULL` | Stop. Three players are sat, or the GM seat is held. Connect again only after that seat is free. Do not retry the same hello in a loop. |
 | `SEAT_TAKEN` | That PC is held. Connect again as a different live PC. |
 | `SCHEMA` | The line or the arguments are the wrong shape. On a seated player, send a corrected line. On hello, connect again with `player:<id>` of a live PC. |
-| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, or `commit_round` set `include_tick` false while a move is queued. Nothing was written for that call. The queue is still there after the false commit. |
+| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, `commit_round` set `include_tick` false while a move is queued, or the call is on a session that already closed. Nothing was written for that call. The queue is still there after the false commit. |
 | `LINE_TOO_LONG` | The line is over 8 KiB, not counting the newline. The socket is closed. Connect again with a shorter line. |
 | `UNSCOPED_PERCEIVE` | Call `perceive` again with `as` set to `player:<id>` or `npc:<id>`. |
 | `NO_EXIT` | The move was not queued. On the player line, `missing` is the locked text when the pack set one. |

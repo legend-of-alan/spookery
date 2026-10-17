@@ -26,6 +26,8 @@ pub struct Live {
     pub player_text: Arc<Mutex<String>>,
     pub players: Vec<Seated>,
     pub gm: Option<GmConnection>,
+    /// The GM connection that called `close` and has not been dropped.
+    pub closed_gm: Option<GmConnection>,
     /// Set when `live_presence` opened a GM only to read seats.
     pub gm_probe: bool,
     pub http_port: u16,
@@ -162,6 +164,16 @@ pub fn wait_tick_count(pack: &Path, count: usize) -> Vec<String> {
     wait_ticks_until(pack, &format!("{count} ticks"), |keys| keys.len() >= count)
 }
 
+/// Waits until a tick after `before` holds that actor's player `wait`.
+pub fn expect_wait_from(pack: &Path, actor_id: &str, before: usize) -> Vec<String> {
+    wait_ticks_until(pack, &format!("{actor_id}'s wait"), |keys| {
+        keys.get(before..)
+            .unwrap_or_default()
+            .iter()
+            .any(|key| list_player_waits(pack, key).iter().any(|id| id == actor_id))
+    })
+}
+
 pub struct Pending {
     child: Child,
     stdin: Option<ChildStdin>,
@@ -282,6 +294,7 @@ fn install(world: &mut World, pack: &Path, listening: Listening) {
         player_text: Arc::new(Mutex::new(String::new())),
         players: Vec::new(),
         gm: None,
+        closed_gm: None,
         gm_probe: false,
         http_port: listening.door.port(),
         gm_text: Arc::new(Mutex::new(String::new())),
@@ -520,6 +533,19 @@ pub fn actor_text(world: &World, actor_id: &str) -> String {
 }
 
 pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
+    let mark = actor_line(world, actor_id, line);
+    let slot = Arc::clone(
+        &live_ref(world)
+            .players
+            .iter()
+            .find(|player| player.actor_id == actor_id)
+            .unwrap_or_else(|| panic!("no seat for {actor_id}"))
+            .text,
+    );
+    wait_suffix(&slot, mark, needle)
+}
+
+pub fn actor_line(world: &mut World, actor_id: &str, line: &str) -> usize {
     let live = live_mut(world);
     let player = live
         .players
@@ -532,8 +558,7 @@ pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -
         .write
         .flush()
         .unwrap_or_else(|err| panic!("flush: {err}"));
-    let slot = Arc::clone(&player.text);
-    wait_suffix(&slot, mark, needle)
+    mark
 }
 
 pub fn stop_server(world: &mut World) {
@@ -541,6 +566,7 @@ pub fn stop_server(world: &mut World) {
     live.players.clear();
     live.player_write.take();
     live.gm.take();
+    live.closed_gm.take();
     if let Some(server) = live.server.take() {
         drop(server);
     }
@@ -560,11 +586,56 @@ pub fn close_actor(world: &mut World, actor_id: &str) {
         .unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
-pub fn release_status_gm(world: &mut World) {
+/// `close` answers after the seat is free. The session stays up so a later call can be refused.
+pub fn release_gm_session(world: &mut World) -> String {
+    let text = gm_call(world, 91, "close", "{}");
+    assert!(
+        text.contains("\"released\":true"),
+        "the server did not confirm the seat was free\n{text}"
+    );
     let live = live_mut(world);
-    if live.gm_probe {
-        live.gm = None;
-        live.gm_probe = false;
+    live.closed_gm = live.gm.take();
+    live.gm_probe = false;
+    text
+}
+
+pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String {
+    let value: Value =
+        serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
+    let live = live_mut(world);
+    let gm = live
+        .closed_gm
+        .as_mut()
+        .unwrap_or_else(|| panic!("no closed GM"));
+    let outcome = gm
+        .call(name, value)
+        .unwrap_or_else(|err| panic!("gm call: {err}"));
+    let raw = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 92,
+        "result": { "structuredContent": outcome.body }
+    })
+    .to_string();
+    push_line(&live.gm_text, &raw);
+    raw
+}
+
+/// `close` answers after the seat is free. Dropping the socket does not.
+pub fn release_gm(world: &mut World) -> String {
+    let text = gm_call(world, 91, "close", "{}");
+    assert!(
+        text.contains("\"released\":true"),
+        "the server did not confirm the seat was free\n{text}"
+    );
+    let live = live_mut(world);
+    live.gm = None;
+    live.gm_probe = false;
+    text
+}
+
+pub fn release_status_gm(world: &mut World) {
+    if live_ref(world).gm_probe {
+        let _ = release_gm(world);
     }
 }
 
