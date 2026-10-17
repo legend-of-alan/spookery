@@ -62,8 +62,8 @@ mod proofs;
 #[path = "steps/fixtures.rs"]
 mod fixtures;
 
-#[path = "steps/audit_steps.rs"]
-mod audit;
+#[path = "steps/leak_audit.rs"]
+mod leak_audit;
 
 #[path = "steps/sample.rs"]
 mod sample;
