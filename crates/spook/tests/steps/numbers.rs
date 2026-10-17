@@ -20,6 +20,18 @@ fn the_packs_hit_adds(world: &mut World, add: String) {
     crate::support::stamp_pack_rev(&pack);
 }
 
+#[when(expr = "the pack's hit raises the grit of {string}")]
+fn the_packs_hit_raises_the_grit_of(world: &mut World, who: String) {
+    let pack = table::pack(world).to_path_buf();
+    let path = pack.join("rules/verbs.yaml");
+    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
+    text.push_str(&format!(
+        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          who: {who}\n          key: grit\n          add: 1\n"
+    ));
+    fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
+    crate::support::stamp_pack_rev(&pack);
+}
+
 #[when(expr = "Mira's habit adds {string} to grit")]
 fn miras_habit_adds(world: &mut World, add: String) {
     let pack = table::pack(world).to_path_buf();

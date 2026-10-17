@@ -190,7 +190,7 @@ pub struct CondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HasItemYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub id: String,
     #[serde(default = "one_count")]
     pub count: u32,
@@ -199,7 +199,7 @@ pub struct HasItemYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WieldingYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub id: String,
 }
 
@@ -210,7 +210,7 @@ fn one_count() -> u32 {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeterCondYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub key: String,
     pub op: String,
     pub value: Spanned<NumberYaml>,
@@ -219,7 +219,7 @@ pub struct MeterCondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FlagCondYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub key: String,
     #[serde(rename = "is")]
     pub is_: bool,
@@ -228,14 +228,14 @@ pub struct FlagCondYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AtYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub place: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct KnowsYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub fact: String,
 }
 
@@ -315,7 +315,7 @@ pub struct MeterPlusYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeterWhoYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub key: Spanned<String>,
 }
 
@@ -338,7 +338,7 @@ pub struct EffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeterEffectYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub key: String,
     pub add: Option<Spanned<NumberYaml>>,
     pub set: Option<Spanned<NumberYaml>>,
@@ -349,7 +349,7 @@ pub struct MeterEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct FlagEffectYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub key: String,
     pub value: bool,
     #[serde(default)]
@@ -404,7 +404,7 @@ pub struct ClockEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
     #[serde(default)]
@@ -414,7 +414,7 @@ pub struct MemoryYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemEffectYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub id: String,
     pub add: i64,
     #[serde(default)]
@@ -426,21 +426,21 @@ pub struct ItemEffectYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RevealYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub fact: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WieldYaml {
-    pub who: String,
+    pub who: Spanned<String>,
     pub id: String,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnwieldYaml {
-    pub who: String,
+    pub who: Spanned<String>,
 }
 
 #[derive(Deserialize)]
@@ -454,7 +454,7 @@ pub enum ResistYaml {
 #[serde(deny_unknown_fields)]
 pub struct ResistRollYaml {
     #[serde(default)]
-    pub who: Option<String>,
+    pub who: Option<Spanned<String>>,
     pub check: String,
     pub target: Spanned<NumberYaml>,
     #[serde(default)]
@@ -1120,21 +1120,26 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
     }
 }
 
-fn who_of(word: &str) -> Result<Who, String> {
+fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
+    let (line, column) = span_at(yaml);
+    let fault = |message: String| Fault::new(message).at(line, column);
+    let word = yaml.value.as_str();
     if let Some(place) = word.strip_prefix("place:") {
         if place.is_empty() {
-            return Err("place: needs an id".to_string());
+            return Err(fault("place: needs an id".to_string()));
         }
         return Ok(Who::Place(place.to_string()));
     }
     match word {
         "self" => Ok(Who::Self_),
         "target" => Ok(Who::Target),
-        "subject" => Ok(Who::Subject),
         "here" => Ok(Who::Here),
         "world" => Ok(Who::World),
+        "subject" => Err(fault(
+            "who 'subject' is not a who; use self, or target for the move's target".to_string(),
+        )),
         other if !other.is_empty() && !retired_selector(other) => Ok(Who::Actor(other.to_string())),
-        other => Err(format!("who '{other}' is not a who")),
+        other => Err(fault(format!("who '{other}' is not a who"))),
     }
 }
 

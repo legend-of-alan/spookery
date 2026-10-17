@@ -238,7 +238,7 @@ rules:
               key: tended
               is: false
           - knows:
-              who: target
+              who: pc_ada
               fact: fact_yard_open
       - not:
           note_exists: note_tended
@@ -260,7 +260,7 @@ rules:
           op: "<="
           value: 3
       - meter:
-          who: subject
+          who: pc_ada
           key: nerve
           op: ">"
           value:
@@ -303,7 +303,7 @@ rules:
         crosses: "<=0"
     do:
       - flag:
-          who: subject
+          who: self
           key: spent
           value: true
 ```
@@ -330,7 +330,7 @@ A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and th
 
 Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. `max_trigger_depth` in `rules/tick.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
-`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `subject`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
+`if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
 
 `cost` may name `time`, `meter`, and `items`. `time` uses the duration words from exits. A cost the actor cannot pay is refused when the move is played, and the world stays as it was.
 
@@ -442,7 +442,7 @@ rules:
       verb: shrug
     do:
       - meter:
-          who: subject
+          who: self
           key: nerve
           add: -1
           resist:
