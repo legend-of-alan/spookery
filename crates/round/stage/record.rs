@@ -1,3 +1,5 @@
+//! Write the round line, and the commit when this round owns it.
+
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::intent::Intent;

@@ -74,6 +74,9 @@ mod contributing;
 #[path = "steps/module_names.rs"]
 mod module_names;
 
+#[path = "steps/module_docs.rs"]
+mod module_docs;
+
 #[path = "steps/readme.rs"]
 mod readme;
 

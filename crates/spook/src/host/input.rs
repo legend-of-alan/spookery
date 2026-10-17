@@ -1,3 +1,5 @@
+//! A player line: `say` is speech, and a verb is a turn.
+
 use spookery_kernel::api::rule::RuleTable;
 use spookery_kernel::api::Reason;
 

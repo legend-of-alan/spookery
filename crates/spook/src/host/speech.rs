@@ -1,3 +1,5 @@
+//! Append a say to the tape and tell whoever heard it.
+
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};

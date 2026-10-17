@@ -1,3 +1,5 @@
+//! Whether the conditions on a rule hold.
+
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::model::Now;

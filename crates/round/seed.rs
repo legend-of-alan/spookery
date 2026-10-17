@@ -1,3 +1,5 @@
+//! The round line seed, and the key that shuffles intents.
+
 use spookery_kernel::api::blake2s_256;
 
 /// The round line's `seed` field. A roll uses `RollKey`, not this string.

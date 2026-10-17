@@ -1,3 +1,5 @@
+//! Readable text for one player frame.
+
 use crate::protocol::{Outcome, PlayerMessage, WireClock, WireExit, WireMeter};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.

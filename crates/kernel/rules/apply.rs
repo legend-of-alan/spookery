@@ -1,3 +1,5 @@
+//! Write one effect into the staged save.
+
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind, WORLD};
 use crate::error::Reason;

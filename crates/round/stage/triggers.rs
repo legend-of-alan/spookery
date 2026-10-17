@@ -1,3 +1,5 @@
+//! Change rules, edge-triggered, to a fixpoint.
+
 use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::canon::Canon;
 use spookery_kernel::api::draft::Draft;

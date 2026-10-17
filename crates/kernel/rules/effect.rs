@@ -1,3 +1,5 @@
+//! One effect: its class, and the fields that class carries.
+
 use std::fmt;
 
 use serde::{Deserialize, Serialize};

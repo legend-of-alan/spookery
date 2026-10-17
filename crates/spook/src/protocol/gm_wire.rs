@@ -1,3 +1,5 @@
+//! JSON lines for the GM seat: tool calls, events, and status.
+
 use serde::Serialize;
 use serde_json::{Map, Value};
 

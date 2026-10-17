@@ -1,3 +1,5 @@
+//! One pass of the rules over one tick.
+
 use std::collections::BTreeMap;
 
 use crate::play::{RecordedRound, RoundCause};

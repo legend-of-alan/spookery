@@ -1,3 +1,5 @@
+//! The live save: places, actors, clocks, and messages.
+
 pub(crate) mod ids;
 pub(crate) mod key;
 pub(crate) mod meter;

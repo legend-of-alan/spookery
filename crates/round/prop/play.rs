@@ -1,3 +1,5 @@
+//! Random legal moves, played against a temporary pack.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

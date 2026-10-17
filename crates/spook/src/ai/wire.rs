@@ -1,3 +1,5 @@
+//! Turn a model line into a tool result.
+
 use serde_json::Value;
 
 use crate::ai::fail;

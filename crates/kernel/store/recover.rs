@@ -1,3 +1,5 @@
+//! Finish a commit a crash left half done, or roll it back.
+
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;

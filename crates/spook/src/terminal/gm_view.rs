@@ -1,3 +1,5 @@
+//! The human GM: commands in, tool calls out.
+
 use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::path::Path;

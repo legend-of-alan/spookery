@@ -1,3 +1,5 @@
+//! Run a round, commit it, catch the table up, and migrate.
+
 use std::fs;
 use std::path::Path;
 

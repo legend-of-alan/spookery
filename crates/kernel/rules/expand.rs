@@ -1,3 +1,5 @@
+//! Turn a rule template into effects for one intent.
+
 use crate::canon::Canon;
 use crate::check::Outcome;
 use crate::effect::{Effect, EffectKind};

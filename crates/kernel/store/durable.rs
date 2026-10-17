@@ -1,3 +1,5 @@
+//! Flush a file or a directory, and rename into place.
+
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 

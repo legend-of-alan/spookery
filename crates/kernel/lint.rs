@@ -1,3 +1,5 @@
+//! Hidden fact text that leaked into a Markdown body.
+
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;

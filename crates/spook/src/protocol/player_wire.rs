@@ -1,3 +1,5 @@
+//! JSON lines for the player seat. No GM field, and no roll faces.
+
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{Outcome, ProtocolError};

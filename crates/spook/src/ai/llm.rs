@@ -1,3 +1,5 @@
+//! One model call. The HTTP client and the scripted model both implement it.
+
 use std::collections::VecDeque;
 use std::fmt;
 use std::sync::{Arc, Mutex};

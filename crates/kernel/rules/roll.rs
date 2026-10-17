@@ -1,3 +1,5 @@
+//! Roll one check and keep the faces, the total, and the band.
+
 use std::collections::BTreeMap;
 
 use crate::check::{classify, CheckDef, Outcome};

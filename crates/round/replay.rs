@@ -1,3 +1,5 @@
+//! Walk the journal and check that the save matches.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};

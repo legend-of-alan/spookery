@@ -1,3 +1,5 @@
+//! Check definitions, and the band a roll total lands in.
+
 use std::collections::BTreeMap;
 
 use serde::Deserialize;

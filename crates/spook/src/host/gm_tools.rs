@@ -1,3 +1,5 @@
+//! The GM tools: status, perceive, intent, say, commit, and close.
+
 use serde_json::{Map, Value};
 use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::intent::{ActorKind, IntentArgs, Source, Target};

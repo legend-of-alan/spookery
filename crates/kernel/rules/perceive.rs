@@ -1,3 +1,5 @@
+//! What one viewer is shown, trimmed to the prose budget.
+
 use std::collections::BTreeSet;
 
 use crate::canon::Canon;

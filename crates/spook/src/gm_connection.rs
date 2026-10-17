@@ -1,3 +1,5 @@
+//! The client that sits the GM seat over the agent door.
+
 use std::collections::VecDeque;
 use std::sync::{mpsc, Arc};
 use std::thread::{self, JoinHandle};

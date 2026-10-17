@@ -1,3 +1,5 @@
+//! The staged save a round writes before commit.
+
 use std::collections::BTreeSet;
 use std::marker::PhantomData;
 use std::rc::Rc;

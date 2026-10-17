@@ -1,3 +1,5 @@
+//! Failure tokens. JSONL lowers `BUDGET` at the log edge.
+
 use std::fmt;
 
 /// Pinned failure tokens. JSONL lowers `BUDGET` at the log edge.

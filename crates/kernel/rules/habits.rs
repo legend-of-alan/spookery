@@ -1,3 +1,5 @@
+//! Which habits an NPC may run on this tick.
+
 use crate::canon::Canon;
 use crate::ids::kernel_intent_id;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};

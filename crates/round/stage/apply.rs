@@ -1,3 +1,5 @@
+//! Pay each intent cost and write the effects it earned.
+
 use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;

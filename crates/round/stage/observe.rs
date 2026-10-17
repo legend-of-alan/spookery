@@ -1,3 +1,5 @@
+//! Deliver narrate lines and build the change summary for each viewer.
+
 use std::collections::BTreeSet;
 
 use spookery_kernel::api::draft::Draft;

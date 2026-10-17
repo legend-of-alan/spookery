@@ -1,3 +1,5 @@
+//! Take queued intents and habits, in the order this tick will try them.
+
 use std::collections::BTreeSet;
 
 use spookery_kernel::api::draft::Draft;
