@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then};
 
+use crate::support;
 use crate::World;
 
 /// Kernel subsystems, bottom to top. A file may import a name on a lower row.
@@ -457,13 +458,9 @@ fn skip_string(bytes: &[u8], open: usize) -> usize {
     bytes.len()
 }
 
-fn scratch_dir(label: &str) -> PathBuf {
-    crate::support::fresh_dir(label)
-}
-
 #[given(expr = "a spook source file that imports spookery_kernel::shard")]
 fn a_spook_file_imports_shard(world: &mut World) {
-    let dir = scratch_dir("api-plant");
+    let dir = support::fresh_dir("api-plant");
     let path = dir.join("plant.rs");
     fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("mkdir {}: {err}", dir.display()));
     fs::write(&path, "use spookery_kernel::shard;\n")
@@ -488,7 +485,7 @@ fn the_boundary_check_names_the_file_and_path(world: &mut World) {
 
 #[given(expr = "kernel\\/state imports crate::rules")]
 fn kernel_state_imports_rules(world: &mut World) {
-    let dir = scratch_dir("down-plant");
+    let dir = support::fresh_dir("down-plant");
     let kernel = dir.join("kernel");
     fs::create_dir_all(&kernel).unwrap_or_else(|err| panic!("mkdir {}: {err}", kernel.display()));
     let path = kernel.join("state.rs");
@@ -500,7 +497,7 @@ fn kernel_state_imports_rules(world: &mut World) {
 
 #[given(expr = "kernel\\/{word}.rs imports crate::{word}")]
 fn kernel_file_imports(world: &mut World, name: String, dep: String) {
-    let dir = scratch_dir("climb-plant");
+    let dir = support::fresh_dir("climb-plant");
     let kernel = dir.join("kernel");
     fs::create_dir_all(&kernel).unwrap_or_else(|err| panic!("mkdir {}: {err}", kernel.display()));
     let path = kernel.join(format!("{name}.rs"));

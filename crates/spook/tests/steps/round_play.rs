@@ -23,7 +23,7 @@ fn every_existing_cucumber_feature(world: &mut World) {
 #[then(expr = "all pass and spook verify passes on both sample packs")]
 fn all_pass_and_spook_verify_passes_on_both_sample_packs(_world: &mut World) {
     for name in ["oneshot-docks", "sample-d20"] {
-        let pack = copy_named(name, "verify-clean");
+        let pack = support::copy_pack(name, "verify-clean");
         let output = support::spook(&["verify", &pack.to_string_lossy()]);
         let stderr = String::from_utf8_lossy(&output.stderr);
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -75,7 +75,7 @@ fn crates_round_has_exactly_one_call_site_of_roll(world: &mut World) {
 
 #[when(expr = "a docks round is played")]
 fn a_docks_round_is_played(world: &mut World) {
-    let pack = copy_named("oneshot-docks", "stage-order");
+    let pack = support::copy_pack("oneshot-docks", "stage-order");
     spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("play: {err}"));
     world.pack = Some(pack);
 }
@@ -110,7 +110,7 @@ fn larks_faces_and_total_are_identical(world: &mut World) {
 
 #[given(expr = "ten rolling intents in one round")]
 fn ten_rolling_intents_in_one_round(world: &mut World) {
-    let pack = copy_named("oneshot-docks", "ten-dice");
+    let pack = support::copy_pack("oneshot-docks", "ten-dice");
     let intents = (0..10)
         .map(|index| {
             queued(
@@ -141,7 +141,7 @@ fn all_ten_resolve_and_none_is_refused_not_in_spec(world: &mut World) {
 
 #[given(expr = "a played d20 fight")]
 fn a_played_d20_fight(world: &mut World) {
-    let pack = copy_named("sample-d20", "d20-fight");
+    let pack = support::copy_pack("sample-d20", "d20-fight");
     let intents = vec![queued(
         "strike-lark",
         "pc_lark",
@@ -176,7 +176,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
 
 #[given(expr = "a docks row overreach that adds {int} lamp oil and then removes {int}")]
 fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
-    let pack = copy_named("oneshot-docks", "rollback");
+    let pack = support::copy_pack("oneshot-docks", "rollback");
     append(
         &pack.join("rules/verbs.yaml"),
         &format!(
@@ -203,7 +203,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
 
 #[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
-    let pack = copy_named("oneshot-docks", "spilled");
+    let pack = support::copy_pack("oneshot-docks", "spilled");
     append(
         &pack.join("rules/verbs.yaml"),
         &format!(
@@ -277,7 +277,7 @@ fn lamp_oil_stays_the_round_names_and_no_roll_is_reported(
 
 #[given(expr = "two kernel waits queued for Mira")]
 fn two_kernel_waits_queued_for_mira(world: &mut World) {
-    world.pack = Some(copy_named("oneshot-docks", "second-wait"));
+    world.pack = Some(support::copy_pack("oneshot-docks", "second-wait"));
 }
 
 #[when(expr = "those waits are played")]
@@ -326,7 +326,7 @@ fn only_the_first_wait_lands(world: &mut World) {
 
 #[when(expr = "Lark and Briar strike each other")]
 fn lark_and_briar_strike_each_other(world: &mut World) {
-    let pack = copy_named("sample-d20", "mutual-strike");
+    let pack = support::copy_pack("sample-d20", "mutual-strike");
     let (_now, rolls, _tick) = play_queued(
         &pack,
         vec![
@@ -387,7 +387,7 @@ fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
 
 #[given(expr = "max_effects_per_intent is 1 and a row with 2 effects")]
 fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
-    let pack = copy_named("oneshot-docks", "effect-cap");
+    let pack = support::copy_pack("oneshot-docks", "effect-cap");
     let tick_path = pack.join("rules/tick.yaml");
     let text = fs::read_to_string(&tick_path).unwrap();
     let next = text.replacen("max_effects_per_intent: 4", "max_effects_per_intent: 1", 1);
@@ -589,7 +589,7 @@ fn assert_round_names(root: &Path) {
 }
 
 fn lark_pack() -> PathBuf {
-    let pack = copy_named("sample-d20", "lark-grit");
+    let pack = support::copy_pack("sample-d20", "lark-grit");
     append(
         &pack.join("rules/meters.yaml"),
         "
@@ -716,10 +716,6 @@ fn append(path: &Path, extra: &str) {
     let mut text = fs::read_to_string(path).unwrap();
     text.push_str(extra);
     fs::write(path, text).unwrap();
-}
-
-fn copy_named(name: &str, label: &str) -> PathBuf {
-    crate::support::copy_pack(name, label)
 }
 
 fn copy_tree(from: &Path, label: &str) -> PathBuf {

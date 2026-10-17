@@ -12,7 +12,7 @@ use spookery_kernel::api::Reason;
 use spookery_round::{play, RoundCause};
 
 use super::table;
-use crate::support::{spook, temp_pack};
+use crate::support::{copy_pack, spook, temp_pack};
 use crate::World;
 #[given(expr = "a save with rules_rev 6 and an engine at 7")]
 fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
@@ -405,7 +405,7 @@ fn lamp_oil_increases_by_4(world: &mut World) {
 
 #[given(expr = "attack targets defense + 10 and briar's defense is 12")]
 fn attack_targets_defense(world: &mut World) {
-    let pack = copy_named("sample-d20", "rules-attack");
+    let pack = copy_pack("sample-d20", "rules-attack");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -1066,10 +1066,6 @@ fn key_spot(text: &str, key: &str) -> (u64, u64) {
         }
     }
     panic!("missing {key}");
-}
-
-fn copy_named(name: &str, label: &str) -> PathBuf {
-    crate::support::copy_pack(name, label)
 }
 
 fn repo() -> PathBuf {
