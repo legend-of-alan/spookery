@@ -6,14 +6,12 @@ on:
     paths-ignore:
       # Skip CI when a change only touches plain-prose docs or images.
       # Any other doc runs CI, since tests read some docs.
-      - "README.md" # drop once issue #89 tests the README quick start in CI
       - "docs/README.md"
       - "**/*.png"
       - "**/*.svg"
   pull_request:
     branches: [main]
     paths-ignore:
-      - "README.md" # drop once issue #89 tests the README quick start in CI
       - "docs/README.md"
       - "**/*.png"
       - "**/*.svg"
@@ -65,3 +63,30 @@ jobs:
 
       - name: test
         run: cargo test --workspace --locked
+
+  quick-start:
+    name: quick start (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Keep checkout line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: dtolnay/rust-toolchain@1.89.0
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: README quick start
+        shell: bash
+        run: |
+          if command -v python3 >/dev/null; then
+            python3 scripts/readme_quickstart.py
+          else
+            python scripts/readme_quickstart.py
+          fi

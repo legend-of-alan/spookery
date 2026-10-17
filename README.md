@@ -2,7 +2,9 @@
 
 > Early work in progress, not a playable release yet.
 
-Spookery is a generic RPG referee engine for living worlds. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run` the way you would host a private server. One GM, a person or a model, and up to three players walk around and take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. Spookery is pre-alpha, with no releases yet.
+Spookery is a table engine for a living world. An author writes a pack, a folder of YAML rules plus Markdown for places and people, and hosts it with `spook run`. One GM seat and up to three players take actions. The engine is the only writer of world state. Dice are seeded, and a replay repeats the recorded rolls. `spook verify` checks the journal against that record.
+
+A model can sit the GM seat. It talks, and it asks the engine to commit. It does not edit the save. The journal is the audit trail: every commit is in the log, and verify replays it.
 
 ## Words used here
 
@@ -13,66 +15,126 @@ Spookery is a generic RPG referee engine for living worlds. An author writes a p
 
 The full glossary is in [docs/README.md](docs/README.md#glossary).
 
-## Play in 5 minutes
+## Quick start
 
-You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also need `pkg-config` and `libssl-dev` (on Debian or Ubuntu: `sudo apt install pkg-config libssl-dev`). You do not need an AI key.
+You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also need `pkg-config` and `libssl-dev` (on Debian or Ubuntu: `sudo apt install pkg-config libssl-dev`). macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools, and a checkout with LF line endings. You do not need an AI key.
 
-On Windows, clone with LF line endings, or the pack will not load:
+The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. `drink` uses that item. `travel mill_lane` takes the exit onto Mill Lane. Arriving there fires the arrival rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
+
+`spook run` stays in the foreground. In a second terminal, from the repo folder and with the same `PATH`, run `spook play` and type the lines. With no GM seated, each line commits on its own. The CI dry run seats a stub GM that commits the same lines. Type `stop` in the host when the ending line has appeared, then run `spook verify`.
+
+### Lines
+
+```text
+drink
+travel mill_lane
+```
+
+### Ending
+
+```text
+The lane is empty. That is the end.
+```
+
+### Linux and macOS
 
 ```sh
 git clone -c core.autocrlf=false https://github.com/legend-of-alan/spookery.git
-```
-
-Build, put `spook` on your `PATH`, and copy the docks pack. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo.
-
-```sh
 cd spookery
-cargo build --release
+cargo build --release --locked
 export PATH="$PWD/target/release:$PATH"
-cp -r packs/oneshot-docks /tmp/docks
+cp -r packs/sample-d20 /tmp/yard
 ```
 
-Terminal 1 hosts the game:
+The host prints one line, `{"kind":"listening","game":"127.0.0.1:9737","door":"127.0.0.1:9738"}`, and waits.
 
 ```sh
-spook run /tmp/docks
+spook run /tmp/yard
 ```
-
-It prints one line, `{"kind":"listening","game":"127.0.0.1:9737","door":"127.0.0.1:9738"}`, and stays in the foreground. Type `stop` to shut it down.
-
-Terminal 2 (run the same `export PATH=...` line first, from the repo folder) sits you at the table:
 
 ```sh
-spook play /tmp/docks
+spook play /tmp/yard
 ```
 
-You are Rowan, in the Docks Shop. Try:
+```sh
+spook verify /tmp/yard
+```
+
+### Windows
+
+Clone with LF line endings, or the pack will not load. A CRLF checkout rewrites the pack, and `spook run` then exits 1 with `PACK_REV_MISMATCH`.
+
+```powershell
+git clone -c core.autocrlf=false https://github.com/legend-of-alan/spookery.git
+cd spookery
+cargo build --release --locked
+$env:PATH = "$PWD\target\release;$env:PATH"
+Copy-Item -Recurse packs\sample-d20 $env:TEMP\yard
+```
+
+```powershell
+spook run $env:TEMP\yard
+```
+
+```powershell
+spook play $env:TEMP\yard
+```
+
+```powershell
+spook verify $env:TEMP\yard
+```
+
+`verify` prints `verified <n> records, state_rev <r>` when the journal matches. `spook replay` and `spook audit` are described in [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
+
+## Transcript
+
+This is the quick-start sitting. Lark is in the Gate Yard. The client prints:
 
 ```text
-help
-look
-say The lamp is out.
-travel docks_street
-wait
-grit
+While you were away:
+You are in Gate Yard.
+
+Wagon ruts cross the mud. A stick leans by the post.
+
+Here: Briar, You
+
+You know:
+The gate stands open.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 8/16
+Might: 40/45
+
+Exits:
+mill_lane — 0 min
+loft — 0 min
 ```
 
-`help` lists what you can do. `travel docks_street` walks you outside. `grit` rolls the pack's check and prints `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.` Press Ctrl+D or close the terminal to leave.
+Type `drink`, then `travel mill_lane`. The tonic is used up, Lark arrives on Mill Lane, and the arrival rule prints the ending line:
 
-The docks pack is a small test world. It shows a clock, Assassination debt, but it does not state a goal. For a short fight instead, copy the Gate Yard pack and play it the same way:
+```text
+Your action is queued.
+Your action is queued.
+While you were away:
+You are in Mill Lane.
 
-```sh
-cp -r packs/sample-d20 /tmp/d20
-spook run /tmp/d20
+The lane runs past a small mill. Flour dusts the step.
+
+Here: Oden, You, Nell
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 40/45
+
+Exits:
+gate_yard — 0 min
+The lane is empty. That is the end.
+Your hp is now 12. Your Bitter tonic was used up.
 ```
-
-```sh
-spook play /tmp/d20
-```
-
-There you are Lark. Type `strike npc_briar` to attack, `drink` while you carry a tonic, `travel mill_lane` to leave the yard, and `wait` to pass the turn.
-
-The sections below go into detail.
 
 ## Build from source
 
@@ -81,172 +143,99 @@ Install Rust 1.89 or newer with [rustup](https://rustup.rs). The workspace `rust
 From the repository root:
 
 ```sh
-cargo build --release
+cargo build --release --locked
 ```
 
 The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`.
 
 Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools.
 
-On Windows, check the repository out with LF line endings. A CRLF checkout rewrites the pack, and `spook run` then exits 1 with `PACK_REV_MISMATCH`. CI sets `core.autocrlf` false before checkout. Clone with:
+On Windows, check the repository out with LF line endings:
 
 ```sh
 git clone -c core.autocrlf=false https://github.com/legend-of-alan/spookery.git
 ```
 
-CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Rust 1.89.0. That workflow does not install extra packages. The GitHub Ubuntu image already includes `pkg-config` and `libssl-dev`. A minimal Linux install does not.
+CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest` with Rust 1.89.0. The quick-start job runs the commands in the section above on each of those runners. The GitHub Ubuntu image already includes `pkg-config` and `libssl-dev`. A minimal Linux install does not.
 
-## Quick start
+`packs/oneshot-docks` is the engine fixture. `spook new` writes a smaller pack. The walkthrough for that pack is [docs/first-pack.md](docs/first-pack.md).
 
-The docks pack is `packs/oneshot-docks`. Copy it first. `spook run` writes the save into the pack you pass (`state/`: the snapshot, the tape, and lock files). A copy leaves the fixture in the repo alone.
+## At the table
 
-The fight pack is `packs/sample-d20` (`cp -r packs/sample-d20 /tmp/d20`). Copy it before you host it, the same way as the docks pack.
-`spook play` sits `pc_lark`. Type `strike npc_briar` to attack, `drink` while you carry a tonic, `travel mill_lane` to leave the yard, and `wait` to pass the turn.
+`help` lists the verbs and the exits. `look` prints the place again. `say` plus the words after it is speech, and it does not tick. A word the table does not know says to type help.
 
-`spook new` writes a smaller pack. The walkthrough is [docs/first-pack.md](docs/first-pack.md).
+`--addr` sets the loopback address. The default is `127.0.0.1:9737`. Passing `127.0.0.1` alone means that same port. Any other host is refused before the pack opens. The agent door is the next port, `127.0.0.1:9738`.
 
-```sh
-export PATH="$PWD/target/release:$PATH"
-cp -r packs/oneshot-docks /tmp/docks
-spook new /tmp/mypack
-```
+`--as player:<id>` sits that character. A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
 
-Run that `export` in each terminal. `spook --help` lists the commands and the flags. `spook check /tmp/docks` prints any pack problem in plain English and writes nothing. `spook check /tmp/mypack` prints `no problems`. To play it, run `spook run /tmp/mypack` in its own terminal first, then `spook play /tmp/mypack` in another. That sits `pc_ada` and prints `You are in Yard.` `travel lane` prints `You are in Lane.`
-
-Terminal 1, from the repository root:
-
-```sh
-spook run /tmp/docks
-```
-
-The process stays in the foreground and listens on `127.0.0.1:9737`. It first prints one JSON line with the bound addresses, `{"kind":"listening","game":"127.0.0.1:9737","door":"127.0.0.1:9738"}`. After that it prints the host digest, lines such as `clock assassination_debt 2 6 paused` and `effect location ...`, when the player sits and again when a tick commits. Type `stop` to shut it down.
-
-Terminal 2:
-
-```sh
-spook play /tmp/docks
-```
-
-You sit the pack's start character, `pc_rowan`. `--as player:<id>` sits that character instead. The docks pack has three: `pc_rowan` in the shop, and `pc_harbormouse` and `pc_wren` on the street.
-
-```sh
-spook play /tmp/docks --as player:pc_harbormouse
-spook play /tmp/docks --as player:pc_wren
-```
-
-A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
-
-The client prints readable text. This is the opening of a session, then one line of speech:
-
-```text
-While you were away:
-Assassination debt: 2/6, paused
-You are in Docks Shop.
-
-The shop faces the water. Tins sit in a row.
-
-Here: Aldric, You
-
-You know:
-Oil is on the shelf.
-
-Clocks:
-Assassination debt: 2/6, paused
-
-Items:
-Lamp oil: 4
-
-Exits:
-docks_street — 0 min
-stairs (locked) — 2 min
-You: The lamp is out.
-```
-
-Lines to type:
-
-```text
-say The lamp is out.
-travel docks_street
-wait
-grit
-```
-
-The first word is the verb. `say` plus the words after it is speech at the table, and it does not tick. `help` lists the verbs you can use and the exits. `look` prints the place again. Neither takes a tick. A word the table does not know says to type help. `travel` takes one exit name. `travel docks_street` leaves the shop for the street, and the client prints `You are in Docks Street.` `wait` and `grit` take no further words. `grit` is the pack's check, 2d6 plus the grit meter. The client prints `Your roll succeeded.`, `Your roll partly succeeded.`, or `Your roll missed.`
-
-With no GM seated, `travel`, `wait`, and `grit` each commit one tick by themselves. Nothing narrates, and the line is not held for someone else to commit. Each seated player does that on their own line. With a GM seated, the lines wait, and one commit plays them in the order they were queued.
-
-`--addr` sets the loopback address for every command. The default is `127.0.0.1:9737`. Passing `127.0.0.1` alone means that same port. Any other host is refused before the pack opens.
-
-`status` prints the host digest and does not write the pack. `tick` and `migrate` write `state/`. Stop `spook run` before those two, because the server keeps the save in memory.
-
-```sh
-spook status /tmp/docks
-spook tick /tmp/docks
-spook migrate /tmp/docks
-```
-
-`tick` advances the pack one tick and prints nothing when it succeeds. `migrate` stores the current canon hash in the save and bumps the save counter. It also prints nothing when it succeeds.
-
-`spook replay`, `spook verify` and `spook audit` check a save's journal. They are described in [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
+`spook status` prints the host digest and does not write the pack. `spook tick` and `spook migrate` write `state/`. Stop `spook run` before those two, because the server keeps the save in memory.
 
 ## Game master
 
 ### No GM
 
-Leave the GM seat empty. Speech is stored on the tape and does not advance time. Each player move is committed as its own tick, and world numbers change only inside that tick. There is no narration and no model call.
-
-With both seats empty, the server still wakes on the pack's real-time interval. In the docks pack that interval is `tick_every_real_seconds: 300`. While a player is sitting, that wake does not tick. A pack sets `idle: off` in `rules/tick.yaml` to leave that empty table still.
+Leave the GM seat empty. Speech is stored on the tape and does not advance time. Each player move is committed as its own tick. There is no narration and no model call.
 
 ### Model GM
 
-`spook ai-gm` sits the GM seat and calls a chat-completions endpoint. It does not start the server or the player. Start `spook run` first.
+`spook ai-gm` sits the GM seat and calls a chat-completions endpoint. It does not start the server or the player. Start `spook run` first. The client posts to `{SPOOK_GM_URL}/chat/completions` with one tool, `act`. The model answers with that tool. The engine then commits the queued lines.
 
 Three environment variables, and no others. All three are required. There is no default URL.
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
 | `SPOOK_GM_KEY` | yes | Bearer token. Read from the environment, never from the pack. |
-| `SPOOK_GM_URL` | yes | Origin of the endpoint. Any OpenAI-compatible chat completions URL works. The client posts to `{url}/chat/completions`. |
+| `SPOOK_GM_URL` | yes | Origin of the endpoint, including the `/v1` prefix the provider documents. |
 | `SPOOK_GM_MODEL` | yes | Model name sent in the request. |
 
-A missing variable is printed on stderr as `<NAME> is unset` and the process exits 1 before it dials. The variables are checked in the order `SPOOK_GM_KEY`, `SPOOK_GM_URL`, `SPOOK_GM_MODEL`. Then:
+A missing variable is printed on stderr as `<NAME> is unset` and the process exits 1 before it dials. The variables are checked in the order `SPOOK_GM_KEY`, `SPOOK_GM_URL`, `SPOOK_GM_MODEL`.
+
+xAI:
 
 ```sh
-spook ai-gm /tmp/docks
+SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.x.ai/v1 SPOOK_GM_MODEL=grok-4.20-0309-non-reasoning spook ai-gm /tmp/yard
 ```
 
-When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
+Claude, through the chat-completions endpoint:
 
-`crates/spook/tests/integration/live_round.rs` plays one real round against whatever provider those three variables name: it hosts a copy of the docks pack, sits `spook ai-gm`, queues one player move, and passes when every model call returns 2xx and the move commits a tick. It is ignored by default. With [Ollama](https://ollama.com) running locally:
+```sh
+SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.anthropic.com/v1 SPOOK_GM_MODEL=claude-sonnet-4-5 spook ai-gm /tmp/yard
+```
+
+Set `SPOOK_GM_MODEL` to the Claude model you want. [Ollama](https://ollama.com), running locally:
 
 ```sh
 ollama pull qwen2.5:0.5b
-SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b \
-  cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
+SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b spook ai-gm /tmp/yard
 ```
 
-CI runs this test too; see [CONTRIBUTING.md](CONTRIBUTING.md#live-ai-ci).
+On Windows, set the three variables in that terminal before `spook ai-gm`, and pass the pack path you copied (`$env:TEMP\yard`).
+
+When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
+
+`crates/spook/tests/integration/live_round.rs` plays one real round against whatever provider those three variables name. It is ignored by default. CI runs it too; see [CONTRIBUTING.md](CONTRIBUTING.md#live-ai-ci).
 
 ### Human GM
 
-`spook gm` sits the same GM seat as `spook ai-gm`. It does not start the server. Start `spook run` first. Both dial the agent door on the next port, `http://127.0.0.1:9738/mcp` when the game is on `9737`. `--mcp-http 127.0.0.1:<port>` dials that door instead. `spook run --addr 127.0.0.1:0` lets the operating system choose the game port and a separate door port, then prints `{"kind":"listening","game":"127.0.0.1:<game>","door":"127.0.0.1:<door>"}`. Pass that door to `--mcp-http`. A fixed game port still uses the next port.
+`spook gm` sits the same GM seat as `spook ai-gm`. Start `spook run` first. Both dial the agent door. `--mcp-http 127.0.0.1:<port>` dials that door instead. `spook run --addr 127.0.0.1:0` lets the operating system choose the ports, then prints the listening line. Pass that door to `--mcp-http`.
 
 ```sh
-spook gm /tmp/docks
+spook gm /tmp/yard
 ```
 
 Type `help` for the seat commands. `spook gm --raw` prints each protocol frame as one JSON line.
 
-### Coding agent
+## Authoring with a coding agent
 
-`spook run` also serves an agent door, an MCP endpoint at `http://127.0.0.1:9738/mcp` by default. Copy the pack first, as above:
+`spook run` serves an agent door at `http://127.0.0.1:9738/mcp` by default. Copy the pack first, as in the quick start, and point the agent at `127.0.0.1`, not `localhost`. Config snippets for Claude Code, Grok Build, Cursor, Gemini CLI, Windsurf and Claude Desktop are in [CONTRIBUTING.md](CONTRIBUTING.md#coding-agent-clients).
+
+The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_round`. The author-pack skill in `.grok/skills/author-pack` edits a pack and checks it with `spook check`. Field reference: [docs/pack-reference.md](docs/pack-reference.md). A first pack from `spook new` is [docs/first-pack.md](docs/first-pack.md).
 
 ```sh
-cp -r packs/oneshot-docks /tmp/docks
-spook run /tmp/docks
+spook check /tmp/yard
 ```
 
-Register `http://127.0.0.1:9738/mcp` in your coding agent. Use `127.0.0.1`, not `localhost`. Config snippets for Claude Code, Grok Build, Cursor, Gemini CLI, Windsurf and Claude Desktop are in [CONTRIBUTING.md](CONTRIBUTING.md#coding-agent-clients).
+`spook check` prints any pack problem in plain English and writes nothing.
 
 ## Privacy
 

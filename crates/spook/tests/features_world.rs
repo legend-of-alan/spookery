@@ -65,6 +65,9 @@ mod sample;
 #[path = "steps/contributing.rs"]
 mod contributing;
 
+#[path = "steps/readme.rs"]
+mod readme;
+
 #[path = "fixture/oneshot_docks.rs"]
 mod oneshot_docks;
 

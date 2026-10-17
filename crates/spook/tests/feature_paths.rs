@@ -30,6 +30,7 @@ pub const WORLD: &[&str] = &[
     "tests/features/map",
     "tests/features/perceive",
     "tests/features/privacy",
+    "tests/features/readme",
     "tests/features/replay",
     "tests/features/round",
     "tests/features/rounds",
