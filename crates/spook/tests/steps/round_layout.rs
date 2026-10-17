@@ -64,7 +64,7 @@ fn the_round_crate_after_the_move(_world: &mut World) {
     );
     assert_eq!(
         entries(&round.join("prop")),
-        names(&["mod.rs", "play.rs", "replay.rs", "rerun.rs"]),
+        names(&["mod.rs", "play.rs", "replay.rs", "rerun.rs", "triggers.rs",]),
         "property tests live under round/prop"
     );
     let record = fs::read_to_string(round.join("stage/record.rs"))
