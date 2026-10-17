@@ -62,7 +62,7 @@ mod proofs;
 #[path = "steps/fixtures.rs"]
 mod fixtures;
 
-#[path = "steps/audit.rs"]
+#[path = "steps/audit_steps.rs"]
 mod audit;
 
 #[path = "steps/sample.rs"]
@@ -70,6 +70,9 @@ mod sample;
 
 #[path = "steps/contributing.rs"]
 mod contributing;
+
+#[path = "steps/module_names.rs"]
+mod module_names;
 
 #[path = "steps/readme.rs"]
 mod readme;

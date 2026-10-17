@@ -17,7 +17,7 @@ mod ports;
 #[path = "steps/harness.rs"]
 mod harness;
 
-#[path = "steps/speech.rs"]
+#[path = "steps/speech_steps.rs"]
 mod speech;
 
 #[path = "steps/seats.rs"]
@@ -29,7 +29,7 @@ mod matters;
 #[path = "steps/place.rs"]
 mod place;
 
-#[path = "steps/limits.rs"]
+#[path = "steps/limits_steps.rs"]
 mod limits;
 
 #[path = "steps/loopback.rs"]

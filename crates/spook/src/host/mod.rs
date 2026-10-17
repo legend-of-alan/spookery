@@ -1,11 +1,11 @@
 pub(crate) mod frames;
 mod gm_seat;
 mod gm_tools;
-mod http;
 pub mod idle_clock;
 mod input;
 mod limits;
 mod listen;
+mod mcp_http;
 mod player_moves;
 mod speech;
 mod world_loop;

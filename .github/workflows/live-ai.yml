@@ -17,7 +17,7 @@ on:
     paths:
       - crates/spook/src/ai/**
       - crates/spook/src/gm_client/**
-      - crates/spook/src/protocol/gm.rs
+      - crates/spook/src/protocol/gm_wire.rs
       - crates/spook/tests/integration/live_round.rs
       - .github/workflows/live-ai.yml
   push:
@@ -25,7 +25,7 @@ on:
     paths:
       - crates/spook/src/ai/**
       - crates/spook/src/gm_client/**
-      - crates/spook/src/protocol/gm.rs
+      - crates/spook/src/protocol/gm_wire.rs
       - crates/spook/tests/integration/live_round.rs
       - .github/workflows/live-ai.yml
   schedule:

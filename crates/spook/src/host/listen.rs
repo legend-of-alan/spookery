@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use spookery_kernel::api::Reason;
 
-use super::http;
+use super::mcp_http;
 use super::world_loop::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};
 
 pub enum Error {
@@ -73,7 +73,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
     let tx_http = tx.clone();
     let ids = Arc::clone(&next_conn);
     handle.spawn(async move {
-        http::serve(listener, tx_http, ids).await;
+        mcp_http::serve(listener, tx_http, ids).await;
     });
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if arm_idle_timer {

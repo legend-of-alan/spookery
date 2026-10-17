@@ -1,5 +1,5 @@
-mod gm;
-mod player;
+mod gm_wire;
+mod player_wire;
 
 use serde::{Deserialize, Serialize};
 
@@ -22,14 +22,14 @@ impl Outcome {
     }
 }
 
-pub use gm::{
+pub use gm_wire::{
     code_result, queued_ack, read_commit_args, read_frame, read_intent_args, read_perceive_args,
     read_say_args, read_status_args, read_tool_call, read_tool_result, released_result, set_checks,
     write_check_event, write_queued_event, write_say_event, write_tool_call, CallTarget,
     CommitArgs, CommitBody, Frame, GmSay, IntentCall, PerceiveArgs, QueueRow, Roll, SayArgs,
     SessionStatus, StatusArgs, StatusPause, StatusPresence, ToolCall,
 };
-pub use player::{
+pub use player_wire::{
     read_player, read_player_hello, write_player, write_player_hello, FactNote, PlayerMessage,
     Shown, WireClock, WireExit, WireFact, WireItem, WireMeter,
 };
