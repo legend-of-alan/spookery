@@ -516,7 +516,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
         arrivals: Vec::new(),
         fast_forward: false,
         dice: Vec::new(),
-        tool_trace: Vec::new(),
+        steps_run: Vec::new(),
         memories: vec![spookery_kernel::api::model::MemoryLine {
             tick_index: 1,
             actor_id: "mira".to_string(),
@@ -1442,7 +1442,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             "{label} success {success}"
         );
         let tick = tick_value(&pack, "tick-0001");
-        assert!(tick["tool_trace"]
+        assert!(tick["steps_run"]
             .as_array()
             .unwrap()
             .iter()

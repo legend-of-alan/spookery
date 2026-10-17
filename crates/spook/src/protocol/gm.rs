@@ -423,6 +423,11 @@ pub fn code_result(code: &str) -> Value {
     serde_json::json!({ "code": code })
 }
 
+/// Sent after the GM seat is free. The client waits on this result.
+pub fn released_result() -> Value {
+    serde_json::json!({ "released": true })
+}
+
 fn read_target(value: &Value) -> Result<CallTarget, ProtocolError> {
     let object = value.as_object().ok_or(ProtocolError)?;
     if object.is_empty() {

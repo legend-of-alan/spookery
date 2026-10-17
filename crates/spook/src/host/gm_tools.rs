@@ -22,6 +22,8 @@ pub struct GmToolReply {
     pub after: Vec<Vec<u8>>,
     pub player_line: Option<(Vec<String>, Vec<u8>)>,
     pub tape: Option<String>,
+    /// The GM seat is cleared before this reply is sent.
+    pub release_seat: bool,
 }
 
 impl GmToolReply {
@@ -34,6 +36,7 @@ impl GmToolReply {
             after: Vec::new(),
             player_line: None,
             tape: None,
+            release_seat: false,
         }
     }
 }
@@ -85,6 +88,12 @@ pub(super) const GM_LIST: &[GmTool] = &[
         about: "commit_round requires include_tick. session_id may be a string.",
         schema: commit_schema,
         run: run_commit_round,
+    },
+    GmTool {
+        name: "close",
+        about: "close takes no keys. The result is sent after this GM seat is free.",
+        schema: close_schema,
+        run: run_close,
     },
 ];
 
@@ -139,6 +148,15 @@ fn run_session_status(world: &mut World, arguments: Option<Map<String, Value>>) 
         Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
+}
+
+fn run_close(_world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+    if arguments.is_some_and(|args| !args.is_empty()) {
+        return refused_tool(Reason::Schema);
+    }
+    let mut done = GmToolReply::new(frames::released_result());
+    done.release_seat = true;
+    done
 }
 
 fn refuse_not_in_spec(_world: &mut World, _arguments: Option<Map<String, Value>>) -> GmToolReply {
@@ -220,6 +238,14 @@ fn commit_schema() -> Map<String, Value> {
             "session_id": { "type": "string" }
         },
         "required": ["include_tick"],
+        "additionalProperties": false
+    }))
+}
+
+fn close_schema() -> Map<String, Value> {
+    schema_object(serde_json::json!({
+        "type": "object",
+        "properties": {},
         "additionalProperties": false
     }))
 }

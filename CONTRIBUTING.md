@@ -141,4 +141,4 @@ Claude Desktop's config file only takes stdio. `mcp-remote` reaches the HTTP doo
 }
 ```
 
-The tools are `session_status`, `perceive`, `intent`, `say`, and `commit_round`. A client may ignore `spook/event` notifications. `session_status` with `since` returns the speech it missed.
+The tools are `session_status`, `perceive`, `intent`, `say`, `commit_round`, and `close`. A client may ignore `spook/event` notifications. `session_status` with `since` returns the speech it missed. `close` answers after the GM seat is free.

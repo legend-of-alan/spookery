@@ -94,7 +94,7 @@ pub struct TickRecord {
     pub dice: Vec<String>,
     /// Steps off the standard order. Empty when the round followed it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tool_trace: Vec<String>,
+    pub steps_run: Vec<String>,
     /// Lines for this tick. Empty on a record that stored none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memories: Vec<MemoryLine>,

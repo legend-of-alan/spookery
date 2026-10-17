@@ -10,9 +10,9 @@ use crate::seed::round_seed;
 use crate::state::Round;
 
 pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<(), Reason> {
-    round.trace.push("record".to_string());
+    round.steps_run.push("record".to_string());
     if round.owns_commit {
-        round.trace.push("commit_round".to_string());
+        round.steps_run.push("commit_round".to_string());
     }
     let seed = round_seed(&round.world_id, round.tick_index);
     let actors = world.presence().actors_present.clone();
@@ -32,7 +32,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         effects: &round.effects,
         arrivals: &round.arrivals,
         fast_forward: round.fast_forward,
-        tool_trace: &round.trace,
+        steps_run: &round.steps_run,
         dice: &round.dice,
     });
     let store = if round.recorded.is_some() {
@@ -73,7 +73,7 @@ pub struct RoundLine<'a> {
     pub effects: &'a [Effect],
     pub arrivals: &'a [Arrival],
     pub fast_forward: bool,
-    pub tool_trace: &'a [String],
+    pub steps_run: &'a [String],
     pub dice: &'a [String],
 }
 
@@ -95,7 +95,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         arrivals: line.arrivals.to_vec(),
         fast_forward: line.fast_forward,
         dice: line.dice.to_vec(),
-        tool_trace: trim_trace(line.tool_trace),
+        steps_run: trim_steps(line.steps_run),
         memories: Vec::new(),
         now_hash: String::new(),
         prev: String::new(),
@@ -117,13 +117,13 @@ const STANDARD_STEPS: &[&str] = &[
     "record",
 ];
 
-/// The part of `trace` worth storing. A trace that skips or reorders the
+/// The part of `steps_run` worth storing. A list that skips or reorders the
 /// standard steps is kept whole, so a broken round stays visible.
-fn trim_trace(trace: &[String]) -> Vec<String> {
+fn trim_steps(steps: &[String]) -> Vec<String> {
     let mut index = 0usize;
     let mut extras = Vec::new();
     let mut commit_seen = false;
-    for step in trace {
+    for step in steps {
         let name = step.as_str();
         if index < STANDARD_STEPS.len() && name == STANDARD_STEPS[index] {
             index += 1;
@@ -134,12 +134,12 @@ fn trim_trace(trace: &[String]) -> Vec<String> {
             continue;
         }
         if name == "commit_round" || STANDARD_STEPS.contains(&name) {
-            return trace.to_vec();
+            return steps.to_vec();
         }
         extras.push(step.clone());
     }
     if index < STANDARD_STEPS.len() {
-        trace.to_vec()
+        steps.to_vec()
     } else {
         extras
     }
@@ -181,7 +181,7 @@ mod tests {
             effects: std::slice::from_ref(&effect),
             arrivals: &[],
             fast_forward: false,
-            tool_trace: &[],
+            steps_run: &[],
             dice: &[],
         });
         let encoded = spookery_kernel::api::store::codec::emit_effect(&effect);
@@ -190,15 +190,15 @@ mod tests {
     }
 
     #[test]
-    fn a_standard_trace_omits_tool_trace() {
+    fn a_standard_order_omits_steps_run() {
         for commit in [true, false] {
-            let line = render(&standard_trace(commit));
-            assert!(!line.contains("tool_trace"), "{line}");
+            let line = render(&list_standard_steps(commit));
+            assert!(!line.contains("steps_run"), "{line}");
         }
     }
 
     #[test]
-    fn extra_steps_are_the_only_tool_trace() {
+    fn extra_steps_are_the_only_steps_run() {
         let mut steps = Vec::new();
         for name in [
             "advance",
@@ -219,23 +219,23 @@ mod tests {
         }
         let line = render(&steps);
         assert!(line.contains(
-            "\"tool_trace\":[\"perceive:mira\",\"apply_effect\",\"cast:mira/leave_door_note\"]"
+            "\"steps_run\":[\"perceive:mira\",\"apply_effect\",\"cast:mira/leave_door_note\"]"
         ));
         assert!(!line.contains("advance"), "{line}");
     }
 
     #[test]
-    fn a_reordered_trace_is_stored_whole() {
+    fn reordered_steps_are_stored_whole() {
         let line = render(&["complete".to_string()]);
-        assert!(line.contains("\"tool_trace\":[\"complete\"]"), "{line}");
+        assert!(line.contains("\"steps_run\":[\"complete\"]"), "{line}");
         let partial = render(&["advance".to_string(), "perceive:mira".to_string()]);
         assert!(
-            partial.contains("\"tool_trace\":[\"advance\",\"perceive:mira\"]"),
+            partial.contains("\"steps_run\":[\"advance\",\"perceive:mira\"]"),
             "{partial}"
         );
     }
 
-    fn standard_trace(commit: bool) -> Vec<String> {
+    fn list_standard_steps(commit: bool) -> Vec<String> {
         let mut steps = STANDARD_STEPS
             .iter()
             .map(|step| step.to_string())
@@ -246,7 +246,7 @@ mod tests {
         steps
     }
 
-    fn render(trace: &[String]) -> String {
+    fn render(steps: &[String]) -> String {
         render_round_line(&RoundLine {
             tick_index: 1,
             rules_rev: spookery_kernel::api::store::RULES_REV,
@@ -263,7 +263,7 @@ mod tests {
             effects: &[],
             arrivals: &[],
             fast_forward: false,
-            tool_trace: trace,
+            steps_run: steps,
             dice: &[],
         })
     }

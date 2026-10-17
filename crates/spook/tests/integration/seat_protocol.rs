@@ -334,6 +334,14 @@ fn capture() -> BTreeMap<String, Example> {
         "gm-session-full",
         post_full(table.door, &initialize),
     );
+
+    let close_args = serde_json::json!({});
+    json(
+        &mut out,
+        "close-request",
+        tool_call(11, "close", &close_args),
+    );
+    json(&mut out, "close-result", call(&mut gm, "close", close_args));
     out
 }
 

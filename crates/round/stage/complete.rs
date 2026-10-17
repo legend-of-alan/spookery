@@ -15,7 +15,7 @@ use crate::state::Round;
 /// The stage mark. Arrivals land in [`finish`], after this tick's intents,
 /// so a traveller acts again on the next tick.
 pub(crate) fn run(round: &mut Round, _draft: &mut Draft) -> Result<(), Reason> {
-    round.trace.push("complete".to_string());
+    round.steps_run.push("complete".to_string());
     Ok(())
 }
 

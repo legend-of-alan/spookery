@@ -15,7 +15,7 @@ use super::resolve::{roll_with_key, viewer_token, SubjectRoll};
 use crate::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.trace.push("apply".to_string());
+    round.steps_run.push("apply".to_string());
     let max_effects = draft.budget().max_effects_per_intent as usize;
     let max_npcs = draft.budget().max_npcs_acting;
     let mut slots = 0u64;
@@ -140,7 +140,7 @@ fn begin_timed(
         refuse(round, &intent.id, code.jsonl_reason());
         return false;
     }
-    round.trace.push(rule.id.clone());
+    round.steps_run.push(rule.id.clone());
     round.applied.push(intent.clone());
     true
 }
@@ -184,7 +184,7 @@ fn commit_intent(
     for effect in expanded {
         match apply_effect(draft, intent, effect.clone()) {
             Ok(()) => {
-                round.trace.push("apply_effect".to_string());
+                round.steps_run.push("apply_effect".to_string());
                 accepted.push(effect.clone());
             }
             Err(code) => {
@@ -211,7 +211,7 @@ fn commit_intent(
     keep_roll(round, rolled, &intent.actor_id);
     round.roll_reports.extend(resist_reports);
     if let Some(rule_id) = rule_id {
-        round.trace.push(rule_id);
+        round.steps_run.push(rule_id);
     }
     round.applied.push(intent.clone());
     true

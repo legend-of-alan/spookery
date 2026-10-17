@@ -7,7 +7,7 @@ use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target
 use spookery_kernel::api::rules::{roll, RollInput, RollKey, RollReport};
 use spookery_round::RoundCause;
 
-use super::tool_trace::{assert_standard_steps_omitted, read_tick};
+use super::steps_run::{assert_standard_steps_omitted, read_tick};
 use crate::support::{self, copy_dir};
 use crate::World;
 
