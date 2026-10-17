@@ -28,6 +28,12 @@ fn the_operator_runs_verify(world: &mut World) {
     table::run(world, &["verify", pack.to_str().unwrap()]);
 }
 
+#[when(expr = "the operator runs quick verify")]
+fn the_operator_runs_quick_verify(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::run(world, &["verify", "--quick", pack.to_str().unwrap()]);
+}
+
 #[when(expr = "the pack is copied before the tick")]
 fn the_pack_is_copied_before_the_tick(world: &mut World) {
     let pack = table::pack(world);
@@ -351,17 +357,36 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
     let plain = spookery_kernel::api::journal::gunzip_bytes(&compressed)
         .unwrap_or_else(|err| panic!("gunzip: {err}"));
     let text = String::from_utf8(plain).unwrap_or_else(|err| panic!("{err}"));
+    let next = spookery_kernel::api::journal::gzip_bytes(&flip_chain(&text))
+        .unwrap_or_else(|err| panic!("gzip: {err}"));
+    fs::write(&path, next).unwrap();
+    world.scratch = name;
+}
+
+#[when(expr = "one record in the live bundle is changed")]
+fn one_record_in_the_live_bundle_is_changed(world: &mut World) {
+    let pack = table::pack(world);
+    let path =
+        spookery_kernel::api::journal::live_plain(pack).unwrap_or_else(|| panic!("no live bundle"));
+    let name = path
+        .file_name()
+        .and_then(|file| file.to_str())
+        .unwrap_or("bundle")
+        .to_string();
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read: {err}"));
+    fs::write(&path, flip_chain(&text)).unwrap();
+    world.scratch = name;
+}
+
+fn flip_chain(text: &str) -> Vec<u8> {
     let needle = "\"chain\":\"blake2s:";
     let at = text
         .find(needle)
         .unwrap_or_else(|| panic!("no chain\n{text}"))
         + needle.len();
-    let mut bytes = text.into_bytes();
+    let mut bytes = text.as_bytes().to_vec();
     bytes[at] = if bytes[at] == b'0' { b'1' } else { b'0' };
-    let next = spookery_kernel::api::journal::gzip_bytes(&bytes)
-        .unwrap_or_else(|err| panic!("gzip: {err}"));
-    fs::write(&path, next).unwrap();
-    world.scratch = name;
+    bytes
 }
 
 #[when(expr = "the table is opened with a bundle trace")]

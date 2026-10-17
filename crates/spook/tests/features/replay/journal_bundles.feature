@@ -32,6 +32,23 @@ Feature: Hash-chained journal bundles
     And the operator rebuilds the snapshot
     Then the save hash matches the latest checkpoint
 
+  Scenario: Quick verification reports the latest bundle
+    Given a docks table
+    And checkpoints are taken every 2 ticks
+    When the operator runs 5 ticks
+    And the operator runs quick verify
+    Then the command exits 0
+    And stdout says the save was verified
+
+  Scenario: Quick verification fails when the live bundle is edited
+    Given a docks table
+    And checkpoints are taken every 2 ticks
+    When the operator runs 5 ticks
+    And one record in the live bundle is changed
+    And the operator runs quick verify
+    Then the command exits 1
+    And stderr names that bundle
+
   Scenario: Parallel full verification matches serial replay
     Given a docks table
     And checkpoints are taken every 2 ticks
