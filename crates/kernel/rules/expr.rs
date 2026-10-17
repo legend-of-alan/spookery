@@ -83,7 +83,7 @@ fn walk(
         }),
         Expr::Dice { n, sides, keep } => {
             let faces = dice.draw(*n, *sides)?;
-            let value = kept(&faces, *keep)?;
+            let value = keep_faces(&faces, *keep)?;
             let listed = faces
                 .iter()
                 .map(u32::to_string)
@@ -92,7 +92,7 @@ fn walk(
             Ok(Piece {
                 value,
                 body: value.to_string(),
-                dice: vec![format!("{} → {listed}", dice_word(*n, *sides, *keep))],
+                dice: vec![format!("{} → {listed}", name_dice(*n, *sides, *keep))],
             })
         }
         Expr::Meter { who, key, .. } => {
@@ -108,7 +108,7 @@ fn walk(
             let value = inner.value.checked_neg().ok_or(Reason::OutOfRange)?;
             Ok(Piece {
                 value,
-                body: neg_body(&inner.body),
+                body: negate_body(&inner.body),
                 dice: inner.dice,
             })
         }
@@ -120,7 +120,7 @@ fn walk(
             rolled.extend(right.dice);
             Ok(Piece {
                 value,
-                body: format!("{} {} {}", left.body, op_word(*op), right.body),
+                body: format!("{} {} {}", left.body, name_op(*op), right.body),
                 dice: rolled,
             })
         }
@@ -146,7 +146,7 @@ fn walk(
     }
 }
 
-fn kept(faces: &[u32], keep: Option<Keep>) -> Result<i64, Reason> {
+fn keep_faces(faces: &[u32], keep: Option<Keep>) -> Result<i64, Reason> {
     let picked: i64 = match keep {
         Some(Keep::High) => i64::from(*faces.iter().max().ok_or(Reason::Schema)?),
         Some(Keep::Low) => i64::from(*faces.iter().min().ok_or(Reason::Schema)?),
@@ -157,7 +157,7 @@ fn kept(faces: &[u32], keep: Option<Keep>) -> Result<i64, Reason> {
     Ok(picked)
 }
 
-fn dice_word(n: u32, sides: u32, keep: Option<Keep>) -> String {
+fn name_dice(n: u32, sides: u32, keep: Option<Keep>) -> String {
     let base = format!("{n}d{sides}");
     match keep {
         None => base,
@@ -166,7 +166,7 @@ fn dice_word(n: u32, sides: u32, keep: Option<Keep>) -> String {
     }
 }
 
-fn op_word(op: Arith) -> &'static str {
+fn name_op(op: Arith) -> &'static str {
     match op {
         Arith::Add => "+",
         Arith::Sub => "-",
@@ -175,7 +175,7 @@ fn op_word(op: Arith) -> &'static str {
     }
 }
 
-fn neg_body(body: &str) -> String {
+fn negate_body(body: &str) -> String {
     let plain = body.chars().all(|ch| ch.is_ascii_digit());
     if plain {
         format!("-{body}")

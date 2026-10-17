@@ -273,7 +273,7 @@ pub(crate) struct Held {
     counts: Rc<RefCell<BTreeMap<(String, String), u32>>>,
     notes: Rc<RefCell<Vec<String>>>,
     world_id: String,
-    tick: u64,
+    round_index: u64,
 }
 
 pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&Held) -> T) -> T {
@@ -283,7 +283,7 @@ pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&Held) -> T) -> 
         counts: Rc::clone(&counts),
         notes: Rc::clone(&notes),
         world_id: round.world_id.clone(),
-        tick: round.tick_index,
+        round_index: round.tick_index,
     };
     let out = body(&held);
     drop(held);
@@ -298,7 +298,13 @@ pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&Held) -> T) -> 
 
 impl Held {
     pub(crate) fn key(&self, rule: &str, subject: &str) -> RollKey {
-        alloc(&self.counts, &self.world_id, self.tick, rule, subject)
+        alloc(
+            &self.counts,
+            &self.world_id,
+            self.round_index,
+            rule,
+            subject,
+        )
     }
 
     pub(crate) fn roller(&self, rule: &str, subject: &str) -> Roller {
@@ -306,7 +312,7 @@ impl Held {
             counts: Rc::clone(&self.counts),
             notes: Rc::clone(&self.notes),
             world_id: self.world_id.clone(),
-            tick: self.tick,
+            round_index: self.round_index,
             rule: rule.to_string(),
             subject: subject.to_string(),
             key: None,
@@ -319,7 +325,7 @@ pub(crate) struct Roller {
     counts: Rc<RefCell<BTreeMap<(String, String), u32>>>,
     notes: Rc<RefCell<Vec<String>>>,
     world_id: String,
-    tick: u64,
+    round_index: u64,
     rule: String,
     subject: String,
     key: Option<RollKey>,
@@ -337,7 +343,7 @@ impl Dice for Roller {
             self.key = Some(alloc(
                 &self.counts,
                 &self.world_id,
-                self.tick,
+                self.round_index,
                 &self.rule,
                 &self.subject,
             ));
@@ -356,7 +362,7 @@ impl Dice for Roller {
 fn alloc(
     counts: &RefCell<BTreeMap<(String, String), u32>>,
     world_id: &str,
-    tick: u64,
+    round_index: u64,
     rule: &str,
     subject: &str,
 ) -> RollKey {
@@ -368,7 +374,7 @@ fn alloc(
     *index += 1;
     RollKey {
         world_id: world_id.to_string(),
-        round_index: tick,
+        round_index,
         rule_id: rule.to_string(),
         subject_id: subject.to_string(),
         roll_index,

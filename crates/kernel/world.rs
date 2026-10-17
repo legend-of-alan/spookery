@@ -35,6 +35,8 @@ pub struct Delivered {
     pub summary: Vec<String>,
     pub lines: Vec<Told>,
     pub seen: Vec<Seen>,
+    /// Dice lines the round rolled, for the GM commit and audit.
+    pub dice: Vec<String>,
 }
 
 /// One round played and not yet written. A tick is only the time unit.
@@ -153,16 +155,16 @@ impl World {
         &mut self,
         now: Now,
         round_jsonl: String,
-        tick_index: u64,
         memories: Vec<MemoryLine>,
         paths: Vec<String>,
         notices: Vec<RollReport>,
+        dice: Vec<String>,
     ) {
-        self.dice = journal::dice_lines(&round_jsonl);
+        self.dice = dice;
         self.pending = Some(UncommittedRound {
+            tick_index: now.tick_index,
             now,
             round_jsonl,
-            tick_index,
             memories,
             paths,
         });

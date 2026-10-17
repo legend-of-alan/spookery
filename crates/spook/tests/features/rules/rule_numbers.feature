@@ -43,6 +43,22 @@ Feature: Dice and arithmetic in rule numbers
     And the report says "meter 'nope'"
     And the report has a location for "rules/verbs.yaml"
 
+  Scenario: A world meter read fails spook check
+    Given a docks table
+    When the pack's hit adds "world.grit" to grit
+    And the operator runs spook check
+    Then the check exits 1
+    And the report says "the world has no meters"
+    And the report names the expression line
+
+  Scenario: A huge dice count fails spook check
+    Given a docks table
+    When the pack's hit adds "100000000d6" to grit
+    And the operator runs spook check
+    Then the check exits 1
+    And the report says "rolls more than 1000 dice"
+    And the report names the expression line
+
   Scenario: An NPC habit rolls its effect dice
     Given a docks table
     When Mira's habit adds "1d4" to grit

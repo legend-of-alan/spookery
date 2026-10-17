@@ -53,6 +53,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
             summary: std::mem::take(&mut round.summary),
             lines: std::mem::take(&mut round.lines),
             seen: std::mem::take(&mut round.seen),
+            dice: std::mem::take(&mut round.dice),
         },
     )
 }

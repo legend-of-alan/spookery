@@ -9,13 +9,9 @@ use crate::rule::{
     EffectTemplate, Expr, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who,
 };
 use crate::rules::cond;
-use crate::rules::expr::{self, Ctx, Dice, NoDice};
+use crate::rules::expr::{self, Ctx, Dice};
 use crate::rules::gate;
 use crate::rules::habits;
-
-pub fn expand(canon: &Canon, now: &Now, intent: &Intent) -> Result<Vec<Effect>, Reason> {
-    expand_outcome(canon, now, intent, None, ignore_resist)
-}
 
 /// A resist roll that does not shrug the effect off. Habit preview uses this.
 pub(crate) fn ignore_resist(_actor: &str, _check: &str, _target: i64) -> Result<Outcome, Reason> {
@@ -29,19 +25,6 @@ pub fn expand_outcome<F>(
     now: &Now,
     intent: &Intent,
     outcome: Option<Outcome>,
-    resist_roll: F,
-) -> Result<Vec<Effect>, Reason>
-where
-    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
-{
-    expand_with(canon, now, intent, outcome, &mut NoDice, resist_roll)
-}
-
-pub fn expand_with<F>(
-    canon: &Canon,
-    now: &Now,
-    intent: &Intent,
-    outcome: Option<Outcome>,
     dice: &mut dyn Dice,
     resist_roll: F,
 ) -> Result<Vec<Effect>, Reason>
@@ -49,25 +32,11 @@ where
     F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
 {
     let rule = gate::resolve(canon, now, intent)?;
-    expand_rule_with(canon, now, rule, intent, outcome, dice, resist_roll)
+    expand_rule(canon, now, rule, intent, outcome, dice, resist_roll)
 }
 
 /// Expand one rule's lists. Change rules are not verbs, so they pass the rule in.
 pub fn expand_rule<F>(
-    canon: &Canon,
-    now: &Now,
-    rule: &Rule,
-    intent: &Intent,
-    outcome: Option<Outcome>,
-    resist_roll: F,
-) -> Result<Vec<Effect>, Reason>
-where
-    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
-{
-    expand_rule_with(canon, now, rule, intent, outcome, &mut NoDice, resist_roll)
-}
-
-pub fn expand_rule_with<F>(
     canon: &Canon,
     now: &Now,
     rule: &Rule,
@@ -465,7 +434,7 @@ pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
 }
 
 pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    let Ok(effects) = expand_with(canon, now, intent, None, &mut StandIn, ignore_resist) else {
+    let Ok(effects) = expand_outcome(canon, now, intent, None, &mut StandIn, ignore_resist) else {
         return;
     };
     // A verb with no target must stay empty. Filling it from a location effect
@@ -502,7 +471,7 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
         if gate::gate(canon, now, &intent).is_err() {
             continue;
         }
-        match expand_with(canon, now, &intent, None, &mut StandIn, ignore_resist) {
+        match expand_outcome(canon, now, &intent, None, &mut StandIn, ignore_resist) {
             Ok(effects) => {
                 let mut intent = intent;
                 stamp(&mut intent, &effects);

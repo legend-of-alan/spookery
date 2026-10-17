@@ -265,7 +265,7 @@ rules:
           op: ">"
           value:
             meter:
-              who: world
+              who: self
               key: nerve
             plus: 1
     do:

@@ -1,7 +1,7 @@
 use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
-use spookery_kernel::api::expand::expand_with;
+use spookery_kernel::api::expand::expand_outcome;
 use spookery_kernel::api::intent::{ActorKind, Intent};
 use spookery_kernel::api::journal::Rejected;
 use spookery_kernel::api::map;
@@ -73,7 +73,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         let mut resist_reports = Vec::new();
         let expanded = match super::resolve::with_dice(round, |held| {
             let mut roller = held.roller(&intent.move_name, &intent.actor_id);
-            expand_with(
+            expand_outcome(
                 draft.canon(),
                 &frozen,
                 &intent,
@@ -132,9 +132,9 @@ fn begin_timed(
     if let Err(code) = super::resolve::with_dice(round, |held| {
         let mut roller = held.roller(&intent.move_name, &intent.actor_id);
         if let Some(cost) = &rule.cost {
-            cost::pay_with(draft, intent, cost, &mut roller)?;
+            cost::pay(draft, intent, cost, &mut roller)?;
         }
-        map::begin_with(draft, intent, rule, at, minutes, &mut roller)
+        map::begin(draft, intent, rule, at, minutes, &mut roller)
     }) {
         draft.rollback(point);
         refuse(round, &intent.id, code.jsonl_reason());
@@ -173,7 +173,7 @@ fn commit_intent(
     if let Some(cost) = cost {
         if let Err(code) = super::resolve::with_dice(round, |held| {
             let mut roller = held.roller(&intent.move_name, &intent.actor_id);
-            cost::pay_with(draft, intent, &cost, &mut roller)
+            cost::pay(draft, intent, &cost, &mut roller)
         }) {
             draft.rollback(point);
             refuse(round, &intent.id, code.jsonl_reason());

@@ -6,7 +6,7 @@ use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, Now};
 use crate::rule::Cost;
-use crate::rules::expr::{self, Ctx, Dice, NoDice};
+use crate::rules::expr::{self, Ctx, Dice};
 
 /// What the actor cannot pay. The token is `CANT_AFFORD`; `what` names the gap.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,11 +64,7 @@ fn item_count(amount: i64) -> Result<u32, Reason> {
 }
 
 /// Meters and items are paid at the start. Time is a duration for later completion.
-pub fn pay(draft: &mut Draft, intent: &Intent, cost: &Cost) -> Result<(), Reason> {
-    pay_with(draft, intent, cost, &mut NoDice)
-}
-
-pub fn pay_with(
+pub fn pay(
     draft: &mut Draft,
     intent: &Intent,
     cost: &Cost,

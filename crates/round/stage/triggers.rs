@@ -2,7 +2,7 @@ use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::canon::Canon;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
-use spookery_kernel::api::expand::expand_rule_with;
+use spookery_kernel::api::expand::expand_rule;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::key::{ChangeRecord, StateKey, StateValue};
 use spookery_kernel::api::model::Now;
@@ -191,7 +191,7 @@ fn expand_hit(
         } else {
             None
         };
-        let effects = expand_rule_with(
+        let effects = expand_rule(
             canon,
             now,
             rule,

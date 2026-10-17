@@ -562,6 +562,9 @@ fn divides_by_zero(expr: &Expr) -> bool {
     }
 }
 
+/// Most dice one group may roll. A larger count is almost always a typo.
+const MAX_DICE: u32 = 1000;
+
 struct Parser<'a> {
     src: &'a str,
     i: usize,
@@ -641,8 +644,14 @@ impl<'a> Parser<'a> {
         if self.eat('d') {
             let sides = self.digits()?;
             let keep = self.keep()?;
-            if n == 0 || sides == 0 || n > u64::from(u32::MAX) || sides > u64::from(u32::MAX) {
+            if n == 0 || sides == 0 || sides > u64::from(u32::MAX) {
                 return Err(format!("expression '{}' rolls no dice", self.src));
+            }
+            if n > u64::from(MAX_DICE) {
+                return Err(format!(
+                    "expression '{}' rolls more than {MAX_DICE} dice",
+                    self.src
+                ));
             }
             return Ok(Expr::Dice {
                 n: n as u32,

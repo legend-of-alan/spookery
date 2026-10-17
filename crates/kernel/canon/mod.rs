@@ -1308,6 +1308,19 @@ fn check_expr(
     let mut reads = Vec::new();
     expr.meters(&mut reads);
     for (who, key, spot) in reads {
+        if matches!(who, Who::World) {
+            let mut diag = schema_error(
+                file,
+                &format!("expression reads 'world.{key}', but the world has no meters"),
+                "read the meter from self, target, subject, here, place:<id>, or a cast id",
+            )
+            .with_path(path);
+            if let Some(spot) = spot {
+                diag = diag.at_line(spot.line, Some(spot.column));
+            }
+            diags.push(diag);
+            continue;
+        }
         if !meters.contains_key(key) {
             let mut diag = schema_error(
                 file,
@@ -1324,7 +1337,7 @@ fn check_expr(
             let mut diag = schema_error(
                 file,
                 &format!("expression names '{name}', which is not a who"),
-                "use self, target, subject, here, world, place:<id>, or a cast id",
+                "use self, target, subject, here, place:<id>, or a cast id",
             )
             .with_path(path);
             if let Some(spot) = spot {

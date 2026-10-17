@@ -17,7 +17,7 @@ fn the_packs_hit_adds(world: &mut World, add: String) {
         "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"{add}\"\n"
     ));
     fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
-    stamp(&pack);
+    crate::support::stamp_pack_rev(&pack);
 }
 
 #[when(expr = "Mira's habit adds {string} to grit")]
@@ -34,7 +34,7 @@ fn miras_habit_adds(world: &mut World, add: String) {
     );
     assert_ne!(next, text, "mira habit was not inserted");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
-    stamp(&pack);
+    crate::support::stamp_pack_rev(&pack);
 }
 
 #[when(expr = "one round plays")]
@@ -180,22 +180,6 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
         rejected.iter().any(|row| row["reason"] == "OUT_OF_RANGE"),
         "{tick}"
     );
-}
-
-fn stamp(pack: &std::path::Path) {
-    let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_kernel::api::store::codec::load_save(
-        &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
-    )
-    .unwrap_or_else(|err| panic!("load now: {err:?}"));
-    now.pack_rev =
-        spookery_kernel::api::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
-    fs::write(
-        &now_path,
-        spookery_kernel::api::store::codec::emit_save(&now)
-            .unwrap_or_else(|err| panic!("emit: {err}")),
-    )
-    .unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 fn grit(world: &World) -> i64 {

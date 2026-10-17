@@ -14,7 +14,7 @@ use crate::rule::{Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::exit;
-use crate::rules::expr::{Ctx, Dice, NoDice};
+use crate::rules::expr::{Ctx, Dice};
 use crate::rules::gate;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -123,22 +123,12 @@ pub fn begin(
     rule: &Rule,
     world_time_before: u64,
     minutes: u64,
-) -> Result<(), Reason> {
-    begin_with(draft, intent, rule, world_time_before, minutes, &mut NoDice)
-}
-
-pub fn begin_with(
-    draft: &mut Draft,
-    intent: &Intent,
-    rule: &Rule,
-    world_time_before: u64,
-    minutes: u64,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let travel = used_exit(draft.canon(), draft.now(), intent, rule)
         .map(|exit| (exit.cost.clone(), exit.to.clone(), exit.name.clone()));
     if let Some((cost, _, _)) = &travel {
-        cost::pay_with(draft, intent, cost, dice)?;
+        cost::pay(draft, intent, cost, dice)?;
     }
     let until = world_time_before.saturating_add(minutes);
     let pending = Pending {
