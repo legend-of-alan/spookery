@@ -29,8 +29,9 @@ use spookery_kernel::api::effect::EffectKind;
 use spookery_kernel::api::journal::{self, JournalEntry, TickRecord};
 use spookery_kernel::api::world::World;
 
-use super::play::{configure_runner, copy_docks, pick_rounds, play_rounds, TempPack};
-use crate::from_journal;
+use super::play::{
+    configure_runner, copy_docks, fail_msg, pick_rounds, play_rounds, same_save, TempPack,
+};
 
 #[derive(Clone, Debug)]
 struct Chain {
@@ -62,9 +63,8 @@ fn random_play_stops_trigger_chains_at_the_cap() {
 }
 
 fn pick_chain() -> impl Strategy<Value = Chain> {
-    (2..=4usize, prop::collection::vec(0..4usize, 0..=2)).prop_map(|(len, extras)| Chain {
-        len,
-        extras: extras.into_iter().map(|watch| watch % len).collect(),
+    (2..=4usize).prop_flat_map(|len| {
+        prop::collection::vec(0..len, 0..=2).prop_map(move |extras| Chain { len, extras })
     })
 }
 
@@ -84,13 +84,13 @@ fn triggers_stop(pack: &Path, rules: &[RuleSpec], rounds: usize) -> Result<(), T
         .collect();
     if ticks.len() != rounds {
         return Err(fail_msg(format!(
-            "played {rounds} rounds but the journal has {} ticks",
+            "played {rounds} rounds but the journal has {} round records",
             ticks.len()
         )));
     }
     let mut held = BTreeSet::new();
     for tick in ticks {
-        held = check_tick(tick, rules, max, held, rowan_gained_oil(tick))?;
+        held = check_round(tick, rules, max, held, rowan_gained_oil(tick))?;
     }
     same_save(pack)
 }
@@ -117,7 +117,7 @@ fn rowan_gained_oil(tick: &TickRecord) -> bool {
     net > 0
 }
 
-fn check_tick(
+fn check_round(
     tick: &TickRecord,
     rules: &[RuleSpec],
     max: u64,
@@ -135,7 +135,7 @@ fn check_tick(
     let mut index = 0usize;
     let mut passes = 0u64;
     loop {
-        let ready = ready(rules, oil, &armed);
+        let ready = pick_ready(rules, oil, &armed);
         if ready.is_empty() {
             if index != logged.len() {
                 return Err(fail_msg(format!(
@@ -198,7 +198,7 @@ fn check_tick(
     }
 }
 
-fn ready<'a>(rules: &'a [RuleSpec], oil: bool, armed: &BTreeSet<String>) -> Vec<&'a RuleSpec> {
+fn pick_ready<'a>(rules: &'a [RuleSpec], oil: bool, armed: &BTreeSet<String>) -> Vec<&'a RuleSpec> {
     rules
         .iter()
         .filter(|rule| match &rule.watch {
@@ -225,9 +225,6 @@ fn apply_effects(
 }
 
 fn install(pack: &Path, chain: &Chain) -> Result<Vec<RuleSpec>, String> {
-    if !(2..=4).contains(&chain.len) {
-        return Err(format!("cycle length {} is out of range", chain.len));
-    }
     let mut flags = Vec::new();
     for index in 0..chain.len {
         flags.push(format!("c{index}"));
@@ -317,25 +314,4 @@ fn write_flags(pack: &Path, flags: &[String]) -> Result<(), String> {
     }
     let replacement = format!("tick:\n  eligible: false\n{listed}");
     fs::write(&path, text.replacen(needle, &replacement, 1)).map_err(|err| err.to_string())
-}
-
-fn same_save(pack: &Path) -> Result<(), TestCaseError> {
-    let report = from_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
-    let entries = journal::read_entries(pack)
-        .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
-    let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {
-        return Err(fail_msg("the rounds wrote no record".to_string()));
-    };
-    let replayed = journal::hash_now(&report.now_yaml);
-    if replayed == last.now_hash() {
-        return Ok(());
-    }
-    Err(fail_msg(format!(
-        "state hash differed: record {} replayed {replayed}",
-        last.now_hash()
-    )))
-}
-
-fn fail_msg(message: String) -> TestCaseError {
-    TestCaseError::fail(message)
 }

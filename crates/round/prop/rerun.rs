@@ -21,7 +21,9 @@ use spookery_kernel::api::journal::{self, JournalEntry};
 use spookery_kernel::api::store::codec::emit_effect;
 use spookery_kernel::api::world::World;
 
-use super::play::{configure_runner, copy_docks, copy_pack, pick_rounds, play_rounds, TempPack};
+use super::play::{
+    configure_runner, copy_docks, copy_pack, fail_msg, pick_rounds, play_rounds, TempPack,
+};
 use crate::play::{play_recorded, RecordedRound};
 
 #[test]
@@ -104,8 +106,4 @@ fn effect_text(effect: Option<&Effect>) -> String {
         Some(effect) => emit_effect(effect),
         None => "none".to_string(),
     }
-}
-
-fn fail_msg(message: String) -> TestCaseError {
-    TestCaseError::fail(message)
 }

@@ -4,15 +4,17 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use proptest::prelude::*;
-use proptest::test_runner::{Config, RngSeed};
+use proptest::test_runner::{Config, RngSeed, TestCaseError};
 use spookery_kernel::api::canon::pack_rev;
 use spookery_kernel::api::ids::player_intent_id;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_kernel::api::journal;
 use spookery_kernel::api::map::visible;
 use spookery_kernel::api::rules::gate::gate;
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 use spookery_kernel::api::world::World;
 
+use crate::from_journal;
 use crate::play::{play, RoundCause};
 
 pub(crate) const CASES: u32 = 64;
@@ -247,4 +249,26 @@ fn copy_dir(from: &Path, to: &Path) {
             fs::copy(entry.path(), dest).expect("copy pack file");
         }
     }
+}
+
+/// Replay the journal and compare it with the state hash on the last record.
+pub(crate) fn same_save(pack: &Path) -> Result<(), TestCaseError> {
+    let report = from_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
+    let entries = journal::read_entries(pack)
+        .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
+    let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {
+        return Err(fail_msg("the rounds wrote no record".to_string()));
+    };
+    let replayed = journal::hash_now(&report.now_yaml);
+    if replayed == last.now_hash() {
+        return Ok(());
+    }
+    Err(fail_msg(format!(
+        "state hash differed: record {} replayed {replayed}",
+        last.now_hash()
+    )))
+}
+
+pub(crate) fn fail_msg(message: String) -> TestCaseError {
+    TestCaseError::fail(message)
 }
