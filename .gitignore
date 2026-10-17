@@ -7,6 +7,9 @@
 # MSVC debug info from Windows rustc builds
 *.pdb
 
+# Python bytecode
+__pycache__/
+
 # Local Grok MCP paths and permission choices
 /.grok/config.toml
 

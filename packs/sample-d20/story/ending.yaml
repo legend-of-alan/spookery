@@ -1,0 +1,16 @@
+schema: story
+id: ending
+rules:
+  - id: lane_clear
+    when:
+      change:
+        arrive: mill_lane
+        who: pc
+    do:
+      - flag:
+          who: world
+          key: finished
+          value: true
+      - narrate:
+          to: self
+          text: The lane is empty. That is the end.
