@@ -62,7 +62,7 @@ fn ceil_div(numerator: u64, denominator: u64) -> u64 {
         return 0;
     }
     let quotient = numerator / denominator;
-    if numerator % denominator == 0 {
+    if numerator.is_multiple_of(denominator) {
         quotient
     } else {
         quotient.saturating_add(1)

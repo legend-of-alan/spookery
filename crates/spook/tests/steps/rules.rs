@@ -123,9 +123,10 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let path = pack.join("state/journal/tick-0001.jsonl");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read tick: {err}"));
-    let mut tick: Value = serde_json::from_str(text.trim_end()).unwrap_or_else(|err| {
+    let located = spookery_kernel::api::journal::locate(&pack, "tick-0001.jsonl")
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
+    let mut tick: Value = serde_json::from_str(&located.line).unwrap_or_else(|err| {
         panic!("json: {err}\n{text}");
     });
     let effects = tick["effects"]
@@ -137,9 +138,10 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
         .as_u64()
         .unwrap_or_else(|| panic!("no tick_index\n{text}"));
     world.scratch = format!("tick {index}");
-    let mut encoded = serde_json::to_string(&tick).unwrap_or_else(|err| panic!("encode: {err}"));
-    encoded.push('\n');
-    fs::write(&path, encoded).unwrap_or_else(|err| panic!("write tick: {err}"));
+    let encoded = serde_json::to_string(&tick).unwrap_or_else(|err| panic!("encode: {err}"));
+    let rewritten = text.replacen(&located.line, &encoded, 1);
+    assert_ne!(rewritten, text);
+    fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write tick: {err}"));
 }
 
 #[then(expr = "spook verify names the tick and the first differing effect")]
@@ -996,7 +998,7 @@ fn run(world: &mut World, args: &[&str]) {
 }
 
 fn open_pack(pack: &Path) -> spookery_kernel::api::World {
-    spookery_kernel::api::World::open(pack).unwrap_or_else(|err| {
+    spookery_round::resume(pack).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
             err.token(),
@@ -1018,7 +1020,10 @@ fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
 }
 
 fn read_now(pack: &Path) -> Now {
-    load_save(&fs::read_to_string(pack.join("state/save.yaml")).unwrap()).unwrap()
+    let report =
+        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let text = std::str::from_utf8(&report.now_yaml).unwrap();
+    load_save(text).unwrap()
 }
 
 fn append(path: &Path, extra: &str) {

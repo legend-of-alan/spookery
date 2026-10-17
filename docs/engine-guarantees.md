@@ -11,15 +11,17 @@ the [seat protocol](seat-protocol.md).
 
 ## One writer
 
-The save changes when a round commits, when someone sits or leaves, or when
-migrate stores a new hash of the world, cast, and rules files. Sitting as the GM
-writes nothing. A GM say is speech. A commit runs the queued moves as one round,
-in queue order. With no GM, each player line commits its own round. A call off
-the GM menu is refused. Speech goes on the tape and leaves the save and the
-clock alone. A world, cast, or rules file that no longer matches the save is
-refused, and that round writes nothing, until migrate stores the new hash. A
-commit that stops halfway leaves the previous save. A finished commit keeps the
-new one.
+The journal changes when a round commits, and when migrate stores a new hash of
+the world, cast, and rules files. Sitting or leaving writes nothing. A GM say is
+speech. A commit runs the queued moves as one round, in queue order. With no GM,
+each player line commits its own round. A call off the GM menu is refused.
+Speech goes on the tape and leaves the journal and the clock alone. A world,
+cast, or rules file that no longer matches the save is refused, and that round
+writes nothing, until migrate stores the new hash. An ordinary commit appends
+one bundle and flushes that file once. The first record in a new bundle also
+flushes the journal directory. `save.yaml` is written at a checkpoint, not on
+every commit. A torn last line in the live bundle is cut off on startup, and a
+leftover transaction directory is removed. The save on disk stays.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/rounds/a_line_waits_for_the_gm.feature`,
@@ -30,17 +32,28 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 
 ## Replay
 
-Running the journal again reproduces the save. Verify names the record and the
-first save line that differs when a logged move no longer matches. When logged
-effects differ from a fresh run, verify names that round and the first effect
-that differs. Each journal record reads back as the bytes that were written.
-Replay prints the ending revision and leaves the pack unchanged. Each roll keeps
-its own dice. An unrelated roll in the same round does not move them, and verify
-reproduces them. A change of who is present, and a migrate between rounds,
-verify too.
+The journal is a hash chain of bundle files. Each record's hash covers its own
+bytes and the previous record's hash. Closed bundles stay, gzip-compressed.
+`save.yaml` is the latest checkpoint, taken every `checkpoint_every` ticks
+(100 when the pack omits it). Between checkpoints the current state is the
+journal replayed from that snapshot. A missing snapshot is rebuilt from the
+bundles. History is not deleted.
+
+Full verification replays every bundle from tick 0. Bundles replay in parallel
+from the checkpoint each one starts at, and the tip matches a serial replay.
+Quick verification checks the chain and replays the latest bundle from the
+snapshot it starts at. Verify names the record and the first save line that
+differs when a logged move no longer matches. An edit in a closed bundle fails
+verification and names that bundle. When logged effects differ from a fresh
+run, verify names that round and the first effect that differs. Each journal
+record reads back as the bytes that were written. Replay prints the ending
+revision and leaves the pack unchanged. Each roll keeps its own dice. An
+unrelated roll in the same round does not move them, and verify reproduces
+them. A change of who is present, and a migrate between rounds, verify too.
 
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/replay/typed_journal_records.feature`,
+`features/replay/journal_bundles.feature`,
 `features/round/each_roll_has_its_own_seed.feature`, and
 `features/rules/rule_versions.feature`.
 

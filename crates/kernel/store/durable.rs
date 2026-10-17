@@ -50,23 +50,6 @@ pub(crate) fn rename(from: &Path, to: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-// Deeper directories first, so entries land before the link in the parent.
-pub(crate) fn fsync_dirs(dirs: &[PathBuf]) -> Result<(), Reason> {
-    let mut ordered: Vec<&Path> = dirs.iter().map(PathBuf::as_path).collect();
-    ordered.sort_by(|left, right| {
-        right
-            .components()
-            .count()
-            .cmp(&left.components().count())
-            .then_with(|| left.cmp(right))
-    });
-    ordered.dedup();
-    for dir in ordered {
-        fsync_dir(dir)?;
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 fn note_file(path: &Path) {
     trace::record(Mark::File(path.to_path_buf()));

@@ -188,9 +188,12 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     assert!(output.status.success(), "{stdout}{stderr}");
     let report =
         spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
+    let line = spookery_kernel::api::journal::record_line(pack, "tick-0001.jsonl")
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let tick: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
-        report.now_yaml,
-        fs::read(pack.join("state/save.yaml")).unwrap()
+        spookery_kernel::api::journal::hash_now(&report.now_yaml),
+        tick["now_hash"].as_str().unwrap()
     );
 }
 
@@ -514,7 +517,7 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 }
 
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
-    let world = spookery_kernel::api::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let world = spookery_round::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let actor = world
         .now()
         .actors
@@ -683,8 +686,7 @@ fn play_queued(
     pack: &Path,
     intents: Vec<Intent>,
 ) -> (spookery_kernel::api::model::Now, Vec<RollReport>, Value) {
-    let mut world =
-        spookery_kernel::api::World::open(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let mut world = spookery_round::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = world.now().last_tick_at.clone();
     for intent in intents {
         world.queue(intent);
@@ -740,9 +742,9 @@ fn append(path: &Path, extra: &str) {
 }
 
 fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = fs::read_to_string(pack.join("state/journal").join(name))
-        .unwrap_or_else(|err| panic!("{err}"));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}: {text}"))
+    let text = spookery_kernel::api::journal::record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}\n{text}"))
 }
 
 fn copy_named(name: &str, label: &str) -> PathBuf {

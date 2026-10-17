@@ -276,8 +276,9 @@ fn wait_text(proc: &Proc, slot: &Arc<Mutex<String>>, needle: &str, bound: Durati
 }
 
 fn world_time(pack: &Path) -> u64 {
-    let text = fs::read_to_string(pack.join("state/save.yaml")).expect("save.yaml");
-    spookery_kernel::api::store::codec::load_save(&text)
+    let report = spookery_round::from_journal(pack, None, None).expect("replay");
+    let text = std::str::from_utf8(&report.now_yaml).expect("save text");
+    spookery_kernel::api::store::codec::load_save(text)
         .expect("load now")
         .world_time
 }
@@ -285,10 +286,12 @@ fn world_time(pack: &Path) -> u64 {
 fn wait_advance(pack: &Path, sit: u64, host: &mut Proc) -> bool {
     let start = Instant::now();
     while start.elapsed() < ROUND_BOUND {
-        if let Ok(text) = fs::read_to_string(pack.join("state/save.yaml")) {
-            if let Ok(now) = spookery_kernel::api::store::codec::load_save(&text) {
-                if now.world_time > sit {
-                    return true;
+        if let Ok(report) = spookery_round::from_journal(pack, None, None) {
+            if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
+                if let Ok(now) = spookery_kernel::api::store::codec::load_save(text) {
+                    if now.world_time > sit {
+                        return true;
+                    }
                 }
             }
         }

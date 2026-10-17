@@ -1,3 +1,8 @@
+pub(crate) mod ids;
+#[path = "state_key.rs"]
+pub(crate) mod key;
+pub(crate) mod meter;
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};

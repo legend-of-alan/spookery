@@ -184,8 +184,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             spookery_round::play_pack_once(&pack).map_err(spookery::Error::Reason)
         }
         Command::Status { pack } => {
-            let world =
-                spookery_kernel::api::World::open(&pack).map_err(spookery::Error::Reason)?;
+            let world = spookery_round::resume(&pack).map_err(spookery::Error::Reason)?;
             let text = spookery_kernel::api::host_summary(
                 &world,
                 spookery_kernel::api::DigestViewer::Host,
@@ -195,7 +194,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             Ok(())
         }
         Command::Migrate { pack } => {
-            spookery_kernel::api::commit::migrate_pack(&pack).map_err(spookery::Error::Reason)
+            spookery_round::migrate_pack(&pack).map_err(spookery::Error::Reason)
         }
         Command::Replay { pack, from } => {
             match spookery_round::from_journal(&pack, from.as_deref(), None) {

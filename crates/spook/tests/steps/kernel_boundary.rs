@@ -155,6 +155,10 @@ fn layer_of(name: &str) -> Option<usize> {
 
 fn subsystem(kernel: &Path, path: &Path) -> String {
     let rel = path.strip_prefix(kernel).unwrap_or(path);
+    let stem = path.file_stem().unwrap().to_string_lossy();
+    if stem != "mod" && layer_of(&stem).is_some() {
+        return stem.to_string();
+    }
     let first = rel
         .components()
         .next()

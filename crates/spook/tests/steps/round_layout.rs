@@ -19,11 +19,15 @@ const PUBLIC: &[&str] = &[
     "commit_moves",
     "commit_moves_at",
     "from_journal",
+    "migrate_pack",
     "plan_catchup",
     "play",
     "play_pack_once",
     "replay_states",
+    "resume",
     "verify_pack",
+    "verify_parallel",
+    "verify_quick",
 ];
 
 #[given(expr = "the round crate after the move")]

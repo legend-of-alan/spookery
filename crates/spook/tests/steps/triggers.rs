@@ -615,7 +615,7 @@ fn nell_knows_the_trapdoor(world: &mut World) {
 #[then(expr = "pc_nell can see the trapdoor")]
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let world_now = spookery_kernel::api::World::open(pack).unwrap();
+    let world_now = spookery_round::resume(pack).unwrap();
     let exits = spookery_kernel::api::map::visible(world_now.canon(), world_now.now(), "pc_nell");
     assert!(
         exits.iter().any(|exit| exit.name == "trapdoor"),
@@ -1264,7 +1264,7 @@ fn play(
 }
 
 fn play_view(pack: &Path, intents: Vec<Intent>) -> Played {
-    let mut world = spookery_kernel::api::World::open(pack).unwrap_or_else(|err| {
+    let mut world = spookery_round::resume(pack).unwrap_or_else(|err| {
         let report = spookery_kernel::api::check_pack(pack)
             .iter()
             .map(|diag| diag.report_line())
@@ -1324,23 +1324,20 @@ fn append(path: &Path, from: &str, to: &str) {
 }
 
 fn load(pack: &Path) -> Now {
-    load_save(&fs::read_to_string(pack.join("state/save.yaml")).unwrap()).unwrap()
+    let report =
+        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let text = std::str::from_utf8(&report.now_yaml).unwrap();
+    load_save(text).unwrap()
 }
 
 fn latest(pack: &Path) -> Value {
-    let mut names: Vec<String> = fs::read_dir(pack.join("state/journal"))
-        .unwrap()
-        .filter_map(|entry| {
-            let name = entry.ok()?.file_name().to_string_lossy().into_owned();
-            name.starts_with("tick-").then_some(name)
-        })
-        .collect();
-    names.sort();
+    let names = spookery_kernel::api::journal::tick_names(pack);
     let name = names
         .last()
         .unwrap_or_else(|| panic!("no tick was written"));
-    let text = fs::read_to_string(pack.join("state/journal").join(name)).unwrap();
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"))
+    let text = spookery_kernel::api::journal::record_line(pack, name)
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }
 
 fn trace(tick: &Value) -> Vec<String> {

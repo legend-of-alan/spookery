@@ -31,25 +31,13 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
 }
 
 fn tick_file(pack: &Path, name: &str) -> Value {
-    let text = fs::read_to_string(pack.join("state/journal").join(name))
-        .unwrap_or_else(|err| panic!("read {name}: {err}"));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"))
+    let text = spookery_kernel::api::journal::record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }
 
 fn tick_names(pack: &Path) -> Vec<String> {
-    let dir = pack.join("state/journal");
-    if !dir.is_dir() {
-        return Vec::new();
-    }
-    let mut names: Vec<String> = fs::read_dir(dir)
-        .unwrap()
-        .filter_map(|entry| {
-            let name = entry.ok()?.file_name().to_string_lossy().into_owned();
-            name.starts_with("tick-").then_some(name)
-        })
-        .collect();
-    names.sort();
-    names
+    spookery_kernel::api::journal::tick_names(pack)
 }
 
 fn add_toll(pack: &Path) {

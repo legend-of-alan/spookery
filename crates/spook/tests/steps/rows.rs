@@ -133,9 +133,9 @@ fn assert_location(pack: &Path, name: &str) {
 }
 
 fn tick(pack: &Path, name: &str) -> Value {
-    let text = fs::read_to_string(pack.join("state/journal").join(name))
-        .unwrap_or_else(|err| panic!("read {name}: {err}"));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
+    let text = spookery_kernel::api::journal::record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err}"))
 }
 
 fn place_of(pack: &Path) -> String {

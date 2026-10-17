@@ -34,10 +34,17 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         fast_forward: round.fast_forward,
         tool_trace: &round.trace,
     });
+    let store = if round.recorded.is_some() {
+        spookery_kernel::api::commit::RoundStore::Memory
+    } else if round.cause == RoundCause::Flush {
+        spookery_kernel::api::commit::RoundStore::Hold
+    } else {
+        spookery_kernel::api::commit::RoundStore::Write
+    };
     spookery_kernel::api::commit::finish_round(
         world,
         draft,
-        round.cause == RoundCause::Flush,
+        store,
         jsonl,
         std::mem::take(&mut round.notices),
         round.recorded.is_some(),
@@ -87,6 +94,8 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         fast_forward: line.fast_forward,
         tool_trace: line.tool_trace.to_vec(),
         now_hash: String::new(),
+        prev: String::new(),
+        chain: String::new(),
     };
     journal::emit_entry(&journal::JournalEntry::Tick(record))
 }

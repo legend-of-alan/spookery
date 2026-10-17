@@ -31,7 +31,7 @@ For `attack`, a wielded weapon's rule wins when that item has one. A verb uses t
 
 ## Pack
 
-`start.place` is the root of the exit graph. `start.pc` is the PC sat when `spook play` is given no `--as`.
+`start.place` is the root of the exit graph. `start.pc` is the PC sat when `spook play` is given no `--as`. `checkpoint_every` is optional. It is the number of ticks between journal checkpoints. The default is 100. Zero is rejected. The field is not part of the canon hash.
 
 ```yaml file=pack.yaml
 schema: pack
