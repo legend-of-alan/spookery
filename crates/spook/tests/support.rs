@@ -19,7 +19,7 @@ pub fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-fn stamped(label: &str, n: u32) -> PathBuf {
+fn stamp_path(label: &str, n: u32) -> PathBuf {
     let thread: String = format!("{:?}", std::thread::current().id())
         .chars()
         .filter(|c| c.is_ascii_alphanumeric())
@@ -38,7 +38,7 @@ fn stamped(label: &str, n: u32) -> PathBuf {
 /// allocate at the same moment.
 pub fn fresh_dir(label: &str) -> PathBuf {
     for n in 0..64 {
-        let dir = stamped(label, n);
+        let dir = stamp_path(label, n);
         if fs::create_dir(&dir).is_ok() {
             return dir;
         }
@@ -49,7 +49,7 @@ pub fn fresh_dir(label: &str) -> PathBuf {
 /// A path that is not on disk yet.
 pub fn vacant_path(label: &str) -> PathBuf {
     for n in 0..64 {
-        let dir = stamped(label, n);
+        let dir = stamp_path(label, n);
         if !dir.exists() {
             return dir;
         }

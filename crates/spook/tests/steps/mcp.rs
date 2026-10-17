@@ -280,7 +280,7 @@ fn gm_holds_over_http(world: &mut World) {
         assert_sat(&status, "session_status");
         running
     });
-    world.holder = Some(crate::Held(holder));
+    world.holder = Some(crate::Holder(holder));
 }
 
 #[when(expr = "another GM tries to sit over HTTP")]

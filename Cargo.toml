@@ -22,3 +22,9 @@ codegen-units = 1
 # locally if you need a debugger.
 [profile.dev]
 debug = "line-tables-only"
+
+# Unoptimized servers miss the existing wall-clock polls once several run at
+# once: a 12-tick fast-forward and a second player's line. opt-level 3 keeps
+# those polls honest without widening them.
+[profile.test]
+opt-level = 3

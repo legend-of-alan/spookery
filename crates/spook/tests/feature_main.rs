@@ -6,13 +6,13 @@ use cucumber::writer::Stats;
 use cucumber::World as _;
 
 /// An HTTP GM held across steps. Dropped with the scenario.
-pub struct Held(
+pub struct Holder(
     pub rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
 );
 
-impl std::fmt::Debug for Held {
+impl std::fmt::Debug for Holder {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Held").finish_non_exhaustive()
+        f.debug_struct("Holder").finish_non_exhaustive()
     }
 }
 
@@ -37,17 +37,14 @@ pub struct World {
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_kernel::api::model::Presence)>,
-    pub holder: Option<Held>,
+    pub holder: Option<Holder>,
 }
 
 fn scenario_limit() -> usize {
-    // One live server per folder. More than two at once pushes the existing
-    // wall-clock polls over: five seconds for a fast-forward, two seconds
-    // for a second player's line.
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
-        .min(2)
+        .min(8)
 }
 
 fn finish(world: &mut World) {
