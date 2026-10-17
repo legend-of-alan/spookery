@@ -9,9 +9,9 @@ use super::table;
 #[given(expr = "a docks table with a GM and a seated player")]
 fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
     let pack = temp_pack("round");
-    table::listen(&pack);
-    table::seat_gm();
-    table::seat_player(&pack);
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_player(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -37,7 +37,7 @@ fn the_player_line_is_queued(world: &mut World) {
         "{}",
         world.player_added
     );
-    world.mark = table::player_len();
+    world.mark = table::player_len(world);
 }
 
 #[then(expr = "the tick log records the player wait")]

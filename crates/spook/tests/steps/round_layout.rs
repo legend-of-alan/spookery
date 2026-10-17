@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then};
 
-use crate::support::{self, copy_dir};
+use crate::support;
 use crate::World;
 
 const PUBLIC: &[&str] = &[
@@ -126,18 +126,8 @@ fn spook_builds_without_import_changes(_world: &mut World) {
 
 #[then(expr = "spook verify passes on the existing feature packs")]
 fn spook_verify_passes_on_the_existing_feature_packs(_world: &mut World) {
-    let root = repo_root();
     for name in ["oneshot-docks", "sample-d20"] {
-        let pack = std::env::temp_dir().join(format!(
-            "spook-layout-{name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&pack);
-        copy_dir(&root.join("packs").join(name), &pack);
+        let pack = crate::support::copy_pack(name, &format!("layout-{name}"));
         let output = support::spook(&["verify", &pack.to_string_lossy()]);
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);

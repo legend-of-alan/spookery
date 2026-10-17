@@ -22,6 +22,7 @@ use spookery_kernel::api::rules::RollReport;
 use spookery_kernel::api::store::codec::emit_save;
 use spookery_round::{catch_up, play, play_pack_once};
 
+use crate::support;
 use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
@@ -37,31 +38,6 @@ fn meters(grit: i64) -> BTreeMap<String, MeterLive> {
         ),
         ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
     ])
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    super::support::copy_dir(from, to);
-}
-
-fn scratch(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "spook-prop-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ))
-}
-
-fn temp_pack(label: &str) -> PathBuf {
-    let pack = scratch(label);
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks"),
-        &pack,
-    );
-    pack
 }
 
 fn open(pack: &Path) -> spookery_kernel::api::world::World {
@@ -140,7 +116,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 }
 
 fn no_self_win() {
-    let pack = temp_pack("self-win");
+    let pack = support::temp_pack("self-win");
     for tick in 1..=12 {
         play_pack_once(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
@@ -180,7 +156,7 @@ fn save_now(pack: &Path, now: &Now) {
 }
 
 fn evening_note() {
-    let pack = temp_pack("evening");
+    let pack = support::temp_pack("evening");
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
@@ -192,7 +168,7 @@ fn evening_note() {
 }
 
 fn morning_restock() {
-    let pack = temp_pack("morning");
+    let pack = support::temp_pack("morning");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
@@ -215,7 +191,7 @@ fn morning_restock() {
 }
 
 fn capped_restock() -> u32 {
-    let pack = temp_pack("capped");
+    let pack = support::temp_pack("capped");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
@@ -237,7 +213,7 @@ fn capped_restock() -> u32 {
 }
 
 fn off_hours_hold() {
-    let pack = temp_pack("off-hours");
+    let pack = support::temp_pack("off-hours");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
@@ -253,7 +229,7 @@ fn off_hours_hold() {
 }
 
 fn player_in_the_shop() {
-    let pack = temp_pack("present");
+    let pack = support::temp_pack("present");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
@@ -276,7 +252,7 @@ fn player_in_the_shop() {
 }
 
 fn gm_restocks() {
-    let pack = temp_pack("gm-restock");
+    let pack = support::temp_pack("gm-restock");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
@@ -308,7 +284,7 @@ fn gm_restocks() {
 }
 
 fn claimed_note_sorts_first() {
-    let pack = temp_pack("claimed");
+    let pack = support::temp_pack("claimed");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
@@ -351,7 +327,7 @@ fn claimed_note_sorts_first() {
 
 fn catchup_cap() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = scratch("catchup");
+    let pack = support::fresh_dir("catchup");
     let _ = fs::remove_dir_all(&pack);
     let rules = manifest.join("../../packs/oneshot-docks/rules");
     write_text(
@@ -474,7 +450,7 @@ Rowan.
 }
 
 fn busy_skip() {
-    let pack = temp_pack("busy");
+    let pack = support::temp_pack("busy");
     {
         let shard = open(&pack);
         let mut now = shard.now().clone();
@@ -557,7 +533,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
 }
 
 fn an_open_transaction_writes_nothing() {
-    let dropped = temp_pack("drop");
+    let dropped = support::temp_pack("drop");
     let now_path = dropped.join("state/save.yaml");
     let before = fs::read(&now_path).unwrap();
     let shard = open(&dropped);
@@ -580,7 +556,7 @@ fn an_open_transaction_writes_nothing() {
 }
 
 fn an_incomplete_transaction_is_discarded() {
-    let incomplete = temp_pack("incomplete");
+    let incomplete = support::temp_pack("incomplete");
     let now_path = incomplete.join("state/save.yaml");
     let before = fs::read(&now_path).unwrap();
     let txn = incomplete.join("state/.txn");
@@ -600,7 +576,7 @@ fn an_incomplete_transaction_is_discarded() {
 }
 
 fn the_same_revision_restores_the_previous_save() {
-    let same = temp_pack("same-rev");
+    let same = support::temp_pack("same-rev");
     let now_path = same.join("state/save.yaml");
     let original = fs::read(&now_path).unwrap();
     let shard = open(&same);
@@ -626,7 +602,7 @@ fn the_same_revision_restores_the_previous_save() {
 }
 
 fn the_next_revision_keeps_the_new_save() {
-    let next = temp_pack("next-rev");
+    let next = support::temp_pack("next-rev");
     let shard = open(&next);
     let prev = shard.now().clone();
     let mut live = prev.clone();
@@ -672,7 +648,7 @@ fn the_next_revision_keeps_the_new_save() {
 
 fn budget_caps() {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = scratch("budget");
+    let pack = support::fresh_dir("budget");
     let _ = fs::remove_dir_all(&pack);
     let rules = manifest.join("../../packs/oneshot-docks/rules");
     write_text(
@@ -800,7 +776,7 @@ rules:
 }
 
 fn tool_scope() {
-    let pack = temp_pack("scope");
+    let pack = support::temp_pack("scope");
     let before = snapshot(&pack);
     let shard = open(&pack);
     let call = |as_viewer: &str, budget: usize| {
@@ -853,7 +829,7 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
 }
 
 fn strip_bodies_and_hidden_string_lint() {
-    let pack = temp_pack("strip");
+    let pack = support::temp_pack("strip");
     let mut files = Vec::new();
     markdown_files(&pack.join("cast"), &mut files);
     markdown_files(&pack.join("world"), &mut files);
@@ -887,7 +863,7 @@ fn strip_bodies_and_hidden_string_lint() {
     assert!(spookery_kernel::api::lint::lint(&fixture)
         .unwrap()
         .is_empty());
-    let owner = temp_pack("lint-owner");
+    let owner = support::temp_pack("lint-owner");
     let mut body = fs::read_to_string(owner.join("cast/mira.md")).unwrap();
     body.push_str(LEDGER);
     body.push('\n');
@@ -896,7 +872,7 @@ fn strip_bodies_and_hidden_string_lint() {
     assert!(hits
         .iter()
         .any(|hit| hit.path == "cast/mira.md" && hit.text == LEDGER));
-    let place = temp_pack("lint-place");
+    let place = support::temp_pack("lint-place");
     let mut body = fs::read_to_string(place.join("world/places/docks_shop.md")).unwrap();
     body.push_str(LEDGER);
     body.push('\n');
@@ -905,7 +881,7 @@ fn strip_bodies_and_hidden_string_lint() {
     assert!(hits
         .iter()
         .any(|hit| hit.path == "world/places/docks_shop.md" && hit.text == LEDGER));
-    let folded = temp_pack("lint-case");
+    let folded = support::temp_pack("lint-case");
     let mut body = fs::read_to_string(folded.join("cast/mira.md")).unwrap();
     body.push_str("the lamp-oil ledger is short.\n");
     fs::write(folded.join("cast/mira.md"), body).unwrap();
@@ -1178,15 +1154,7 @@ fn planted_five_e_word_fails_the_scan() {
 }
 
 fn planted_five_e(kernel_body: &str, tick_body: &str) -> Vec<String> {
-    let root = std::env::temp_dir().join(format!(
-        "spook-five-e-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&root);
+    let root = support::fresh_dir("five-e");
     fs::create_dir_all(root.join("kernel")).unwrap();
     fs::create_dir_all(root.join("tick")).unwrap();
     fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();
@@ -1211,15 +1179,7 @@ fn reqwest_in_kernel_or_tick_fails_the_scan() {
 }
 
 fn planted_boundary(kernel_body: &str, tick_body: &str) -> Vec<String> {
-    let root = std::env::temp_dir().join(format!(
-        "spook-boundary-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&root);
+    let root = support::fresh_dir("boundary");
     fs::create_dir_all(root.join("kernel")).unwrap();
     fs::create_dir_all(root.join("tick")).unwrap();
     fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();
@@ -1241,7 +1201,7 @@ fn player_waits(tick: &Value) -> Vec<String> {
 }
 
 fn queued_line_survives_a_dropped_seat() {
-    let held = temp_pack("held");
+    let held = support::temp_pack("held");
     let mut shard = open(&held);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
     assert!(!on_scheduled_wake(&mut shard, true, false).unwrap());
@@ -1261,7 +1221,7 @@ fn queued_line_survives_a_dropped_seat() {
 }
 
 fn a_reseated_player_keeps_the_queued_wait() {
-    let dropped = temp_pack("drop-queue");
+    let dropped = support::temp_pack("drop-queue");
     let mut shard = open(&dropped);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
     let note = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
@@ -1282,7 +1242,7 @@ fn a_reseated_player_keeps_the_queued_wait() {
 }
 
 fn early_wake_does_not_tick_again() {
-    let early = temp_pack("early-wake");
+    let early = support::temp_pack("early-wake");
     let mut shard = open(&early);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
     queue_wait(&mut shard, "pc_rowan").unwrap();
@@ -1312,7 +1272,7 @@ fn write_idle(pack: &Path, value: &str) {
 }
 
 fn idle_off_past_due_wake_writes_nothing() {
-    let pack = temp_pack("idle-off-due");
+    let pack = support::temp_pack("idle-off-due");
     write_idle(&pack, "off");
     let (world_time, state_rev, tick_index, stamp) = {
         let shard = open(&pack);
@@ -1351,7 +1311,7 @@ fn idle_off_past_due_wake_writes_nothing() {
 }
 
 fn idle_off_long_absence_writes_no_catchup() {
-    let pack = temp_pack("idle-off-absence");
+    let pack = support::temp_pack("idle-off-absence");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     let world_time = shard.now().world_time;
@@ -1373,7 +1333,7 @@ fn idle_off_long_absence_writes_no_catchup() {
 }
 
 fn idle_off_seated_line_and_spook_tick_still_advance() {
-    let pack = temp_pack("idle-off-play");
+    let pack = support::temp_pack("idle-off-play");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     seat_player(&mut shard, "pc_rowan").unwrap();
@@ -1402,7 +1362,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
 }
 
 fn idle_off_commit_round_still_commits() {
-    let pack = temp_pack("idle-off-commit");
+    let pack = support::temp_pack("idle-off-commit");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     seat_player(&mut shard, "pc_rowan").unwrap();
@@ -1426,7 +1386,7 @@ fn idle_off_commit_round_still_commits() {
 }
 
 fn a_due_wake_applies_the_queued_wait() {
-    let due = temp_pack("due-wake");
+    let due = support::temp_pack("due-wake");
     let mut shard = open(&due);
     let note = queue_wait(&mut shard, "pc_rowan").unwrap();
     assert_eq!(shard.now().last_tick_at, "2026-01-01T00:00:00Z");
@@ -1465,7 +1425,7 @@ fn play_mark(pack: &Path, line: &str) -> Now {
 
 fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     for (label, difficulty, success) in [("effects-pass", 0, true), ("effects-fail", 14, false)] {
-        let pack = temp_pack(label);
+        let pack = support::temp_pack(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    do:\n      - flag:\n          who: target\n          key: marked\n          value: true\n",
@@ -1495,7 +1455,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     }
 
     for (label, difficulty, flag) in [("lists-pass", 0, "marked"), ("lists-fail", 14, "missed")] {
-        let pack = temp_pack(label);
+        let pack = support::temp_pack(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(&format!(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
@@ -1564,7 +1524,7 @@ fn rolled_stat(notices: &[RollReport], stat: i64) -> spookery_kernel::api::rules
 fn opposing_total_reused() {
     for opposed in [false, true] {
         let label = if opposed { "opposed" } else { "open-check" };
-        let pack = temp_pack(label);
+        let pack = support::temp_pack(label);
         let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
         moves.push_str(
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",
@@ -1620,7 +1580,7 @@ fn opposing_total_reused() {
 }
 
 fn a_held_knife_still_runs_the_opposed_row() {
-    let held = temp_pack("item-held");
+    let held = support::temp_pack("item-held");
     let mut moves = fs::read_to_string(held.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
         "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n  - id: defend\n    when:\n      verb: defend\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: self\n          key: guarded\n          value: true\n",

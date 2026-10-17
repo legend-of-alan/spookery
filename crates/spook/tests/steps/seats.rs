@@ -8,38 +8,38 @@ use super::table;
 
 #[when(expr = "a second player connects")]
 fn a_second_player_connects(world: &mut World) {
-    world.scratch = table::second_hello("player:pc_rowan");
+    world.scratch = table::second_hello(world, "player:pc_rowan");
 }
 
 #[when(expr = "a second GM connects over HTTP")]
 fn a_second_gm_connects_over_http(world: &mut World) {
-    let http = crate::with_live(|live| live.http_port);
+    let http = table::live_mut(world).http_port;
     world.scratch = super::mcp::http_post(http, "127.0.0.1", None);
 }
 
 #[when(expr = "a socket sends gm on the game port")]
 fn a_socket_sends_gm_on_the_game_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    world.scratch = table::second_hello("gm");
+    table::listen(world, &pack);
+    world.scratch = table::second_hello(world, "gm");
 }
 
 #[then(expr = "save.yaml is unchanged since the table opened")]
 fn now_unchanged_since_open(world: &mut World) {
-    let opened = crate::with_live(|live| live.opened_now.clone());
+    let opened = table::live_mut(world).opened_now.clone();
     let now = fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, opened);
 }
 
 #[then(expr = "humans is 1")]
-fn humans_is_1(_world: &mut World) {
-    assert_eq!(table::live_presence().0, 1);
+fn humans_is_1(world: &mut World) {
+    assert_eq!(table::live_presence(world).0, 1);
 }
 
 #[then(expr = "the present actor is pc_rowan")]
-fn the_present_actor_is_pc_rowan(_world: &mut World) {
-    assert_eq!(table::live_presence().1, vec!["pc_rowan".to_string()]);
+fn the_present_actor_is_pc_rowan(world: &mut World) {
+    assert_eq!(table::live_presence(world).1, vec!["pc_rowan".to_string()]);
 }
 
 #[then(expr = "state_rev is 1")]
@@ -68,26 +68,27 @@ fn the_state_directory_is_unchanged(world: &mut World) {
 #[when(expr = "a player sits")]
 fn a_player_sits(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
 }
 
 #[when(expr = "the player leaves")]
 fn the_player_leaves(world: &mut World) {
-    table::close_actor("pc_rowan");
-    table::wait_humans(table::pack(world), 0);
+    table::close_actor(world, "pc_rowan");
+    let pack = table::pack(world).to_path_buf();
+    table::wait_humans(world, &pack, 0);
 }
 
 #[when(expr = "the host restarts")]
 fn the_host_restarts(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::stop_server();
-    table::listen(&pack);
+    table::stop_server(world);
+    table::listen(world, &pack);
 }
 
 #[then(expr = "nobody is present")]
-fn nobody_is_present(_world: &mut World) {
-    let (humans, actors) = table::live_presence();
+fn nobody_is_present(world: &mut World) {
+    let (humans, actors) = table::live_presence(world);
     assert_eq!(humans, 0);
     assert!(actors.is_empty(), "{actors:?}");
 }
@@ -104,8 +105,8 @@ fn the_session_ids_differ(world: &mut World) {
 }
 
 #[then(expr = "humans is 0")]
-fn humans_is_0(_world: &mut World) {
-    assert_eq!(table::live_presence().0, 0);
+fn humans_is_0(world: &mut World) {
+    assert_eq!(table::live_presence(world).0, 0);
 }
 
 const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
@@ -114,8 +115,9 @@ const HIDDEN_FACT: &str = "fact_wren_channel";
 #[when(expr = "three players and a GM sit")]
 fn three_players_and_a_gm_sit(world: &mut World) {
     listen_pack(world);
-    table::seat_gm();
-    seat_three(table::pack(world));
+    table::seat_gm(world);
+    let pack = table::pack(world).to_path_buf();
+    seat_three(world, &pack);
 }
 
 #[given(expr = "a docks table whose pack defines four PCs")]
@@ -150,12 +152,13 @@ Lark watches the street from a dry doorway.
 #[when(expr = "three players sit")]
 fn three_players_sit(world: &mut World) {
     listen_pack(world);
-    seat_three(table::pack(world));
+    let pack = table::pack(world).to_path_buf();
+    seat_three(world, &pack);
 }
 
 #[when(expr = "a fourth player connects")]
 fn a_fourth_player_connects(world: &mut World) {
-    world.scratch = table::second_hello("player:pc_lark");
+    world.scratch = table::second_hello(world, "player:pc_lark");
 }
 
 #[then(expr = "the hello is refused with {string}")]
@@ -170,19 +173,19 @@ fn the_hello_is_refused_with(world: &mut World, code: String) {
 }
 
 #[then(expr = "humans is 3")]
-fn humans_is_3(_world: &mut World) {
-    assert_eq!(table::live_presence().0, 3);
+fn humans_is_3(world: &mut World) {
+    assert_eq!(table::live_presence(world).0, 3);
 }
 
 #[then(expr = "humans is 2")]
-fn humans_is_2(_world: &mut World) {
-    assert_eq!(table::live_presence().0, 2);
+fn humans_is_2(world: &mut World) {
+    assert_eq!(table::live_presence(world).0, 2);
 }
 
 #[then(expr = "the present actors are the three docks PCs")]
-fn the_present_actors_are_the_three_docks_pcs(_world: &mut World) {
+fn the_present_actors_are_the_three_docks_pcs(world: &mut World) {
     assert_eq!(
-        table::live_presence().1,
+        table::live_presence(world).1,
         DOCKS_PCS.map(str::to_string).to_vec()
     );
 }
@@ -199,29 +202,30 @@ fn a_one_player_docks_table(world: &mut World) {
     now.actors.remove("pc_wren");
     store_now(&pack, now);
     spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with three seated players")]
 fn a_docks_table_with_three_seated_players(world: &mut World) {
     let pack = crate::support::temp_pack("three-players");
-    table::listen(&pack);
-    seat_three(&pack);
+    table::listen(world, &pack);
+    seat_three(world, &pack);
     world.pack = Some(pack);
 }
 
 #[when(expr = "the first player drops")]
 fn the_first_player_drops(world: &mut World) {
-    table::close_actor("pc_rowan");
-    table::wait_humans(table::pack(world), 2);
+    table::close_actor(world, "pc_rowan");
+    let pack = table::pack(world).to_path_buf();
+    table::wait_humans(world, &pack, 2);
 }
 
 #[then(expr = "the present actors are pc_harbormouse and pc_wren")]
-fn the_present_actors_are_harbormouse_and_wren(_world: &mut World) {
+fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
     assert_eq!(
-        table::live_presence().1,
+        table::live_presence(world).1,
         vec!["pc_harbormouse".to_string(), "pc_wren".to_string()]
     );
 }
@@ -249,11 +253,11 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
 }
 
 #[then(expr = "only that PC's perceive shows the hidden fact")]
-fn only_that_pcs_perceive_shows_the_hidden_fact(_world: &mut World) {
-    let wren = table::actor_text("pc_wren");
+fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
+    let wren = table::actor_text(world, "pc_wren");
     assert!(wren.contains(HIDDEN_FACT), "{wren}");
     for id in ["pc_rowan", "pc_harbormouse"] {
-        let text = table::actor_text(id);
+        let text = table::actor_text(world, id);
         assert!(!text.contains(HIDDEN_FACT), "{id}\n{text}");
     }
 }
@@ -261,38 +265,37 @@ fn only_that_pcs_perceive_shows_the_hidden_fact(_world: &mut World) {
 #[given(expr = "a docks table with a GM and two seated players")]
 fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
     let pack = crate::support::temp_pack("two-queue");
-    table::listen(&pack);
-    table::seat_gm();
-    table::seat_actor(&pack, "pc_rowan");
-    table::seat_actor(&pack, "pc_harbormouse");
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_harbormouse");
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with two seated players")]
 fn a_docks_table_with_two_seated_players(world: &mut World) {
     let pack = crate::support::temp_pack("two-live");
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::seat_actor(&pack, "pc_harbormouse");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_harbormouse");
     world.pack = Some(pack);
 }
 
 #[when(expr = "both players wait")]
 fn both_players_wait(world: &mut World) {
-    let ids = crate::with_live(|live| {
-        live.players
-            .iter()
-            .map(|player| player.actor_id.clone())
-            .collect::<Vec<_>>()
-    });
+    let ids: Vec<String> = table::live_mut(world)
+        .players
+        .iter()
+        .map(|player| player.actor_id.clone())
+        .collect();
     assert_eq!(ids.len(), 2, "{ids:?}");
     for id in ids {
-        world.player_added = table::actor_send(&id, "wait", "\"kind\":");
+        world.player_added = table::actor_send(world, &id, "wait", "\"kind\":");
     }
 }
 
 #[then(expr = "both lines are queued for the GM")]
-fn both_lines_are_queued_for_the_gm(_world: &mut World) {
+fn both_lines_are_queued_for_the_gm(world: &mut World) {
     let queued = |text: &str, id: &str| {
         text.lines().any(|line| {
             line.contains("\"kind\":\"queued\"")
@@ -300,14 +303,16 @@ fn both_lines_are_queued_for_the_gm(_world: &mut World) {
                 && line.contains("\"move\":\"wait\"")
         })
     };
-    table::wait_gm_until("queued waits for pc_rowan and pc_harbormouse", |text| {
-        queued(text, "pc_rowan") && queued(text, "pc_harbormouse")
-    });
+    table::wait_gm_until(
+        world,
+        "queued waits for pc_rowan and pc_harbormouse",
+        |text| queued(text, "pc_rowan") && queued(text, "pc_harbormouse"),
+    );
 }
 
 #[then(expr = "session status lists both queued lines")]
-fn session_status_lists_both_queued_lines(_world: &mut World) {
-    let text = table::gm_call(4, "session_status", "{}");
+fn session_status_lists_both_queued_lines(world: &mut World) {
+    let text = table::gm_call(world, 4, "session_status", "{}");
     for id in ["pc_rowan", "pc_harbormouse"] {
         assert!(text.contains(id), "{text}");
     }
@@ -319,7 +324,7 @@ fn session_status_lists_both_queued_lines(_world: &mut World) {
 
 #[then(expr = "the tick log records both waits")]
 fn the_tick_log_records_both_waits(world: &mut World) {
-    let actors = player_waits(table::pack(world), "tick-0001");
+    let actors = table::list_player_waits(table::pack(world), "tick-0001");
     assert_eq!(
         actors,
         vec!["pc_rowan".to_string(), "pc_harbormouse".to_string()]
@@ -336,11 +341,11 @@ fn each_wait_committed_its_own_tick(world: &mut World) {
         vec!["tick-0001".to_string(), "tick-0002".to_string()]
     );
     assert_eq!(
-        player_waits(pack, "tick-0001"),
+        table::list_player_waits(pack, "tick-0001"),
         vec!["pc_rowan".to_string()]
     );
     assert_eq!(
-        player_waits(pack, "tick-0002"),
+        table::list_player_waits(pack, "tick-0002"),
         vec!["pc_harbormouse".to_string()]
     );
 }
@@ -354,27 +359,28 @@ fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
         .unwrap_or_else(|| panic!("pc_harbormouse"))
         .place_mut() = "docks_shop".to_string();
     store_now(&pack, now);
-    table::listen(&pack);
-    seat_three(&pack);
+    table::listen(world, &pack);
+    seat_three(world, &pack);
     world.pack = Some(pack);
 }
 
 #[when(expr = "the shop player speaks to the place")]
-fn the_shop_player_speaks_to_the_place(_world: &mut World) {
+fn the_shop_player_speaks_to_the_place(world: &mut World) {
     let _ = table::actor_send(
+        world,
         "pc_rowan",
         "say place the blue rope is tied",
         "the blue rope is tied",
     );
     let start = std::time::Instant::now();
     loop {
-        if table::actor_text("pc_harbormouse").contains("the blue rope is tied") {
+        if table::actor_text(world, "pc_harbormouse").contains("the blue rope is tied") {
             return;
         }
         if start.elapsed() > std::time::Duration::from_secs(5) {
             panic!(
                 "harbormouse missed the place say\n{}",
-                table::actor_text("pc_harbormouse")
+                table::actor_text(world, "pc_harbormouse")
             );
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -382,19 +388,19 @@ fn the_shop_player_speaks_to_the_place(_world: &mut World) {
 }
 
 #[then(expr = "only the shop players receive the say")]
-fn only_the_shop_players_receive_the_say(_world: &mut World) {
-    assert!(table::actor_text("pc_rowan").contains("the blue rope is tied"));
-    assert!(table::actor_text("pc_harbormouse").contains("the blue rope is tied"));
+fn only_the_shop_players_receive_the_say(world: &mut World) {
+    assert!(table::actor_text(world, "pc_rowan").contains("the blue rope is tied"));
+    assert!(table::actor_text(world, "pc_harbormouse").contains("the blue rope is tied"));
     std::thread::sleep(std::time::Duration::from_millis(200));
-    let wren = table::actor_text("pc_wren");
+    let wren = table::actor_text(world, "pc_wren");
     assert!(!wren.contains("the blue rope is tied"), "{wren}");
 }
 
 #[when(expr = "three play clients sit on a free port")]
 fn three_play_clients_sit_on_a_free_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    let addr = table::game_addr();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
     let pack_arg = crate::support::pack_arg(&pack);
     for id in DOCKS_PCS {
         let as_arg = format!("player:{id}");
@@ -414,12 +420,12 @@ fn each_play_client_shows_its_first_perceive(world: &mut World) {
 
 fn listen_pack(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
+    table::listen(world, &pack);
 }
 
-fn seat_three(pack: &std::path::Path) {
+fn seat_three(world: &mut World, pack: &std::path::Path) {
     for id in ["pc_rowan", "pc_harbormouse", "pc_wren"] {
-        table::seat_actor(pack, id);
+        table::seat_actor(world, pack, id);
     }
 }
 
@@ -436,25 +442,6 @@ fn store_now(pack: &std::path::Path, mut now: spookery_kernel::api::model::Now) 
     let text = spookery_kernel::api::store::codec::emit_save(&now)
         .unwrap_or_else(|err| panic!("emit: {err}"));
     fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
-}
-
-fn player_waits(pack: &std::path::Path, name: &str) -> Vec<String> {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    let tick: serde_json::Value =
-        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
-    tick["intents"]
-        .as_array()
-        .unwrap_or_else(|| panic!("intents"))
-        .iter()
-        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
-        .map(|intent| {
-            intent["actor_id"]
-                .as_str()
-                .unwrap_or_else(|| panic!("actor_id"))
-                .to_string()
-        })
-        .collect()
 }
 
 fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {

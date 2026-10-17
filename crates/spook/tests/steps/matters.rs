@@ -225,18 +225,7 @@ fn pack(world: &World) -> &Path {
 }
 
 fn copy_sample(label: &str) -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    crate::support::copy_dir(&manifest.join("../../packs/sample-d20"), &pack);
-    pack
+    crate::support::copy_pack("sample-d20", label)
 }
 
 fn stamp(pack: &Path) {

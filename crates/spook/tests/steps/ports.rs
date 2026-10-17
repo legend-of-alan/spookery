@@ -11,19 +11,20 @@ use super::table;
 
 #[when(expr = "the table listens on port 0")]
 fn the_table_listens_on_port_0(world: &mut World) {
-    table::listen(table::pack(world));
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
 }
 
 #[then(expr = "the host reports the game port and the agent door")]
-fn the_host_reports_the_game_port_and_the_agent_door(_world: &mut World) {
-    let (game, door, stdout) = crate::with_live(|live| {
-        let stdout = live
-            .server
-            .as_ref()
-            .map(|server| support::text_of(&server.stdout))
-            .unwrap_or_default();
-        (live.port, live.http_port, stdout)
-    });
+fn the_host_reports_the_game_port_and_the_agent_door(world: &mut World) {
+    let live = table::live_mut(world);
+    let stdout = live
+        .server
+        .as_ref()
+        .map(|server| support::text_of(&server.stdout))
+        .unwrap_or_default();
+    let game = live.port;
+    let door = live.http_port;
     let (reported_game, reported_door) = table::reported(&stdout);
     assert_eq!(reported_game.port(), game, "{stdout}");
     assert_eq!(reported_door.port(), door, "{stdout}");
@@ -44,12 +45,13 @@ fn the_host_reports_the_game_port_and_the_agent_door(_world: &mut World) {
 
 #[when(expr = "a player connects to the reported game port")]
 fn a_player_connects_to_the_reported_game_port(world: &mut World) {
-    table::seat_player(table::pack(world));
+    let pack = table::pack(world).to_path_buf();
+    table::seat_player(world, &pack);
 }
 
 #[then(expr = "the player receives a perceive line")]
-fn the_player_receives_a_perceive_line(_world: &mut World) {
-    let text = crate::with_live(|live| support::text_of(&live.player_text));
+fn the_player_receives_a_perceive_line(world: &mut World) {
+    let text = support::text_of(&table::live_mut(world).player_text);
     assert!(text.contains("\"kind\":\"perceive\""), "{text}");
 }
 

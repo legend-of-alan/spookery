@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -8,26 +8,8 @@ use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rules::{faces, RollKey};
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 
-use crate::support::{self, copy_dir};
+use crate::support;
 use crate::World;
-
-fn repo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn copy_pack(name: &str, label: &str) -> PathBuf {
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&repo().join("packs").join(name), &pack);
-    pack
-}
 
 fn read_now(pack: &Path) -> Now {
     let report =
@@ -181,7 +163,7 @@ fn hold_dagger(now: &mut Now, wield: bool) {
 
 #[given(expr = "nell holds 1 tonic and has 3 of 10 hp")]
 fn nell_holds_a_tonic(world: &mut World) {
-    let pack = copy_pack("sample-d20", "tonic");
+    let pack = support::copy_pack("sample-d20", "tonic");
     let meters = pack.join("rules/meters.yaml");
     let text = fs::read_to_string(&meters).unwrap();
     let next = text.replace("base_cap: 12\n    max: 16", "base_cap: 10\n    max: 10");
@@ -241,7 +223,7 @@ fn again_is_missing_item(world: &mut World, line: String) {
 
 #[given(expr = "docks_shop has 3 lamp_oil")]
 fn the_shop_has_three_tins(world: &mut World) {
-    let pack = copy_pack("oneshot-docks", "take");
+    let pack = support::copy_pack("oneshot-docks", "take");
     save(&pack, |now| {
         now.places
             .get_mut("docks_shop")
@@ -293,7 +275,7 @@ fn the_line_is_missing_and_quiet(world: &mut World) {
 
 #[given(expr = "docks_shop has no lamp_oil")]
 fn the_shop_has_no_oil(world: &mut World) {
-    let pack = copy_pack("oneshot-docks", "take-none");
+    let pack = support::copy_pack("oneshot-docks", "take-none");
     save(&pack, |now| {
         now.places
             .get_mut("docks_shop")
@@ -355,7 +337,7 @@ fn the_drop_was_missing(world: &mut World) {
 
 #[given(expr = "now.yaml lists an item with no definition")]
 fn the_save_lists_an_unknown_item(world: &mut World) {
-    let pack = copy_pack("oneshot-docks", "unknown-item");
+    let pack = support::copy_pack("oneshot-docks", "unknown-item");
     save(&pack, |now| {
         now.actors
             .get_mut("pc_rowan")
@@ -380,7 +362,7 @@ fn check_reports_an_unknown_item(world: &mut World) {
 
 #[given(expr = "lark holds a poisoned_dagger tagged weapon")]
 fn lark_holds_a_dagger(world: &mut World) {
-    let pack = copy_pack("sample-d20", "wield");
+    let pack = support::copy_pack("sample-d20", "wield");
     write_dagger(&pack, "");
     save(&pack, |now| {
         place_of(now, "pc_lark", "gate_yard");
@@ -397,7 +379,7 @@ fn lark_holds_a_dagger(world: &mut World) {
 #[when(expr = "lark types {string}")]
 fn lark_types(world: &mut World, line: String) {
     let pack = world.pack.clone().unwrap_or_else(|| {
-        let pack = copy_pack("sample-d20", "wield-tonic");
+        let pack = support::copy_pack("sample-d20", "wield-tonic");
         save(&pack, |now| {
             quiet(now);
         });
@@ -433,7 +415,7 @@ fn tonic_is_not_a_weapon(world: &mut World) {
 
 #[given(expr = "lark wields poisoned_dagger")]
 fn lark_wields_for_attack(world: &mut World) {
-    let pack = copy_pack("sample-d20", "armed");
+    let pack = support::copy_pack("sample-d20", "armed");
     arm(&pack, SLASH);
     save(&pack, |now| hold_dagger(now, true));
     world.pack = Some(pack);
@@ -441,7 +423,7 @@ fn lark_wields_for_attack(world: &mut World) {
 
 #[given(expr = "lark wields nothing")]
 fn lark_wields_nothing(world: &mut World) {
-    let pack = copy_pack("sample-d20", "bare");
+    let pack = support::copy_pack("sample-d20", "bare");
     arm(&pack, SLASH);
     save(&pack, |now| hold_dagger(now, false));
     world.pack = Some(pack);
@@ -508,7 +490,7 @@ fn the_slot_clears_in_the_tick(world: &mut World) {
 
 #[given(expr = "nell resists the poison with a seeded Constitution roll of 15 vs 12")]
 fn nell_resists_on_a_seeded_roll(world: &mut World) {
-    let pack = copy_pack("sample-d20", "resist");
+    let pack = support::copy_pack("sample-d20", "resist");
     let face = faces(
         &RollKey {
             world_id: "sample-d20".to_string(),

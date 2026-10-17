@@ -36,6 +36,29 @@ pub struct Live {
     pub server: Option<Proc>,
 }
 
+impl std::fmt::Debug for Live {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Live")
+            .field("port", &self.port)
+            .field("http_port", &self.http_port)
+            .finish_non_exhaustive()
+    }
+}
+
+pub fn live_mut(world: &mut World) -> &mut Live {
+    world
+        .live
+        .as_mut()
+        .unwrap_or_else(|| panic!("no table is listening"))
+}
+
+fn live_ref(world: &World) -> &Live {
+    world
+        .live
+        .as_ref()
+        .unwrap_or_else(|| panic!("no table is listening"))
+}
+
 pub fn files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
@@ -90,6 +113,55 @@ pub fn list_tick_keys(pack: &Path) -> Vec<String> {
     spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
+/// The actors whose player `wait` is in that tick.
+pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    let tick: Value =
+        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
+    tick["intents"]
+        .as_array()
+        .unwrap_or_else(|| panic!("intents"))
+        .iter()
+        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
+        .map(|intent| {
+            intent["actor_id"]
+                .as_str()
+                .unwrap_or_else(|| panic!("actor_id"))
+                .to_string()
+        })
+        .collect()
+}
+
+/// How long the journal may sit still before a wait calls it a hang. It bounds
+/// one commit, not the whole wait, so a slow machine only makes the wait longer.
+const JOURNAL_STALL: Duration = Duration::from_secs(10);
+
+/// Waits until `done` holds for the committed tick keys. Fails only when no
+/// tick commits for `JOURNAL_STALL`; `want` names the condition in the panic.
+pub fn wait_ticks_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> bool) -> Vec<String> {
+    let mut seen = 0;
+    let mut moved = Instant::now();
+    loop {
+        let keys = list_tick_keys(pack);
+        if done(&keys) {
+            return keys;
+        }
+        if keys.len() != seen {
+            seen = keys.len();
+            moved = Instant::now();
+        } else if moved.elapsed() > JOURNAL_STALL {
+            panic!("no tick committed for {JOURNAL_STALL:?} at {seen} ticks; wanted {want}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Waits until the journal holds at least `count` ticks.
+pub fn wait_tick_count(pack: &Path, count: usize) -> Vec<String> {
+    wait_ticks_until(pack, &format!("{count} ticks"), |keys| keys.len() >= count)
+}
+
 pub struct Pending {
     child: Child,
     stdin: Option<ChildStdin>,
@@ -104,13 +176,14 @@ pub struct Listening {
     pub server: Proc,
 }
 
-pub fn listen(pack: &Path) {
-    let _ = listen_flags(pack, &["--addr", "127.0.0.1:0"], &[]);
+pub fn listen(world: &mut World, pack: &Path) {
+    let _ = listen_flags(world, pack, &["--addr", "127.0.0.1:0"], &[]);
 }
 
 /// `spook run` with an agent door the operating system chooses on its own.
-pub fn listen_door(pack: &Path) -> u16 {
+pub fn listen_door(world: &mut World, pack: &Path) -> u16 {
     listen_flags(
+        world,
         pack,
         &["--addr", "127.0.0.1:0", "--mcp-http", "127.0.0.1:0"],
         &[],
@@ -118,23 +191,28 @@ pub fn listen_door(pack: &Path) -> u16 {
     .1
 }
 
-pub fn listen_with(pack: &Path, env: &[(&str, &str)]) {
-    let _ = listen_flags(pack, &["--addr", "127.0.0.1:0"], env);
+pub fn listen_with(world: &mut World, pack: &Path, env: &[(&str, &str)]) {
+    let _ = listen_flags(world, pack, &["--addr", "127.0.0.1:0"], env);
 }
 
-pub fn listen_flags(pack: &Path, flags: &[&str], env: &[(&str, &str)]) -> (u16, u16) {
+pub fn listen_flags(
+    world: &mut World,
+    pack: &Path,
+    flags: &[&str],
+    env: &[(&str, &str)],
+) -> (u16, u16) {
     let listening = take_report(spawn_table(pack, flags, env));
     let ports = (listening.game.port(), listening.door.port());
-    install(pack, listening);
+    install(world, pack, listening);
     ports
 }
 
-pub fn game_addr() -> String {
-    crate::with_live(|live| format!("127.0.0.1:{}", live.port))
+pub fn game_addr(world: &World) -> String {
+    format!("127.0.0.1:{}", live_ref(world).port)
 }
 
-pub fn door_addr() -> String {
-    crate::with_live(|live| format!("127.0.0.1:{}", live.http_port))
+pub fn door_addr(world: &World) -> String {
+    format!("127.0.0.1:{}", live_ref(world).http_port)
 }
 
 /// The listening line `spook run` wrote, as the addresses it bound.
@@ -194,10 +272,11 @@ pub fn take_report(mut pending: Pending) -> Listening {
     }
 }
 
-fn install(pack: &Path, listening: Listening) {
+fn install(world: &mut World, pack: &Path, listening: Listening) {
     let opened_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    crate::set_live(Live {
+    drop(world.live.take());
+    world.live = Some(Live {
         port: listening.game.port(),
         player_write: None,
         player_text: Arc::new(Mutex::new(String::new())),
@@ -276,103 +355,104 @@ fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHa
     })
 }
 
-pub fn seat_player(pack: &Path) {
-    seat_actor(pack, "pc_rowan");
+pub fn seat_player(world: &mut World, pack: &Path) {
+    seat_actor(world, pack, "pc_rowan");
 }
 
-pub fn seat_actor(pack: &Path, actor_id: &str) {
-    let port = crate::with_live(|live| live.port);
+pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
+    let port = live_ref(world).port;
     let (write, text) = connect_actor(port, actor_id);
     let seated_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     let seated_rev = now_of(pack).state_rev;
-    crate::with_live(|live| {
-        if live.player_write.is_none() {
-            live.player_write = Some(
-                write
-                    .try_clone()
-                    .unwrap_or_else(|err| panic!("clone player: {err}")),
-            );
-            live.player_text = Arc::clone(&text);
-        }
-        live.players.push(Seated {
-            actor_id: actor_id.to_string(),
-            write,
-            text,
-        });
-        live.seated_now = seated_now;
-        live.seated_rev = seated_rev;
+    let live = live_mut(world);
+    if live.player_write.is_none() {
+        live.player_write = Some(
+            write
+                .try_clone()
+                .unwrap_or_else(|err| panic!("clone player: {err}")),
+        );
+        live.player_text = Arc::clone(&text);
+    }
+    live.players.push(Seated {
+        actor_id: actor_id.to_string(),
+        write,
+        text,
     });
+    live.seated_now = seated_now;
+    live.seated_rev = seated_rev;
 }
 
-pub fn seat_gm() {
-    let gm =
-        GmConnection::connect_door(&door_addr()).unwrap_or_else(|err| panic!("seat GM: {err}"));
+pub fn seat_gm(world: &mut World) {
+    let door = door_addr(world);
+    let gm = GmConnection::connect_door(&door).unwrap_or_else(|err| panic!("seat GM: {err}"));
     let opened = gm.opened_line().to_string();
-    crate::with_live(|live| {
-        push_line(&live.gm_text, &opened);
-        live.gm = Some(gm);
-    });
+    let live = live_mut(world);
+    push_line(&live.gm_text, &opened);
+    live.gm = Some(gm);
 }
 
-pub fn player_len() -> usize {
-    crate::with_live(|live| support::text_of(&live.player_text).len())
+pub fn player_len(world: &World) -> usize {
+    support::text_of(&live_ref(world).player_text).len()
 }
 
-pub fn player_text() -> String {
-    crate::with_live(|live| support::text_of(&live.player_text))
+pub fn player_text(world: &World) -> String {
+    support::text_of(&live_ref(world).player_text)
 }
 
-pub fn player_send(line: &str, needle: &str) -> (usize, String) {
-    let (slot, mark) = crate::with_live(|live| {
-        let mark = support::text_of(&live.player_text).len();
-        let write = live
-            .player_write
-            .as_mut()
-            .unwrap_or_else(|| panic!("no seated player"));
-        writeln!(write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-        write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-        (Arc::clone(&live.player_text), mark)
-    });
-    (mark, wait_suffix(&slot, mark, needle))
+pub fn player_send(world: &mut World, line: &str, needle: &str) -> (usize, String) {
+    let mark = player_write(world, line);
+    (mark, wait_player_from(world, mark, needle))
 }
 
-pub fn wait_player_from(mark: usize, needle: &str) -> String {
-    let slot = crate::with_live(|live| Arc::clone(&live.player_text));
+/// Sends one line from the first seated player and returns the text mark before it.
+pub fn player_write(world: &mut World, line: &str) -> usize {
+    let live = live_mut(world);
+    let mark = support::text_of(&live.player_text).len();
+    let write = live
+        .player_write
+        .as_mut()
+        .unwrap_or_else(|| panic!("no seated player"));
+    writeln!(write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
+    write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    mark
+}
+
+pub fn wait_player_from(world: &World, mark: usize, needle: &str) -> String {
+    let slot = Arc::clone(&live_ref(world).player_text);
     wait_suffix(&slot, mark, needle)
 }
 
-pub fn gm_call(id: u64, name: &str, arguments: &str) -> String {
+pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
     let value: Value =
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
-    crate::with_live(|live| {
-        let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
-        let outcome = gm
-            .call(name, value)
-            .unwrap_or_else(|err| panic!("gm call: {err}"));
-        for event in gm.take_events() {
-            push_line(&live.gm_text, &event.raw);
-        }
-        let raw = serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": id,
-            "result": { "structuredContent": outcome.body }
-        })
-        .to_string();
-        push_line(&live.gm_text, &raw);
-        raw
+    let live = live_mut(world);
+    let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
+    let outcome = gm
+        .call(name, value)
+        .unwrap_or_else(|err| panic!("gm call: {err}"));
+    for event in gm.take_events() {
+        push_line(&live.gm_text, &event.raw);
+    }
+    let raw = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "result": { "structuredContent": outcome.body }
     })
+    .to_string();
+    push_line(&live.gm_text, &raw);
+    raw
 }
 
-pub fn wait_gm(needle: &str) -> String {
-    wait_gm_until(needle, |text| text.contains(needle))
+pub fn wait_gm(world: &mut World, needle: &str) -> String {
+    wait_gm_until(world, needle, |text| text.contains(needle))
 }
 
 /// Waits until `done` holds for the GM text; `want` names the condition in the panic.
-pub fn wait_gm_until(want: &str, done: impl Fn(&str) -> bool) -> String {
+pub fn wait_gm_until(world: &mut World, want: &str, done: impl Fn(&str) -> bool) -> String {
     let start = Instant::now();
     loop {
-        let text = gm_text();
+        let text = gm_text(world);
         if done(&text) {
             return text;
         }
@@ -396,18 +476,17 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
     }
 }
 
-pub fn gm_text() -> String {
-    crate::with_live(|live| {
-        if let Some(gm) = live.gm.as_mut() {
-            let ready = gm.drain_ready();
-            for incoming in ready {
-                if let Some(line) = incoming_line(incoming) {
-                    push_line(&live.gm_text, &line);
-                }
+pub fn gm_text(world: &mut World) -> String {
+    let live = live_mut(world);
+    if let Some(gm) = live.gm.as_mut() {
+        let ready = gm.drain_ready();
+        for incoming in ready {
+            if let Some(line) = incoming_line(incoming) {
+                push_line(&live.gm_text, &line);
             }
         }
-        support::text_of(&live.gm_text)
-    })
+    }
+    support::text_of(&live.gm_text)
 }
 
 fn push_line(slot: &Arc<Mutex<String>>, line: &str) {
@@ -428,75 +507,69 @@ fn incoming_line(incoming: Incoming) -> Option<String> {
     }
 }
 
-pub fn actor_text(actor_id: &str) -> String {
-    let slot = crate::with_live(|live| {
-        Arc::clone(
-            &live
-                .players
-                .iter()
-                .find(|player| player.actor_id == actor_id)
-                .unwrap_or_else(|| panic!("no seat for {actor_id}"))
-                .text,
-        )
-    });
+pub fn actor_text(world: &World, actor_id: &str) -> String {
+    let slot = Arc::clone(
+        &live_ref(world)
+            .players
+            .iter()
+            .find(|player| player.actor_id == actor_id)
+            .unwrap_or_else(|| panic!("no seat for {actor_id}"))
+            .text,
+    );
     support::text_of(&slot)
 }
 
-pub fn actor_send(actor_id: &str, line: &str, needle: &str) -> String {
-    let (slot, mark) = crate::with_live(|live| {
-        let player = live
-            .players
-            .iter_mut()
-            .find(|player| player.actor_id == actor_id)
-            .unwrap_or_else(|| panic!("no seat for {actor_id}"));
-        let mark = support::text_of(&player.text).len();
-        writeln!(player.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-        player
-            .write
-            .flush()
-            .unwrap_or_else(|err| panic!("flush: {err}"));
-        (Arc::clone(&player.text), mark)
-    });
+pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
+    let live = live_mut(world);
+    let player = live
+        .players
+        .iter_mut()
+        .find(|player| player.actor_id == actor_id)
+        .unwrap_or_else(|| panic!("no seat for {actor_id}"));
+    let mark = support::text_of(&player.text).len();
+    writeln!(player.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
+    player
+        .write
+        .flush()
+        .unwrap_or_else(|err| panic!("flush: {err}"));
+    let slot = Arc::clone(&player.text);
     wait_suffix(&slot, mark, needle)
 }
 
-pub fn stop_server() {
-    crate::with_live(|live| {
-        live.players.clear();
-        live.player_write.take();
-        live.gm.take();
-        if let Some(server) = live.server.take() {
-            drop(server);
-        }
-    });
+pub fn stop_server(world: &mut World) {
+    let live = live_mut(world);
+    live.players.clear();
+    live.player_write.take();
+    live.gm.take();
+    if let Some(server) = live.server.take() {
+        drop(server);
+    }
 }
 
-pub fn close_actor(actor_id: &str) {
-    crate::with_live(|live| {
-        let player = live
-            .players
-            .iter_mut()
-            .find(|player| player.actor_id == actor_id)
-            .unwrap_or_else(|| panic!("no seat for {actor_id}"));
-        writeln!(player.write, "close").unwrap_or_else(|err| panic!("close: {err}"));
-        player
-            .write
-            .flush()
-            .unwrap_or_else(|err| panic!("flush: {err}"));
-    });
+pub fn close_actor(world: &mut World, actor_id: &str) {
+    let live = live_mut(world);
+    let player = live
+        .players
+        .iter_mut()
+        .find(|player| player.actor_id == actor_id)
+        .unwrap_or_else(|| panic!("no seat for {actor_id}"));
+    writeln!(player.write, "close").unwrap_or_else(|err| panic!("close: {err}"));
+    player
+        .write
+        .flush()
+        .unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
-pub fn release_status_gm() {
-    crate::with_live(|live| {
-        if live.gm_probe {
-            live.gm = None;
-            live.gm_probe = false;
-        }
-    });
+pub fn release_status_gm(world: &mut World) {
+    let live = live_mut(world);
+    if live.gm_probe {
+        live.gm = None;
+        live.gm_probe = false;
+    }
 }
 
-pub fn live_presence() -> (u32, Vec<String>) {
-    let body = status_body();
+pub fn live_presence(world: &mut World) -> (u32, Vec<String>) {
+    let body = status_body(world);
     let humans = body["presence"]["humans"]
         .as_u64()
         .unwrap_or_else(|| panic!("humans\n{body}")) as u32;
@@ -513,25 +586,24 @@ pub fn live_presence() -> (u32, Vec<String>) {
     (humans, actors)
 }
 
-fn status_body() -> Value {
-    if crate::with_live(|live| live.gm.is_none()) {
-        let gm =
-            GmConnection::connect_door(&door_addr()).unwrap_or_else(|err| panic!("status: {err}"));
-        crate::with_live(|live| {
-            live.gm = Some(gm);
-            live.gm_probe = true;
-        });
+fn status_body(world: &mut World) -> Value {
+    if live_ref(world).gm.is_none() {
+        let door = door_addr(world);
+        let gm = GmConnection::connect_door(&door).unwrap_or_else(|err| panic!("status: {err}"));
+        let live = live_mut(world);
+        live.gm = Some(gm);
+        live.gm_probe = true;
     }
-    let text = gm_call(1, "session_status", "{}");
+    let text = gm_call(world, 1, "session_status", "{}");
     let value: Value =
         serde_json::from_str(&text).unwrap_or_else(|err| panic!("status json: {err}"));
     value["result"]["structuredContent"].clone()
 }
 
-pub fn wait_humans(_pack: &Path, expected: u32) {
+pub fn wait_humans(world: &mut World, _pack: &Path, expected: u32) {
     let start = Instant::now();
     loop {
-        let (humans, _) = live_presence();
+        let (humans, _) = live_presence(world);
         if humans == expected {
             return;
         }
@@ -542,8 +614,8 @@ pub fn wait_humans(_pack: &Path, expected: u32) {
     }
 }
 
-pub fn second_hello(line: &str) -> String {
-    let port = crate::with_live(|live| live.port);
+pub fn second_hello(world: &World, line: &str) -> String {
+    let port = live_ref(world).port;
     let mut stream = connect(port);
     writeln!(stream, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
     stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));

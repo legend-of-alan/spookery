@@ -147,10 +147,10 @@ fn break_pack(pack: &Path, fault: &str) {
 }
 
 pub(crate) fn join_play(world: &mut World, raw: bool) {
-    let pack = table::pack(world);
-    table::listen(pack);
-    let addr = table::game_addr();
-    let pack_arg = support::pack_arg(pack);
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
+    let pack_arg = support::pack_arg(&pack);
     let mut args = vec!["play".to_string(), pack_arg, "--addr".to_string(), addr];
     if raw {
         args.push("--raw".to_string());
@@ -225,17 +225,17 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
     let pack = temp_pack("gm-seat");
     let opened = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    table::listen(&pack);
-    table::seat_gm();
-    crate::with_live(|live| live.opened_now = opened);
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::live_mut(world).opened_now = opened;
     world.pack = Some(pack);
 }
 
 #[given(expr = "a docks table with a seated player")]
 fn a_docks_table_with_a_seated_player(world: &mut World) {
     let pack = temp_pack("speech");
-    table::listen(&pack);
-    table::seat_player(&pack);
+    table::listen(world, &pack);
+    table::seat_player(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -361,14 +361,14 @@ fn world_time_is_1085(world: &mut World) {
 
 #[when(expr = "the player waits")]
 fn the_player_waits(world: &mut World) {
-    let (mark, added) = table::player_send("wait", "\"kind\":");
+    let (mark, added) = table::player_send(world, "wait", "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the GM commits the round")]
-fn the_gm_commits_the_round(_world: &mut World) {
-    let _ = table::gm_call(2, "commit_round", r#"{"include_tick":true}"#);
+fn the_gm_commits_the_round(world: &mut World) {
+    let _ = table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
 }
 
 #[then(expr = "a tick file was written")]
@@ -386,7 +386,7 @@ fn no_tick_file(world: &mut World) {
 
 #[then(expr = "save.yaml is unchanged since the seat")]
 fn now_unchanged_since_the_seat(world: &mut World) {
-    let seated = crate::with_live(|live| live.seated_now.clone());
+    let seated = table::live_mut(world).seated_now.clone();
     let now = fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, seated);
@@ -403,20 +403,20 @@ fn the_trapdoor_is_hidden(world: &mut World) {
     let pack = temp_pack("trapdoor");
     add_trapdoor(&pack);
     edit_save(&pack, |_| {});
-    table::listen(&pack);
-    table::seat_player(&pack);
+    table::listen(world, &pack);
+    table::seat_player(world, &pack);
     world.pack = Some(pack);
-    world.player_added = table::player_text();
+    world.player_added = table::player_text(world);
 }
 
 #[then(expr = "rowan's perceive and help do not list the trapdoor")]
-fn perceive_and_help_hide_the_trapdoor(_world: &mut World) {
-    let perceive = table::player_text();
+fn perceive_and_help_hide_the_trapdoor(world: &mut World) {
+    let perceive = table::player_text(world);
     assert!(
         !perceive.contains("trapdoor"),
         "perceive listed it\n{perceive}"
     );
-    let (_mark, help) = table::player_send("help", "Exits:");
+    let (_mark, help) = table::player_send(world, "help", "Exits:");
     assert!(!help.contains("trapdoor"), "help listed it\n{help}");
     assert!(help.contains("stairs"), "help hid the stairs\n{help}");
 }
@@ -433,13 +433,13 @@ fn the_stairs_cost_ten_minutes(world: &mut World) {
         give_key(now);
         now.world_time = EVENING;
     });
-    table::listen(&pack);
-    table::seat_player(&pack);
+    table::listen(world, &pack);
+    table::seat_player(world, &pack);
     world.pack = Some(pack);
 }
 
 #[when(expr = "rowan travels via stairs at 21:30")]
 fn rowan_travels_at_half_past(world: &mut World) {
-    let (_mark, added) = table::player_send("travel stairs", "\"kind\":");
+    let (_mark, added) = table::player_send(world, "travel stairs", "\"kind\":");
     world.player_added = added;
 }

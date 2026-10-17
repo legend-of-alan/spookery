@@ -10,17 +10,7 @@ use super::tool_trace::{assert_standard_steps_omitted, read_tick, read_tool_trac
 
 #[given(expr = "an empty directory")]
 fn an_empty_directory(world: &mut World) {
-    let dir = std::env::temp_dir().join(format!(
-        "spook-empty-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&dir);
-    fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("mkdir {}: {err}", dir.display()));
-    world.pack = Some(dir);
+    world.pack = Some(crate::support::fresh_dir("empty"));
 }
 
 #[when(expr = "the operator runs verify")]
@@ -38,15 +28,7 @@ fn the_operator_runs_quick_verify(world: &mut World) {
 #[when(expr = "the pack is copied before the tick")]
 fn the_pack_is_copied_before_the_tick(world: &mut World) {
     let pack = table::pack(world);
-    let dest = std::env::temp_dir().join(format!(
-        "spook-from-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&dest);
+    let dest = crate::support::fresh_dir("from");
     crate::support::copy_dir(pack, &dest);
     world.scratch = dest.display().to_string();
 }
@@ -80,31 +62,31 @@ fn the_operator_runs_n_ticks(world: &mut World, count: usize) {
 #[when(expr = "two players play, a GM commits one round, and the players leave")]
 fn two_players_play_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::seat_actor(&pack, "pc_harbormouse");
-    let _ = table::actor_send("pc_rowan", "wait", "\"kind\":");
-    let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
-    table::seat_gm();
-    let _ = table::actor_send("pc_rowan", "wait", "\"kind\":");
-    let _ = table::gm_call(7, "commit_round", r#"{"include_tick":true}"#);
-    table::close_actor("pc_harbormouse");
-    table::wait_humans(&pack, 1);
-    table::close_actor("pc_rowan");
-    table::wait_humans(&pack, 0);
-    table::stop_server();
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_harbormouse");
+    let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
+    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
+    table::seat_gm(world);
+    let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
+    let _ = table::gm_call(world, 7, "commit_round", r#"{"include_tick":true}"#);
+    table::close_actor(world, "pc_harbormouse");
+    table::wait_humans(world, &pack, 1);
+    table::close_actor(world, "pc_rowan");
+    table::wait_humans(world, &pack, 0);
+    table::stop_server(world);
 }
 
 #[when(expr = "a seated player's server is killed and restarted")]
 fn a_seated_player_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::wait_humans(&pack, 1);
-    table::stop_server();
-    table::listen(&pack);
-    table::wait_humans(&pack, 0);
-    table::stop_server();
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::wait_humans(world, &pack, 1);
+    table::stop_server(world);
+    table::listen(world, &pack);
+    table::wait_humans(world, &pack, 0);
+    table::stop_server(world);
 }
 
 #[when(expr = "one intent in a tick record is changed")]

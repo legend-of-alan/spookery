@@ -81,8 +81,8 @@ fn the_gm_commits(world: &mut World) {
 
 #[when(expr = "another GM joins that seat")]
 fn another_gm_joins(world: &mut World) {
-    let addr = table::game_addr();
-    let door = table::door_addr();
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
     let pack = support::pack_arg(table::pack(world));
     let output = support::spook(&["gm", &pack, "--addr", &addr, "--mcp-http", &door]);
     world.code = output.status.code();
@@ -96,10 +96,8 @@ fn the_gm_queues_an_unknown_move(world: &mut World) {
 }
 
 #[when(expr = "spook run stops")]
-fn spook_run_stops(_world: &mut World) {
-    crate::with_live(|live| {
-        live.server.take();
-    });
+fn spook_run_stops(world: &mut World) {
+    table::live_mut(world).server.take();
 }
 
 #[then(expr = "the GM exits")]
@@ -121,12 +119,13 @@ fn the_gm_exits(world: &mut World) {
 #[when(expr = "spook run listens with an overridden agent door")]
 fn spook_run_listens_with_an_overridden_agent_door(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let _ = table::listen_door(&pack);
+    let _ = table::listen_door(world, &pack);
 }
 
 #[when(expr = "a human GM dials that door")]
 fn a_human_gm_dials_that_door(world: &mut World) {
-    let (game, http) = crate::with_live(|live| (live.port, live.http_port));
+    let live = table::live_mut(world);
+    let (game, http) = (live.port, live.http_port);
     let pack_arg = support::pack_arg(table::pack(world));
     let game = format!("127.0.0.1:{game}");
     let http = format!("127.0.0.1:{http}");
@@ -256,9 +255,9 @@ fn the_gm_stderr_shows(world: &mut World, text: String) {
 
 fn sit_gm(world: &mut World, raw: bool) -> String {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    let addr = table::game_addr();
-    let door = table::door_addr();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
     let pack_arg = support::pack_arg(&pack);
     let mut args = vec![
         "gm".to_string(),

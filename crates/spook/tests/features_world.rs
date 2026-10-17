@@ -81,6 +81,4 @@ fn feature_dirs() -> &'static [&'static str] {
     feature_paths::WORLD
 }
 
-fn finish_scenario() {}
-
 include!("feature_main.rs");

@@ -124,10 +124,10 @@ fn the_operator_runs_spook_check_json_on_the_starter_template(world: &mut World)
 
 #[when(expr = "play joins that pack on a free loopback address")]
 fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
-    let pack = table::pack(world);
-    table::listen(pack);
-    let addr = table::game_addr();
-    let pack_arg = support::pack_arg(pack);
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
+    let pack_arg = support::pack_arg(&pack);
     world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
     wait_play(world, "You are in Yard.");
 }
@@ -315,17 +315,7 @@ fn run_new(world: &mut World, pack: &Path) {
 }
 
 fn fresh_path(label: &str) -> PathBuf {
-    let path = std::env::temp_dir().join(format!(
-        "spook-new-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&path);
-    assert!(!path.exists(), "{}", path.display());
-    path
+    crate::support::vacant_path(&format!("new-{label}"))
 }
 
 fn template_dir() -> PathBuf {

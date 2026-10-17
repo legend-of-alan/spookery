@@ -6,8 +6,8 @@ use cucumber::{then, when};
 use super::table;
 
 #[when(expr = "the player says {string}")]
-fn the_player_says(_world: &mut World, text: String) {
-    let _ = table::player_send(&format!("say {text}"), "\"kind\":\"say\"");
+fn the_player_says(world: &mut World, text: String) {
+    let _ = table::player_send(world, &format!("say {text}"), "\"kind\":\"say\"");
 }
 
 #[when(expr = "say to mira is submitted on an empty table saying {string}")]
@@ -65,7 +65,7 @@ fn tape_text(world: &World) -> String {
 
 #[then(expr = "state_rev is unchanged")]
 fn state_rev_is_unchanged(world: &mut World) {
-    let rev = crate::with_live(|live| live.seated_rev);
+    let rev = table::live_mut(world).seated_rev;
     assert_eq!(table::now_of(table::pack(world)).state_rev, rev);
 }
 
