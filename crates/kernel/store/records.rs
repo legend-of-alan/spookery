@@ -89,6 +89,9 @@ pub struct TickRecord {
     pub effects: Vec<Effect>,
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,
+    /// Dice lines from this round. Empty when the round rolled none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dice: Vec<String>,
     /// Steps off the standard order. Empty when the round followed it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub steps_run: Vec<String>,

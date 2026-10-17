@@ -15,7 +15,7 @@ use crate::format;
 use crate::hash::blake2s_hex;
 use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
-use crate::rule::{Cond, Cost, EffectTemplate, Owner, ResistSpec, Rule, RuleTable, Who};
+use crate::rule::{Cond, Cost, EffectTemplate, Expr, Owner, ResistSpec, Rule, RuleTable, Who};
 
 pub mod schema;
 pub mod world_settings;
@@ -479,6 +479,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     if let (Some(meters), Some(checks)) = (&meters, &checks) {
         diags.extend(unknown_meters(meters, checks, &rules));
     }
+    if let Some(meters) = &meters {
+        diags.extend(unknown_exprs(meters, &cast, &places, &rules));
+    }
     diags.extend(unknown_rule_items(&rules, &items));
     diags.extend(reveal_problems(&rules, &facts));
     diags.extend(find_bare_resist(&rules));
@@ -626,11 +629,13 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
         let cost = match &exit.cost {
             Some(yaml) => match schema::cost_of(yaml) {
                 Ok(cost) => cost,
-                Err(problem) => {
-                    diags.push(
-                        schema_error(file, &problem, "fix the exit cost")
-                            .with_path(format!("exits[{index}].cost")),
-                    );
+                Err(fault) => {
+                    let mut diag = schema_error(file, &fault.message, "fix the exit cost")
+                        .with_path(format!("exits[{index}].cost"));
+                    if let Some(line) = fault.line {
+                        diag = diag.at_line(line, fault.column);
+                    }
+                    diags.push(diag);
                     continue;
                 }
             },
@@ -645,11 +650,13 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
         for cond in &exit.if_ {
             match schema::cond_of(cond) {
                 Ok(cond) => if_.push(cond),
-                Err(problem) => {
-                    diags.push(
-                        schema_error(file, &problem, "fix the exit condition")
-                            .with_path(format!("exits[{index}].if")),
-                    );
+                Err(fault) => {
+                    let mut diag = schema_error(file, &fault.message, "fix the exit condition")
+                        .with_path(format!("exits[{index}].if"));
+                    if let Some(line) = fault.line {
+                        diag = diag.at_line(line, fault.column);
+                    }
+                    diags.push(diag);
                     bad = true;
                 }
             }
@@ -1241,6 +1248,198 @@ fn meter_keys(effect: &EffectTemplate) -> Option<&str> {
     match effect {
         EffectTemplate::Meter { key, .. } => Some(key),
         _ => None,
+    }
+}
+
+fn unknown_exprs(
+    meters: &BTreeMap<String, MeterDef>,
+    cast: &BTreeMap<String, CastCanon>,
+    places: &BTreeMap<String, PlaceCanon>,
+    rules: &RuleTable,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for rule in rules.iter() {
+        let mut exprs = Vec::new();
+        push_rule_exprs(rule, &mut exprs);
+        for expr in exprs {
+            check_expr(
+                &rule.file,
+                &format!("rules[{}]", rule.index),
+                expr,
+                meters,
+                cast,
+                places,
+                &mut diags,
+            );
+        }
+    }
+    for place in places.values() {
+        for exit in &place.exits {
+            let mut exprs = Vec::new();
+            push_cost(&exit.cost, &mut exprs);
+            for cond in &exit.if_ {
+                push_cond(cond, &mut exprs);
+            }
+            for expr in exprs {
+                check_expr(
+                    &exit.file,
+                    &format!("exits[{}]", exit.index),
+                    expr,
+                    meters,
+                    cast,
+                    places,
+                    &mut diags,
+                );
+            }
+        }
+    }
+    diags
+}
+
+fn check_expr(
+    file: &str,
+    path: &str,
+    expr: &Expr,
+    meters: &BTreeMap<String, MeterDef>,
+    cast: &BTreeMap<String, CastCanon>,
+    places: &BTreeMap<String, PlaceCanon>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut reads = Vec::new();
+    expr.meters(&mut reads);
+    for (who, key, spot) in reads {
+        if matches!(who, Who::World) {
+            let mut diag = schema_error(
+                file,
+                &format!("expression reads 'world.{key}', but the world has no meters"),
+                "read the meter from self, target, subject, here, place:<id>, or a cast id",
+            )
+            .with_path(path);
+            if let Some(spot) = spot {
+                diag = diag.at_line(spot.line, Some(spot.column));
+            }
+            diags.push(diag);
+            continue;
+        }
+        if !meters.contains_key(key) {
+            let mut diag = schema_error(
+                file,
+                &format!("expression reads meter '{key}', which is not in rules/meters.yaml"),
+                "add the meter or name one that exists",
+            )
+            .with_path(path);
+            if let Some(spot) = spot {
+                diag = diag.at_line(spot.line, Some(spot.column));
+            }
+            diags.push(diag);
+        }
+        if let Some(name) = unknown_who(who, cast, places) {
+            let mut diag = schema_error(
+                file,
+                &format!("expression names '{name}', which is not a who"),
+                "use self, target, subject, here, place:<id>, or a cast id",
+            )
+            .with_path(path);
+            if let Some(spot) = spot {
+                diag = diag.at_line(spot.line, Some(spot.column));
+            }
+            diags.push(diag);
+        }
+    }
+}
+
+fn unknown_who(
+    who: &Who,
+    cast: &BTreeMap<String, CastCanon>,
+    places: &BTreeMap<String, PlaceCanon>,
+) -> Option<String> {
+    match who {
+        Who::Self_ | Who::Target | Who::Subject | Who::Here | Who::World => None,
+        Who::Place(id) if places.contains_key(id) => None,
+        Who::Place(id) => Some(format!("place:{id}")),
+        Who::Actor(id) if cast.contains_key(id) => None,
+        Who::Actor(id) => Some(id.clone()),
+    }
+}
+
+fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
+    if let Some(roll) = &rule.roll {
+        exprs.push(&roll.target);
+        if let Some(band) = &roll.partial_at {
+            exprs.push(band);
+        }
+    }
+    if let Some(cost) = &rule.cost {
+        push_cost(cost, exprs);
+    }
+    for cond in &rule.if_ {
+        push_cond(cond, exprs);
+    }
+    for effect in rule
+        .do_
+        .iter()
+        .chain(&rule.success)
+        .chain(&rule.partial)
+        .chain(&rule.failure)
+    {
+        push_effect(effect, exprs);
+    }
+}
+
+fn push_cost<'a>(cost: &'a Cost, exprs: &mut Vec<&'a Expr>) {
+    for (_, expr) in cost.meters.iter().chain(cost.items.iter()) {
+        exprs.push(expr);
+    }
+}
+
+fn push_cond<'a>(cond: &'a Cond, exprs: &mut Vec<&'a Expr>) {
+    match cond {
+        Cond::Meter { value, .. } | Cond::Clock { value, .. } => exprs.push(value),
+        Cond::All(inner) | Cond::Any(inner) => {
+            for cond in inner {
+                push_cond(cond, exprs);
+            }
+        }
+        Cond::Not(inner) => push_cond(inner, exprs),
+        _ => {}
+    }
+}
+
+fn push_effect<'a>(effect: &'a EffectTemplate, exprs: &mut Vec<&'a Expr>) {
+    match effect {
+        EffectTemplate::Meter {
+            add, set, resist, ..
+        } => {
+            if let Some(expr) = add {
+                exprs.push(expr);
+            }
+            if let Some(expr) = set {
+                exprs.push(expr);
+            }
+            if let Some(spec) = resist {
+                push_resist(spec, exprs);
+            }
+        }
+        EffectTemplate::Flag { resist, .. }
+        | EffectTemplate::Narrate { resist, .. }
+        | EffectTemplate::Item { resist, .. } => {
+            if let Some(spec) = resist {
+                push_resist(spec, exprs);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn push_resist<'a>(spec: &'a ResistSpec, exprs: &mut Vec<&'a Expr>) {
+    if let ResistSpec::Roll {
+        target, resisted, ..
+    } = spec
+    {
+        exprs.push(target);
+        for effect in resisted {
+            push_effect(effect, exprs);
+        }
     }
 }
 

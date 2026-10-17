@@ -64,10 +64,15 @@ pub struct RollInput<'a> {
 
 /// The faces this key would roll, without a stat or a band.
 pub fn faces(key: &RollKey, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
+    faces_from(key, 0, count, sides)
+}
+
+/// Faces starting at die `start` of this key's seed. A later group in the same expression continues.
+pub fn faces_from(key: &RollKey, start: usize, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
     let seed = blake2s_256(key.preimage().as_bytes());
     let mut faces = Vec::with_capacity(count as usize);
     for n in 0..count {
-        faces.push(face_at(&seed, n as usize, sides)?);
+        faces.push(face_at(&seed, start + n as usize, sides)?);
     }
     Ok(faces)
 }

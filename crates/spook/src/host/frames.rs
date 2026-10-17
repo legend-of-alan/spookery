@@ -163,6 +163,7 @@ pub fn commit_reply(state_rev: u64, diff_summary: &[String], log_path: Option<&s
         diff_summary: diff_summary.to_vec(),
         log_path: log_path.map(str::to_string),
         checks: Vec::new(),
+        dice: Vec::new(),
     }
     .to_value()
 }
@@ -176,6 +177,19 @@ pub fn write_checks(value: &mut Value, notices: &[RollReport]) {
         })
         .collect::<Vec<_>>();
     crate::protocol::set_checks(value, &rolls);
+}
+
+pub fn write_dice(value: &mut Value, lines: &[String]) {
+    if lines.is_empty() {
+        return;
+    }
+    let Some(object) = value.as_object_mut() else {
+        return;
+    };
+    object.insert(
+        "dice".to_string(),
+        Value::Array(lines.iter().cloned().map(Value::String).collect()),
+    );
 }
 
 pub fn queued_ack(id: &str) -> Value {

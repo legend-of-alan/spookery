@@ -33,6 +33,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         arrivals: &round.arrivals,
         fast_forward: round.fast_forward,
         steps_run: &round.steps_run,
+        dice: &round.dice,
     });
     let store = if round.recorded.is_some() {
         spookery_kernel::api::commit::RoundStore::Memory
@@ -52,6 +53,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
             summary: std::mem::take(&mut round.summary),
             lines: std::mem::take(&mut round.lines),
             seen: std::mem::take(&mut round.seen),
+            dice: std::mem::take(&mut round.dice),
         },
     )
 }
@@ -73,6 +75,7 @@ pub struct RoundLine<'a> {
     pub arrivals: &'a [Arrival],
     pub fast_forward: bool,
     pub steps_run: &'a [String],
+    pub dice: &'a [String],
 }
 
 pub fn render_round_line(line: &RoundLine<'_>) -> String {
@@ -92,6 +95,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         effects: line.effects.to_vec(),
         arrivals: line.arrivals.to_vec(),
         fast_forward: line.fast_forward,
+        dice: line.dice.to_vec(),
         steps_run: trim_steps(line.steps_run),
         memories: Vec::new(),
         now_hash: String::new(),
@@ -179,6 +183,7 @@ mod tests {
             arrivals: &[],
             fast_forward: false,
             steps_run: &[],
+            dice: &[],
         });
         let encoded = spookery_kernel::api::store::codec::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
@@ -260,6 +265,7 @@ mod tests {
             arrivals: &[],
             fast_forward: false,
             steps_run: steps,
+            dice: &[],
         })
     }
 }

@@ -149,7 +149,7 @@ fn a_docks_table_where_mira_can_notice(world: &mut World) {
     world.pack = Some(pack.clone());
     append_moves(&pack, NOTICE_ROWS);
     insert_flags(&pack, "    - braced\n    - slipped\n");
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
     world.mark = table::player_len(world);
@@ -162,7 +162,7 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     append_moves(&pack, OPPOSE_ROWS);
     insert_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
@@ -195,7 +195,7 @@ fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
     world.pack = Some(pack.clone());
     insert_flags(&pack, "    - braced\n    - slipped\n");
     insert_brace_habit(&pack);
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     let before = snapshot_of(&pack);
     spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     world.scratch = before.display().to_string();
@@ -362,22 +362,6 @@ fn set_mira_grit(pack: &Path, base: i64) {
     let next = text.replacen(from, &to, 1);
     assert_ne!(next, text, "mira grit was not changed");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
-}
-
-fn stamp(pack: &Path) {
-    let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_kernel::api::store::codec::load_save(
-        &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
-    )
-    .unwrap_or_else(|err| panic!("load now: {err:?}"));
-    now.pack_rev =
-        spookery_kernel::api::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
-    fs::write(
-        &now_path,
-        spookery_kernel::api::store::codec::emit_save(&now)
-            .unwrap_or_else(|err| panic!("emit: {err}")),
-    )
-    .unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 fn snapshot_of(pack: &Path) -> PathBuf {
@@ -589,7 +573,7 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     insert_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
@@ -602,7 +586,7 @@ fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     append_check(&pack, BAND_CHECK);
     insert_flags(&pack, PRESS_FLAGS);
     set_mira_grit(&pack, 6);
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
     world.mark = table::player_len(world);
@@ -639,7 +623,7 @@ fn the_moves_file_gains(world: &mut World, fault: String) {
     };
     let pack = table::pack(world).to_path_buf();
     append_moves(&pack, row);
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
 }
 
 #[then(expr = "Mira is touched and clean")]
@@ -738,7 +722,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     append_check(&pack, BAND_CHECK);
     insert_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     if sit {
         listen_both(world, &pack);
         world.scratch = snapshot_of(&pack).display().to_string();

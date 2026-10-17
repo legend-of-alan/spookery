@@ -23,6 +23,7 @@ pub struct World {
     pub(crate) queue: Vec<Intent>,
     pub(crate) pending: Option<UncommittedRound>,
     rolls: Vec<RollReport>,
+    dice: Vec<String>,
     summary: Vec<String>,
     lines: Vec<Told>,
     seen: Vec<Seen>,
@@ -34,6 +35,8 @@ pub struct Delivered {
     pub summary: Vec<String>,
     pub lines: Vec<Told>,
     pub seen: Vec<Seen>,
+    /// Dice lines the round rolled, for the GM commit and audit.
+    pub dice: Vec<String>,
 }
 
 /// One round played and not yet written. A tick is only the time unit.
@@ -105,6 +108,10 @@ impl World {
         std::mem::take(&mut self.rolls)
     }
 
+    pub fn take_dice(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.dice)
+    }
+
     /// Change keys from the latest round. The GM sees every one.
     pub fn change_summary(&self) -> &[String] {
         &self.summary
@@ -148,23 +155,30 @@ impl World {
         &mut self,
         now: Now,
         round_jsonl: String,
-        tick_index: u64,
         memories: Vec<MemoryLine>,
         paths: Vec<String>,
         notices: Vec<RollReport>,
+        dice: Vec<String>,
     ) {
+        self.dice = dice;
         self.pending = Some(UncommittedRound {
+            tick_index: now.tick_index,
             now,
             round_jsonl,
-            tick_index,
             memories,
             paths,
         });
         self.rolls = notices;
     }
 
-    pub(crate) fn note_committed(&mut self, notices: Vec<RollReport>, keep_queue: bool) {
+    pub(crate) fn note_committed(
+        &mut self,
+        notices: Vec<RollReport>,
+        dice: Vec<String>,
+        keep_queue: bool,
+    ) {
         self.rolls = notices;
+        self.dice = dice;
         if !keep_queue {
             self.queue.clear();
         }
@@ -220,6 +234,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         queue: Vec::new(),
         pending: None,
         rolls: Vec::new(),
+        dice: Vec::new(),
         summary: Vec::new(),
         lines: Vec::new(),
         seen: Vec::new(),

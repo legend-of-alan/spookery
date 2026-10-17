@@ -196,7 +196,7 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
         cond::holds(canon, now, &Ctx { intent }, &rule.if_)?;
     }
     if let Some(cost) = &rule.cost {
-        if let Err(gap) = cost::can_pay(canon, now, &intent.actor_id, cost) {
+        if let Err(gap) = cost::can_pay(canon, now, intent, cost) {
             return Err(Miss::CantAfford(gap.what));
         }
     }

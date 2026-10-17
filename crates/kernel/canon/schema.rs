@@ -1,14 +1,56 @@
 //! Typed YAML for a rule. Serde picks the effect and condition variants.
 //! Kind names are enum variants, not strings compared in this module.
 
+use std::fmt;
+
+use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_saphyr::Spanned;
 
 use crate::diagnostic::{schema, Diagnostic};
 use crate::rule::{
-    ChangeWatch, Cond, Cost, EffectTemplate, LocationTo, NarrateTo, NumberExpr, Op, Owner,
-    ResistSpec, RollSpec, Rule, TargetKind, When, Who,
+    parse_expr, stamp_expr, Arith, ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo,
+    NarrateTo, Op, Owner, ResistSpec, RollSpec, Rule, Spot, TargetKind, When, Who,
 };
+
+#[derive(Debug)]
+pub(crate) struct Fault {
+    pub message: String,
+    pub line: Option<u32>,
+    pub column: Option<u32>,
+}
+
+impl Fault {
+    fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            line: None,
+            column: None,
+        }
+    }
+
+    fn at(mut self, line: u32, column: u32) -> Self {
+        if line > 0 {
+            self.line = Some(line);
+            if column > 0 {
+                self.column = Some(column);
+            }
+        }
+        self
+    }
+}
+
+impl From<String> for Fault {
+    fn from(message: String) -> Self {
+        Self::new(message)
+    }
+}
+
+impl From<&str> for Fault {
+    fn from(message: &str) -> Self {
+        Self::new(message)
+    }
+}
 
 const REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 
@@ -84,11 +126,47 @@ pub struct ChangeYaml {
     pub knows: Option<String>,
 }
 
-#[derive(Deserialize)]
-#[serde(untagged)]
 pub enum IfYaml {
     List(Vec<CondYaml>),
     One(Box<CondYaml>),
+}
+
+impl<'de> Deserialize<'de> for IfYaml {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct Visit;
+
+        impl<'de> Visitor<'de> for Visit {
+            type Value = IfYaml;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("one condition or a list of conditions")
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<IfYaml, A::Error>
+            where
+                A: SeqAccess<'de>,
+            {
+                let mut list = Vec::new();
+                while let Some(cond) = seq.next_element()? {
+                    list.push(cond);
+                }
+                Ok(IfYaml::List(list))
+            }
+
+            fn visit_map<A>(self, map: A) -> Result<IfYaml, A::Error>
+            where
+                A: MapAccess<'de>,
+            {
+                let cond = CondYaml::deserialize(de::value::MapAccessDeserializer::new(map))?;
+                Ok(IfYaml::One(Box::new(cond)))
+            }
+        }
+
+        deserializer.deserialize_any(Visit)
+    }
 }
 
 #[derive(Deserialize)]
@@ -135,7 +213,7 @@ pub struct MeterCondYaml {
     pub who: String,
     pub key: String,
     pub op: String,
-    pub value: NumberYaml,
+    pub value: Spanned<NumberYaml>,
 }
 
 #[derive(Deserialize)]
@@ -166,7 +244,7 @@ pub struct KnowsYaml {
 pub struct ClockCondYaml {
     pub id: String,
     pub op: String,
-    pub value: NumberYaml,
+    pub value: Spanned<NumberYaml>,
 }
 
 #[derive(Deserialize)]
@@ -196,7 +274,7 @@ pub struct CostYaml {
 #[derive(Deserialize, Default)]
 #[serde(untagged)]
 pub enum MeterCost {
-    Map(std::collections::BTreeMap<String, i64>),
+    Map(std::collections::BTreeMap<String, Spanned<NumberYaml>>),
     #[default]
     None,
 }
@@ -204,7 +282,7 @@ pub enum MeterCost {
 #[derive(Deserialize, Default)]
 #[serde(untagged)]
 pub enum ItemCost {
-    Map(std::collections::BTreeMap<String, u32>),
+    Map(std::collections::BTreeMap<String, Spanned<NumberYaml>>),
     #[default]
     None,
 }
@@ -213,15 +291,16 @@ pub enum ItemCost {
 #[serde(deny_unknown_fields)]
 pub struct RollYaml {
     pub check: String,
-    pub target: NumberYaml,
+    pub target: Spanned<NumberYaml>,
     #[serde(default)]
-    pub partial_at: Option<NumberYaml>,
+    pub partial_at: Option<Spanned<NumberYaml>>,
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
 pub enum NumberYaml {
     Literal(i64),
+    Text(String),
     Plus(MeterPlusYaml),
 }
 
@@ -237,7 +316,7 @@ pub struct MeterPlusYaml {
 #[serde(deny_unknown_fields)]
 pub struct MeterWhoYaml {
     pub who: String,
-    pub key: String,
+    pub key: Spanned<String>,
 }
 
 #[derive(Deserialize)]
@@ -261,8 +340,8 @@ pub struct EffectYaml {
 pub struct MeterEffectYaml {
     pub who: String,
     pub key: String,
-    pub add: Option<i64>,
-    pub set: Option<i64>,
+    pub add: Option<Spanned<NumberYaml>>,
+    pub set: Option<Spanned<NumberYaml>>,
     #[serde(default)]
     pub resist: Option<ResistYaml>,
 }
@@ -368,7 +447,7 @@ pub struct UnwieldYaml {
 #[serde(untagged)]
 pub enum ResistYaml {
     Same(String),
-    Roll(ResistRollYaml),
+    Roll(Box<ResistRollYaml>),
 }
 
 #[derive(Deserialize)]
@@ -377,7 +456,7 @@ pub struct ResistRollYaml {
     #[serde(default)]
     pub who: Option<String>,
     pub check: String,
-    pub target: NumberYaml,
+    pub target: Spanned<NumberYaml>,
     #[serde(default)]
     pub resisted: Vec<EffectYaml>,
 }
@@ -454,10 +533,10 @@ fn compile_one(
     };
     let if_ = match entry.if_.as_ref().map(if_of).transpose() {
         Ok(list) => list.unwrap_or_default(),
-        Err(problem) => {
-            diags.push(schema(
+        Err(fault) => {
+            diags.push(fault_diag(
                 file,
-                &problem,
+                fault,
                 "put one condition under each dash; use any: or not: to combine",
             ));
             Vec::new()
@@ -465,22 +544,22 @@ fn compile_one(
     };
     let cost = match entry.cost.as_ref().map(cost_of).transpose() {
         Ok(cost) => cost,
-        Err(problem) => {
-            diags.push(schema(file, &problem, "write time as 30s, 10m, 2h, or 1d"));
+        Err(fault) => {
+            diags.push(fault_diag(file, fault, "write time as 30s, 10m, 2h, or 1d"));
             None
         }
     };
     let roll = match entry.roll.as_ref().map(roll_of).transpose() {
         Ok(roll) => roll,
-        Err(problem) => {
-            diags.push(schema(file, &problem, "name a check and a target"));
+        Err(fault) => {
+            diags.push(fault_diag(file, fault, "name a check and a target"));
             None
         }
     };
-    let do_ = effects_of(&entry.do_)?;
-    let success = effects_of(&entry.success)?;
-    let partial = effects_of(&entry.partial)?;
-    let failure = effects_of(&entry.failure)?;
+    let do_ = effects_of(file, &entry.do_)?;
+    let success = effects_of(file, &entry.success)?;
+    let partial = effects_of(file, &entry.partial)?;
+    let failure = effects_of(file, &entry.failure)?;
     if let Some(when) = &when {
         if matches!(when, When::Change(_)) && cost.is_some() {
             diags.push(schema(
@@ -514,15 +593,19 @@ fn compile_one(
                 &format!("rule '{local}' lists partial without partial_at"),
                 "set partial_at under roll",
             )),
-            Some(RollSpec {
-                target: NumberExpr::Literal(target),
-                partial_at: Some(NumberExpr::Literal(band)),
-                ..
-            }) if *band >= *target => diags.push(schema(
-                file,
-                &format!("rule '{local}' sets partial_at at or above the target"),
-                "set partial_at strictly below the target",
-            )),
+            Some(spec)
+                if spec.partial_at.as_ref().is_some_and(|band| {
+                    band.constant()
+                        .zip(spec.target.constant())
+                        .is_some_and(|(band, target)| band >= target)
+                }) =>
+            {
+                diags.push(schema(
+                    file,
+                    &format!("rule '{local}' sets partial_at at or above the target"),
+                    "set partial_at strictly below the target",
+                ));
+            }
             _ => {}
         }
     }
@@ -646,14 +729,14 @@ fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
     Err("a change needs arrive, leave, meter, flag, clock, item, or knows".to_string())
 }
 
-fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, String> {
+fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
     match yaml {
         IfYaml::List(list) => list.iter().map(cond_of).collect(),
         IfYaml::One(one) => Ok(vec![cond_of(one)?]),
     }
 }
 
-pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
+pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     let mut found = 0u8;
     let mut cond = None;
     if let Some(item) = &yaml.has_item {
@@ -670,7 +753,7 @@ pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
             who: who_of(&meter.who)?,
             key: meter.key.clone(),
             op: op_of(&meter.op)?,
-            value: number_of(&meter.value)?,
+            value: still_number(&meter.value)?,
         });
     }
     if let Some(flag) = &yaml.flag {
@@ -700,13 +783,13 @@ pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
         cond = Some(Cond::Clock {
             id: clock.id.clone(),
             op: op_of(&clock.op)?,
-            value: number_of(&clock.value)?,
+            value: still_number(&clock.value)?,
         });
     }
     if let Some(hour) = &yaml.hour {
         found += 1;
         if !(0..24).contains(&hour.from) || !(0..24).contains(&hour.to) || hour.from == hour.to {
-            return Err("hour needs from and to in 0..24, and they must differ".to_string());
+            return Err("hour needs from and to in 0..24, and they must differ".into());
         }
         cond = Some(Cond::Hour {
             from: hour.from,
@@ -750,20 +833,26 @@ pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, String> {
     if found == 1 {
         return Ok(cond.expect("one condition"));
     }
-    Err("two conditions under one dash".to_string())
+    Err("two conditions under one dash".into())
 }
 
-pub(crate) fn cost_of(yaml: &CostYaml) -> Result<Cost, String> {
+pub(crate) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
     let minutes = match &yaml.time {
         Some(text) => duration_minutes(text)?,
         None => 0,
     };
     let meters = match &yaml.meter {
-        MeterCost::Map(map) => map.iter().map(|(key, n)| (key.clone(), *n)).collect(),
+        MeterCost::Map(map) => map
+            .iter()
+            .map(|(key, n)| Ok((key.clone(), number_of(n)?)))
+            .collect::<Result<Vec<_>, Fault>>()?,
         MeterCost::None => Vec::new(),
     };
     let items = match &yaml.items {
-        ItemCost::Map(map) => map.iter().map(|(key, n)| (key.clone(), *n)).collect(),
+        ItemCost::Map(map) => map
+            .iter()
+            .map(|(key, n)| Ok((key.clone(), number_of(n)?)))
+            .collect::<Result<Vec<_>, Fault>>()?,
         ItemCost::None => Vec::new(),
     };
     Ok(Cost {
@@ -792,9 +881,9 @@ pub(crate) fn duration_minutes(text: &str) -> Result<u64, String> {
     Ok(minutes)
 }
 
-fn roll_of(yaml: &RollYaml) -> Result<RollSpec, String> {
+fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {
     if yaml.check.is_empty() {
-        return Err("roll.check is empty".to_string());
+        return Err("roll.check is empty".into());
     }
     Ok(RollSpec {
         check: yaml.check.clone(),
@@ -803,47 +892,108 @@ fn roll_of(yaml: &RollYaml) -> Result<RollSpec, String> {
     })
 }
 
-fn number_of(yaml: &NumberYaml) -> Result<NumberExpr, String> {
-    match yaml {
-        NumberYaml::Literal(n) => Ok(NumberExpr::Literal(*n)),
-        NumberYaml::Plus(plus) => Ok(NumberExpr::Meter {
-            who: who_of(&plus.meter.who)?,
-            key: plus.meter.key.clone(),
-            plus: plus.plus,
-        }),
+fn still_number(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {
+    let expr = number_of(yaml)?;
+    if expr.needs_dice() {
+        let (line, column) = span_at(yaml);
+        return Err(Fault::new("a condition cannot roll dice").at(line, column));
+    }
+    Ok(expr)
+}
+
+fn number_of(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {
+    let (line, column) = span_at(yaml);
+    match &yaml.value {
+        NumberYaml::Literal(n) => Ok(Expr::Num(*n)),
+        NumberYaml::Text(text) => {
+            let mut expr =
+                parse_expr(text).map_err(|message| Fault::new(message).at(line, column))?;
+            stamp_expr(&mut expr, line, column);
+            Ok(expr)
+        }
+        NumberYaml::Plus(plus) => {
+            let meter = Expr::Meter {
+                who: who_of(&plus.meter.who)?,
+                key: plus.meter.key.value.clone(),
+                spot: span_spot(&plus.meter.key).or(spot_of(line, column)),
+            };
+            if plus.plus == 0 {
+                Ok(meter)
+            } else {
+                Ok(Expr::Bin {
+                    op: Arith::Add,
+                    left: Box::new(meter),
+                    right: Box::new(Expr::Num(plus.plus)),
+                })
+            }
+        }
     }
 }
 
-fn effects_of(list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
+fn span_at(span: &Spanned<impl Sized>) -> (u32, u32) {
+    let line = u32::try_from(span.referenced.line()).unwrap_or(0);
+    let column = u32::try_from(span.referenced.column()).unwrap_or(0);
+    (line, column)
+}
+
+fn span_spot(span: &Spanned<String>) -> Option<Spot> {
+    let (line, column) = span_at(span);
+    spot_of(line, column)
+}
+
+fn spot_of(line: u32, column: u32) -> Option<Spot> {
+    if line == 0 {
+        None
+    } else {
+        Some(Spot { line, column })
+    }
+}
+
+fn fault_diag(file: &str, fault: Fault, hint: &str) -> Diagnostic {
+    let mut diag = schema(file, &fault.message, hint);
+    if let Some(line) = fault.line {
+        diag = diag.at_line(line, fault.column);
+    }
+    diag
+}
+
+fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for effect in list {
-        out.push(effect_of(effect).map_err(|problem| {
-            vec![schema("rules", &problem, "one effect key under each dash")]
-        })?);
+        match effect_of(effect) {
+            Ok(effect) => out.push(effect),
+            Err(fault) => {
+                return Err(vec![fault_diag(
+                    file,
+                    fault,
+                    "one effect key under each dash",
+                )]);
+            }
+        }
     }
     Ok(out)
 }
 
-fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, String> {
+fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, Fault> {
     let mut found = 0u8;
     let mut effect = None;
     if let Some(meter) = &yaml.meter {
         found += 1;
         if meter.add.is_some() == meter.set.is_some() {
-            return Err("a meter effect needs add or set, not both".to_string());
+            return Err("a meter effect needs add or set, not both".into());
         }
         effect = Some(EffectTemplate::Meter {
             who: who_of(&meter.who)?,
             key: meter.key.clone(),
-            add: meter.add,
-            set: meter.set,
+            add: meter.add.as_ref().map(number_of).transpose()?,
+            set: meter.set.as_ref().map(number_of).transpose()?,
             resist: resist_of(meter.resist.as_ref())?,
         });
     }
     if let Some(flag) = &yaml.flag {
         found += 1;
         if flag.key == "busy" {
-            return Err("flag key busy is not a flag".to_string());
+            return Err("flag key busy is not a flag".into());
         }
         effect = Some(EffectTemplate::Flag {
             who: who_of(&flag.who)?,
@@ -858,7 +1008,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, String> {
             (Some(word), None) if word == "target" => LocationTo::Target,
             (Some(place), None) => LocationTo::Place(place.clone()),
             (None, Some(via)) => LocationTo::Via(via.clone()),
-            _ => return Err("location needs to or via".to_string()),
+            _ => return Err("location needs to or via".into()),
         };
         effect = Some(EffectTemplate::Location {
             to,
@@ -868,7 +1018,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, String> {
     if let Some(note) = &yaml.note {
         found += 1;
         if note.id.is_empty() || note.text.is_empty() || note.to.is_empty() {
-            return Err("a note needs id, text, and to".to_string());
+            return Err("a note needs id, text, and to".into());
         }
         effect = Some(EffectTemplate::Note {
             id: note.id.clone(),
@@ -895,7 +1045,7 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, String> {
     if let Some(clock) = &yaml.clock {
         found += 1;
         if clock.add.is_none() && !clock.start {
-            return Err("a clock effect needs add or start".to_string());
+            return Err("a clock effect needs add or start".into());
         }
         effect = Some(EffectTemplate::Clock {
             id: clock.id.clone(),
@@ -944,16 +1094,16 @@ fn effect_of(yaml: &EffectYaml) -> Result<EffectTemplate, String> {
     if found == 1 {
         return Ok(effect.expect("one effect"));
     }
-    Err("one effect per dash".to_string())
+    Err("one effect per dash".into())
 }
 
-fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, String> {
+fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
     let Some(yaml) = yaml else {
         return Ok(None);
     };
     match yaml {
         ResistYaml::Same(word) if word == "same" => Ok(Some(ResistSpec::Same)),
-        ResistYaml::Same(word) => Err(format!("resist '{word}' is not same")),
+        ResistYaml::Same(word) => Err(format!("resist '{word}' is not same").into()),
         ResistYaml::Roll(roll) => Ok(Some(ResistSpec::Roll {
             who: match &roll.who {
                 Some(who) => who_of(who)?,
