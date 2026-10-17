@@ -14,6 +14,10 @@ Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 4. **Clients are swappable.** A terminal, Discord, voice or graphics client is a shell, not a second product.
 5. **The engine proves the format.** A feature that can't be written as a pack field isn't a feature.
 
+## How this differs
+
+The model does not keep the world. It can talk, and it can ask the engine to commit a round. Dice, items, and places change only inside that commit. The journal records the round. Replay repeats the recorded rolls. `spook verify` checks the journal. A player sees a hidden fact only when that character knows it, and `spook audit` checks the view.
+
 ## Glossary
 
 | Term | Meaning |

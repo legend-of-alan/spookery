@@ -32,7 +32,7 @@ fn contributing_states_issues_only(_world: &mut World) {
 
 #[then(expr = ".github\\/ISSUE_TEMPLATE holds bug, pack and feature forms")]
 fn issue_template_holds_bug_pack_and_feature_forms(_world: &mut World) {
-    let dir = repo_root().join(".github/ISSUE_TEMPLATE");
+    let dir = find_repo_root().join(".github/ISSUE_TEMPLATE");
     for stem in ["bug", "pack", "feature"] {
         parse_form(&dir.join(format!("{stem}.yml")));
     }
@@ -78,11 +78,11 @@ fn parse_yaml(path: &Path) -> Value {
         .unwrap_or_else(|err| panic!("{} is not yaml: {err}", path.display()))
 }
 
-fn read_repo(rel: &str) -> String {
-    let path = repo_root().join(rel);
+pub(crate) fn read_repo(rel: &str) -> String {
+    let path = find_repo_root().join(rel);
     fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
 }
 
-fn repo_root() -> PathBuf {
+pub(crate) fn find_repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
