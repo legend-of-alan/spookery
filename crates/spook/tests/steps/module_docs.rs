@@ -29,33 +29,10 @@ fn the_module_doc_check_fails_naming_that_file(world: &mut World) {
 #[then(expr = "the module-doc check passes on main")]
 fn the_module_doc_check_passes_on_main(_world: &mut World) {
     let mut files = Vec::new();
-    rust_sources(&workspace_root().join("crates"), &mut files);
+    support::rust_files(&support::workspace_root().join("crates"), &mut files);
     files.sort();
     let problems = module_doc_problems(&files);
     assert!(problems.is_empty(), "{}", problems.join("\n"));
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = fs::read_dir(dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
-    for entry in entries {
-        let path = entry
-            .unwrap_or_else(|err| panic!("read {}: {err}", dir.display()))
-            .path();
-        if path.is_dir() {
-            if path.file_name().and_then(|name| name.to_str()) == Some("tests") {
-                continue;
-            }
-            rust_sources(&path, out);
-            continue;
-        }
-        if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
 }
 
 fn module_doc_problems(paths: &[PathBuf]) -> Vec<String> {
@@ -96,7 +73,7 @@ fn leading_module_doc(text: &str) -> Option<String> {
 }
 
 fn show(path: &Path) -> String {
-    path.strip_prefix(workspace_root())
+    path.strip_prefix(support::workspace_root())
         .unwrap_or(path)
         .to_string_lossy()
         .replace('\\', "/")

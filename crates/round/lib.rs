@@ -1,4 +1,4 @@
-//! Play one tick and replay the journal.
+//! Play one round and replay the journal.
 //!
 //! Public API
 //!

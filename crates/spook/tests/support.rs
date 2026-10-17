@@ -166,3 +166,30 @@ pub fn stamp_pack_rev(pack: &Path) {
     )
     .unwrap_or_else(|err| panic!("write now: {err}"));
 }
+
+/// The workspace root, two folders above the `spook` crate.
+pub fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+
+/// Collect every `.rs` file under `dir`, skipping `tests`, `target` and `fixtures` folders.
+pub fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    if !dir.is_dir() {
+        return;
+    }
+    let entries = fs::read_dir(dir).unwrap_or_else(|err| panic!("read {}: {err}", dir.display()));
+    for entry in entries {
+        let path = entry
+            .unwrap_or_else(|err| panic!("read {}: {err}", dir.display()))
+            .path();
+        let name = path.file_name().unwrap().to_string_lossy();
+        if path.is_dir() {
+            if name == "tests" || name == "target" || name == "fixtures" {
+                continue;
+            }
+            rust_files(&path, out);
+        } else if name.ends_with(".rs") {
+            out.push(path);
+        }
+    }
+}

@@ -1,4 +1,4 @@
-//! Publish one tick: the journal record, then the save.
+//! Publish one round: the journal record, then the save.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};

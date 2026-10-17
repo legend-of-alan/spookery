@@ -91,12 +91,12 @@ const NARROWED: &[&str] = &[
 ];
 
 pub(crate) fn clean_tree_holds() {
-    let root = workspace_root();
+    let root = support::workspace_root();
     let mut outside = Vec::new();
-    rust_files(&root.join("crates/spook/src"), &mut outside);
-    rust_files(&root.join("crates/spook/tests"), &mut outside);
-    rust_files(&root.join("crates/round"), &mut outside);
-    rust_files(&root.join("crates/kernel/tests"), &mut outside);
+    support::rust_files(&root.join("crates/spook/src"), &mut outside);
+    support::rust_files(&root.join("crates/spook/tests"), &mut outside);
+    support::rust_files(&root.join("crates/round"), &mut outside);
+    support::rust_files(&root.join("crates/kernel/tests"), &mut outside);
     let api = api_violations(&outside);
     assert!(api.is_empty(), "{}", api.join("\n"));
     let down = downward_violations(&root.join("crates/kernel"));
@@ -122,7 +122,7 @@ fn api_violations(files: &[PathBuf]) -> Vec<String> {
 
 fn downward_violations(kernel: &Path) -> Vec<String> {
     let mut files = Vec::new();
-    rust_files(kernel, &mut files);
+    support::rust_files(kernel, &mut files);
     let mut hits = Vec::new();
     for path in files {
         let owner = subsystem(kernel, &path);
@@ -167,28 +167,6 @@ fn subsystem(kernel: &Path, path: &Path) -> String {
         .as_os_str()
         .to_string_lossy();
     first.trim_end_matches(".rs").to_string()
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    if !dir.is_dir() {
-        return;
-    }
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        if path.is_dir() {
-            if name == "tests" || name == "target" || name == "fixtures" {
-                continue;
-            }
-            rust_files(&path, out);
-        } else if name.ends_with(".rs") {
-            out.push(path);
-        }
-    }
 }
 
 fn kernel_paths(code: &str) -> Vec<String> {
@@ -547,7 +525,7 @@ fn sort_unique_stays_public_for_the_firewall_tests(_world: &mut World) {
 
 fn public_kernel_fns(names: &[&str]) -> Vec<String> {
     let mut files = Vec::new();
-    rust_files(&workspace_root().join("crates/kernel"), &mut files);
+    support::rust_files(&support::workspace_root().join("crates/kernel"), &mut files);
     let mut hits = Vec::new();
     for path in files {
         let text = fs::read_to_string(&path)
