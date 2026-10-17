@@ -19,8 +19,8 @@ fn mark_needs_a_knife(world: &mut World) {
     add_knife_row(&pack);
     insert_nell(&pack);
     stamp(&pack);
-    table::listen(&pack);
-    table::seat_player(&pack);
+    table::listen(world, &pack);
+    table::seat_player(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -73,13 +73,13 @@ fn append_moves(world: &mut World, extra: &str) {
 
 #[when(expr = "the player marks nell")]
 fn the_player_marks_nell(world: &mut World) {
-    let (_mark, added) = table::player_send("mark pc_nell", "\"kind\":");
+    let (_mark, added) = table::player_send(world, "mark pc_nell", "\"kind\":");
     world.player_added = added;
 }
 
 #[when(expr = "the player travels to {string}")]
 fn the_player_travels_to(world: &mut World, place: String) {
-    let (mark, added) = table::player_send(&format!("travel {place}"), "\"kind\":");
+    let (mark, added) = table::player_send(world, &format!("travel {place}"), "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }

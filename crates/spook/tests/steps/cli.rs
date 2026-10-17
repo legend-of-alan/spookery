@@ -69,7 +69,7 @@ fn play_says(world: &mut World, text: String) {
 
 #[when(expr = "another play joins that table")]
 fn another_play_joins_that_table(world: &mut World) {
-    let port = crate::with_live(|live| live.port);
+    let port = table::live_mut(world).port;
     let addr = format!("127.0.0.1:{port}");
     let pack = support::pack_arg(table::pack(world));
     let output = support::spook(&["play", &pack, "--addr", &addr]);

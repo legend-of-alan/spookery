@@ -752,30 +752,11 @@ fn tick_value(pack: &Path, name: &str) -> Value {
 }
 
 fn copy_named(name: &str, label: &str) -> PathBuf {
-    let source = workspace_root().join("packs").join(name);
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&source, &pack);
-    pack
+    crate::support::copy_pack(name, label)
 }
 
 fn copy_tree(from: &Path, label: &str) -> PathBuf {
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
+    let pack = crate::support::fresh_dir(label);
     copy_dir(from, &pack);
     pack
 }

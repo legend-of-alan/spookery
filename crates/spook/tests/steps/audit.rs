@@ -31,19 +31,19 @@ fn the_operator_runs_audit_strict(world: &mut World) {
 #[when(expr = "two players play, a GM commits a round, ticks pass, and one player drops")]
 fn a_normal_docks_session(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::seat_actor(&pack, "pc_harbormouse");
-    let _ = table::actor_send("pc_rowan", "wait", "\"kind\":");
-    let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
-    table::seat_gm();
-    let _ = table::actor_send("pc_rowan", "wait", "\"kind\":");
-    let _ = table::gm_call(7, "commit_round", r#"{"include_tick":true}"#);
-    table::close_actor("pc_harbormouse");
-    table::wait_humans(&pack, 1);
-    table::close_actor("pc_rowan");
-    table::wait_humans(&pack, 0);
-    table::stop_server();
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_harbormouse");
+    let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
+    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
+    table::seat_gm(world);
+    let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
+    let _ = table::gm_call(world, 7, "commit_round", r#"{"include_tick":true}"#);
+    table::close_actor(world, "pc_harbormouse");
+    table::wait_humans(world, &pack, 1);
+    table::close_actor(world, "pc_rowan");
+    table::wait_humans(world, &pack, 0);
+    table::stop_server(world);
     let arg = pack.to_str().unwrap().to_string();
     for _ in 0..2 {
         table::run(world, &["tick", &arg]);
@@ -97,35 +97,41 @@ fn a_visible_notes_id_is_the_ledger_fact(world: &mut World) {
 #[when(expr = "two players sit and the GM says the ledger fact")]
 fn the_gm_says_the_ledger_fact(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::seat_actor(&pack, "pc_harbormouse");
-    table::seat_gm();
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_harbormouse");
+    table::seat_gm(world);
     let said = table::gm_call(
+        world,
         4,
         "say",
         &format!(r#"{{"address":"table","text":"{LEDGER}"}}"#),
     );
     assert!(said.contains("\"id\":4"), "{said}");
-    table::close_actor("pc_harbormouse");
-    table::wait_humans(&pack, 1);
-    table::close_actor("pc_rowan");
-    table::wait_humans(&pack, 0);
-    table::stop_server();
+    table::close_actor(world, "pc_harbormouse");
+    table::wait_humans(world, &pack, 1);
+    table::close_actor(world, "pc_rowan");
+    table::wait_humans(world, &pack, 0);
+    table::stop_server(world);
 }
 
 #[when(expr = "two players sit and one says the ledger fact")]
 fn one_player_says_the_ledger_fact(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_rowan");
-    table::seat_actor(&pack, "pc_harbormouse");
-    let _ = table::actor_send("pc_rowan", &format!("say {LEDGER}"), "\"kind\":\"say\"");
-    table::close_actor("pc_harbormouse");
-    table::wait_humans(&pack, 1);
-    table::close_actor("pc_rowan");
-    table::wait_humans(&pack, 0);
-    table::stop_server();
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_harbormouse");
+    let _ = table::actor_send(
+        world,
+        "pc_rowan",
+        &format!("say {LEDGER}"),
+        "\"kind\":\"say\"",
+    );
+    table::close_actor(world, "pc_harbormouse");
+    table::wait_humans(world, &pack, 1);
+    table::close_actor(world, "pc_rowan");
+    table::wait_humans(world, &pack, 0);
+    table::stop_server(world);
 }
 
 #[then(expr = "the audit exits 0")]

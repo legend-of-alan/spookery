@@ -12,7 +12,7 @@ use spookery_kernel::api::Reason;
 use spookery_round::{play, RoundCause};
 
 use super::table;
-use crate::support::{copy_dir, spook, temp_pack};
+use crate::support::{spook, temp_pack};
 use crate::World;
 #[given(expr = "a save with rules_rev 6 and an engine at 7")]
 fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
@@ -1069,18 +1069,7 @@ fn key_spot(text: &str, key: &str) -> (u64, u64) {
 }
 
 fn copy_named(name: &str, label: &str) -> PathBuf {
-    let source = repo().join("packs").join(name);
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&source, &pack);
-    pack
+    crate::support::copy_pack(name, label)
 }
 
 fn repo() -> PathBuf {

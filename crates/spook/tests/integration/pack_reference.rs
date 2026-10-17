@@ -4,7 +4,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use spookery_kernel::api::{check_pack, Diagnostic};
 
@@ -219,12 +218,7 @@ fn parse_example(info: &str, body: &str) -> Example {
 }
 
 fn write_pack(examples: &[Example], label: &str) -> PackDir {
-    static N: AtomicU64 = AtomicU64::new(0);
-    let n = N.fetch_add(1, Ordering::Relaxed);
-    let root =
-        std::env::temp_dir().join(format!("spook-pack-ref-{label}-{n}-{}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    fs::create_dir_all(&root).unwrap_or_else(|err| panic!("create pack: {err}"));
+    let root = crate::support::fresh_dir(&format!("pack-ref-{label}"));
     for example in examples {
         let path = root.join(&example.file);
         if let Some(parent) = path.parent() {

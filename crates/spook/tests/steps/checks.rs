@@ -78,15 +78,18 @@ const OPPOSE_ROWS: &str = "
 
 #[when(expr = "the player rolls grit")]
 fn the_player_rolls_grit(world: &mut World) {
-    let (mark, added) = table::player_send("grit", "\"kind\":");
+    let (mark, added) = table::player_send(world, "grit", "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }
 
 #[then(expr = "the player sees a check success")]
 fn the_player_sees_a_check_success(world: &mut World) {
-    world.player_added =
-        table::wait_player_from(world.mark, "{\"kind\":\"check\",\"outcome\":\"success\"}");
+    world.player_added = table::wait_player_from(
+        world,
+        world.mark,
+        "{\"kind\":\"check\",\"outcome\":\"success\"}",
+    );
     assert!(
         !world.player_added.contains("\"faces\""),
         "{}",
@@ -108,8 +111,8 @@ fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
 }
 
 #[then(expr = "the GM sees the grit faces")]
-fn the_gm_sees_the_grit_faces(_world: &mut World) {
-    let text = table::wait_gm("\"kind\":\"check\"");
+fn the_gm_sees_the_grit_faces(world: &mut World) {
+    let text = table::wait_gm(world, "\"kind\":\"check\"");
     let event = text
         .lines()
         .find(|line| line.contains("\"kind\":\"check\"") && line.contains("\"faces\""))
@@ -129,7 +132,7 @@ fn the_gm_sees_the_grit_faces(_world: &mut World) {
 
 #[then(expr = "the player sees a check result without faces")]
 fn the_player_sees_a_check_result_without_faces(world: &mut World) {
-    let added = table::wait_player_from(world.mark, "{\"kind\":\"check\",\"outcome\":");
+    let added = table::wait_player_from(world, world.mark, "{\"kind\":\"check\",\"outcome\":");
     assert!(
         added.contains("{\"kind\":\"check\",\"outcome\":\"success\"}")
             || added.contains("{\"kind\":\"check\",\"outcome\":\"partial\"}")
@@ -147,9 +150,9 @@ fn a_docks_table_where_mira_can_notice(world: &mut World) {
     append_moves(&pack, NOTICE_ROWS);
     insert_flags(&pack, "    - braced\n    - slipped\n");
     stamp(&pack);
-    listen_both(&pack);
+    listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
-    world.mark = table::player_len();
+    world.mark = table::player_len(world);
 }
 
 #[given(expr = "a docks table where Mira can oppose a mark")]
@@ -160,28 +163,28 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     insert_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
     stamp(&pack);
-    listen_both(&pack);
+    listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
 
 #[when(expr = "the GM queues Mira's sure notice")]
-fn the_gm_queues_miras_sure_notice(_world: &mut World) {
-    queue_mira("notice_sure");
+fn the_gm_queues_miras_sure_notice(world: &mut World) {
+    queue_mira(world, "notice_sure");
 }
 
 #[when(expr = "the GM queues Mira's hard notice")]
-fn the_gm_queues_miras_hard_notice(_world: &mut World) {
-    queue_mira("notice_hard");
+fn the_gm_queues_miras_hard_notice(world: &mut World) {
+    queue_mira(world, "notice_hard");
 }
 
 #[when(expr = "the GM queues Mira's defense")]
-fn the_gm_queues_miras_defense(_world: &mut World) {
-    queue_mira("defend");
+fn the_gm_queues_miras_defense(world: &mut World) {
+    queue_mira(world, "defend");
 }
 
 #[when(expr = "the player marks Mira")]
 fn the_player_marks_mira(world: &mut World) {
-    let (mark, added) = table::player_send("mark mira", "\"kind\":");
+    let (mark, added) = table::player_send(world, "mark mira", "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }
@@ -200,7 +203,7 @@ fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
 
 #[when(expr = "the player names another PC")]
 fn the_player_names_another_pc(world: &mut World) {
-    let (mark, added) = table::player_send("player:pc_nell grit", "\"kind\":\"refused\"");
+    let (mark, added) = table::player_send(world, "player:pc_nell grit", "\"kind\":\"refused\"");
     world.mark = mark;
     world.player_added = added;
 }
@@ -224,32 +227,36 @@ fn mira_guarded_and_the_mark_missed(world: &mut World) {
 }
 
 #[then(expr = "the GM sees Mira's sure notice")]
-fn the_gm_sees_miras_sure_notice(_world: &mut World) {
-    assert_one_roll(1, 3, "success");
+fn the_gm_sees_miras_sure_notice(world: &mut World) {
+    assert_one_roll(world, 1, 3, "success");
 }
 
 #[then(expr = "the GM sees Mira's failed notice")]
-fn the_gm_sees_miras_failed_notice(_world: &mut World) {
-    assert_one_roll(1, 14, "miss");
+fn the_gm_sees_miras_failed_notice(world: &mut World) {
+    assert_one_roll(world, 1, 14, "miss");
 }
 
 #[then(expr = "the player sees no check frame")]
 fn the_player_sees_no_check_frame(world: &mut World) {
-    let added = table::wait_player_from(world.mark, "\"kind\":\"perceive\"");
+    let added = table::wait_player_from(world, world.mark, "\"kind\":\"perceive\"");
     assert!(!added.contains("\"kind\":\"check\""), "{added}");
 }
 
 #[then(expr = "the player sees only their own check")]
 fn the_player_sees_only_their_own_check(world: &mut World) {
-    let added = table::wait_player_from(world.mark, "{\"kind\":\"check\",\"outcome\":\"miss\"}");
+    let added = table::wait_player_from(
+        world,
+        world.mark,
+        "{\"kind\":\"check\",\"outcome\":\"miss\"}",
+    );
     assert_eq!(added.matches("\"kind\":\"check\"").count(), 1, "{added}");
     assert!(!added.contains("\"faces\""), "{added}");
     assert!(!added.contains("\"success\":"), "{added}");
 }
 
 #[then(expr = "the GM sees both rolls")]
-fn the_gm_sees_both_rolls(_world: &mut World) {
-    let text = table::wait_gm("\"kind\":\"check\"");
+fn the_gm_sees_both_rolls(world: &mut World) {
+    let text = table::wait_gm(world, "\"kind\":\"check\"");
     let events = check_events(&text);
     assert_eq!(events.len(), 2, "{text}");
     assert_opposed(&events);
@@ -301,17 +308,17 @@ fn replaying_the_tick_reproduces_the_save(world: &mut World) {
     let _ = fs::remove_dir_all(&start);
 }
 
-fn listen_both(pack: &Path) {
-    table::listen(pack);
-    table::seat_gm();
-    table::seat_player(pack);
+fn listen_both(world: &mut World, pack: &Path) {
+    table::listen(world, pack);
+    table::seat_gm(world);
+    table::seat_player(world, pack);
 }
 
-fn queue_mira(move_name: &str) {
+fn queue_mira(world: &mut World, move_name: &str) {
     let args = format!(
         r#"{{"actor_id":"mira","actor_kind":"npc","source":"player","move":"{move_name}"}}"#
     );
-    let text = table::gm_call(4, "intent", &args);
+    let text = table::gm_call(world, 4, "intent", &args);
     assert!(text.contains("\"queued\""), "{text}");
     assert!(!text.contains("UNKNOWN_KEY"), "{text}");
 }
@@ -374,15 +381,7 @@ fn stamp(pack: &Path) {
 }
 
 fn snapshot_of(pack: &Path) -> PathBuf {
-    let dest = std::env::temp_dir().join(format!(
-        "spook-before-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&dest);
+    let dest = support::fresh_dir("before");
     support::copy_dir(pack, &dest);
     dest
 }
@@ -403,8 +402,8 @@ fn tick_json(world: &World) -> Value {
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }
 
-fn assert_one_roll(stat: i64, target: i64, outcome: &str) {
-    let text = table::wait_gm("\"kind\":\"check\"");
+fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {
+    let text = table::wait_gm(world, "\"kind\":\"check\"");
     let events = check_events(&text);
     assert_eq!(events.len(), 1, "{text}");
     assert_roll(&events[0], stat, target, outcome);
@@ -591,7 +590,7 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
     stamp(&pack);
-    listen_both(&pack);
+    listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
 
@@ -604,21 +603,21 @@ fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     insert_flags(&pack, PRESS_FLAGS);
     set_mira_grit(&pack, 6);
     stamp(&pack);
-    listen_both(&pack);
+    listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
-    world.mark = table::player_len();
+    world.mark = table::player_len(world);
 }
 
 #[when(expr = "the player presses Mira")]
 fn the_player_presses_mira(world: &mut World) {
-    let (mark, added) = table::player_send("press mira", "\"kind\":");
+    let (mark, added) = table::player_send(world, "press mira", "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the GM queues Mira's partial notice")]
-fn the_gm_queues_miras_partial_notice(_world: &mut World) {
-    queue_mira("notice_partial");
+fn the_gm_queues_miras_partial_notice(world: &mut World) {
+    queue_mira(world, "notice_partial");
 }
 
 #[when(expr = "the moves file gains {string}")]
@@ -682,7 +681,7 @@ fn mira_guarded_and_the_press_missed(world: &mut World) {
 #[then(expr = "the player sees outcome {string} and no faces")]
 fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
     let needle = format!("{{\"kind\":\"check\",\"outcome\":\"{outcome}\"}}");
-    let added = table::wait_player_from(world.mark, &needle);
+    let added = table::wait_player_from(world, world.mark, &needle);
     world.player_added = added;
     assert!(
         !world.player_added.contains("\"faces\""),
@@ -703,8 +702,8 @@ fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
 }
 
 #[then(expr = "the GM sees outcome {string} and the faces")]
-fn the_gm_sees_outcome_and_the_faces(_world: &mut World, outcome: String) {
-    let text = table::wait_gm("\"kind\":\"check\"");
+fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
+    let text = table::wait_gm(world, "\"kind\":\"check\"");
     let events = check_events(&text);
     assert_eq!(events.len(), 1, "{text}");
     assert_outcome_faces(&events[0], &outcome);
@@ -721,13 +720,13 @@ fn the_check_outcome_is_not(world: &mut World, outcome: String) {
         "{}",
         world.player_added
     );
-    let text = table::wait_gm("\"kind\":\"check\"");
+    let text = table::wait_gm(world, "\"kind\":\"check\"");
     assert!(!text.contains(&word), "{text}");
 }
 
 #[then(expr = "the GM sees a binary opposed press")]
-fn the_gm_sees_a_binary_opposed_press(_world: &mut World) {
-    let text = table::wait_gm("\"kind\":\"check\"");
+fn the_gm_sees_a_binary_opposed_press(world: &mut World) {
+    let text = table::wait_gm(world, "\"kind\":\"check\"");
     assert_binary_opposed(&check_events(&text));
     assert_binary_opposed(&commit_checks(&text));
 }
@@ -741,7 +740,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     set_rowan_grit(&pack, base);
     stamp(&pack);
     if sit {
-        listen_both(&pack);
+        listen_both(world, &pack);
         world.scratch = snapshot_of(&pack).display().to_string();
     }
 }

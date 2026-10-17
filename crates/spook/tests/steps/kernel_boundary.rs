@@ -458,14 +458,7 @@ fn skip_string(bytes: &[u8], open: usize) -> usize {
 }
 
 fn scratch_dir(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ))
+    crate::support::fresh_dir(label)
 }
 
 #[given(expr = "a spook source file that imports spookery_kernel::shard")]

@@ -19,18 +19,54 @@ pub fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-pub fn temp_pack(label: &str) -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
+fn stamped(label: &str, n: u32) -> PathBuf {
+    let thread: String = format!("{:?}", std::thread::current().id())
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect();
+    std::env::temp_dir().join(format!(
+        "spook-{label}-{}-{thread}-{}-{n}",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&manifest.join("../../packs/oneshot-docks"), &pack);
+    ))
+}
+
+/// A new empty directory. The name includes the thread, so two scenarios can
+/// allocate at the same moment.
+pub fn fresh_dir(label: &str) -> PathBuf {
+    for n in 0..64 {
+        let dir = stamped(label, n);
+        if fs::create_dir(&dir).is_ok() {
+            return dir;
+        }
+    }
+    panic!("no fresh dir for {label}");
+}
+
+/// A path that is not on disk yet.
+pub fn vacant_path(label: &str) -> PathBuf {
+    for n in 0..64 {
+        let dir = stamped(label, n);
+        if !dir.exists() {
+            return dir;
+        }
+    }
+    panic!("no vacant path for {label}");
+}
+
+/// A fresh copy of `packs/oneshot-docks`.
+pub fn temp_pack(label: &str) -> PathBuf {
+    copy_pack("oneshot-docks", label)
+}
+
+/// A fresh copy of `packs/{name}`.
+pub fn copy_pack(name: &str, label: &str) -> PathBuf {
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let pack = fresh_dir(label);
+    copy_dir(&manifest.join("../../packs").join(name), &pack);
     pack
 }
 

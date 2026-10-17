@@ -19,19 +19,18 @@ const SAY_TEXT_BYTES: usize = 4 * 1024;
 #[when(expr = "a player sends a 1 MiB line with no newline")]
 fn a_player_sends_a_mebibyte_line(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_player(&pack);
-    let text = crate::with_live(|live| Arc::clone(&live.player_text));
-    let writer = crate::with_live(|live| {
-        live.player_write
-            .as_ref()
-            .unwrap_or_else(|| panic!("no player"))
-            .try_clone()
-            .unwrap_or_else(|err| panic!("clone: {err}"))
-    });
+    table::listen(world, &pack);
+    table::seat_player(world, &pack);
+    let text = Arc::clone(&table::live_mut(world).player_text);
+    let writer = table::live_mut(world)
+        .player_write
+        .as_ref()
+        .unwrap_or_else(|| panic!("no player"))
+        .try_clone()
+        .unwrap_or_else(|err| panic!("clone: {err}"));
     let join = std::thread::spawn(move || write_all_ignoring(writer, vec![b'a'; MIB]));
     world.player_added = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
-    table::wait_humans(&pack, 0);
+    table::wait_humans(world, &pack, 0);
     join.join().unwrap_or_else(|_| panic!("writer thread"));
 }
 
@@ -43,16 +42,20 @@ fn refused_and_disconnected(world: &mut World, code: String) {
         "{}",
         world.player_added
     );
-    assert_eq!(table::live_presence().0, 0, "the seat was not released");
-    table::release_status_gm();
+    assert_eq!(
+        table::live_presence(world).0,
+        0,
+        "the seat was not released"
+    );
+    table::release_status_gm(world);
 }
 
 #[then(expr = "a second player can sit and wait")]
 fn a_second_player_can_sit_and_wait(world: &mut World) {
-    table::release_status_gm();
+    table::release_status_gm(world);
     let pack = table::pack(world).to_path_buf();
-    table::seat_actor(&pack, "pc_harbormouse");
-    let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
+    table::seat_actor(world, &pack, "pc_harbormouse");
+    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
     assert!(
         !table::list_tick_keys(&pack).is_empty(),
         "the second player did not commit a tick"
@@ -62,8 +65,8 @@ fn a_second_player_can_sit_and_wait(world: &mut World) {
 #[when(expr = "a socket sends an oversized hello")]
 fn a_socket_sends_an_oversized_hello(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    let stream = connect(crate::with_live(|live| live.port));
+    table::listen(world, &pack);
+    let stream = connect(table::live_mut(world).port);
     let text = spawn_reader(&stream);
     let join = std::thread::spawn(move || write_all_ignoring(stream, vec![b'a'; MIB]));
     world.scratch = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
@@ -73,8 +76,8 @@ fn a_socket_sends_an_oversized_hello(world: &mut World) {
 #[when(expr = "an HTTP body over 1 MiB is posted")]
 fn an_http_body_over_a_mebibyte(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    let http = crate::with_live(|live| live.http_port);
+    table::listen(world, &pack);
+    let http = table::live_mut(world).http_port;
     let body = vec![b'x'; MIB + 1];
     let request = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{http}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -97,8 +100,8 @@ fn an_http_body_over_a_mebibyte(world: &mut World) {
 }
 
 #[then(expr = "a new GM can sit")]
-fn a_new_gm_can_sit(_world: &mut World) {
-    let port = crate::with_live(|live| live.http_port);
+fn a_new_gm_can_sit(world: &mut World) {
+    let port = table::live_mut(world).http_port;
     let start = Instant::now();
     loop {
         match try_gm(port) {
@@ -114,18 +117,17 @@ fn a_new_gm_can_sit(_world: &mut World) {
 
 #[when(expr = "the player sends invalid UTF-8")]
 fn the_player_sends_invalid_utf8(world: &mut World) {
-    let mark = table::player_len();
-    crate::with_live(|live| {
-        let write = live
-            .player_write
-            .as_mut()
-            .unwrap_or_else(|| panic!("no player"));
-        write
-            .write_all(b"\xff\n")
-            .unwrap_or_else(|err| panic!("write: {err}"));
-        write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    });
-    world.player_added = table::wait_player_from(mark, "\"code\":\"SCHEMA\"");
+    let mark = table::player_len(world);
+    let live = table::live_mut(world);
+    let write = live
+        .player_write
+        .as_mut()
+        .unwrap_or_else(|| panic!("no player"));
+    write
+        .write_all(b"\xff\n")
+        .unwrap_or_else(|err| panic!("write: {err}"));
+    write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    world.player_added = table::wait_player_from(world, mark, "\"code\":\"SCHEMA\"");
 }
 
 #[then(expr = "the player is refused with {string}")]
@@ -140,7 +142,7 @@ fn the_player_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the player can wait")]
 fn the_player_can_wait(world: &mut World) {
-    let _ = table::player_send("wait", "\"kind\":");
+    let _ = table::player_send(world, "wait", "\"kind\":");
     assert!(
         table::now_of(table::pack(world)).world_time > 1080,
         "the line after invalid UTF-8 did not commit"
@@ -150,8 +152,8 @@ fn the_player_can_wait(world: &mut World) {
 #[when(expr = "a socket connects and sends nothing")]
 fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen_with(&pack, &[("SPOOK_HELLO_TIMEOUT_MS", "200")]);
-    let mut stream = connect(crate::with_live(|live| live.port));
+    table::listen_with(world, &pack, &[("SPOOK_HELLO_TIMEOUT_MS", "200")]);
+    let mut stream = connect(table::live_mut(world).port);
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
@@ -190,22 +192,21 @@ fn one_player_sends_200_lines(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let before = table::list_tick_keys(&pack).len();
     let started = Instant::now();
-    crate::with_live(|live| {
-        let player = live
-            .players
-            .iter_mut()
-            .find(|player| player.actor_id == "pc_rowan")
-            .unwrap_or_else(|| panic!("no rowan"));
-        for _ in 0..200 {
-            writeln!(player.write, "wait").unwrap_or_else(|err| panic!("write: {err}"));
-        }
-        player
-            .write
-            .flush()
-            .unwrap_or_else(|err| panic!("flush: {err}"));
-    });
+    let live = table::live_mut(world);
+    let player = live
+        .players
+        .iter_mut()
+        .find(|player| player.actor_id == "pc_rowan")
+        .unwrap_or_else(|| panic!("no rowan"));
+    for _ in 0..200 {
+        writeln!(player.write, "wait").unwrap_or_else(|err| panic!("write: {err}"));
+    }
+    player
+        .write
+        .flush()
+        .unwrap_or_else(|err| panic!("flush: {err}"));
     let other_at = Instant::now();
-    let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
+    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
     let other_ms = other_at.elapsed().as_millis();
     // Past the burst means a later line was kept. A drop would stop at 11 ticks.
     let deadline = Instant::now() + Duration::from_secs(8);
@@ -257,20 +258,18 @@ fn the_other_player_commits_within_2_seconds(world: &mut World) {
 #[when(expr = "one player stops reading and the GM says many lines")]
 fn one_player_stops_reading(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen(&pack);
-    table::seat_gm();
-    table::seat_actor(&pack, "pc_harbormouse");
-    let (mut quiet, recv) = connect_small_window(crate::with_live(|live| live.port));
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_actor(world, &pack, "pc_harbormouse");
+    let (mut quiet, recv) = connect_small_window(table::live_mut(world).port);
     let send = granted_send_buffer(REQUESTED_SEND_BUFFER);
     writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
     quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     read_until(&mut quiet, "\"kind\":\"perceive\"", Duration::from_secs(2));
-    crate::with_live(|live| {
-        live.players.push(table::Seated {
-            actor_id: "pc_rowan".to_string(),
-            write: quiet,
-            text: Arc::new(Mutex::new(String::new())),
-        });
+    table::live_mut(world).players.push(table::Seated {
+        actor_id: "pc_rowan".to_string(),
+        write: quiet,
+        text: Arc::new(Mutex::new(String::new())),
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
     let frame = write_player(&PlayerMessage::Say {
@@ -291,27 +290,26 @@ fn one_player_stops_reading(world: &mut World) {
     let mut sent = 0usize;
     let args = format!(r#"{{"address":"table","text":"{say}"}}"#);
     loop {
-        let (_, present) = table::live_presence();
+        let (_, present) = table::live_presence(world);
         if !present.iter().any(|actor| actor == "pc_rowan") {
             break;
         }
         if start.elapsed() > Duration::from_secs(60) || sent > budget {
-            let stderr = crate::with_live(|live| {
-                live.server
-                    .as_ref()
-                    .map(|server| support::text_of(&server.stderr))
-                    .unwrap_or_default()
-            });
+            let stderr = table::live_mut(world)
+                .server
+                .as_ref()
+                .map(|server| support::text_of(&server.stderr))
+                .unwrap_or_default();
             panic!(
                 "rowan still seated after {sent} bytes (recv {recv}, send {send}, frame {frame}, queue {queue}, budget {budget}): {present:?}\n{stderr}"
             );
         }
-        let _ = table::gm_call(2, "say", &args);
+        let _ = table::gm_call(world, 2, "say", &args);
         sent = sent.saturating_add(frame);
     }
     let heard = Instant::now();
     loop {
-        let text = table::actor_text("pc_harbormouse");
+        let text = table::actor_text(world, "pc_harbormouse");
         if text.contains("\"kind\":\"say\"") {
             world.player_added = text;
             break;
@@ -319,7 +317,7 @@ fn one_player_stops_reading(world: &mut World) {
         if heard.elapsed() > Duration::from_secs(2) {
             panic!(
                 "the other player saw no say\n{}",
-                table::actor_text("pc_harbormouse")
+                table::actor_text(world, "pc_harbormouse")
             );
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -327,8 +325,8 @@ fn one_player_stops_reading(world: &mut World) {
 }
 
 #[then(expr = "that player is disconnected")]
-fn that_player_is_disconnected(_world: &mut World) {
-    let (_, present) = table::live_presence();
+fn that_player_is_disconnected(world: &mut World) {
+    let (_, present) = table::live_presence(world);
     assert!(
         !present.iter().any(|actor| actor == "pc_rowan"),
         "{present:?}"
@@ -337,7 +335,7 @@ fn that_player_is_disconnected(_world: &mut World) {
         present.iter().any(|actor| actor == "pc_harbormouse"),
         "{present:?}"
     );
-    table::release_status_gm();
+    table::release_status_gm(world);
 }
 
 #[then(expr = "the other player keeps receiving frames")]

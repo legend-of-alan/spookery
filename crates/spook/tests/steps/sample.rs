@@ -32,24 +32,24 @@ fn a_sample_d20_table_where_lark_has_no_tonic(world: &mut World) {
 
 #[when(expr = "the player strikes the raider")]
 fn the_player_strikes_the_raider(world: &mut World) {
-    let (mark, added) = table::player_send("strike npc_briar", "\"kind\":\"check\"");
+    let (mark, added) = table::player_send(world, "strike npc_briar", "\"kind\":\"check\"");
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "the player drinks")]
 fn the_player_drinks(world: &mut World) {
-    let (mark, added) = table::player_send("drink", "\"kind\":");
+    let (mark, added) = table::player_send(world, "drink", "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }
 
 #[when(expr = "play joins the sample table")]
 fn play_joins_the_sample_table(world: &mut World) {
-    let pack = table::pack(world);
-    table::listen(pack);
-    let addr = table::game_addr();
-    let pack_arg = support::pack_arg(pack);
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
+    let pack_arg = support::pack_arg(&pack);
     world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
     wait_play(world, "Gate Yard");
 }
@@ -112,24 +112,13 @@ fn sit(world: &mut World, might: Option<i64>, tonic: bool) {
     if !tonic {
         take_tonic(&pack);
     }
-    table::listen(&pack);
-    table::seat_actor(&pack, "pc_lark");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
 }
 
 fn copy_sample(label: &str) -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    support::copy_dir(&manifest.join("../../packs/sample-d20"), &pack);
-    pack
+    support::copy_pack("sample-d20", label)
 }
 
 fn set_lark_might(pack: &Path, base: i64) {
@@ -196,15 +185,7 @@ fn wait_hp(world: &mut World, actor_id: &str, expected: i64) {
 }
 
 fn snapshot_of(pack: &Path) -> PathBuf {
-    let dest = std::env::temp_dir().join(format!(
-        "spook-before-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&dest);
+    let dest = support::fresh_dir("before");
     support::copy_dir(pack, &dest);
     dest
 }

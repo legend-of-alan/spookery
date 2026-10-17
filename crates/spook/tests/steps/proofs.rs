@@ -39,29 +39,12 @@ fn meters(grit: i64) -> BTreeMap<String, MeterLive> {
     ])
 }
 
-fn copy_dir(from: &Path, to: &Path) {
-    super::support::copy_dir(from, to);
-}
-
 fn scratch(label: &str) -> PathBuf {
-    std::env::temp_dir().join(format!(
-        "spook-prop-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ))
+    super::support::fresh_dir(label)
 }
 
 fn temp_pack(label: &str) -> PathBuf {
-    let pack = scratch(label);
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(
-        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks"),
-        &pack,
-    );
-    pack
+    super::support::temp_pack(label)
 }
 
 fn open(pack: &Path) -> spookery_kernel::api::world::World {
@@ -1178,15 +1161,7 @@ fn planted_five_e_word_fails_the_scan() {
 }
 
 fn planted_five_e(kernel_body: &str, tick_body: &str) -> Vec<String> {
-    let root = std::env::temp_dir().join(format!(
-        "spook-five-e-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&root);
+    let root = scratch("five-e");
     fs::create_dir_all(root.join("kernel")).unwrap();
     fs::create_dir_all(root.join("tick")).unwrap();
     fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();
@@ -1211,15 +1186,7 @@ fn reqwest_in_kernel_or_tick_fails_the_scan() {
 }
 
 fn planted_boundary(kernel_body: &str, tick_body: &str) -> Vec<String> {
-    let root = std::env::temp_dir().join(format!(
-        "spook-boundary-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&root);
+    let root = scratch("boundary");
     fs::create_dir_all(root.join("kernel")).unwrap();
     fs::create_dir_all(root.join("tick")).unwrap();
     fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();

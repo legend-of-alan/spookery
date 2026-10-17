@@ -25,13 +25,13 @@ use super::table;
 
 #[when(expr = "the operator runs ai-gm with no pack")]
 fn the_operator_runs_host_with_no_pack(world: &mut World) {
-    let addr = arm_listener();
+    let addr = arm_listener(world);
     table::run(world, &["ai-gm", "--addr", &addr]);
 }
 
 #[when(expr = "the operator runs ai-gm with an extra argument")]
 fn the_operator_runs_host_with_an_extra_argument(world: &mut World) {
-    let addr = arm_listener();
+    let addr = arm_listener(world);
     let pack = pack_arg(table::pack(world));
     table::run(world, &["ai-gm", &pack, "extra", "--addr", &addr]);
 }
@@ -85,32 +85,19 @@ fn the_listener_accepted_no_connection(world: &mut World) {
 }
 
 #[then(expr = "nothing was dialed")]
-fn nothing_was_dialed(_world: &mut World) {
-    let listeners = LISTENER
-        .lock()
-        .unwrap_or_else(|err| err.into_inner())
-        .take()
-        .unwrap_or_else(|| panic!("no listener"));
-    if accepted_any(&listeners) {
+fn nothing_was_dialed(world: &mut World) {
+    if accepted_any(&world.listeners) {
         panic!("ai-gm dialed");
     }
 }
 
 #[when(expr = "the host is pointed at a free loopback address")]
 fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-    listener
-        .set_nonblocking(true)
-        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
-    let http = listener
+    let (game, door) = bind_game_and_door();
+    let addr = game
         .local_addr()
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
-        .port();
-    // Nothing needs to listen on the game port. The client dials the door.
-    let game = http
-        .checked_sub(1)
-        .unwrap_or_else(|| panic!("door port {http}"));
-    let addr = format!("127.0.0.1:{game}");
+        .to_string();
     let pack = pack_arg(table::pack(world));
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
@@ -122,17 +109,17 @@ fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
         .stderr(Stdio::null())
         .spawn()
         .unwrap_or_else(|err| panic!("spawn host: {err}"));
-    crate::track_child(child);
+    world.children.push(child);
     let start = Instant::now();
     loop {
-        match listener.accept() {
+        match door.accept() {
             Ok(_) => {
                 world.scratch = "dialed".to_string();
                 return;
             }
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
                 if start.elapsed() > Duration::from_secs(5) {
-                    panic!("ai-gm did not dial 127.0.0.1:{http}");
+                    panic!("ai-gm did not dial {addr}");
                 }
                 thread::sleep(Duration::from_millis(20));
             }
@@ -166,7 +153,7 @@ fn the_host_is_pointed_at_an_overridden_agent_door(world: &mut World) {
         .stderr(Stdio::null())
         .spawn()
         .unwrap_or_else(|err| panic!("spawn host: {err}"));
-    crate::track_child(child);
+    world.children.push(child);
     let start = Instant::now();
     loop {
         match listener.accept() {
@@ -192,9 +179,9 @@ fn the_host_dialed_that_address(world: &mut World) {
 
 #[when(expr = "the host seat says good evening and calls an unknown tool")]
 fn the_host_seat_says(world: &mut World) {
-    let mark = table::player_len();
+    let mark = table::player_len(world);
     let mut seat =
-        GmConnection::connect_door(&table::door_addr()).unwrap_or_else(|err| panic!("{err}"));
+        GmConnection::connect_door(&table::door_addr(world)).unwrap_or_else(|err| panic!("{err}"));
     let say = seat
         .call("say", json!({"address": "table", "text": "good evening"}))
         .unwrap_or_else(|err| panic!("{err}"));
@@ -202,7 +189,7 @@ fn the_host_seat_says(world: &mut World) {
     assert!(!say.refused, "{}", say.raw);
     assert!(!again.refused, "{}", again.raw);
     assert_eq!(again.body, say.body);
-    world.player_added = table::wait_player_from(mark, "{\"kind\":\"say\"");
+    world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
     world.scratch = say.raw;
     let refused = seat
         .call("not_in_spec", json!({}))
@@ -236,16 +223,16 @@ fn the_host_call_was_refused(world: &mut World) {
 }
 
 #[when(expr = "the scripted host plays the turn checks")]
-fn the_scripted_host_plays_the_turn_checks(_world: &mut World) {
-    speech_leaves_world_time_and_a_gm_say_does_not_call();
-    travel_ticks_once(false);
-    travel_ticks_once(true);
-    epilogue_does_not_tick_again();
-    sit_commits_the_waiting_queue();
+fn the_scripted_host_plays_the_turn_checks(world: &mut World) {
+    speech_leaves_world_time_and_a_gm_say_does_not_call(world);
+    travel_ticks_once(world, false);
+    travel_ticks_once(world, true);
+    epilogue_does_not_tick_again(world);
+    sit_commits_the_waiting_queue(world);
 }
 
 #[when(expr = "play and host and a stub run a speech turn and a travel turn")]
-fn play_and_host_and_a_stub(_world: &mut World) {
+fn play_and_host_and_a_stub(world: &mut World) {
     let pack = temp_pack("host-stub");
     let aldric = pack.join("cast/aldric.md");
     let mut body = fs::read_to_string(&aldric).unwrap();
@@ -255,9 +242,9 @@ fn play_and_host_and_a_stub(_world: &mut World) {
         .unwrap_or_else(|err| panic!("migrate: {err}"));
     let (stub_port, posts) = stub_server();
     let pack_arg = pack_arg(&pack);
-    table::listen(&pack);
-    let addr = table::game_addr();
-    let door = table::door_addr();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
     let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
     host_cmd
         .args(["ai-gm", &pack_arg, "--addr", &addr, "--mcp-http", &door])
@@ -275,7 +262,7 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     let host_stderr = Arc::new(Mutex::new(String::new()));
     drain(host_out, Arc::clone(&host_stdout));
     drain(host_err, Arc::clone(&host_stderr));
-    crate::track_child(host);
+    world.children.push(host);
     wait_text(&host_stderr, "listening");
     let mut play = support::spawn(&["play", &pack_arg, "--addr", &addr]);
     wait_text(&play.stdout, "Docks Shop");
@@ -310,18 +297,18 @@ fn play_and_host_and_a_stub(_world: &mut World) {
     );
     drop(play_in);
     drop(play);
-    table::stop_server();
+    table::stop_server(world);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn speech_leaves_world_time_and_a_gm_say_does_not_call() {
-    with_host("host-speech", |pack, _port, script, watch| {
-        table::seat_player(pack);
+fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
+    with_host(world, "host-speech", |world, pack, _port, script, watch| {
+        table::seat_player(world, pack);
         let sit = world_time(pack);
         script.push(Ok(Some(
             r#"{"says":[{"address":"table","text":"evening"}],"intents":[]}"#.to_string(),
         )));
-        table::player_send("say hello", "\"kind\":\"say\"");
+        table::player_send(world, "say hello", "\"kind\":\"say\"");
         wait_idle(watch, script, 1);
         assert_eq!(world_time(pack), sit, "speech changed world_time");
         let tape = tape_text(pack);
@@ -334,13 +321,13 @@ fn speech_leaves_world_time_and_a_gm_say_does_not_call() {
     });
 }
 
-fn travel_ticks_once(transport_error: bool) {
+fn travel_ticks_once(world: &mut World, transport_error: bool) {
     let label = if transport_error {
         "host-transport"
     } else {
         "host-travel"
     };
-    with_host(label, |pack, _port, script, watch| {
+    with_host(world, label, |world, pack, _port, script, watch| {
         if transport_error {
             script.push(Err(CompleteError::Transport(
                 "model transport error".to_string(),
@@ -348,9 +335,9 @@ fn travel_ticks_once(transport_error: bool) {
         } else {
             script.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
         }
-        table::seat_player(pack);
+        table::seat_player(world, pack);
         let sit = world_time(pack);
-        table::player_send("travel docks_street", "\"kind\":\"queued\"");
+        table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
         table::wait_world_time(pack, sit + 5);
         wait_idle(watch, script, 1);
         thread::sleep(Duration::from_millis(200));
@@ -366,47 +353,49 @@ fn travel_ticks_once(transport_error: bool) {
     });
 }
 
-fn epilogue_does_not_tick_again() {
-    with_host("host-epilogue", |pack, _port, script, watch| {
-        script.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
-        script.push(Ok(Some(
-            r#"{"says":[{"address":"table","text":"the roll lands"}]}"#.to_string(),
-        )));
-        table::seat_player(pack);
-        let sit = world_time(pack);
-        table::player_send("grit", "\"kind\":\"queued\"");
-        table::wait_world_time(pack, sit + 5);
-        wait_idle(watch, script, 2);
-        let tape = tape_text(pack);
-        assert!(tape.contains("the roll lands"), "{tape}");
-        let calls = script.calls();
-        assert_eq!(calls.len(), 2, "epilogue did not run");
-        assert!(!calls[0].says_only);
-        assert!(calls[1].says_only);
-        assert!(
-            calls[1].prompt.contains("\"checks\""),
-            "{}",
-            calls[1].prompt
-        );
-        thread::sleep(Duration::from_millis(200));
-        assert_eq!(world_time(pack), sit + 5, "epilogue ticked");
-        assert_eq!(script.calls().len(), 2);
-    });
+fn epilogue_does_not_tick_again(world: &mut World) {
+    with_host(
+        world,
+        "host-epilogue",
+        |world, pack, _port, script, watch| {
+            script.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
+            script.push(Ok(Some(
+                r#"{"says":[{"address":"table","text":"the roll lands"}]}"#.to_string(),
+            )));
+            table::seat_player(world, pack);
+            let sit = world_time(pack);
+            table::player_send(world, "grit", "\"kind\":\"queued\"");
+            table::wait_world_time(pack, sit + 5);
+            wait_idle(watch, script, 2);
+            let tape = tape_text(pack);
+            assert!(tape.contains("the roll lands"), "{tape}");
+            let calls = script.calls();
+            assert_eq!(calls.len(), 2, "epilogue did not run");
+            assert!(!calls[0].says_only);
+            assert!(calls[1].says_only);
+            assert!(
+                calls[1].prompt.contains("\"checks\""),
+                "{}",
+                calls[1].prompt
+            );
+            thread::sleep(Duration::from_millis(200));
+            assert_eq!(world_time(pack), sit + 5, "epilogue ticked");
+            assert_eq!(script.calls().len(), 2);
+        },
+    );
 }
 
-fn sit_commits_the_waiting_queue() {
+fn sit_commits_the_waiting_queue(world: &mut World) {
     let pack = temp_pack("host-sit");
-    table::listen(&pack);
-    table::seat_gm();
-    table::seat_player(&pack);
-    table::player_send("say good evening", "\"kind\":\"say\"");
-    table::player_send("travel docks_street", "\"kind\":\"queued\"");
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_player(world, &pack);
+    table::player_send(world, "say good evening", "\"kind\":\"say\"");
+    table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), 1080);
-    crate::with_live(|live| {
-        live.gm.take();
-    });
+    table::live_mut(world).gm.take();
     let script = Script::new();
-    let (handle, watch) = start_after_gm(&pack, &script);
+    let (handle, watch) = start_after_gm(world, &pack, &script);
     table::wait_world_time(&pack, 1085);
     wait_idle(&watch, &script, 1);
     assert_eq!(
@@ -418,39 +407,42 @@ fn sit_commits_the_waiting_queue() {
     thread::sleep(Duration::from_millis(200));
     assert_eq!(world_time(&pack), 1085);
     assert_eq!(script.calls().len(), 1);
-    stop_host(handle);
+    stop_host(world, handle);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn with_host(label: &str, body: impl FnOnce(&Path, u16, &Script, &Watch)) {
+fn with_host(
+    world: &mut World,
+    label: &str,
+    body: impl FnOnce(&mut World, &Path, u16, &Script, &Watch),
+) {
     let pack = temp_pack(label);
-    table::listen(&pack);
-    let port = crate::with_live(|live| live.port);
+    table::listen(world, &pack);
+    let port = table::live_mut(world).port;
     let script = Script::new();
     let watch = Arc::new(Watch::default());
     let watch_bg = Arc::clone(&watch);
     let script_bg = script.clone();
     let pack_bg = pack.clone();
-    let addr = table::game_addr();
-    let door = table::door_addr();
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
     let handle = thread::spawn(move || {
         let mut script = script_bg;
         run_ai_gm(&pack_bg, &addr, Some(&door), &mut script, &watch_bg)
     });
     wait_listening(&watch);
-    body(&pack, port, &script, &watch);
-    stop_host(handle);
+    body(world, &pack, port, &script, &watch);
+    stop_host(world, handle);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn stop_host(handle: thread::JoinHandle<Result<(), spookery::ai::HostError>>) {
-    crate::with_live(|live| {
-        live.server.take();
-    });
+fn stop_host(world: &mut World, handle: thread::JoinHandle<Result<(), spookery::ai::HostError>>) {
+    table::live_mut(world).server.take();
     let _ = handle.join();
 }
 
 fn start_after_gm(
+    world: &mut World,
     pack: &Path,
     script: &Script,
 ) -> (
@@ -464,8 +456,8 @@ fn start_after_gm(
         let watch_bg = Arc::clone(&watch);
         let script_bg = script.clone();
         let pack_bg = pack.to_path_buf();
-        let addr = table::game_addr();
-        let door = table::door_addr();
+        let addr = table::game_addr(world);
+        let door = table::door_addr(world);
         let handle = thread::spawn(move || {
             let mut script = script_bg;
             run_ai_gm(&pack_bg, &addr, Some(&door), &mut script, &watch_bg)
@@ -504,12 +496,11 @@ fn start_after_gm(
         }
         thread::sleep(Duration::from_millis(50));
     }
-    let stderr = crate::with_live(|live| {
-        live.server
-            .as_ref()
-            .map(|server| support::text_of(&server.stderr))
-            .unwrap_or_default()
-    });
+    let stderr = table::live_mut(world)
+        .server
+        .as_ref()
+        .map(|server| support::text_of(&server.stderr))
+        .unwrap_or_default();
     panic!("host did not listen: {last}\n{stderr}");
 }
 
@@ -554,27 +545,42 @@ fn tape_text(pack: &Path) -> String {
     fs::read_to_string(pack.join("state/journal/session.jsonl")).unwrap_or_default()
 }
 
-static LISTENER: Mutex<Option<Vec<TcpListener>>> = Mutex::new(None);
+/// The agent door is the port after the game port. Own both.
+fn bind_game_and_door() -> (TcpListener, TcpListener) {
+    for _ in 0..64 {
+        let game = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+        let port = game
+            .local_addr()
+            .unwrap_or_else(|err| panic!("local_addr: {err}"))
+            .port();
+        let Some(door_port) = port.checked_add(1) else {
+            continue;
+        };
+        if let Ok(door) = TcpListener::bind(("127.0.0.1", door_port)) {
+            for listener in [&game, &door] {
+                listener
+                    .set_nonblocking(true)
+                    .unwrap_or_else(|err| panic!("nonblocking: {err}"));
+            }
+            return (game, door);
+        }
+    }
+    panic!("no free game port and door");
+}
 
-fn arm_listener() -> String {
+fn arm_listener(world: &mut World) -> String {
     let (addr, listeners) = bind_game_and_agent();
-    *LISTENER.lock().unwrap_or_else(|err| err.into_inner()) = Some(listeners);
+    world.listeners = listeners;
     addr
 }
 
 fn bind_game_and_agent() -> (String, Vec<TcpListener>) {
-    let door = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-    let door_port = door
+    let (game, door) = bind_game_and_door();
+    let addr = game
         .local_addr()
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
-        .port();
-    // Nothing needs to listen on the game port. The client dials the door.
-    let game_port = door_port
-        .checked_sub(1)
-        .unwrap_or_else(|| panic!("door port {door_port}"));
-    door.set_nonblocking(true)
-        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
-    (format!("127.0.0.1:{game_port}"), vec![door])
+        .to_string();
+    (addr, vec![game, door])
 }
 
 fn accepted_any(listeners: &[TcpListener]) -> bool {
@@ -593,16 +599,16 @@ const SAY_ARGUMENTS: &str =
 
 #[when(expr = "a hung model call meets a queued player line")]
 fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
-    let (pack, sit) = queued_travel("host-hang");
+    let (pack, sit) = queued_travel(world, "host-hang");
     let total = Duration::from_secs(1);
     let backoff = Duration::from_secs(2);
     let clock = TestClock::new();
     let (stub, events) = hang_server(clock.clone(), total, backoff);
-    let (handle, watch) = drive_when_free(&pack, stub, total, backoff, clock);
+    let (handle, watch) = drive_when_free(world, &pack, stub, total, backoff, clock);
     let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
     let log = events.lock().unwrap().clone();
     let up = watch.listening.load(Ordering::Acquire) && !handle.is_finished();
-    stop_host(handle);
+    stop_host(world, handle);
     let _ = fs::remove_dir_all(&pack);
     world.stdout = if advanced {
         "advanced".to_string()
@@ -718,9 +724,10 @@ fn the_models_say_did_not_land(world: &mut World) {
 }
 
 fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
-    let (pack, sit) = queued_travel(label);
+    let (pack, sit) = queued_travel(world, label);
     let (stub, posts) = scripted_stub(replies);
     let (handle, _watch) = drive_when_free(
+        world,
         &pack,
         stub,
         Duration::from_secs(5),
@@ -733,7 +740,7 @@ fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
     for post in &recorded {
         assert_chat_post(post);
     }
-    stop_host(handle);
+    stop_host(world, handle);
     let _ = fs::remove_dir_all(&pack);
     world.stdout = if advanced {
         "advanced".to_string()
@@ -748,21 +755,20 @@ fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
     };
 }
 
-fn queued_travel(label: &str) -> (std::path::PathBuf, u64) {
+fn queued_travel(world: &mut World, label: &str) -> (std::path::PathBuf, u64) {
     let pack = temp_pack(label);
-    table::listen(&pack);
-    table::seat_gm();
-    table::seat_player(&pack);
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_player(world, &pack);
     let sit = world_time(&pack);
-    table::player_send("travel docks_street", "\"kind\":\"queued\"");
+    table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), sit, "travel committed before the host");
-    crate::with_live(|live| {
-        live.gm.take();
-    });
+    table::live_mut(world).gm.take();
     (pack, sit)
 }
 
 fn drive_when_free<C>(
+    world: &World,
     pack: &Path,
     stub: u16,
     total: Duration,
@@ -777,7 +783,7 @@ where
 {
     let mut last = String::new();
     for _ in 0..40 {
-        let (handle, watch) = spawn_model(pack, stub, total, backoff, clock.clone());
+        let (handle, watch) = spawn_model(world, pack, stub, total, backoff, clock.clone());
         let start = Instant::now();
         while start.elapsed() < Duration::from_millis(500) {
             if watch.listening.load(Ordering::Acquire) {
@@ -830,6 +836,7 @@ fn http_model<C: Clock>(port: u16, total: Duration, backoff: Duration, clock: C)
 }
 
 fn spawn_model<C>(
+    world: &World,
     pack: &Path,
     stub: u16,
     total: Duration,
@@ -845,8 +852,8 @@ where
     let watch = Arc::new(Watch::default());
     let watch_bg = Arc::clone(&watch);
     let pack_bg = pack.to_path_buf();
-    let addr = table::game_addr();
-    let door = table::door_addr();
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
     // The client owns a runtime. Build and drop it off the cucumber thread.
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);

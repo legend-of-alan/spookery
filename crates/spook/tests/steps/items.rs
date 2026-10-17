@@ -8,25 +8,11 @@ use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rules::{faces, RollKey};
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 
-use crate::support::{self, copy_dir};
+use crate::support;
 use crate::World;
 
-fn repo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
 fn copy_pack(name: &str, label: &str) -> PathBuf {
-    let pack = std::env::temp_dir().join(format!(
-        "spook-{label}-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos()
-    ));
-    let _ = fs::remove_dir_all(&pack);
-    copy_dir(&repo().join("packs").join(name), &pack);
-    pack
+    support::copy_pack(name, label)
 }
 
 fn read_now(pack: &Path) -> Now {

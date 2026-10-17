@@ -23,10 +23,11 @@ fn nell_travels_via_door(world: &mut World) {
     );
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
+        world,
         &pack,
         vec![intent(
             "nell-door",
@@ -53,6 +54,7 @@ fn bell_fires_in_the_same_tick(world: &mut World) {
 fn teleport_also_fires_the_bell(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
+        world,
         &pack,
         vec![intent("wren-blink", "pc_wren", "blink", Target::Empty)],
     );
@@ -67,7 +69,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
 
 #[given(expr = "briar has 3 hp and a story rule on hp crosses <=0 sets flag downed")]
 fn briar_has_3_hp_and_a_downed_rule(world: &mut World) {
-    let pack = downed_pack("trigger-downed", 3, false, "<=0");
+    let pack = downed_pack(world, "trigger-downed", 3, false, "<=0");
     world.pack = Some(pack);
 }
 
@@ -75,6 +77,7 @@ fn briar_has_3_hp_and_a_downed_rule(world: &mut World) {
 fn an_attack_removes_4_hp(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
+        world,
         &pack,
         vec![intent(
             "hit-briar",
@@ -109,7 +112,7 @@ fn briar_has_flag_downed(world: &mut World) {
 
 #[given(expr = "briar is already downed")]
 fn briar_is_already_downed(world: &mut World) {
-    let pack = downed_pack("trigger-already", 1, true, "<=1");
+    let pack = downed_pack(world, "trigger-already", 1, true, "<=1");
     world.pack = Some(pack);
 }
 
@@ -117,6 +120,7 @@ fn briar_is_already_downed(world: &mut World) {
 fn another_tick_passes(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
+        world,
         &pack,
         vec![intent(
             "nick-briar",
@@ -176,7 +180,7 @@ rules:
     )
     .unwrap();
     write_nell(&pack, &["found_key"]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         now.actors
             .get_mut("pc_nell")
@@ -195,6 +199,7 @@ rules:
         );
     });
     play(
+        world,
         &pack,
         vec![intent(
             "nell-rooms",
@@ -268,7 +273,7 @@ rules:
 ",
     )
     .unwrap();
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_shop");
     });
     world.pack = Some(pack);
@@ -290,6 +295,7 @@ fn check_warns_of_a_cycle_and_the_tick_stops(world: &mut World) {
 fn a_tick_stops_at_depth_4(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
+        world,
         &pack,
         vec![intent("raise-sun", "pc_nell", "raise", Target::Empty)],
     );
@@ -313,15 +319,17 @@ fn a_tick_stops_at_depth_4(world: &mut World) {
 
 #[given(expr = "a rule on a known fact narrates to the room")]
 fn a_known_fact_narrates_to_the_room(world: &mut World) {
-    world.pack = Some(knows_narrate("trigger-leak-room", "here"));
+    let pack = knows_narrate(world, "trigger-leak-room", "here");
+    world.pack = Some(pack);
 }
 
 #[given(expr = "a rule on a known fact narrates to the subject")]
 fn a_known_fact_narrates_to_the_subject(world: &mut World) {
-    world.pack = Some(knows_narrate("trigger-leak-self", "self"));
+    let pack = knows_narrate(world, "trigger-leak-self", "self");
+    world.pack = Some(pack);
 }
 
-fn knows_narrate(label: &str, to: &str) -> std::path::PathBuf {
+fn knows_narrate(world: &mut World, label: &str, to: &str) -> std::path::PathBuf {
     let pack = temp_pack(label);
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
@@ -343,7 +351,7 @@ rules:
         ),
     )
     .unwrap();
-    edit_save(&pack, |_| {});
+    edit_save(world, &pack, |_| {});
     pack
 }
 
@@ -354,10 +362,11 @@ fn verify_passes_after_triggers(world: &mut World) {
     add_bell(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
+        world,
         &pack,
         vec![intent(
             "nell-door",
@@ -420,10 +429,11 @@ The ground gives.
         "    stat: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    stat: grit\n",
     );
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
     });
     let (_now, rolls, tick) = play(
+        world,
         &pack,
         vec![intent(
             "nell-bog",
@@ -464,10 +474,11 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     add_bell_narrate(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
     });
     let played = play_view(
+        world,
         &pack,
         vec![intent(
             "nell-door",
@@ -533,7 +544,7 @@ fn a_verb_narrates_the_ledger(world: &mut World) {
         &pack,
         "\n  - id: blurt\n    when:\n      verb: blurt\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The lamp-oil ledger is short.\n",
     );
-    edit_save(&pack, |_| {});
+    edit_save(world, &pack, |_| {});
     world.pack = Some(pack);
 }
 
@@ -541,6 +552,7 @@ fn a_verb_narrates_the_ledger(world: &mut World) {
 fn that_narrate_runs(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
+        world,
         &pack,
         vec![intent("rowan-blurt", "pc_rowan", "blurt", Target::Empty)],
     );
@@ -578,7 +590,7 @@ Under the street.
         "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
@@ -596,6 +608,7 @@ Under the street.
 fn nell_reveals_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     let (now, _, _) = play(
+        world,
         &pack,
         vec![intent("nell-uncover", "pc_nell", "uncover", Target::Empty)],
     );
@@ -651,7 +664,7 @@ rules:
     )
     .unwrap();
     write_nell(&pack, &["saw_tide"]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
     });
     world.pack = Some(pack);
@@ -661,6 +674,7 @@ rules:
 fn nell_sets_the_tide(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
+        world,
         &pack,
         vec![intent("nell-tide", "pc_nell", "turn_tide", Target::Empty)],
     );
@@ -722,7 +736,7 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
 fn a_round_runs(world: &mut World) {
     let pack = temp_pack("trigger-tick-counter");
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
     });
     show(world, pack, Vec::new());
@@ -759,7 +773,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
         "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         sit(now, &["pc_nell", "pc_wren"]);
     });
@@ -773,7 +787,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
 #[when(expr = "an item is taken from docks_shop")]
 fn an_item_is_taken_from_the_shop(world: &mut World) {
     let pack = temp_pack("trigger-place-item");
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         sit(now, &["pc_rowan"]);
     });
     show(
@@ -792,7 +806,7 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
 fn rowan_takes_an_item_beside_nell(world: &mut World) {
     let pack = temp_pack("trigger-actor-item");
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_shop");
         sit(now, &["pc_rowan", "pc_nell", "pc_wren"]);
     });
@@ -816,7 +830,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
         "\n  - id: mark_tide\n    when:\n      verb: mark_tide\n    do:\n      - clock:\n          id: nell_tide\n          add: 1\n",
     );
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         now.clocks.insert(
             "nell_tide".to_string(),
@@ -841,7 +855,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = temp_pack("trigger-both-rooms");
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         put(now, "pc_harbormouse", "mira_rooms");
         sit(now, &["pc_nell"]);
@@ -866,7 +880,7 @@ fn a_rule_sets_the_tide(world: &mut World) {
         "\n  - id: turn_tide\n    when:\n      verb: turn_tide\n    do:\n      - flag:\n          who: world\n          key: tide_turned\n          value: true\n",
     );
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_shop");
         put(now, "pc_rowan", "mira_rooms");
         sit(now, &["pc_nell", "pc_wren", "pc_rowan"]);
@@ -883,7 +897,7 @@ fn every_seated_summary_lists(world: &mut World, key: String) {
     let pack = world.pack.as_ref().unwrap();
     let now = load(pack);
     // Seats live in memory, not in the save, so read the ones `edit_save` remembered.
-    let presence = remembered_presence(pack).unwrap_or_default();
+    let presence = remembered_presence(world, pack).unwrap_or_default();
     let seated: Vec<String> = presence
         .actors_present
         .iter()
@@ -908,7 +922,7 @@ fn wrens_meter_changes_while_nell_is_elsewhere(world: &mut World) {
         "\n  - id: spend\n    when:\n      verb: spend\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: -1\n",
     );
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_shop");
         sit(now, &["pc_nell", "pc_wren", "pc_harbormouse"]);
     });
@@ -927,7 +941,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
         "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - pc_nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack, &[]);
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         sit(now, &["pc_nell", "pc_wren"]);
     });
@@ -954,7 +968,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         &pack,
         "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
     );
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         now.presence.humans = 0;
         now.presence.actors_present.clear();
     });
@@ -1004,7 +1018,7 @@ Reserved.
         &pack,
         "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          who: world\n          fact: missing_fact\n      - reveal:\n          who: self\n          fact: missing_fact\n",
     );
-    edit_save(&pack, |_| {});
+    edit_save(world, &pack, |_| {});
     world.pack = Some(pack);
 }
 
@@ -1024,7 +1038,7 @@ fn is_tick_counter(key: &str) -> bool {
 }
 
 fn show(world: &mut World, pack: std::path::PathBuf, intents: Vec<Intent>) {
-    let played = play_view(&pack, intents);
+    let played = play_view(world, &pack, intents);
     world.summary = played.summary;
     world.seen = played.seen;
     world.pack = Some(pack);
@@ -1061,7 +1075,13 @@ fn add_bell_narrate(pack: &Path) {
     );
 }
 
-fn downed_pack(label: &str, hp: i64, downed: bool, crosses: &str) -> std::path::PathBuf {
+fn downed_pack(
+    world: &mut World,
+    label: &str,
+    hp: i64,
+    downed: bool,
+    crosses: &str,
+) -> std::path::PathBuf {
     let pack = temp_pack(label);
     append(
         &pack.join("rules/meters.yaml"),
@@ -1112,7 +1132,7 @@ rules:
         ),
     )
     .unwrap();
-    edit_save(&pack, |now| {
+    edit_save(world, &pack, |now| {
         seat(now, "aldric", "briar", "docks_shop");
         let briar = now.actors.get_mut("briar").unwrap();
         briar.meters_mut().insert(
@@ -1214,36 +1234,33 @@ fn seat(now: &mut Now, from: &str, id: &str, place: &str) {
     now.presence.actors_present = vec![id.to_string()];
 }
 
-fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
+fn edit_save(world: &mut World, pack: &Path, edit: impl FnOnce(&mut Now)) {
     let path = pack.join("state/save.yaml");
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     edit(&mut now);
-    remember_presence(pack, now.presence.clone());
+    remember_presence(world, pack, now.presence.clone());
     now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn remember_presence(pack: &Path, presence: spookery_kernel::api::model::Presence) {
-    let mut seated = seated_packs().lock().expect("seated packs");
-    seated.retain(|(path, _)| path != pack);
-    seated.push((pack.to_path_buf(), presence));
+fn remember_presence(
+    world: &mut World,
+    pack: &Path,
+    presence: spookery_kernel::api::model::Presence,
+) {
+    world.seated.retain(|(path, _)| path != pack);
+    world.seated.push((pack.to_path_buf(), presence));
 }
 
-fn remembered_presence(pack: &Path) -> Option<spookery_kernel::api::model::Presence> {
-    seated_packs()
-        .lock()
-        .expect("seated packs")
+fn remembered_presence(
+    world: &World,
+    pack: &Path,
+) -> Option<spookery_kernel::api::model::Presence> {
+    world
+        .seated
         .iter()
         .find(|(path, _)| path == pack)
         .map(|(_, presence)| presence.clone())
-}
-
-fn seated_packs(
-) -> &'static std::sync::Mutex<Vec<(std::path::PathBuf, spookery_kernel::api::model::Presence)>> {
-    static SEATED: std::sync::Mutex<
-        Vec<(std::path::PathBuf, spookery_kernel::api::model::Presence)>,
-    > = std::sync::Mutex::new(Vec::new());
-    &SEATED
 }
 
 struct Played {
@@ -1256,15 +1273,16 @@ struct Played {
 }
 
 fn play(
+    world: &mut World,
     pack: &Path,
     intents: Vec<Intent>,
 ) -> (Now, Vec<spookery_kernel::api::rules::RollReport>, Value) {
-    let played = play_view(pack, intents);
+    let played = play_view(world, pack, intents);
     (played.now, played.rolls, played.tick)
 }
 
-fn play_view(pack: &Path, intents: Vec<Intent>) -> Played {
-    let mut world = spookery_round::resume(pack).unwrap_or_else(|err| {
+fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played {
+    let mut round = spookery_round::resume(pack).unwrap_or_else(|err| {
         let report = spookery_kernel::api::check_pack(pack)
             .iter()
             .map(|diag| diag.report_line())
@@ -1272,31 +1290,31 @@ fn play_view(pack: &Path, intents: Vec<Intent>) -> Played {
             .join("\n");
         panic!("open: {err}\n{report}");
     });
-    if let Some(presence) = remembered_presence(pack) {
-        world.set_presence(presence);
+    if let Some(presence) = remembered_presence(scenario, pack) {
+        round.set_presence(presence);
     }
-    let wall = world.now().last_tick_at.clone();
+    let wall = round.now().last_tick_at.clone();
     for intent in intents {
-        world.queue(intent);
+        round.queue(intent);
     }
-    spookery_round::play(&mut world, RoundCause::Manual, &wall)
+    spookery_round::play(&mut round, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = latest(pack);
-    let told = world
+    let told = round
         .take_lines()
         .into_iter()
         .map(|line| (line.to, line.text))
         .collect();
-    let seen = world
+    let seen = round
         .seen()
         .iter()
         .map(|item| (item.viewer.clone(), item.changes.clone()))
         .collect();
     Played {
-        now: world.now().clone(),
-        rolls: world.take_rolls(),
+        now: round.now().clone(),
+        rolls: round.take_rolls(),
         tick,
-        summary: world.change_summary().to_vec(),
+        summary: round.change_summary().to_vec(),
         seen,
         told,
     }

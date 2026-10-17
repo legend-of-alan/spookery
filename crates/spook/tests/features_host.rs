@@ -60,8 +60,4 @@ fn feature_dirs() -> &'static [&'static str] {
     feature_paths::HOST
 }
 
-fn finish_scenario() {
-    mcp::drop_holder();
-}
-
 include!("feature_main.rs");

@@ -31,7 +31,7 @@ fn the_seated_player_sees(world: &mut World, text: String) {
     let added = if world.player_added.contains(&text) {
         world.player_added.clone()
     } else {
-        table::wait_player_from(world.mark, &text)
+        table::wait_player_from(world, world.mark, &text)
     };
     assert!(added.contains(&text), "{added}");
 }
