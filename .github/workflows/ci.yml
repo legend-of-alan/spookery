@@ -55,6 +55,8 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: clippy
+        # Linux already gates clippy on PRs and main; macOS and Windows skip it (~20s each).
+        if: runner.os == 'Linux'
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: build
