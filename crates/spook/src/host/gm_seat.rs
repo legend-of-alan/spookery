@@ -95,19 +95,40 @@ impl ServerHandler for GmHost {
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
+        let conn = {
+            let Some(http) = &self.http else {
+                return Err(McpError::internal_error("no seat", None));
+            };
+            if !http.held.load(Ordering::Acquire) {
+                return Ok(
+                    CallToolResult::structured(super::frames::code_result("NOT_IN_SPEC")).into(),
+                );
+            }
+            http.conn
+        };
         let tx = self.tx.clone();
         let name = request.name.into_owned();
         let arguments = request.arguments;
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         tx.send(Msg::Tool {
+            conn,
             name,
             arguments,
             reply: reply_tx,
         })
         .map_err(|_| McpError::internal_error("shard closed", None))?;
-        let ToolReply { value, after } = reply_rx
+        let ToolReply {
+            value,
+            after,
+            released,
+        } = reply_rx
             .await
             .map_err(|_| McpError::internal_error("shard closed", None))?;
+        if released {
+            if let Some(http) = &self.http {
+                http.held.store(false, Ordering::Release);
+            }
+        }
         // Queue the events and return. Waiting here for the write stalls the
         // client: it is blocked on this result, so it never reads the event.
         // The forwarder started in `claim` drains this queue in order.

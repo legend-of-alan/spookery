@@ -690,7 +690,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 
 #### close
 
-No key is accepted. An empty object is legal. A key is `SCHEMA` and the seat stays up. The result is sent after the seat is free. A player line after it commits its own round.
+No key is accepted. An empty object is legal. A key is `SCHEMA` and the seat stays up. The result is sent after the seat is free. A player line after it commits its own round. A later tool call on that same session is `NOT_IN_SPEC` and writes nothing. Whoever holds the seat then is left as they are.
 
 <!-- example: close-request -->
 ```json
@@ -832,7 +832,7 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `SESSION_FULL` | Stop. Three players are sat, or the GM seat is held. Connect again only after that seat is free. Do not retry the same hello in a loop. |
 | `SEAT_TAKEN` | That PC is held. Connect again as a different live PC. |
 | `SCHEMA` | The line or the arguments are the wrong shape. On a seated player, send a corrected line. On hello, connect again with `player:<id>` of a live PC. |
-| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, or `commit_round` set `include_tick` false while a move is queued. Nothing was written for that call. The queue is still there after the false commit. |
+| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, `commit_round` set `include_tick` false while a move is queued, or the call is on a session that already closed. Nothing was written for that call. The queue is still there after the false commit. |
 | `LINE_TOO_LONG` | The line is over 8 KiB, not counting the newline. The socket is closed. Connect again with a shorter line. |
 | `UNSCOPED_PERCEIVE` | Call `perceive` again with `as` set to `player:<id>` or `npc:<id>`. |
 | `NO_EXIT` | The move was not queued. On the player line, `missing` is the locked text when the pack set one. |

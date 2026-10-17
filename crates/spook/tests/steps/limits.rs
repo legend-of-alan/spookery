@@ -73,6 +73,37 @@ fn the_server_confirms_the_seat_is_free(world: &mut World) {
     );
 }
 
+#[when(expr = "the GM releases the seat and keeps the session")]
+fn the_gm_releases_the_seat_and_keeps_the_session(world: &mut World) {
+    world.scratch = table::release_gm_session(world);
+}
+
+#[when(expr = "another GM sits")]
+fn another_gm_sits(world: &mut World) {
+    table::seat_gm(world);
+}
+
+#[when(expr = "the closed session calls say")]
+fn the_closed_session_calls_say(world: &mut World) {
+    world.before = table::files(table::pack(world));
+    world.scratch =
+        table::closed_gm_call(world, "say", r#"{"address":"table","text":"good evening"}"#);
+}
+
+#[then(expr = "that call is refused and nothing was written")]
+fn that_call_is_refused_and_nothing_was_written(world: &mut World) {
+    assert!(
+        world.scratch.contains("\"code\":\"NOT_IN_SPEC\""),
+        "{}",
+        world.scratch
+    );
+    assert_eq!(
+        table::files(table::pack(world)),
+        world.before,
+        "the closed session wrote the pack"
+    );
+}
+
 #[when(expr = "a socket sends an oversized hello")]
 fn a_socket_sends_an_oversized_hello(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
