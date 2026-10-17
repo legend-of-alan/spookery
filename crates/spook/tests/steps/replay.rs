@@ -108,7 +108,7 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
 
 #[when(expr = "one intent in a tick record is changed")]
 fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
-    let located = spookery_kernel::api::journal::locate(table::pack(world), "tick-0001.jsonl")
+    let located = spookery_kernel::api::journal::locate(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("locate tick: {}", err.detail));
     let path = located.path;
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read tick: {err}"));
@@ -261,15 +261,18 @@ fn each_journal_record_parses_back(world: &mut World) {
         .count();
     assert!(ticks >= 3, "ticks {ticks}");
     for entry in &entries {
-        let located = spookery_kernel::api::journal::locate(pack, &logical_name(entry))
-            .unwrap_or_else(|err| panic!("{}", err.detail));
+        let located = spookery_kernel::api::journal::locate(
+            pack,
+            &spookery_kernel::api::journal::format_record_key(entry),
+        )
+        .unwrap_or_else(|err| panic!("{}", err.detail));
         let again = spookery_kernel::api::journal::emit_entry(entry);
         assert_eq!(again.trim_end(), located.line.trim_end());
     }
 }
 
 fn edit_tick(world: &mut World, edit: impl FnOnce(&mut Value)) {
-    let located = spookery_kernel::api::journal::locate(table::pack(world), "tick-0001.jsonl")
+    let located = spookery_kernel::api::journal::locate(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap();
     let mut tick: Value = serde_json::from_str(&located.line).unwrap();
@@ -278,15 +281,6 @@ fn edit_tick(world: &mut World, edit: impl FnOnce(&mut Value)) {
     let rewritten = text.replacen(&located.line, &next, 1);
     assert_ne!(rewritten, text);
     fs::write(&located.path, rewritten).unwrap();
-}
-
-fn logical_name(entry: &spookery_kernel::api::journal::JournalEntry) -> String {
-    use spookery_kernel::api::journal::JournalEntry;
-    match entry {
-        JournalEntry::Tick(tick) => format!("tick-{:04}.jsonl", tick.tick_index),
-        JournalEntry::Migrate(record) => format!("migrate-{:04}.json", record.state_rev_after),
-        JournalEntry::Checkpoint(mark) => format!("checkpoint-{:04}.json", mark.tick_index),
-    }
 }
 
 #[given(expr = "checkpoints are taken every {int} ticks")]

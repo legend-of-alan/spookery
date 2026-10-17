@@ -214,31 +214,29 @@ pub fn latest_checkpoint(entries: &[JournalEntry]) -> Option<&CheckpointRecord> 
     })
 }
 
-/// File names the rest of the tree still uses when it means "the tick record".
-pub fn tick_names(pack: &Path) -> Vec<String> {
+/// Keys of every tick record, such as `tick-0001`, in order.
+pub fn list_tick_keys(pack: &Path) -> Vec<String> {
     let Ok(entries) = read_entries(pack) else {
         return Vec::new();
     };
-    let mut names: Vec<String> = entries
+    let mut keys: Vec<String> = entries
         .iter()
-        .filter_map(|entry| match entry {
-            JournalEntry::Tick(record) => Some(format!("tick-{:04}.jsonl", record.tick_index)),
-            _ => None,
-        })
+        .filter(|entry| matches!(entry, JournalEntry::Tick(_)))
+        .map(format_record_key)
         .collect();
-    names.sort();
-    names
+    keys.sort();
+    keys
 }
 
-/// The stored line for `tick-NNNN.jsonl` or `migrate-NNNN.json`, without a newline.
-pub fn record_line(pack: &Path, name: &str) -> Result<String, JournalFault> {
+/// The stored line for a record key such as `tick-0001` or `migrate-0002`, without a newline.
+pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> {
     let entries = read_entries(pack)?;
     let found = entries
         .into_iter()
-        .find(|entry| logical_name(entry) == name);
+        .find(|entry| format_record_key(entry) == key);
     match found {
         Some(entry) => Ok(emit_entry(&entry).trim_end().to_string()),
-        None => Err(fault_name(name, "the journal record is missing")),
+        None => Err(fault_name(key, "the journal record is missing")),
     }
 }
 
@@ -248,7 +246,7 @@ pub struct Located {
     pub line: String,
 }
 
-pub fn locate(pack: &Path, name: &str) -> Result<Located, JournalFault> {
+pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
     let dir = pack.join("state/journal");
     for (file_name, path) in bundle_files(&dir)? {
         let text = read_bundle(&file_name, &path)?;
@@ -257,7 +255,7 @@ pub fn locate(pack: &Path, name: &str) -> Result<Located, JournalFault> {
                 continue;
             }
             let entry = parse_line(&file_name, raw)?;
-            if logical_name(&entry) == name {
+            if format_record_key(&entry) == key {
                 return Ok(Located {
                     path,
                     line: raw.to_string(),
@@ -265,7 +263,7 @@ pub fn locate(pack: &Path, name: &str) -> Result<Located, JournalFault> {
             }
         }
     }
-    Err(fault_name(name, "the journal record is missing"))
+    Err(fault_name(key, "the journal record is missing"))
 }
 
 pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, JournalFault> {
@@ -328,16 +326,17 @@ fn chain_of(entry: &JournalEntry) -> String {
     chain_hash(entry.prev(), body.trim_end())
 }
 
-fn logical_name(entry: &JournalEntry) -> String {
+/// Key naming one record inside the bundles: `tick-0001`, `migrate-0002` or `checkpoint-0003`.
+pub fn format_record_key(entry: &JournalEntry) -> String {
     match entry {
-        JournalEntry::Tick(record) => format!("tick-{:04}.jsonl", record.tick_index),
-        JournalEntry::Migrate(record) => format!("migrate-{:04}.json", record.state_rev_after),
-        JournalEntry::Checkpoint(record) => format!("checkpoint-{:04}.json", record.tick_index),
+        JournalEntry::Tick(record) => format!("tick-{:04}", record.tick_index),
+        JournalEntry::Migrate(record) => format!("migrate-{:04}", record.state_rev_after),
+        JournalEntry::Checkpoint(record) => format!("checkpoint-{:04}", record.tick_index),
     }
 }
 
 fn bundle_name_of(pack: &Path, entry: &JournalEntry) -> String {
-    locate(pack, &logical_name(entry))
+    locate(pack, &format_record_key(entry))
         .map(|found| {
             found
                 .path
@@ -476,10 +475,10 @@ fn read_bundle(name: &str, path: &Path) -> Result<String, JournalFault> {
 }
 
 /// Gzip `plain` into memory. The commit path writes and flushes the bytes.
-pub fn gzip_bytes(plain: &[u8]) -> Result<Vec<u8>, Reason> {
+pub fn gzip_bytes(plain: &[u8]) -> std::io::Result<Vec<u8>> {
     let mut enc = GzEncoder::new(Vec::new(), Compression::default());
-    enc.write_all(plain).map_err(|_| Reason::CommitConflict)?;
-    enc.finish().map_err(|_| Reason::CommitConflict)
+    enc.write_all(plain)?;
+    enc.finish()
 }
 
 pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {

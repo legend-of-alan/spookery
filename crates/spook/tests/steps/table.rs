@@ -86,8 +86,8 @@ pub fn now_of(pack: &Path) -> Now {
     }
 }
 
-pub fn tick_names(pack: &Path) -> Vec<String> {
-    spookery_kernel::api::journal::tick_names(pack)
+pub fn list_tick_keys(pack: &Path) -> Vec<String> {
+    spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
 pub struct Pending {

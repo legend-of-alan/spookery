@@ -103,7 +103,7 @@ fn play(
 }
 
 fn tick_text(pack: &Path) -> String {
-    spookery_kernel::api::journal::record_line(pack, "tick-0001.jsonl")
+    spookery_kernel::api::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
@@ -288,7 +288,7 @@ fn the_line_is_missing_and_quiet(world: &mut World) {
     assert_eq!(world.scratch, "MISSING_ITEM");
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(read_now(pack).tick_index, 0);
-    assert!(spookery_kernel::api::journal::tick_names(pack).is_empty());
+    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]

@@ -101,7 +101,7 @@ fn the_player_sees_a_check_success(world: &mut World) {
 
 #[then(expr = "the tick log resolves the check without faces")]
 fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
-    let text = spookery_kernel::api::journal::record_line(table::pack(world), "tick-0001.jsonl")
+    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     assert!(text.contains("resolve_check"), "{text}");
     assert!(!text.contains("faces"), "{text}");
@@ -398,7 +398,7 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 }
 
 fn tick_json(world: &World) -> Value {
-    let text = spookery_kernel::api::journal::record_line(table::pack(world), "tick-0001.jsonl")
+    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }

@@ -304,7 +304,8 @@ fn close_live(root: &Path) -> Result<(), Reason> {
     let bytes = fs::read(&plain).map_err(|_| Reason::CommitConflict)?;
     let gz = gzip_path(&plain);
     let tmp = tmp_path(&gz);
-    fs::write(&tmp, journal::gzip_bytes(&bytes)?).map_err(|_| Reason::CommitConflict)?;
+    let gz_bytes = journal::gzip_bytes(&bytes).map_err(|_| Reason::CommitConflict)?;
+    fs::write(&tmp, gz_bytes).map_err(|_| Reason::CommitConflict)?;
     fsync_file(&tmp)?;
     rename(&tmp, &gz)?;
     fs::remove_file(&plain).map_err(|_| Reason::CommitConflict)?;

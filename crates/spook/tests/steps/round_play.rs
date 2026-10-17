@@ -83,7 +83,7 @@ fn a_docks_round_is_played(world: &mut World) {
     expr = "the round trace lists advance, complete, gather, resolve, apply, run_triggers, observe, record in that order"
 )]
 fn the_round_trace_lists_the_stages(world: &mut World) {
-    let tick = tick_value(world.pack.as_ref().unwrap(), "tick-0001.jsonl");
+    let tick = tick_value(world.pack.as_ref().unwrap(), "tick-0001");
     let trace: Vec<&str> = tick["tool_trace"]
         .as_array()
         .unwrap()
@@ -188,7 +188,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     assert!(output.status.success(), "{stdout}{stderr}");
     let report =
         spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
-    let line = spookery_kernel::api::journal::record_line(pack, "tick-0001.jsonl")
+    let line = spookery_kernel::api::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let tick: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
@@ -693,7 +693,7 @@ fn play_queued(
     }
     spookery_round::play(&mut world, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    let tick = tick_value(pack, "tick-0001.jsonl");
+    let tick = tick_value(pack, "tick-0001");
     let now = world.now().clone();
     let rolls = world.take_rolls();
     (now, rolls, tick)
@@ -742,7 +742,7 @@ fn append(path: &Path, extra: &str) {
 }
 
 fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = spookery_kernel::api::journal::record_line(pack, name)
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}\n{text}"))
 }

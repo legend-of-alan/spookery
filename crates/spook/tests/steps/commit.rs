@@ -144,7 +144,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
-    assert!(spookery_kernel::api::journal::tick_names(pack).is_empty());
+    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
     studio_matches(pack, &[1]);
 }
 

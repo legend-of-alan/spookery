@@ -42,7 +42,7 @@ fn the_player_line_is_queued(world: &mut World) {
 
 #[then(expr = "the tick log records the player wait")]
 fn the_tick_log_records_the_player_wait(world: &mut World) {
-    let text = spookery_kernel::api::journal::record_line(table::pack(world), "tick-0001.jsonl")
+    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     let tick: Value = serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"));
     let waits = tick["intents"]

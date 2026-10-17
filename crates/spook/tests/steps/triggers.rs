@@ -1331,11 +1331,11 @@ fn load(pack: &Path) -> Now {
 }
 
 fn latest(pack: &Path) -> Value {
-    let names = spookery_kernel::api::journal::tick_names(pack);
+    let names = spookery_kernel::api::journal::list_tick_keys(pack);
     let name = names
         .last()
         .unwrap_or_else(|| panic!("no tick was written"));
-    let text = spookery_kernel::api::journal::record_line(pack, name)
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }

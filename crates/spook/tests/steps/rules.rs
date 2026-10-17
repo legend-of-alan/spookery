@@ -123,7 +123,7 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let located = spookery_kernel::api::journal::locate(&pack, "tick-0001.jsonl")
+    let located = spookery_kernel::api::journal::locate(&pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
     let mut tick: Value = serde_json::from_str(&located.line).unwrap_or_else(|err| {
