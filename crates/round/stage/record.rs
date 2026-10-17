@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn a_standard_order_omits_steps_run() {
         for commit in [true, false] {
-            let line = render(&followed_order(commit));
+            let line = render(&list_standard_steps(commit));
             assert!(!line.contains("steps_run"), "{line}");
         }
     }
@@ -231,7 +231,7 @@ mod tests {
         );
     }
 
-    fn followed_order(commit: bool) -> Vec<String> {
+    fn list_standard_steps(commit: bool) -> Vec<String> {
         let mut steps = STANDARD_STEPS
             .iter()
             .map(|step| step.to_string())
