@@ -11,8 +11,8 @@ mod table;
 #[path = "steps/common.rs"]
 mod common;
 
-#[path = "steps/tool_trace.rs"]
-mod tool_trace;
+#[path = "steps/steps_run.rs"]
+mod steps_run;
 
 #[path = "steps/rounds.rs"]
 mod rounds;

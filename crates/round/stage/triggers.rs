@@ -17,7 +17,7 @@ use crate::state::Round;
 
 /// Change rules, edge-triggered, to a fixpoint.
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.trace.push("run_triggers".to_string());
+    round.steps_run.push("run_triggers".to_string());
     let max = draft.budget().max_trigger_depth;
     let rules = change_rules(draft);
     let mut depth = 0u64;
@@ -32,7 +32,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             break;
         }
         if depth >= max {
-            round.trace.push("trigger_depth".to_string());
+            round.steps_run.push("trigger_depth".to_string());
             break;
         }
         depth += 1;
@@ -142,7 +142,7 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
     }
     round.roll_reports.extend(fired.resist);
     round.effects.extend(fired.effects);
-    round.trace.push(rule.id.clone());
+    round.steps_run.push(rule.id.clone());
 }
 
 fn expand_hit(

@@ -1,4 +1,4 @@
-//! Reading the `tool_trace` field of a stored tick record.
+//! Reading the `steps_run` field of a stored tick record.
 
 use std::path::Path;
 
@@ -26,8 +26,8 @@ pub(crate) fn read_tick(pack: &Path, key: &str) -> Value {
 }
 
 /// Step names stored on `tick`, or none when the field is left out.
-pub(crate) fn read_tool_trace(tick: &Value) -> Vec<String> {
-    tick.get("tool_trace")
+pub(crate) fn read_steps_run(tick: &Value) -> Vec<String> {
+    tick.get("steps_run")
         .and_then(Value::as_array)
         .map(|items| {
             items
@@ -39,11 +39,11 @@ pub(crate) fn read_tool_trace(tick: &Value) -> Vec<String> {
 }
 
 pub(crate) fn assert_standard_steps_omitted(tick: &Value) {
-    let names = read_tool_trace(tick);
+    let names = read_steps_run(tick);
     for step in STANDARD_STEPS {
         assert!(
             !names.iter().any(|name| name == step),
-            "{step} is in the tool trace\n{tick}"
+            "{step} is in steps_run\n{tick}"
         );
     }
 }
