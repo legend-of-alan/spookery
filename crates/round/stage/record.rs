@@ -92,7 +92,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         effects: line.effects.to_vec(),
         arrivals: line.arrivals.to_vec(),
         fast_forward: line.fast_forward,
-        tool_trace: journal_trace(line.tool_trace),
+        tool_trace: trim_trace(line.tool_trace),
         memories: Vec::new(),
         now_hash: String::new(),
         prev: String::new(),
@@ -116,7 +116,7 @@ const STANDARD_STEPS: &[&str] = &[
 
 /// The part of `trace` worth storing. A trace that skips or reorders the
 /// standard steps is kept whole, so a broken round stays visible.
-fn journal_trace(trace: &[String]) -> Vec<String> {
+fn trim_trace(trace: &[String]) -> Vec<String> {
     let mut index = 0usize;
     let mut extras = Vec::new();
     let mut commit_seen = false;
@@ -147,7 +147,7 @@ mod tests {
     use spookery_kernel::api::effect::{Effect, EffectKind};
     use spookery_kernel::api::intent::ViewerId;
 
-    use super::{render_round_line, RoundLine};
+    use super::{render_round_line, RoundLine, STANDARD_STEPS};
 
     #[test]
     fn round_line_embeds_the_flat_effect() {
@@ -232,20 +232,10 @@ mod tests {
     }
 
     fn standard_trace(commit: bool) -> Vec<String> {
-        let mut steps = [
-            "advance",
-            "complete",
-            "gather",
-            "session_status",
-            "resolve",
-            "apply",
-            "run_triggers",
-            "observe",
-            "record",
-        ]
-        .into_iter()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+        let mut steps = STANDARD_STEPS
+            .iter()
+            .map(|step| step.to_string())
+            .collect::<Vec<_>>();
         if commit {
             steps.push("commit_round".to_string());
         }

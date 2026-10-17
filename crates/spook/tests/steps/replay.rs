@@ -6,6 +6,7 @@ use serde_json::Value;
 use crate::World;
 
 use super::table;
+use super::tool_trace::{assert_standard_steps_omitted, read_tick, read_tool_trace};
 
 #[given(expr = "an empty directory")]
 fn an_empty_directory(world: &mut World) {
@@ -441,49 +442,19 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
 
 #[then(expr = "the first tick lists cast:mira\\/leave_door_note and omits the standard steps")]
 fn the_first_tick_keeps_only_the_extra_steps(world: &mut World) {
-    let tick = tick_json(world, "tick-0001");
-    let names = tool_names(&tick);
-    assert!(names.contains(&"cast:mira/leave_door_note"), "{names:?}");
-    assert_steps_omitted(&names, &tick);
+    let tick = read_tick(table::pack(world), "tick-0001");
+    let names = read_tool_trace(&tick);
+    assert!(
+        names.iter().any(|name| name == "cast:mira/leave_door_note"),
+        "{names:?}"
+    );
+    assert_standard_steps_omitted(&tick);
 }
 
 #[then(expr = "the second tick omits tool_trace")]
 fn the_second_tick_omits_tool_trace(world: &mut World) {
-    let tick = tick_json(world, "tick-0002");
+    let tick = read_tick(table::pack(world), "tick-0002");
     assert!(tick.get("tool_trace").is_none(), "{tick}");
-}
-
-fn tick_json(world: &World, key: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), key)
-        .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{key}: {err}\n{text}"))
-}
-
-fn tool_names(tick: &Value) -> Vec<&str> {
-    tick.get("tool_trace")
-        .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(Value::as_str).collect())
-        .unwrap_or_default()
-}
-
-fn assert_steps_omitted(names: &[&str], tick: &Value) {
-    for step in [
-        "advance",
-        "complete",
-        "gather",
-        "session_status",
-        "resolve",
-        "apply",
-        "run_triggers",
-        "observe",
-        "record",
-        "commit_round",
-    ] {
-        assert!(
-            !names.contains(&step),
-            "{step} is in the tool trace\n{tick}"
-        );
-    }
 }
 
 #[then(expr = "parallel full verification matches serial replay")]

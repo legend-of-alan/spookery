@@ -9,4 +9,4 @@ Feature: A round runs named stages
 
   Scenario: Stages run in order
     When a docks round is played
-    Then the tick record omits the standard steps
+    Then the round followed the standard step order
