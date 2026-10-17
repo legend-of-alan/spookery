@@ -37,6 +37,15 @@ fn the_readme_commands_run(world: &mut World) {
         world.stdout = "workflow".to_string();
         return;
     }
+    let dest = readme_play_folder();
+    let made_folder = !dest.exists();
+    if made_folder {
+        std::fs::create_dir_all(&dest)
+            .unwrap_or_else(|err| panic!("create {}: {err}", dest.display()));
+    }
+    let marker = dest.join("keep-me");
+    std::fs::write(&marker, b"keep")
+        .unwrap_or_else(|err| panic!("write {}: {err}", marker.display()));
     let bin = PathBuf::from(env!("CARGO_BIN_EXE_spook"));
     let mut command = python();
     command
@@ -52,6 +61,23 @@ fn the_readme_commands_run(world: &mut World) {
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    assert!(
+        marker.is_file(),
+        "the quick start removed {}",
+        dest.display()
+    );
+    let _ = std::fs::remove_file(&marker);
+    if made_folder {
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+}
+
+fn readme_play_folder() -> PathBuf {
+    if cfg!(windows) {
+        PathBuf::from(std::env::var("TEMP").unwrap_or_else(|_| ".".to_string())).join("yard")
+    } else {
+        PathBuf::from("/tmp/yard")
+    }
 }
 
 #[then(expr = "the session reaches the ending and spook verify passes")]

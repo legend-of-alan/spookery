@@ -104,19 +104,28 @@ def main() -> None:
     setup, run_line, play_line, verify_line = classify(os_body)
     if not lines or not ending or not run_line or not play_line or not verify_line:
         raise SystemExit("the Quick start section is missing a fence")
-    dest = copy_dest(setup)
-    if dest is not None and dest.exists():
-        shutil.rmtree(dest)
-    run_setup(setup)
-    apply_bin()
-    stub, stub_port = start_stub()
+    # cargo test brings its own binary. It must not use the README folder or
+    # the default ports, and it may delete only the scratch folder it made.
+    scratch_root: Path | None = None
+    scratch: Path | None = None
+    stub: ThreadingHTTPServer | None = None
     host: Pipe | None = None
     gm: Pipe | None = None
     play: Pipe | None = None
     try:
-        host = spawn(spook_args(run_line))
+        if os.environ.get("SPOOK_QUICKSTART_BIN"):
+            scratch_root = Path(tempfile.mkdtemp(prefix="spook-readme-"))
+            scratch = scratch_root / "pack"
+            shutil.copytree(ROOT / "packs" / "sample-d20", scratch)
+        run_setup(setup, skip_copy=scratch is not None)
+        apply_bin()
+        stub, stub_port = start_stub()
+        if scratch is not None:
+            host = spawn(["spook", "run", str(scratch), "--addr", "127.0.0.1:0"])
+        else:
+            host = spawn(spook_args(run_line))
         game, door = wait_listening(host)
-        pack = spook_args(run_line)[2]
+        pack = str(scratch) if scratch is not None else spook_args(run_line)[2]
         env = os.environ.copy()
         env["SPOOK_GM_KEY"] = "stub"
         env["SPOOK_GM_URL"] = f"http://127.0.0.1:{stub_port}/v1"
@@ -126,7 +135,10 @@ def main() -> None:
             env=env,
         )
         wait_text(gm.err, "listening", 30, "the stub GM did not sit", gm, host)
-        play = spawn(spook_args(play_line))
+        if scratch is not None:
+            play = spawn(["spook", "play", pack, "--addr", game])
+        else:
+            play = spawn(spook_args(play_line))
         wait_text(play.out, "You are in", 30, "play did not show a place", play, host, gm)
         assert play.proc.stdin is not None
         for line in lines:
@@ -141,8 +153,11 @@ def main() -> None:
             dump("the host exited", code, host, gm, play)
         print("--- play ---")
         print("".join(play.out), end="")
+        verify_args = (
+            ["spook", "verify", pack] if scratch is not None else spook_args(verify_line)
+        )
         verified = subprocess.run(
-            spook_args(verify_line),
+            verify_args,
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -159,9 +174,10 @@ def main() -> None:
         stop(play)
         stop(gm)
         stop(host)
-        stub.shutdown()
-        if dest is not None and os.environ.get("SPOOK_QUICKSTART_BIN") and dest.exists():
-            shutil.rmtree(dest, ignore_errors=True)
+        if stub is not None:
+            stub.shutdown()
+        if scratch_root is not None:
+            shutil.rmtree(scratch_root, ignore_errors=True)
 
 
 def section_body(text: str, level: str, title: str) -> str:
@@ -205,22 +221,12 @@ def classify(text: str) -> tuple[str, str, str, str]:
     return "\n".join(setup), run, play, verify
 
 
-def copy_dest(setup: str) -> Path | None:
-    for line in setup.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("cp "):
-            return Path(expand(stripped.split()[-1]))
-        if stripped.lower().startswith("copy-item"):
-            return Path(expand(stripped.split()[-1]))
-    return None
-
-
 def expand(text: str) -> str:
     temp = os.environ.get("TEMP", "")
     return text.replace("$env:TEMP", temp).replace("%TEMP%", temp)
 
 
-def run_setup(setup: str) -> None:
+def run_setup(setup: str, skip_copy: bool) -> None:
     kept: list[str] = []
     in_repo = (ROOT / "Cargo.toml").is_file()
     skip_build = bool(os.environ.get("SPOOK_QUICKSTART_BIN"))
@@ -229,6 +235,8 @@ def run_setup(setup: str) -> None:
         if in_repo and (stripped.startswith("git clone") or stripped.startswith("cd ")):
             continue
         if skip_build and stripped.startswith("cargo "):
+            continue
+        if skip_copy and (stripped.startswith("cp ") or stripped.lower().startswith("copy-item")):
             continue
         kept.append(line)
     body = "\n".join(kept) + "\n"
