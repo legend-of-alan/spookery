@@ -186,6 +186,10 @@ pub fn code_result(code: &str) -> Value {
     crate::protocol::code_result(code)
 }
 
+pub fn released_result() -> Value {
+    crate::protocol::released_result()
+}
+
 pub fn session_status(
     now: &Now,
     queued: &[Intent],

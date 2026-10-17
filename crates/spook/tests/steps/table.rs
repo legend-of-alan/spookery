@@ -162,6 +162,16 @@ pub fn wait_tick_count(pack: &Path, count: usize) -> Vec<String> {
     wait_ticks_until(pack, &format!("{count} ticks"), |keys| keys.len() >= count)
 }
 
+/// Waits until a tick after `before` holds that actor's player `wait`.
+pub fn wait_actor_wait(pack: &Path, actor_id: &str, before: usize) -> Vec<String> {
+    wait_ticks_until(pack, &format!("{actor_id}'s wait"), |keys| {
+        keys.get(before..)
+            .unwrap_or_default()
+            .iter()
+            .any(|key| list_player_waits(pack, key).iter().any(|id| id == actor_id))
+    })
+}
+
 pub struct Pending {
     child: Child,
     stdin: Option<ChildStdin>,
@@ -520,6 +530,19 @@ pub fn actor_text(world: &World, actor_id: &str) -> String {
 }
 
 pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
+    let mark = actor_line(world, actor_id, line);
+    let slot = Arc::clone(
+        &live_ref(world)
+            .players
+            .iter()
+            .find(|player| player.actor_id == actor_id)
+            .unwrap_or_else(|| panic!("no seat for {actor_id}"))
+            .text,
+    );
+    wait_suffix(&slot, mark, needle)
+}
+
+pub fn actor_line(world: &mut World, actor_id: &str, line: &str) -> usize {
     let live = live_mut(world);
     let player = live
         .players
@@ -532,8 +555,7 @@ pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -
         .write
         .flush()
         .unwrap_or_else(|err| panic!("flush: {err}"));
-    let slot = Arc::clone(&player.text);
-    wait_suffix(&slot, mark, needle)
+    mark
 }
 
 pub fn stop_server(world: &mut World) {
@@ -560,11 +582,22 @@ pub fn close_actor(world: &mut World, actor_id: &str) {
         .unwrap_or_else(|err| panic!("flush: {err}"));
 }
 
-pub fn release_status_gm(world: &mut World) {
+/// `close` answers after the seat is free. Dropping the socket does not.
+pub fn release_gm(world: &mut World) -> String {
+    let text = gm_call(world, 91, "close", "{}");
+    assert!(
+        text.contains("\"released\":true"),
+        "the server did not confirm the seat was free\n{text}"
+    );
     let live = live_mut(world);
-    if live.gm_probe {
-        live.gm = None;
-        live.gm_probe = false;
+    live.gm = None;
+    live.gm_probe = false;
+    text
+}
+
+pub fn release_status_gm(world: &mut World) {
+    if live_ref(world).gm_probe {
+        let _ = release_gm(world);
     }
 }
 

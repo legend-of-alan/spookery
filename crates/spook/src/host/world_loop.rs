@@ -362,6 +362,10 @@ fn handle(
             if done.advanced {
                 bump_sleep(restart);
             }
+            // Free the seat before the client can read this result.
+            if done.release_seat {
+                seats.gm = None;
+            }
             let _ = reply.send(ToolReply {
                 value: done.value,
                 after,

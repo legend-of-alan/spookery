@@ -370,7 +370,7 @@ POST the initialize body. Send `Accept` and `Content-Type` as in Connect. The re
 }
 ```
 
-The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it. Dropping the session releases it too.
+The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it. Dropping the session releases it too. Neither of those waits until the seat is free. `close` does. Its result is sent after the seat is free.
 
 A second initialize, while a GM is sat, does not sit:
 
@@ -390,7 +390,7 @@ The JSON-RPC error code is the transport's. The seat token is the bracketed word
 
 ### Tools
 
-`tools/list` is the menu. The names, in order, are `session_status`, `perceive`, `intent`, `say`, and `commit_round`. Any other name is `NOT_IN_SPEC` and writes nothing.
+`tools/list` is the menu. The names, in order, are `session_status`, `perceive`, `intent`, `say`, `commit_round`, and `close`. Any other name is `NOT_IN_SPEC` and writes nothing.
 
 A call is `tools/call`. The body below is the JSON-RPC request. The result examples are the tool's structured content, the object under `result.structuredContent` on the wire. A refusal is that object with a `code`, and the seat stays up.
 
@@ -687,6 +687,30 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 ```
 
 `diff_summary` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `log_path` is the journal file for that round, or null when the round wrote no tick file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
+
+#### close
+
+No key is accepted. An empty object is legal. A key is `SCHEMA` and the seat stays up. The result is sent after the seat is free. A player line after it commits its own round.
+
+<!-- example: close-request -->
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 11,
+  "method": "tools/call",
+  "params": {
+    "name": "close",
+    "arguments": {}
+  }
+}
+```
+
+<!-- example: close-result -->
+```json
+{
+  "released": true
+}
+```
 
 An unknown tool:
 

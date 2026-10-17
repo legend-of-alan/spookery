@@ -47,18 +47,29 @@ fn refused_and_disconnected(world: &mut World, code: String) {
         0,
         "the seat was not released"
     );
-    table::release_status_gm(world);
 }
 
 #[then(expr = "a second player can sit and wait")]
 fn a_second_player_can_sit_and_wait(world: &mut World) {
     table::release_status_gm(world);
     let pack = table::pack(world).to_path_buf();
+    let before = table::list_tick_keys(&pack).len();
     table::seat_actor(world, &pack, "pc_harbormouse");
-    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
+    table::actor_line(world, "pc_harbormouse", "wait");
+    table::wait_actor_wait(&pack, "pc_harbormouse", before);
+}
+
+#[when(expr = "the GM releases the seat")]
+fn the_gm_releases_the_seat(world: &mut World) {
+    world.scratch = table::release_gm(world);
+}
+
+#[then(expr = "the server confirms the seat is free")]
+fn the_server_confirms_the_seat_is_free(world: &mut World) {
     assert!(
-        !table::list_tick_keys(&pack).is_empty(),
-        "the second player did not commit a tick"
+        world.scratch.contains("\"released\":true"),
+        "{}",
+        world.scratch
     );
 }
 
@@ -142,11 +153,10 @@ fn the_player_is_refused_with(world: &mut World, code: String) {
 
 #[then(expr = "the player can wait")]
 fn the_player_can_wait(world: &mut World) {
-    let _ = table::player_send(world, "wait", "\"kind\":");
-    assert!(
-        table::now_of(table::pack(world)).world_time > 1080,
-        "the line after invalid UTF-8 did not commit"
-    );
+    let pack = table::pack(world).to_path_buf();
+    let before = table::list_tick_keys(&pack).len();
+    table::player_write(world, "wait");
+    table::wait_actor_wait(&pack, "pc_rowan", before);
 }
 
 #[when(expr = "a socket connects and sends nothing")]
