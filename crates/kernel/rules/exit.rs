@@ -74,7 +74,7 @@ pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Mis
             text,
         });
     }
-    if let Err(gap) = cost::can_pay(canon, now, &intent.actor_id, &exit.cost) {
+    if let Err(gap) = cost::can_pay(canon, now, intent, &exit.cost) {
         return Err(Miss::CantAfford(gap.what));
     }
     Ok(())

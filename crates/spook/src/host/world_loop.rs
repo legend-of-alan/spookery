@@ -351,6 +351,7 @@ fn handle(
             let notices = if done.ticked {
                 let notices = world.take_rolls();
                 frames::write_checks(&mut done.value, &notices);
+                frames::write_dice(&mut done.value, &world.take_dice());
                 notices
             } else {
                 Vec::new()

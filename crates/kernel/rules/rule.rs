@@ -1,5 +1,6 @@
 //! One rule shape. The id is namespaced by the file that owns it.
 
+use crate::error::Reason;
 use crate::intent::Target;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -101,21 +102,69 @@ pub enum ChangeWatch {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RollSpec {
     pub check: String,
-    pub target: NumberExpr,
-    pub partial_at: Option<NumberExpr>,
+    pub target: Expr,
+    pub partial_at: Option<Expr>,
 }
 
+/// Where a parsed meter read sits in the pack file. Line and column are 1-based.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Spot {
+    pub line: u32,
+    pub column: u32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Arith {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Keep {
+    High,
+    Low,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Fun {
+    Min,
+    Max,
+}
+
+/// A number in a rule. Parsed once, when the pack loads.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum NumberExpr {
-    Literal(i64),
-    Meter { who: Who, key: String, plus: i64 },
+pub enum Expr {
+    Num(i64),
+    Dice {
+        n: u32,
+        sides: u32,
+        keep: Option<Keep>,
+    },
+    Meter {
+        who: Who,
+        key: String,
+        spot: Option<Spot>,
+    },
+    Bin {
+        op: Arith,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
+    Neg(Box<Expr>),
+    Call {
+        fun: Fun,
+        left: Box<Expr>,
+        right: Box<Expr>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Cost {
     pub minutes: u64,
-    pub meters: Vec<(String, i64)>,
-    pub items: Vec<(String, u32)>,
+    pub meters: Vec<(String, Expr)>,
+    pub items: Vec<(String, Expr)>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,7 +178,7 @@ pub enum Cond {
         who: Who,
         key: String,
         op: Op,
-        value: NumberExpr,
+        value: Expr,
     },
     Flag {
         who: Who,
@@ -147,7 +196,7 @@ pub enum Cond {
     Clock {
         id: String,
         op: Op,
-        value: NumberExpr,
+        value: Expr,
     },
     Hour {
         from: i64,
@@ -215,8 +264,8 @@ pub enum EffectTemplate {
     Meter {
         who: Who,
         key: String,
-        add: Option<i64>,
-        set: Option<i64>,
+        add: Option<Expr>,
+        set: Option<Expr>,
         resist: Option<ResistSpec>,
     },
     Flag {
@@ -311,7 +360,7 @@ pub enum ResistSpec {
     Roll {
         who: Who,
         check: String,
-        target: NumberExpr,
+        target: Expr,
         resisted: Vec<EffectTemplate>,
     },
 }
@@ -382,5 +431,419 @@ impl RuleTable {
                 .then(left.index.cmp(&right.index))
         });
         rules.into_iter().map(|rule| rule.id.as_str()).collect()
+    }
+}
+
+/// Checked arithmetic. Division rounds down. Overflow and a zero divisor are errors.
+pub(crate) fn arith(op: Arith, left: i64, right: i64) -> Result<i64, Reason> {
+    match op {
+        Arith::Add => left.checked_add(right).ok_or(Reason::OutOfRange),
+        Arith::Sub => left.checked_sub(right).ok_or(Reason::OutOfRange),
+        Arith::Mul => left.checked_mul(right).ok_or(Reason::OutOfRange),
+        Arith::Div => floor_div(left, right),
+    }
+}
+
+fn floor_div(left: i64, right: i64) -> Result<i64, Reason> {
+    if right == 0 {
+        return Err(Reason::OutOfRange);
+    }
+    let quot = left.checked_div(right).ok_or(Reason::OutOfRange)?;
+    let rem = left.checked_rem(right).ok_or(Reason::OutOfRange)?;
+    if rem != 0 && (left < 0) != (right < 0) {
+        quot.checked_sub(1).ok_or(Reason::OutOfRange)
+    } else {
+        Ok(quot)
+    }
+}
+
+impl Expr {
+    /// A value with no dice and no meter reads. Overflow is not a value.
+    pub(crate) fn constant(&self) -> Option<i64> {
+        match self {
+            Expr::Num(n) => Some(*n),
+            Expr::Dice { .. } | Expr::Meter { .. } => None,
+            Expr::Neg(inner) => inner.constant().and_then(|n| n.checked_neg()),
+            Expr::Bin { op, left, right } => {
+                let left = left.constant()?;
+                let right = right.constant()?;
+                arith(*op, left, right).ok()
+            }
+            Expr::Call { fun, left, right } => {
+                let left = left.constant()?;
+                let right = right.constant()?;
+                Some(match fun {
+                    Fun::Min => left.min(right),
+                    Fun::Max => left.max(right),
+                })
+            }
+        }
+    }
+
+    pub(crate) fn needs_dice(&self) -> bool {
+        match self {
+            Expr::Dice { .. } => true,
+            Expr::Neg(inner) => inner.needs_dice(),
+            Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+                left.needs_dice() || right.needs_dice()
+            }
+            Expr::Num(_) | Expr::Meter { .. } => false,
+        }
+    }
+
+    pub(crate) fn meters<'a>(&'a self, out: &mut Vec<(&'a Who, &'a str, Option<Spot>)>) {
+        match self {
+            Expr::Meter { who, key, spot } => out.push((who, key, *spot)),
+            Expr::Neg(inner) => inner.meters(out),
+            Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+                left.meters(out);
+                right.meters(out);
+            }
+            Expr::Num(_) | Expr::Dice { .. } => {}
+        }
+    }
+}
+
+/// Parse one expression. A literal zero divisor and `0dN` fail here.
+pub(crate) fn parse_expr(src: &str) -> Result<Expr, String> {
+    let mut parser = Parser { src, i: 0 };
+    parser.skip();
+    if parser.done() {
+        return Err(parser.bad());
+    }
+    let expr = parser.expr()?;
+    parser.skip();
+    if !parser.done() {
+        return Err(parser.bad());
+    }
+    if divides_by_zero(&expr) {
+        return Err(format!("expression '{src}' divides by zero"));
+    }
+    Ok(expr)
+}
+
+/// Fill meter spots that the parser left empty. A structured meter keeps its own spot.
+pub(crate) fn stamp_expr(expr: &mut Expr, line: u32, column: u32) {
+    if line == 0 {
+        return;
+    }
+    let spot = Spot { line, column };
+    stamp_at(expr, spot);
+}
+
+fn stamp_at(expr: &mut Expr, spot: Spot) {
+    match expr {
+        Expr::Meter { spot: slot, .. } => {
+            if slot.is_none() {
+                *slot = Some(spot);
+            }
+        }
+        Expr::Neg(inner) => stamp_at(inner, spot),
+        Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+            stamp_at(left, spot);
+            stamp_at(right, spot);
+        }
+        Expr::Num(_) | Expr::Dice { .. } => {}
+    }
+}
+
+fn divides_by_zero(expr: &Expr) -> bool {
+    match expr {
+        Expr::Bin {
+            op: Arith::Div,
+            right,
+            ..
+        } if matches!(right.as_ref(), Expr::Num(0)) => true,
+        Expr::Bin { left, right, .. } | Expr::Call { left, right, .. } => {
+            divides_by_zero(left) || divides_by_zero(right)
+        }
+        Expr::Neg(inner) => divides_by_zero(inner),
+        _ => false,
+    }
+}
+
+/// Most dice one group may roll. A larger count is almost always a typo.
+const MAX_DICE: u32 = 1000;
+
+struct Parser<'a> {
+    src: &'a str,
+    i: usize,
+}
+
+impl<'a> Parser<'a> {
+    fn expr(&mut self) -> Result<Expr, String> {
+        let mut left = self.term()?;
+        loop {
+            self.skip();
+            let op = if self.eat('+') {
+                Arith::Add
+            } else if self.eat('-') {
+                Arith::Sub
+            } else {
+                return Ok(left);
+            };
+            let right = self.term()?;
+            left = Expr::Bin {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+    }
+
+    fn term(&mut self) -> Result<Expr, String> {
+        let mut left = self.unary()?;
+        loop {
+            self.skip();
+            let op = if self.eat('*') {
+                Arith::Mul
+            } else if self.eat('/') {
+                Arith::Div
+            } else {
+                return Ok(left);
+            };
+            let right = self.unary()?;
+            left = Expr::Bin {
+                op,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+    }
+
+    fn unary(&mut self) -> Result<Expr, String> {
+        self.skip();
+        if self.eat('-') {
+            let inner = self.unary()?;
+            return Ok(Expr::Neg(Box::new(inner)));
+        }
+        self.primary()
+    }
+
+    fn primary(&mut self) -> Result<Expr, String> {
+        self.skip();
+        if self.eat('(') {
+            let inner = self.expr()?;
+            self.skip();
+            if !self.eat(')') {
+                return Err(self.bad());
+            }
+            return Ok(inner);
+        }
+        if self.peek().is_ascii_digit() {
+            return self.number_or_dice();
+        }
+        if self.peek().is_ascii_alphabetic() || self.peek() == '_' {
+            return self.call_or_meter();
+        }
+        Err(self.bad())
+    }
+
+    fn number_or_dice(&mut self) -> Result<Expr, String> {
+        let n = self.digits()?;
+        if self.eat('d') {
+            let sides = self.digits()?;
+            let keep = self.keep()?;
+            if n == 0 || sides == 0 || sides > u64::from(u32::MAX) {
+                return Err(format!("expression '{}' rolls no dice", self.src));
+            }
+            if n > u64::from(MAX_DICE) {
+                return Err(format!(
+                    "expression '{}' rolls more than {MAX_DICE} dice",
+                    self.src
+                ));
+            }
+            return Ok(Expr::Dice {
+                n: n as u32,
+                sides: sides as u32,
+                keep,
+            });
+        }
+        if n > i64::MAX as u64 {
+            return Err(self.bad());
+        }
+        Ok(Expr::Num(n as i64))
+    }
+
+    fn keep(&mut self) -> Result<Option<Keep>, String> {
+        if self.starts("kh1") {
+            self.i += 3;
+            Ok(Some(Keep::High))
+        } else if self.starts("kl1") {
+            self.i += 3;
+            Ok(Some(Keep::Low))
+        } else if self.peek() == 'k' {
+            Err(self.bad())
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn call_or_meter(&mut self) -> Result<Expr, String> {
+        let word = self.ident()?;
+        self.skip();
+        if (word == "min" || word == "max") && self.eat('(') {
+            let fun = if word == "min" { Fun::Min } else { Fun::Max };
+            let left = self.expr()?;
+            self.skip();
+            if !self.eat(',') {
+                return Err(self.bad());
+            }
+            let right = self.expr()?;
+            self.skip();
+            if !self.eat(')') {
+                return Err(self.bad());
+            }
+            return Ok(Expr::Call {
+                fun,
+                left: Box::new(left),
+                right: Box::new(right),
+            });
+        }
+        let who = if word == "place" && self.eat(':') {
+            Who::Place(self.ident()?)
+        } else {
+            match word.as_str() {
+                "self" => Who::Self_,
+                "target" => Who::Target,
+                "subject" => Who::Subject,
+                "here" => Who::Here,
+                "world" => Who::World,
+                _ => Who::Actor(word),
+            }
+        };
+        self.skip();
+        if !self.eat('.') {
+            return Err(self.bad());
+        }
+        let key = self.ident()?;
+        Ok(Expr::Meter {
+            who,
+            key,
+            spot: None,
+        })
+    }
+
+    fn digits(&mut self) -> Result<u64, String> {
+        let start = self.i;
+        if !self.peek().is_ascii_digit() {
+            return Err(self.bad());
+        }
+        while self.peek().is_ascii_digit() {
+            self.i += 1;
+        }
+        self.src[start..self.i]
+            .parse::<u64>()
+            .map_err(|_| self.bad())
+    }
+
+    fn ident(&mut self) -> Result<String, String> {
+        let start = self.i;
+        let ch = self.peek();
+        if !(ch.is_ascii_alphabetic() || ch == '_') {
+            return Err(self.bad());
+        }
+        self.i += 1;
+        while self.peek().is_ascii_alphanumeric() || self.peek() == '_' {
+            self.i += 1;
+        }
+        Ok(self.src[start..self.i].to_string())
+    }
+
+    fn skip(&mut self) {
+        while self.peek().is_whitespace() {
+            let ch = self.peek();
+            self.i += ch.len_utf8();
+        }
+    }
+
+    fn eat(&mut self, want: char) -> bool {
+        if self.peek() == want {
+            self.i += want.len_utf8();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn starts(&self, prefix: &str) -> bool {
+        self.src[self.i..].starts_with(prefix)
+    }
+
+    fn peek(&self) -> char {
+        self.src[self.i..].chars().next().unwrap_or('\0')
+    }
+
+    fn done(&self) -> bool {
+        self.i >= self.src.len()
+    }
+
+    fn bad(&self) -> String {
+        format!("expression '{}' is not a number", self.src)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_expr, Arith, Expr, Fun, Keep, Who};
+
+    #[test]
+    fn integers_dice_and_keep_parse() {
+        assert_eq!(parse_expr("12").unwrap().constant(), Some(12));
+        assert_eq!(parse_expr("-4").unwrap().constant(), Some(-4));
+        match parse_expr("2d20kh1").unwrap() {
+            Expr::Dice {
+                n: 2,
+                sides: 20,
+                keep: Some(Keep::High),
+            } => {}
+            other => panic!("{other:?}"),
+        }
+        match parse_expr("2d20kl1").unwrap() {
+            Expr::Dice {
+                keep: Some(Keep::Low),
+                ..
+            } => {}
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn arithmetic_meters_and_calls_parse() {
+        let expr = parse_expr("-(2d6 + self.str_mod)").unwrap();
+        match expr {
+            Expr::Neg(inner) => match *inner {
+                Expr::Bin { op: Arith::Add, .. } => {}
+                other => panic!("{other:?}"),
+            },
+            other => panic!("{other:?}"),
+        }
+        match parse_expr("place:loft.light").unwrap() {
+            Expr::Meter {
+                who: Who::Place(id),
+                key,
+                ..
+            } => {
+                assert_eq!(id, "loft");
+                assert_eq!(key, "light");
+            }
+            other => panic!("{other:?}"),
+        }
+        match parse_expr("min(self.hp, 4)").unwrap() {
+            Expr::Call { fun: Fun::Min, .. } => {}
+            other => panic!("{other:?}"),
+        }
+        assert_eq!(parse_expr("(10 + 2) / 3").unwrap().constant(), Some(4));
+        assert_eq!(parse_expr("-5 / 2").unwrap().constant(), Some(-3));
+    }
+
+    #[test]
+    fn zero_dice_and_a_literal_zero_divisor_fail() {
+        let zero = parse_expr("0d6").unwrap_err();
+        assert!(zero.contains("rolls no dice"), "{zero}");
+        let div = parse_expr("10 / 0").unwrap_err();
+        assert!(div.contains("divides by zero"), "{div}");
+        let typo = parse_expr("2d6 +").unwrap_err();
+        assert!(typo.contains("is not a number"), "{typo}");
     }
 }

@@ -2,7 +2,7 @@
 
 [Engine guarantees](engine-guarantees.md) states what the engine promises. The feature files test them. Where the doc and the feature files disagree, the feature files win.
 
-[Write your first pack](first-pack.md) walks through `spook new` and the first edits. [Pack reference](pack-reference.md) is the field reference for authors and agents. [Seat protocol](seat-protocol.md) is the wire for a player client or a GM integration.
+[Write your first pack](first-pack.md) walks through `spook new` and the first edits. [Pack reference](pack-reference.md) is the field reference for authors and agents. [Expressions](spec.md) is the number language those fields share. [Seat protocol](seat-protocol.md) is the wire for a player client or a GM integration.
 
 Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
@@ -31,6 +31,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Round** | One batch in which queued intents are settled together and the results are logged. |
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
+| **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |
 | **GM** | The storyteller seat. Usually an agent that talks to the agent door; `spook ai-gm` is the built-in model GM. |
 | **Play door** | The human client, `spook play`, over loopback. |
 | **Agent door** | The MCP endpoint `spook run` serves, `http://127.0.0.1:9738/mcp` by default. |
@@ -39,7 +40,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 
 ```text
 README.md              how to build and play
-docs/                  guarantees, first-pack guide, pack reference, seat protocol, this file
+docs/                  guarantees, first-pack guide, pack reference, expressions, seat protocol, this file
 packs/                 sample packs (oneshot-docks is the official fixture)
 .grok/skills/          the author-pack skill
 crates/

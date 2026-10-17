@@ -38,21 +38,21 @@ pub fn finish_round(
     record: String,
     notices: Vec<RollReport>,
     keep_queue: bool,
-    delivered: Delivered,
+    mut delivered: Delivered,
 ) -> Result<(), Reason> {
+    let dice = std::mem::take(&mut delivered.dice);
     let humans = draft.now().presence.humans;
     let paths = world.store_delivery(delivered, humans);
     match store {
         RoundStore::Hold => {
-            let tick_index = draft.now().tick_index;
             let now = draft.now().clone();
             let memories = draft.memories().to_vec();
-            world.hold_uncommitted(now, record, tick_index, memories, paths, notices);
+            world.hold_uncommitted(now, record, memories, paths, notices, dice);
             Ok(())
         }
         RoundStore::Write => {
             commit_round(world, draft, &record)?;
-            world.note_committed(notices, keep_queue);
+            world.note_committed(notices, dice, keep_queue);
             Ok(())
         }
         RoundStore::Memory => {
@@ -63,7 +63,7 @@ pub fn finish_round(
                 .ok_or(Reason::CommitConflict)?;
             canonicalize(&mut draft.state);
             world.now = draft.state;
-            world.note_committed(notices, keep_queue);
+            world.note_committed(notices, dice, keep_queue);
             Ok(())
         }
     }
@@ -586,6 +586,7 @@ mod tests {
             effects: Vec::new(),
             arrivals: Vec::new(),
             fast_forward: false,
+            dice: Vec::new(),
             steps_run: Vec::new(),
             memories: Vec::new(),
             now_hash: String::new(),

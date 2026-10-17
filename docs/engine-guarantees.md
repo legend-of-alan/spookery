@@ -51,13 +51,16 @@ run, verify names that round and the first effect that differs. Each journal
 record reads back as the bytes that were written. Replay prints the ending
 revision and leaves the pack unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
-them. A change of who is present, and a migrate between rounds, verify too.
+them. A number in a rule can roll dice, including an NPC habit's effect. Those faces are seeded with the
+round, written on the journal line, and shown to the GM. Replay rolls them
+again. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
 
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/replay/typed_journal_records.feature`,
 `features/replay/journal_bundles.feature`,
-`features/round/each_roll_has_its_own_seed.feature`, and
-`features/rules/rule_versions.feature`.
+`features/round/each_roll_has_its_own_seed.feature`,
+`features/rules/rule_versions.feature`, and
+`features/rules/rule_numbers.feature`.
 
 ## Visibility
 
@@ -66,7 +69,7 @@ does not reveal a hidden sentence. Check flags a hidden sentence copied into a
 place body or a note. Audit fails when a player's view contains a hidden fact
 they do not know, or a note whose id is that fact. Saying a hidden fact does not
 teach it. Audit records a note and still passes. Strict audit fails. Roll faces
-go to the GM. The player hears success, partial, or miss. An NPC's roll sends
+go to the GM. Expression dice do too. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
 the player no roll line. Host status shows the host-only trace. The player's
 resume leaves that trace out. A place lists only its own stock.
 

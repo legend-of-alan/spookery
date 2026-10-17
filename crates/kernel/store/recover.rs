@@ -251,6 +251,7 @@ mod tests {
             effects: Vec::new(),
             arrivals: Vec::new(),
             fast_forward: false,
+            dice: Vec::new(),
             steps_run: Vec::new(),
             memories: Vec::new(),
             now_hash: String::new(),

@@ -12,7 +12,7 @@ use spookery_kernel::api::rules::expr::{self, Ctx};
 use spookery_kernel::api::rules::{RollReport, RollResult};
 use spookery_kernel::api::Reason;
 
-use super::resolve::{roll_subject, SubjectRoll};
+use super::resolve::{roll_with_key, SubjectRoll};
 use crate::state::Round;
 
 /// Change rules, edge-triggered, to a fixpoint.
@@ -154,77 +154,87 @@ fn expand_hit(
     subject: &str,
     kind: ActorKind,
 ) -> Option<Fired> {
-    let mut rolled = None;
-    let mut resist = Vec::new();
-    let outcome = if let Some(spec) = &rule.roll {
+    super::resolve::with_dice(round, |held| {
+        let mut roller = held.roller(&rule.id, subject);
+        let mut rolled = None;
+        let mut resist = Vec::new();
         let ctx = Ctx { intent };
-        let target = expr::eval(canon, now, &ctx, &spec.target).ok()?;
-        let partial_at = match &spec.partial_at {
-            Some(expr) => Some(expr::eval(canon, now, &ctx, expr).ok()?),
-            None => None,
-        };
-        let actor = now.actors.get(subject)?;
-        let out = roll_subject(
-            round,
-            &canon.checks,
-            &canon.meters,
-            &SubjectRoll {
-                rule_id: &rule.id,
-                actor_kind: kind,
-                actor_id: subject,
-                check_id: &spec.check,
-                target,
-                partial_at,
-                live: Some(actor),
-            },
-        )
-        .ok()?;
-        let band = out.outcome;
-        rolled = Some(out);
-        Some(band)
-    } else {
-        None
-    };
-    let effects = expand_rule(
-        canon,
-        now,
-        rule,
-        intent,
-        outcome,
-        |actor_id, check_id, target| {
-            let actor = now.actors.get(actor_id).ok_or(Reason::UnknownKey)?;
-            let actor_kind = if actor.is_pc() {
-                ActorKind::Player
-            } else {
-                ActorKind::Npc
+        let outcome = if let Some(spec) = &rule.roll {
+            let target = expr::show(canon, now, &ctx, &spec.target, &mut roller)
+                .ok()?
+                .value;
+            let partial_at = match &spec.partial_at {
+                Some(expr) => Some(expr::show(canon, now, &ctx, expr, &mut roller).ok()?.value),
+                None => None,
             };
-            let out = roll_subject(
-                round,
+            let actor = now.actors.get(subject)?;
+            let key = held.key(&rule.id, subject);
+            let out = roll_with_key(
+                now,
                 &canon.checks,
                 &canon.meters,
                 &SubjectRoll {
                     rule_id: &rule.id,
-                    actor_kind,
-                    actor_id,
-                    check_id,
+                    actor_kind: kind,
+                    actor_id: subject,
+                    check_id: &spec.check,
                     target,
-                    partial_at: None,
+                    partial_at,
                     live: Some(actor),
                 },
-            )?;
+                &key,
+            )
+            .ok()?;
             let band = out.outcome;
-            resist.push(RollReport::Rolled {
-                actor_id: actor_id.to_string(),
-                out,
-            });
-            Ok(band)
-        },
-    )
-    .ok()?;
-    Some(Fired {
-        effects,
-        rolled,
-        resist,
+            rolled = Some(out);
+            Some(band)
+        } else {
+            None
+        };
+        let effects = expand_rule(
+            canon,
+            now,
+            rule,
+            intent,
+            outcome,
+            &mut roller,
+            |actor_id, check_id, target| {
+                let actor = now.actors.get(actor_id).ok_or(Reason::UnknownKey)?;
+                let actor_kind = if actor.is_pc() {
+                    ActorKind::Player
+                } else {
+                    ActorKind::Npc
+                };
+                let key = held.key(&rule.id, actor_id);
+                let out = roll_with_key(
+                    now,
+                    &canon.checks,
+                    &canon.meters,
+                    &SubjectRoll {
+                        rule_id: &rule.id,
+                        actor_kind,
+                        actor_id,
+                        check_id,
+                        target,
+                        partial_at: None,
+                        live: Some(actor),
+                    },
+                    &key,
+                )?;
+                let band = out.outcome;
+                resist.push(RollReport::Rolled {
+                    actor_id: actor_id.to_string(),
+                    out,
+                });
+                Ok(band)
+            },
+        )
+        .ok()?;
+        Some(Fired {
+            effects,
+            rolled,
+            resist,
+        })
     })
 }
 

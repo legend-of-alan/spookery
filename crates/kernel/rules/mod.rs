@@ -12,4 +12,4 @@ pub(crate) mod perceive;
 pub mod roll;
 pub(crate) mod rule;
 
-pub use roll::{faces, roll, RollInput, RollKey, RollReport, RollResult};
+pub use roll::{faces, faces_from, roll, RollInput, RollKey, RollReport, RollResult};

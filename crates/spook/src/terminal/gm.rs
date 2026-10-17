@@ -249,6 +249,7 @@ impl Session {
             return;
         };
         let checks = render_checks(&outcome.body);
+        let dice = render_dice(&outcome.body);
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
         // either side is shown once.
@@ -269,6 +270,9 @@ impl Session {
         }
         emit(&render_diff(&outcome.body));
         for line in &checks {
+            emit(line);
+        }
+        for line in &dice {
             emit(line);
         }
         self.printed_checks.printed(checks);
@@ -566,6 +570,16 @@ fn render_diff(body: &Value) -> String {
     } else {
         format!("Changed:\n{}", rows.join("\n"))
     }
+}
+
+fn render_dice(body: &Value) -> Vec<String> {
+    let Some(lines) = body.get("dice").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    lines
+        .iter()
+        .filter_map(|line| line.as_str().map(|line| format!("dice {line}")))
+        .collect()
 }
 
 fn render_checks(body: &Value) -> Vec<String> {
