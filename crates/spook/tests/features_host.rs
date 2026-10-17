@@ -17,8 +17,8 @@ mod ports;
 #[path = "steps/harness.rs"]
 mod harness;
 
-#[path = "steps/speech.rs"]
-mod speech;
+#[path = "steps/player_speech.rs"]
+mod player_speech;
 
 #[path = "steps/seats.rs"]
 mod seats;
@@ -29,8 +29,8 @@ mod matters;
 #[path = "steps/place.rs"]
 mod place;
 
-#[path = "steps/limits.rs"]
-mod limits;
+#[path = "steps/listener_limits.rs"]
+mod listener_limits;
 
 #[path = "steps/loopback.rs"]
 mod loopback;

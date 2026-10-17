@@ -1,14 +1,14 @@
 mod gm_loop;
-mod http;
 mod llm;
+mod llm_http;
 mod prompt;
 mod wire;
 
 use std::path::Path;
 
 pub use gm_loop::{run_ai_gm, Watch};
-pub use http::{Clock, Env, HttpModel, Limits, WallClock};
 pub use llm::{CompleteError, CompletionRequest, Model, Script};
+pub use llm_http::{Clock, Env, HttpModel, Limits, WallClock};
 pub use prompt::{
     from_canon, keep, parse_actions, prepare, render_prompt, ActionKind, HandledSay, MenuRow,
     OutgoingSay, Prepared, PromptSide, QueueItem, RollLine, TurnView, Wake,
@@ -39,7 +39,7 @@ pub(crate) fn fail(message: impl Into<String>) -> HostError {
 ///
 /// A missing `SPOOK_GM_KEY`, `SPOOK_GM_URL`, or `SPOOK_GM_MODEL` is reported before the dial.
 pub fn sit(pack: &Path, addr: &str, door: Option<&str>) -> Result<(), HostError> {
-    let env = http::require_env()?;
-    let mut model = http::HttpModel::new(env)?;
+    let env = llm_http::require_env()?;
+    let mut model = llm_http::HttpModel::new(env)?;
     run_ai_gm(pack, addr, door, &mut model, &Watch::default())
 }

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use spookery_kernel::api::Reason;
 
-use super::http;
+use super::mcp_http;
 use super::world_loop::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};
 
 pub enum Error {
@@ -16,9 +16,9 @@ pub enum Error {
     Io(io::Error),
 }
 
-pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Result<(), Error> {
+pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<(), Error> {
     let listener = TcpListener::bind(addr).map_err(Error::Io)?;
-    let http_listener = TcpListener::bind(door_request(addr, mcp_http)?).map_err(Error::Io)?;
+    let http_listener = TcpListener::bind(door_request(addr, mcp_addr)?).map_err(Error::Io)?;
     http_listener.set_nonblocking(true).map_err(Error::Io)?;
     let game_addr = listener.local_addr().map_err(Error::Io)?;
     let door_addr = http_listener.local_addr().map_err(Error::Io)?;
@@ -73,7 +73,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
     let tx_http = tx.clone();
     let ids = Arc::clone(&next_conn);
     handle.spawn(async move {
-        http::serve(listener, tx_http, ids).await;
+        mcp_http::serve(listener, tx_http, ids).await;
     });
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if arm_idle_timer {
@@ -117,8 +117,8 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
 
 /// The agent door to bind. A fixed game port keeps the next port. Port 0, on
 /// the game address or on `--mcp-http`, asks the OS for a port of its own.
-fn door_request(game: SocketAddr, mcp_http: Option<SocketAddr>) -> Result<SocketAddr, Error> {
-    if let Some(door) = mcp_http {
+fn door_request(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAddr, Error> {
+    if let Some(door) = mcp_addr {
         return Ok(door);
     }
     if game.port() == 0 {
