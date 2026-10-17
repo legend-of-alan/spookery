@@ -14,7 +14,7 @@ use spookery_kernel::api::Reason;
 use crate::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.trace.push("resolve".to_string());
+    round.steps_run.push("resolve".to_string());
     round.frozen = draft.now().clone();
     let candidates = round.candidates.clone();
     for intent in candidates {
@@ -25,7 +25,9 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
 }
 
 fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolution, Reason> {
-    round.trace.push(format!("perceive:{}", intent.actor_id));
+    round
+        .steps_run
+        .push(format!("perceive:{}", intent.actor_id));
     let view = perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
     if view.known_facts.is_empty() {
         return Ok(refused("empty_perceive", None));
@@ -38,7 +40,7 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
         return Ok(Resolution::Ready { rolled: None });
     }
     if let Some(roll) = rule.roll.clone() {
-        round.trace.push("resolve_check".to_string());
+        round.steps_run.push("resolve_check".to_string());
         return roll_check(round, draft, intent, &roll);
     }
     Ok(Resolution::Ready { rolled: None })

@@ -9,7 +9,7 @@ use spookery_kernel::api::model::{Clock, Now};
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 use spookery_round::RoundCause;
 
-use super::tool_trace::read_tool_trace;
+use super::steps_run::read_steps_run;
 use crate::support::{self, temp_pack};
 use crate::World;
 
@@ -44,7 +44,7 @@ fn nell_travels_via_door(world: &mut World) {
 fn bell_fires_in_the_same_tick(world: &mut World) {
     let tick = latest(world.pack.as_ref().unwrap());
     assert!(
-        read_tool_trace(&tick)
+        read_steps_run(&tick)
             .iter()
             .any(|name| name == "place:docks_shop/bell"),
         "bell did not fire\n{tick}"
@@ -61,7 +61,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
     );
     let tick = latest(&pack);
     assert!(
-        read_tool_trace(&tick)
+        read_steps_run(&tick)
             .iter()
             .any(|name| name == "place:docks_shop/bell"),
         "a teleport did not fire the bell\n{tick}"
@@ -94,7 +94,7 @@ fn briar_has_flag_downed(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let tick = latest(pack);
     assert!(
-        read_tool_trace(&tick)
+        read_steps_run(&tick)
             .iter()
             .any(|name| name == "story:injury/downed"),
         "the downed rule did not fire\n{tick}"
@@ -136,7 +136,7 @@ fn another_tick_passes(world: &mut World) {
 fn the_rule_does_not_fire_again(world: &mut World) {
     let tick = latest(world.pack.as_ref().unwrap());
     assert!(
-        read_tool_trace(&tick)
+        read_steps_run(&tick)
             .iter()
             .all(|name| name != "story:injury/downed"),
         "the downed rule fired again\n{tick}"
@@ -301,7 +301,7 @@ fn a_tick_stops_at_depth_4(world: &mut World) {
         vec![intent("raise-sun", "pc_nell", "raise", Target::Empty)],
     );
     let tick = latest(&pack);
-    let names = read_tool_trace(&tick);
+    let names = read_steps_run(&tick);
     let suns = names
         .iter()
         .filter(|name| name.as_str() == "story:loop/sun_to_moon")

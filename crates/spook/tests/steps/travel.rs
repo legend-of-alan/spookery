@@ -389,8 +389,8 @@ fn the_habit_runs_at_half(world: &mut World) {
         .into_iter()
         .find(|name| tick_file(&pack, name)["world_time_after"] == EVENING + 5)
         .unwrap_or_else(|| panic!("no 21:35 tick"));
-    let trace = tick_file(&pack, &tick)["tool_trace"].to_string();
-    assert!(trace.contains("cast:bram/toll"), "{trace}");
+    let steps = tick_file(&pack, &tick)["steps_run"].to_string();
+    assert!(steps.contains("cast:bram/toll"), "{steps}");
 }
 
 #[given(expr = "a GM is seated and both PCs are busy")]

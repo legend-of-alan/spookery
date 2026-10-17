@@ -445,9 +445,9 @@ fn lark_attacks(world: &mut World) {
 fn the_dagger_rule_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
-    let trace = tick["tool_trace"].to_string();
-    assert!(trace.contains("item:poisoned_dagger/attack"), "{trace}");
-    assert!(!trace.contains("verb:attack"), "{trace}");
+    let steps = tick["steps_run"].to_string();
+    assert!(steps.contains("item:poisoned_dagger/attack"), "{steps}");
+    assert!(!steps.contains("verb:attack"), "{steps}");
     assert_eq!(hp(pack, "pc_nell"), 5);
 }
 
@@ -455,9 +455,9 @@ fn the_dagger_rule_ran(world: &mut World) {
 fn bare_hands_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
-    let trace = tick["tool_trace"].to_string();
-    assert!(trace.contains("verb:attack"), "{trace}");
-    assert!(!trace.contains("item:poisoned_dagger/attack"), "{trace}");
+    let steps = tick["steps_run"].to_string();
+    assert!(steps.contains("verb:attack"), "{steps}");
+    assert!(!steps.contains("item:poisoned_dagger/attack"), "{steps}");
     assert_eq!(hp(pack, "pc_nell"), 7);
 }
 

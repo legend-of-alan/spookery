@@ -5,8 +5,8 @@ use serde_json::Value;
 
 use crate::World;
 
+use super::steps_run::{assert_standard_steps_omitted, read_steps_run, read_tick};
 use super::table;
-use super::tool_trace::{assert_standard_steps_omitted, read_tick, read_tool_trace};
 
 #[given(expr = "an empty directory")]
 fn an_empty_directory(world: &mut World) {
@@ -425,7 +425,7 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
 #[then(expr = "the first tick lists cast:mira\\/leave_door_note and omits the standard steps")]
 fn the_first_tick_keeps_only_the_extra_steps(world: &mut World) {
     let tick = read_tick(table::pack(world), "tick-0001");
-    let names = read_tool_trace(&tick);
+    let names = read_steps_run(&tick);
     assert!(
         names.iter().any(|name| name == "cast:mira/leave_door_note"),
         "{names:?}"
@@ -433,10 +433,10 @@ fn the_first_tick_keeps_only_the_extra_steps(world: &mut World) {
     assert_standard_steps_omitted(&tick);
 }
 
-#[then(expr = "the second tick omits tool_trace")]
-fn the_second_tick_omits_tool_trace(world: &mut World) {
+#[then(expr = "the second tick omits steps_run")]
+fn the_second_tick_omits_steps_run(world: &mut World) {
     let tick = read_tick(table::pack(world), "tick-0002");
-    assert!(tick.get("tool_trace").is_none(), "{tick}");
+    assert!(tick.get("steps_run").is_none(), "{tick}");
 }
 
 #[then(expr = "parallel full verification matches serial replay")]
