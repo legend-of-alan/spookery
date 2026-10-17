@@ -55,8 +55,9 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: clippy
-        # Linux already gates clippy on PRs and main; macOS and Windows skip it (~20s each).
-        if: runner.os == 'Linux'
+        # macOS builds the same unix code as Linux, so it skips clippy. Windows keeps it
+        # for the cfg(windows) code in kernel/lock.rs, kernel/store/durable.rs and host/player_moves.rs.
+        if: runner.os != 'macOS'
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: build
