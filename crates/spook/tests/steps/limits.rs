@@ -54,7 +54,7 @@ fn a_second_player_can_sit_and_wait(world: &mut World) {
     table::seat_actor(&pack, "pc_harbormouse");
     let _ = table::actor_send("pc_harbormouse", "wait", "\"kind\":");
     assert!(
-        !table::tick_names(&pack).is_empty(),
+        !table::list_tick_keys(&pack).is_empty(),
         "the second player did not commit a tick"
     );
 }
@@ -188,7 +188,7 @@ fn the_socket_is_closed_before_the_hello(world: &mut World) {
 #[when(expr = "one player sends 200 lines as fast as it can")]
 fn one_player_sends_200_lines(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let before = table::tick_names(&pack).len();
+    let before = table::list_tick_keys(&pack).len();
     let started = Instant::now();
     crate::with_live(|live| {
         let player = live
@@ -210,7 +210,7 @@ fn one_player_sends_200_lines(world: &mut World) {
     // Past the burst means a later line was kept. A drop would stop at 11 ticks.
     let deadline = Instant::now() + Duration::from_secs(8);
     let ticks = loop {
-        let ticks = table::tick_names(&pack).len().saturating_sub(before);
+        let ticks = table::list_tick_keys(&pack).len().saturating_sub(before);
         if ticks >= 12 || Instant::now() > deadline {
             break ticks;
         }

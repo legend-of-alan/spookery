@@ -6,7 +6,6 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
-use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 
 use super::http;
@@ -23,7 +22,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_http: Option<SocketAddr>) -> Re
     http_listener.set_nonblocking(true).map_err(Error::Io)?;
     let game_addr = listener.local_addr().map_err(Error::Io)?;
     let door_addr = http_listener.local_addr().map_err(Error::Io)?;
-    let mut world = World::open(pack).map_err(Error::Reason)?;
+    let mut world = spookery_round::resume(pack).map_err(Error::Reason)?;
     if world_loop::clear_crashed(&mut world).map_err(Error::Reason)? {
         world_loop::print_host(&world);
     }

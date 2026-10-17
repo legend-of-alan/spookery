@@ -37,6 +37,8 @@ pub struct Canon {
     pub meters: BTreeMap<String, MeterDef>,
     pub items: BTreeMap<String, ItemCanon>,
     pub budget: Budget,
+    /// Ticks between journal checkpoints. `save.yaml` is rewritten then.
+    pub checkpoint_every: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -481,6 +483,21 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     diags.extend(reveal_problems(&rules, &facts));
     diags.extend(find_bare_resist(&rules));
     diags.extend(broken_exits(&places, &facts, &items));
+    let checkpoint_every = match pack.as_ref().and_then(|file| file.checkpoint_every) {
+        None => 100,
+        Some(0) => {
+            diags.push(
+                schema_error(
+                    "pack.yaml",
+                    "checkpoint_every is 0",
+                    "set checkpoint_every to a positive number of ticks, or omit it",
+                )
+                .with_path("checkpoint_every"),
+            );
+            100
+        }
+        Some(every) => every,
+    };
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -499,6 +516,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         meters: meters.expect("meters loaded"),
         items,
         budget: budget.expect("tick loaded"),
+        checkpoint_every,
     })
 }
 
@@ -1605,6 +1623,8 @@ struct PackFile {
     title: String,
     system: String,
     start: PackStart,
+    #[serde(default)]
+    checkpoint_every: Option<u64>,
 }
 
 #[derive(Deserialize)]

@@ -65,40 +65,29 @@ pub fn pack(world: &World) -> &Path {
         .unwrap_or_else(|| panic!("no docks table"))
 }
 
-/// Read `state/save.yaml` without opening the shard. `World::open` runs
-/// recovery, which writes, and races a live server mid-commit. The server
-/// replaces save.yaml by atomic rename, so a read is always whole. Windows
-/// can briefly refuse to open a file mid-rename, so a failed read retries.
+/// Replay the journal to the current state. `save.yaml` is the last checkpoint.
+/// A torn last line is ignored, so a read during an append still sees complete
+/// records. A failed read retries.
 pub fn now_of(pack: &Path) -> Now {
-    let path = pack.join("state/save.yaml");
     let start = Instant::now();
-    let text = loop {
-        match fs::read_to_string(&path) {
-            Ok(text) => break text,
+    loop {
+        match spookery_round::from_journal(pack, None, None) {
+            Ok(report) => {
+                let text = std::str::from_utf8(&report.now_yaml)
+                    .unwrap_or_else(|err| panic!("save text: {err}"));
+                return spookery_kernel::api::store::codec::load_save(text)
+                    .unwrap_or_else(|err| panic!("load now: {err:?}"));
+            }
             Err(err) if start.elapsed() > Duration::from_secs(2) => {
-                panic!("read save.yaml: {err}")
+                panic!("replay now: {err}");
             }
             Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
-    };
-    spookery_kernel::api::store::codec::load_save(&text)
-        .unwrap_or_else(|err| panic!("load now: {err:?}"))
+    }
 }
 
-pub fn tick_names(pack: &Path) -> Vec<String> {
-    let dir = pack.join("state/journal");
-    let mut names = Vec::new();
-    if dir.is_dir() {
-        for entry in fs::read_dir(&dir).unwrap_or_else(|err| panic!("read log: {err}")) {
-            let entry = entry.unwrap_or_else(|err| panic!("dirent: {err}"));
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if name.starts_with("tick-") && name.ends_with(".jsonl") {
-                names.push(name);
-            }
-        }
-    }
-    names.sort();
-    names
+pub fn list_tick_keys(pack: &Path) -> Vec<String> {
+    spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
 pub struct Pending {
@@ -396,13 +385,9 @@ pub fn wait_gm_until(want: &str, done: impl Fn(&str) -> bool) -> String {
 
 pub fn wait_world_time(pack: &Path, expected: u64) {
     let start = Instant::now();
-    let path = pack.join("state/save.yaml");
     loop {
-        let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-        if let Ok(now) = spookery_kernel::api::store::codec::load_save(&text) {
-            if now.world_time == expected {
-                return;
-            }
+        if now_of(pack).world_time == expected {
+            return;
         }
         if start.elapsed() > Duration::from_secs(5) {
             panic!("world_time did not become {expected}");

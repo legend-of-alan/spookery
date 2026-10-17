@@ -101,8 +101,8 @@ fn the_player_sees_a_check_success(world: &mut World) {
 
 #[then(expr = "the tick log resolves the check without faces")]
 fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
-    let text = std::fs::read_to_string(table::pack(world).join("state/journal/tick-0001.jsonl"))
-        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
+        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     assert!(text.contains("resolve_check"), "{text}");
     assert!(!text.contains("faces"), "{text}");
 }
@@ -278,14 +278,25 @@ fn the_tick_log_records_miras_kernel_brace(world: &mut World) {
 fn replaying_the_tick_reproduces_the_save(world: &mut World) {
     let played = table::pack(world);
     let start = PathBuf::from(&world.scratch);
-    let golden = fs::read(played.join("state/save.yaml"))
+    let before = fs::read(played.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     let report = spookery_round::from_journal(played, Some(&start), None)
         .unwrap_or_else(|err| panic!("replay: {err}"));
-    assert_eq!(report.now_yaml, golden);
+    let entries = spookery_kernel::api::journal::read_entries(played)
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let expected = entries
+        .iter()
+        .rev()
+        .find(|entry| entry.changes_state())
+        .unwrap_or_else(|| panic!("no tick was written"))
+        .now_hash();
+    assert_eq!(
+        spookery_kernel::api::journal::hash_now(&report.now_yaml),
+        expected
+    );
     assert_eq!(
         fs::read(played.join("state/save.yaml")).unwrap_or_else(|err| panic!("read played: {err}")),
-        golden
+        before
     );
     let _ = fs::remove_dir_all(&start);
 }
@@ -387,8 +398,8 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 }
 
 fn tick_json(world: &World) -> Value {
-    let text = fs::read_to_string(table::pack(world).join("state/journal/tick-0001.jsonl"))
-        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
+        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }
 

@@ -6,8 +6,8 @@ Feature: A transaction does not leak a partial tick
   Scenario: An incomplete transaction is discarded
     When an incomplete transaction is opened
 
-  Scenario: A finished transaction at the same revision restores the previous save
+  Scenario: A leftover transaction directory is removed and the save stays
     When a finished transaction repeats the current revision
 
-  Scenario: A finished transaction at the next revision keeps the new save and drops orphans
+  Scenario: A torn journal tail is cut off and an orphan memory line is dropped
     When a finished transaction advances the revision

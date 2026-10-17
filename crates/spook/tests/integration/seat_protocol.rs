@@ -669,10 +669,7 @@ fn decode_body(head: &str, body: &str) -> String {
     }
     let mut rest = body;
     let mut out = String::new();
-    loop {
-        let Some((size, after)) = rest.split_once("\r\n") else {
-            break;
-        };
+    while let Some((size, after)) = rest.split_once("\r\n") {
         let Ok(len) = usize::from_str_radix(size.trim(), 16) else {
             break;
         };

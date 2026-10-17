@@ -30,7 +30,10 @@ fn copy_pack(name: &str, label: &str) -> PathBuf {
 }
 
 fn read_now(pack: &Path) -> Now {
-    load_save(&fs::read_to_string(pack.join("state/save.yaml")).unwrap()).unwrap()
+    let report =
+        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let text = std::str::from_utf8(&report.now_yaml).unwrap();
+    load_save(text).unwrap()
 }
 
 fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
@@ -85,7 +88,7 @@ fn play(
     actor: &str,
     line: &str,
 ) -> Result<spookery::host::MoveOutcome, spookery_kernel::api::rules::gate::Miss> {
-    let mut world = spookery_kernel::api::World::open(pack).unwrap_or_else(|err| {
+    let mut world = spookery_round::resume(pack).unwrap_or_else(|err| {
         panic!(
             "open {line}: {}\n{}",
             err.token(),
@@ -100,7 +103,8 @@ fn play(
 }
 
 fn tick_text(pack: &Path) -> String {
-    fs::read_to_string(pack.join("state/journal/tick-0001.jsonl")).unwrap()
+    spookery_kernel::api::journal::read_record_line(pack, "tick-0001")
+        .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
 fn write_dagger(pack: &Path, attack: &str) {
@@ -284,7 +288,7 @@ fn the_line_is_missing_and_quiet(world: &mut World) {
     assert_eq!(world.scratch, "MISSING_ITEM");
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(read_now(pack).tick_index, 0);
-    assert!(!pack.join("state/journal/tick-0001.jsonl").exists());
+    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]

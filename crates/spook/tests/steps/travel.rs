@@ -31,25 +31,13 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
 }
 
 fn tick_file(pack: &Path, name: &str) -> Value {
-    let text = fs::read_to_string(pack.join("state/journal").join(name))
-        .unwrap_or_else(|err| panic!("read {name}: {err}"));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"))
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }
 
-fn tick_names(pack: &Path) -> Vec<String> {
-    let dir = pack.join("state/journal");
-    if !dir.is_dir() {
-        return Vec::new();
-    }
-    let mut names: Vec<String> = fs::read_dir(dir)
-        .unwrap()
-        .filter_map(|entry| {
-            let name = entry.ok()?.file_name().to_string_lossy().into_owned();
-            name.starts_with("tick-").then_some(name)
-        })
-        .collect();
-    names.sort();
-    names
+fn list_tick_keys(pack: &Path) -> Vec<String> {
+    spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
 fn add_toll(pack: &Path) {
@@ -92,7 +80,7 @@ fn rejected_no_exit_and_stays(world: &mut World) {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_street");
     assert_eq!(now.world_time, 1080);
     assert!(
-        tick_names(&pack_of(world)).is_empty(),
+        list_tick_keys(&pack_of(world)).is_empty(),
         "a refused exit ticked"
     );
 }
@@ -150,7 +138,7 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let now = table::now_of(&pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert_eq!(now.world_time, 1085, "the tick shortened or skipped");
-    let tick = tick_file(&pack, "tick-0001.jsonl");
+    let tick = tick_file(&pack, "tick-0001");
     assert_eq!(tick["arrivals"][0]["arrived_at"], 1082);
     assert_eq!(tick["world_time_after"], 1085);
     assert_eq!(tick["world_time_before"], 1080);
@@ -258,7 +246,7 @@ fn two_arrivals(world: &mut World) {
 fn arrivals_are_in_time_order(world: &mut World) {
     let (_mark, _added) = table::player_send("wait", "BUSY");
     let pack = pack_of(world);
-    let names = tick_names(&pack);
+    let names = list_tick_keys(&pack);
     assert!(names.len() >= 2, "{names:?}");
     let first = tick_file(&pack, &names[0]);
     let second = tick_file(&pack, &names[1]);
@@ -289,14 +277,14 @@ fn rowan_travels_in_the_evening_tick(world: &mut World) {
 
 #[then(expr = "the tick still ends at 21:35")]
 fn the_tick_ends_at_half(world: &mut World) {
-    let tick = tick_file(&pack_of(world), "tick-0001.jsonl");
+    let tick = tick_file(&pack_of(world), "tick-0001");
     assert_eq!(tick["world_time_before"], EVENING);
     assert_eq!(tick["world_time_after"], EVENING + 5);
 }
 
 #[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that tick's line")]
 fn arrival_is_stamped(world: &mut World) {
-    let tick = tick_file(&pack_of(world), "tick-0001.jsonl");
+    let tick = tick_file(&pack_of(world), "tick-0001");
     assert_eq!(tick["arrivals"][0]["actor_id"], "pc_rowan");
     assert_eq!(tick["arrivals"][0]["arrived_at"], EVENING + 2);
     let stamped = tick["effects"]
@@ -331,8 +319,8 @@ fn ticks_never_shorten(_world: &mut World) {
     drop(seated_world);
     let idle = temp_pack("idle-length");
     spookery_round::play_pack_once(&idle).unwrap();
-    let seated_tick = tick_file(&seated, "tick-0001.jsonl");
-    let idle_tick = tick_file(&idle, "tick-0001.jsonl");
+    let seated_tick = tick_file(&seated, "tick-0001");
+    let idle_tick = tick_file(&idle, "tick-0001");
     assert_eq!(
         seated_tick["world_time_after"].as_u64().unwrap()
             - seated_tick["world_time_before"].as_u64().unwrap(),
@@ -385,7 +373,7 @@ fn both_busy_without_a_gm(world: &mut World) {
 fn the_shard_ticks_through_both_arrivals(world: &mut World) {
     let (_mark, _added) = table::player_send("wait", "BUSY");
     let pack = pack_of(world);
-    let names = tick_names(&pack);
+    let names = list_tick_keys(&pack);
     let ends: Vec<u64> = names
         .iter()
         .map(|name| tick_file(&pack, name)["world_time_after"].as_u64().unwrap())
@@ -397,7 +385,7 @@ fn the_shard_ticks_through_both_arrivals(world: &mut World) {
 #[then(expr = "an NPC habit due at 21:35 runs in that tick")]
 fn the_habit_runs_at_half(world: &mut World) {
     let pack = pack_of(world);
-    let tick = tick_names(&pack)
+    let tick = list_tick_keys(&pack)
         .into_iter()
         .find(|name| tick_file(&pack, name)["world_time_after"] == EVENING + 5)
         .unwrap_or_else(|| panic!("no 21:35 tick"));
@@ -439,7 +427,7 @@ fn twelve_ticks_then_more(world: &mut World) {
     let pack = pack_of(world);
     let (_mark, added) = table::player_send("wait", "BUSY");
     assert!(added.contains("BUSY"), "{added}");
-    assert_eq!(tick_names(&pack).len(), 12, "first burst");
+    assert_eq!(list_tick_keys(&pack).len(), 12, "first burst");
     let mid = table::now_of(&pack).world_time;
     assert_eq!(mid, EVENING + 12 * 5);
     assert!(table::now_of(&pack)
@@ -449,7 +437,7 @@ fn twelve_ticks_then_more(world: &mut World) {
         .is_busy(mid));
     let (_mark, added) = table::player_send("wait", "BUSY");
     assert!(added.contains("BUSY"), "{added}");
-    assert_eq!(tick_names(&pack).len(), 24, "second burst");
+    assert_eq!(list_tick_keys(&pack).len(), 24, "second burst");
     assert_eq!(table::now_of(&pack).world_time, mid + 12 * 5);
 }
 

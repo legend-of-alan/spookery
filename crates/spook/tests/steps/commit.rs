@@ -13,12 +13,17 @@ fn docks_rev() -> String {
 }
 
 fn studio_matches(pack: &std::path::Path, revs: &[u64]) {
+    use spookery_kernel::api::journal::{emit_entry, read_entries, JournalEntry};
     let studio = fs::read_to_string(pack.join("state/journal/studio.jsonl")).unwrap();
+    let entries = read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
     let mut expected = String::new();
-    for rev in revs {
-        let record =
-            fs::read_to_string(pack.join(format!("state/journal/migrate-{rev:04}.json"))).unwrap();
-        expected.push_str(&record);
+    for entry in &entries {
+        let JournalEntry::Migrate(record) = entry else {
+            continue;
+        };
+        if revs.contains(&record.state_rev_after) {
+            expected.push_str(&emit_entry(entry));
+        }
     }
     assert_eq!(studio, expected);
 }
@@ -139,7 +144,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
-    assert!(!pack.join("state/journal/tick-0001.jsonl").exists());
+    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
     studio_matches(pack, &[1]);
 }
 

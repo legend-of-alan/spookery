@@ -490,10 +490,10 @@ async fn connect_http(
     port: u16,
 ) -> Result<
     rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
-    rmcp::service::ClientInitializeError,
+    Box<rmcp::service::ClientInitializeError>,
 > {
     let transport = StreamableHttpClientTransport::from_uri(format!("http://127.0.0.1:{port}/mcp"));
-    client_config().serve(transport).await
+    client_config().serve(transport).await.map_err(Box::new)
 }
 
 fn listen_http(pack: &std::path::Path) -> (u16, u16) {

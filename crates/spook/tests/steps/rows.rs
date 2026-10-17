@@ -111,12 +111,12 @@ fn world_time_is_1090(world: &mut World) {
 
 #[then(expr = "the second tick records the move to the street")]
 fn the_second_tick_records_the_move(world: &mut World) {
-    assert_location(table::pack(world), "tick-0002.jsonl");
+    assert_location(table::pack(world), "tick-0002");
 }
 
 #[then(expr = "the tick records the move to the street")]
 fn the_tick_records_the_move(world: &mut World) {
-    assert_location(table::pack(world), "tick-0001.jsonl");
+    assert_location(table::pack(world), "tick-0001");
 }
 
 fn assert_location(pack: &Path, name: &str) {
@@ -133,9 +133,9 @@ fn assert_location(pack: &Path, name: &str) {
 }
 
 fn tick(pack: &Path, name: &str) -> Value {
-    let text = fs::read_to_string(pack.join("state/journal").join(name))
-        .unwrap_or_else(|err| panic!("read {name}: {err}"));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err}"))
 }
 
 fn place_of(pack: &Path) -> String {

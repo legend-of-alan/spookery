@@ -1,220 +1,146 @@
 use std::collections::BTreeSet;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use serde::Deserialize;
-
-use crate::diagnostic::reason_of;
 use crate::error::Reason;
-use crate::store::codec::load_save;
-use crate::store::durable::{fsync_dir, fsync_dirs, fsync_file, tmp_path};
+use crate::journal::{self, JournalEntry};
+use crate::model::MemoryLine;
+use crate::store::codec::emit_memory_line;
+use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
 
 pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
     let txn = state.join(".txn");
     if txn.is_dir() {
-        if !txn.join("COMPLETE").is_file() {
-            fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
-        } else {
-            let prev_now = txn.join("prev/save.yaml");
-            if !prev_now.is_file() {
-                return Err(Reason::Schema);
-            }
-            let prev = load_save(&fs::read_to_string(&prev_now).map_err(|_| Reason::Schema)?)
-                .map_err(reason_of)?;
-            let live = load_save(
-                &fs::read_to_string(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)?,
-            )
-            .map_err(reason_of)?;
-            if live.state_rev == prev.state_rev.saturating_add(1)
-                && live.state_rev != prev.state_rev
-            {
-                fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
-            } else if live.state_rev == prev.state_rev {
-                restore_prev(&txn.join("prev"), &state)?;
-                fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
-            } else {
-                return Err(Reason::Schema);
-            }
-        }
+        fs::remove_dir_all(&txn).map_err(|_| Reason::CommitConflict)?;
     }
-
-    let now =
-        load_save(&fs::read_to_string(state.join("save.yaml")).map_err(|_| Reason::NotInSpec)?)
-            .map_err(reason_of)?;
-    let log_dir = state.join("journal");
-    let mut live_ticks = BTreeSet::new();
-    if log_dir.is_dir() {
-        let mut entries = fs::read_dir(&log_dir)
-            .map_err(|_| Reason::Schema)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Reason::Schema)?;
-        entries.sort_by_key(|entry| entry.file_name());
-        for entry in entries {
-            let path = entry.path();
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            // Presence records were written by older rules. Refuse, do not migrate.
-            if name.starts_with("presence-") && name.ends_with(".json") {
-                return Err(Reason::RulesRev);
-            }
-            if !name.starts_with("tick-") || !name.ends_with(".jsonl") {
-                continue;
-            }
-            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-            match tick_head(&text) {
-                Some((tick_index, rev)) if rev <= now.state_rev => {
-                    live_ticks.insert(tick_index);
-                }
-                _ => {
-                    fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
-                }
-            }
-        }
-        drop_ahead(&log_dir, "migrate-", ".json", now.state_rev)?;
-        drop_future_base(&log_dir, now.state_rev)?;
-    }
-
-    let memories = state.join("memories");
-    if memories.is_dir() {
-        let entries = fs::read_dir(&memories)
-            .map_err(|_| Reason::Schema)?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|_| Reason::Schema)?;
-        for entry in entries {
-            let path = entry.path();
-            if path.extension().and_then(|ext| ext.to_str()) != Some("jsonl") {
-                continue;
-            }
-            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-            let mut kept = String::new();
-            let mut changed = false;
-            for line in text.lines() {
-                if line.is_empty() {
-                    continue;
-                }
-                match memory_tick(line) {
-                    Some(tick_index) if live_ticks.contains(&tick_index) => {
-                        kept.push_str(line);
-                        kept.push('\n');
-                    }
-                    _ => changed = true,
-                }
-            }
-            if changed {
-                atomic_write(&path, kept.as_bytes())?;
-            }
-        }
-    }
-
+    cut_torn_tail(root)?;
+    rebuild_memory_files(root)?;
     delete_tmp(&state);
     Ok(())
 }
 
-fn restore_prev(prev: &Path, state: &Path) -> Result<(), Reason> {
-    let mut files = Vec::new();
-    collect_rel_files(prev, prev, &mut files)?;
-    let mut parents = Vec::new();
-    let mut created_parents = Vec::new();
-    for rel in files {
-        let from = prev.join(&rel);
-        let to = state.join(&rel);
-        if let Some(parent) = to.parent() {
-            if !parent.is_dir() {
-                fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
-                if let Some(dir_parent) = parent.parent() {
-                    created_parents.push(dir_parent.to_path_buf());
+fn reason_for(detail: &str) -> Reason {
+    if detail.contains("RULES_REV") {
+        Reason::RulesRev
+    } else {
+        Reason::Schema
+    }
+}
+
+/// Memory files are a cache of the journal. The live bundle supplies lines since
+/// the last checkpoint. A line for a tick the live bundle does not have, and
+/// that the checkpoint does not cover, is dropped.
+fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
+    let records = journal::read_live(root).map_err(|fault| reason_for(&fault.detail))?;
+    let head = journal::read_head(root).map_err(|fault| reason_for(&fault.detail))?;
+    let live_ticks: BTreeSet<u64> = records
+        .iter()
+        .filter_map(|entry| match entry {
+            JournalEntry::Tick(record) => Some(record.tick_index),
+            _ => None,
+        })
+        .collect();
+    let fresh: Vec<MemoryLine> = records
+        .iter()
+        .filter_map(|entry| match entry {
+            JournalEntry::Tick(record) => Some(record.memories.clone()),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let memories = root.join("state/memories");
+    let mut actors = BTreeSet::new();
+    if memories.is_dir() {
+        for entry in fs::read_dir(&memories)
+            .map_err(|_| Reason::Schema)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| Reason::Schema)?
+        {
+            let path = entry.path();
+            if path.extension().and_then(|ext| ext.to_str()) == Some("jsonl") {
+                if let Some(name) = path.file_stem().and_then(|stem| stem.to_str()) {
+                    actors.insert(name.to_string());
                 }
             }
-            parents.push(parent.to_path_buf());
         }
-        fs::copy(&from, &to).map_err(|_| Reason::CommitConflict)?;
-        fsync_file(&to)?;
     }
-    fsync_dirs(&created_parents)?;
-    fsync_dirs(&parents)?;
-    Ok(())
-}
-
-fn collect_rel_files(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) -> Result<(), Reason> {
-    if !dir.is_dir() {
+    for line in &fresh {
+        actors.insert(line.actor_id.clone());
+    }
+    if actors.is_empty() {
         return Ok(());
     }
-    let entries = fs::read_dir(dir)
-        .map_err(|_| Reason::Schema)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| Reason::Schema)?;
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_rel_files(&path, root, out)?;
-        } else {
-            out.push(
-                path.strip_prefix(root)
-                    .map_err(|_| Reason::Schema)?
-                    .to_path_buf(),
-            );
-        }
-    }
-    Ok(())
-}
-
-fn drop_ahead(log_dir: &Path, prefix: &str, suffix: &str, live_rev: u64) -> Result<(), Reason> {
-    let mut entries = fs::read_dir(log_dir)
-        .map_err(|_| Reason::Schema)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| Reason::Schema)?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if !name.starts_with(prefix) || !name.ends_with(suffix) {
-            continue;
-        }
-        let path = entry.path();
-        let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-        match rev_after(&text) {
-            Some(rev) if rev <= live_rev => {}
-            _ => {
-                fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
+    fs::create_dir_all(&memories).map_err(|_| Reason::Schema)?;
+    for actor in actors {
+        let path = memories.join(format!("{actor}.jsonl"));
+        let mut kept = Vec::new();
+        if path.is_file() {
+            let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
+            for line in text.lines() {
+                if line.is_empty() {
+                    continue;
+                }
+                if memory_tick(line).is_some_and(|tick| keep_tick(tick, head.as_ref(), &live_ticks))
+                {
+                    kept.push(line.to_string());
+                }
             }
         }
+        for line in fresh.iter().filter(|line| line.actor_id == actor) {
+            let text = emit_memory_line(line);
+            if !kept.iter().any(|row| row == &text) {
+                kept.push(text);
+            }
+        }
+        let mut body = kept.join("\n");
+        if !body.is_empty() {
+            body.push('\n');
+        }
+        let current = fs::read_to_string(&path).unwrap_or_default();
+        if path.is_file() && current == body {
+            continue;
+        }
+        if body.is_empty() && !path.is_file() {
+            continue;
+        }
+        atomic_write(&path, body.as_bytes())?;
     }
     Ok(())
 }
 
-fn drop_future_base(log_dir: &Path, live_rev: u64) -> Result<(), Reason> {
-    let path = log_dir.join("base.yaml");
-    if !path.is_file() {
+fn keep_tick(tick: u64, head: Option<&journal::BundleHead>, live_ticks: &BTreeSet<u64>) -> bool {
+    if live_ticks.contains(&tick) {
+        return true;
+    }
+    match head {
+        Some(head) => tick <= head.tick_index,
+        None => false,
+    }
+}
+
+fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
+    let Some(path) = journal::find_live_bundle(root) else {
+        return Ok(());
+    };
+    let bytes = fs::read(&path).map_err(|_| Reason::Schema)?;
+    if bytes.is_empty() || bytes.ends_with(b"\n") {
         return Ok(());
     }
-    let text = fs::read_to_string(&path).map_err(|_| Reason::Schema)?;
-    let saved = load_save(&text).map_err(reason_of)?;
-    if saved.state_rev > live_rev {
-        fs::remove_file(&path).map_err(|_| Reason::CommitConflict)?;
-    }
+    let end = bytes
+        .iter()
+        .rposition(|byte| *byte == b'\n')
+        .map(|at| at + 1)
+        .unwrap_or(0);
+    let file = OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .map_err(|_| Reason::CommitConflict)?;
+    file.set_len(end as u64)
+        .map_err(|_| Reason::CommitConflict)?;
+    fsync_file(&path)?;
     Ok(())
-}
-
-fn tick_head(text: &str) -> Option<(u64, u64)> {
-    #[derive(Deserialize)]
-    struct TickHead {
-        tick_index: u64,
-        state_rev_after: u64,
-    }
-    let head: TickHead = serde_json::from_str(text.trim_end()).ok()?;
-    Some((head.tick_index, head.state_rev_after))
-}
-
-fn rev_after(text: &str) -> Option<u64> {
-    #[derive(Deserialize)]
-    struct RevHead {
-        state_rev_after: u64,
-    }
-    serde_json::from_str::<RevHead>(text.trim_end())
-        .ok()
-        .map(|head| head.state_rev_after)
 }
 
 fn memory_tick(line: &str) -> Option<u64> {
@@ -272,62 +198,65 @@ mod tests {
 
     use crate::commit::commit_round;
     use crate::draft::Draft;
-    use crate::store::codec::{emit_save, load_save};
     use crate::world::World;
 
     #[test]
-    fn a_crash_between_the_journal_rename_and_now_rolls_back() {
-        let root = temp_docks("crash-window");
+    fn a_torn_tail_is_cut_off_and_the_save_stays() {
+        let root = temp_docks("torn-tail");
         let mut world = World::open(&root).unwrap();
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let draft = Draft::begin(&world);
-        commit_round(
-            &mut world,
-            draft,
-            r#"{"tick_index":0,"state_rev_after":1,"rules_rev":7}"#,
-        )
-        .unwrap();
+        commit_round(&mut world, draft, &journal_line()).unwrap();
         drop(world);
-        fs::write(root.join("state/save.yaml"), &pre).unwrap();
-        let txn = root.join("state/.txn");
-        fs::create_dir_all(txn.join("prev")).unwrap();
-        fs::write(txn.join("prev/save.yaml"), &pre).unwrap();
-        fs::write(txn.join("COMPLETE"), b"").unwrap();
+        let bundle = root.join("state/journal/bundle-0000.jsonl");
+        let kept = fs::read(&bundle).unwrap();
+        let mut torn = kept.clone();
+        torn.extend(br#"{"tick_index":99,"#);
+        fs::write(&bundle, &torn).unwrap();
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
         assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
-        assert!(!root.join("state/journal/tick-0000.jsonl").exists());
-        assert_eq!(fs::read(root.join("state/journal/base.yaml")).unwrap(), pre);
-        assert!(!txn.exists());
+        assert_eq!(fs::read(&bundle).unwrap(), kept);
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
-    fn a_base_ahead_of_the_save_is_dropped_with_its_record() {
-        let root = temp_docks("base-ahead");
-        let now_path = root.join("state/save.yaml");
-        let pre = fs::read(&now_path).unwrap();
-        let mut ahead = load_save(std::str::from_utf8(&pre).unwrap()).unwrap();
-        ahead.state_rev = 1;
-        let ahead_bytes = emit_save(&ahead).unwrap().into_bytes();
+    fn an_old_one_file_record_is_refused() {
+        let root = temp_docks("old-layout");
         let log = root.join("state/journal");
         fs::create_dir_all(&log).unwrap();
-        fs::write(log.join("base.yaml"), &ahead_bytes).unwrap();
-        fs::write(
-            log.join("migrate-0001.json"),
-            "{\"kind\":\"migrate\",\"state_rev_after\":1}\n",
-        )
-        .unwrap();
-        let txn = root.join("state/.txn");
-        fs::create_dir_all(txn.join("prev")).unwrap();
-        fs::write(txn.join("prev/save.yaml"), &pre).unwrap();
-        fs::write(txn.join("COMPLETE"), b"").unwrap();
-        let opened = World::open(&root).unwrap();
-        assert_eq!(opened.now().state_rev, 0);
-        assert_eq!(fs::read(&now_path).unwrap(), pre);
-        assert!(!log.join("base.yaml").exists());
-        assert!(!log.join("migrate-0001.json").exists());
+        fs::write(log.join("migrate-0001.json"), "{}\n").unwrap();
+        match World::open(&root) {
+            Ok(_) => panic!("old layout opened"),
+            Err(err) => assert_eq!(err, crate::error::Reason::RulesRev),
+        }
         let _ = fs::remove_dir_all(&root);
+    }
+
+    fn journal_line() -> String {
+        use crate::journal::{emit_entry, JournalEntry, TickRecord};
+        emit_entry(&JournalEntry::Tick(TickRecord {
+            tick_index: 0,
+            rules_rev: 7,
+            state_rev_before: 0,
+            state_rev_after: 1,
+            world_time_before: 0,
+            world_time_after: 0,
+            presence_humans: 0,
+            actors_present: Vec::new(),
+            seed: String::new(),
+            last_tick_at: String::new(),
+            intents: Vec::new(),
+            rejected: Vec::new(),
+            effects: Vec::new(),
+            arrivals: Vec::new(),
+            fast_forward: false,
+            tool_trace: Vec::new(),
+            memories: Vec::new(),
+            now_hash: String::new(),
+            prev: String::new(),
+            chain: String::new(),
+        }))
     }
 
     fn temp_docks(label: &str) -> PathBuf {

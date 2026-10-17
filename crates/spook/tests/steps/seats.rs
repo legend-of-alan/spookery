@@ -319,7 +319,7 @@ fn session_status_lists_both_queued_lines(_world: &mut World) {
 
 #[then(expr = "the tick log records both waits")]
 fn the_tick_log_records_both_waits(world: &mut World) {
-    let actors = player_waits(table::pack(world), "tick-0001.jsonl");
+    let actors = player_waits(table::pack(world), "tick-0001");
     assert_eq!(
         actors,
         vec!["pc_rowan".to_string(), "pc_harbormouse".to_string()]
@@ -332,15 +332,15 @@ fn each_wait_committed_its_own_tick(world: &mut World) {
     table::wait_world_time(pack, 1090);
     assert_eq!(table::now_of(pack).tick_index, 2);
     assert_eq!(
-        table::tick_names(pack),
-        vec!["tick-0001.jsonl".to_string(), "tick-0002.jsonl".to_string()]
+        table::list_tick_keys(pack),
+        vec!["tick-0001".to_string(), "tick-0002".to_string()]
     );
     assert_eq!(
-        player_waits(pack, "tick-0001.jsonl"),
+        player_waits(pack, "tick-0001"),
         vec!["pc_rowan".to_string()]
     );
     assert_eq!(
-        player_waits(pack, "tick-0002.jsonl"),
+        player_waits(pack, "tick-0002"),
         vec!["pc_harbormouse".to_string()]
     );
 }
@@ -439,8 +439,8 @@ fn store_now(pack: &std::path::Path, mut now: spookery_kernel::api::model::Now) 
 }
 
 fn player_waits(pack: &std::path::Path, name: &str) -> Vec<String> {
-    let text = fs::read_to_string(pack.join("state/journal").join(name))
-        .unwrap_or_else(|err| panic!("read {name}: {err}"));
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     let tick: serde_json::Value =
         serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
     tick["intents"]
@@ -483,16 +483,19 @@ fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
 #[then(expr = "the tick now_hash matches the save")]
 fn the_tick_now_hash_matches_the_save(world: &mut World) {
     let pack = table::pack(world);
-    let tick = fs::read_to_string(pack.join("state/journal/tick-0001.jsonl"))
-        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    let tick = spookery_kernel::api::journal::read_record_line(pack, "tick-0001")
+        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     let value: serde_json::Value =
-        serde_json::from_str(tick.trim_end()).unwrap_or_else(|err| panic!("{err}"));
+        serde_json::from_str(&tick).unwrap_or_else(|err| panic!("{err}"));
     let expected = value["now_hash"]
         .as_str()
         .unwrap_or_else(|| panic!("now_hash\n{tick}"));
-    let save =
-        fs::read(pack.join("state/save.yaml")).unwrap_or_else(|err| panic!("read save: {err}"));
-    assert_eq!(spookery_kernel::api::journal::hash_now(&save), expected);
+    let report =
+        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    assert_eq!(
+        spookery_kernel::api::journal::hash_now(&report.now_yaml),
+        expected
+    );
 }
 
 #[when(expr = "two players sit, one drops, and that PC sits again")]

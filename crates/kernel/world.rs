@@ -7,6 +7,7 @@ use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
+use crate::journal::{self, JournalEntry};
 use crate::model::{sort_unique, MemoryLine, Now, Presence};
 use crate::rules::RollReport;
 use crate::store::codec::{emit_save, load_save};
@@ -60,6 +61,11 @@ impl World {
 
     pub fn now(&self) -> &Now {
         &self.now
+    }
+
+    /// Replace the in-memory state after a replay. This does not write `save.yaml`.
+    pub fn install_replayed(&mut self, now: Now) {
+        self.now = now;
     }
 
     pub fn presence(&self) -> &Presence {
@@ -192,8 +198,11 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
     let mut now = load_save(now_text).map_err(reason_of)?;
     let mut problems = save_problems(root, &now, &now_bytes);
-    if replay {
+    if replay || journal_continues(root, &now) {
         problems.retain(|diag| diag.code != Reason::PackRevMismatch.token());
+    }
+    if journal_continues(root, &now) {
+        problems.retain(|diag| diag.code != Reason::HandEdit.token());
     }
     if !problems.is_empty() {
         return Err(reason_of(problems));
@@ -215,6 +224,27 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         lines: Vec::new(),
         seen: Vec::new(),
         next_session: 1,
+    })
+}
+
+/// The on-disk save is a checkpoint. Later journal records still have to be replayed.
+fn journal_continues(root: &Path, now: &Now) -> bool {
+    let Ok(entries) = journal::read_live(root) else {
+        return false;
+    };
+    entries.iter().any(|entry| match entry {
+        JournalEntry::Checkpoint(_) => false,
+        _ => entry.state_rev_after() > now.state_rev,
+    })
+}
+
+/// A migrate record past the checkpoint has already accepted the save's edit.
+fn migrate_continues(root: &Path, now: &Now) -> bool {
+    let Ok(entries) = journal::read_live(root) else {
+        return false;
+    };
+    entries.iter().any(|entry| {
+        matches!(entry, JournalEntry::Migrate(_)) && entry.state_rev_after() > now.state_rev
     })
 }
 
@@ -268,7 +298,14 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         None
     };
     if let Some((bytes, now)) = &loaded {
-        diags.extend(save_problems(root, now, bytes));
+        let mut problems = save_problems(root, now, bytes);
+        if migrate_continues(root, now) {
+            problems.retain(|diag| {
+                diag.code != Reason::PackRevMismatch.token()
+                    && diag.code != Reason::HandEdit.token()
+            });
+        }
+        diags.extend(problems);
         if let Some(canon) = &canon {
             let mut copy = now.clone();
             if let Err(more) = bind_meters(canon, &mut copy) {

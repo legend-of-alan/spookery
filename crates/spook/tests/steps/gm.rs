@@ -208,7 +208,7 @@ fn the_tick_log_records_the_restock(world: &mut World) {
 fn the_tick_log_records_rowan_and_wren(world: &mut World) {
     let start = Instant::now();
     loop {
-        if table::tick_names(table::pack(world)).is_empty() {
+        if table::list_tick_keys(table::pack(world)).is_empty() {
             if start.elapsed() > Duration::from_secs(8) {
                 panic!("no tick log");
             }
@@ -373,7 +373,7 @@ fn gm_stderr(world: &mut World) -> String {
 }
 
 fn tick_json(world: &mut World) -> serde_json::Value {
-    let text = std::fs::read_to_string(table::pack(world).join("state/journal/tick-0001.jsonl"))
-        .unwrap_or_else(|err| panic!("read tick: {err}"));
+    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
+        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }

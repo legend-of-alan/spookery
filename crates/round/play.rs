@@ -1,3 +1,4 @@
+use std::fs;
 use std::path::Path;
 
 use spookery_kernel::api::draft::Draft;
@@ -44,8 +45,34 @@ pub fn commit_moves_at(
     spookery_kernel::api::commit::commit_pending(world)
 }
 
+/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
+pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
+    let now = tip_for_migrate(path)?;
+    spookery_kernel::api::commit::migrate_now(path, now)
+}
+
+fn tip_for_migrate(path: &Path) -> Result<spookery_kernel::api::model::Now, Reason> {
+    use spookery_kernel::api::journal::{read_live, JournalEntry};
+    use spookery_kernel::api::store::codec::load_save;
+    let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
+    let file_now = load_save(text).map_err(spookery_kernel::api::diagnostic::reason_of)?;
+    let ahead = read_live(path)
+        .map_err(|_| Reason::Schema)?
+        .iter()
+        .any(|entry| {
+            !matches!(entry, JournalEntry::Checkpoint(_))
+                && entry.state_rev_after() > file_now.state_rev
+        });
+    if ahead {
+        Ok(crate::replay::resume(path)?.now().clone())
+    } else {
+        Ok(file_now)
+    }
+}
+
 pub fn play_pack_once(path: &Path) -> Result<(), Reason> {
-    let mut world = World::open(path)?;
+    let mut world = crate::replay::resume(path)?;
     let wall = world.now().last_tick_at.clone();
     play(&mut world, RoundCause::Manual, &wall)
 }

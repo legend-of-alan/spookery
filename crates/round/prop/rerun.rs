@@ -49,8 +49,13 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     if ticks.is_empty() {
         return Err(fail_msg("the rounds wrote no tick".to_string()));
     }
-    let snapshot = fs::read(played.join("state").join(journal::base_rel()))
-        .map_err(|err| fail_msg(err.to_string()))?;
+    let base = played.join("state").join(journal::base_rel());
+    let snapshot = if base.is_file() {
+        fs::read(&base)
+    } else {
+        fs::read(played.join("state/save.yaml"))
+    }
+    .map_err(|err| fail_msg(err.to_string()))?;
     // Same rules as the played copy, including the grit success effect, at the snapshot.
     let pack = TempPack(copy_pack(played, "prop-rerun-again"));
     fs::write(pack.0.join("state/save.yaml"), snapshot).map_err(|err| fail_msg(err.to_string()))?;

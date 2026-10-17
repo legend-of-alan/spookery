@@ -92,12 +92,13 @@ fn load_snaps(pack: &Path) -> Result<(Vec<Snap>, Vec<TickRecord>), AuditError> {
         return Ok((snaps, ticks));
     }
     let base = pack.join("state").join(journal::base_rel());
-    if !base.is_file() {
-        return Err(AuditError::Replay("missing base.yaml".to_string()));
+    let genesis = if base.is_file() {
+        fs::read(&base)
+    } else {
+        fs::read(pack.join("state/save.yaml"))
     }
-    snaps.push(snap_of(
-        &fs::read(&base).map_err(|_| AuditError::Reason(Reason::Schema))?,
-    )?);
+    .map_err(|_| AuditError::Reason(Reason::Schema))?;
+    snaps.push(snap_of(&genesis)?);
     for step in replay_states(pack).map_err(replay_error)? {
         snaps.push(snap_of(&step.save_yaml)?);
     }

@@ -69,7 +69,10 @@ fn open(pack: &Path) -> spookery_kernel::api::world::World {
 }
 
 fn now_of(pack: &Path) -> Now {
-    open(pack).now().clone()
+    spookery_round::resume(pack)
+        .unwrap_or_else(|err| panic!("resume: {err}"))
+        .now()
+        .clone()
 }
 
 fn write_text(path: &Path, text: &str) {
@@ -105,24 +108,13 @@ fn flags_of(now: &Now, id: &str) -> Vec<String> {
 }
 
 fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = fs::read_to_string(pack.join("state/journal").join(name))
-        .unwrap_or_else(|err| panic!("read {name}: {err}"));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("json {name}: {err}"))
+    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
+    serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}"))
 }
 
-fn tick_names(pack: &Path) -> Vec<String> {
-    let dir = pack.join("state/journal");
-    let mut names = Vec::new();
-    if dir.is_dir() {
-        for entry in fs::read_dir(&dir).unwrap() {
-            let name = entry.unwrap().file_name().to_string_lossy().into_owned();
-            if name.starts_with("tick-") && name.ends_with(".jsonl") {
-                names.push(name);
-            }
-        }
-    }
-    names.sort();
-    names
+fn list_tick_keys(pack: &Path) -> Vec<String> {
+    spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
@@ -342,7 +334,7 @@ fn claimed_note_sorts_first() {
         assert!(queued.value.get("code").is_none(), "{}", queued.value);
     }
     play(&mut shard, spookery_round::RoundCause::Manual, &wall).unwrap();
-    let log = tick_value(&pack, "tick-0001.jsonl");
+    let log = tick_value(&pack, "tick-0001");
     let moves: Vec<&str> = log["intents"]
         .as_array()
         .unwrap()
@@ -463,13 +455,13 @@ Rowan.
     let mut shard = open(&pack);
     let wall = shard.now().last_tick_at.clone();
     catch_up(&mut shard, &wall, 72).unwrap_or_else(|err| panic!("catch-up: {err}"));
-    let saved = open(&pack);
+    let saved = spookery_round::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
     let now = saved.now();
     assert_eq!(now.state_rev, 12, "twelve commits");
     assert_eq!(now.tick_index, 12);
     assert_eq!(now.world_time, 720);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
-    assert_eq!(tick_names(&pack).len(), 12);
+    assert_eq!(list_tick_keys(&pack).len(), 12);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
         place_before
@@ -529,6 +521,41 @@ fn stock_effect(delta: i64) -> Effect {
     }
 }
 
+fn sealed_tick(pack: &Path, state_rev: u64) -> String {
+    use spookery_kernel::api::journal::{genesis_hash, seal, JournalEntry, TickRecord};
+    let entry = JournalEntry::Tick(TickRecord {
+        tick_index: 1,
+        rules_rev: 7,
+        state_rev_before: state_rev.saturating_sub(1),
+        state_rev_after: state_rev,
+        world_time_before: 0,
+        world_time_after: 0,
+        presence_humans: 0,
+        actors_present: Vec::new(),
+        seed: String::new(),
+        last_tick_at: String::new(),
+        intents: Vec::new(),
+        rejected: Vec::new(),
+        effects: Vec::new(),
+        arrivals: Vec::new(),
+        fast_forward: false,
+        tool_trace: Vec::new(),
+        memories: vec![spookery_kernel::api::model::MemoryLine {
+            tick_index: 1,
+            actor_id: "mira".to_string(),
+            intent_id: String::new(),
+            fact_ids: Vec::new(),
+            tags: Vec::new(),
+            text: Some("kept-line".to_string()),
+        }],
+        now_hash: String::new(),
+        prev: String::new(),
+        chain: String::new(),
+    });
+    let prev = genesis_hash(pack).unwrap_or_else(|err| panic!("{}", err.detail));
+    seal(&entry, &prev)
+}
+
 fn an_open_transaction_writes_nothing() {
     let dropped = temp_pack("drop");
     let now_path = dropped.join("state/save.yaml");
@@ -585,20 +612,15 @@ fn the_same_revision_restores_the_previous_save() {
         .unwrap()
         .items
         .insert("lamp_oil".to_string(), 999);
-    fs::write(&now_path, emit_save(&dirty).unwrap()).unwrap();
+    let dirty_bytes = emit_save(&dirty).unwrap();
+    fs::write(&now_path, &dirty_bytes).unwrap();
     let txn = same.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
     fs::write(txn.join("prev/save.yaml"), &original).unwrap();
     fs::write(txn.join("COMPLETE"), b"").unwrap();
     let opened = open(&same);
-    assert_eq!(fs::read(&now_path).unwrap(), original);
-    assert_eq!(
-        lamp_oil(opened.now()),
-        lamp_oil(
-            &spookery_kernel::api::store::codec::load_save(std::str::from_utf8(&original).unwrap())
-                .unwrap()
-        )
-    );
+    assert_eq!(fs::read(&now_path).unwrap(), dirty_bytes.as_bytes());
+    assert_eq!(lamp_oil(opened.now()), 999);
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&same);
 }
@@ -623,22 +645,11 @@ fn the_next_revision_keeps_the_new_save() {
     fs::write(txn.join("COMPLETE"), b"").unwrap();
     let log = next.join("state/journal");
     fs::create_dir_all(&log).unwrap();
-    fs::write(
-        log.join("tick-0001.jsonl"),
-        format!(
-            "{{\"tick_index\":1,\"state_rev_after\":{}}}\n",
-            live.state_rev
-        ),
-    )
-    .unwrap();
-    fs::write(
-        log.join("tick-0099.jsonl"),
-        format!(
-            "{{\"tick_index\":99,\"state_rev_after\":{}}}\n",
-            live.state_rev.saturating_add(5)
-        ),
-    )
-    .unwrap();
+    let kept = sealed_tick(&next, live.state_rev);
+    let mut torn = kept.into_bytes();
+    torn.extend(br#"{"tick_index":99,"#);
+    let bundle = log.join("bundle-0000.jsonl");
+    fs::write(&bundle, &torn).unwrap();
     let memories = next.join("state/memories");
     fs::create_dir_all(&memories).unwrap();
     fs::write(
@@ -650,8 +661,9 @@ fn the_next_revision_keeps_the_new_save() {
     assert_eq!(opened.now().state_rev, live.state_rev);
     assert_eq!(lamp_oil(opened.now()), kept_oil);
     assert!(!txn.exists());
-    assert!(log.join("tick-0001.jsonl").is_file());
-    assert!(!log.join("tick-0099.jsonl").exists());
+    let bundle_text = fs::read_to_string(&bundle).unwrap();
+    assert!(bundle_text.ends_with('\n'), "{bundle_text}");
+    assert!(!bundle_text.contains("tick_index\":99"));
     let memory = fs::read_to_string(memories.join("mira.jsonl")).unwrap();
     assert!(memory.contains("kept-line"));
     assert!(!memory.contains("orphan-line"));
@@ -778,7 +790,7 @@ rules:
         .values()
         .filter(|actor| actor.act().last_act_tick == 1)
         .count();
-    let applied = tick_value(&pack, "tick-0001.jsonl")["intents"]
+    let applied = tick_value(&pack, "tick-0001")["intents"]
         .as_array()
         .unwrap()
         .len();
@@ -1238,13 +1250,13 @@ fn queued_line_survives_a_dropped_seat() {
     assert_eq!(shard.queued_intents().len(), 1);
     assert_eq!(shard.queued_intents()[0].id, note.id);
     assert_eq!(shard.now().world_time, 1080);
-    assert!(tick_names(&held).is_empty());
+    assert!(list_tick_keys(&held).is_empty());
     assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
     assert_eq!(shard.now().presence.humans, 0);
     assert!(!on_scheduled_wake(&mut shard, false, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
     assert_eq!(shard.now().tick_index, 0);
-    assert!(tick_names(&held).is_empty());
+    assert!(list_tick_keys(&held).is_empty());
     let _ = fs::remove_dir_all(&held);
 }
 
@@ -1260,12 +1272,12 @@ fn a_reseated_player_keeps_the_queued_wait() {
     assert_eq!(shard.now().world_time, 1080);
     assert_eq!(shard.now().tick_index, 0);
     assert_eq!(shard.queued_intents().len(), 1);
-    assert!(tick_names(&dropped).is_empty());
+    assert!(list_tick_keys(&dropped).is_empty());
     seat_player(&mut shard, "pc_rowan").unwrap();
     assert_eq!(shard.now().world_time, 1080);
     assert_eq!(shard.now().tick_index, 0);
     assert_eq!(shard.queued_intents()[0].id, note.id);
-    assert!(tick_names(&dropped).is_empty());
+    assert!(list_tick_keys(&dropped).is_empty());
     let _ = fs::remove_dir_all(&dropped);
 }
 
@@ -1281,7 +1293,7 @@ fn early_wake_does_not_tick_again() {
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
     assert_eq!(shard.now().world_time, committed.world_time);
     assert_eq!(shard.now().tick_index, committed.tick_index);
-    assert_eq!(tick_names(&early), vec!["tick-0001.jsonl".to_string()]);
+    assert_eq!(list_tick_keys(&early), vec!["tick-0001".to_string()]);
     let _ = fs::remove_dir_all(&early);
 }
 
@@ -1334,7 +1346,7 @@ fn idle_off_past_due_wake_writes_nothing() {
     assert_eq!(saved.world_time, world_time);
     assert_eq!(saved.last_tick_at, stamp);
     assert_eq!(saved.state_rev, state_rev);
-    assert!(tick_names(&pack).is_empty());
+    assert!(list_tick_keys(&pack).is_empty());
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -1356,7 +1368,7 @@ fn idle_off_long_absence_writes_no_catchup() {
     assert_eq!(saved.world_time, world_time);
     assert_eq!(saved.last_tick_at, last);
     assert_eq!(saved.state_rev, state_rev);
-    assert!(tick_names(&pack).is_empty());
+    assert!(list_tick_keys(&pack).is_empty());
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -1373,8 +1385,8 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     assert_eq!(shard.now().world_time, 1085);
     assert_eq!(shard.now().tick_index, 1);
     drop(shard);
-    assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
-    let mut again = open(&pack);
+    assert_eq!(list_tick_keys(&pack), vec!["tick-0001".to_string()]);
+    let mut again = spookery_round::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
     seat_player(&mut again, "pc_rowan").unwrap();
     let wall = again.now().last_tick_at.clone();
     play(&mut again, spookery_round::RoundCause::Manual, &wall)
@@ -1383,8 +1395,8 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     assert_eq!(now.tick_index, 2);
     assert_eq!(now.world_time, 1090);
     assert_eq!(
-        tick_names(&pack),
-        vec!["tick-0001.jsonl".to_string(), "tick-0002.jsonl".to_string()]
+        list_tick_keys(&pack),
+        vec!["tick-0001".to_string(), "tick-0002".to_string()]
     );
     let _ = fs::remove_dir_all(&pack);
 }
@@ -1399,7 +1411,7 @@ fn idle_off_commit_round_still_commits() {
         panic!("wait committed with a GM seated");
     };
     assert_eq!(shard.now().world_time, 1080);
-    assert!(tick_names(&pack).is_empty());
+    assert!(list_tick_keys(&pack).is_empty());
     let done = call_gm_tool(
         &mut shard,
         "commit_round",
@@ -1409,7 +1421,7 @@ fn idle_off_commit_round_still_commits() {
     assert!(done.ticked);
     assert_eq!(shard.now().world_time, 1085);
     assert_eq!(shard.now().tick_index, 1);
-    assert_eq!(tick_names(&pack), vec!["tick-0001.jsonl".to_string()]);
+    assert_eq!(list_tick_keys(&pack), vec!["tick-0001".to_string()]);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -1422,11 +1434,8 @@ fn a_due_wake_applies_the_queued_wait() {
     assert_eq!(shard.now().tick_index, 12);
     assert_eq!(shard.now().world_time, 1800);
     assert!(shard.queued_intents().is_empty());
-    assert_eq!(
-        player_waits(&tick_value(&due, "tick-0001.jsonl")),
-        vec![note.id]
-    );
-    assert!(player_waits(&tick_value(&due, "tick-0002.jsonl")).is_empty());
+    assert_eq!(player_waits(&tick_value(&due, "tick-0001")), vec![note.id]);
+    assert!(player_waits(&tick_value(&due, "tick-0002")).is_empty());
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
     assert_eq!(shard.now().tick_index, 12);
     let _ = fs::remove_dir_all(&due);
@@ -1471,15 +1480,15 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             vec!["marked".to_string()],
             "{label} success {success}"
         );
-        let tick = tick_value(&pack, "tick-0001.jsonl");
+        let tick = tick_value(&pack, "tick-0001");
         assert!(tick["tool_trace"]
             .as_array()
             .unwrap()
             .iter()
             .any(|name| name == "resolve_check"));
         assert!(
-            !fs::read_to_string(pack.join("state/journal/tick-0001.jsonl"))
-                .unwrap()
+            !spookery_kernel::api::journal::read_record_line(&pack, "tick-0001")
+                .unwrap_or_else(|err| panic!("{}", err.detail))
                 .contains("faces")
         );
         let _ = fs::remove_dir_all(&pack);
@@ -1588,7 +1597,8 @@ fn opposing_total_reused() {
         let notices = shard.take_rolls();
         let rowan = rolled_stat(&notices, 1);
         assert_eq!(shard.now().world_time, 1085);
-        let tick = fs::read_to_string(pack.join("state/journal/tick-0001.jsonl")).unwrap();
+        let tick = spookery_kernel::api::journal::read_record_line(&pack, "tick-0001")
+            .unwrap_or_else(|err| panic!("{}", err.detail));
         assert!(!tick.contains("faces"));
         if opposed {
             let nell = rolled_stat(&notices, 100);
@@ -1655,8 +1665,8 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let rowan = rolled_stat(&shard.take_rolls(), 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
-        !fs::read_to_string(held.join("state/journal/tick-0001.jsonl"))
-            .unwrap()
+        !spookery_kernel::api::journal::read_record_line(&held, "tick-0001")
+            .unwrap_or_else(|err| panic!("{}", err.detail))
             .contains("faces")
     );
     let _ = fs::remove_dir_all(&held);

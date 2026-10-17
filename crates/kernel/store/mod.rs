@@ -3,7 +3,11 @@
 use crate::error::Reason;
 
 pub mod codec;
+pub(crate) mod commit;
 pub(crate) mod durable;
+pub(crate) mod journal;
+pub(crate) mod lock;
+pub(crate) mod records;
 pub(crate) mod recover;
 pub mod talk_log;
 
