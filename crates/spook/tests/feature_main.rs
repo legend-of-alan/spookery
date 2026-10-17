@@ -45,6 +45,7 @@ fn drop_runtime() {
 pub struct World {
     pub pack: Option<std::path::PathBuf>,
     pub scratch: String,
+    pub runner: String,
     pub before: Vec<(std::path::PathBuf, Vec<u8>)>,
     pub code: Option<i32>,
     pub stdout: String,

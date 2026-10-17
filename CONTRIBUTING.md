@@ -14,6 +14,8 @@ Feature scenarios live under `crates/spook/tests/features`. Two programs run the
 cargo test -p spook --test features_host --test features_world
 ```
 
+The README scenario runs `scripts/readme_quickstart.py`, so `cargo test` needs Python 3.8 or newer on `PATH` as `python` or `python3` (on Windows, `py -3` also works).
+
 ## Issues and PRs
 
 Issue and PR titles start with a letter for the area and end with a size.

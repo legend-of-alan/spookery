@@ -112,7 +112,7 @@ mill_lane — 0 min
 loft — 0 min
 ```
 
-Type `drink`, then `travel mill_lane`. The tonic is used up, Lark arrives on Mill Lane, and the arrival rule prints the ending line:
+Type `drink`, then `travel mill_lane`. The tonic is used up, Lark arrives on Mill Lane, and the arrival rule prints the ending line. This output is from the CI dry run, where the stub GM is seated. With no GM seated there is no `Your action is queued.` line, and each line prints its own update.
 
 ```text
 Your action is queued.

@@ -70,7 +70,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # Same rule as the ci job: PRs run Linux only, main runs all three.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
     steps:
       - name: Keep checkout line endings
         if: runner.os == 'Windows'

@@ -3,6 +3,7 @@ use std::process::Command;
 
 use cucumber::{given, then, when};
 
+use crate::contributing::{find_repo_root, read_repo};
 use crate::World;
 
 #[given(expr = "a clean {word} runner and a fresh clone")]
@@ -28,13 +29,13 @@ fn a_clean_runner(world: &mut World, os: String) {
             .any(|line| line.trim() == "- \"README.md\""),
         "README.md is still in paths-ignore"
     );
-    world.scratch = os;
+    world.runner = os;
 }
 
 #[when(expr = "the README quick-start commands run with the stub GM")]
 fn the_readme_commands_run(world: &mut World) {
-    if !host_is(&world.scratch) {
-        world.stdout = "workflow".to_string();
+    // The other OS rows are proven by the quick-start job on that runner.
+    if !host_is(&world.runner) {
         return;
     }
     let dest = readme_play_folder();
@@ -47,10 +48,10 @@ fn the_readme_commands_run(world: &mut World) {
     std::fs::write(&marker, b"keep")
         .unwrap_or_else(|err| panic!("write {}: {err}", marker.display()));
     let bin = PathBuf::from(env!("CARGO_BIN_EXE_spook"));
-    let mut command = python();
+    let mut command = find_python();
     command
-        .arg(repo_root().join("scripts/readme_quickstart.py"))
-        .current_dir(repo_root())
+        .arg(find_repo_root().join("scripts/readme_quickstart.py"))
+        .current_dir(find_repo_root())
         .env(
             "SPOOK_QUICKSTART_BIN",
             bin.parent().expect("spook binary dir"),
@@ -82,7 +83,7 @@ fn readme_play_folder() -> PathBuf {
 
 #[then(expr = "the session reaches the ending and spook verify passes")]
 fn the_session_reaches_the_ending(world: &mut World) {
-    if world.stdout == "workflow" {
+    if !host_is(&world.runner) {
         return;
     }
     assert_eq!(
@@ -92,7 +93,7 @@ fn the_session_reaches_the_ending(world: &mut World) {
         world.stdout,
         world.stderr
     );
-    let ending = ending_line();
+    let ending = read_ending_line();
     assert!(
         world.stdout.contains(&ending),
         "the session did not print the ending {ending}\n{}",
@@ -134,7 +135,7 @@ fn host_is(os: &str) -> bool {
     }
 }
 
-fn ending_line() -> String {
+fn read_ending_line() -> String {
     let readme = read_repo("README.md");
     let marker = "### Ending";
     let start = readme
@@ -153,7 +154,7 @@ fn ending_line() -> String {
         .to_string()
 }
 
-fn python() -> Command {
+fn find_python() -> Command {
     for name in ["python", "python3"] {
         if Command::new(name)
             .arg("--version")
@@ -166,13 +167,4 @@ fn python() -> Command {
     let mut command = Command::new("py");
     command.arg("-3");
     command
-}
-
-fn read_repo(rel: &str) -> String {
-    let path = repo_root().join(rel);
-    std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
-}
-
-fn repo_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }

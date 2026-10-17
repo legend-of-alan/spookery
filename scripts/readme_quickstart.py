@@ -54,8 +54,8 @@ STUB_BODY = json.dumps(
 
 class StubServer(ThreadingHTTPServer):
     def handle_error(self, request, client_address) -> None:
-        err = sys.exception()
-        if isinstance(err, ConnectionResetError | BrokenPipeError | ConnectionAbortedError):
+        err = sys.exc_info()[1]
+        if isinstance(err, (ConnectionResetError, BrokenPipeError, ConnectionAbortedError)):
             return
         super().handle_error(request, client_address)
 
@@ -95,12 +95,12 @@ class Pipe:
 
 def main() -> None:
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    quick = section_body(readme, "##", "Quick start")
+    quick = extract_section(readme, "##", "Quick start")
     os_heading = "Windows" if sys.platform == "win32" else "Linux and macOS"
-    os_body = section_body(quick, "###", os_heading)
-    lines = fence_text(section_body(quick, "###", "Lines")).splitlines()
+    os_body = extract_section(quick, "###", os_heading)
+    lines = extract_fence(extract_section(quick, "###", "Lines")).splitlines()
     lines = [line.strip() for line in lines if line.strip()]
-    ending = fence_text(section_body(quick, "###", "Ending")).strip()
+    ending = extract_fence(extract_section(quick, "###", "Ending")).strip()
     setup, run_line, play_line, verify_line = classify(os_body)
     if not lines or not ending or not run_line or not play_line or not verify_line:
         raise SystemExit("the Quick start section is missing a fence")
@@ -123,9 +123,9 @@ def main() -> None:
         if scratch is not None:
             host = spawn(["spook", "run", str(scratch), "--addr", "127.0.0.1:0"])
         else:
-            host = spawn(spook_args(run_line))
+            host = spawn(parse_spook_args(run_line))
         game, door = wait_listening(host)
-        pack = str(scratch) if scratch is not None else spook_args(run_line)[2]
+        pack = str(scratch) if scratch is not None else parse_spook_args(run_line)[2]
         env = os.environ.copy()
         env["SPOOK_GM_KEY"] = "stub"
         env["SPOOK_GM_URL"] = f"http://127.0.0.1:{stub_port}/v1"
@@ -138,7 +138,7 @@ def main() -> None:
         if scratch is not None:
             play = spawn(["spook", "play", pack, "--addr", game])
         else:
-            play = spawn(spook_args(play_line))
+            play = spawn(parse_spook_args(play_line))
         wait_text(play.out, "You are in", 30, "play did not show a place", play, host, gm)
         assert play.proc.stdin is not None
         for line in lines:
@@ -154,7 +154,7 @@ def main() -> None:
         print("--- play ---")
         print("".join(play.out), end="")
         verify_args = (
-            ["spook", "verify", pack] if scratch is not None else spook_args(verify_line)
+            ["spook", "verify", pack] if scratch is not None else parse_spook_args(verify_line)
         )
         verified = subprocess.run(
             verify_args,
@@ -180,7 +180,7 @@ def main() -> None:
             shutil.rmtree(scratch_root, ignore_errors=True)
 
 
-def section_body(text: str, level: str, title: str) -> str:
+def extract_section(text: str, level: str, title: str) -> str:
     lines = text.splitlines(keepends=True)
     heading = f"{level} {title}"
     start = None
@@ -198,7 +198,7 @@ def section_body(text: str, level: str, title: str) -> str:
     return "".join(lines[start:end])
 
 
-def fence_text(text: str) -> str:
+def extract_fence(text: str) -> str:
     found = FENCE.findall(text)
     if not found:
         raise SystemExit("missing fence")
@@ -290,7 +290,7 @@ def spawn(args: list[str], env: dict[str, str] | None = None) -> Pipe:
     return Pipe(proc)
 
 
-def spook_args(line: str) -> list[str]:
+def parse_spook_args(line: str) -> list[str]:
     match = re.match(r"spook\s+(\S+)\s+(.+)$", expand(line.strip()))
     if not match:
         raise SystemExit(f"not a spook command: {line}")
