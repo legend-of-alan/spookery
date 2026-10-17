@@ -19,7 +19,7 @@ An integer is still an integer. `{ meter: { who, key }, plus: N }` is still that
 | `12`, `-4` | An integer. |
 | `2d6` | Roll two six-sided dice and add the faces. |
 | `2d20kh1`, `2d20kl1` | Roll two twenty-sided dice and keep the higher or lower face. |
-| `self.might`, `target.hp`, `subject.grit` | That actor's meter. |
+| `self.might`, `target.hp` | That actor's meter. |
 | `here.light` | The actor's place, then that id as an actor. |
 | `world.hour` | Refused by `spook check`. The world has no meters. |
 | `place:loft.light` | The named place, then that id as an actor. |
@@ -28,7 +28,7 @@ An integer is still an integer. `{ meter: { who, key }, plus: N }` is still that
 | `min(a, b)`, `max(a, b)` | The lower or higher value. |
 | `(a + b) * c` | Parentheses. |
 
-`0d6`, `2d0`, more than 1000 dice in one group, a literal divisor of `0`, and a token the grammar does not accept fail `spook check` on the file and line of the expression. An unknown meter, a `world.<key>` read, or a `who` that is not `self`, `target`, `subject`, `here`, `place:<id>`, or a cast id, fails the same way.
+`0d6`, `2d0`, more than 1000 dice in one group, a literal divisor of `0`, and a token the grammar does not accept fail `spook check` on the file and line of the expression. An unknown meter, a `world.<key>` read, or a `who` that is not `self`, `target`, `here`, `place:<id>`, or a cast id, fails the same way.
 
 Overflow is refused when the effect is applied. That effect changes nothing. Dividing by zero at play, when the divisor is not a literal `0`, is refused the same way.
 

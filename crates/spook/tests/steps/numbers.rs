@@ -10,14 +10,12 @@ use crate::World;
 
 #[when(expr = "the pack's hit adds {string} to grit")]
 fn the_packs_hit_adds(world: &mut World, add: String) {
-    let pack = table::pack(world).to_path_buf();
-    let path = pack.join("rules/verbs.yaml");
-    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
-    text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"{add}\"\n"
-    ));
-    fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
-    crate::support::stamp_pack_rev(&pack);
+    append_hit(world, "self", &format!("\"{add}\""));
+}
+
+#[when(expr = "the pack's hit raises the grit of {string}")]
+fn the_packs_hit_raises_the_grit_of(world: &mut World, who: String) {
+    append_hit(world, &who, "1");
 }
 
 #[when(expr = "Mira's habit adds {string} to grit")]
@@ -180,6 +178,17 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
         rejected.iter().any(|row| row["reason"] == "OUT_OF_RANGE"),
         "{tick}"
     );
+}
+
+fn append_hit(world: &World, who: &str, add: &str) {
+    let pack = table::pack(world).to_path_buf();
+    let path = pack.join("rules/verbs.yaml");
+    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
+    text.push_str(&format!(
+        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          who: {who}\n          key: grit\n          add: {add}\n"
+    ));
+    fs::write(&path, &text).unwrap_or_else(|err| panic!("write verbs: {err}"));
+    crate::support::stamp_pack_rev(&pack);
 }
 
 fn grit(world: &World) -> i64 {

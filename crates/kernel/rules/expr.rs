@@ -216,7 +216,7 @@ pub(crate) fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reaso
 
 pub(crate) fn actor_of(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
     match who {
-        Who::Self_ | Who::Subject => Ok(ctx.intent.actor_id.clone()),
+        Who::Self_ => Ok(ctx.intent.actor_id.clone()),
         Who::Target => match &ctx.intent.target {
             Target::Actor(id) | Target::Place(id) => Ok(id.clone()),
             _ => Err(Reason::Schema),

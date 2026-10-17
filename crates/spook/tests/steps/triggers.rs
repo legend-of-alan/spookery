@@ -166,12 +166,12 @@ rules:
         who: pc
     if:
       - flag:
-          who: subject
+          who: self
           key: found_key
           is: true
     do:
       - memory:
-          who: subject
+          who: self
           fact_ids:
             - fact_ledger
       - clock:
@@ -250,11 +250,11 @@ rules:
         becomes: true
     do:
       - flag:
-          who: subject
+          who: self
           key: moon
           value: true
       - flag:
-          who: subject
+          who: self
           key: sun
           value: false
   - id: moon_to_sun
@@ -264,11 +264,11 @@ rules:
         becomes: true
     do:
       - flag:
-          who: subject
+          who: self
           key: sun
           value: true
       - flag:
-          who: subject
+          who: self
           key: moon
           value: false
 ",
@@ -411,12 +411,12 @@ rules:
       target: 100
     success:
       - meter:
-          who: subject
+          who: self
           key: grit
           add: 0
     failure:
       - meter:
-          who: subject
+          who: self
           key: grit
           add: -1
 ---
@@ -658,7 +658,7 @@ rules:
         becomes: true
     do:
       - flag:
-          who: subject
+          who: self
           key: saw_tide
           value: true
 ",
@@ -1072,7 +1072,7 @@ fn add_bell_narrate(pack: &Path) {
     append(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: subject\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
+        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
     );
 }
 
@@ -1126,7 +1126,7 @@ rules:
         crosses: \"{crosses}\"
     do:
       - flag:
-          who: subject
+          who: self
           key: downed
           value: true
 "
@@ -1172,7 +1172,7 @@ fn add_bell(pack: &Path) {
     append(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
-        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: subject\n          key: heard_bell\n          value: true\n",
+        "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n",
     );
 }
 

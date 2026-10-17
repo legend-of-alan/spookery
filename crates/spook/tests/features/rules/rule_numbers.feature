@@ -51,6 +51,24 @@ Feature: Dice and arithmetic in rule numbers
     And the report says "the world has no meters"
     And the report names the expression line
 
+  Scenario: A subject meter read fails spook check
+    Given a docks table
+    When the pack's hit adds "subject.grit" to grit
+    And the operator runs spook check
+    Then the check exits 1
+    And the report says "names 'subject', which is not a who"
+    And the report says "use self"
+    And the report names the expression line
+
+  Scenario: A subject who fails spook check
+    Given a docks table
+    When the pack's hit raises the grit of "subject"
+    And the operator runs spook check
+    Then the check exits 1
+    And the report says "'subject' is not a who"
+    And the report says "use self"
+    And the report names the line holding "subject"
+
   Scenario: A huge dice count fails spook check
     Given a docks table
     When the pack's hit adds "100000000d6" to grit

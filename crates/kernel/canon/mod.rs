@@ -1312,7 +1312,7 @@ fn check_expr(
             let mut diag = schema_error(
                 file,
                 &format!("expression reads 'world.{key}', but the world has no meters"),
-                "read the meter from self, target, subject, here, place:<id>, or a cast id",
+                "read the meter from self, target, here, place:<id>, or a cast id",
             )
             .with_path(path);
             if let Some(spot) = spot {
@@ -1337,7 +1337,7 @@ fn check_expr(
             let mut diag = schema_error(
                 file,
                 &format!("expression names '{name}', which is not a who"),
-                "use self, target, subject, here, place:<id>, or a cast id",
+                "use self, target, here, place:<id>, or a cast id",
             )
             .with_path(path);
             if let Some(spot) = spot {
@@ -1354,7 +1354,7 @@ fn unknown_who(
     places: &BTreeMap<String, PlaceCanon>,
 ) -> Option<String> {
     match who {
-        Who::Self_ | Who::Target | Who::Subject | Who::Here | Who::World => None,
+        Who::Self_ | Who::Target | Who::Here | Who::World => None,
         Who::Place(id) if places.contains_key(id) => None,
         Who::Place(id) => Some(format!("place:{id}")),
         Who::Actor(id) if cast.contains_key(id) => None,

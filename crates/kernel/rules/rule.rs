@@ -252,7 +252,6 @@ impl Op {
 pub enum Who {
     Self_,
     Target,
-    Subject,
     Here,
     World,
     Place(String),
@@ -706,7 +705,6 @@ impl<'a> Parser<'a> {
             match word.as_str() {
                 "self" => Who::Self_,
                 "target" => Who::Target,
-                "subject" => Who::Subject,
                 "here" => Who::Here,
                 "world" => Who::World,
                 _ => Who::Actor(word),
