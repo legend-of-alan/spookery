@@ -317,6 +317,14 @@ When the GM commits the round, every seated player receives a fresh `resume`, th
 
 `outcome` is `success`, `partial`, or `miss`. An NPC's roll sends no player frame.
 
+<!-- example: player-changes -->
+```json
+{
+  "kind": "lines",
+  "text": "You picked up the Lamp oil."
+}
+```
+
 `close` leaves the seat. It has no reply.
 
 A player connection may send 5 lines a second, and it may burst to 10. A line past that waits on that connection until the next line is allowed. The line is kept. The wait does not delay another seat.

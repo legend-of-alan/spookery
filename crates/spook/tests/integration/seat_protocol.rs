@@ -264,6 +264,24 @@ fn capture() -> BTreeMap<String, Example> {
     let refreshed = next_json(&player);
     assert_eq!(refreshed["kind"], "perceive", "{refreshed}");
 
+    // A second round moves an item the player can see, so the change line is not empty.
+    send(&mut player, "take lamp_oil");
+    let queued_take = next_json(&player);
+    assert_eq!(queued_take["kind"], "queued", "{queued_take}");
+    let _ = one_event(&mut gm);
+    call(
+        &mut gm,
+        "commit_round",
+        serde_json::json!({"include_tick": true}),
+    );
+    let taken = next_json(&player);
+    assert_eq!(taken["kind"], "resume", "{taken}");
+    let after_take = next_json(&player);
+    assert_eq!(after_take["kind"], "perceive", "{after_take}");
+    let changes = next_json(&player);
+    assert_eq!(changes["kind"], "lines", "{changes}");
+    json(&mut out, "player-changes", changes);
+
     text(&mut out, "player-unknown-line", "blah");
     send(&mut player, "blah");
     json(&mut out, "player-not-in-spec", next_json(&player));
