@@ -192,32 +192,54 @@ fn one_player_sends_200_lines(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let before = table::list_tick_keys(&pack).len();
     let started = Instant::now();
-    let live = table::live_mut(world);
-    let player = live
-        .players
-        .iter_mut()
-        .find(|player| player.actor_id == "pc_rowan")
-        .unwrap_or_else(|| panic!("no rowan"));
-    for _ in 0..200 {
-        writeln!(player.write, "wait").unwrap_or_else(|err| panic!("write: {err}"));
-    }
-    player
-        .write
-        .flush()
-        .unwrap_or_else(|err| panic!("flush: {err}"));
-    let other_at = Instant::now();
-    let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
-    let other_ms = other_at.elapsed().as_millis();
-    // Past the burst means a later line was kept. A drop would stop at 11 ticks.
-    let deadline = Instant::now() + Duration::from_secs(8);
-    let ticks = loop {
-        let ticks = table::list_tick_keys(&pack).len().saturating_sub(before);
-        if ticks >= 12 || Instant::now() > deadline {
-            break ticks;
+    for (actor_id, count) in [("pc_rowan", 200), ("pc_harbormouse", 1)] {
+        let player = table::live_mut(world)
+            .players
+            .iter_mut()
+            .find(|player| player.actor_id == actor_id)
+            .unwrap_or_else(|| panic!("no {actor_id}"));
+        for _ in 0..count {
+            writeln!(player.write, "wait").unwrap_or_else(|err| panic!("write: {err}"));
         }
-        std::thread::sleep(Duration::from_millis(20));
-    };
-    world.scratch = format!("{ticks} {} {other_ms}", started.elapsed().as_millis());
+        player
+            .write
+            .flush()
+            .unwrap_or_else(|err| panic!("flush: {err}"));
+    }
+    // The other player's wait is its own tick. Its place among the new ticks
+    // shows whether it waited behind the flood.
+    let keys = table::wait_ticks_until(&pack, "the other player's wait", |keys| {
+        keys.get(before..)
+            .unwrap_or_default()
+            .iter()
+            .any(|key| waits_of(&pack, key).iter().any(|id| id == "pc_harbormouse"))
+    });
+    let other_at = keys
+        .get(before..)
+        .unwrap_or_default()
+        .iter()
+        .position(|key| waits_of(&pack, key).iter().any(|id| id == "pc_harbormouse"))
+        .unwrap_or_else(|| panic!("no other player tick"))
+        + 1;
+    // Past the burst means a later line was kept. A drop would stop at 11 ticks.
+    let ticks = table::wait_tick_count(&pack, before + 12).len() - before;
+    world.scratch = format!("{ticks} {} {other_at}", started.elapsed().as_millis());
+}
+
+/// The actors whose player `wait` is in that tick.
+fn waits_of(pack: &std::path::Path, key: &str) -> Vec<String> {
+    let text = spookery_kernel::api::journal::read_record_line(pack, key)
+        .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
+    let tick: serde_json::Value =
+        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}"));
+    tick["intents"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
+        .filter_map(|intent| intent["actor_id"].as_str().map(str::to_string))
+        .collect()
 }
 
 #[then(expr = "the committed ticks stay within the rate allowance")]
@@ -243,16 +265,18 @@ fn ticks_stay_within_the_allowance(world: &mut World) {
     );
 }
 
-#[then(expr = "the other player's line commits within 2 seconds")]
-fn the_other_player_commits_within_2_seconds(world: &mut World) {
-    let other_ms: u128 = world
+#[then(expr = "the other player's line commits before the flood's burst is spent")]
+fn the_other_player_commits_inside_the_burst(world: &mut World) {
+    let other_at: usize = world
         .scratch
         .split_whitespace()
         .nth(2)
         .unwrap_or("99999")
         .parse()
         .unwrap_or(99999);
-    assert!(other_ms < 2_000, "{}", world.scratch);
+    // Each session sends one line at a time, so the other line waits behind at
+    // most the flood's burst of 10 and the line in flight, whatever the speed.
+    assert!(other_at <= 12, "{}", world.scratch);
 }
 
 #[when(expr = "one player stops reading and the GM says many lines")]

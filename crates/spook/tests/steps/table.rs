@@ -113,6 +113,35 @@ pub fn list_tick_keys(pack: &Path) -> Vec<String> {
     spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
+/// How long the journal may sit still before a wait calls it a hang. It bounds
+/// one commit, not the whole wait, so a slow machine only makes the wait longer.
+const JOURNAL_STALL: Duration = Duration::from_secs(10);
+
+/// Waits until `done` holds for the committed tick keys. Fails only when no
+/// tick commits for `JOURNAL_STALL`; `want` names the condition in the panic.
+pub fn wait_ticks_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> bool) -> Vec<String> {
+    let mut seen = 0;
+    let mut moved = Instant::now();
+    loop {
+        let keys = list_tick_keys(pack);
+        if done(&keys) {
+            return keys;
+        }
+        if keys.len() != seen {
+            seen = keys.len();
+            moved = Instant::now();
+        } else if moved.elapsed() > JOURNAL_STALL {
+            panic!("no tick committed for {JOURNAL_STALL:?} at {seen} ticks; wanted {want}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// Waits until the journal holds at least `count` ticks.
+pub fn wait_tick_count(pack: &Path, count: usize) -> Vec<String> {
+    wait_ticks_until(pack, &format!("{count} ticks"), |keys| keys.len() >= count)
+}
+
 pub struct Pending {
     child: Child,
     stdin: Option<ChildStdin>,
@@ -352,6 +381,12 @@ pub fn player_text(world: &World) -> String {
 }
 
 pub fn player_send(world: &mut World, line: &str, needle: &str) -> (usize, String) {
+    let mark = player_write(world, line);
+    (mark, wait_player_from(world, mark, needle))
+}
+
+/// Sends one line from the first seated player and returns the text mark before it.
+pub fn player_write(world: &mut World, line: &str) -> usize {
     let live = live_mut(world);
     let mark = support::text_of(&live.player_text).len();
     let write = live
@@ -360,8 +395,7 @@ pub fn player_send(world: &mut World, line: &str, needle: &str) -> (usize, Strin
         .unwrap_or_else(|| panic!("no seated player"));
     writeln!(write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
     write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    let slot = Arc::clone(&live.player_text);
-    (mark, wait_suffix(&slot, mark, needle))
+    mark
 }
 
 pub fn wait_player_from(world: &World, mark: usize, needle: &str) -> String {

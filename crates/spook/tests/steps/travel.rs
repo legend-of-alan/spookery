@@ -425,7 +425,10 @@ fn a_long_journey_and_the_cap(world: &mut World) {
 #[then(expr = "12 ticks run and the rest continues on the next action")]
 fn twelve_ticks_then_more(world: &mut World) {
     let pack = pack_of(world);
-    let (_mark, added) = table::player_send(world, "wait", "BUSY");
+    // BUSY is sent after the burst commits, so wait on the journal first.
+    let mark = table::player_write(world, "wait");
+    table::wait_tick_count(&pack, 12);
+    let added = table::wait_player_from(world, mark, "BUSY");
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(list_tick_keys(&pack).len(), 12, "first burst");
     let mid = table::now_of(&pack).world_time;
@@ -435,7 +438,9 @@ fn twelve_ticks_then_more(world: &mut World) {
         .get("pc_rowan")
         .unwrap()
         .is_busy(mid));
-    let (_mark, added) = table::player_send(world, "wait", "BUSY");
+    let mark = table::player_write(world, "wait");
+    table::wait_tick_count(&pack, 24);
+    let added = table::wait_player_from(world, mark, "BUSY");
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(list_tick_keys(&pack).len(), 24, "second burst");
     assert_eq!(table::now_of(&pack).world_time, mid + 12 * 5);
