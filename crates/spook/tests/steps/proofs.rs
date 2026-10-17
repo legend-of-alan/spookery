@@ -515,6 +515,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
         effects: Vec::new(),
         arrivals: Vec::new(),
         fast_forward: false,
+        dice: Vec::new(),
         tool_trace: Vec::new(),
         memories: vec![spookery_kernel::api::model::MemoryLine {
             tick_index: 1,

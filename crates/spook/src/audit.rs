@@ -212,6 +212,11 @@ fn report_of(
             finding.state_rev, finding.pc, finding.line
         ));
     }
+    for tick in ticks {
+        for line in &tick.dice {
+            text.push_str(&format!("dice {} {line}\n", tick.tick_index));
+        }
+    }
     for note in &notes {
         text.push_str(&format!(
             "note seq {} speaker {} recipient {}\n",

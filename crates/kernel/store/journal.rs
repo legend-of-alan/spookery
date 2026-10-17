@@ -489,6 +489,12 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
     Ok(out)
 }
 
+pub(crate) fn dice_lines(record: &str) -> Vec<String> {
+    serde_json::from_str::<TickRecord>(record.trim_end())
+        .map(|tick| tick.dice)
+        .unwrap_or_default()
+}
+
 pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {
     read_json(name, text)
 }

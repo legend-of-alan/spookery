@@ -336,7 +336,7 @@ Matching change rules run in owner order (shared verbs, then place, item, cast, 
 
 `roll` names a `check` and a `target`. `partial_at` is an absolute total, strictly below a literal target, and it needs a `partial` list. `do` runs on every band. `success`, `partial`, and `failure` run on that band. `failure` is the miss. A yield is `do: []` with no outcome lists.
 
-A number is an integer, or a meter plus an integer. Dice and other arithmetic are coming (issue #117).
+A number is an integer or an [expression](spec.md). A meter plus an integer still loads.
 
 The flag key `busy` is rejected. An actor is busy while a journey's finish minute is still ahead of world time.
 
@@ -396,7 +396,7 @@ rules:
         oil: 1
     roll:
       check: nerve
-      target: 8
+      target: "6 + 2"
       partial_at: 4
     do:
       - narrate:
@@ -561,7 +561,7 @@ meters:
 
 ## Checks
 
-`stat` is a meter id. Dice expressions are coming (issue #117).
+`stat` is a meter id. `dice.count` and `dice.sides` are the check's dice. A rule's target and partial band are expressions.
 
 ```yaml file=rules/checks.yaml
 schema: checks

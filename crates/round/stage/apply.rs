@@ -1,7 +1,7 @@
 use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
-use spookery_kernel::api::expand::expand_outcome;
+use spookery_kernel::api::expand::expand_with;
 use spookery_kernel::api::intent::{ActorKind, Intent};
 use spookery_kernel::api::journal::Rejected;
 use spookery_kernel::api::map;
@@ -11,7 +11,7 @@ use spookery_kernel::api::rules::gate::{self, gate};
 use spookery_kernel::api::rules::{RollReport, RollResult};
 use spookery_kernel::api::Reason;
 
-use super::resolve::{roll_subject, viewer_token, SubjectRoll};
+use super::resolve::{roll_with_key, viewer_token, SubjectRoll};
 use crate::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
@@ -71,32 +71,37 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let mut resist_reports = Vec::new();
-        let expanded = match expand_outcome(
-            draft.canon(),
-            &frozen,
-            &intent,
-            outcome,
-            |actor_id, check_id, target| {
-                let out = resist_roll(
-                    round,
-                    &ResistCtx {
-                        checks: &checks,
-                        meters: &meters,
-                        frozen: &frozen,
-                        intent: &intent,
-                    },
-                    actor_id,
-                    check_id,
-                    target,
-                )?;
-                let band = out.outcome;
-                resist_reports.push(RollReport::Rolled {
-                    actor_id: actor_id.to_string(),
-                    out,
-                });
-                Ok(band)
-            },
-        ) {
+        let expanded = match super::resolve::with_dice(round, |held| {
+            let mut roller = held.roller(&intent.move_name, &intent.actor_id);
+            expand_with(
+                draft.canon(),
+                &frozen,
+                &intent,
+                outcome,
+                &mut roller,
+                |actor_id, check_id, target| {
+                    let key = held.key(&intent.move_name, actor_id);
+                    let out = resist_roll(
+                        &frozen,
+                        &ResistCtx {
+                            checks: &checks,
+                            meters: &meters,
+                            intent: &intent,
+                        },
+                        &key,
+                        actor_id,
+                        check_id,
+                        target,
+                    )?;
+                    let band = out.outcome;
+                    resist_reports.push(RollReport::Rolled {
+                        actor_id: actor_id.to_string(),
+                        out,
+                    });
+                    Ok(band)
+                },
+            )
+        }) {
             Ok(effects) => effects,
             Err(code) => {
                 refuse(round, &intent.id, code.jsonl_reason());
@@ -123,14 +128,14 @@ fn begin_timed(
     minutes: u64,
 ) -> bool {
     let point = draft.savepoint();
-    if let Some(cost) = &rule.cost {
-        if let Err(code) = cost::pay(draft, &intent.actor_id, cost) {
-            draft.rollback(point);
-            refuse(round, &intent.id, code.jsonl_reason());
-            return false;
+    let at = round.world_time_before;
+    if let Err(code) = super::resolve::with_dice(round, |held| {
+        let mut roller = held.roller(&intent.move_name, &intent.actor_id);
+        if let Some(cost) = &rule.cost {
+            cost::pay_with(draft, intent, cost, &mut roller)?;
         }
-    }
-    if let Err(code) = map::begin(draft, intent, rule, round.world_time_before, minutes) {
+        map::begin_with(draft, intent, rule, at, minutes, &mut roller)
+    }) {
         draft.rollback(point);
         refuse(round, &intent.id, code.jsonl_reason());
         return false;
@@ -166,7 +171,10 @@ fn commit_intent(
         Err(_) => (None, None),
     };
     if let Some(cost) = cost {
-        if let Err(code) = cost::pay(draft, &intent.actor_id, &cost) {
+        if let Err(code) = super::resolve::with_dice(round, |held| {
+            let mut roller = held.roller(&intent.move_name, &intent.actor_id);
+            cost::pay_with(draft, intent, &cost, &mut roller)
+        }) {
             draft.rollback(point);
             refuse(round, &intent.id, code.jsonl_reason());
             return false;
@@ -212,30 +220,24 @@ fn commit_intent(
 struct ResistCtx<'a> {
     checks: &'a std::collections::BTreeMap<String, spookery_kernel::api::check::CheckDef>,
     meters: &'a std::collections::BTreeMap<String, spookery_kernel::api::meter::MeterDef>,
-    frozen: &'a spookery_kernel::api::model::Now,
     intent: &'a Intent,
 }
 
 fn resist_roll(
-    round: &mut Round,
+    now: &spookery_kernel::api::model::Now,
     ctx: &ResistCtx<'_>,
+    key: &spookery_kernel::api::rules::RollKey,
     actor_id: &str,
     check_id: &str,
     target: i64,
 ) -> Result<RollResult, Reason> {
-    let kind = if ctx
-        .frozen
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownKey)?
-        .is_pc()
-    {
+    let kind = if now.actors.get(actor_id).ok_or(Reason::UnknownKey)?.is_pc() {
         ActorKind::Player
     } else {
         ActorKind::Npc
     };
-    roll_subject(
-        round,
+    roll_with_key(
+        now,
         ctx.checks,
         ctx.meters,
         &SubjectRoll {
@@ -247,6 +249,7 @@ fn resist_roll(
             partial_at: None,
             live: None,
         },
+        key,
     )
 }
 

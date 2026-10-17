@@ -52,7 +52,7 @@ pub fn finish_round(
         }
         RoundStore::Write => {
             commit_round(world, draft, &record)?;
-            world.note_committed(notices, keep_queue);
+            world.note_committed(notices, journal::dice_lines(&record), keep_queue);
             Ok(())
         }
         RoundStore::Memory => {
@@ -63,7 +63,7 @@ pub fn finish_round(
                 .ok_or(Reason::CommitConflict)?;
             canonicalize(&mut draft.state);
             world.now = draft.state;
-            world.note_committed(notices, keep_queue);
+            world.note_committed(notices, journal::dice_lines(&record), keep_queue);
             Ok(())
         }
     }
@@ -586,6 +586,7 @@ mod tests {
             effects: Vec::new(),
             arrivals: Vec::new(),
             fast_forward: false,
+            dice: Vec::new(),
             tool_trace: Vec::new(),
             memories: Vec::new(),
             now_hash: String::new(),

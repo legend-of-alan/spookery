@@ -35,6 +35,9 @@ mod items;
 #[path = "steps/checks.rs"]
 mod checks;
 
+#[path = "steps/numbers.rs"]
+mod numbers;
+
 #[path = "steps/check.rs"]
 mod check;
 

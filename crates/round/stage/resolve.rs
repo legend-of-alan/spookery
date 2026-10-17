@@ -1,14 +1,17 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
+use std::rc::Rc;
 
 use spookery_kernel::api::check::{classify, CheckDef};
 use spookery_kernel::api::meter::MeterDef;
-use spookery_kernel::api::rules::expr::{self, Ctx};
+use spookery_kernel::api::rules::expr::{self, Ctx, Dice};
 use spookery_kernel::api::rules::gate::gate;
 
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::intent::{ActorKind, Intent, Source, Target, ViewerId};
+use spookery_kernel::api::model::Now;
 use spookery_kernel::api::perceive::perceive_at;
-use spookery_kernel::api::rules::{roll, RollInput, RollKey, RollReport, RollResult};
+use spookery_kernel::api::rules::{faces_from, roll, RollInput, RollKey, RollReport, RollResult};
 use spookery_kernel::api::Reason;
 
 use crate::state::{Resolution, Round};
@@ -57,19 +60,26 @@ fn roll_check(
         Ok(total) => total,
         Err(code) => return Ok(refused_check(intent, code)),
     };
-    let ctx = Ctx { intent };
-    let partial_at = if opposed.is_some() {
-        None
-    } else {
-        match roll.partial_at.as_ref() {
-            Some(expr) => Some(expr::eval(draft.canon(), &round.frozen, &ctx, expr)?),
-            None => None,
-        }
-    };
-    let target = match opposed {
-        Some(total) => total,
-        None => expr::eval(draft.canon(), &round.frozen, &ctx, &roll.target)?,
-    };
+    let frozen = round.frozen.clone();
+    let (target, partial_at) = with_dice(round, |held| {
+        let mut roller = held.roller(&intent.move_name, &intent.actor_id);
+        let ctx = Ctx { intent };
+        let partial_at = if opposed.is_some() {
+            None
+        } else {
+            match roll.partial_at.as_ref() {
+                Some(expr) => {
+                    Some(expr::show(draft.canon(), &frozen, &ctx, expr, &mut roller)?.value)
+                }
+                None => None,
+            }
+        };
+        let target = match opposed {
+            Some(total) => total,
+            None => expr::show(draft.canon(), &frozen, &ctx, &roll.target, &mut roller)?.value,
+        };
+        Ok::<_, Reason>((target, partial_at))
+    })?;
     let check_id = roll.check.as_str();
     if let Some(out) = round.opposed.get(&intent.id).cloned() {
         return Ok(Resolution::Ready {
@@ -142,10 +152,20 @@ pub(crate) fn roll_subject(
     meters: &BTreeMap<String, MeterDef>,
     spec: &SubjectRoll<'_>,
 ) -> Result<RollResult, Reason> {
+    let key = next_key(round, spec.rule_id, spec.actor_id);
+    roll_with_key(&round.frozen, checks, meters, spec, &key)
+}
+
+pub(crate) fn roll_with_key(
+    now: &Now,
+    checks: &BTreeMap<String, CheckDef>,
+    meters: &BTreeMap<String, MeterDef>,
+    spec: &SubjectRoll<'_>,
+    key: &RollKey,
+) -> Result<RollResult, Reason> {
     let actor = match spec.live {
         Some(actor) => actor.clone(),
-        None => round
-            .frozen
+        None => now
             .actors
             .get(spec.actor_id)
             .cloned()
@@ -153,7 +173,6 @@ pub(crate) fn roll_subject(
     };
     let viewer = ViewerId::from_kind(spec.actor_kind, spec.actor_id)?;
     let check = checks.get(spec.check_id).ok_or(Reason::UnknownKey)?;
-    let key = next_key(round, spec.rule_id, spec.actor_id);
     roll(
         RollInput {
             check,
@@ -164,7 +183,7 @@ pub(crate) fn roll_subject(
             target: spec.target,
             partial_at: spec.partial_at,
         },
-        &key,
+        key,
     )
 }
 
@@ -244,5 +263,112 @@ pub(crate) fn viewer_token(intent: &Intent) -> Result<String, Reason> {
         ActorKind::Npc => Ok(format!("npc:{}", intent.actor_id)),
         ActorKind::Player => Ok(format!("player:{}", intent.actor_id)),
         ActorKind::System => Err(Reason::UnscopedPerceive),
+    }
+}
+
+/// Shared counter and dice lines. A roller and a resist roll can both use it.
+pub(crate) struct Held {
+    counts: Rc<RefCell<BTreeMap<(String, String), u32>>>,
+    notes: Rc<RefCell<Vec<String>>>,
+    world_id: String,
+    tick: u64,
+}
+
+pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&Held) -> T) -> T {
+    let counts = Rc::new(RefCell::new(std::mem::take(&mut round.roll_counts)));
+    let notes = Rc::new(RefCell::new(std::mem::take(&mut round.dice)));
+    let held = Held {
+        counts: Rc::clone(&counts),
+        notes: Rc::clone(&notes),
+        world_id: round.world_id.clone(),
+        tick: round.tick_index,
+    };
+    let out = body(&held);
+    drop(held);
+    round.roll_counts = Rc::try_unwrap(counts)
+        .map(RefCell::into_inner)
+        .unwrap_or_default();
+    round.dice = Rc::try_unwrap(notes)
+        .map(RefCell::into_inner)
+        .unwrap_or_default();
+    out
+}
+
+impl Held {
+    pub(crate) fn key(&self, rule: &str, subject: &str) -> RollKey {
+        alloc(&self.counts, &self.world_id, self.tick, rule, subject)
+    }
+
+    pub(crate) fn roller(&self, rule: &str, subject: &str) -> Roller {
+        Roller {
+            counts: Rc::clone(&self.counts),
+            notes: Rc::clone(&self.notes),
+            world_id: self.world_id.clone(),
+            tick: self.tick,
+            rule: rule.to_string(),
+            subject: subject.to_string(),
+            key: None,
+            drawn: 0,
+        }
+    }
+}
+
+pub(crate) struct Roller {
+    counts: Rc<RefCell<BTreeMap<(String, String), u32>>>,
+    notes: Rc<RefCell<Vec<String>>>,
+    world_id: String,
+    tick: u64,
+    rule: String,
+    subject: String,
+    key: Option<RollKey>,
+    drawn: usize,
+}
+
+impl Dice for Roller {
+    fn begin(&mut self) {
+        self.key = None;
+        self.drawn = 0;
+    }
+
+    fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
+        if self.key.is_none() {
+            self.key = Some(alloc(
+                &self.counts,
+                &self.world_id,
+                self.tick,
+                &self.rule,
+                &self.subject,
+            ));
+        }
+        let key = self.key.as_ref().expect("draw allocates a key");
+        let faces = faces_from(key, self.drawn, count, sides)?;
+        self.drawn += count as usize;
+        Ok(faces)
+    }
+
+    fn note(&mut self, text: String) {
+        self.notes.borrow_mut().push(text);
+    }
+}
+
+fn alloc(
+    counts: &RefCell<BTreeMap<(String, String), u32>>,
+    world_id: &str,
+    tick: u64,
+    rule: &str,
+    subject: &str,
+) -> RollKey {
+    let mut counts = counts.borrow_mut();
+    let index = counts
+        .entry((rule.to_string(), subject.to_string()))
+        .or_insert(0);
+    let roll_index = *index;
+    *index += 1;
+    RollKey {
+        world_id: world_id.to_string(),
+        round_index: tick,
+        rule_id: rule.to_string(),
+        subject_id: subject.to_string(),
+        roll_index,
     }
 }

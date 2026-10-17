@@ -33,6 +33,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         arrivals: &round.arrivals,
         fast_forward: round.fast_forward,
         tool_trace: &round.trace,
+        dice: &round.dice,
     });
     let store = if round.recorded.is_some() {
         spookery_kernel::api::commit::RoundStore::Memory
@@ -73,6 +74,7 @@ pub struct RoundLine<'a> {
     pub arrivals: &'a [Arrival],
     pub fast_forward: bool,
     pub tool_trace: &'a [String],
+    pub dice: &'a [String],
 }
 
 pub fn render_round_line(line: &RoundLine<'_>) -> String {
@@ -92,6 +94,7 @@ pub fn render_round_line(line: &RoundLine<'_>) -> String {
         effects: line.effects.to_vec(),
         arrivals: line.arrivals.to_vec(),
         fast_forward: line.fast_forward,
+        dice: line.dice.to_vec(),
         tool_trace: trim_trace(line.tool_trace),
         memories: Vec::new(),
         now_hash: String::new(),
@@ -179,6 +182,7 @@ mod tests {
             arrivals: &[],
             fast_forward: false,
             tool_trace: &[],
+            dice: &[],
         });
         let encoded = spookery_kernel::api::store::codec::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
@@ -260,6 +264,7 @@ mod tests {
             arrivals: &[],
             fast_forward: false,
             tool_trace: trace,
+            dice: &[],
         })
     }
 }

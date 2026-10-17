@@ -1,7 +1,7 @@
 use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::{Effect, EffectKind};
-use spookery_kernel::api::expand::expand_outcome;
+use spookery_kernel::api::expand::expand_with;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::api::journal::Arrival;
 use spookery_kernel::api::model::Pending;
@@ -9,7 +9,7 @@ use spookery_kernel::api::rules::expr::{self, Ctx};
 use spookery_kernel::api::rules::RollReport;
 use spookery_kernel::api::Reason;
 
-use super::resolve::{roll_subject, SubjectRoll};
+use super::resolve::{roll_with_key, SubjectRoll};
 use crate::state::Round;
 
 /// The stage mark. Arrivals land in [`finish`], after this tick's intents,
@@ -83,56 +83,88 @@ fn resume(
         spookery_kernel::api::rules::gate::resolve(draft.canon(), draft.now(), &intent)?
             .roll
             .clone();
-    let outcome = match roll_spec {
-        Some(spec) => {
-            let ctx = Ctx { intent: &intent };
-            let target = expr::eval(draft.canon(), draft.now(), &ctx, &spec.target)?;
-            let partial_at = match &spec.partial_at {
-                Some(expr) => Some(expr::eval(draft.canon(), draft.now(), &ctx, expr)?),
-                None => None,
-            };
-            let out = live_roll(
-                round,
-                draft,
-                actor_id,
-                kind,
-                &spec.check,
-                target,
-                partial_at,
-            )?;
-            let band = out.outcome;
-            round.roll_reports.push(RollReport::Rolled {
-                actor_id: actor_id.to_string(),
-                out,
-            });
-            Some(band)
-        }
-        None => None,
-    };
     let canon = draft.canon().clone();
     let snapshot = draft.now().clone();
-    let effects = expand_outcome(
-        &canon,
-        &snapshot,
-        &intent,
-        outcome,
-        |who, check_id, target| {
-            let who_pc = draft
-                .now()
-                .actors
-                .get(who)
-                .ok_or(Reason::UnknownKey)?
-                .is_pc();
-            let who_kind = kind_of(who_pc);
-            let out = live_roll(round, draft, who, who_kind, check_id, target, None)?;
-            let band = out.outcome;
-            round.roll_reports.push(RollReport::Rolled {
-                actor_id: who.to_string(),
-                out,
-            });
-            Ok(band)
-        },
-    )?;
+    let (effects, reports) = super::resolve::with_dice(round, |held| {
+        let mut roller = held.roller(&intent.move_name, actor_id);
+        let mut reports = Vec::new();
+        let ctx = Ctx { intent: &intent };
+        let outcome = match &roll_spec {
+            Some(spec) => {
+                let target = expr::show(&canon, &snapshot, &ctx, &spec.target, &mut roller)?.value;
+                let partial_at = match &spec.partial_at {
+                    Some(expr) => {
+                        Some(expr::show(&canon, &snapshot, &ctx, expr, &mut roller)?.value)
+                    }
+                    None => None,
+                };
+                let actor = snapshot
+                    .actors
+                    .get(actor_id)
+                    .ok_or(Reason::UnknownKey)?
+                    .clone();
+                let key = held.key(&spec.check, actor_id);
+                let out = roll_with_key(
+                    &snapshot,
+                    &canon.checks,
+                    &canon.meters,
+                    &SubjectRoll {
+                        rule_id: &spec.check,
+                        actor_kind: kind,
+                        actor_id,
+                        check_id: &spec.check,
+                        target,
+                        partial_at,
+                        live: Some(&actor),
+                    },
+                    &key,
+                )?;
+                let band = out.outcome;
+                reports.push(RollReport::Rolled {
+                    actor_id: actor_id.to_string(),
+                    out,
+                });
+                Some(band)
+            }
+            None => None,
+        };
+        let effects = expand_with(
+            &canon,
+            &snapshot,
+            &intent,
+            outcome,
+            &mut roller,
+            |who, check_id, target| {
+                let who_pc = snapshot.actors.get(who).ok_or(Reason::UnknownKey)?.is_pc();
+                let who_kind = kind_of(who_pc);
+                let actor = snapshot.actors.get(who).ok_or(Reason::UnknownKey)?.clone();
+                let key = held.key(check_id, who);
+                let out = roll_with_key(
+                    &snapshot,
+                    &canon.checks,
+                    &canon.meters,
+                    &SubjectRoll {
+                        rule_id: check_id,
+                        actor_kind: who_kind,
+                        actor_id: who,
+                        check_id,
+                        target,
+                        partial_at: None,
+                        live: Some(&actor),
+                    },
+                    &key,
+                )?;
+                let band = out.outcome;
+                reports.push(RollReport::Rolled {
+                    actor_id: who.to_string(),
+                    out,
+                });
+                Ok(band)
+            },
+        )?;
+        Ok::<_, Reason>((effects, reports))
+    })?;
+    round.roll_reports.extend(reports);
     for effect in effects {
         if matches!(effect.class, EffectKind::Location { .. }) {
             continue;
@@ -141,37 +173,6 @@ fn resume(
         round.effects.push(effect);
     }
     Ok(())
-}
-
-fn live_roll(
-    round: &mut Round,
-    draft: &Draft,
-    actor_id: &str,
-    kind: ActorKind,
-    check_id: &str,
-    target: i64,
-    partial_at: Option<i64>,
-) -> Result<spookery_kernel::api::rules::RollResult, Reason> {
-    let actor = draft
-        .now()
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownKey)?
-        .clone();
-    roll_subject(
-        round,
-        &draft.canon().checks,
-        &draft.canon().meters,
-        &SubjectRoll {
-            rule_id: check_id,
-            actor_kind: kind,
-            actor_id,
-            check_id,
-            target,
-            partial_at,
-            live: Some(&actor),
-        },
-    )
 }
 
 fn arrival_intent(round: &Round, actor_id: &str, kind: ActorKind, pending: &Pending) -> Intent {

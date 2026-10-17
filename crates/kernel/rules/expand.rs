@@ -5,9 +5,11 @@ use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::meter::{self, MeterWrite};
 use crate::model::Now;
-use crate::rule::{EffectTemplate, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who};
+use crate::rule::{
+    EffectTemplate, Expr, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who,
+};
 use crate::rules::cond;
-use crate::rules::expr::{self, Ctx};
+use crate::rules::expr::{self, Ctx, Dice, NoDice};
 use crate::rules::gate;
 use crate::rules::habits;
 
@@ -32,8 +34,22 @@ pub fn expand_outcome<F>(
 where
     F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
 {
+    expand_with(canon, now, intent, outcome, &mut NoDice, resist_roll)
+}
+
+pub fn expand_with<F>(
+    canon: &Canon,
+    now: &Now,
+    intent: &Intent,
+    outcome: Option<Outcome>,
+    dice: &mut dyn Dice,
+    resist_roll: F,
+) -> Result<Vec<Effect>, Reason>
+where
+    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
+{
     let rule = gate::resolve(canon, now, intent)?;
-    expand_rule(canon, now, rule, intent, outcome, resist_roll)
+    expand_rule_with(canon, now, rule, intent, outcome, dice, resist_roll)
 }
 
 /// Expand one rule's lists. Change rules are not verbs, so they pass the rule in.
@@ -43,6 +59,21 @@ pub fn expand_rule<F>(
     rule: &Rule,
     intent: &Intent,
     outcome: Option<Outcome>,
+    resist_roll: F,
+) -> Result<Vec<Effect>, Reason>
+where
+    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
+{
+    expand_rule_with(canon, now, rule, intent, outcome, &mut NoDice, resist_roll)
+}
+
+pub fn expand_rule_with<F>(
+    canon: &Canon,
+    now: &Now,
+    rule: &Rule,
+    intent: &Intent,
+    outcome: Option<Outcome>,
+    dice: &mut dyn Dice,
     mut resist_roll: F,
 ) -> Result<Vec<Effect>, Reason>
 where
@@ -72,6 +103,7 @@ where
             template,
             &mut effects,
             &mut last_resist,
+            dice,
             &mut resist_roll,
         )?;
     }
@@ -90,6 +122,7 @@ fn expand_template<F>(
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
     last_resist: &mut Option<Outcome>,
+    dice: &mut dyn Dice,
     resist_roll: &mut F,
 ) -> Result<(), Reason>
 where
@@ -113,12 +146,12 @@ where
                 resisted,
             } => {
                 let actor = expr::actor_of(now, ctx, who)?;
-                let number = expr::eval(canon, now, ctx, target)?;
+                let number = expr::show(canon, now, ctx, target, dice)?.value;
                 let band = resist_roll(&actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
-                        expand_template(expand, alt, effects, last_resist, resist_roll)?;
+                        expand_template(expand, alt, effects, last_resist, dice, resist_roll)?;
                     }
                     return Ok(());
                 }
@@ -188,7 +221,18 @@ where
             who, key, add, set, ..
         } => {
             let actor_id = expr::actor_of(now, ctx, who)?;
-            let write = meter_write(canon, now, &actor_id, key, *add, *set)?;
+            let write = meter_write(
+                canon,
+                now,
+                &actor_id,
+                key,
+                Amount {
+                    ctx,
+                    add: add.as_ref(),
+                    set: set.as_ref(),
+                    dice,
+                },
+            )?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
@@ -314,18 +358,32 @@ where
     Ok(())
 }
 
+struct Amount<'a> {
+    ctx: &'a Ctx<'a>,
+    add: Option<&'a Expr>,
+    set: Option<&'a Expr>,
+    dice: &'a mut dyn Dice,
+}
+
 fn meter_write(
     canon: &Canon,
     now: &Now,
     actor_id: &str,
     key: &str,
-    add: Option<i64>,
-    set: Option<i64>,
+    amount: Amount<'_>,
 ) -> Result<MeterWrite, Reason> {
-    if let Some(delta) = add {
+    if let Some(expr) = amount.add {
+        let delta = expr::show(canon, now, amount.ctx, expr, amount.dice)?.value;
         return Ok(MeterWrite::Offset(delta));
     }
-    let desired = set.ok_or(Reason::Schema)?;
+    let desired = expr::show(
+        canon,
+        now,
+        amount.ctx,
+        amount.set.ok_or(Reason::Schema)?,
+        amount.dice,
+    )?
+    .value;
     let def = canon.meters.get(key).ok_or(Reason::UnknownKey)?;
     let live = now
         .actors

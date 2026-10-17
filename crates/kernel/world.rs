@@ -23,6 +23,7 @@ pub struct World {
     pub(crate) queue: Vec<Intent>,
     pub(crate) pending: Option<UncommittedRound>,
     rolls: Vec<RollReport>,
+    dice: Vec<String>,
     summary: Vec<String>,
     lines: Vec<Told>,
     seen: Vec<Seen>,
@@ -105,6 +106,10 @@ impl World {
         std::mem::take(&mut self.rolls)
     }
 
+    pub fn take_dice(&mut self) -> Vec<String> {
+        std::mem::take(&mut self.dice)
+    }
+
     /// Change keys from the latest round. The GM sees every one.
     pub fn change_summary(&self) -> &[String] {
         &self.summary
@@ -153,6 +158,7 @@ impl World {
         paths: Vec<String>,
         notices: Vec<RollReport>,
     ) {
+        self.dice = journal::dice_lines(&round_jsonl);
         self.pending = Some(UncommittedRound {
             now,
             round_jsonl,
@@ -163,8 +169,14 @@ impl World {
         self.rolls = notices;
     }
 
-    pub(crate) fn note_committed(&mut self, notices: Vec<RollReport>, keep_queue: bool) {
+    pub(crate) fn note_committed(
+        &mut self,
+        notices: Vec<RollReport>,
+        dice: Vec<String>,
+        keep_queue: bool,
+    ) {
         self.rolls = notices;
+        self.dice = dice;
         if !keep_queue {
             self.queue.clear();
         }
@@ -220,6 +232,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         queue: Vec::new(),
         pending: None,
         rolls: Vec::new(),
+        dice: Vec::new(),
         summary: Vec::new(),
         lines: Vec::new(),
         seen: Vec::new(),

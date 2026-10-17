@@ -336,6 +336,8 @@ pub struct CommitBody {
     pub diff_summary: Vec<String>,
     pub log_path: Option<String>,
     pub checks: Vec<Roll>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dice: Vec<String>,
 }
 
 impl CommitBody {
