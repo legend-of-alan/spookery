@@ -93,7 +93,7 @@ jobs:
           SPOOK_GM_KEY: ollama
           SPOOK_GM_URL: http://127.0.0.1:11434/v1
           SPOOK_GM_MODEL: ${{ env.OLLAMA_MODEL }}
-        run: cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
+        run: cargo test -p spook --test integration "live_round::" --locked -- --ignored --nocapture
 
       - name: Ollama log
         if: failure()
@@ -132,4 +132,4 @@ jobs:
           SPOOK_GM_KEY: ${{ secrets.XAI_API_KEY }}
           SPOOK_GM_URL: https://api.x.ai/v1
           SPOOK_GM_MODEL: ${{ vars.SPOOK_XAI_MODEL || env.XAI_DEFAULT_MODEL }}
-        run: cargo test -p spook --test integration live_round:: --locked -- --ignored --nocapture
+        run: cargo test -p spook --test integration "live_round::" --locked -- --ignored --nocapture
