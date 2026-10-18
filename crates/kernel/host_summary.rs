@@ -1,55 +1,50 @@
-//! The host digest, and the shorter digest a player sees.
+//! The host digest, and the player digest built from the view.
 
 use std::path::Path;
 
 use crate::error::Reason;
+use crate::intent::ViewerId;
 use crate::journal::{self, JournalEntry};
-use crate::model::Clock;
+use crate::perceive::View;
 use crate::store::codec::emit_effect_payload;
 use crate::world::World;
 
-pub enum DigestViewer {
-    Host,
-    Player(String),
+pub fn host_summary(world: &World) -> Result<String, Reason> {
+    let mut rows = effect_rows(world.root())?;
+    for (id, clock) in &world.now().clocks {
+        rows.push(clock_line(id, clock.value, clock.max, clock.paused));
+    }
+    Ok(join_rows(rows))
 }
 
-pub fn host_summary(world: &World, viewer: DigestViewer) -> Result<String, Reason> {
+/// Notes addressed to this viewer, then their clocks. Which notes are on the
+/// view is decided in `perceive`.
+pub fn player_digest(view: &View) -> Result<String, Reason> {
+    let viewer = ViewerId::parse(&view.viewer)?;
+    let id = viewer.actor_id();
     let mut rows = Vec::new();
-    match viewer {
-        DigestViewer::Host => {
-            rows.extend(effect_rows(world.root())?);
-            for (id, clock) in &world.now().clocks {
-                rows.push(clock_line(id, clock));
-            }
-        }
-        DigestViewer::Player(id) => {
-            let mut messages: Vec<_> = world
-                .now()
-                .messages
-                .iter()
-                .filter(|message| message.to.iter().any(|to| to == &id))
-                .collect();
-            messages.sort_by(|left, right| left.id.cmp(&right.id));
-            for message in messages {
-                rows.push(format!("message {} {}", message.id, message.text));
-            }
-            for (clock_id, clock) in &world.now().clocks {
-                if clock.owners.iter().any(|owner| owner == &id) {
-                    rows.push(clock_line(clock_id, clock));
-                }
-            }
+    for message in &view.messages {
+        if message.to.iter().any(|to| to == id) {
+            rows.push(format!("message {} {}", message.id, message.text));
         }
     }
-    if rows.is_empty() {
-        Ok(String::new())
-    } else {
-        Ok(rows.join("\n") + "\n")
+    for clock in &view.clocks {
+        rows.push(clock_line(&clock.id, clock.value, clock.max, clock.paused));
     }
+    Ok(join_rows(rows))
 }
 
-fn clock_line(id: &str, clock: &Clock) -> String {
-    let state = if clock.paused { "paused" } else { "running" };
-    format!("clock {id} {} {} {state}", clock.value, clock.max)
+fn clock_line(id: &str, value: i64, max: i64, paused: bool) -> String {
+    let state = if paused { "paused" } else { "running" };
+    format!("clock {id} {value} {max} {state}")
+}
+
+fn join_rows(rows: Vec<String>) -> String {
+    if rows.is_empty() {
+        String::new()
+    } else {
+        rows.join("\n") + "\n"
+    }
 }
 
 fn effect_rows(root: &Path) -> Result<Vec<String>, Reason> {

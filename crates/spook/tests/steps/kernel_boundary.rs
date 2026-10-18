@@ -25,7 +25,9 @@ const LAYERS: &[&[&str]] = &[
     &["world"],
     &["pause"],
     &["expand"],
-    &["apply", "commit", "host_summary", "perceive"],
+    &["apply", "commit", "perceive"],
+    // The player digest reads the view, so this row may import perceive.
+    &["host_summary"],
 ];
 
 /// Names that must not be `pub` on the kernel surface.

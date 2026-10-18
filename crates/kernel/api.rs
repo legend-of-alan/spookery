@@ -111,6 +111,6 @@ pub mod world {
 pub use crate::diagnostic::{first_reason, reason_of, Diagnostic};
 pub use crate::error::Reason;
 pub use crate::hash::blake2s_256;
-pub use crate::host_summary::{host_summary, DigestViewer};
+pub use crate::host_summary::{host_summary, player_digest};
 pub use crate::perceive::perceive;
 pub use crate::world::{check_pack, World};

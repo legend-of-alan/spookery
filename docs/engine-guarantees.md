@@ -76,15 +76,16 @@ they do not know, or a note whose id is that fact. Saying a hidden fact does not
 teach it. Audit records a note and still passes. Strict audit fails. Roll faces
 go to the GM. Expression dice do too. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
 the player no roll line. Host status shows the host-only trace. The player's
-resume leaves that trace out. A place lists only its own stock.
+resume leaves that trace out. The resume digest shows only notes the view shows. A place lists only its own stock.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/firewall/a_hidden_fact_stays_hidden.feature`,
 `features/firewall/spook_audit_proves_no_leak.feature`,
 `features/check/spook_check_explains_a_broken_pack.feature`,
 `features/checks/the_player_sees_success_and_the_gm_sees_faces.feature`,
-`features/checks/an_npc_rolls_its_own_check.feature`, and
-`features/digest/status_is_the_host_view.feature`.
+`features/checks/an_npc_rolls_its_own_check.feature`,
+`features/digest/status_is_the_host_view.feature`, and
+`features/digest/resume_follows_the_view.feature`.
 
 ## Ordering
 
