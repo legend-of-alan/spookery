@@ -28,13 +28,13 @@ pub fn run_player_terminal(
         .map_err(TerminalError::Io)?;
     stream.flush().map_err(TerminalError::Io)?;
     let mut reader = BufReader::new(stream);
-    let mut seat = render::PlayerText::new();
+    let mut text = render::PlayerText::new();
     loop {
         let Some(line) = read_line(&mut reader)? else {
             eprintln!("{}", Reason::NotInSpec);
             std::process::exit(1);
         };
-        match write_frame(&mut seat, &line, raw) {
+        match write_frame(&mut text, &line, raw) {
             FrameEffect::Refuse => std::process::exit(1),
             FrameEffect::View => break,
             FrameEffect::Continue => {}
@@ -43,7 +43,7 @@ pub fn run_player_terminal(
     let mut write_stream = reader.get_mut().try_clone().map_err(TerminalError::Io)?;
     std::thread::spawn(move || loop {
         match read_line(&mut reader) {
-            Ok(Some(line)) => match write_frame(&mut seat, &line, raw) {
+            Ok(Some(line)) => match write_frame(&mut text, &line, raw) {
                 FrameEffect::Refuse | FrameEffect::Continue | FrameEffect::View => {}
             },
             Ok(None) => std::process::exit(0),
@@ -126,11 +126,11 @@ enum FrameEffect {
     Refuse,
 }
 
-fn write_frame(seat: &mut render::PlayerText, line: &str, raw: bool) -> FrameEffect {
+fn write_frame(text: &mut render::PlayerText, line: &str, raw: bool) -> FrameEffect {
     if raw {
         return write_raw(line);
     }
-    write_readable(seat, line)
+    write_readable(text, line)
 }
 
 fn write_raw(line: &str) -> FrameEffect {
@@ -148,24 +148,24 @@ fn write_raw(line: &str) -> FrameEffect {
     }
 }
 
-fn write_readable(seat: &mut render::PlayerText, line: &str) -> FrameEffect {
+fn write_readable(text: &mut render::PlayerText, line: &str) -> FrameEffect {
     let Ok(message) = crate::protocol::read_player(line) else {
         eprintln!("{line}");
         let _ = io::stderr().flush();
         return FrameEffect::Continue;
     };
     let effect = frame_effect(&message);
-    let text = seat.show(&message);
-    if text.is_empty() {
+    let shown = text.show(&message);
+    if shown.is_empty() {
         return effect;
     }
     match effect {
         FrameEffect::Refuse => {
-            eprintln!("{text}");
+            eprintln!("{shown}");
             let _ = io::stderr().flush();
         }
         FrameEffect::Continue | FrameEffect::View => {
-            println!("{text}");
+            println!("{shown}");
             let _ = io::stdout().flush();
         }
     }

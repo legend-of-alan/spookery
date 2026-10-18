@@ -166,10 +166,14 @@ pub(crate) fn join_play(world: &mut World, raw: bool) {
 }
 
 pub(crate) fn wait_play(world: &mut World, needle: &str) {
+    wait_play_until(world, |stdout| stdout.contains(needle), needle);
+}
+
+pub(crate) fn wait_play_until(world: &mut World, ready: impl Fn(&str) -> bool, label: &str) {
     let start = Instant::now();
     loop {
         let stdout = play_stdout(world);
-        if stdout.contains(needle) {
+        if ready(&stdout) {
             return;
         }
         let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
@@ -187,7 +191,7 @@ pub(crate) fn wait_play(world: &mut World, needle: &str) {
                 .as_ref()
                 .map(|play| support::text_of(&play.stderr))
                 .unwrap_or_default();
-            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+            panic!("missing {label}\nstdout:\n{stdout}\nstderr:\n{stderr}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }

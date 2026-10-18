@@ -413,19 +413,15 @@ fn listen() -> Table {
 }
 
 fn wait_host_grew(table: &Table, mark: usize) {
+    // Assumes the next host output after `mark` is the seat-release summary
+    // (not a late-buffered sit line). An empty summary would hang until HANG.
     let start = std::time::Instant::now();
     loop {
         if table.host_text.lock().unwrap().len() > mark {
             return;
         }
         let left = HANG.saturating_sub(start.elapsed());
-        if left.is_zero() {
-            panic!(
-                "host did not print after the seat closed\n{}",
-                table.host_text.lock().unwrap()
-            );
-        }
-        if table.host_more.recv_timeout(left).is_err() {
+        if left.is_zero() || table.host_more.recv_timeout(left).is_err() {
             panic!(
                 "host did not print after the seat closed\n{}",
                 table.host_text.lock().unwrap()

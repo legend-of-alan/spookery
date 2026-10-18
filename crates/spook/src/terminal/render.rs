@@ -41,14 +41,14 @@ fn speaker(from: &str) -> String {
 /// Readable text for the frames of one sitting.
 pub struct PlayerText {
     seen_resume: bool,
-    earlier: bool,
+    earlier_open: bool,
 }
 
 impl PlayerText {
     pub fn new() -> Self {
         Self {
             seen_resume: false,
-            earlier: false,
+            earlier_open: false,
         }
     }
 
@@ -61,30 +61,30 @@ impl PlayerText {
                 text,
                 replay: true,
                 ..
-            } => self.earlier_line(format!("{}: {text}", speaker(from))),
+            } => self.open_earlier(format!("{}: {text}", speaker(from))),
             PlayerMessage::Resume { text } => {
                 let heading = !self.seen_resume;
                 self.seen_resume = true;
-                self.live(resume(text, heading))
+                self.close_earlier(resume(text, heading))
             }
-            _ => self.live(render(message)),
+            _ => self.close_earlier(render(message)),
         }
     }
 
-    fn earlier_line(&mut self, line: String) -> String {
-        if self.earlier {
+    fn open_earlier(&mut self, line: String) -> String {
+        if self.earlier_open {
             line
         } else {
-            self.earlier = true;
+            self.earlier_open = true;
             format!("Earlier:\n{line}")
         }
     }
 
-    fn live(&mut self, text: String) -> String {
-        if text.is_empty() || !self.earlier {
+    fn close_earlier(&mut self, text: String) -> String {
+        if text.is_empty() || !self.earlier_open {
             return text;
         }
-        self.earlier = false;
+        self.earlier_open = false;
         format!("\n{text}")
     }
 }

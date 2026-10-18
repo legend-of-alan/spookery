@@ -6,7 +6,7 @@ use cucumber::{then, when};
 use crate::support;
 use crate::World;
 
-use super::common::{join_play, play_stdout, wait_play};
+use super::common::{join_play, play_stdout, wait_play, wait_play_until};
 use super::table;
 
 #[when(expr = "the operator asks spook for help")]
@@ -139,29 +139,14 @@ Assassination debt: 2/6, paused
 
 #[then(expr = "the round shows no away heading")]
 fn the_round_shows_no_away_heading(world: &mut World) {
-    let start = Instant::now();
-    loop {
-        let stdout = play_stdout(world);
-        if stdout.matches("You are in").count() >= 2 {
-            let after = stdout.split_once("You are in").unwrap().1;
-            assert!(!after.contains("While you were away:"), "{stdout}");
-            return;
-        }
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        if let Some(status) = play
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = support::text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = support::text_of(&play.stderr);
-            panic!("the round did not print\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    wait_play_until(
+        world,
+        |stdout| stdout.matches("You are in").count() >= 2,
+        "a second You are in",
+    );
+    let stdout = play_stdout(world);
+    let after = stdout.split_once("You are in").unwrap().1;
+    assert!(!after.contains("While you were away:"), "{stdout}");
 }
 
 #[then(expr = "play shows earlier speech under one heading")]
