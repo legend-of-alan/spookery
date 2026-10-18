@@ -5,7 +5,7 @@ use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target
 use spookery_kernel::api::model::ActorLive;
 use spookery_kernel::api::rule::{TargetKind, When};
 use spookery_kernel::api::rules::gate::{gate, verb_for, Miss};
-use spookery_kernel::api::rules::RollReport;
+use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 use spookery_round::{advance_while_busy, commit_moves_at};
@@ -24,7 +24,7 @@ pub enum MoveOutcome {
     Queued(QueuedNote),
     Committed {
         advanced: bool,
-        notices: Vec<RollReport>,
+        reports: Vec<MoveReport>,
     },
 }
 
@@ -51,21 +51,21 @@ pub fn handle_player_move(
     let advanced = commit_queued(world)?;
     Ok(MoveOutcome::Committed {
         advanced,
-        notices: world.take_rolls(),
+        reports: world.take_reports(),
     })
 }
 
-pub fn player_notice_lines(notices: &[RollReport], actor_id: &str) -> String {
+pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
     let mut out = String::new();
-    for notice in notices {
-        if notice.actor_id() != actor_id {
+    for report in reports {
+        if report.actor_id() != actor_id {
             continue;
         }
-        match notice {
-            RollReport::Rolled { out: rolled, .. } => {
+        match report {
+            MoveReport::Rolled { out: rolled, .. } => {
                 out.push_str(&frames::player_check_line(rolled.outcome))
             }
-            RollReport::Refused { code, missing, .. } => {
+            MoveReport::Refused { code, missing, .. } => {
                 out.push_str(&frames::player_refused(code.token(), missing.as_deref()))
             }
         }
@@ -73,12 +73,12 @@ pub fn player_notice_lines(notices: &[RollReport], actor_id: &str) -> String {
     out
 }
 
-pub fn gm_check_frames(notices: &[RollReport]) -> Vec<Vec<u8>> {
-    notices
+pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
+    reports
         .iter()
-        .filter_map(|notice| match notice {
-            RollReport::Rolled { out, .. } => Some(frames::check_event(out)),
-            RollReport::Refused { .. } => None,
+        .filter_map(|report| match report {
+            MoveReport::Rolled { out, .. } => Some(frames::check_event(out)),
+            MoveReport::Refused { .. } => None,
         })
         .collect()
 }

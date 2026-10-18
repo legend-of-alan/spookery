@@ -49,7 +49,7 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
         draft,
         store,
         jsonl,
-        std::mem::take(&mut round.notices),
+        std::mem::take(&mut round.move_reports),
         round.recorded.is_some(),
         Delivered {
             summary: std::mem::take(&mut round.summary),

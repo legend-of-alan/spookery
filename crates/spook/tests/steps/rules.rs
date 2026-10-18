@@ -6,7 +6,7 @@ use serde_json::Value;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::model::{Now, PlaceLive};
 use spookery_kernel::api::rules::gate;
-use spookery_kernel::api::rules::{faces, RollKey, RollReport};
+use spookery_kernel::api::rules::{faces, MoveReport, RollKey};
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 use spookery_kernel::api::Reason;
 use spookery_round::{play, RoundCause};
@@ -487,15 +487,15 @@ fn lark_attacks(world: &mut World) {
         might.offset = 0;
     });
     let mut opened = open_pack(&pack);
-    let notices =
+    let reports =
         match spookery::host::handle_player_move(&mut opened, "pc_lark", "attack npc_briar", false)
         {
-            Ok(spookery::host::MoveOutcome::Committed { notices, .. }) => notices,
+            Ok(spookery::host::MoveOutcome::Committed { reports, .. }) => reports,
             Ok(spookery::host::MoveOutcome::Queued(_)) => panic!("attack queued"),
             Err(err) => panic!("attack {}", err.token()),
         };
-    let rolled = notices.into_iter().find_map(|notice| match notice {
-        RollReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some(out),
+    let rolled = reports.into_iter().find_map(|report| match report {
+        MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some(out),
         _ => None,
     });
     let rolled = rolled.unwrap_or_else(|| panic!("Lark did not roll"));

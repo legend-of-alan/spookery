@@ -11,7 +11,7 @@ use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
-use crate::rules::RollReport;
+use crate::rules::MoveReport;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
 use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
 use crate::store::recover::close_finished;
@@ -35,13 +35,13 @@ pub enum RoundStore {
     Memory,
 }
 
-/// Hold one played round when the caller will write it. Spook queues intents and takes rolls; it does not write this.
+/// Hold one played round when the caller will write it. Spook queues intents and takes reports; it does not write this.
 pub fn finish_round(
     world: &mut World,
     mut draft: Draft,
     store: RoundStore,
     record: String,
-    notices: Vec<RollReport>,
+    reports: Vec<MoveReport>,
     keep_queue: bool,
     mut delivered: Delivered,
 ) -> Result<(), Reason> {
@@ -52,12 +52,12 @@ pub fn finish_round(
         RoundStore::Hold => {
             let now = draft.now().clone();
             let memories = draft.memories().to_vec();
-            world.hold_uncommitted(now, record, memories, paths, notices, dice);
+            world.hold_uncommitted(now, record, memories, paths, reports, dice);
             Ok(())
         }
         RoundStore::Write => {
             commit_round(world, draft, &record)?;
-            world.note_committed(notices, dice, keep_queue);
+            world.note_committed(reports, dice, keep_queue);
             Ok(())
         }
         RoundStore::Memory => {
@@ -68,7 +68,7 @@ pub fn finish_round(
                 .ok_or(Reason::CommitConflict)?;
             canonicalize(&mut draft.state);
             world.now = draft.state;
-            world.note_committed(notices, dice, keep_queue);
+            world.note_committed(reports, dice, keep_queue);
             Ok(())
         }
     }
