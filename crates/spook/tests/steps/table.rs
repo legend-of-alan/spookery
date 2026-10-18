@@ -489,6 +489,14 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
     }
 }
 
+pub fn host_stdout(world: &World) -> String {
+    live_ref(world)
+        .server
+        .as_ref()
+        .map(|server| support::text_of(&server.stdout))
+        .unwrap_or_default()
+}
+
 pub fn gm_text(world: &mut World) -> String {
     let live = live_mut(world);
     if let Some(gm) = live.gm.as_mut() {

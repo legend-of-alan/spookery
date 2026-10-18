@@ -142,8 +142,16 @@ def main() -> None:
         wait_text(play.out, "You are in", 30, "play did not show a place", play, host, gm)
         assert play.proc.stdin is not None
         for line in lines:
+            before = "".join(play.out).count("You are in")
             play.proc.stdin.write(line + "\n")
-        play.proc.stdin.flush()
+            play.proc.stdin.flush()
+            deadline = time.time() + 45
+            while time.time() < deadline:
+                if "".join(play.out).count("You are in") > before:
+                    break
+                time.sleep(0.05)
+            else:
+                dump(f"the line did not finish: {line}", None, play, host, gm)
         wait_text(play.out, ending, 45, "the session did not reach the ending", play, host, gm)
         assert host.proc.stdin is not None
         host.proc.stdin.write("stop\n")

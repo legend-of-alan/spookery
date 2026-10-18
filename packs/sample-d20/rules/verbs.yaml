@@ -101,3 +101,19 @@ rules:
     do:
       - unwield:
           who: self
+
+  - id: ask_briar
+    when:
+      verb: ask_briar
+    if:
+      - at:
+          who: npc_briar
+          place: gate_yard
+    do:
+      - flag:
+          who: world
+          key: passage
+          value: true
+      - narrate:
+          to: self
+          text: Briar steps aside.

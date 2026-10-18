@@ -1,6 +1,6 @@
 schema: now
 shard_id: sample-d20
-pack_rev: blake2s:9ca9e6053ce51483e48fecf0f35dba7cb4d0066b3a1905dd9e9485d6e0c179c2
+pack_rev: blake2s:b4928c7b606db1617a452d46caeadf44f0bb949ec4cd28feefa2f6f82476f9d4
 rules_rev: 7
 state_rev: 0
 tick_index: 0
@@ -16,7 +16,8 @@ places:
       - npc_briar
       - pc_lark
   loft:
-    items: {}
+    items:
+      latch: 1
     notes: []
     actors: []
   mill_lane:
@@ -29,7 +30,8 @@ actors:
   npc_briar:
     kind: npc
     place: gate_yard
-    flags: []
+    flags:
+      - warden
     meters:
       defense:
         base: 14
