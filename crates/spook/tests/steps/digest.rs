@@ -90,7 +90,7 @@ fn the_docks_pack_where_miras_door_note_names(world: &mut World, sentence: Strin
 
 #[then(expr = "the player resume lists the door message")]
 fn the_player_resume_lists_the_door_message(world: &mut World) {
-    let resume = player_resume(world, "pc_rowan");
+    let resume = read_player_resume(world, "pc_rowan");
     assert_eq!(resume, RESUME);
     assert!(!resume.contains("effect location"));
     assert!(!resume.contains("lamp_oil"));
@@ -104,7 +104,7 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
         now.messages.iter().any(|message| message.id == note),
         "the save has no {note}"
     );
-    let resume = player_resume(world, &actor);
+    let resume = read_player_resume(world, &actor);
     assert!(!resume.contains(&note), "resume listed {note}:\n{resume}");
 }
 
@@ -119,11 +119,11 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
     );
 }
 
-fn player_resume(world: &World, actor: &str) -> String {
+fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
     let shard = spookery_round::resume(pack).unwrap();
     let view = spookery_kernel::api::perceive(&shard, &format!("player:{actor}")).unwrap();
-    spookery_kernel::api::player_digest(&view)
+    spookery_kernel::api::player_digest(&view).unwrap()
 }
 
 fn rewrite_mira(pack: &Path, from: &str, to: &str) {

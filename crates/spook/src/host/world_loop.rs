@@ -564,7 +564,7 @@ fn welcome(world: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
 
 fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
     let view = perceive(world, &format!("player:{actor_id}"))?;
-    let mut out = frames::player_resume_line(&player_digest(&view));
+    let mut out = frames::player_resume_line(&player_digest(&view)?);
     out.push_str(&frames::player_perceive_line(&view));
     Ok(out)
 }
