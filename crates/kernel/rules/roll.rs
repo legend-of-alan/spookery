@@ -23,8 +23,16 @@ pub struct RollResult {
 /// Not stored in `Now` or the tick JSONL.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RollReport {
-    Rolled { actor_id: String, out: RollResult },
-    Refused { actor_id: String, code: Reason },
+    Rolled {
+        actor_id: String,
+        out: RollResult,
+    },
+    Refused {
+        actor_id: String,
+        code: Reason,
+        /// The meter or item id, or the sentence a locked exit shows.
+        missing: Option<String>,
+    },
 }
 
 impl RollReport {

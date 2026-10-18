@@ -9,10 +9,10 @@ use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::journal::{Arrival, Rejected};
 use spookery_kernel::api::key::ChangeRecord;
 use spookery_kernel::api::model::Now;
+use spookery_kernel::api::rules::gate::Miss;
 use spookery_kernel::api::rules::{RollReport, RollResult};
 use spookery_kernel::api::visibility::{Seen, Told};
 use spookery_kernel::api::world::{session_status, World};
-use spookery_kernel::api::Reason;
 
 /// One pass of the rules over one tick.
 pub struct Round {
@@ -56,8 +56,7 @@ pub enum Resolution {
         rolled: Option<RollResult>,
     },
     Refused {
-        reason: String,
-        code: Reason,
+        miss: Miss,
         notice: Option<RollReport>,
     },
 }
