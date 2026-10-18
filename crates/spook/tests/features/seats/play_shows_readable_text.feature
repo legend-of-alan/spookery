@@ -46,6 +46,13 @@ Feature: Play shows readable text
     And play types "wait"
     Then the round shows no away heading
 
+  Scenario: A note shows once per update after rejoin
+    Given a docks table
+    When thirteen ticks pass
+    And play joins the table on a free loopback address
+    And play types "wait"
+    Then the round's update shows the door note only under Notes
+
   Scenario: Rejoining shows earlier speech under one heading
     Given a docks table
     When play joins the table on a free loopback address
