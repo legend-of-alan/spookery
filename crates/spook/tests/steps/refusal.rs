@@ -1,6 +1,9 @@
 //! A move refused while its round runs tells that player why.
 
 use std::fs;
+use std::io::Write;
+use std::path::Path;
+use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -27,9 +30,22 @@ fn play_joins_the_sample_table(world: &mut World) {
 
 #[then(expr = "play's error shows {string} once")]
 fn play_error_shows_once(world: &mut World, text: String) {
-    let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-    let stderr = text_of(&play.stderr);
-    assert_eq!(stderr.matches(&text).count(), 1, "{stderr}");
+    let start = Instant::now();
+    loop {
+        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+        let stderr = text_of(&play.stderr);
+        let count = stderr.matches(&text).count();
+        if count == 1 {
+            return;
+        }
+        if count > 1 {
+            panic!("saw {text} {count} times\n{stderr}");
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            panic!("missing {text}\n{stderr}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 #[when(expr = "the operator runs audit")]
@@ -85,6 +101,284 @@ fn the_player_sees_no_refused_frame(world: &mut World) {
 
 #[then(expr = "the round rejects that habit with MISSING_ITEM")]
 fn the_round_rejects_that_habit_with_missing_item(world: &mut World) {
+    assert_one_rejection(world, "MISSING_ITEM");
+}
+
+#[given(expr = "a sample table where push and shove each cost 1 grit")]
+fn push_and_shove_cost_grit(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "grit-gap");
+    add_grit(&pack);
+    append(
+        &pack.join("rules/verbs.yaml"),
+        "\
+\n  - id: push
+    when:
+      verb: push
+    cost:
+      meter:
+        grit: 1
+    do: []
+
+  - id: shove
+    when:
+      verb: shove
+    cost:
+      meter:
+        grit: 1
+    do: []
+",
+    );
+    edit_save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a sample table where dropping the tonic locks the loft")]
+fn dropping_the_tonic_locks_the_loft(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "locked-loft");
+    let path = pack.join("world/places/gate_yard.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read yard: {err}"));
+    let next = text.replacen(
+        "  - to: loft\n    name: loft\n",
+        "\
+\n  - to: loft
+    name: loft
+    if:
+      - has_item:
+          who: self
+          id: tonic
+    locked_text: The loft door is locked.
+",
+        1,
+    );
+    assert_ne!(text, next, "the loft exit was not locked");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write yard: {err}"));
+    edit_save(&pack, |_| {});
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a sample table with the GM seated")]
+fn a_sample_table_with_the_gm_seated(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "named-gap");
+    edit_save(&pack, |_| {});
+    seat_lark(world, pack);
+}
+
+#[given(expr = "a sample table where one effect is over budget and the GM is seated")]
+fn one_effect_is_over_budget(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "over-budget");
+    let path = pack.join("rules/tick.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read tick: {err}"));
+    let next = text.replacen(
+        "max_effects_per_intent: 4\n",
+        "max_effects_per_intent: 0\n",
+        1,
+    );
+    assert_ne!(text, next, "the effect budget was not lowered");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write tick: {err}"));
+    append(
+        &pack.join("rules/verbs.yaml"),
+        "\
+\n  - id: tap
+    when:
+      verb: tap
+    do:
+      - flag:
+          who: self
+          key: tapped
+          value: true
+",
+    );
+    edit_save(&pack, |_| {});
+    seat_lark(world, pack);
+}
+
+#[when(expr = "the GM is seated and play joins")]
+fn the_gm_is_seated_and_play_joins(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    let addr = table::game_addr(world);
+    let pack_arg = support::pack_arg(&pack);
+    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
+    wait_play(world, "You are in");
+}
+
+#[when(expr = "play queues {string}")]
+fn play_queues(world: &mut World, line: String) {
+    let before = play_stdout(world).matches("Your action is queued.").count();
+    {
+        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+        let stdin = play
+            .stdin
+            .as_mut()
+            .unwrap_or_else(|| panic!("play stdin is closed"));
+        writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("type: {err}"));
+        stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
+    }
+    let start = Instant::now();
+    loop {
+        let stdout = play_stdout(world);
+        if stdout.matches("Your action is queued.").count() > before {
+            return;
+        }
+        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+        if let Some(status) = play
+            .child
+            .try_wait()
+            .unwrap_or_else(|err| panic!("try_wait: {err}"))
+        {
+            let stderr = text_of(&play.stderr);
+            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            let stderr = text_of(&world.play.as_ref().unwrap().stderr);
+            panic!("play did not queue {line}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[when(expr = "Lark queues {string}")]
+fn lark_queues(world: &mut World, line: String) {
+    let (mark, added) = table::player_send(world, &line, "\"kind\":\"queued\"");
+    world.mark = mark;
+    world.player_added = added;
+}
+
+#[then(expr = "Lark's refused frame for {string} has no missing field")]
+fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
+    let line = format!("{{\"kind\":\"refused\",\"code\":\"{code}\"}}");
+    let start = Instant::now();
+    loop {
+        let text = table::player_text(world);
+        let frames = text
+            .lines()
+            .filter(|row| row.contains("\"kind\":\"refused\""))
+            .collect::<Vec<_>>();
+        if frames.contains(&line.as_str()) {
+            assert_eq!(
+                frames.iter().filter(|row| **row == line).count(),
+                1,
+                "{text}"
+            );
+            assert!(
+                frames.iter().all(|row| !row.contains("\"missing\"")),
+                "{text}"
+            );
+            return;
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            panic!("missing {line}\n{text}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[then(expr = "the journal word for that move is {string}")]
+fn the_journal_word_for_that_move_is(world: &mut World, word: String) {
+    assert_one_rejection(world, &word);
+}
+
+#[given(expr = "Oden can pay for a habit until Lark spends his grit")]
+fn oden_can_pay_until_lark_spends_his_grit(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "oden-grit");
+    add_grit(&pack);
+    let path = pack.join("cast/oden.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read oden: {err}"));
+    let next = text.replacen(
+        "tick:\n  eligible: false\n",
+        "\
+tick:
+  eligible: true
+rules:
+  - id: heave
+    when: habit
+    cost:
+      meter:
+        grit: 1
+    do:
+      - flag:
+          who: self
+          key: heaved
+          value: true
+",
+        1,
+    );
+    assert_ne!(text, next, "oden's habit was not inserted");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
+    append(
+        &pack.join("rules/verbs.yaml"),
+        "\
+\n  - id: sap
+    when:
+      verb: sap
+      target: actor
+    do:
+      - meter:
+          who: target
+          key: grit
+          add: -1
+",
+    );
+    edit_save(&pack, |_| {});
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_lark");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Lark saps Oden")]
+fn lark_saps_oden(world: &mut World) {
+    let (mark, added) = table::player_send(world, "sap npc_oden", "\"kind\":\"resume\"");
+    world.mark = mark;
+    world.player_added = added;
+}
+
+#[then(expr = "the round rejects that habit with {string}")]
+fn the_round_rejects_that_habit_with(world: &mut World, word: String) {
+    assert_one_rejection(world, &word);
+}
+
+fn seat_lark(world: &mut World, pack: std::path::PathBuf) {
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_actor(world, &pack, "pc_lark");
+    world.pack = Some(pack);
+}
+
+fn add_grit(pack: &Path) {
+    append(
+        &pack.join("rules/meters.yaml"),
+        "\
+\n  - id: grit
+    min: 0
+    base_cap: 5
+    max: 5
+    start: 1
+",
+    );
+}
+
+fn append(path: &Path, extra: &str) {
+    let mut text = fs::read_to_string(path).unwrap_or_else(|err| panic!("read {path:?}: {err}"));
+    assert!(!text.contains(extra.trim()), "already present in {path:?}");
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(extra);
+    fs::write(path, text).unwrap_or_else(|err| panic!("write {path:?}: {err}"));
+}
+
+fn play_stdout(world: &World) -> String {
+    text_of(
+        &world
+            .play
+            .as_ref()
+            .unwrap_or_else(|| panic!("no play"))
+            .stdout,
+    )
+}
+
+fn assert_one_rejection(world: &World, word: &str) {
     let pack = table::pack(world);
     let keys = table::list_tick_keys(pack);
     let mut hits = 0;
@@ -97,7 +391,7 @@ fn the_round_rejects_that_habit_with_missing_item(world: &mut World) {
         };
         hits += rejected
             .iter()
-            .filter(|item| item["reason"] == "MISSING_ITEM")
+            .filter(|item| item["reason"] == word)
             .count();
     }
     assert_eq!(hits, 1, "{keys:?}");

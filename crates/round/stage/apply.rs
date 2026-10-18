@@ -40,6 +40,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         if let Resolution::Refused {
             reason,
             code,
+            missing,
             notice,
         } = resolution
         {
@@ -50,7 +51,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             if let Some(notice) = notice {
                 round.roll_reports.push(notice);
             } else {
-                notice_player(round, &intent, code);
+                notice_player(round, &intent, &miss_from(code, missing));
             }
             continue;
         }
@@ -260,22 +261,31 @@ fn refuse(round: &mut Round, intent: &Intent, code: Reason) {
     reject(round, intent, &gate::Miss::Code(code));
 }
 
-/// Journal the miss's word and tell a player its code.
+/// Journal the miss's word and tell a player its code and name.
 fn reject(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
     round.rejected.push(Rejected {
         id: intent.id.clone(),
         reason: miss.named(),
     });
-    notice_player(round, intent, miss.reason());
+    notice_player(round, intent, miss);
 }
 
-fn notice_player(round: &mut Round, intent: &Intent, code: Reason) {
+fn miss_from(code: Reason, missing: Option<String>) -> gate::Miss {
+    match missing {
+        Some(what) if code == Reason::CantAfford => gate::Miss::CantAfford(what),
+        Some(text) => gate::Miss::Text { code, text },
+        None => gate::Miss::Code(code),
+    }
+}
+
+fn notice_player(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
     if intent.actor_kind != ActorKind::Player {
         return;
     }
     round.roll_reports.push(RollReport::Refused {
         actor_id: intent.actor_id.clone(),
-        code,
+        code: miss.reason(),
+        missing: miss.missing().map(str::to_string),
     });
 }
 

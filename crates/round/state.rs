@@ -58,6 +58,7 @@ pub enum Resolution {
     Refused {
         reason: String,
         code: Reason,
+        missing: Option<String>,
         notice: Option<RollReport>,
     },
 }
