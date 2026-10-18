@@ -158,7 +158,7 @@ pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<S
     for tape in read_session(root, 0, Some(256))? {
         let stored = frames::parse_tape(&tape)?;
         if stored.recipients.iter().any(|id| id == actor_id) {
-            out.push(frames::player_say_line(&stored));
+            out.push(frames::player_replay_line(&stored));
         }
     }
     Ok(out)

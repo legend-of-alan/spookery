@@ -39,3 +39,17 @@ Feature: Play shows readable text
     When thirteen ticks pass
     And play joins the table with raw frames
     Then play shows the raw resume digest
+
+  Scenario: A round while seated shows no away heading
+    Given a docks table
+    When play joins the table on a free loopback address
+    And play types "wait"
+    Then the round shows no away heading
+
+  Scenario: Rejoining shows earlier speech under one heading
+    Given a docks table
+    When play joins the table on a free loopback address
+    And play says "hello Briar"
+    Then play shows "You: hello Briar"
+    When play joins the table on a free loopback address
+    Then play shows earlier speech under one heading

@@ -6,7 +6,7 @@ use cucumber::{then, when};
 use crate::support;
 use crate::World;
 
-use super::common::{join_play, play_stdout, wait_play};
+use super::common::{join_play, play_stdout, wait_play, wait_play_until};
 use super::table;
 
 #[when(expr = "the operator asks spook for help")]
@@ -135,6 +135,33 @@ Assassination debt: 2/6, paused
     assert!(!stdout.contains("note_mira_door"), "{stdout}");
     assert!(!stdout.contains("clock assassination_debt"), "{stdout}");
     assert!(!stdout.contains("message "), "{stdout}");
+}
+
+#[then(expr = "the round shows no away heading")]
+fn the_round_shows_no_away_heading(world: &mut World) {
+    wait_play_until(
+        world,
+        |stdout| stdout.matches("You are in").count() >= 2,
+        "a second You are in",
+    );
+    let stdout = play_stdout(world);
+    let after = stdout.split_once("You are in").unwrap().1;
+    assert!(!after.contains("While you were away:"), "{stdout}");
+}
+
+#[then(expr = "play shows earlier speech under one heading")]
+fn play_shows_earlier_speech_under_one_heading(world: &mut World) {
+    let stdout = play_stdout(world);
+    let earlier = "\
+Earlier:
+You: hello Briar
+
+";
+    assert!(stdout.starts_with(earlier), "{stdout}");
+    assert_eq!(stdout.matches("Earlier:").count(), 1, "{stdout}");
+    assert_eq!(stdout.matches("You: hello Briar").count(), 1, "{stdout}");
+    let live = &stdout[earlier.len()..];
+    assert!(live.starts_with("While you were away:\n"), "{stdout}");
 }
 
 #[then(expr = "play shows the raw resume digest")]

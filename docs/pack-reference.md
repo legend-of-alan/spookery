@@ -575,7 +575,7 @@ checks:
 
 ## Tick
 
-`idle` is `on` or `off`. Omitted means `on`. `pause.named_plot_clocks` is `pause_when_empty` or `always_run`. Omitted counters use the engine defaults. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. `pause.named_plot_clocks` is `pause_when_empty` or `always_run`. Omitted counters use the engine defaults. `tick_every_real_seconds` is real seconds between wakes, `idle_minutes_per_tick` and `live_minutes_per_tick` are world minutes one tick writes, `idle_catchup_max_ticks` is the most ticks one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
 
 ```yaml file=rules/tick.yaml
 schema: tick

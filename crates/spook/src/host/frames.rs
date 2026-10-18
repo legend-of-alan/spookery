@@ -85,10 +85,19 @@ pub fn tape_body(tape: &TapeLine) -> String {
 }
 
 pub fn player_say_line(tape: &TapeLine) -> String {
+    say_line(tape, false)
+}
+
+pub fn player_replay_line(tape: &TapeLine) -> String {
+    say_line(tape, true)
+}
+
+fn say_line(tape: &TapeLine, replay: bool) -> String {
     crate::protocol::write_player(&PlayerMessage::Say {
         from: tape.from.clone(),
         address: tape.address.clone(),
         text: tape.text.clone(),
+        replay,
     })
 }
 

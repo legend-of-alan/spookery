@@ -51,7 +51,7 @@ The hello is the actor id with a `player:` prefix. It is not JSON. `spook play -
 player:pc_rowan
 ```
 
-A legal hello sits that PC. The table then sends a `resume` line and a `perceive` line. Speech already on the tape for that player would arrive first. This sitting has none.
+A legal hello sits that PC. Speech already on the tape for that player arrives first, and each of those `say` lines has `"replay": true`. This sitting has none. The table then sends a `resume` line and a `perceive` line.
 
 <!-- example: player-resume -->
 ```json
@@ -225,6 +225,19 @@ The speaker hears the line back:
   "from": "player:pc_rowan",
   "address": "table",
   "text": "evening"
+}
+```
+
+A live `say` omits `replay`. Sitting again sends the earlier lines first, with `replay` set. The terminal prints them under one `Earlier:` heading and leaves a blank line before the next live frame.
+
+<!-- example: player-replay-say -->
+```json
+{
+  "kind": "say",
+  "from": "player:pc_rowan",
+  "address": "table",
+  "text": "evening",
+  "replay": true
 }
 ```
 
