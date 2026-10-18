@@ -75,6 +75,7 @@ pub fn finish_round(
 }
 
 pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> Result<(), Reason> {
+    settle_open_checkpoint(world)?;
     draft.state.state_rev = draft
         .state
         .state_rev
@@ -100,7 +101,7 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
     append_bundle(&world.root, &payload)?;
     world.now = draft.state;
     if let Some(chain) = chain {
-        if finish_checkpoint(world, &now_bytes, &chain).is_err() {
+        if !finish_checkpoint(world, &now_bytes, &chain)? {
             world.note_warning(CHECKPOINT_WARNING);
         }
     }
@@ -108,6 +109,7 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
 }
 
 pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
+    settle_open_checkpoint(world)?;
     let pending = world.pending.take().ok_or(Reason::CommitConflict)?;
     let mut now = pending.now;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
@@ -133,7 +135,7 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
     world.now = now;
     world.queue.clear();
     if let Some(chain) = chain {
-        if finish_checkpoint(world, &now_bytes, &chain).is_ok() {
+        if finish_checkpoint(world, &now_bytes, &chain)? {
             if !log_path.ends_with(".gz") {
                 log_path.push_str(".gz");
             }
@@ -297,12 +299,63 @@ fn store_checkpoint(
     Ok(())
 }
 
-/// The journal line is already durable. Closing the bundle only finishes the checkpoint.
-fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> Result<(), Reason> {
+/// The journal line is already durable. `Ok(false)` means the gzip did not finish;
+/// the round is still committed. A failure before `save.yaml` lands is `Err`.
+fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> Result<bool, Reason> {
     let rev = world.now.state_rev;
     let tick = world.now.tick_index;
     store_checkpoint(&world.root, now_bytes, rev, tick, chain)?;
-    close_finished(&world.root)
+    Ok(close_finished(&world.root).is_ok())
+}
+
+/// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
+/// journal, then close that bundle. The next round can then start a new file.
+pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
+    let Some(path) = journal::find_live_bundle(&world.root) else {
+        return Ok(());
+    };
+    let Some(mark) = journal::trailing_checkpoint(&path) else {
+        return Ok(());
+    };
+    let now_bytes = emit_save(world.now())?.into_bytes();
+    if hash_now(&now_bytes) != mark.state_hash {
+        return Ok(());
+    }
+    let state = world.root.join("state");
+    let save = state.join("save.yaml");
+    let snap = state
+        .join("checkpoints")
+        .join(format!("{}.yaml", mark.state_rev));
+    let save_ok = fs::read(&save)
+        .ok()
+        .is_some_and(|bytes| hash_now(&bytes) == mark.state_hash);
+    let snap_ok = fs::read(&snap)
+        .ok()
+        .is_some_and(|bytes| hash_now(&bytes) == mark.state_hash);
+    if !save_ok || !snap_ok {
+        let base = state.join(journal::base_rel());
+        if !base.is_file() && save.is_file() {
+            fs::copy(&save, &base).map_err(|_| Reason::CommitConflict)?;
+            fsync_file(&base)?;
+            if let Some(parent) = base.parent() {
+                fsync_dir(parent)?;
+            }
+        }
+        let head = serde_json::to_string(&journal::BundleHead {
+            state_rev: mark.state_rev,
+            tick_index: mark.tick_index,
+            state_hash: mark.state_hash.clone(),
+            chain: mark.chain.clone(),
+        })
+        .map_err(|_| Reason::Schema)?;
+        atomic_publish(&state.join(journal::head_rel()), head.as_bytes())?;
+        snapshot_memories(&world.root)?;
+        fs::create_dir_all(state.join("checkpoints")).map_err(|_| Reason::CommitConflict)?;
+        atomic_publish(&save, &now_bytes)?;
+        atomic_publish(&snap, &now_bytes)?;
+    }
+    let _ = close_finished(&world.root);
+    Ok(())
 }
 
 /// Write `bytes` to a temp file, flush it, and rename it over `target`.
@@ -500,6 +553,54 @@ mod tests {
         assert!(!root.join("state/journal/bundle-0000.jsonl").exists());
         assert!(root.join("state/journal/bundle-0001.jsonl.gz").is_file());
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_failed_save_is_refused_and_the_next_commit_starts_a_bundle() {
+        let root = temp_docks("save-fail");
+        let _clear = ClearFail;
+        set_checkpoint_every(&root, 2);
+        let mut world = World::open(&root).unwrap();
+        let mut first = Draft::begin(&world);
+        first.state.tick_index = 1;
+        commit_round(&mut world, first, &journal_line(1, 0, 1)).unwrap();
+
+        let mut second = Draft::begin(&world);
+        second.state.tick_index = 2;
+        durable::fail_next("save.yaml.tmp");
+        assert!(commit_round(&mut world, second, &journal_line(2, 1, 2)).is_err());
+        let live = crate::journal::read_live(&root).unwrap();
+        let mark = crate::journal::latest_checkpoint(&live).unwrap();
+        assert_eq!(world.now().state_rev, mark.state_rev);
+        assert!(world.take_warning().is_none());
+
+        let mut third = Draft::begin(&world);
+        third.state.tick_index = 3;
+        commit_round(&mut world, third, &journal_line(3, 2, 3)).unwrap();
+        let bundles = crate::journal::bundle_entries(&root).unwrap();
+        assert_eq!(bundles.len(), 2, "{bundles:?}");
+        let (first_name, first_entries) = &bundles[0];
+        let (second_name, second_entries) = &bundles[1];
+        assert_eq!(checkpoint_count(first_entries), 1, "{first_name}");
+        assert_eq!(checkpoint_count(second_entries), 0, "{second_name}");
+        assert!(second_entries.iter().any(|entry| {
+            matches!(entry, crate::journal::JournalEntry::Tick(record) if record.tick_index == 3)
+        }));
+        let saved = fs::read(root.join("state/save.yaml")).unwrap();
+        let kept = crate::journal::latest_checkpoint(first_entries).unwrap();
+        assert_eq!(crate::journal::hash_now(&saved), kept.state_hash);
+        let snap = root
+            .join("state/checkpoints")
+            .join(format!("{}.yaml", kept.state_rev));
+        assert_eq!(fs::read(snap).unwrap(), saved);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    fn checkpoint_count(entries: &[crate::journal::JournalEntry]) -> usize {
+        entries
+            .iter()
+            .filter(|entry| matches!(entry, crate::journal::JournalEntry::Checkpoint(_)))
+            .count()
     }
 
     struct ClearFail;

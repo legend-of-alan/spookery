@@ -43,17 +43,36 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     let bytes = fs::read(plain).map_err(|_| Reason::CommitConflict)?;
     let gz = gzip_path(plain);
     if gz_matches(&gz, &bytes) {
+        ensure_snapshot(root, plain)?;
         return remove_plain(plain);
     }
     if !journal::published_checkpoint(root, plain) {
         return Ok(());
     }
+    ensure_snapshot(root, plain)?;
     let tmp = tmp_path(&gz);
     let gz_bytes = journal::gzip_bytes(&bytes).map_err(|_| Reason::CommitConflict)?;
     fs::write(&tmp, gz_bytes).map_err(|_| Reason::CommitConflict)?;
     fsync_file(&tmp)?;
     rename(&tmp, &gz)?;
     remove_plain(plain)
+}
+
+fn ensure_snapshot(root: &Path, plain: &Path) -> Result<(), Reason> {
+    let Some(mark) = journal::trailing_checkpoint(plain) else {
+        return Ok(());
+    };
+    let save = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::CommitConflict)?;
+    if journal::hash_now(&save) != mark.state_hash {
+        return Ok(());
+    }
+    let snap = root
+        .join("state/checkpoints")
+        .join(format!("{}.yaml", mark.state_rev));
+    if fs::read(&snap).ok().as_deref() == Some(save.as_slice()) {
+        return Ok(());
+    }
+    atomic_write(&snap, &save)
 }
 
 fn gz_matches(gz: &Path, plain: &[u8]) -> bool {
