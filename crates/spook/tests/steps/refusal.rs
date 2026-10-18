@@ -221,9 +221,11 @@ fn play_queues(world: &mut World, line: String) {
         writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("type: {err}"));
         stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     }
-    wait_play_until(world, "Your action is queued.", |stdout| {
-        stdout.matches("Your action is queued.").count() > before
-    });
+    wait_play_until(
+        world,
+        |stdout| stdout.matches("Your action is queued.").count() > before,
+        "Your action is queued.",
+    );
 }
 
 #[when(expr = "Lark queues {string}")]

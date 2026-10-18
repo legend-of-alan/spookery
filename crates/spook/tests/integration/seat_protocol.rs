@@ -8,6 +8,7 @@ use std::net::TcpStream;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
@@ -37,6 +38,8 @@ struct Table {
     pack: PathBuf,
     game: u16,
     door: u16,
+    host_text: Arc<Mutex<String>>,
+    host_more: Receiver<()>,
 }
 
 impl Drop for Table {
@@ -335,6 +338,19 @@ fn capture() -> BTreeMap<String, Example> {
         post_full(table.door, &initialize),
     );
 
+    let mark = table.host_text.lock().unwrap().len();
+    player
+        .write
+        .shutdown(std::net::Shutdown::Both)
+        .unwrap_or_else(|err| panic!("shutdown: {err}"));
+    drop(player);
+    wait_host_grew(&table, mark);
+    let again = seat(table.game, "pc_rowan");
+    let replay = next_json(&again);
+    assert_eq!(replay["kind"], "say", "{replay}");
+    assert_eq!(replay["replay"], true, "{replay}");
+    json(&mut out, "player-replay-say", replay);
+
     let close_args = serde_json::json!({});
     json(
         &mut out,
@@ -367,10 +383,23 @@ fn listen() -> Table {
         while stderr.read(&mut buf).unwrap_or(0) > 0 {}
     });
     let (game, door) = read_listening(&mut stdout);
+    let host_text = Arc::new(Mutex::new(String::new()));
+    let (host_tx, host_more) = mpsc::channel();
+    let slot = Arc::clone(&host_text);
     std::thread::spawn(move || {
         let mut stdout = stdout;
         let mut buf = [0u8; 256];
-        while stdout.read(&mut buf).unwrap_or(0) > 0 {}
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    slot.lock()
+                        .unwrap()
+                        .push_str(&String::from_utf8_lossy(&buf[..n]));
+                    let _ = host_tx.send(());
+                }
+            }
+        }
     });
     Table {
         child,
@@ -378,6 +407,26 @@ fn listen() -> Table {
         pack,
         game: game.port(),
         door: door.port(),
+        host_text,
+        host_more,
+    }
+}
+
+fn wait_host_grew(table: &Table, mark: usize) {
+    // Assumes the next host output after `mark` is the seat-release summary
+    // (not a late-buffered sit line). An empty summary would hang until HANG.
+    let start = std::time::Instant::now();
+    loop {
+        if table.host_text.lock().unwrap().len() > mark {
+            return;
+        }
+        let left = HANG.saturating_sub(start.elapsed());
+        if left.is_zero() || table.host_more.recv_timeout(left).is_err() {
+            panic!(
+                "host did not print after the seat closed\n{}",
+                table.host_text.lock().unwrap()
+            );
+        }
     }
 }
 

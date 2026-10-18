@@ -9,6 +9,7 @@ pub fn render(message: &PlayerMessage) -> String {
             from,
             address: _,
             text,
+            replay: _,
         } => format!("{}: {text}", speaker(from)),
         PlayerMessage::Queued { id: _ } => "Your action is queued.".to_string(),
         PlayerMessage::Check { outcome } => match outcome {
@@ -16,7 +17,7 @@ pub fn render(message: &PlayerMessage) -> String {
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
             Outcome::Miss => "Your roll missed.".to_string(),
         },
-        PlayerMessage::Resume { text } => resume(text),
+        PlayerMessage::Resume { text } => resume(text, true),
         PlayerMessage::Lines { text } => text.clone(),
         PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
         PlayerMessage::View { .. } => view_text(message),
@@ -37,7 +38,58 @@ fn speaker(from: &str) -> String {
     humanize(from)
 }
 
-fn resume(text: &str) -> String {
+/// Readable text for the frames of one sitting.
+pub struct PlayerText {
+    seen_resume: bool,
+    earlier_open: bool,
+}
+
+impl PlayerText {
+    pub fn new() -> Self {
+        Self {
+            seen_resume: false,
+            earlier_open: false,
+        }
+    }
+
+    /// Text for this frame. Empty means print nothing.
+    /// A leading newline is the blank line before the first live frame.
+    pub fn show(&mut self, message: &PlayerMessage) -> String {
+        match message {
+            PlayerMessage::Say {
+                from,
+                text,
+                replay: true,
+                ..
+            } => self.open_earlier(format!("{}: {text}", speaker(from))),
+            PlayerMessage::Resume { text } => {
+                let heading = !self.seen_resume;
+                self.seen_resume = true;
+                self.close_earlier(resume(text, heading))
+            }
+            _ => self.close_earlier(render(message)),
+        }
+    }
+
+    fn open_earlier(&mut self, line: String) -> String {
+        if self.earlier_open {
+            line
+        } else {
+            self.earlier_open = true;
+            format!("Earlier:\n{line}")
+        }
+    }
+
+    fn close_earlier(&mut self, text: String) -> String {
+        if text.is_empty() || !self.earlier_open {
+            return text;
+        }
+        self.earlier_open = false;
+        format!("\n{text}")
+    }
+}
+
+fn resume(text: &str, heading: bool) -> String {
     let lines = text
         .lines()
         .map(str::trim)
@@ -45,9 +97,11 @@ fn resume(text: &str) -> String {
         .map(resume_row)
         .collect::<Vec<_>>();
     if lines.is_empty() {
-        "While you were away:".to_string()
-    } else {
+        String::new()
+    } else if heading {
         format!("While you were away:\n{}", lines.join("\n"))
+    } else {
+        lines.join("\n")
     }
 }
 
@@ -297,6 +351,7 @@ mod tests {
             from: "npc:mira".to_string(),
             address: "table".to_string(),
             text: "the lamp is lit".to_string(),
+            replay: false,
         });
         assert_eq!(mira, "Mira: the lamp is lit");
         assert_readable(&mira);
@@ -305,6 +360,7 @@ mod tests {
             from: "gm".to_string(),
             address: "table".to_string(),
             text: "evening".to_string(),
+            replay: false,
         });
         assert_eq!(gm, "GM: evening");
         assert_readable(&gm);
@@ -313,6 +369,7 @@ mod tests {
             from: "player:pc_rowan".to_string(),
             address: "actor".to_string(),
             text: "hello".to_string(),
+            replay: false,
         });
         assert_eq!(you, "You: hello");
         assert_readable(&you);
@@ -358,8 +415,56 @@ mod tests {
             render(&PlayerMessage::Resume {
                 text: String::new(),
             }),
-            "While you were away:"
+            ""
         );
+    }
+
+    #[test]
+    fn a_later_resume_has_no_away_heading() {
+        let mut seat = PlayerText::new();
+        let first = seat.show(&PlayerMessage::Resume {
+            text: "the shop restocked\n".to_string(),
+        });
+        assert_eq!(first, "While you were away:\nthe shop restocked");
+        assert_eq!(
+            seat.show(&PlayerMessage::Resume {
+                text: String::new(),
+            }),
+            ""
+        );
+        let later = seat.show(&PlayerMessage::Resume {
+            text: "the yard stays watched\n".to_string(),
+        });
+        assert_eq!(later, "the yard stays watched");
+    }
+
+    #[test]
+    fn replayed_speech_sits_under_one_heading() {
+        let mut seat = PlayerText::new();
+        let first = seat.show(&PlayerMessage::Say {
+            from: "player:pc_lark".to_string(),
+            address: "table".to_string(),
+            text: "hello Briar".to_string(),
+            replay: true,
+        });
+        assert_eq!(first, "Earlier:\nYou: hello Briar");
+        let second = seat.show(&PlayerMessage::Say {
+            from: "gm".to_string(),
+            address: "table".to_string(),
+            text: "evening".to_string(),
+            replay: true,
+        });
+        assert_eq!(second, "GM: evening");
+        assert_eq!(
+            seat.show(&PlayerMessage::Resume {
+                text: String::new(),
+            }),
+            ""
+        );
+        let place = seat.show(&PlayerMessage::Lines {
+            text: "You are in Gate Yard.".to_string(),
+        });
+        assert_eq!(place, "\nYou are in Gate Yard.");
     }
 
     #[test]

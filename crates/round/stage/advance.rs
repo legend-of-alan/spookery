@@ -49,11 +49,12 @@ pub fn plan_catchup(humans: u32, budget: &Budget, downtime_hours: u64) -> Result
     if every == 0 || idle_minutes == 0 {
         return Err(Reason::Schema);
     }
-    let per_hour = downtime_hours.checked_mul(60).ok_or(Reason::OutOfRange)?;
-    let printed = ceil_div(per_hour, every);
+    let absence_minutes = downtime_hours.checked_mul(60).ok_or(Reason::OutOfRange)?;
+    let absence_seconds = downtime_hours.checked_mul(3600).ok_or(Reason::OutOfRange)?;
+    let printed = ceil_div(absence_seconds, every);
     let minute_cap = budget
         .idle_max_world_hours_per_real_hour
-        .checked_mul(per_hour)
+        .checked_mul(absence_minutes)
         .ok_or(Reason::OutOfRange)?;
     let by_minutes = minute_cap / idle_minutes;
     Ok(printed.min(budget.idle_catchup_max_ticks).min(by_minutes))
