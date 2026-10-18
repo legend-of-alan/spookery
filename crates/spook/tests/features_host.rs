@@ -53,6 +53,9 @@ mod new;
 #[path = "steps/gm.rs"]
 mod gm;
 
+#[path = "steps/refusal.rs"]
+mod refusal;
+
 #[path = "feature_paths.rs"]
 mod feature_paths;
 
