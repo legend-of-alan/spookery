@@ -360,6 +360,7 @@ fn one_player_stops_reading(world: &mut World) {
         from: "gm".to_string(),
         address: "table".to_string(),
         text: say.clone(),
+        replay: false,
     })
     .len();
     // Granted kernel windows, then the userspace queue, then one extra

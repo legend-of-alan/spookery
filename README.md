@@ -91,7 +91,6 @@ spook verify $env:TEMP\yard
 This is the quick-start sitting. Lark is in the Gate Yard. The client prints:
 
 ```text
-While you were away:
 You are in Gate Yard.
 
 Wagon ruts cross the mud. A stick leans by the post.
@@ -117,7 +116,6 @@ Type `drink`, then `travel mill_lane`. The tonic is used up, Lark arrives on Mil
 ```text
 Your action is queued.
 Your action is queued.
-While you were away:
 You are in Mill Lane.
 
 The lane runs past a small mill. Flour dusts the step.

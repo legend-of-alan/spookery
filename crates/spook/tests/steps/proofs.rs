@@ -326,6 +326,10 @@ fn claimed_note_sorts_first() {
 }
 
 fn catchup_cap() {
+    catchup_for(72, 12);
+}
+
+fn catchup_for(hours: u64, ticks: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("catchup");
     let _ = fs::remove_dir_all(&pack);
@@ -430,14 +434,14 @@ Rowan.
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
     let wall = shard.now().last_tick_at.clone();
-    catch_up(&mut shard, &wall, 72).unwrap_or_else(|err| panic!("catch-up: {err}"));
+    catch_up(&mut shard, &wall, hours).unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = spookery_round::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
     let now = saved.now();
-    assert_eq!(now.state_rev, 12, "twelve commits");
-    assert_eq!(now.tick_index, 12);
-    assert_eq!(now.world_time, 720);
+    assert_eq!(now.state_rev, ticks, "{hours} hours");
+    assert_eq!(now.tick_index, ticks);
+    assert_eq!(now.world_time, ticks * 60);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
-    assert_eq!(list_tick_keys(&pack).len(), 12);
+    assert_eq!(list_tick_keys(&pack).len() as u64, ticks);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
         place_before
@@ -1727,6 +1731,16 @@ fn the_gm_queues_the_door_note(_world: &mut World) {
 #[when(expr = "seventy-two hours of catch-up run")]
 fn seventy_two_hours(_world: &mut World) {
     catchup_cap();
+}
+
+#[when(expr = "twenty-four hours of catch-up run")]
+fn twenty_four_hours(_world: &mut World) {
+    catchup_for(24, 12);
+}
+
+#[when(expr = "one hour of catch-up runs")]
+fn one_hour_of_catch_up(_world: &mut World) {
+    catchup_for(1, 8);
 }
 
 #[when(expr = "Mira is busy and a tick runs")]

@@ -335,6 +335,16 @@ fn capture() -> BTreeMap<String, Example> {
         post_full(table.door, &initialize),
     );
 
+    player
+        .write
+        .shutdown(std::net::Shutdown::Both)
+        .unwrap_or_else(|err| panic!("shutdown: {err}"));
+    drop(player);
+    let replay = reseat_say(table.game, "pc_rowan");
+    assert_eq!(replay["kind"], "say", "{replay}");
+    assert_eq!(replay["replay"], true, "{replay}");
+    json(&mut out, "player-replay-say", replay);
+
     let close_args = serde_json::json!({});
     json(
         &mut out,
@@ -410,6 +420,22 @@ fn read_listening(stdout: &mut impl Read) -> (std::net::SocketAddr, std::net::So
             }
             Err(err) => panic!("stdout: {err}"),
         }
+    }
+}
+
+fn reseat_say(port: u16, actor: &str) -> Value {
+    let start = std::time::Instant::now();
+    loop {
+        let again = seat(port, actor);
+        let frame = next_json(&again);
+        if frame["code"] == "SEAT_TAKEN" {
+            if start.elapsed() > HANG {
+                panic!("seat stayed taken");
+            }
+            std::thread::sleep(Duration::from_millis(20));
+            continue;
+        }
+        return frame;
     }
 }
 

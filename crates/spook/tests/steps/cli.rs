@@ -137,6 +137,48 @@ Assassination debt: 2/6, paused
     assert!(!stdout.contains("message "), "{stdout}");
 }
 
+#[then(expr = "the round shows no away heading")]
+fn the_round_shows_no_away_heading(world: &mut World) {
+    let start = Instant::now();
+    loop {
+        let stdout = play_stdout(world);
+        if stdout.matches("You are in").count() >= 2 {
+            let after = stdout.split_once("You are in").unwrap().1;
+            assert!(!after.contains("While you were away:"), "{stdout}");
+            return;
+        }
+        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
+        if let Some(status) = play
+            .child
+            .try_wait()
+            .unwrap_or_else(|err| panic!("try_wait: {err}"))
+        {
+            let stderr = support::text_of(&play.stderr);
+            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            let stderr = support::text_of(&play.stderr);
+            panic!("the round did not print\nstdout:\n{stdout}\nstderr:\n{stderr}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[then(expr = "play shows earlier speech under one heading")]
+fn play_shows_earlier_speech_under_one_heading(world: &mut World) {
+    let stdout = play_stdout(world);
+    let earlier = "\
+Earlier:
+You: hello Briar
+
+";
+    assert!(stdout.starts_with(earlier), "{stdout}");
+    assert_eq!(stdout.matches("Earlier:").count(), 1, "{stdout}");
+    assert_eq!(stdout.matches("You: hello Briar").count(), 1, "{stdout}");
+    let live = &stdout[earlier.len()..];
+    assert!(live.starts_with("While you were away:\n"), "{stdout}");
+}
+
 #[then(expr = "play shows the raw resume digest")]
 fn play_shows_the_raw_resume_digest(world: &mut World) {
     wait_play(world, "\"kind\":\"perceive\"");

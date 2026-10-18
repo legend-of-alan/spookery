@@ -25,6 +25,8 @@ pub enum PlayerMessage {
         from: String,
         address: String,
         text: String,
+        #[serde(default, skip_serializing_if = "skip_false")]
+        replay: bool,
     },
     Queued {
         id: String,
@@ -145,6 +147,10 @@ fn trim_line(line: &str) -> &str {
     line.trim_end_matches(['\n', '\r'])
 }
 
+fn skip_false(value: &bool) -> bool {
+    !*value
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,6 +161,7 @@ mod tests {
             from: "player:rowan".to_string(),
             address: "table".to_string(),
             text: "hello".to_string(),
+            replay: false,
         };
         let line = write_player(&message);
         assert_eq!(
