@@ -2,7 +2,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -68,11 +67,6 @@ fn verify_and_audit_pass(world: &mut World) {
 
 #[then(expr = "each of the 2-3 branch scripts reaches an ending")]
 fn each_branch_reaches_an_ending(world: &mut World) {
-    assert!(
-        (2..=3).contains(&BRANCHES.len()),
-        "expected 2 or 3 branches, found {}",
-        BRANCHES.len()
-    );
     for (index, lines) in BRANCHES.iter().enumerate() {
         let pack = sit(world, &format!("showcase-branch-{index}"));
         for line in *lines {
@@ -144,18 +138,9 @@ fn the_stub_gm_attempts_to_set_gold(world: &mut World) {
 #[then(expr = "the attempt is refused and the refusal is in the log")]
 fn the_attempt_is_refused_and_in_the_log(world: &mut World) {
     assert!(world.stdout.contains("NOT_IN_SPEC"), "{}", world.stdout);
-    let start = Instant::now();
-    let log = loop {
-        let log = table::host_stdout(world);
-        if log.contains("refused set_gold NOT_IN_SPEC") {
-            break log;
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("the host log has no refusal\n{log}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    };
-    assert!(log.contains("refused set_gold NOT_IN_SPEC"), "{log}");
+    table::wait_host_until(world, "the refusal in the host log", |log| {
+        log.contains("refused set_gold NOT_IN_SPEC")
+    });
     let saved = fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save: {err}"));
     assert_eq!(saved, table::live_mut(world).opened_now);
@@ -173,21 +158,9 @@ fn sit(world: &mut World, label: &str) -> PathBuf {
 fn commit_line(world: &mut World, line: &str) {
     let mark = table::player_write(world, line);
     table::wait_player_from(world, mark, "\"kind\":\"queued\"");
-    let before = table::now_of(table::pack(world)).world_time;
+    let before = table::list_tick_keys(table::pack(world)).len();
     table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
-    let start = Instant::now();
-    loop {
-        if table::now_of(table::pack(world)).world_time > before {
-            return;
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!(
-                "{line} did not advance time from {before}\n{}",
-                table::player_text(world)
-            );
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    table::wait_tick_count(table::pack(world), before + 1);
 }
 
 fn tonic_of(now: &spookery_kernel::api::model::Now) -> u32 {

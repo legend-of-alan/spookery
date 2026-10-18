@@ -107,6 +107,9 @@ rules:
       verb: ask_briar
     if:
       - at:
+          who: self
+          place: gate_yard
+      - at:
           who: npc_briar
           place: gate_yard
     do:

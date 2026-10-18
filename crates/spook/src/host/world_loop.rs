@@ -353,17 +353,9 @@ fn handle(
                 });
                 return Ok(());
             }
-            let known = super::gm_tools::GM_LIST
-                .iter()
-                .any(|tool| tool.name == name);
             let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
-            if !known {
-                let code = done
-                    .value
-                    .get("code")
-                    .and_then(|value| value.as_str())
-                    .unwrap_or(Reason::NotInSpec.token());
-                println!("refused {name} {code}");
+            if let Some(code) = &done.refused {
+                println!("refused {name} {}", code.token());
                 let _ = io::stdout().flush();
             }
             let reports = if done.ticked {
