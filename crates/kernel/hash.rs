@@ -1,3 +1,5 @@
+//! Blake2s, as raw bytes or as hex.
+
 use blake2::{Blake2s256, Digest};
 
 pub fn blake2s_256(bytes: &[u8]) -> [u8; 32] {

@@ -1,3 +1,5 @@
+//! Meter bounds from the pack, and the live value on an actor.
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::Reason;

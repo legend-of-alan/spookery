@@ -1,3 +1,5 @@
+//! The `spook` command for one loopback table.
+
 use std::net::SocketAddr;
 use std::path::PathBuf;
 

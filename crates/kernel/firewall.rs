@@ -1,3 +1,5 @@
+//! Whether one viewer may see a fact.
+
 use crate::canon::Canon;
 use crate::intent::ViewerId;
 use crate::model::Now;

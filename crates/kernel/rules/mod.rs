@@ -1,3 +1,5 @@
+//! Conditions, costs, gates, rolls, and effects.
+
 pub(crate) mod apply;
 pub(crate) mod check;
 pub mod cond;

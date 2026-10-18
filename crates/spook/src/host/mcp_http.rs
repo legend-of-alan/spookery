@@ -1,3 +1,5 @@
+//! Serve the agent door over HTTP.
+
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;

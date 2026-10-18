@@ -1,3 +1,5 @@
+//! An open pack, and the check that reads one without writing.
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

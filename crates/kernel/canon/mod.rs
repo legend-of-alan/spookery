@@ -1,3 +1,5 @@
+//! The loaded pack: places, cast, facts, and rules.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;

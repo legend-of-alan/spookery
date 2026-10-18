@@ -1,3 +1,5 @@
+//! The prose and the menu the model sees on one turn.
+
 use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};

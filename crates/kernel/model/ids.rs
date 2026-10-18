@@ -1,3 +1,5 @@
+//! Intent ids. The kernel preimage and the player preimage differ.
+
 use crate::hash::blake2s_hex;
 
 /// Blake2s of `shard|tick|actor|row`. The P37 preimage stays.

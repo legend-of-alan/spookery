@@ -1,3 +1,5 @@
+//! The human player reads a socket and prints each frame.
+
 use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::TcpStream;

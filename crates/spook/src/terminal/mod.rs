@@ -1,3 +1,5 @@
+//! The human player view and the human GM view.
+
 use std::io;
 
 use spookery_kernel::api::Reason;

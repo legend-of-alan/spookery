@@ -1,3 +1,5 @@
+//! The HTTP client that calls the model.
+
 use std::future::Future;
 use std::time::Duration;
 

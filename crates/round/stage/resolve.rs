@@ -1,3 +1,5 @@
+//! Gate each intent and roll the checks it asks for.
+
 use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;

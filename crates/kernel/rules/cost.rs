@@ -1,3 +1,5 @@
+//! Whether an actor can pay a cost, and paying it.
+
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::error::Reason;

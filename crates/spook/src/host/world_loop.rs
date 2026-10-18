@@ -1,3 +1,5 @@
+//! The table loop: seat players, read lines, and answer the GM.
+
 use std::io::{self, Write};
 
 use spookery_kernel::api::model::{ActorLive, Presence};

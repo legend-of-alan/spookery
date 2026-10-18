@@ -1,3 +1,5 @@
+//! Lock the pack, and lock the session tape.
+
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 

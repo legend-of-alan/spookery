@@ -1,3 +1,5 @@
+//! Who is asking, and the action they asked the round to take.
+
 use serde::{Deserialize, Serialize};
 
 use crate::error::Reason;

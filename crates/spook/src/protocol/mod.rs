@@ -1,3 +1,5 @@
+//! The player wire, the GM wire, and the check band they share.
+
 mod gm_wire;
 mod player_wire;
 

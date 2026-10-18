@@ -1,3 +1,5 @@
+//! Read and write the save.
+
 use serde::{Deserialize, Serialize};
 use serde_saphyr::SerializerOptions;
 

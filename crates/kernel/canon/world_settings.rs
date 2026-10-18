@@ -1,3 +1,5 @@
+//! Tick budgets and pause policy from `rules/tick.yaml`.
+
 use serde::Deserialize;
 
 use crate::diagnostic::{locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};

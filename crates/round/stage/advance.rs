@@ -1,3 +1,5 @@
+//! Move world time forward, and plan how many ticks a long absence runs.
+
 use spookery_kernel::api::canon::world_settings::Budget;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::pause::apply_pause_policy;

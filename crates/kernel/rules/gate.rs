@@ -1,3 +1,5 @@
+//! Admit an intent, or refuse it with a reason.
+
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::intent::{ActorKind, Intent, Source, Target};

@@ -1,3 +1,5 @@
+//! State keys a commit watches, and the values they held.
+
 use std::fmt;
 
 /// One budget identity. The commit diff summary is this type's `Display`,

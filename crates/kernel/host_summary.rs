@@ -1,3 +1,5 @@
+//! The host digest, and the shorter digest a player sees.
+
 use std::path::Path;
 
 use crate::error::Reason;

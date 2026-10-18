@@ -1,3 +1,5 @@
+//! Land journeys whose minute this tick has reached.
+
 use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::{Effect, EffectKind};

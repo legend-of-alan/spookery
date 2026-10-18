@@ -1,3 +1,28 @@
+//! The pack kernel: load a world, run its rules, and commit the save.
+//!
+//! Public API
+//! - `api`: the only names other crates may use.
+//!
+//! Internal
+//! - `canon`: the loaded pack.
+//! - `diagnostic`: one problem a loader or the hidden-fact lint can show.
+//! - `draft`: the staged save a round writes before commit.
+//! - `error`: failure tokens. JSONL lowers `BUDGET` at the log edge.
+//! - `firewall`: whether one viewer may see a fact.
+//! - `format`: format tags, one const per file.
+//! - `hash`: Blake2s, as raw bytes or as hex.
+//! - `host_summary`: the host digest, and the shorter digest a player sees.
+//! - `intent`: who is asking, and the action they asked the round to take.
+//! - `lint`: hidden fact text that leaked into a Markdown body.
+//! - `map`: exits and the journeys that follow them.
+//! - `model`: the live save and the keys a commit watches.
+//! - `pause`: pause plot clocks while the table is empty.
+//! - `rules`: conditions, costs, gates, rolls, and effects.
+//! - `speech`: who hears a say. The host writes the tape.
+//! - `store`: the save, the journal, and the rules version stamped on both.
+//! - `visibility`: what one viewer may hear from a round.
+//! - `world`: an open pack, and the check that reads one without writing.
+
 pub mod api;
 
 pub(crate) mod canon;

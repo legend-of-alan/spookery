@@ -1,3 +1,5 @@
+//! Sit the GM seat and turn model replies into tool calls.
+
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};

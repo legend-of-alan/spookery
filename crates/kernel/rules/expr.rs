@@ -1,3 +1,5 @@
+//! Dice and arithmetic inside a rule number.
+
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::intent::{Intent, Target};

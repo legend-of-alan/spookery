@@ -1,3 +1,5 @@
+//! Decide when an idle table ticks, and stamp the wall time.
+
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use spookery_kernel::api::world::World;

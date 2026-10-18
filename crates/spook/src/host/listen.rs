@@ -1,3 +1,5 @@
+//! Bind the game port and the agent door.
+
 use std::io;
 use std::net::{SocketAddr, TcpListener};
 use std::path::Path;

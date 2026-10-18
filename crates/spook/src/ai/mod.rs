@@ -1,3 +1,5 @@
+//! The model client and the GM loop that calls it.
+
 mod gm_loop;
 mod llm;
 mod llm_http;

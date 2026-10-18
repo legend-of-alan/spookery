@@ -1,3 +1,5 @@
+//! Queue a player verb until the round commits it.
+
 use spookery_kernel::api::ids::player_intent_id;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::model::ActorLive;
