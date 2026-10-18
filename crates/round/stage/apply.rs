@@ -37,21 +37,15 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         let Some(resolution) = round.resolutions.get(&intent.id).cloned() else {
             continue;
         };
-        if let Resolution::Refused {
-            reason,
-            code,
-            missing,
-            notice,
-        } = resolution
-        {
+        if let Resolution::Refused { miss, notice } = resolution {
             round.rejected.push(Rejected {
                 id: intent.id.clone(),
-                reason,
+                reason: miss.named(),
             });
             if let Some(notice) = notice {
                 round.roll_reports.push(notice);
             } else {
-                notice_player(round, &intent, &miss_from(code, missing));
+                notice_player(round, &intent, &miss);
             }
             continue;
         }
@@ -268,14 +262,6 @@ fn reject(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
         reason: miss.named(),
     });
     notice_player(round, intent, miss);
-}
-
-fn miss_from(code: Reason, missing: Option<String>) -> gate::Miss {
-    match missing {
-        Some(what) if code == Reason::CantAfford => gate::Miss::CantAfford(what),
-        Some(text) => gate::Miss::Text { code, text },
-        None => gate::Miss::Code(code),
-    }
 }
 
 fn notice_player(round: &mut Round, intent: &Intent, miss: &gate::Miss) {

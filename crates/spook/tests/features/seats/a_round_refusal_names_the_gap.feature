@@ -7,7 +7,7 @@ Feature: A round refusal names the gap
     And play queues "shove"
     And the GM commits the round
     Then play's error shows "You cannot afford grit. [CANT_AFFORD]" once
-    And the journal word for that move is "CANT_AFFORD grit"
+    And the round rejects that habit with "CANT_AFFORD grit"
     When the operator runs audit
     Then the command exits 0
     And stderr is empty

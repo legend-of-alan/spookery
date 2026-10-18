@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use cucumber::{given, then, when};
 use serde_json::Value;
 
-use super::common::{edit_save, wait_play};
+use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
 use crate::support::{self, text_of};
 use crate::World;
@@ -35,14 +35,25 @@ fn play_error_shows_once(world: &mut World, text: String) {
         let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
         let stderr = text_of(&play.stderr);
         let count = stderr.matches(&text).count();
-        if count == 1 {
-            return;
-        }
         if count > 1 {
             panic!("saw {text} {count} times\n{stderr}");
         }
+        if count == 1 {
+            break;
+        }
         if start.elapsed() > Duration::from_secs(8) {
             panic!("missing {text}\n{stderr}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    // Keep watching briefly so a late duplicate still fails the step.
+    let settle = Instant::now();
+    while settle.elapsed() < Duration::from_millis(300) {
+        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+        let stderr = text_of(&play.stderr);
+        let count = stderr.matches(&text).count();
+        if count != 1 {
+            panic!("saw {text} {count} times\n{stderr}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -97,11 +108,6 @@ fn the_player_sees_no_refused_frame(world: &mut World) {
         "{}",
         world.player_added
     );
-}
-
-#[then(expr = "the round rejects that habit with MISSING_ITEM")]
-fn the_round_rejects_that_habit_with_missing_item(world: &mut World) {
-    assert_one_rejection(world, "MISSING_ITEM");
 }
 
 #[given(expr = "a sample table where push and shove each cost 1 grit")]
@@ -215,27 +221,9 @@ fn play_queues(world: &mut World, line: String) {
         writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("type: {err}"));
         stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     }
-    let start = Instant::now();
-    loop {
-        let stdout = play_stdout(world);
-        if stdout.matches("Your action is queued.").count() > before {
-            return;
-        }
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        if let Some(status) = play
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = text_of(&world.play.as_ref().unwrap().stderr);
-            panic!("play did not queue {line}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    wait_play_until(world, "Your action is queued.", |stdout| {
+        stdout.matches("Your action is queued.").count() > before
+    });
 }
 
 #[when(expr = "Lark queues {string}")]
@@ -248,35 +236,20 @@ fn lark_queues(world: &mut World, line: String) {
 #[then(expr = "Lark's refused frame for {string} has no missing field")]
 fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
     let line = format!("{{\"kind\":\"refused\",\"code\":\"{code}\"}}");
-    let start = Instant::now();
-    loop {
-        let text = table::player_text(world);
-        let frames = text
-            .lines()
-            .filter(|row| row.contains("\"kind\":\"refused\""))
-            .collect::<Vec<_>>();
-        if frames.contains(&line.as_str()) {
-            assert_eq!(
-                frames.iter().filter(|row| **row == line).count(),
-                1,
-                "{text}"
-            );
-            assert!(
-                frames.iter().all(|row| !row.contains("\"missing\"")),
-                "{text}"
-            );
-            return;
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            panic!("missing {line}\n{text}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
-}
-
-#[then(expr = "the journal word for that move is {string}")]
-fn the_journal_word_for_that_move_is(world: &mut World, word: String) {
-    assert_one_rejection(world, &word);
+    let added = table::wait_player_from(world, world.mark, &line);
+    let frames = added
+        .lines()
+        .filter(|row| row.contains("\"kind\":\"refused\""))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        frames.iter().filter(|row| **row == line).count(),
+        1,
+        "{added}"
+    );
+    assert!(
+        frames.iter().all(|row| !row.contains("\"missing\"")),
+        "{added}"
+    );
 }
 
 #[given(expr = "Oden can pay for a habit until Lark spends his grit")]
@@ -366,16 +339,6 @@ fn append(path: &Path, extra: &str) {
     }
     text.push_str(extra);
     fs::write(path, text).unwrap_or_else(|err| panic!("write {path:?}: {err}"));
-}
-
-fn play_stdout(world: &World) -> String {
-    text_of(
-        &world
-            .play
-            .as_ref()
-            .unwrap_or_else(|| panic!("no play"))
-            .stdout,
-    )
 }
 
 fn assert_one_rejection(world: &World, word: &str) {
