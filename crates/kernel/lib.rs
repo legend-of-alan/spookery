@@ -11,7 +11,7 @@
 //! - `firewall`: whether one viewer may see a fact.
 //! - `format`: format tags, one const per file.
 //! - `hash`: Blake2s, as raw bytes or as hex.
-//! - `host_summary`: the host digest, and the shorter digest a player sees.
+//! - `host_summary`: the host digest, and the player digest built from the view.
 //! - `intent`: who is asking, and the action they asked the round to take.
 //! - `lint`: hidden fact text that leaked into a Markdown body.
 //! - `map`: exits and the journeys that follow them.

@@ -1,6 +1,8 @@
-use cucumber::{then, when};
+use std::fs;
+use std::path::Path;
+
+use cucumber::{given, then, when};
 use spookery_kernel::api::perceive::ItemStack;
-use spookery_kernel::api::DigestViewer;
 
 use crate::support::spook;
 use crate::World;
@@ -64,16 +66,73 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     assert!(debt.paused);
 }
 
+#[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]
+fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: String) {
+    let pack = crate::support::temp_pack("hidden-note");
+    rewrite_mira(
+        &pack,
+        "          fact_ids: []\n",
+        &format!("          fact_ids:\n            - {fact_id}\n"),
+    );
+    world.pack = Some(pack);
+}
+
+#[given(expr = "the docks pack where Mira's door note names {string}")]
+fn the_docks_pack_where_miras_door_note_names(world: &mut World, sentence: String) {
+    let pack = crate::support::temp_pack("named-note");
+    rewrite_mira(
+        &pack,
+        "          text: Back at dusk. Oil on the shelf.\n",
+        &format!("          text: Back at dusk. {sentence}\n"),
+    );
+    world.pack = Some(pack);
+}
+
 #[then(expr = "the player resume lists the door message")]
 fn the_player_resume_lists_the_door_message(world: &mut World) {
-    let pack = table::pack(world);
-    let shard = spookery_round::resume(pack).unwrap();
-    let resume =
-        spookery_kernel::api::host_summary(&shard, DigestViewer::Player("pc_rowan".to_string()))
-            .unwrap();
+    let resume = player_resume(world, "pc_rowan");
     assert_eq!(resume, RESUME);
     assert!(!resume.contains("effect location"));
     assert!(!resume.contains("lamp_oil"));
+}
+
+#[then(expr = "the player resume for {string} does not list {string}")]
+fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: String) {
+    let pack = table::pack(world);
+    let now = table::now_of(pack);
+    assert!(
+        now.messages.iter().any(|message| message.id == note),
+        "the save has no {note}"
+    );
+    let resume = player_resume(world, &actor);
+    assert!(!resume.contains(&note), "resume listed {note}:\n{resume}");
+}
+
+#[then(expr = "the perceive view for {string} does not list {string}")]
+fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: String) {
+    let pack = table::pack(world);
+    let shard = spookery_round::resume(pack).unwrap();
+    let view = spookery_kernel::api::perceive(&shard, &format!("player:{actor}")).unwrap();
+    assert!(
+        view.messages.iter().all(|message| message.id != note),
+        "view listed {note}"
+    );
+}
+
+fn player_resume(world: &World, actor: &str) -> String {
+    let pack = table::pack(world);
+    let shard = spookery_round::resume(pack).unwrap();
+    let view = spookery_kernel::api::perceive(&shard, &format!("player:{actor}")).unwrap();
+    spookery_kernel::api::player_digest(&view)
+}
+
+fn rewrite_mira(pack: &Path, from: &str, to: &str) {
+    let path = pack.join("cast/mira.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
+    let next = text.replacen(from, to, 1);
+    assert_ne!(next, text, "Mira's door note was not rewritten");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write mira: {err}"));
+    crate::support::stamp_pack_rev(pack);
 }
 
 #[then(expr = "the shop lists the oil and the rooms do not")]
