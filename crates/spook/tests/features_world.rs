@@ -68,6 +68,9 @@ mod leak_audit;
 #[path = "steps/sample.rs"]
 mod sample;
 
+#[path = "steps/no_facts.rs"]
+mod no_facts;
+
 #[path = "steps/contributing.rs"]
 mod contributing;
 

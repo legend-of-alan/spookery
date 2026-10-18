@@ -149,10 +149,7 @@ fn begin_timed(
 
 /// Perceive and eligibility see effects already applied in this round.
 fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<String>, Reason> {
-    let view = perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
-    if view.known_facts.is_empty() {
-        return Ok(Some("empty_perceive".to_string()));
-    }
+    perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
     if let Err(miss) = gate(draft.canon(), draft.now(), intent) {
         return Ok(Some(miss.named()));
     }

@@ -33,10 +33,7 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
     round
         .steps_run
         .push(format!("perceive:{}", intent.actor_id));
-    let view = perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
-    if view.known_facts.is_empty() {
-        return Ok(refused("empty_perceive", None));
-    }
+    perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
     let rule = match gate(draft.canon(), draft.now(), intent) {
         Ok(rule) => rule.clone(),
         Err(miss) => return Ok(refused(&miss.named(), None)),
