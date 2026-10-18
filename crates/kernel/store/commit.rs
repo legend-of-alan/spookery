@@ -101,7 +101,7 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
     append_bundle(&world.root, &payload)?;
     world.now = draft.state;
     if let Some(chain) = chain {
-        if !finish_checkpoint(world, &now_bytes, &chain)? {
+        if !finish_checkpoint(world, &now_bytes, &chain) {
             world.note_warning(CHECKPOINT_WARNING);
         }
     }
@@ -135,7 +135,7 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
     world.now = now;
     world.queue.clear();
     if let Some(chain) = chain {
-        if finish_checkpoint(world, &now_bytes, &chain)? {
+        if finish_checkpoint(world, &now_bytes, &chain) {
             if !log_path.ends_with(".gz") {
                 log_path.push_str(".gz");
             }
@@ -299,13 +299,13 @@ fn store_checkpoint(
     Ok(())
 }
 
-/// The journal line is already durable. `Ok(false)` means the gzip did not finish;
-/// the round is still committed. A failure before `save.yaml` lands is `Err`.
-fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> Result<bool, Reason> {
+/// The journal line is already durable. `false` means `save.yaml` or the gzip did
+/// not finish. The round stays committed either way.
+fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> bool {
     let rev = world.now.state_rev;
     let tick = world.now.tick_index;
-    store_checkpoint(&world.root, now_bytes, rev, tick, chain)?;
-    Ok(close_finished(&world.root).is_ok())
+    store_checkpoint(&world.root, now_bytes, rev, tick, chain).is_ok()
+        && close_finished(&world.root).is_ok()
 }
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
@@ -556,7 +556,7 @@ mod tests {
     }
 
     #[test]
-    fn a_failed_save_is_refused_and_the_next_commit_starts_a_bundle() {
+    fn a_failed_save_stays_committed_and_the_next_commit_starts_a_bundle() {
         let root = temp_docks("save-fail");
         let _clear = ClearFail;
         set_checkpoint_every(&root, 2);
@@ -568,11 +568,14 @@ mod tests {
         let mut second = Draft::begin(&world);
         second.state.tick_index = 2;
         durable::fail_next("save.yaml.tmp");
-        assert!(commit_round(&mut world, second, &journal_line(2, 1, 2)).is_err());
+        commit_round(&mut world, second, &journal_line(2, 1, 2)).unwrap();
         let live = crate::journal::read_live(&root).unwrap();
         let mark = crate::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(world.now().state_rev, mark.state_rev);
-        assert!(world.take_warning().is_none());
+        assert_eq!(
+            world.take_warning().as_deref(),
+            Some(super::CHECKPOINT_WARNING)
+        );
 
         let mut third = Draft::begin(&world);
         third.state.tick_index = 3;
