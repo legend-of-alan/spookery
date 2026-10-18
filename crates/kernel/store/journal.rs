@@ -296,12 +296,38 @@ pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
     }
 }
 
+/// Checkpoint record at the end of a plain bundle, if that is the last line.
+pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
+    let text = fs::read_to_string(path).ok()?;
+    let line = find_last_line(&text)?;
+    match parse_line("bundle", line).ok()? {
+        JournalEntry::Checkpoint(record) => Some(record),
+        _ => None,
+    }
+}
+
+/// The checkpoint hash is already in `save.yaml`, so the bundle is finished.
+/// Until then it stays the live file and startup can still replay it.
+pub(crate) fn published_checkpoint(pack: &Path, path: &Path) -> bool {
+    let Some(mark) = trailing_checkpoint(path) else {
+        return false;
+    };
+    let Ok(bytes) = fs::read(pack.join("state/save.yaml")) else {
+        return false;
+    };
+    hash_now(&bytes) == mark.state_hash
+}
+
 /// Next append lands here. The file may not exist yet.
+/// A plain bundle that already ends in a published checkpoint is skipped, so a
+/// failed gzip cannot take the next round.
 pub fn next_bundle_path(pack: &Path) -> PathBuf {
     let dir = pack.join("state/journal");
     let files = bundle_files(&dir).unwrap_or_default();
     match files.last() {
-        Some((name, path)) if name.ends_with(".jsonl") => path.clone(),
+        Some((name, path)) if name.ends_with(".jsonl") && !published_checkpoint(pack, path) => {
+            path.clone()
+        }
         Some((name, _)) => {
             let index = bundle_index(name).unwrap_or(0).saturating_add(1);
             dir.join(format!("bundle-{index:04}.jsonl"))

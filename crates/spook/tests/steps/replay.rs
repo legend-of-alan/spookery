@@ -439,6 +439,80 @@ fn the_second_tick_omits_steps_run(world: &mut World) {
     assert!(tick.get("steps_run").is_none(), "{tick}");
 }
 
+#[when(expr = "the operator runs a tick")]
+fn the_operator_runs_a_tick(world: &mut World) {
+    the_operator_runs_n_ticks(world, 1);
+}
+
+#[when(expr = "the closed bundle is expanded back to plain JSONL")]
+fn the_closed_bundle_is_expanded_back_to_plain_jsonl(world: &mut World) {
+    let (name, path) = only_closed_bundle(world);
+    let plain = gunzip_closed(&path);
+    fs::write(path.with_file_name(name.trim_end_matches(".gz")), plain).unwrap();
+    fs::remove_file(&path).unwrap();
+}
+
+#[when(expr = "the closed bundle is copied back beside its gzip")]
+fn the_closed_bundle_is_copied_back_beside_its_gzip(world: &mut World) {
+    let (name, path) = only_closed_bundle(world);
+    let plain = gunzip_closed(&path);
+    fs::write(path.with_file_name(name.trim_end_matches(".gz")), plain).unwrap();
+    assert!(path.is_file(), "gzip removed");
+}
+
+#[then(expr = "the live bundle is bundle-0001.jsonl")]
+fn the_live_bundle_is_bundle_0001(world: &mut World) {
+    let path = spookery_kernel::api::journal::find_live_bundle(table::pack(world))
+        .unwrap_or_else(|| panic!("no live bundle"));
+    let name = path
+        .file_name()
+        .and_then(|file| file.to_str())
+        .unwrap_or("");
+    assert_eq!(name, "bundle-0001.jsonl");
+}
+
+#[then(expr = "bundle-0000.jsonl.gz is present")]
+fn bundle_0000_gz_is_present(world: &mut World) {
+    let journal = table::pack(world).join("state/journal");
+    assert!(journal.join("bundle-0000.jsonl.gz").is_file());
+    assert!(
+        !journal.join("bundle-0000.jsonl").exists(),
+        "plain bundle still open"
+    );
+}
+
+#[then(expr = "the plain bundle file is gone")]
+fn the_plain_bundle_file_is_gone(world: &mut World) {
+    let journal = table::pack(world).join("state/journal");
+    let mut plain = Vec::new();
+    for entry in fs::read_dir(&journal).unwrap_or_else(|err| panic!("read journal: {err}")) {
+        let entry = entry.unwrap();
+        let name = entry.file_name();
+        let name = name.to_string_lossy().into_owned();
+        if name.ends_with(".jsonl") {
+            plain.push(name);
+        }
+    }
+    assert!(plain.is_empty(), "{plain:?}");
+}
+
+fn only_closed_bundle(world: &World) -> (String, std::path::PathBuf) {
+    let bundles = spookery_kernel::api::journal::bundles(table::pack(world))
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let mut closed: Vec<_> = bundles
+        .into_iter()
+        .filter(|(name, _)| name.ends_with(".gz"))
+        .collect();
+    assert_eq!(closed.len(), 1, "{closed:?}");
+    closed.pop().unwrap()
+}
+
+fn gunzip_closed(path: &std::path::Path) -> Vec<u8> {
+    let compressed = fs::read(path).unwrap_or_else(|err| panic!("read gzip: {err}"));
+    spookery_kernel::api::journal::gunzip_bytes(&compressed)
+        .unwrap_or_else(|err| panic!("gunzip: {err}"))
+}
+
 #[then(expr = "parallel full verification matches serial replay")]
 fn parallel_full_verification_matches_serial_replay(world: &mut World) {
     let pack = table::pack(world);

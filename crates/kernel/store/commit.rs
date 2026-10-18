@@ -3,7 +3,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::canon::pack_rev;
 use crate::draft::Draft;
@@ -14,7 +14,10 @@ use crate::model::{MemoryLine, Now};
 use crate::rules::RollReport;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
 use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
+use crate::store::recover::close_finished;
 use crate::world::{Delivered, World};
+
+const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
 
 pub struct CommitOutcome {
     pub state_rev: u64,
@@ -95,16 +98,12 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
         (line, None)
     };
     append_bundle(&world.root, &payload)?;
-    if let Some(chain) = chain {
-        store_checkpoint(
-            &world.root,
-            &now_bytes,
-            draft.state.state_rev,
-            draft.state.tick_index,
-            &chain,
-        )?;
-    }
     world.now = draft.state;
+    if let Some(chain) = chain {
+        if finish_checkpoint(world, &now_bytes, &chain).is_err() {
+            world.note_warning(CHECKPOINT_WARNING);
+        }
+    }
     Ok(())
 }
 
@@ -131,20 +130,17 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
         (line, None)
     };
     let mut log_path = append_bundle(&world.root, &payload)?;
-    if let Some(chain) = chain {
-        store_checkpoint(
-            &world.root,
-            &now_bytes,
-            now.state_rev,
-            now.tick_index,
-            &chain,
-        )?;
-        if !log_path.ends_with(".gz") {
-            log_path.push_str(".gz");
-        }
-    }
     world.now = now;
     world.queue.clear();
+    if let Some(chain) = chain {
+        if finish_checkpoint(world, &now_bytes, &chain).is_ok() {
+            if !log_path.ends_with(".gz") {
+                log_path.push_str(".gz");
+            }
+        } else {
+            world.note_warning(CHECKPOINT_WARNING);
+        }
+    }
     Ok(CommitOutcome {
         state_rev: world.now.state_rev,
         diff_summary: pending.paths,
@@ -236,6 +232,8 @@ fn checkpoint_due(every: u64, tick_index: u64) -> bool {
 }
 
 fn append_bundle(root: &Path, payload: &str) -> Result<String, Reason> {
+    // A failed close must not refuse this round or append into the closed bundle.
+    let _ = close_finished(root);
     let path = journal::next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
@@ -296,31 +294,15 @@ fn store_checkpoint(
     fs::create_dir_all(&snap_dir).map_err(|_| Reason::CommitConflict)?;
     atomic_publish(&state.join("save.yaml"), now_bytes)?;
     atomic_publish(&snap_dir.join(format!("{state_rev}.yaml")), now_bytes)?;
-    close_live(root)
-}
-
-fn close_live(root: &Path) -> Result<(), Reason> {
-    let Some(plain) = journal::find_live_bundle(root) else {
-        return Ok(());
-    };
-    let bytes = fs::read(&plain).map_err(|_| Reason::CommitConflict)?;
-    let gz = gzip_path(&plain);
-    let tmp = tmp_path(&gz);
-    let gz_bytes = journal::gzip_bytes(&bytes).map_err(|_| Reason::CommitConflict)?;
-    fs::write(&tmp, gz_bytes).map_err(|_| Reason::CommitConflict)?;
-    fsync_file(&tmp)?;
-    rename(&tmp, &gz)?;
-    fs::remove_file(&plain).map_err(|_| Reason::CommitConflict)?;
-    if let Some(parent) = plain.parent() {
-        fsync_dir(parent)?;
-    }
     Ok(())
 }
 
-fn gzip_path(plain: &Path) -> PathBuf {
-    let mut name = plain.file_name().unwrap_or_default().to_os_string();
-    name.push(".gz");
-    plain.with_file_name(name)
+/// The journal line is already durable. Closing the bundle only finishes the checkpoint.
+fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> Result<(), Reason> {
+    let rev = world.now.state_rev;
+    let tick = world.now.tick_index;
+    store_checkpoint(&world.root, now_bytes, rev, tick, chain)?;
+    close_finished(&world.root)
 }
 
 /// Write `bytes` to a temp file, flush it, and rename it over `target`.
@@ -474,6 +456,68 @@ mod tests {
         let marks = durable::take_trace();
         assert_eq!(labels(&marks), ["file bundle"], "{}", show(&marks));
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_failed_gzip_keeps_the_round_and_the_next_commit_starts_a_bundle() {
+        let root = temp_docks("gzip-fail");
+        let _clear = ClearFail;
+        set_checkpoint_every(&root, 1);
+        let mut world = World::open(&root).unwrap();
+        let mut draft = Draft::begin(&world);
+        draft.state.tick_index = 1;
+        durable::fail_next(".jsonl.gz.tmp");
+        commit_round(&mut world, draft, &journal_line(1, 0, 1)).unwrap();
+        let live = crate::journal::read_live(&root).unwrap();
+        let tick_rev = live.iter().rev().find_map(|entry| match entry {
+            crate::journal::JournalEntry::Tick(record) => Some(record.state_rev_after),
+            _ => None,
+        });
+        let mark = crate::journal::latest_checkpoint(&live).unwrap();
+        assert_eq!(world.now().state_rev, tick_rev.unwrap());
+        assert_eq!(world.now().state_rev, mark.state_rev);
+        assert_eq!(
+            world.take_warning().as_deref(),
+            Some(super::CHECKPOINT_WARNING)
+        );
+        assert!(root.join("state/journal/bundle-0000.jsonl").is_file());
+        assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
+
+        let mut again = Draft::begin(&world);
+        again.state.tick_index = 2;
+        commit_round(&mut world, again, &journal_line(2, 1, 2)).unwrap();
+        assert!(world.take_warning().is_none());
+        let bundles = crate::journal::bundle_entries(&root).unwrap();
+        assert_eq!(bundles.len(), 2, "{bundles:?}");
+        for (name, entries) in &bundles {
+            let checkpoints = entries
+                .iter()
+                .filter(|entry| matches!(entry, crate::journal::JournalEntry::Checkpoint(_)))
+                .count();
+            assert_eq!(checkpoints, 1, "{name}");
+        }
+        assert!(root.join("state/journal/bundle-0000.jsonl.gz").is_file());
+        assert!(!root.join("state/journal/bundle-0000.jsonl").exists());
+        assert!(root.join("state/journal/bundle-0001.jsonl.gz").is_file());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    struct ClearFail;
+
+    impl Drop for ClearFail {
+        fn drop(&mut self) {
+            durable::clear_fail();
+        }
+    }
+
+    fn set_checkpoint_every(root: &Path, every: u64) {
+        let path = root.join("pack.yaml");
+        let mut text = fs::read_to_string(&path).unwrap();
+        if !text.ends_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(&format!("checkpoint_every: {every}\n"));
+        fs::write(path, text).unwrap();
     }
 
     fn labels(marks: &[Mark]) -> Vec<String> {

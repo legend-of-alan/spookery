@@ -54,3 +54,24 @@ Feature: Hash-chained journal bundles
     And checkpoints are taken every 2 ticks
     When the operator runs 6 ticks
     Then parallel full verification matches serial replay
+
+  Scenario: A bundle left open after its checkpoint is closed on the next open
+    Given a docks table
+    And checkpoints are taken every 2 ticks
+    When the operator runs 2 ticks
+    And the closed bundle is expanded back to plain JSONL
+    And the operator runs a tick
+    Then the live bundle is bundle-0001.jsonl
+    And bundle-0000.jsonl.gz is present
+    When the operator runs verify
+    Then the command exits 0
+
+  Scenario: A plain bundle beside its gzip is removed on open
+    Given a docks table
+    And checkpoints are taken every 2 ticks
+    When the operator runs 2 ticks
+    And the closed bundle is copied back beside its gzip
+    And the table is opened again
+    Then the plain bundle file is gone
+    When the operator runs verify
+    Then the command exits 0
