@@ -1266,7 +1266,7 @@ fn remembered_presence(
 
 struct Played {
     now: Now,
-    rolls: Vec<spookery_kernel::api::rules::RollReport>,
+    rolls: Vec<spookery_kernel::api::rules::MoveReport>,
     tick: Value,
     summary: Vec<String>,
     seen: Vec<(String, Vec<String>)>,
@@ -1277,7 +1277,7 @@ fn play(
     world: &mut World,
     pack: &Path,
     intents: Vec<Intent>,
-) -> (Now, Vec<spookery_kernel::api::rules::RollReport>, Value) {
+) -> (Now, Vec<spookery_kernel::api::rules::MoveReport>, Value) {
     let played = play_view(world, pack, intents);
     (played.now, played.rolls, played.tick)
 }
@@ -1313,7 +1313,7 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
         .collect();
     Played {
         now: round.now().clone(),
-        rolls: round.take_rolls(),
+        rolls: round.take_reports(),
         tick,
         summary: round.change_summary().to_vec(),
         seen,

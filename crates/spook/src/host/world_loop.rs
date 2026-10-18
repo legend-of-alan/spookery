@@ -354,16 +354,16 @@ fn handle(
                 return Ok(());
             }
             let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
-            let notices = if done.ticked {
-                let notices = world.take_rolls();
-                frames::write_checks(&mut done.value, &notices);
+            let reports = if done.ticked {
+                let reports = world.take_reports();
+                frames::write_checks(&mut done.value, &reports);
                 frames::write_dice(&mut done.value, &world.take_dice());
-                notices
+                reports
             } else {
                 Vec::new()
             };
             if done.ticked {
-                refresh_players(world, seats, &notices)?;
+                refresh_players(world, seats, &reports)?;
                 print_host(world);
             }
             if let Some(tape) = &done.tape {
@@ -377,7 +377,7 @@ fn handle(
                 send_recipients(world, seats, recipients, line.clone())?;
             }
             let mut after = done.after;
-            after.extend(player_moves::gm_check_frames(&notices));
+            after.extend(player_moves::gm_check_frames(&reports));
             if done.advanced {
                 bump_sleep(restart);
             }
@@ -430,7 +430,7 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
 fn refresh_players(
     world: &mut World,
     seats: &mut Seats,
-    notices: &[spookery_kernel::api::rules::RollReport],
+    reports: &[spookery_kernel::api::rules::MoveReport],
 ) -> Result<(), Reason> {
     let lines = world.take_lines();
     let seen = world.take_seen();
@@ -438,7 +438,7 @@ fn refresh_players(
     for player in seats.players.slots.iter().flatten() {
         let bytes = match player_refresh(world, &player.actor_id) {
             Ok(text) => {
-                let mut out = player_moves::player_notice_lines(notices, &player.actor_id);
+                let mut out = player_moves::player_report_lines(reports, &player.actor_id);
                 out.push_str(&text);
                 for line in narrate_for(&lines, &player.actor_id) {
                     out.push_str(&frames::player_lines(&line));
@@ -647,12 +647,12 @@ fn on_mechanical(
             send_gm(seats, note.gm_frame());
             send_player(world, seats, conn, note.player_line().into_bytes())?;
         }
-        Ok(player_moves::MoveOutcome::Committed { advanced, notices }) => {
+        Ok(player_moves::MoveOutcome::Committed { advanced, reports }) => {
             if advanced {
                 bump_sleep(restart);
             }
             print_host(world);
-            refresh_players(world, seats, &notices)?;
+            refresh_players(world, seats, &reports)?;
         }
         Err(miss) => send_player(
             world,

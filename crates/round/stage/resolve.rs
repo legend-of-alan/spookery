@@ -13,7 +13,7 @@ use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::intent::{ActorKind, Intent, Source, Target, ViewerId};
 use spookery_kernel::api::model::Now;
 use spookery_kernel::api::perceive::perceive_at;
-use spookery_kernel::api::rules::{faces_from, roll, RollInput, RollKey, RollReport, RollResult};
+use spookery_kernel::api::rules::{faces_from, roll, MoveReport, RollInput, RollKey, RollResult};
 use spookery_kernel::api::Reason;
 
 use crate::state::{Resolution, Round};
@@ -242,14 +242,14 @@ fn reclassify(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollRes
     }
 }
 
-fn refused(miss: gate::Miss, notice: Option<RollReport>) -> Resolution {
-    Resolution::Refused { miss, notice }
+fn refused(miss: gate::Miss, report: Option<MoveReport>) -> Resolution {
+    Resolution::Refused { miss, report }
 }
 
 fn refused_check(intent: &Intent, code: Reason) -> Resolution {
     refused(
         gate::Miss::Code(code),
-        Some(RollReport::Refused {
+        Some(MoveReport::Refused {
             actor_id: intent.actor_id.clone(),
             code,
             missing: None,

@@ -10,7 +10,7 @@ use spookery_kernel::api::map;
 use spookery_kernel::api::perceive::perceive_at;
 use spookery_kernel::api::rules::cost;
 use spookery_kernel::api::rules::gate::{self, gate};
-use spookery_kernel::api::rules::{RollReport, RollResult};
+use spookery_kernel::api::rules::{MoveReport, RollResult};
 use spookery_kernel::api::Reason;
 
 use super::resolve::{roll_with_key, viewer_token, SubjectRoll};
@@ -37,15 +37,15 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         let Some(resolution) = round.resolutions.get(&intent.id).cloned() else {
             continue;
         };
-        if let Resolution::Refused { miss, notice } = resolution {
+        if let Resolution::Refused { miss, report } = resolution {
             round.rejected.push(Rejected {
                 id: intent.id.clone(),
                 reason: miss.named(),
             });
-            if let Some(notice) = notice {
-                round.roll_reports.push(notice);
+            if let Some(report) = report {
+                round.move_reports.push(report);
             } else {
-                notice_player(round, &intent, &miss);
+                report_player(round, &intent, &miss);
             }
             continue;
         }
@@ -98,7 +98,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
                         target,
                     )?;
                     let band = out.outcome;
-                    resist_reports.push(RollReport::Rolled {
+                    resist_reports.push(MoveReport::Rolled {
                         actor_id: actor_id.to_string(),
                         out,
                     });
@@ -161,7 +161,7 @@ fn commit_intent(
     intent: &Intent,
     expanded: &[Effect],
     rolled: &Option<RollResult>,
-    resist_reports: Vec<RollReport>,
+    resist_reports: Vec<MoveReport>,
 ) -> bool {
     let point = draft.savepoint();
     let (rule_id, cost) = match gate::resolve(draft.canon(), draft.now(), intent) {
@@ -207,7 +207,7 @@ fn commit_intent(
     }
     round.effects.extend(accepted);
     keep_roll(round, rolled, &intent.actor_id);
-    round.roll_reports.extend(resist_reports);
+    round.move_reports.extend(resist_reports);
     if let Some(rule_id) = rule_id {
         round.steps_run.push(rule_id);
     }
@@ -261,14 +261,14 @@ fn reject(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
         id: intent.id.clone(),
         reason: miss.named(),
     });
-    notice_player(round, intent, miss);
+    report_player(round, intent, miss);
 }
 
-fn notice_player(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
+fn report_player(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
     if intent.actor_kind != ActorKind::Player {
         return;
     }
-    round.roll_reports.push(RollReport::Refused {
+    round.move_reports.push(MoveReport::Refused {
         actor_id: intent.actor_id.clone(),
         code: miss.reason(),
         missing: miss.missing().map(str::to_string),
@@ -277,7 +277,7 @@ fn notice_player(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
 
 fn keep_roll(round: &mut Round, rolled: &Option<RollResult>, actor_id: &str) {
     if let Some(out) = rolled.clone() {
-        round.roll_reports.push(RollReport::Rolled {
+        round.move_reports.push(MoveReport::Rolled {
             actor_id: actor_id.to_string(),
             out,
         });

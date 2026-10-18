@@ -8,7 +8,7 @@ use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target
 use spookery_kernel::api::journal::Arrival;
 use spookery_kernel::api::model::Pending;
 use spookery_kernel::api::rules::expr::{self, Ctx};
-use spookery_kernel::api::rules::RollReport;
+use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::Reason;
 
 use super::resolve::{roll_with_key, SubjectRoll};
@@ -122,7 +122,7 @@ fn resume(
                     &key,
                 )?;
                 let band = out.outcome;
-                reports.push(RollReport::Rolled {
+                reports.push(MoveReport::Rolled {
                     actor_id: actor_id.to_string(),
                     out,
                 });
@@ -157,7 +157,7 @@ fn resume(
                     &key,
                 )?;
                 let band = out.outcome;
-                reports.push(RollReport::Rolled {
+                reports.push(MoveReport::Rolled {
                     actor_id: who.to_string(),
                     out,
                 });
@@ -166,7 +166,7 @@ fn resume(
         )?;
         Ok::<_, Reason>((effects, reports))
     })?;
-    round.roll_reports.extend(reports);
+    round.move_reports.extend(reports);
     for effect in effects {
         if matches!(effect.class, EffectKind::Location { .. }) {
             continue;

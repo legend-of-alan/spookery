@@ -10,7 +10,7 @@ use spookery_kernel::api::journal::{Arrival, Rejected};
 use spookery_kernel::api::key::ChangeRecord;
 use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rules::gate::Miss;
-use spookery_kernel::api::rules::{RollReport, RollResult};
+use spookery_kernel::api::rules::{MoveReport, RollResult};
 use spookery_kernel::api::visibility::{Seen, Told};
 use spookery_kernel::api::world::{session_status, World};
 
@@ -34,8 +34,7 @@ pub struct Round {
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,
     pub steps_run: Vec<String>,
-    pub notices: Vec<RollReport>,
-    pub roll_reports: Vec<RollReport>,
+    pub move_reports: Vec<MoveReport>,
     pub changes: Vec<ChangeRecord>,
     pub summary: Vec<String>,
     pub lines: Vec<Told>,
@@ -57,7 +56,7 @@ pub enum Resolution {
     },
     Refused {
         miss: Miss,
-        notice: Option<RollReport>,
+        report: Option<MoveReport>,
     },
 }
 
@@ -92,8 +91,7 @@ impl Round {
             arrivals: Vec::new(),
             fast_forward: cause == RoundCause::FastForward,
             steps_run: Vec::new(),
-            notices: Vec::new(),
-            roll_reports: Vec::new(),
+            move_reports: Vec::new(),
             changes: Vec::new(),
             summary: Vec::new(),
             lines: Vec::new(),

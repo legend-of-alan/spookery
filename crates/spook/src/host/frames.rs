@@ -10,7 +10,7 @@ use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::map::ExitView;
 use spookery_kernel::api::model::{Message, Now, RunState};
 use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
-use spookery_kernel::api::rules::{RollReport, RollResult};
+use spookery_kernel::api::rules::{MoveReport, RollResult};
 use spookery_kernel::api::Reason;
 
 pub struct TapeLine {
@@ -177,12 +177,12 @@ pub fn commit_reply(state_rev: u64, diff_summary: &[String], log_path: Option<&s
     .to_value()
 }
 
-pub fn write_checks(value: &mut Value, notices: &[RollReport]) {
-    let rolls = notices
+pub fn write_checks(value: &mut Value, reports: &[MoveReport]) {
+    let rolls = reports
         .iter()
-        .filter_map(|notice| match notice {
-            RollReport::Rolled { out, .. } => Some(roll_of(out)),
-            RollReport::Refused { .. } => None,
+        .filter_map(|report| match report {
+            MoveReport::Rolled { out, .. } => Some(roll_of(out)),
+            MoveReport::Refused { .. } => None,
         })
         .collect::<Vec<_>>();
     crate::protocol::set_checks(value, &rolls);

@@ -18,7 +18,7 @@ use spookery_kernel::api::meter::MeterLive;
 use spookery_kernel::api::model::{
     ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
 };
-use spookery_kernel::api::rules::RollReport;
+use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::store::codec::emit_save;
 use spookery_round::{catch_up, play, play_pack_once};
 
@@ -1516,14 +1516,14 @@ Nell keeps a guard up.
     fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn rolled_stat(notices: &[RollReport], stat: i64) -> spookery_kernel::api::rules::RollResult {
-    notices
+fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_kernel::api::rules::RollResult {
+    reports
         .iter()
-        .find_map(|notice| match notice {
-            RollReport::Rolled { out, .. } if out.stat == stat => Some(out.clone()),
+        .find_map(|report| match report {
+            MoveReport::Rolled { out, .. } if out.stat == stat => Some(out.clone()),
             _ => None,
         })
-        .unwrap_or_else(|| panic!("no stat {stat} in {notices:?}"))
+        .unwrap_or_else(|| panic!("no stat {stat} in {reports:?}"))
 }
 
 fn opposing_total_reused() {
@@ -1559,14 +1559,14 @@ fn opposing_total_reused() {
         };
         assert_eq!(shard.now().world_time, 1080);
         assert!(commit_queued(&mut shard).unwrap());
-        let notices = shard.take_rolls();
-        let rowan = rolled_stat(&notices, 1);
+        let reports = shard.take_reports();
+        let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
         let tick = spookery_kernel::api::journal::read_record_line(&pack, "tick-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
         assert!(!tick.contains("faces"));
         if opposed {
-            let nell = rolled_stat(&notices, 100);
+            let nell = rolled_stat(&reports, 100);
             assert_eq!(nell.target, 0);
             assert_eq!(nell.outcome, Outcome::Success);
             assert!(nell.total >= 102, "{nell:?}");
@@ -1627,7 +1627,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
         panic!("held mark committed before the round");
     };
     assert!(commit_queued(&mut shard).unwrap());
-    let rowan = rolled_stat(&shard.take_rolls(), 1);
+    let rowan = rolled_stat(&shard.take_reports(), 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
         !spookery_kernel::api::journal::read_record_line(&held, "tick-0001")

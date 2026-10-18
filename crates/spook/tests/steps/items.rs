@@ -594,11 +594,11 @@ fn lark_hits_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let played =
         play(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
-    let spookery::host::MoveOutcome::Committed { notices, .. } = played else {
+    let spookery::host::MoveOutcome::Committed { reports, .. } = played else {
         panic!("the hit stayed queued");
     };
-    let nell = notices.iter().find_map(|notice| match notice {
-        spookery_kernel::api::rules::RollReport::Rolled { actor_id, out }
+    let nell = reports.iter().find_map(|report| match report {
+        spookery_kernel::api::rules::MoveReport::Rolled { actor_id, out }
             if actor_id == "pc_nell" =>
         {
             Some(out.clone())
@@ -606,7 +606,7 @@ fn lark_hits_with_the_dagger(world: &mut World) {
         _ => None,
     });
     let Some(nell) = nell else {
-        panic!("nell did not roll: {notices:?}");
+        panic!("nell did not roll: {reports:?}");
     };
     assert_eq!(
         nell.total, 15,
@@ -614,7 +614,7 @@ fn lark_hits_with_the_dagger(world: &mut World) {
         world.scratch, nell.faces
     );
     assert_eq!(nell.target, 12);
-    assert_eq!(notices.len(), 2, "{notices:?}");
+    assert_eq!(reports.len(), 2, "{reports:?}");
 }
 
 #[then(expr = "nell loses 3 hp, is not poisoned, sees {string}, and the tick shows no refusal")]

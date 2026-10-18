@@ -11,7 +11,7 @@ use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rule::{ChangeWatch, Op, Owner, Rule, When};
 use spookery_kernel::api::rules::cond;
 use spookery_kernel::api::rules::expr::{self, Ctx};
-use spookery_kernel::api::rules::{RollReport, RollResult};
+use spookery_kernel::api::rules::{MoveReport, RollResult};
 use spookery_kernel::api::Reason;
 
 use super::resolve::{roll_with_key, SubjectRoll};
@@ -96,7 +96,7 @@ fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<H
 struct Fired {
     effects: Vec<Effect>,
     rolled: Option<RollResult>,
-    resist: Vec<RollReport>,
+    resist: Vec<MoveReport>,
 }
 
 fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
@@ -137,12 +137,12 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
         }
     }
     if let Some(out) = fired.rolled {
-        round.roll_reports.push(RollReport::Rolled {
+        round.move_reports.push(MoveReport::Rolled {
             actor_id: subject.to_string(),
             out,
         });
     }
-    round.roll_reports.extend(fired.resist);
+    round.move_reports.extend(fired.resist);
     round.effects.extend(fired.effects);
     round.steps_run.push(rule.id.clone());
 }
@@ -224,7 +224,7 @@ fn expand_hit(
                     &key,
                 )?;
                 let band = out.outcome;
-                resist.push(RollReport::Rolled {
+                resist.push(MoveReport::Rolled {
                     actor_id: actor_id.to_string(),
                     out,
                 });

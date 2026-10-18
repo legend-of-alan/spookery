@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use spookery_kernel::api::rules::{roll, RollInput, RollKey, RollReport};
+use spookery_kernel::api::rules::{roll, MoveReport, RollInput, RollKey};
 use spookery_round::RoundCause;
 
 use super::steps_run::{assert_standard_steps_omitted, read_tick};
@@ -253,9 +253,9 @@ fn mira_plays(world: &mut World, move_name: String) {
     world.scratch = tick.to_string();
     world.mark = rolls
         .iter()
-        .filter(|notice| match notice {
-            RollReport::Rolled { actor_id, .. } => actor_id == "mira",
-            RollReport::Refused { .. } => false,
+        .filter(|report| match report {
+            MoveReport::Rolled { actor_id, .. } => actor_id == "mira",
+            MoveReport::Refused { .. } => false,
         })
         .count();
 }
@@ -349,8 +349,8 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
     world.pack = Some(pack);
     world.scratch = rolls
         .iter()
-        .filter_map(|notice| match notice {
-            RollReport::Rolled { actor_id, out } => Some(format!(
+        .filter_map(|report| match report {
+            MoveReport::Rolled { actor_id, out } => Some(format!(
                 "{actor_id}={}:{}:{}",
                 out.faces
                     .iter()
@@ -360,7 +360,7 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
                 out.total,
                 out.target
             )),
-            RollReport::Refused { .. } => None,
+            MoveReport::Refused { .. } => None,
         })
         .collect::<Vec<_>>()
         .join(";");
@@ -645,8 +645,8 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
         Target::Empty,
     ));
     let (_now, rolls, _tick) = play_queued(pack, intents);
-    let rolled = rolls.into_iter().find_map(|notice| match notice {
-        RollReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some((
+    let rolled = rolls.into_iter().find_map(|report| match report {
+        MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some((
             out.faces
                 .iter()
                 .map(|face| face.to_string())
@@ -662,7 +662,7 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
 fn play_queued(
     pack: &Path,
     intents: Vec<Intent>,
-) -> (spookery_kernel::api::model::Now, Vec<RollReport>, Value) {
+) -> (spookery_kernel::api::model::Now, Vec<MoveReport>, Value) {
     let mut world = spookery_round::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = world.now().last_tick_at.clone();
     for intent in intents {
@@ -672,7 +672,7 @@ fn play_queued(
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = read_tick(pack, "tick-0001");
     let now = world.now().clone();
-    let rolls = world.take_rolls();
+    let rolls = world.take_reports();
     (now, rolls, tick)
 }
 

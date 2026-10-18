@@ -19,10 +19,10 @@ pub struct RollResult {
     pub outcome: Outcome,
 }
 
-/// A roll the round resolved, or a player move it refused.
+/// What the round did with a player's move: the roll, or a refusal and its reason.
 /// Not stored in `Now` or the tick JSONL.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RollReport {
+pub enum MoveReport {
     Rolled {
         actor_id: String,
         out: RollResult,
@@ -35,10 +35,10 @@ pub enum RollReport {
     },
 }
 
-impl RollReport {
+impl MoveReport {
     pub fn actor_id(&self) -> &str {
         match self {
-            RollReport::Rolled { actor_id, .. } | RollReport::Refused { actor_id, .. } => actor_id,
+            MoveReport::Rolled { actor_id, .. } | MoveReport::Refused { actor_id, .. } => actor_id,
         }
     }
 }

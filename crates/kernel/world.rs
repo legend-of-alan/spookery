@@ -11,7 +11,7 @@ use crate::error::Reason;
 use crate::intent::Intent;
 use crate::journal::{self, JournalEntry};
 use crate::model::{sort_unique, MemoryLine, Now, Presence};
-use crate::rules::RollReport;
+use crate::rules::MoveReport;
 use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
 use crate::visibility::{Seen, Told};
@@ -24,7 +24,7 @@ pub struct World {
     pub(crate) now: Now,
     pub(crate) queue: Vec<Intent>,
     pub(crate) pending: Option<UncommittedRound>,
-    rolls: Vec<RollReport>,
+    reports: Vec<MoveReport>,
     dice: Vec<String>,
     summary: Vec<String>,
     lines: Vec<Told>,
@@ -107,8 +107,8 @@ impl World {
         self.queue.push(intent);
     }
 
-    pub fn take_rolls(&mut self) -> Vec<RollReport> {
-        std::mem::take(&mut self.rolls)
+    pub fn take_reports(&mut self) -> Vec<MoveReport> {
+        std::mem::take(&mut self.reports)
     }
 
     pub fn take_dice(&mut self) -> Vec<String> {
@@ -169,7 +169,7 @@ impl World {
         round_jsonl: String,
         memories: Vec<MemoryLine>,
         paths: Vec<String>,
-        notices: Vec<RollReport>,
+        reports: Vec<MoveReport>,
         dice: Vec<String>,
     ) {
         self.dice = dice;
@@ -180,16 +180,16 @@ impl World {
             memories,
             paths,
         });
-        self.rolls = notices;
+        self.reports = reports;
     }
 
     pub(crate) fn note_committed(
         &mut self,
-        notices: Vec<RollReport>,
+        reports: Vec<MoveReport>,
         dice: Vec<String>,
         keep_queue: bool,
     ) {
-        self.rolls = notices;
+        self.reports = reports;
         self.dice = dice;
         if !keep_queue {
             self.queue.clear();
@@ -245,7 +245,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         now,
         queue: Vec::new(),
         pending: None,
-        rolls: Vec::new(),
+        reports: Vec::new(),
         dice: Vec::new(),
         summary: Vec::new(),
         lines: Vec::new(),
