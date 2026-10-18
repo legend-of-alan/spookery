@@ -104,7 +104,11 @@ pub(super) fn run_world_loop(
                 std::process::exit(1);
             }
         };
-        if let Err(code) = handle(&mut world, &mut seats, restart, msg) {
+        let handled = handle(&mut world, &mut seats, restart, msg);
+        if let Some(warning) = world.take_warning() {
+            eprintln!("{warning}");
+        }
+        if let Err(code) = handled {
             eprintln!("{code}");
             std::process::exit(1);
         }

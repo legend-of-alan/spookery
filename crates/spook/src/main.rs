@@ -186,7 +186,12 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             Ok(())
         }
         Command::Tick { pack } => {
-            spookery_round::play_pack_once(&pack).map_err(spookery::Error::Reason)
+            if let Some(warning) =
+                spookery_round::play_pack_once(&pack).map_err(spookery::Error::Reason)?
+            {
+                eprintln!("{warning}");
+            }
+            Ok(())
         }
         Command::Status { pack } => {
             let world = spookery_round::resume(&pack).map_err(spookery::Error::Reason)?;

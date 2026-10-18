@@ -30,6 +30,7 @@ pub struct World {
     lines: Vec<Told>,
     seen: Vec<Seen>,
     next_session: u64,
+    warning: Option<&'static str>,
 }
 
 /// What one round showed its viewers.
@@ -130,6 +131,15 @@ impl World {
 
     pub fn take_seen(&mut self) -> Vec<Seen> {
         std::mem::take(&mut self.seen)
+    }
+
+    /// A committed round whose checkpoint file was not finished. The host prints it.
+    pub fn take_warning(&mut self) -> Option<&'static str> {
+        self.warning.take()
+    }
+
+    pub(crate) fn note_warning(&mut self, text: &'static str) {
+        self.warning = Some(text);
     }
 
     pub fn open(root: &Path) -> Result<Self, Reason> {
@@ -241,6 +251,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         lines: Vec::new(),
         seen: Vec::new(),
         next_session: 1,
+        warning: None,
     })
 }
 

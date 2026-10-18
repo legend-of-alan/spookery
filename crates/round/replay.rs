@@ -232,6 +232,7 @@ pub fn resume(path: &Path) -> Result<World, Reason> {
         humans: 0,
         actors_present: Vec::new(),
     });
+    spookery_kernel::api::commit::settle_open_checkpoint(&world)?;
     Ok(world)
 }
 

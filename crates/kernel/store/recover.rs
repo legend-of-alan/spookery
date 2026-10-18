@@ -3,13 +3,13 @@
 use std::collections::BTreeSet;
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::Reason;
 use crate::journal::{self, JournalEntry};
 use crate::model::MemoryLine;
 use crate::store::codec::emit_memory_line;
-use crate::store::durable::{fsync_dir, fsync_file, tmp_path};
+use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
 
 pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
@@ -19,8 +19,98 @@ pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
     }
     cut_torn_tail(root)?;
     rebuild_memory_files(root)?;
+    close_finished(root)?;
     delete_tmp(&state);
     Ok(())
+}
+
+/// Gzip every plain bundle that ends in a published checkpoint.
+/// When the gzip is already complete, only the plain file is removed.
+pub(crate) fn close_finished(root: &Path) -> Result<(), Reason> {
+    let mut failed = Ok(());
+    for plain in plain_bundles(root) {
+        if journal::trailing_checkpoint(&plain).is_none() {
+            continue;
+        }
+        if let Err(reason) = close_one(root, &plain) {
+            failed = Err(reason);
+        }
+    }
+    failed
+}
+
+fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
+    let bytes = fs::read(plain).map_err(|_| Reason::CommitConflict)?;
+    let gz = gzip_path(plain);
+    if gz_matches(&gz, &bytes) {
+        return remove_plain(plain);
+    }
+    // Without its snapshot the bundle stays open, and the next commit's
+    // settle step writes the snapshot and closes it.
+    if !journal::is_published(root, plain) || !snapshot_matches(root, plain) {
+        return Ok(());
+    }
+    let tmp = tmp_path(&gz);
+    let gz_bytes = journal::gzip_bytes(&bytes).map_err(|_| Reason::CommitConflict)?;
+    fs::write(&tmp, gz_bytes).map_err(|_| Reason::CommitConflict)?;
+    fsync_file(&tmp)?;
+    rename(&tmp, &gz)?;
+    remove_plain(plain)
+}
+
+fn snapshot_matches(root: &Path, plain: &Path) -> bool {
+    let Some(mark) = journal::trailing_checkpoint(plain) else {
+        return false;
+    };
+    let snap = root
+        .join("state/checkpoints")
+        .join(format!("{}.yaml", mark.state_rev));
+    fs::read(snap)
+        .ok()
+        .is_some_and(|bytes| journal::hash_now(&bytes) == mark.state_hash)
+}
+
+fn gz_matches(gz: &Path, plain: &[u8]) -> bool {
+    if !gz.is_file() {
+        return false;
+    }
+    let Ok(bytes) = fs::read(gz) else {
+        return false;
+    };
+    journal::gunzip_bytes(&bytes).ok().as_deref() == Some(plain)
+}
+
+fn remove_plain(plain: &Path) -> Result<(), Reason> {
+    fs::remove_file(plain).map_err(|_| Reason::CommitConflict)?;
+    if let Some(parent) = plain.parent() {
+        fsync_dir(parent)?;
+    }
+    Ok(())
+}
+
+fn plain_bundles(root: &Path) -> Vec<PathBuf> {
+    let dir = root.join("state/journal");
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut plains = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if name.starts_with("bundle-") && name.ends_with(".jsonl") {
+            plains.push(entry.path());
+        }
+    }
+    plains.sort();
+    plains
+}
+
+fn gzip_path(plain: &Path) -> PathBuf {
+    let mut name = plain.file_name().unwrap_or_default().to_os_string();
+    name.push(".gz");
+    plain.with_file_name(name)
 }
 
 fn reason_for(detail: &str) -> Reason {
