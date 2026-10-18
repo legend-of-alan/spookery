@@ -17,7 +17,7 @@ pub fn render(message: &PlayerMessage) -> String {
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
             Outcome::Miss => "Your roll missed.".to_string(),
         },
-        PlayerMessage::Resume { text } => resume(text, true),
+        PlayerMessage::Resume { text } => resume(text),
         PlayerMessage::Lines { text } => text.clone(),
         PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
         PlayerMessage::View { .. } => view_text(message),
@@ -63,9 +63,11 @@ impl PlayerText {
                 ..
             } => self.open_earlier(format!("{}: {text}", speaker(from))),
             PlayerMessage::Resume { text } => {
-                let heading = !self.seen_resume;
+                if self.seen_resume {
+                    return String::new();
+                }
                 self.seen_resume = true;
-                self.close_earlier(resume(text, heading))
+                self.close_earlier(resume(text))
             }
             _ => self.close_earlier(render(message)),
         }
@@ -89,7 +91,7 @@ impl PlayerText {
     }
 }
 
-fn resume(text: &str, heading: bool) -> String {
+fn resume(text: &str) -> String {
     let lines = text
         .lines()
         .map(str::trim)
@@ -98,10 +100,8 @@ fn resume(text: &str, heading: bool) -> String {
         .collect::<Vec<_>>();
     if lines.is_empty() {
         String::new()
-    } else if heading {
-        format!("While you were away:\n{}", lines.join("\n"))
     } else {
-        lines.join("\n")
+        format!("While you were away:\n{}", lines.join("\n"))
     }
 }
 
@@ -435,7 +435,7 @@ mod tests {
         let later = seat.show(&PlayerMessage::Resume {
             text: "the yard stays watched\n".to_string(),
         });
-        assert_eq!(later, "the yard stays watched");
+        assert_eq!(later, "");
     }
 
     #[test]

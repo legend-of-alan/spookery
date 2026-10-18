@@ -149,6 +149,34 @@ fn the_round_shows_no_away_heading(world: &mut World) {
     assert!(!after.contains("While you were away:"), "{stdout}");
 }
 
+#[then(expr = "the round's update shows the door note only under Notes")]
+fn the_rounds_update_shows_the_door_note_only_under_notes(world: &mut World) {
+    let note = "Back at dusk. Oil on the shelf.";
+    wait_play_until(
+        world,
+        |stdout| stdout.matches("You are in").count() >= 2,
+        "a second You are in",
+    );
+    let stdout = play_stdout(world);
+    let second = stdout
+        .match_indices("You are in")
+        .nth(1)
+        .map(|(index, _)| index)
+        .unwrap_or_else(|| panic!("no second place\n{stdout}"));
+    let head = &stdout[..second];
+    let gap = head
+        .rfind("Exits:")
+        .map(|index| &head[index..])
+        .unwrap_or(head);
+    assert!(
+        !gap.contains(note) && !gap.contains("Assassination debt"),
+        "a digest row sits above the place\n{stdout}"
+    );
+    let update = &stdout[second..];
+    assert!(update.contains(&format!("Notes:\n{note}")), "{stdout}");
+    assert_eq!(update.matches(note).count(), 1, "{stdout}");
+}
+
 #[then(expr = "play shows earlier speech under one heading")]
 fn play_shows_earlier_speech_under_one_heading(world: &mut World) {
     let stdout = play_stdout(world);

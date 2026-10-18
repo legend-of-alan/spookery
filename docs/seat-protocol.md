@@ -320,6 +320,8 @@ travel stairs
 
 A refusal during the round arrives as `refused` before the fresh `resume`. The round still commits. An NPC habit refused in that round sends no player frame. The GM seat gets no faces for that refusal.
 
+The terminal shows the digest once per sitting. The per-round `resume` is for raw clients.
+
 When the GM commits the round, every seated player receives a fresh `resume`, then a fresh `perceive`, then one `lines` frame for each narrate line they may hear, then one `lines` frame. Its text is a single plain line of the meter changes and items gained or lost that player may know. A player who rolled also receives `check` before the `resume`. The change frame is omitted when that line is empty. A narrate line is omitted when it would show a fact that player is not allowed to know. Empty rounds, with nobody seated, do not leave lines for the next person who sits.
 
 <!-- example: player-check -->
