@@ -19,7 +19,7 @@ The full glossary is in [docs/README.md](docs/README.md#glossary).
 
 You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also need `pkg-config` and `libssl-dev` (on Debian or Ubuntu: `sudo apt install pkg-config libssl-dev`). macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools, and a checkout with LF line endings. You do not need an AI key.
 
-The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. `drink` uses that item. `travel mill_lane` takes the exit onto Mill Lane. Arriving there fires the arrival rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
+The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. Briar bars the lane until you ask. `drink` uses that item. `ask_briar` opens the lane. `travel mill_lane` takes the exit. The walk costs 15 minutes, and arriving fires the rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
 
 `spook run` stays in the foreground. In a second terminal, from the repo folder and with the same `PATH`, run `spook play` and type the lines. With no GM seated, each line commits on its own. The CI dry run seats a stub GM that commits the same lines. Type `stop` in the host when the ending line has appeared, then run `spook verify`.
 
@@ -27,6 +27,7 @@ The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run
 
 ```text
 drink
+ask_briar
 travel mill_lane
 ```
 
@@ -107,14 +108,53 @@ Hp: 8/16
 Might: 40/45
 
 Exits:
-mill_lane — 0 min
+mill_lane (locked) — 15 min
 loft — 0 min
 ```
 
-Type `drink`, then `travel mill_lane`. The tonic is used up, Lark arrives on Mill Lane, and the arrival rule prints the ending line. This output is from the CI dry run, where the stub GM is seated. With no GM seated there is no `Your action is queued.` line, and each line prints its own update.
+Type `drink`, then `ask_briar`, then `travel mill_lane`. The tonic is used up, Briar steps aside, and the 15 minute walk ends on Mill Lane. The arrival rule prints the ending line. This output is from the CI dry run, where the stub GM is seated. With no GM seated there is no `Your action is queued.` line, and each line prints its own update.
 
 ```text
 Your action is queued.
+You are in Gate Yard.
+
+Wagon ruts cross the mud. A stick leans by the post.
+
+Here: Briar, You
+
+You know:
+The gate stands open.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 40/45
+
+Exits:
+mill_lane (locked) — 15 min
+loft — 0 min
+Your hp is now 12. Your Bitter tonic was used up.
+Your action is queued.
+You are in Gate Yard.
+
+Wagon ruts cross the mud. A stick leans by the post.
+
+Here: Briar, You
+
+You know:
+The gate stands open.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 40/45
+
+Exits:
+mill_lane — 15 min
+loft — 0 min
+Briar steps aside.
 Your action is queued.
 You are in Mill Lane.
 
@@ -131,7 +171,6 @@ Might: 40/45
 Exits:
 gate_yard — 0 min
 The lane is empty. That is the end.
-Your hp is now 12. Your Bitter tonic was used up.
 ```
 
 ## Build from source

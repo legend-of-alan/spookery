@@ -489,6 +489,28 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
     }
 }
 
+pub fn host_stdout(world: &World) -> String {
+    live_ref(world)
+        .server
+        .as_ref()
+        .map(|server| support::text_of(&server.stdout))
+        .unwrap_or_default()
+}
+
+pub fn wait_host_until(world: &World, want: &str, done: impl Fn(&str) -> bool) -> String {
+    let start = Instant::now();
+    loop {
+        let text = host_stdout(world);
+        if done(&text) {
+            return text;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("missing {want}\n{text}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
 pub fn gm_text(world: &mut World) -> String {
     let live = live_mut(world);
     if let Some(gm) = live.gm.as_mut() {

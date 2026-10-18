@@ -354,6 +354,10 @@ fn handle(
                 return Ok(());
             }
             let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
+            if let Some(code) = &done.refused {
+                println!("refused {name} {}", code.token());
+                let _ = io::stdout().flush();
+            }
             let reports = if done.ticked {
                 let reports = world.take_reports();
                 frames::write_checks(&mut done.value, &reports);

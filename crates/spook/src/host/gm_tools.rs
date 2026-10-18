@@ -26,6 +26,8 @@ pub struct GmToolReply {
     pub tape: Option<String>,
     /// The GM seat is cleared before this reply is sent.
     pub release_seat: bool,
+    /// Set when the call was refused; the host logs it.
+    pub refused: Option<Reason>,
 }
 
 impl GmToolReply {
@@ -39,6 +41,7 @@ impl GmToolReply {
             player_line: None,
             tape: None,
             release_seat: false,
+            refused: None,
         }
     }
 }
@@ -330,7 +333,9 @@ fn noop(world: &World) -> GmToolReply {
 }
 
 fn refused_tool(code: Reason) -> GmToolReply {
-    GmToolReply::new(frames::code_result(code.token()))
+    let mut done = GmToolReply::new(frames::code_result(code.token()));
+    done.refused = Some(code);
+    done
 }
 
 fn perceive_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
