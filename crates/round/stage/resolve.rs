@@ -36,7 +36,7 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
     perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
     let rule = match gate(draft.canon(), draft.now(), intent) {
         Ok(rule) => rule.clone(),
-        Err(miss) => return Ok(refused(&miss.named(), None)),
+        Err(miss) => return Ok(refused(&miss.named(), miss.reason(), None)),
     };
     if spookery_kernel::api::map::span(draft.canon(), draft.now(), intent, &rule) > 0 {
         return Ok(Resolution::Ready { rolled: None });
@@ -242,9 +242,10 @@ fn reclassify(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollRes
     }
 }
 
-fn refused(reason: &str, notice: Option<RollReport>) -> Resolution {
+fn refused(reason: &str, code: Reason, notice: Option<RollReport>) -> Resolution {
     Resolution::Refused {
         reason: reason.to_string(),
+        code,
         notice,
     }
 }
@@ -252,6 +253,7 @@ fn refused(reason: &str, notice: Option<RollReport>) -> Resolution {
 fn refused_check(intent: &Intent, code: Reason) -> Resolution {
     refused(
         code.jsonl_reason(),
+        code,
         Some(RollReport::Refused {
             actor_id: intent.actor_id.clone(),
             code,

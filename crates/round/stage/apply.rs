@@ -31,27 +31,34 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         }
         let spends_slot = intent.actor_kind == ActorKind::Npc;
         if spends_slot && slots >= max_npcs {
-            refuse(round, &intent.id, Reason::Budget.jsonl_reason());
+            refuse(round, &intent, Reason::Budget);
             continue;
         }
         let Some(resolution) = round.resolutions.get(&intent.id).cloned() else {
             continue;
         };
-        if let Resolution::Refused { reason, notice } = resolution {
+        if let Resolution::Refused {
+            reason,
+            code,
+            notice,
+        } = resolution
+        {
             round.rejected.push(Rejected {
-                id: intent.id,
+                id: intent.id.clone(),
                 reason,
             });
             if let Some(notice) = notice {
                 round.roll_reports.push(notice);
+            } else {
+                notice_player(round, &intent, code);
             }
             continue;
         }
         let Resolution::Ready { rolled } = resolution else {
             continue;
         };
-        if let Some(reason) = live_gate(draft, &intent)? {
-            refuse(round, &intent.id, &reason);
+        if let Some(miss) = live_gate(draft, &intent)? {
+            reject(round, &intent, &miss);
             continue;
         }
         let timed = gate::resolve(draft.canon(), draft.now(), &intent)
@@ -106,12 +113,12 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         }) {
             Ok(effects) => effects,
             Err(code) => {
-                refuse(round, &intent.id, code.jsonl_reason());
+                refuse(round, &intent, code);
                 continue;
             }
         };
         if expanded.len() > max_effects {
-            refuse(round, &intent.id, Reason::Budget.jsonl_reason());
+            refuse(round, &intent, Reason::Budget);
             continue;
         }
         if commit_intent(round, draft, &intent, &expanded, &rolled, resist_reports) && spends_slot {
@@ -139,7 +146,7 @@ fn begin_timed(
         map::begin(draft, intent, rule, at, minutes, &mut roller)
     }) {
         draft.rollback(point);
-        refuse(round, &intent.id, code.jsonl_reason());
+        refuse(round, intent, code);
         return false;
     }
     round.steps_run.push(rule.id.clone());
@@ -148,12 +155,9 @@ fn begin_timed(
 }
 
 /// Perceive and eligibility see effects already applied in this round.
-fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<String>, Reason> {
+fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<gate::Miss>, Reason> {
     perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
-    if let Err(miss) = gate(draft.canon(), draft.now(), intent) {
-        return Ok(Some(miss.named()));
-    }
-    Ok(None)
+    Ok(gate(draft.canon(), draft.now(), intent).err())
 }
 
 fn commit_intent(
@@ -175,7 +179,7 @@ fn commit_intent(
             cost::pay(draft, intent, &cost, &mut roller)
         }) {
             draft.rollback(point);
-            refuse(round, &intent.id, code.jsonl_reason());
+            refuse(round, intent, code);
             return false;
         }
     }
@@ -188,7 +192,7 @@ fn commit_intent(
             }
             Err(code) => {
                 draft.rollback(point);
-                refuse(round, &intent.id, code.jsonl_reason());
+                refuse(round, intent, code);
                 if code == Reason::Budget {
                     round.budget_stop = true;
                 }
@@ -199,7 +203,7 @@ fn commit_intent(
     if intent.actor_kind == ActorKind::Npc {
         if let Err(code) = draft.stage_npc_counters(&intent.actor_id, round.humans) {
             draft.rollback(point);
-            refuse(round, &intent.id, code.jsonl_reason());
+            refuse(round, intent, code);
             if code == Reason::Budget {
                 round.budget_stop = true;
             }
@@ -252,10 +256,26 @@ fn resist_roll(
     )
 }
 
-fn refuse(round: &mut Round, id: &str, reason: &str) {
+fn refuse(round: &mut Round, intent: &Intent, code: Reason) {
+    reject(round, intent, &gate::Miss::Code(code));
+}
+
+/// Journal the miss's word and tell a player its code.
+fn reject(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
     round.rejected.push(Rejected {
-        id: id.to_string(),
-        reason: reason.to_string(),
+        id: intent.id.clone(),
+        reason: miss.named(),
+    });
+    notice_player(round, intent, miss.reason());
+}
+
+fn notice_player(round: &mut Round, intent: &Intent, code: Reason) {
+    if intent.actor_kind != ActorKind::Player {
+        return;
+    }
+    round.roll_reports.push(RollReport::Refused {
+        actor_id: intent.actor_id.clone(),
+        code,
     });
 }
 

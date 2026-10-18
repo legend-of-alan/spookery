@@ -19,7 +19,8 @@ pub struct RollResult {
     pub outcome: Outcome,
 }
 
-/// A roll the round resolved. Not stored in `Now` or the tick JSONL.
+/// A roll the round resolved, or a player move it refused.
+/// Not stored in `Now` or the tick JSONL.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RollReport {
     Rolled { actor_id: String, out: RollResult },
