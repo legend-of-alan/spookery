@@ -308,7 +308,7 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
 
 /// The checkpoint hash is already in `save.yaml`, so the bundle is finished.
 /// Until then it stays the live file and startup can still replay it.
-pub(crate) fn published_checkpoint(pack: &Path, path: &Path) -> bool {
+pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
     let Some(mark) = trailing_checkpoint(path) else {
         return false;
     };
@@ -325,9 +325,7 @@ pub fn next_bundle_path(pack: &Path) -> PathBuf {
     let dir = pack.join("state/journal");
     let files = bundle_files(&dir).unwrap_or_default();
     match files.last() {
-        Some((name, path)) if name.ends_with(".jsonl") && !published_checkpoint(pack, path) => {
-            path.clone()
-        }
+        Some((name, path)) if name.ends_with(".jsonl") && !is_published(pack, path) => path.clone(),
         Some((name, _)) => {
             let index = bundle_index(name).unwrap_or(0).saturating_add(1);
             dir.join(format!("bundle-{index:04}.jsonl"))

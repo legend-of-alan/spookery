@@ -43,13 +43,13 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     let bytes = fs::read(plain).map_err(|_| Reason::CommitConflict)?;
     let gz = gzip_path(plain);
     if gz_matches(&gz, &bytes) {
-        ensure_snapshot(root, plain)?;
         return remove_plain(plain);
     }
-    if !journal::published_checkpoint(root, plain) {
+    // Without its snapshot the bundle stays open, and the next commit's
+    // settle step writes the snapshot and closes it.
+    if !journal::is_published(root, plain) || !snapshot_matches(root, plain) {
         return Ok(());
     }
-    ensure_snapshot(root, plain)?;
     let tmp = tmp_path(&gz);
     let gz_bytes = journal::gzip_bytes(&bytes).map_err(|_| Reason::CommitConflict)?;
     fs::write(&tmp, gz_bytes).map_err(|_| Reason::CommitConflict)?;
@@ -58,21 +58,16 @@ fn close_one(root: &Path, plain: &Path) -> Result<(), Reason> {
     remove_plain(plain)
 }
 
-fn ensure_snapshot(root: &Path, plain: &Path) -> Result<(), Reason> {
+fn snapshot_matches(root: &Path, plain: &Path) -> bool {
     let Some(mark) = journal::trailing_checkpoint(plain) else {
-        return Ok(());
+        return false;
     };
-    let save = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::CommitConflict)?;
-    if journal::hash_now(&save) != mark.state_hash {
-        return Ok(());
-    }
     let snap = root
         .join("state/checkpoints")
         .join(format!("{}.yaml", mark.state_rev));
-    if fs::read(&snap).ok().as_deref() == Some(save.as_slice()) {
-        return Ok(());
-    }
-    atomic_write(&snap, &save)
+    fs::read(snap)
+        .ok()
+        .is_some_and(|bytes| journal::hash_now(&bytes) == mark.state_hash)
 }
 
 fn gz_matches(gz: &Path, plain: &[u8]) -> bool {

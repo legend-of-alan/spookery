@@ -62,7 +62,7 @@ Feature: Hash-chained journal bundles
     And the closed bundle is expanded back to plain JSONL
     And the operator runs a tick
     Then the live bundle is bundle-0001.jsonl
-    And bundle-0000.jsonl.gz is present
+    And bundle-0000.jsonl is closed
     When the operator runs verify
     Then the command exits 0
 
@@ -73,5 +73,19 @@ Feature: Hash-chained journal bundles
     And the closed bundle is copied back beside its gzip
     And the table is opened again
     Then the plain bundle file is gone
+    When the operator runs verify
+    Then the command exits 0
+
+  Scenario: A checkpoint whose save did not land is published by the next round
+    Given a docks table
+    And checkpoints are taken every 2 ticks
+    When the operator runs a tick
+    And the save is kept
+    And the operator runs a tick
+    And the checkpoint's save and snapshot are rolled back
+    And the operator runs a tick
+    Then the save hash matches the latest checkpoint
+    And the live bundle is bundle-0001.jsonl
+    And bundle-0000.jsonl is closed
     When the operator runs verify
     Then the command exits 0

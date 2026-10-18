@@ -333,26 +333,13 @@ pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
         .ok()
         .is_some_and(|bytes| hash_now(&bytes) == mark.state_hash);
     if !save_ok || !snap_ok {
-        let base = state.join(journal::base_rel());
-        if !base.is_file() && save.is_file() {
-            fs::copy(&save, &base).map_err(|_| Reason::CommitConflict)?;
-            fsync_file(&base)?;
-            if let Some(parent) = base.parent() {
-                fsync_dir(parent)?;
-            }
-        }
-        let head = serde_json::to_string(&journal::BundleHead {
-            state_rev: mark.state_rev,
-            tick_index: mark.tick_index,
-            state_hash: mark.state_hash.clone(),
-            chain: mark.chain.clone(),
-        })
-        .map_err(|_| Reason::Schema)?;
-        atomic_publish(&state.join(journal::head_rel()), head.as_bytes())?;
-        snapshot_memories(&world.root)?;
-        fs::create_dir_all(state.join("checkpoints")).map_err(|_| Reason::CommitConflict)?;
-        atomic_publish(&save, &now_bytes)?;
-        atomic_publish(&snap, &now_bytes)?;
+        store_checkpoint(
+            &world.root,
+            &now_bytes,
+            mark.state_rev,
+            mark.tick_index,
+            &mark.chain,
+        )?;
     }
     let _ = close_finished(&world.root);
     Ok(())
@@ -514,7 +501,7 @@ mod tests {
     #[test]
     fn a_failed_gzip_keeps_the_round_and_the_next_commit_starts_a_bundle() {
         let root = temp_docks("gzip-fail");
-        let _clear = ClearFail;
+        let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
         let mut world = World::open(&root).unwrap();
         let mut draft = Draft::begin(&world);
@@ -529,10 +516,7 @@ mod tests {
         let mark = crate::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(world.now().state_rev, tick_rev.unwrap());
         assert_eq!(world.now().state_rev, mark.state_rev);
-        assert_eq!(
-            world.take_warning().as_deref(),
-            Some(super::CHECKPOINT_WARNING)
-        );
+        assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
         assert!(root.join("state/journal/bundle-0000.jsonl").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
@@ -558,7 +542,7 @@ mod tests {
     #[test]
     fn a_failed_save_stays_committed_and_the_next_commit_starts_a_bundle() {
         let root = temp_docks("save-fail");
-        let _clear = ClearFail;
+        let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
         let mut world = World::open(&root).unwrap();
         let mut first = Draft::begin(&world);
@@ -572,10 +556,7 @@ mod tests {
         let live = crate::journal::read_live(&root).unwrap();
         let mark = crate::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(world.now().state_rev, mark.state_rev);
-        assert_eq!(
-            world.take_warning().as_deref(),
-            Some(super::CHECKPOINT_WARNING)
-        );
+        assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
 
         let mut third = Draft::begin(&world);
         third.state.tick_index = 3;
@@ -584,8 +565,8 @@ mod tests {
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         let (first_name, first_entries) = &bundles[0];
         let (second_name, second_entries) = &bundles[1];
-        assert_eq!(checkpoint_count(first_entries), 1, "{first_name}");
-        assert_eq!(checkpoint_count(second_entries), 0, "{second_name}");
+        assert_eq!(count_checkpoints(first_entries), 1, "{first_name}");
+        assert_eq!(count_checkpoints(second_entries), 0, "{second_name}");
         assert!(second_entries.iter().any(|entry| {
             matches!(entry, crate::journal::JournalEntry::Tick(record) if record.tick_index == 3)
         }));
@@ -599,16 +580,16 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn checkpoint_count(entries: &[crate::journal::JournalEntry]) -> usize {
+    fn count_checkpoints(entries: &[crate::journal::JournalEntry]) -> usize {
         entries
             .iter()
             .filter(|entry| matches!(entry, crate::journal::JournalEntry::Checkpoint(_)))
             .count()
     }
 
-    struct ClearFail;
+    struct FailGuard;
 
-    impl Drop for ClearFail {
+    impl Drop for FailGuard {
         fn drop(&mut self) {
             durable::clear_fail();
         }

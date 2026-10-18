@@ -30,7 +30,7 @@ pub struct World {
     lines: Vec<Told>,
     seen: Vec<Seen>,
     next_session: u64,
-    warning: Option<String>,
+    warning: Option<&'static str>,
 }
 
 /// What one round showed its viewers.
@@ -134,12 +134,12 @@ impl World {
     }
 
     /// A committed round whose checkpoint file was not finished. The host prints it.
-    pub fn take_warning(&mut self) -> Option<String> {
+    pub fn take_warning(&mut self) -> Option<&'static str> {
         self.warning.take()
     }
 
-    pub(crate) fn note_warning(&mut self, text: &str) {
-        self.warning = Some(text.to_string());
+    pub(crate) fn note_warning(&mut self, text: &'static str) {
+        self.warning = Some(text);
     }
 
     pub fn open(root: &Path) -> Result<Self, Reason> {

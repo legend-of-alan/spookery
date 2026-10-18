@@ -460,25 +460,44 @@ fn the_closed_bundle_is_copied_back_beside_its_gzip(world: &mut World) {
     assert!(path.is_file(), "gzip removed");
 }
 
-#[then(expr = "the live bundle is bundle-0001.jsonl")]
-fn the_live_bundle_is_bundle_0001(world: &mut World) {
+#[when(expr = "the save is kept")]
+fn the_save_is_kept(world: &mut World) {
+    let save = table::pack(world).join("state/save.yaml");
+    world.scratch = fs::read_to_string(save).unwrap_or_else(|err| panic!("read save: {err}"));
+}
+
+/// Leave the journal as a commit whose `save.yaml` and snapshot did not land.
+#[when(expr = "the checkpoint's save and snapshot are rolled back")]
+fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let entries = spookery_kernel::api::journal::read_entries(&pack)
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let mark = spookery_kernel::api::journal::latest_checkpoint(&entries)
+        .unwrap_or_else(|| panic!("no checkpoint"));
+    let snap = pack
+        .join("state/checkpoints")
+        .join(format!("{}.yaml", mark.state_rev));
+    fs::remove_file(snap).unwrap_or_else(|err| panic!("remove snapshot: {err}"));
+    fs::write(pack.join("state/save.yaml"), &world.scratch).unwrap();
+    the_closed_bundle_is_expanded_back_to_plain_jsonl(world);
+}
+
+#[then(expr = "the live bundle is {word}")]
+fn the_live_bundle_is(world: &mut World, expected: String) {
     let path = spookery_kernel::api::journal::find_live_bundle(table::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
     let name = path
         .file_name()
         .and_then(|file| file.to_str())
         .unwrap_or("");
-    assert_eq!(name, "bundle-0001.jsonl");
+    assert_eq!(name, expected);
 }
 
-#[then(expr = "bundle-0000.jsonl.gz is present")]
-fn bundle_0000_gz_is_present(world: &mut World) {
+#[then(expr = "{word} is closed")]
+fn the_bundle_is_closed(world: &mut World, name: String) {
     let journal = table::pack(world).join("state/journal");
-    assert!(journal.join("bundle-0000.jsonl.gz").is_file());
-    assert!(
-        !journal.join("bundle-0000.jsonl").exists(),
-        "plain bundle still open"
-    );
+    assert!(journal.join(format!("{name}.gz")).is_file(), "no gzip");
+    assert!(!journal.join(&name).exists(), "plain bundle still open");
 }
 
 #[then(expr = "the plain bundle file is gone")]

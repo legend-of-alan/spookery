@@ -75,7 +75,7 @@ fn tip_for_migrate(path: &Path) -> Result<spookery_kernel::api::model::Now, Reas
 
 /// Play one round from the save. `Some` is a warning the host prints: the round
 /// was committed, and the checkpoint bundle was not closed.
-pub fn play_pack_once(path: &Path) -> Result<Option<String>, Reason> {
+pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
     let mut world = crate::replay::resume(path)?;
     let wall = world.now().last_tick_at.clone();
     play(&mut world, RoundCause::Manual, &wall)?;
