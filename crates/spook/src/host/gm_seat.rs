@@ -93,7 +93,7 @@ impl ServerHandler for GmHost {
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, McpError> {
         if let Some(http) = &self.http {
-            if let Some(tag) = context.extensions.get::<super::mcp_http::SeatReleased>() {
+            if let Some(tag) = context.extensions.get::<super::mcp_http::SeatRelease>() {
                 *http.released.lock().unwrap_or_else(|err| err.into_inner()) = tag.take();
             }
             self.claim(&context).await?;

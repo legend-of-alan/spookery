@@ -50,9 +50,9 @@ fn http_config() -> StreamableHttpServerConfig {
 /// the sender and drops it after its seat is free, so the receiver resolves
 /// once the shard thread no longer holds the GM seat for that session.
 #[derive(Clone)]
-pub(super) struct SeatReleased(Arc<Mutex<Option<oneshot::Sender<()>>>>);
+pub(super) struct SeatRelease(Arc<Mutex<Option<oneshot::Sender<()>>>>);
 
-impl SeatReleased {
+impl SeatRelease {
     pub(super) fn take(&self) -> Option<oneshot::Sender<()>> {
         self.0.lock().unwrap_or_else(|err| err.into_inner()).take()
     }
@@ -91,7 +91,7 @@ impl SessionManager for SeatSessions {
             request
                 .request
                 .extensions_mut()
-                .insert(SeatReleased(Arc::new(Mutex::new(Some(tx)))));
+                .insert(SeatRelease(Arc::new(Mutex::new(Some(tx)))));
         }
         self.inner.initialize_session(id, message).await
     }
@@ -189,7 +189,7 @@ mod tests {
     /// A stand-in for the shard thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real table. On a fault it tells
     /// the test, then holds the seat until the test lets the release through.
-    fn fake_world_loop(
+    fn spawn_fake_world_loop(
         rx: mpsc::Receiver<Msg>,
         fault_seen: tokio::sync::mpsc::UnboundedSender<()>,
         let_go: mpsc::Receiver<()>,
@@ -250,7 +250,7 @@ mod tests {
     }
 
     /// One HTTP/1.1 request on its own connection. Returns the raw reply.
-    async fn http(
+    async fn send_http(
         port: u16,
         method: &str,
         session: Option<&str>,
@@ -283,7 +283,7 @@ mod tests {
 
     /// Opens a session. Returns its id and the raw reply.
     async fn open(port: u16) -> (Option<String>, String) {
-        let raw = http(
+        let raw = send_http(
             port,
             "POST",
             None,
@@ -302,7 +302,7 @@ mod tests {
         (session, raw)
     }
 
-    fn negotiated(body: &str) -> String {
+    fn read_negotiated_version(body: &str) -> String {
         body.lines()
             .filter_map(|line| line.strip_prefix("data:"))
             .chain(std::iter::once(body))
@@ -330,15 +330,17 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (fault_tx, mut fault_seen) = tokio::sync::mpsc::unbounded_channel();
         let (let_go, held) = mpsc::channel();
-        fake_world_loop(rx, fault_tx, held);
+        spawn_fake_world_loop(rx, fault_tx, held);
         tokio::spawn(serve(listener, tx, Arc::new(AtomicU64::new(1))));
 
         let (session, body) = open(port).await;
         let session = session.unwrap_or_else(|| panic!("no session\n{body}"));
-        let version = negotiated(&body);
+        let version = read_negotiated_version(&body);
 
         let mut delete =
-            tokio::spawn(async move { http(port, "DELETE", Some(&session), &version, "").await });
+            tokio::spawn(
+                async move { send_http(port, "DELETE", Some(&session), &version, "").await },
+            );
 
         // The release reaches the shard thread, which holds the seat for now.
         tokio::select! {
