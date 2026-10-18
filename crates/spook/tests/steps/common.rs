@@ -169,6 +169,7 @@ pub(crate) fn wait_play(world: &mut World, needle: &str) {
     wait_play_until(world, |stdout| stdout.contains(needle), needle);
 }
 
+/// Poll play stdout until `ready` is true, or panic on exit / timeout.
 pub(crate) fn wait_play_until(world: &mut World, ready: impl Fn(&str) -> bool, label: &str) {
     let start = Instant::now();
     loop {

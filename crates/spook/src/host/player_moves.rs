@@ -65,8 +65,8 @@ pub fn player_notice_lines(notices: &[RollReport], actor_id: &str) -> String {
             RollReport::Rolled { out: rolled, .. } => {
                 out.push_str(&frames::player_check_line(rolled.outcome))
             }
-            RollReport::Refused { code, .. } => {
-                out.push_str(&frames::player_refused_line(code.token()))
+            RollReport::Refused { code, missing, .. } => {
+                out.push_str(&frames::player_refused(code.token(), missing.as_deref()))
             }
         }
     }
