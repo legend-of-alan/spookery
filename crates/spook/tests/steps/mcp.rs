@@ -92,22 +92,14 @@ fn http_session_ends(world: &mut World) {
 #[then(expr = "another GM can sit over HTTP")]
 fn another_gm_can_sit(world: &mut World) {
     let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
+    // One attempt: the DELETE reply waits for the seat release (issue #214).
     block_on(async move {
-        let start = Instant::now();
-        loop {
-            match connect_http(http).await {
-                Ok(running) => {
-                    let status = call(&running, "session_status", None).await;
-                    assert_sat(&status, "session_status");
-                    let _ = running.cancel().await;
-                    return;
-                }
-                Err(err) if start.elapsed() > Duration::from_secs(5) => {
-                    panic!("the next GM did not sit: {err}");
-                }
-                Err(_) => tokio::time::sleep(Duration::from_millis(50)).await,
-            }
-        }
+        let running = connect_http(http)
+            .await
+            .unwrap_or_else(|err| panic!("the next GM did not sit: {err}"));
+        let status = call(&running, "session_status", None).await;
+        assert_sat(&status, "session_status");
+        let _ = running.cancel().await;
     });
 }
 
@@ -328,16 +320,10 @@ fn holder_leaves(world: &mut World) {
 
 #[then(expr = "a GM can sit over HTTP")]
 fn a_gm_can_sit_over_http(world: &mut World) {
-    let start = Instant::now();
-    let mut last = String::new();
-    while start.elapsed() < Duration::from_secs(5) {
-        match agent_sits(http_port(world)) {
-            Ok(()) => return,
-            Err(err) => last = err,
-        }
-        std::thread::sleep(Duration::from_millis(50));
+    // One attempt: the DELETE reply waits for the seat release (issue #214).
+    if let Err(err) = agent_sits(http_port(world)) {
+        panic!("no GM could sit over HTTP: {err}");
     }
-    panic!("no GM could sit over HTTP: {last}");
 }
 
 fn agent_sits(port: u16) -> Result<(), String> {

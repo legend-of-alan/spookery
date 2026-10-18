@@ -26,6 +26,8 @@ struct HttpSeat {
     /// Clone of the seat's outbound queue. Say and check frames go here, in
     /// order, and the one forwarder below writes them.
     out: std::sync::Mutex<Option<super::limits::OutTx>>,
+    /// Dropped after the seat is free. A DELETE on this session waits for it.
+    released: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
 }
 
 pub(super) struct GmHost {
@@ -40,6 +42,7 @@ pub(super) fn http_host(tx: Sender<Msg>, conn: u64) -> GmHost {
             conn,
             held: Arc::new(AtomicBool::new(false)),
             out: std::sync::Mutex::new(None),
+            released: std::sync::Mutex::new(None),
         }),
     }
 }
@@ -47,6 +50,15 @@ pub(super) fn http_host(tx: Sender<Msg>, conn: u64) -> GmHost {
 impl Drop for GmHost {
     fn drop(&mut self) {
         self.release();
+        // The seat is free, so the session's DELETE may answer now.
+        if let Some(http) = &self.http {
+            drop(
+                http.released
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .take(),
+            );
+        }
     }
 }
 
@@ -80,7 +92,10 @@ impl ServerHandler for GmHost {
         request: InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, McpError> {
-        if self.http.is_some() {
+        if let Some(http) = &self.http {
+            if let Some(tag) = context.extensions.get::<super::mcp_http::SeatRelease>() {
+                *http.released.lock().unwrap_or_else(|err| err.into_inner()) = tag.take();
+            }
             self.claim(&context).await?;
         }
         context.peer.set_peer_info(request.clone());
