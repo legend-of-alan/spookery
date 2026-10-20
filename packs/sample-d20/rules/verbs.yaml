@@ -19,8 +19,8 @@ rules:
       target: actor
     roll:
       check: strike
-      target: 41
-      partial_at: 21
+      target: 38
+      partial_at: 32
     success:
       - meter:
           who: target
@@ -75,6 +75,28 @@ rules:
     do:
       - unwield:
           who: self
+
+  - id: chock
+    when:
+      verb: chock
+    if:
+      - at:
+          who: self
+          place: gate_yard
+      - has_item:
+          who: self
+          id: chock
+    cost:
+      items:
+        chock: 1
+    do:
+      - flag:
+          who: world
+          key: chocked
+          value: true
+      - narrate:
+          to: self
+          text: The wheel holds. The cart settles.
 
   - id: ask_briar
     when:

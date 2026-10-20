@@ -70,8 +70,8 @@ fn odens_habit_takes_a_missing_tonic(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "oden-habit");
     let path = pack.join("cast/oden.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read oden: {err}"));
-    let next = text.replacen(
-        "tick:\n  eligible: false\n",
+    let next = replace_oden_rules(
+        &text,
         "\
 tick:
   eligible: true
@@ -84,9 +84,7 @@ rules:
           id: tonic
           add: -1
 ",
-        1,
     );
-    assert_ne!(text, next, "oden's habit was not inserted");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
     edit_save(&pack, |_| {});
     table::listen(world, &pack);
@@ -260,8 +258,8 @@ fn oden_can_pay_until_lark_spends_his_grit(world: &mut World) {
     add_grit(&pack);
     let path = pack.join("cast/oden.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read oden: {err}"));
-    let next = text.replacen(
-        "tick:\n  eligible: false\n",
+    let next = replace_oden_rules(
+        &text,
         "\
 tick:
   eligible: true
@@ -277,9 +275,7 @@ rules:
           key: heaved
           value: true
 ",
-        1,
     );
-    assert_ne!(text, next, "oden's habit was not inserted");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
     append(
         &pack.join("rules/verbs.yaml"),
@@ -318,6 +314,15 @@ fn seat_lark(world: &mut World, pack: std::path::PathBuf) {
     table::seat_gm(world);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
+}
+
+fn replace_oden_rules(text: &str, rules: &str) -> String {
+    let start = text.find("tick:\n").expect("oden tick");
+    let end = text.find("\n---\n").expect("oden close");
+    assert!(start < end, "oden tick is outside the frontmatter");
+    let next = format!("{}{}{}", &text[..start], rules, &text[end + 1..]);
+    assert_ne!(text, next, "oden's habit was not inserted");
+    next
 }
 
 fn add_grit(pack: &Path) {

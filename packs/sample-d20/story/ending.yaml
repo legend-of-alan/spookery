@@ -13,4 +13,4 @@ rules:
           value: true
       - narrate:
           to: self
-          text: The lane is empty. That is the end.
+          text: Oden and Nell are on the lane. That is the end.

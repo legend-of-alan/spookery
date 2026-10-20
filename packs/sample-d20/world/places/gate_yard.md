@@ -8,20 +8,30 @@ exits:
     cost:
       time: 15m
     if:
-      - any:
+      - all:
+          - any:
+              - flag:
+                  who: world
+                  key: passage
+                  is: true
+              - has_item:
+                  who: self
+                  id: latch
           - flag:
               who: world
-              key: passage
+              key: chocked
               is: true
-          - has_item:
-              who: self
-              id: latch
-    locked_text: Briar bars the lane.
+    locked_text: The lane is shut.
   - to: loft
     name: loft
+  - to: wheel_shed
+    name: wheel_shed
 facts:
   - id: fact_gate_open
     text: The gate stands open.
     hidden: false
+  - id: fact_cart
+    text: A mill cart blocks the lane. Its wheel is still turning.
+    hidden: false
 ---
-Wagon ruts cross the mud. A stick leans by the post.
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.

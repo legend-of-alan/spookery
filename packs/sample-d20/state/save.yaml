@@ -1,6 +1,6 @@
 schema: now
 shard_id: sample-d20
-pack_rev: blake2s:7d054faa13f500eb9b5da89bf007f2885b428672d44b6cb8c71217e11a79f045
+pack_rev: blake2s:02f86c17e890574432cb533294581156dffdd633d751afb1022287715fb34b46
 rules_rev: 7
 state_rev: 0
 tick_index: 0
@@ -26,6 +26,11 @@ places:
     actors:
       - npc_oden
       - pc_nell
+  wheel_shed:
+    items:
+      chock: 1
+    notes: []
+    actors: []
 actors:
   npc_briar:
     kind: npc
@@ -89,7 +94,7 @@ actors:
         base: 8
         offset: 0
       might:
-        base: 40
+        base: 30
         offset: 0
     inventory:
       tonic: 1

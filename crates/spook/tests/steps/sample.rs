@@ -37,6 +37,26 @@ fn the_player_strikes_the_raider(world: &mut World) {
     world.player_added = added;
 }
 
+#[when(expr = "the player waits {int} and strikes the raider")]
+fn the_player_waits_and_strikes(world: &mut World, times: usize) {
+    for _ in 0..times {
+        table::player_send(world, "wait", "\"kind\":\"perceive\"");
+    }
+    let (mark, added) = table::player_send(world, "strike npc_briar", "\"kind\":\"check\"");
+    world.mark = mark;
+    world.player_added = added;
+}
+
+#[then(expr = "the roll is {string}")]
+fn the_roll_is(world: &mut World, band: String) {
+    let needle = format!("\"outcome\":\"{band}\"");
+    assert!(
+        world.player_added.contains(&needle),
+        "expected {band}\n{}",
+        world.player_added
+    );
+}
+
 #[when(expr = "the player drinks")]
 fn the_player_drinks(world: &mut World) {
     let (mark, added) = table::player_send(world, "use tonic", "\"kind\":");
@@ -124,11 +144,11 @@ fn copy_sample(label: &str) -> PathBuf {
 fn set_lark_might(pack: &Path, base: i64) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read now: {err}"));
-    let from = "      might:\n        base: 40\n";
+    let from = "      might:\n        base: 30\n";
     assert_eq!(
         text.matches(from).count(),
         1,
-        "Lark's might was not the only base 40"
+        "Lark's might was not the only base 30"
     );
     let next = text.replacen(from, &format!("      might:\n        base: {base}\n"), 1);
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));

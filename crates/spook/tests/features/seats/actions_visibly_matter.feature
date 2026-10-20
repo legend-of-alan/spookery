@@ -2,7 +2,7 @@ Feature: Actions visibly matter
 
   Scenario: A strike shows what changed
     Given sample-d20 with player "lark" seated facing "briar"
-    When lark strikes briar and the seeded roll succeeds
+    When lark's might is raised and the seeded strike succeeds
     Then lark sees one line naming the change to briar's hp
 
   Scenario: Items gained or lost show up
