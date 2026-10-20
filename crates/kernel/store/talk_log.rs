@@ -17,7 +17,8 @@ const DEFAULT_TAPE_LIMIT: usize = 64;
 const MAX_TAPE_LIMIT: usize = 256;
 
 /// One tape line. Field order is the order of the bytes on disk.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// `place` and `actor` may be null. A missing key is not a record.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct TapeRecord {
     pub seq: u64,
     pub from: String,
@@ -28,6 +29,54 @@ pub struct TapeRecord {
     pub text: String,
     pub tick_index: u64,
     pub world_time: u64,
+}
+
+impl<'de> Deserialize<'de> for TapeRecord {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // `Option<Option<_>>` with `deserialize_some` tells a missing key from null.
+        #[derive(Deserialize)]
+        struct Raw {
+            seq: u64,
+            from: String,
+            address: String,
+            #[serde(default, deserialize_with = "deserialize_some")]
+            place: Option<Option<String>>,
+            #[serde(default, deserialize_with = "deserialize_some")]
+            actor: Option<Option<String>>,
+            recipients: Vec<String>,
+            text: String,
+            tick_index: u64,
+            world_time: u64,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        Ok(Self {
+            seq: raw.seq,
+            from: raw.from,
+            address: raw.address,
+            place: raw
+                .place
+                .ok_or_else(|| serde::de::Error::missing_field("place"))?,
+            actor: raw
+                .actor
+                .ok_or_else(|| serde::de::Error::missing_field("actor"))?,
+            recipients: raw.recipients,
+            text: raw.text,
+            tick_index: raw.tick_index,
+            world_time: raw.world_time,
+        })
+    }
+}
+
+/// A present value, including null. A missing key stays the `Option` default.
+fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    T: Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    T::deserialize(deserializer).map(Some)
 }
 
 /// The JSON object written as one tape line, without the trailing newline.
@@ -43,8 +92,7 @@ pub fn append_record(
 ) -> Result<TapeRecord, Reason> {
     let mut stored = None;
     append_session(root, |seq| {
-        let mut record = body(seq);
-        record.seq = seq;
+        let record = body(seq);
         let line = record_line(&record);
         stored = Some(record);
         line
@@ -143,6 +191,15 @@ pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
         return Err(Reason::OutOfRange);
     }
     let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
+    parse_records(&bytes)
+}
+
+/// Records in `bytes`, oldest first. A trailing partial line is not a record.
+/// A complete line that does not parse is `SCHEMA`. More than 1 MiB is `OUT_OF_RANGE`.
+pub fn parse_records(bytes: &[u8]) -> Result<Vec<TapeRecord>, Reason> {
+    if bytes.len() as u64 > MAX_TAPE_BYTES {
+        return Err(Reason::OutOfRange);
+    }
     let Some(last_nl) = bytes.iter().rposition(|byte| *byte == b'\n') else {
         return Ok(Vec::new());
     };
@@ -300,8 +357,20 @@ mod tests {
         let path = root.join("state/journal/session.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, vec![b'\n'; (MAX_TAPE_BYTES as usize) + 1]).unwrap();
+        let bytes = fs::read(&path).unwrap();
         assert_eq!(read_records(&root).unwrap_err(), Reason::OutOfRange);
+        assert_eq!(parse_records(&bytes).unwrap_err(), Reason::OutOfRange);
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_line_missing_place_or_actor_is_schema() {
+        let missing_place = r#"{"seq":1,"from":"gm","address":"table","actor":null,"recipients":[],"text":"hi","tick_index":0,"world_time":0}"#;
+        let missing_actor = r#"{"seq":1,"from":"gm","address":"table","place":null,"recipients":[],"text":"hi","tick_index":0,"world_time":0}"#;
+        assert_eq!(parse_record(missing_place).unwrap_err(), Reason::Schema);
+        assert_eq!(parse_record(missing_actor).unwrap_err(), Reason::Schema);
+        let present = r#"{"seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","tick_index":0,"world_time":0}"#;
+        assert!(parse_record(present).is_ok());
     }
 
     fn sample(seq: u64, player: &str, text: &str) -> TapeRecord {
