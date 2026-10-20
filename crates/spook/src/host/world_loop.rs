@@ -365,7 +365,7 @@ fn handle(
             if done.ticked {
                 frames::write_checks(&mut done.value, &collected.reports);
                 frames::write_dice(&mut done.value, &collected.dice);
-                refresh_players(world, seats, &outputs)?;
+                refresh_players(world, seats, &collected.reports, &outputs)?;
                 print_host(world);
             }
             if let Some(tape) = &done.tape {
@@ -440,14 +440,14 @@ fn collect(outputs: &[RoundOutput]) -> Collected {
 fn refresh_players(
     world: &mut World,
     seats: &mut Seats,
+    reports: &[MoveReport],
     outputs: &[RoundOutput],
 ) -> Result<(), Reason> {
-    let reports = collect(outputs).reports;
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
         let bytes = match player_refresh(world, &player.actor_id) {
             Ok(text) => {
-                let mut out = player_moves::player_report_lines(&reports, &player.actor_id);
+                let mut out = player_moves::player_report_lines(reports, &player.actor_id);
                 out.push_str(&text);
                 for output in outputs {
                     for line in narrate_for(&output.lines, &player.actor_id) {
@@ -663,7 +663,7 @@ fn on_mechanical(
                 bump_sleep(restart);
             }
             print_host(world);
-            refresh_players(world, seats, std::slice::from_ref(&output))?;
+            refresh_players(world, seats, &output.reports, std::slice::from_ref(&output))?;
         }
         Ok(player_moves::MoveOutcome::Busy {
             code,
@@ -677,7 +677,8 @@ fn on_mechanical(
                 frames::player_refused(code, missing.as_deref()).into_bytes(),
             )?;
             if !outputs.is_empty() {
-                refresh_players(world, seats, &outputs)?;
+                let collected = collect(&outputs);
+                refresh_players(world, seats, &collected.reports, &outputs)?;
                 print_host(world);
             }
         }

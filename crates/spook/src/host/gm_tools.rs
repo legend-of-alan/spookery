@@ -308,10 +308,10 @@ fn commit_tool(
         return fast_forward_reply(world);
     }
     let before = world.now().world_time;
-    let forwarded = player_moves::commit_then_fast_forward(world, true)?;
-    let Some(outcome) = forwarded.outcome else {
-        return Err(Reason::CommitConflict);
-    };
+    let forwarded = player_moves::commit_then_fast_forward(world)?;
+    let outcome = forwarded
+        .outcome
+        .expect("a queued round commits before the burst");
     let mut done = GmToolReply::new(frames::commit_reply(
         outcome.state_rev,
         &outcome.diff_summary,
@@ -325,7 +325,7 @@ fn commit_tool(
 
 fn fast_forward_reply(world: &mut World) -> Result<GmToolReply, Reason> {
     let before = world.now().world_time;
-    let forwarded = player_moves::commit_then_fast_forward(world, false)?;
+    let forwarded = player_moves::commit_then_fast_forward(world)?;
     if forwarded.outputs.is_empty() {
         return Ok(noop(world));
     }

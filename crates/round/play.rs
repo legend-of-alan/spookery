@@ -209,12 +209,12 @@ fn play_with(
     triggers::run(&mut round, draft)?;
     observe::run(&mut round, draft)?;
     let output = record::run(world, &mut round, draft_slot.take().expect("draft"))?;
-    let output = seated_output(world, output);
+    let output = drop_unseated_lines(world, output);
     Ok((std::mem::take(&mut round.effects), output))
 }
 
 /// Lines and seen from an empty table are not kept for a later seat.
-fn seated_output(world: &World, mut output: RoundOutput) -> RoundOutput {
+fn drop_unseated_lines(world: &World, mut output: RoundOutput) -> RoundOutput {
     if world.now().presence.humans == 0 {
         output.lines.clear();
         output.seen.clear();

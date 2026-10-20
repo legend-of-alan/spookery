@@ -1,5 +1,4 @@
 use std::fs;
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -20,6 +19,12 @@ fn a_docks_table_with_a_gm_and_one_pc(world: &mut World, actor: String) {
     let to = "  - to: docks_street\n    name: docks_street\n    cost:\n      time: 10m\n";
     assert!(text.contains(from), "{text}");
     fs::write(&path, text.replacen(from, to, 1)).unwrap_or_else(|err| panic!("write shop: {err}"));
+    let verbs = pack.join("rules/verbs.yaml");
+    let mut rules = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
+    rules.push_str(
+        "\n  - id: hit\n    when:\n      verb: hit\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"2d6\"\n",
+    );
+    fs::write(&verbs, rules).unwrap_or_else(|err| panic!("write verbs: {err}"));
     support::stamp_pack_rev(&pack);
     table::listen(world, &pack);
     table::seat_gm(world);
@@ -101,46 +106,29 @@ fn the_commit_reply_lists_one_check(world: &mut World, actor: String) {
     assert!(found, "no grit intent for {actor}");
 }
 
-#[then(expr = "the commit reply lists that check's dice line")]
+#[then(expr = "the commit reply lists the committed round's dice line")]
 fn the_commit_reply_lists_the_dice(world: &mut World) {
     let body = commit_body(world);
-    let checks = body["checks"]
+    let dice = body["dice"]
         .as_array()
-        .unwrap_or_else(|| panic!("checks\n{}", world.stdout));
-    let faces = checks[0]["faces"]
-        .as_array()
-        .unwrap_or_else(|| panic!("faces\n{}", world.stdout));
+        .unwrap_or_else(|| panic!("no dice\n{}", world.stdout));
     assert!(
-        !faces.is_empty(),
-        "the check lists no dice\n{}",
+        dice.iter()
+            .any(|line| line.as_str().is_some_and(|line| line.contains("2d6 →"))),
+        "dice lines did not list the committed roll\n{}",
         world.stdout
     );
-    let dice = body.get("dice").and_then(Value::as_array);
-    if let Some(dice) = dice {
-        let shown = faces
-            .iter()
-            .filter_map(Value::as_u64)
-            .map(|face| face.to_string())
-            .collect::<Vec<_>>()
-            .join(", ");
-        assert!(
-            dice.iter()
-                .any(|line| line.as_str().is_some_and(|line| line.contains(&shown))),
-            "dice lines did not list {shown}\n{}",
-            world.stdout
-        );
-    }
 }
 
 #[then(expr = "{string} gets a refused line with code {word}")]
 fn the_player_is_refused(world: &mut World, actor: String, code: String) {
-    let added = wait_actor(world, &actor, world.mark, &code);
+    let added = table::wait_actor_from(world, &actor, world.mark, &code);
     assert!(added.contains(&format!("\"code\":\"{code}\"")), "{added}");
 }
 
 #[then(expr = "each seated player then gets a resume line and a perceive line")]
 fn each_player_gets_one_refresh(world: &mut World) {
-    let rowan = wait_actor(world, "pc_rowan", world.mark, "\"kind\":\"perceive\"");
+    let rowan = table::wait_actor_from(world, "pc_rowan", world.mark, "\"kind\":\"perceive\"");
     let busy = rowan
         .find("\"code\":\"BUSY\"")
         .unwrap_or_else(|| panic!("no refusal\n{rowan}"));
@@ -154,7 +142,7 @@ fn each_player_gets_one_refresh(world: &mut World) {
     assert_eq!(rowan.matches("\"kind\":\"resume\"").count(), 1, "{rowan}");
     assert_eq!(rowan.matches("\"kind\":\"perceive\"").count(), 1, "{rowan}");
     let wren_mark = marks(world).1;
-    let wren = wait_actor(world, "pc_wren", wren_mark, "\"kind\":\"perceive\"");
+    let wren = table::wait_actor_from(world, "pc_wren", wren_mark, "\"kind\":\"perceive\"");
     assert_eq!(wren.matches("\"kind\":\"resume\"").count(), 1, "{wren}");
     assert_eq!(wren.matches("\"kind\":\"perceive\"").count(), 1, "{wren}");
 }
@@ -209,21 +197,6 @@ fn commit_body(world: &World) -> Value {
     let value: Value = serde_json::from_str(&world.stdout)
         .unwrap_or_else(|err| panic!("commit reply: {err}\n{}", world.stdout));
     value["result"]["structuredContent"].clone()
-}
-
-fn wait_actor(world: &World, actor: &str, mark: usize, needle: &str) -> String {
-    let start = Instant::now();
-    loop {
-        let text = table::actor_text(world, actor);
-        let added = text.get(mark..).unwrap_or("");
-        if added.contains(needle) {
-            return added.to_string();
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("missing {needle} for {actor}\n{added}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }
 
 fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {

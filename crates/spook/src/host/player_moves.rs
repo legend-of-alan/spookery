@@ -39,19 +39,17 @@ pub(super) struct Forwarded {
     pub outputs: Vec<RoundOutput>,
 }
 
-/// Run the commit when `commit` is set, then fast-forward while every seated PC is busy.
-pub(super) fn commit_then_fast_forward(
-    world: &mut World,
-    commit: bool,
-) -> Result<Forwarded, Reason> {
+/// Commit a queued round, then fast-forward while every seated PC is busy.
+/// An empty queue only fast-forwards.
+pub(super) fn commit_then_fast_forward(world: &mut World) -> Result<Forwarded, Reason> {
     let wall = wall_now()?;
     let mut outputs = Vec::new();
-    let outcome = if commit && !world.queued_intents().is_empty() {
+    let outcome = if world.queued_intents().is_empty() {
+        None
+    } else {
         let (outcome, output) = commit_moves_at(world, &wall)?;
         outputs.push(output);
         Some(outcome)
-    } else {
-        None
     };
     let already = u32::from(outcome.is_some());
     outputs.extend(advance_while_busy(world, &wall, already)?);
@@ -69,7 +67,7 @@ pub fn handle_player_move(
         Ok(note) => note,
         Err(miss) => {
             if !gm_seated && miss.reason() == spookery_kernel::api::Reason::Busy {
-                let forwarded = commit_then_fast_forward(world, false).map_err(Miss::from)?;
+                let forwarded = commit_then_fast_forward(world).map_err(Miss::from)?;
                 return Ok(MoveOutcome::Busy {
                     code: miss.token(),
                     missing: miss.missing().map(str::to_string),

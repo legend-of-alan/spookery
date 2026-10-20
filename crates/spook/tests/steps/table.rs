@@ -436,6 +436,18 @@ pub fn wait_player_from(world: &World, mark: usize, needle: &str) -> String {
     wait_suffix(&slot, mark, needle)
 }
 
+pub fn wait_actor_from(world: &World, actor_id: &str, mark: usize, needle: &str) -> String {
+    let slot = Arc::clone(
+        &live_ref(world)
+            .players
+            .iter()
+            .find(|player| player.actor_id == actor_id)
+            .unwrap_or_else(|| panic!("no seat for {actor_id}"))
+            .text,
+    );
+    wait_suffix(&slot, mark, needle)
+}
+
 pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
     let value: Value =
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));

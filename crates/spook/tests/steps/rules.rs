@@ -830,7 +830,7 @@ fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let mut opened = open_pack(&pack);
     world.scratch =
         match spookery::host::handle_player_move(&mut opened, "pc_rowan", "use tonic", true) {
-            Ok(spookery::host::MoveOutcome::Busy { .. }) => "busy".to_string(),
+            Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
             Ok(spookery::host::MoveOutcome::Queued(note)) => {
                 let queued = opened
                     .queued_intents()
