@@ -86,7 +86,8 @@ fn the_player_sends_a_move(world: &mut World, actor: String) {
     let rowan = table::actor_text(world, &actor).len();
     let wren = table::actor_text(world, "pc_wren").len();
     world.mark = rowan;
-    world.scratch = format!("{host} {wren}");
+    world.host_mark = host;
+    world.wren_mark = wren;
     table::actor_line(world, &actor, "wait");
 }
 
@@ -141,7 +142,7 @@ fn each_player_gets_one_refresh(world: &mut World) {
     assert!(busy < resume && resume < perceive, "{rowan}");
     assert_eq!(rowan.matches("\"kind\":\"resume\"").count(), 1, "{rowan}");
     assert_eq!(rowan.matches("\"kind\":\"perceive\"").count(), 1, "{rowan}");
-    let wren_mark = marks(world).1;
+    let wren_mark = world.wren_mark;
     let wren = table::wait_actor_from(world, "pc_wren", wren_mark, "\"kind\":\"perceive\"");
     assert_eq!(wren.matches("\"kind\":\"resume\"").count(), 1, "{wren}");
     assert_eq!(wren.matches("\"kind\":\"perceive\"").count(), 1, "{wren}");
@@ -149,7 +150,7 @@ fn each_player_gets_one_refresh(world: &mut World) {
 
 #[then(expr = "the host prints its status once")]
 fn the_host_prints_its_status_once(world: &mut World) {
-    let host_mark = marks(world).0;
+    let host_mark = world.host_mark;
     let text = table::wait_host_until(world, "one status", |text| {
         text.len() > host_mark && text[host_mark..].contains(STATUS_LINE)
     });
@@ -162,21 +163,6 @@ fn the_host_prints_its_status_once(world: &mut World) {
 }
 
 const STATUS_LINE: &str = "clock shop_day 1 1 running";
-
-fn marks(world: &World) -> (usize, usize) {
-    let mut parts = world.scratch.split(' ');
-    let host = parts
-        .next()
-        .unwrap_or_else(|| panic!("no host mark"))
-        .parse()
-        .unwrap_or_else(|err| panic!("host mark: {err}"));
-    let wren = parts
-        .next()
-        .unwrap_or_else(|| panic!("no wren mark"))
-        .parse()
-        .unwrap_or_else(|err| panic!("wren mark: {err}"));
-    (host, wren)
-}
 
 fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&str>) {
     let target = match place {
