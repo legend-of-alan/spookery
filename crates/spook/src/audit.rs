@@ -79,6 +79,12 @@ fn tape_records(pack: &Path) -> Result<Vec<TapeRecord>, AuditError> {
     if !path.is_file() {
         return Ok(Vec::new());
     }
+    let len = fs::metadata(&path)
+        .map_err(|_| AuditError::Reason(Reason::Schema))?
+        .len();
+    if len > talk_log::MAX_TAPE_BYTES {
+        return Err(AuditError::Reason(Reason::OutOfRange));
+    }
     let bytes = fs::read(&path).map_err(|_| AuditError::Reason(Reason::Schema))?;
     talk_log::parse_records(&bytes).map_err(AuditError::Reason)
 }
@@ -358,7 +364,10 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use super::{audit_pack, contains_quoted_id};
+    use spookery_kernel::api::store::talk_log::MAX_TAPE_BYTES;
+    use spookery_kernel::api::Reason;
+
+    use super::{audit_pack, contains_quoted_id, AuditError};
 
     #[test]
     fn a_shorter_fact_id_does_not_match_a_longer_one() {
@@ -381,6 +390,25 @@ mod tests {
         audit_pack(&root, false).unwrap_or_else(|err| panic!("audit: {err}"));
         assert_eq!(dir_bytes(&root.join("state")), before);
         assert!(!root.join("state/.session.lock").exists());
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_oversized_tape_is_out_of_range_and_writes_nothing() {
+        let root = temp_docks();
+        let tape = root.join("state/journal/session.jsonl");
+        fs::create_dir_all(tape.parent().unwrap()).unwrap();
+        fs::write(&tape, vec![b'\n'; (MAX_TAPE_BYTES as usize) + 1]).unwrap();
+        let before = dir_bytes(&root.join("state"));
+        let err = match audit_pack(&root, false) {
+            Err(err) => err,
+            Ok(_) => panic!("expected OUT_OF_RANGE"),
+        };
+        assert!(
+            matches!(err, AuditError::Reason(Reason::OutOfRange)),
+            "{err}"
+        );
+        assert_eq!(dir_bytes(&root.join("state")), before);
         let _ = fs::remove_dir_all(&root);
     }
 
