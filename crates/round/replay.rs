@@ -216,8 +216,21 @@ fn replay_walking(
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 pub fn resume(path: &Path) -> Result<World, Reason> {
+    resume_from(path, false)
+}
+
+/// The tip, so migrate can store a new hash of files the host would refuse.
+pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
+    resume_from(path, true)
+}
+
+fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
-    let mut world = World::open(path)?;
+    let mut world = if migrating {
+        World::open_for_replay(path)?
+    } else {
+        World::open(path)?
+    };
     let entries = journal::read_live(path).map_err(|fault| replay_reason(journal_fault(fault)))?;
     let base_rev = world.now().state_rev;
     for entry in &entries {

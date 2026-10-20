@@ -33,3 +33,28 @@ Feature: A hand edit waits for migrate
     And stderr is SCHEMA
     And the pack bytes are unchanged
     And the studio log is absent
+
+  Scenario: A canon edit after a committed round is refused
+    Given a docks table
+    And one round has committed
+    When a canon file gains a byte
+    And the operator runs tick
+    Then the command exits 1
+    And stderr names PACK_REV_MISMATCH
+    And the tick writes nothing
+
+  Scenario: Check and run agree on an edit after a round
+    Given a docks table
+    And one round has committed
+    When a canon file gains a byte
+    Then spook check reports PACK_REV_MISMATCH
+    And the host refuses to start with PACK_REV_MISMATCH
+
+  Scenario: Migrate after rounds lets the next round run
+    Given a docks table
+    And one round has committed
+    When a canon file gains a byte
+    And the operator runs migrate
+    And the operator runs tick
+    Then the command exits 0
+    And spook verify passes
