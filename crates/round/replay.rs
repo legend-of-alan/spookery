@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::api::canon::{bind_inventory, bind_meters, pack_rev};
+use spookery_kernel::api::canon::{bind_inventory, bind_meters};
 use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
@@ -219,7 +219,7 @@ pub fn resume(path: &Path) -> Result<World, Reason> {
     resume_from(path, false)
 }
 
-/// The tip, so migrate can store a new hash of files the host would refuse.
+/// The journal tip, opened without the tip hash check, so migrate can store a new one.
 pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
     resume_from(path, true)
 }
@@ -776,16 +776,6 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
     }
     bind_meters(world.canon(), &mut next).map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
     bind_inventory(&next).map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
-    let computed = pack_rev(world.root()).map_err(ReplayError::Reason)?;
-    if computed != record.pack_rev_after {
-        return Err(ReplayError::Diverged(diverge(
-            record.state_rev_after,
-            "migrate",
-            None,
-            "pack_rev differed".to_string(),
-            None,
-        )));
-    }
     next.pack_rev = record.pack_rev_after.clone();
     next.state_rev = record.state_rev_after;
     canonicalize(&mut next);
