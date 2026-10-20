@@ -67,7 +67,7 @@ fn tip_for_migrate(path: &Path) -> Result<spookery_kernel::api::model::Now, Reas
                 && entry.state_rev_after() > file_now.state_rev
         });
     if ahead {
-        Ok(crate::replay::resume(path)?.now().clone())
+        Ok(crate::replay::resume_for_migrate(path)?.now().clone())
     } else {
         Ok(file_now)
     }

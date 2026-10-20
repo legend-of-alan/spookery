@@ -223,9 +223,11 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
     let mut now = load_save(now_text).map_err(reason_of)?;
-    let mut problems = save_problems(root, &now, &now_bytes);
-    if replay || journal_continues(root, &now) {
-        problems.retain(|diag| diag.code != Reason::PackRevMismatch.token());
+    let mut problems = save_problems(&now, &now_bytes);
+    if !replay {
+        if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
+            problems.insert(0, diag);
+        }
     }
     if journal_continues(root, &now) {
         problems.retain(|diag| diag.code != Reason::HandEdit.token());
@@ -253,6 +255,54 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         next_session: 1,
         warning: None,
     })
+}
+
+/// Hash of the newest migrate past the checkpoint, or the save's own hash.
+fn tip_pack_rev(root: &Path, now: &Now) -> String {
+    let Ok(entries) = journal::read_live(root) else {
+        return now.pack_rev.clone();
+    };
+    for entry in entries.iter().rev() {
+        if entry.state_rev_after() <= now.state_rev {
+            continue;
+        }
+        if let JournalEntry::Migrate(record) = entry {
+            return record.pack_rev_after.clone();
+        }
+    }
+    now.pack_rev.clone()
+}
+
+/// `Some` when the canon files are not the journal tip's hash.
+fn pack_rev_problem(root: &Path, now: &Now, bytes: &[u8]) -> Option<Diagnostic> {
+    let tip = tip_pack_rev(root, now);
+    match pack_rev(root) {
+        Ok(rev) if tip != rev => {
+            let mut diag = coded(
+                "state/save.yaml",
+                Reason::PackRevMismatch,
+                "pack_rev does not match the canon hash",
+                "run spook migrate to store the current hash",
+            )
+            .with_path("pack_rev");
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                if let Some((line, column)) = locate_nth(text, "pack_rev:", 0) {
+                    diag = diag.at_line(line, Some(column));
+                }
+            }
+            Some(diag)
+        }
+        Ok(_) => None,
+        Err(_) => Some(
+            coded(
+                "state/save.yaml",
+                Reason::Schema,
+                "the canon files could not be hashed",
+                "check that world/, cast/, and rules/ are readable",
+            )
+            .with_path("pack_rev"),
+        ),
+    }
 }
 
 /// The on-disk save is a checkpoint. Later journal records still have to be replayed.
@@ -326,12 +376,12 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         None
     };
     if let Some((bytes, now)) = &loaded {
-        let mut problems = save_problems(root, now, bytes);
+        let mut problems = save_problems(now, bytes);
         if migrate_continues(root, now) {
-            problems.retain(|diag| {
-                diag.code != Reason::PackRevMismatch.token()
-                    && diag.code != Reason::HandEdit.token()
-            });
+            problems.retain(|diag| diag.code != Reason::HandEdit.token());
+        }
+        if let Some(diag) = pack_rev_problem(root, now, bytes) {
+            problems.insert(0, diag);
         }
         diags.extend(problems);
         if let Some(canon) = &canon {
@@ -359,35 +409,8 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     diags
 }
 
-fn save_problems(root: &Path, now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
+fn save_problems(now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-    match pack_rev(root) {
-        Ok(rev) if now.pack_rev != rev => {
-            let mut diag = coded(
-                "state/save.yaml",
-                Reason::PackRevMismatch,
-                "pack_rev does not match the canon hash",
-                "run spook migrate to store the current hash",
-            )
-            .with_path("pack_rev");
-            if let Ok(text) = std::str::from_utf8(bytes) {
-                if let Some((line, column)) = locate_nth(text, "pack_rev:", 0) {
-                    diag = diag.at_line(line, Some(column));
-                }
-            }
-            diags.push(diag);
-        }
-        Ok(_) => {}
-        Err(_) => diags.push(
-            coded(
-                "state/save.yaml",
-                Reason::Schema,
-                "the canon files could not be hashed",
-                "check that world/, cast/, and rules/ are readable",
-            )
-            .with_path("pack_rev"),
-        ),
-    }
     if now.actors.contains_key(crate::effect::WORLD) {
         diags.push(
             schema(

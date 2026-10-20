@@ -1,11 +1,22 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
-use cucumber::{then, when};
+use cucumber::{given, then, when};
 
+use crate::support;
 use crate::World;
 
 use super::table;
+
+fn state_tree(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+    let state = pack.join("state");
+    if state.is_dir() {
+        table::files(&state)
+    } else {
+        Vec::new()
+    }
+}
 
 fn docks_rev() -> String {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
@@ -38,9 +49,21 @@ fn a_canon_file_gains_a_byte(world: &mut World) {
     world.now_bytes = fs::read(pack.join("state/save.yaml")).unwrap();
 }
 
+#[given(expr = "one round has committed")]
+fn one_round_has_committed(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::run(world, &["tick", pack.to_str().unwrap()]);
+    assert_eq!(world.code, Some(0), "{}", world.stderr);
+    assert!(
+        !spookery_kernel::api::journal::list_tick_keys(&pack).is_empty(),
+        "no tick committed"
+    );
+}
+
 #[when(expr = "the operator runs tick")]
 fn the_operator_runs_tick(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
+    world.state_files = state_tree(&pack);
     table::run(world, &["tick", pack.to_str().unwrap()]);
 }
 
@@ -98,6 +121,15 @@ fn stderr_is_schema(world: &mut World) {
     assert_eq!(world.stderr.trim(), "SCHEMA", "{}", world.stdout);
 }
 
+#[then(expr = "stderr names PACK_REV_MISMATCH")]
+fn stderr_names_pack_rev_mismatch(world: &mut World) {
+    assert!(
+        world.stderr.contains("PACK_REV_MISMATCH"),
+        "{}",
+        world.stderr
+    );
+}
+
 #[then(expr = "the tick writes nothing")]
 fn the_tick_writes_nothing(world: &mut World) {
     let pack = table::pack(world);
@@ -106,7 +138,68 @@ fn the_tick_writes_nothing(world: &mut World) {
         world.now_bytes
     );
     assert!(!pack.join("state/.txn").exists());
-    assert!(!pack.join("state/journal").exists());
+    assert_eq!(
+        state_tree(pack),
+        world.state_files,
+        "the tick wrote under state/"
+    );
+}
+
+#[then(expr = "spook check reports PACK_REV_MISMATCH")]
+fn spook_check_reports_pack_rev_mismatch(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::run(world, &["check", pack.to_str().unwrap()]);
+    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
+    assert!(
+        world.stderr.contains("PACK_REV_MISMATCH"),
+        "{}",
+        world.stderr
+    );
+}
+
+#[then(expr = "the host refuses to start with PACK_REV_MISMATCH")]
+fn the_host_refuses_to_start(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    let arg = support::pack_arg(&pack);
+    let mut proc = support::spawn(&["run", &arg, "--addr", "127.0.0.1:0"]);
+    let start = Instant::now();
+    let (status, stderr) = loop {
+        let status = proc
+            .child
+            .try_wait()
+            .unwrap_or_else(|err| panic!("wait: {err}"));
+        let stderr = support::text_of(&proc.stderr);
+        if let Some(status) = status {
+            if !stderr.is_empty() {
+                break (status, stderr);
+            }
+        }
+        if start.elapsed() > Duration::from_secs(8) {
+            panic!("host stayed up\n{stderr}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    world.code = status.code();
+    world.stderr = stderr;
+    assert_eq!(world.code, Some(1), "{}", world.stderr);
+    assert!(
+        world.stderr.contains("PACK_REV_MISMATCH"),
+        "{}",
+        world.stderr
+    );
+}
+
+#[then(expr = "spook verify passes")]
+fn spook_verify_passes(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::run(world, &["verify", pack.to_str().unwrap()]);
+    assert_eq!(
+        world.code,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        world.stdout,
+        world.stderr
+    );
 }
 
 #[then(expr = "state_rev is 2")]

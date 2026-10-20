@@ -28,6 +28,7 @@ pub struct World {
     pub mark: usize,
     pub player_added: String,
     pub now_bytes: Vec<u8>,
+    pub state_files: Vec<(PathBuf, Vec<u8>)>,
     pub play: Option<support::Proc>,
     pub plays: Vec<support::Proc>,
     pub gm: Option<support::Proc>,
