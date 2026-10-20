@@ -59,6 +59,18 @@ Feature: A hand edit waits for migrate
     Then the command exits 0
     And spook verify passes
 
+  Scenario: A canon edit after a migrate is refused
+    Given a docks table
+    When a canon file gains a byte
+    And the operator runs migrate
+    And the operator runs tick
+    Then the command exits 0
+    When a canon file gains a byte
+    And the operator runs tick
+    Then the command exits 1
+    And stderr names PACK_REV_MISMATCH
+    And the tick writes nothing
+
   Scenario: A second canon edit in one live bundle migrates
     Given a docks table
     And one round has committed
