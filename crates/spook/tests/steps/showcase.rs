@@ -12,14 +12,47 @@ use crate::World;
 
 const EVENING: u64 = 1080;
 const OPENING: &[&str] = &["strike npc_briar", "drink"];
-const SCRIPT: &[&str] = &["strike npc_briar", "drink", "ask_briar", "travel mill_lane"];
+const SCRIPT: &[&str] = &[
+    "strike npc_briar",
+    "drink",
+    "travel loft",
+    "travel gate_yard",
+    "ask_briar",
+    "travel wheel_shed",
+    "take chock",
+    "travel gate_yard",
+    "chock",
+    "travel mill_lane",
+];
 const BRANCHES: &[&[&str]] = &[
-    &["ask_briar", "travel mill_lane"],
-    &["strike npc_briar", "strike npc_briar", "travel mill_lane"],
+    &[
+        "ask_briar",
+        "travel wheel_shed",
+        "take chock",
+        "travel gate_yard",
+        "chock",
+        "travel mill_lane",
+    ],
+    &[
+        "strike npc_briar",
+        "strike npc_briar",
+        "strike npc_briar",
+        "strike npc_briar",
+        "strike npc_briar",
+        "travel wheel_shed",
+        "take chock",
+        "travel gate_yard",
+        "chock",
+        "travel mill_lane",
+    ],
     &[
         "travel loft",
         "take latch",
         "travel gate_yard",
+        "travel wheel_shed",
+        "take chock",
+        "travel gate_yard",
+        "chock",
         "travel mill_lane",
     ],
 ];
@@ -82,6 +115,10 @@ fn each_branch_reaches_an_ending(world: &mut World) {
 fn the_party_travels_through_the_locked_exit(world: &mut World) {
     let pack = sit(world, "showcase-journey");
     commit_line(world, "ask_briar");
+    commit_line(world, "travel wheel_shed");
+    commit_line(world, "take chock");
+    commit_line(world, "travel gate_yard");
+    commit_line(world, "chock");
     let started = table::now_of(&pack).world_time;
     commit_line(world, "travel mill_lane");
     world.scratch = started.to_string();
@@ -104,7 +141,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
         "the journey did not fast-forward"
     );
     assert!(
-        table::player_text(world).contains("The lane is empty. That is the end."),
+        table::player_text(world).contains("Oden and Nell are on the lane. That is the end."),
         "the arrival line was not shown\n{}",
         table::player_text(world)
     );

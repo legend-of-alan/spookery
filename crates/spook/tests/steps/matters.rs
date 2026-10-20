@@ -27,11 +27,11 @@ fn lark_has_a_hidden_meter(world: &mut World) {
     fs::write(pack.join("rules/meters.yaml"), meters).unwrap();
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let from = "      might:\n        base: 40\n        offset: 0\n";
+    let from = "      might:\n        base: 30\n        offset: 0\n";
     assert_eq!(text.matches(from).count(), 1, "lark's might was not unique");
     let next = text.replacen(
         from,
-        "      might:\n        base: 40\n        offset: 0\n      omen:\n        base: 1\n        offset: 0\n",
+        "      might:\n        base: 30\n        offset: 0\n      omen:\n        base: 1\n        offset: 0\n",
         1,
     );
     fs::write(&path, next).unwrap();
@@ -59,9 +59,20 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     world.stdout = change_line(&mut shard);
 }
 
-#[when(expr = "lark strikes briar and the seeded roll succeeds")]
-fn lark_strikes_briar(world: &mut World) {
+#[when(expr = "lark's might is raised and the seeded strike succeeds")]
+fn larks_might_is_raised(world: &mut World) {
     let pack = pack(world).to_path_buf();
+    edit_now(&pack, |now| {
+        let might = now
+            .actors
+            .get_mut("pc_lark")
+            .unwrap()
+            .meters_mut()
+            .get_mut("might")
+            .unwrap();
+        might.base = 40;
+        might.offset = 0;
+    });
     let mut shard = seat(&pack);
     play(&mut shard, "strike npc_briar");
     world.stdout = change_line(&mut shard);
@@ -178,7 +189,7 @@ fn lark_sees_she_picked_up_the_tonic(world: &mut World) {
 #[then(expr = "lark sees lark's hp and might")]
 fn lark_sees_hp_and_might(world: &mut World) {
     assert!(world.stdout.contains("hp: 8"), "{}", world.stdout);
-    assert!(world.stdout.contains("might: 40"), "{}", world.stdout);
+    assert!(world.stdout.contains("might: 30"), "{}", world.stdout);
     assert!(!world.stdout.contains("might: 2"), "{}", world.stdout);
 }
 
