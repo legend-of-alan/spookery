@@ -225,7 +225,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     let mut now = load_save(now_text).map_err(reason_of)?;
     let mut problems = save_problems(&now, &now_bytes);
     if !replay {
-        if let Some(diag) = pack_rev_problem(root, &now) {
+        if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
             problems.insert(0, diag);
         }
     }
@@ -274,7 +274,7 @@ fn tip_pack_rev(root: &Path, now: &Now) -> String {
 }
 
 /// `Some` when the canon files are not the journal tip's hash.
-fn pack_rev_problem(root: &Path, now: &Now) -> Option<Diagnostic> {
+fn pack_rev_problem(root: &Path, now: &Now, bytes: &[u8]) -> Option<Diagnostic> {
     let tip = tip_pack_rev(root, now);
     match pack_rev(root) {
         Ok(rev) if tip != rev => {
@@ -285,11 +285,9 @@ fn pack_rev_problem(root: &Path, now: &Now) -> Option<Diagnostic> {
                 "run spook migrate to store the current hash",
             )
             .with_path("pack_rev");
-            if let Ok(bytes) = fs::read(root.join("state/save.yaml")) {
-                if let Ok(text) = std::str::from_utf8(&bytes) {
-                    if let Some((line, column)) = locate_nth(text, "pack_rev:", 0) {
-                        diag = diag.at_line(line, Some(column));
-                    }
+            if let Ok(text) = std::str::from_utf8(bytes) {
+                if let Some((line, column)) = locate_nth(text, "pack_rev:", 0) {
+                    diag = diag.at_line(line, Some(column));
                 }
             }
             Some(diag)
@@ -382,7 +380,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         if migrate_continues(root, now) {
             problems.retain(|diag| diag.code != Reason::HandEdit.token());
         }
-        if let Some(diag) = pack_rev_problem(root, now) {
+        if let Some(diag) = pack_rev_problem(root, now, bytes) {
             problems.insert(0, diag);
         }
         diags.extend(problems);

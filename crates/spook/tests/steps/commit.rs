@@ -1,7 +1,5 @@
 use std::fs;
-use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
@@ -163,32 +161,24 @@ fn spook_check_reports_pack_rev_mismatch(world: &mut World) {
 fn the_host_refuses_to_start(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = support::pack_arg(&pack);
-    let mut child = Command::new(env!("CARGO_BIN_EXE_spook"))
-        .args(["run", &arg, "--addr", "127.0.0.1:0"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"));
+    let mut proc = support::spawn(&["run", &arg, "--addr", "127.0.0.1:0"]);
     let start = Instant::now();
-    let status = loop {
-        if let Some(status) = child.try_wait().unwrap_or_else(|err| panic!("wait: {err}")) {
-            break status;
+    let (status, stderr) = loop {
+        let status = proc
+            .child
+            .try_wait()
+            .unwrap_or_else(|err| panic!("wait: {err}"));
+        let stderr = support::text_of(&proc.stderr);
+        if let Some(status) = status {
+            if !stderr.is_empty() {
+                break (status, stderr);
+            }
         }
         if start.elapsed() > Duration::from_secs(8) {
-            let _ = child.kill();
-            let _ = child.wait();
-            panic!("host stayed up");
+            panic!("host stayed up\n{stderr}");
         }
         std::thread::sleep(Duration::from_millis(20));
     };
-    let mut stderr = String::new();
-    child
-        .stderr
-        .take()
-        .unwrap_or_else(|| panic!("stderr was not piped"))
-        .read_to_string(&mut stderr)
-        .unwrap_or_else(|err| panic!("read stderr: {err}"));
     world.code = status.code();
     world.stderr = stderr;
     assert_eq!(world.code, Some(1), "{}", world.stderr);
