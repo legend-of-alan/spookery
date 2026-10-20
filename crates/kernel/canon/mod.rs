@@ -106,6 +106,32 @@ impl Canon {
         self.cast.get(actor_id).and_then(|cast| cast.tick.as_ref())
     }
 
+    /// The display name of any item, cast member, place or exit, or its id when it has none.
+    pub fn name(&self, id: &str) -> Option<&str> {
+        let (key, name) = self
+            .items
+            .get_key_value(id)
+            .map(|(key, item)| (key, &item.name))
+            .or_else(|| {
+                self.cast
+                    .get_key_value(id)
+                    .map(|(key, cast)| (key, &cast.display_name))
+            })
+            .or_else(|| {
+                self.places
+                    .get_key_value(id)
+                    .map(|(key, place)| (key, &place.name))
+            })
+            .or_else(|| {
+                self.places
+                    .values()
+                    .flat_map(|place| &place.exits)
+                    .find(|exit| exit.name == id)
+                    .map(|exit| (&exit.name, &exit.name))
+            })?;
+        Some(if name.is_empty() { key } else { name })
+    }
+
     pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {
         let Some(fact) = self.facts.get(fact_id) else {
             return "";

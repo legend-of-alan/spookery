@@ -17,7 +17,13 @@ Feature: Items are real
     Then lark is refused with NOT_IN_SPEC and the sentence "You can't use Iron latch."
     And no round was spent and lark still holds 1 latch
 
-  Scenario: Using something that is not an item keeps the plain refusal
+  Scenario: Using a cast member with no use rule is refused, and the turn is kept
+    Given lark holds 1 latch at a seated table
+    When lark plays "use npc_briar"
+    Then lark is refused with NOT_IN_SPEC and the sentence "You can't use Briar."
+    And no round was spent and lark still holds 1 latch
+
+  Scenario: Using something unknown keeps the plain refusal
     Given lark holds 1 latch at a seated table
     When lark plays "use banana"
     Then lark is refused with NOT_IN_SPEC and no sentence
