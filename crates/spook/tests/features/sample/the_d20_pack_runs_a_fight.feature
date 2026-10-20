@@ -6,20 +6,29 @@ Feature: The d20 pack runs a fight
     Then the check exits 0
     And stdout says "[]"
 
-  Scenario: A sure strike lowers the raider's hp by the hit amount
+  Scenario: A fixed seed misses and the raider's hp stays
     Given a sample-d20 table
     When the player strikes the raider
-    Then the raider's hp is 4
+    Then the roll is "miss"
+    And the raider's hp is 8
+
+  Scenario: A fixed seed succeeds and lowers the raider's hp by the hit amount
+    Given a sample-d20 table
+    When the player waits 1 and strikes the raider
+    Then the roll is "success"
+    And the raider's hp is 5
+
+  Scenario: A fixed seed grazes and applies the partial amount
+    Given a sample-d20 table
+    When the player waits 5 and strikes the raider
+    Then the roll is "partial"
+    And the raider's hp is 7
 
   Scenario: A weak strike misses and the raider's hp stays
     Given a sample-d20 table where Lark's might is 0
     When the player strikes the raider
-    Then the raider's hp is 8
-
-  Scenario: A middling strike grazes and applies the partial amount
-    Given a sample-d20 table where Lark's might is 20
-    When the player strikes the raider
-    Then the raider's hp is 7
+    Then the roll is "miss"
+    And the raider's hp is 8
 
   Scenario: Drinking a tonic raises hp
     Given a sample-d20 table
@@ -38,9 +47,13 @@ Feature: The d20 pack runs a fight
     When play joins the sample table
     And the save before the fight is kept
     And play types "strike npc_briar"
+    Then play shows "Your roll missed."
+    When play types "strike npc_briar"
     Then play shows "Your roll succeeded."
     When play types "strike npc_briar"
-    Then play shows 2 successful rolls
+    And play types "strike npc_briar"
+    And play types "strike npc_briar"
+    Then play shows 3 successful rolls
     And the raider's hp is 0
     And replaying the tick reproduces the save
 

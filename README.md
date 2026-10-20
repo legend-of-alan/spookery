@@ -19,22 +19,29 @@ The full glossary is in [docs/README.md](docs/README.md#glossary).
 
 You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also need `pkg-config` and `libssl-dev` (on Debian or Ubuntu: `sudo apt install pkg-config libssl-dev`). macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools, and a checkout with LF line endings. You do not need an AI key.
 
-The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. Briar bars the lane until you ask. `drink` uses that item. `ask_briar` opens the lane. `travel mill_lane` takes the exit. The walk costs 15 minutes, and arriving fires the rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
+The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. A cart blocks the lane until you chock its wheel, and Briar bars it until you ask. The loft slate says a swing often misses. `drink` uses that item. `chock` settles the cart. `ask_briar` opens the lane. `travel mill_lane` takes the exit. The walk costs 15 minutes, and arriving fires the rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
 
 `spook run` stays in the foreground. In a second terminal, from the repo folder and with the same `PATH`, run `spook play` and type the lines. With no GM seated, each line commits on its own. The CI dry run seats a stub GM that commits the same lines. Type `stop` in the host when the ending line has appeared, then run `spook verify`.
 
 ### Lines
 
 ```text
+strike npc_briar
 drink
+travel loft
+travel gate_yard
 ask_briar
+travel wheel_shed
+take chock
+travel gate_yard
+chock
 travel mill_lane
 ```
 
 ### Ending
 
 ```text
-The lane is empty. That is the end.
+Oden and Nell are on the lane. That is the end.
 ```
 
 ### Linux and macOS
@@ -94,67 +101,233 @@ This is the quick-start sitting. Lark is in the Gate Yard. The client prints:
 ```text
 You are in Gate Yard.
 
-Wagon ruts cross the mud. A stick leans by the post.
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.
 
 Here: Briar, You
 
 You know:
+A mill cart blocks the lane. Its wheel is still turning.
 The gate stands open.
 
 Meters:
 Defense: 11/25
 Grace: 3/12
 Hp: 8/16
-Might: 40/45
+Might: 30/45
 
 Exits:
 mill_lane (locked) — 15 min
 loft — 0 min
+wheel_shed — 0 min
 ```
 
-Type `drink`, then `ask_briar`, then `travel mill_lane`. The tonic is used up, Briar steps aside, and the 15 minute walk ends on Mill Lane. The arrival rule prints the ending line. This output is from the CI dry run, where the stub GM is seated. With no GM seated there is no `Your action is queued.` line, and each line prints its own update.
+Type the lines above. The first swing misses, the tonic is used up, the loft slate names the easier path, the chock settles the cart, Briar steps aside, and the 15 minute walk ends on Mill Lane. The arrival rule prints the ending line. This output is from the CI dry run, where the stub GM is seated. With no GM seated there is no `Your action is queued.` line, and each line prints its own update.
 
 ```text
 Your action is queued.
+Your roll missed.
 You are in Gate Yard.
 
-Wagon ruts cross the mud. A stick leans by the post.
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.
 
 Here: Briar, You
 
 You know:
+A mill cart blocks the lane. Its wheel is still turning.
 The gate stands open.
 
 Meters:
 Defense: 11/25
 Grace: 3/12
-Hp: 12/16
-Might: 40/45
+Hp: 8/16
+Might: 30/45
 
 Exits:
 mill_lane (locked) — 15 min
 loft — 0 min
-Your hp is now 12. Your Bitter tonic was used up.
+wheel_shed — 0 min
 Your action is queued.
 You are in Gate Yard.
 
-Wagon ruts cross the mud. A stick leans by the post.
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.
 
 Here: Briar, You
 
 You know:
+A mill cart blocks the lane. Its wheel is still turning.
 The gate stands open.
 
 Meters:
 Defense: 11/25
 Grace: 3/12
 Hp: 12/16
-Might: 40/45
+Might: 30/45
+
+Exits:
+mill_lane (locked) — 15 min
+loft — 0 min
+wheel_shed — 0 min
+Your hp is now 12. Your Bitter tonic was used up.
+Your action is queued.
+You are in Loft.
+
+A ladder leads to a dry loft above the yard. A slate leans on the ladder.
+
+Here: You
+
+You know:
+Briar steps aside if asked. A swing at him often misses.
+
+Items:
+Latch: 1
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 30/45
+
+Exits:
+gate_yard — 0 min
+Your action is queued.
+You are in Gate Yard.
+
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.
+
+Here: Briar, You
+
+You know:
+A mill cart blocks the lane. Its wheel is still turning.
+The gate stands open.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 30/45
+
+Exits:
+mill_lane (locked) — 15 min
+loft — 0 min
+wheel_shed — 0 min
+Your action is queued.
+You are in Gate Yard.
+
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.
+
+Here: Briar, You
+
+You know:
+A mill cart blocks the lane. Its wheel is still turning.
+The gate stands open.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 30/45
+
+Exits:
+mill_lane (locked) — 15 min
+loft — 0 min
+wheel_shed — 0 min
+Briar steps aside.
+Your action is queued.
+You are in Wheel Shed.
+
+The shed smells of grease. A nail by the door holds a wooden chock.
+
+Here: You
+
+You know:
+A wheel chock hangs on a nail.
+
+Items:
+Chock: 1
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 30/45
+
+Exits:
+gate_yard — 0 min
+Your action is queued.
+You are in Wheel Shed.
+
+The shed smells of grease. A nail by the door holds a wooden chock.
+
+Here: You
+
+You know:
+A wheel chock hangs on a nail.
+
+Notes:
+Oden keeps the wheel turning. The cart stays until that wheel is chocked.
+The yard stays watched.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 30/45
+
+Exits:
+gate_yard — 0 min
+You picked up the Wheel chock.
+Your action is queued.
+You are in Gate Yard.
+
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.
+
+Here: Briar, You
+
+You know:
+A mill cart blocks the lane. Its wheel is still turning.
+The gate stands open.
+
+Notes:
+Oden keeps the wheel turning. The cart stays until that wheel is chocked.
+The yard stays watched.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 30/45
+
+Exits:
+mill_lane (locked) — 15 min
+loft — 0 min
+wheel_shed — 0 min
+Your action is queued.
+You are in Gate Yard.
+
+Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.
+
+Here: Briar, You
+
+You know:
+A mill cart blocks the lane. Its wheel is still turning.
+The gate stands open.
+
+Notes:
+Oden keeps the wheel turning. The cart stays until that wheel is chocked.
+The yard stays watched.
+
+Meters:
+Defense: 11/25
+Grace: 3/12
+Hp: 12/16
+Might: 30/45
 
 Exits:
 mill_lane — 15 min
 loft — 0 min
-Briar steps aside.
+wheel_shed — 0 min
+The wheel holds. The cart settles.
+Your Wheel chock was used up.
 Your action is queued.
 You are in Mill Lane.
 
@@ -162,15 +335,19 @@ The lane runs past a small mill. Flour dusts the step.
 
 Here: Oden, You, Nell
 
+Notes:
+Oden keeps the wheel turning. The cart stays until that wheel is chocked.
+The yard stays watched.
+
 Meters:
 Defense: 11/25
 Grace: 3/12
 Hp: 12/16
-Might: 40/45
+Might: 30/45
 
 Exits:
 gate_yard — 0 min
-The lane is empty. That is the end.
+Oden and Nell are on the lane. That is the end.
 ```
 
 ## Build from source

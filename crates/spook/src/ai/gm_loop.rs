@@ -3,6 +3,7 @@
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use spookery_kernel::api::canon::{self, CastKind};
@@ -346,23 +347,33 @@ impl GmLoop {
         Ok(outcome)
     }
 
+    /// A missed `spook/event` still leaves the line on the queue.
     fn next_wake(&mut self) -> Result<Option<Wake>, HostError> {
         if let Some(wake) = self.wakes.pop_front() {
             return Ok(Some(wake));
         }
         loop {
-            match self.client.next_incoming() {
-                Incoming::Event(event) => {
+            match self.client.poll(Duration::from_millis(50)) {
+                Some(Incoming::Event(event)) => {
                     if let Some(wake) = self.classify(event.body) {
                         return Ok(Some(wake));
                     }
                 }
-                Incoming::Result { raw, .. }
-                | Incoming::Bad(raw)
-                | Incoming::Refused { raw, .. } => {
+                Some(Incoming::Result { raw, .. })
+                | Some(Incoming::Bad(raw))
+                | Some(Incoming::Refused { raw, .. }) => {
                     return Err(fail(raw));
                 }
-                Incoming::Eof => return Ok(None),
+                Some(Incoming::Eof) => return Ok(None),
+                None => {
+                    let status = call_status(self, None)?;
+                    if let Some(wake) = self.wakes.pop_front() {
+                        return Ok(Some(wake));
+                    }
+                    if !status.queued.is_empty() {
+                        return Ok(Some(Wake::Queued { gen: self.gen }));
+                    }
+                }
             }
         }
     }
