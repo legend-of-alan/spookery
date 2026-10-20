@@ -58,3 +58,28 @@ Feature: A hand edit waits for migrate
     And the operator runs tick
     Then the command exits 0
     And spook verify passes
+
+  Scenario: A second canon edit in one live bundle migrates
+    Given a docks table
+    And one round has committed
+    When a canon file gains a byte
+    And the operator runs migrate
+    And the operator runs tick
+    And a canon file gains a byte
+    And the operator runs migrate
+    And the operator runs tick
+    Then the command exits 0
+    And spook verify passes
+
+  Scenario: Verify replays a migrate from before a later canon edit
+    Given a docks table
+    And checkpoints are taken every 2 ticks
+    When a canon file gains a byte
+    And the operator runs migrate
+    And the operator runs tick
+    And the operator runs tick
+    And a canon file gains a byte
+    And the operator runs migrate
+    And the operator runs tick
+    Then the command exits 0
+    And spook verify passes
