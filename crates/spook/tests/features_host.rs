@@ -44,6 +44,9 @@ mod digest;
 #[path = "steps/host.rs"]
 mod host;
 
+#[path = "steps/round_output.rs"]
+mod round_output;
+
 #[path = "steps/mcp.rs"]
 mod mcp;
 

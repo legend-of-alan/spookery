@@ -3,10 +3,13 @@
 use std::fs;
 use std::path::Path;
 
+use spookery_kernel::api::commit::CommitOutcome;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::lock::lock_world;
 use spookery_kernel::api::model::Presence;
+use spookery_kernel::api::rules::MoveReport;
+use spookery_kernel::api::visibility::{Seen, Told};
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 
@@ -24,15 +27,23 @@ pub enum RoundCause {
     FastForward,
 }
 
+/// What one round showed. Lines and seen are empty when no human was seated.
+#[derive(Default)]
+pub struct RoundOutput {
+    pub reports: Vec<MoveReport>,
+    pub dice: Vec<String>,
+    pub summary: Vec<String>,
+    pub lines: Vec<Told>,
+    pub seen: Vec<Seen>,
+}
+
 pub struct RecordedRound {
     pub intents: Vec<spookery_kernel::api::intent::Intent>,
     pub presence_humans: u32,
     pub actors_present: Vec<String>,
 }
 
-pub fn commit_moves(
-    world: &mut World,
-) -> Result<spookery_kernel::api::commit::CommitOutcome, Reason> {
+pub fn commit_moves(world: &mut World) -> Result<(CommitOutcome, RoundOutput), Reason> {
     let wall = world.now().last_tick_at.clone();
     commit_moves_at(world, &wall)
 }
@@ -41,10 +52,11 @@ pub fn commit_moves(
 pub fn commit_moves_at(
     world: &mut World,
     wall: &str,
-) -> Result<spookery_kernel::api::commit::CommitOutcome, Reason> {
+) -> Result<(CommitOutcome, RoundOutput), Reason> {
     let _lock = lock_world(world.root())?;
-    play(world, RoundCause::Flush, wall)?;
-    spookery_kernel::api::commit::commit_pending(world)
+    let output = play(world, RoundCause::Flush, wall)?;
+    let outcome = spookery_kernel::api::commit::commit_pending(world)?;
+    Ok((outcome, output))
 }
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
@@ -94,17 +106,22 @@ pub fn catch_up(world: &mut World, now_wall: &str, downtime_hours: u64) -> Resul
 /// Keep playing while a seated PC is still busy. The burst starts only when every
 /// seated PC is busy. `already` counts a tick this call did not play, and the burst
 /// stops at `max_fastforward_ticks` including that tick.
-pub fn advance_while_busy(world: &mut World, wall: &str, already: u32) -> Result<u32, Reason> {
+pub fn advance_while_busy(
+    world: &mut World,
+    wall: &str,
+    already: u32,
+) -> Result<Vec<RoundOutput>, Reason> {
     let cap = world.budget().max_fastforward_ticks;
     if !all_seated_busy(world) {
-        return Ok(already);
+        return Ok(Vec::new());
     }
     let mut ran = already;
+    let mut outputs = Vec::new();
     while u64::from(ran) < cap && any_seated_busy(world) && world.queued_intents().is_empty() {
-        play(world, RoundCause::FastForward, wall)?;
+        outputs.push(play(world, RoundCause::FastForward, wall)?);
         ran += 1;
     }
-    Ok(ran)
+    Ok(outputs)
 }
 
 fn seated_pcs(world: &World) -> Vec<String> {
@@ -146,8 +163,8 @@ fn any_seated_busy(world: &World) -> bool {
     })
 }
 
-pub fn play(world: &mut World, cause: RoundCause, now_wall: &str) -> Result<(), Reason> {
-    play_with(world, cause, now_wall, None).map(|_| ())
+pub fn play(world: &mut World, cause: RoundCause, now_wall: &str) -> Result<RoundOutput, Reason> {
+    play_with(world, cause, now_wall, None).map(|(_, output)| output)
 }
 
 pub(crate) fn play_recorded(
@@ -155,7 +172,7 @@ pub(crate) fn play_recorded(
     now_wall: &str,
     recorded: RecordedRound,
 ) -> Result<Vec<Effect>, Reason> {
-    play_with(world, RoundCause::Replay, now_wall, Some(recorded))
+    play_with(world, RoundCause::Replay, now_wall, Some(recorded)).map(|(effects, _)| effects)
 }
 
 fn play_with(
@@ -163,7 +180,7 @@ fn play_with(
     cause: RoundCause,
     now_wall: &str,
     recorded: Option<RecordedRound>,
-) -> Result<Vec<Effect>, Reason> {
+) -> Result<(Vec<Effect>, RoundOutput), Reason> {
     let _lock = if cause == RoundCause::Flush {
         None
     } else {
@@ -191,6 +208,16 @@ fn play_with(
     apply::run(&mut round, draft)?;
     triggers::run(&mut round, draft)?;
     observe::run(&mut round, draft)?;
-    record::run(world, &mut round, draft_slot.take().expect("draft"))?;
-    Ok(std::mem::take(&mut round.effects))
+    let output = record::run(world, &mut round, draft_slot.take().expect("draft"))?;
+    let output = seated_output(world, output);
+    Ok((std::mem::take(&mut round.effects), output))
+}
+
+/// Lines and seen from an empty table are not kept for a later seat.
+fn seated_output(world: &World, mut output: RoundOutput) -> RoundOutput {
+    if world.now().presence.humans == 0 {
+        output.lines.clear();
+        output.seen.clear();
+    }
+    output
 }

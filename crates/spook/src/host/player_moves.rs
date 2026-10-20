@@ -1,5 +1,6 @@
 //! Queue a player verb until the round commits it.
 
+use spookery_kernel::api::commit::CommitOutcome;
 use spookery_kernel::api::ids::player_intent_id;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::model::ActorLive;
@@ -8,7 +9,7 @@ use spookery_kernel::api::rules::gate::{gate, verb_for, Miss};
 use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
-use spookery_round::{advance_while_busy, commit_moves_at};
+use spookery_round::{advance_while_busy, commit_moves_at, RoundOutput};
 
 use super::frames;
 use super::idle_clock::wall_now;
@@ -24,8 +25,37 @@ pub enum MoveOutcome {
     Queued(QueuedNote),
     Committed {
         advanced: bool,
-        reports: Vec<MoveReport>,
+        output: RoundOutput,
     },
+    Busy {
+        code: &'static str,
+        missing: Option<String>,
+        outputs: Vec<RoundOutput>,
+    },
+}
+
+pub(super) struct Forwarded {
+    pub outcome: Option<CommitOutcome>,
+    pub outputs: Vec<RoundOutput>,
+}
+
+/// Run the commit when `commit` is set, then fast-forward while every seated PC is busy.
+pub(super) fn commit_then_fast_forward(
+    world: &mut World,
+    commit: bool,
+) -> Result<Forwarded, Reason> {
+    let wall = wall_now()?;
+    let mut outputs = Vec::new();
+    let outcome = if commit && !world.queued_intents().is_empty() {
+        let (outcome, output) = commit_moves_at(world, &wall)?;
+        outputs.push(output);
+        Some(outcome)
+    } else {
+        None
+    };
+    let already = u32::from(outcome.is_some());
+    outputs.extend(advance_while_busy(world, &wall, already)?);
+    Ok(Forwarded { outcome, outputs })
 }
 
 pub fn handle_player_move(
@@ -39,8 +69,12 @@ pub fn handle_player_move(
         Ok(note) => note,
         Err(miss) => {
             if !gm_seated && miss.reason() == spookery_kernel::api::Reason::Busy {
-                let wall = wall_now().map_err(Miss::from)?;
-                advance_while_busy(world, &wall, 0).map_err(Miss::from)?;
+                let forwarded = commit_then_fast_forward(world, false).map_err(Miss::from)?;
+                return Ok(MoveOutcome::Busy {
+                    code: miss.token(),
+                    missing: miss.missing().map(str::to_string),
+                    outputs: forwarded.outputs,
+                });
             }
             return Err(miss);
         }
@@ -48,11 +82,13 @@ pub fn handle_player_move(
     if gm_seated {
         return Ok(MoveOutcome::Queued(note));
     }
-    let advanced = commit_queued(world)?;
-    Ok(MoveOutcome::Committed {
-        advanced,
-        reports: world.take_reports(),
-    })
+    let Some((advanced, output)) = commit_queued(world)? else {
+        return Ok(MoveOutcome::Committed {
+            advanced: false,
+            output: RoundOutput::default(),
+        });
+    };
+    Ok(MoveOutcome::Committed { advanced, output })
 }
 
 pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
@@ -207,14 +243,14 @@ fn player_line_id(world: &World, actor_id: &str, canonical: &str) -> Result<Stri
 }
 
 /// An empty round does not enter `play` and does not advance `world_time`.
-pub fn commit_queued(world: &mut World) -> Result<bool, Reason> {
+pub fn commit_queued(world: &mut World) -> Result<Option<(bool, RoundOutput)>, Reason> {
     if world.queued_intents().is_empty() {
-        return Ok(false);
+        return Ok(None);
     }
     let before = world.now().world_time;
     let wall = wall_now()?;
-    commit_moves_at(world, &wall)?;
-    Ok(world.now().world_time != before)
+    let (_outcome, output) = commit_moves_at(world, &wall)?;
+    Ok(Some((world.now().world_time != before, output)))
 }
 
 impl QueuedNote {
