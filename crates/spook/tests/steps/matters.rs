@@ -59,8 +59,8 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     world.stdout = change_line(&mut shard);
 }
 
-#[when(expr = "lark strikes briar and the seeded roll succeeds")]
-fn lark_strikes_briar(world: &mut World) {
+#[when(expr = "lark's might is raised and the seeded strike succeeds")]
+fn larks_might_is_raised(world: &mut World) {
     let pack = pack(world).to_path_buf();
     edit_now(&pack, |now| {
         let might = now

@@ -24,8 +24,8 @@ Feature: The d20 pack runs a fight
     Then the roll is "partial"
     And the raider's hp is 7
 
-  Scenario: A weak strike misses and the raider's hp stays
-    Given a sample-d20 table where Lark's might is 0
+  Scenario: Lark at might 1 misses and the raider's hp stays
+    Given a sample-d20 table where Lark's might is 1
     When the player strikes the raider
     Then the roll is "miss"
     And the raider's hp is 8

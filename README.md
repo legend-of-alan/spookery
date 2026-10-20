@@ -19,7 +19,7 @@ The full glossary is in [docs/README.md](docs/README.md#glossary).
 
 You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also need `pkg-config` and `libssl-dev` (on Debian or Ubuntu: `sudo apt install pkg-config libssl-dev`). macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools, and a checkout with LF line endings. You do not need an AI key.
 
-The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. A cart blocks the lane until you chock its wheel, and Briar bars it until you ask. The loft slate says a swing often misses. `drink` uses that item. `chock` settles the cart. `ask_briar` opens the lane. `travel mill_lane` takes the exit. The walk costs 15 minutes, and arriving fires the rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
+The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. A cart blocks the lane until you chock its wheel, and Briar bars it until you ask. The loft slate says a swing can miss. `drink` uses that item. `chock` settles the cart. `ask_briar` opens the lane. `travel mill_lane` takes the exit. The walk costs 15 minutes, and arriving fires the rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
 
 `spook run` stays in the foreground. In a second terminal, from the repo folder and with the same `PATH`, run `spook play` and type the lines. With no GM seated, each line commits on its own. The CI dry run seats a stub GM that commits the same lines. Type `stop` in the host when the ending line has appeared, then run `spook verify`.
 
@@ -176,7 +176,7 @@ A ladder leads to a dry loft above the yard. A slate leans on the ladder.
 Here: You
 
 You know:
-Briar steps aside if asked. A swing at him often misses.
+Briar steps aside if asked. A swing at him can miss.
 
 Items:
 Latch: 1
