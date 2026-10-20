@@ -132,24 +132,19 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     })
 }
 
-/// The verb every pack knows. With no rule for the item, it is refused with a sentence.
-pub const USE_VERB: &str = "use";
-
-/// Refuse a move no rule matched. `use` on an item says the item can't be used.
+/// Refuse a move no rule matched. A known item target says the verb can't be done to it.
 pub fn refuse_unmatched(canon: &Canon, verb: &str, token: &str) -> Miss {
-    match canon.items.get(token) {
-        Some(item) if verb == USE_VERB => {
-            let name = if item.name.is_empty() {
-                token
-            } else {
-                item.name.as_str()
-            };
-            Miss::Text {
-                code: Reason::NotInSpec,
-                text: format!("{name} can't be used."),
-            }
-        }
-        _ => Reason::NotInSpec.into(),
+    let Some(item) = canon.items.get(token) else {
+        return Reason::NotInSpec.into();
+    };
+    let name = if item.name.is_empty() {
+        token
+    } else {
+        item.name.as_str()
+    };
+    Miss::Text {
+        code: Reason::NotInSpec,
+        text: format!("You can't {verb} {name}."),
     }
 }
 

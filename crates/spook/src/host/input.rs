@@ -1,10 +1,9 @@
 //! A player line: `say` is speech, and a verb is a turn.
 
 use spookery_kernel::api::rule::RuleTable;
-use spookery_kernel::api::rules::gate::USE_VERB;
 use spookery_kernel::api::Reason;
 
-/// `say` is speech. A verb, or `use`, is a turn. A habit name is `NOT_IN_SPEC`.
+/// `say` is speech. A verb is a turn. A habit name is `NOT_IN_SPEC`.
 pub enum PlayerLine {
     Speech,
     Turn,
@@ -32,7 +31,7 @@ pub fn parse_player_input(
             _ => PlayerLine::Look,
         });
     }
-    if rules.is_verb(verb) || verb == USE_VERB {
+    if rules.is_verb(verb) {
         Ok(PlayerLine::Turn)
     } else {
         Err(Reason::NotInSpec)

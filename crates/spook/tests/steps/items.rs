@@ -266,23 +266,24 @@ fn rowan_types(world: &mut World, line: String) {
     };
 }
 
-#[given(expr = "rowan holds 1 lamp_oil at a seated table")]
-fn rowan_holds_oil_at_a_table(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "use-oil");
+#[given(expr = "lark holds 1 latch at a seated table")]
+fn lark_holds_a_latch_at_a_table(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "use-latch");
     save(&pack, |now| {
+        quiet(now);
         now.actors
-            .get_mut("pc_rowan")
+            .get_mut("pc_lark")
             .unwrap()
             .inventory_mut()
-            .insert("lamp_oil".to_string(), 1);
+            .insert("latch".to_string(), 1);
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
 }
 
-#[when(expr = "rowan plays {string}")]
-fn rowan_plays(world: &mut World, line: String) {
+#[when(expr = "lark plays {string}")]
+fn lark_plays(world: &mut World, line: String) {
     let before = table::now_of(world.pack.as_ref().unwrap());
     world.scratch = format!("{} {}", before.world_time, before.tick_index);
     let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
@@ -298,21 +299,21 @@ fn refused_frame(world: &World) -> Value {
     serde_json::from_str(row).unwrap_or_else(|err| panic!("refused frame: {err}\n{row}"))
 }
 
-#[then(expr = "rowan is refused with {word} and the sentence {string}")]
-fn rowan_is_refused_with_a_sentence(world: &mut World, code: String, text: String) {
+#[then(expr = "lark is refused with {word} and the sentence {string}")]
+fn lark_is_refused_with_a_sentence(world: &mut World, code: String, text: String) {
     let frame = refused_frame(world);
     assert_eq!(frame["code"], code.as_str(), "{frame}");
     assert_eq!(frame["missing"], text.as_str(), "{frame}");
 }
 
-#[then(expr = "rowan is refused with {word} and no sentence")]
-fn rowan_is_refused_plainly(world: &mut World, code: String) {
+#[then(expr = "lark is refused with {word} and no sentence")]
+fn lark_is_refused_plainly(world: &mut World, code: String) {
     let frame = refused_frame(world);
     assert_eq!(frame["code"], code.as_str(), "{frame}");
     assert!(frame.get("missing").is_none(), "{frame}");
 }
 
-#[then(expr = "no round was spent and rowan still holds 1 lamp_oil")]
+#[then(expr = "no round was spent and lark still holds 1 latch")]
 fn no_round_was_spent(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = table::now_of(pack);
@@ -322,7 +323,7 @@ fn no_round_was_spent(world: &mut World) {
         "a round was spent"
     );
     assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
-    assert_eq!(now.actors.get("pc_rowan").unwrap().count("lamp_oil"), 1);
+    assert_eq!(now.actors.get("pc_lark").unwrap().count("latch"), 1);
 }
 
 #[then(expr = "the line is rejected with NOT_IN_SPEC and nell still has 3 hp and 1 tonic")]

@@ -12,16 +12,16 @@ Feature: Items are real
     Then docks_shop has 2 and rowan has 1
 
   Scenario: Using an item with no use rule is refused, and the turn is kept
-    Given rowan holds 1 lamp_oil at a seated table
-    When rowan plays "use lamp_oil"
-    Then rowan is refused with NOT_IN_SPEC and the sentence "Lamp oil can't be used."
-    And no round was spent and rowan still holds 1 lamp_oil
+    Given lark holds 1 latch at a seated table
+    When lark plays "use latch"
+    Then lark is refused with NOT_IN_SPEC and the sentence "You can't use Iron latch."
+    And no round was spent and lark still holds 1 latch
 
   Scenario: Using something that is not an item keeps the plain refusal
-    Given rowan holds 1 lamp_oil at a seated table
-    When rowan plays "use banana"
-    Then rowan is refused with NOT_IN_SPEC and no sentence
-    And no round was spent and rowan still holds 1 lamp_oil
+    Given lark holds 1 latch at a seated table
+    When lark plays "use banana"
+    Then lark is refused with NOT_IN_SPEC and no sentence
+    And no round was spent and lark still holds 1 latch
 
   Scenario: The tonic has one verb, use
     Given nell holds 1 tonic and has 3 of 10 hp

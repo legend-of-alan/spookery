@@ -538,9 +538,9 @@ Shop day: 1/1"
         assert_readable(&afford);
         let unusable = render(&PlayerMessage::Refused {
             code: "NOT_IN_SPEC".to_string(),
-            missing: Some("Lamp oil can't be used.".to_string()),
+            missing: Some("You can't use Iron latch.".to_string()),
         });
-        assert_eq!(unusable, "Lamp oil can't be used. [NOT_IN_SPEC]");
+        assert_eq!(unusable, "You can't use Iron latch. [NOT_IN_SPEC]");
         assert_readable(&unusable);
         let wire = serde_json::to_string(&PlayerMessage::Refused {
             code: "CANT_AFFORD".to_string(),

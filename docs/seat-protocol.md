@@ -316,7 +316,7 @@ travel stairs
 }
 ```
 
-`missing` is omitted when the refusal does not name one. A cost the actor cannot pay is `CANT_AFFORD`, and `missing` is the meter or item id. Using an item that has no `use` rule is `NOT_IN_SPEC`, and `missing` is `<item name> can't be used.`
+`missing` is omitted when the refusal does not name one. A cost the actor cannot pay is `CANT_AFFORD`, and `missing` is the meter or item id. A verb on an item that no rule matches is `NOT_IN_SPEC`, and `missing` is `You can't <verb> <item name>.`
 
 A refusal during the round arrives as `refused` before the fresh `resume`. The round still commits. An NPC habit refused in that round sends no player frame. The GM seat gets no faces for that refusal.
 
@@ -849,7 +849,7 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `SESSION_FULL` | Stop. Three players are sat, or the GM seat is held. Connect again only after that seat is free. Do not retry the same hello in a loop. |
 | `SEAT_TAKEN` | That PC is held. Connect again as a different live PC. |
 | `SCHEMA` | The line or the arguments are the wrong shape. On a seated player, send a corrected line. On hello, connect again with `player:<id>` of a live PC. |
-| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, `commit_round` set `include_tick` false while a move is queued, or the call is on a session that already closed. Nothing was written for that call. The queue is still there after the false commit. On the player line, `missing` is `<item name> can't be used.` when the item has no `use` rule. |
+| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, `commit_round` set `include_tick` false while a move is queued, or the call is on a session that already closed. Nothing was written for that call. The queue is still there after the false commit. On the player line, `missing` is `You can't <verb> <item name>.` when the verb names an item no rule matches. |
 | `LINE_TOO_LONG` | The line is over 8 KiB, not counting the newline. The socket is closed. Connect again with a shorter line. |
 | `UNSCOPED_PERCEIVE` | Call `perceive` again with `as` set to `player:<id>` or `npc:<id>`. |
 | `NO_EXIT` | The move was not queued. On the player line, `missing` is the locked text when the pack set one. |
