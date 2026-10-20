@@ -5,11 +5,13 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value};
 use spookery_kernel::api::model::ActorLive;
 use spookery_kernel::api::speech::Heard;
-use spookery_kernel::api::store::talk_log::{append_session, read_session};
+use spookery_kernel::api::store::talk_log::{
+    append_record, read_session, read_tail, record_line, TapeRecord,
+};
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 
-use super::frames::{self, TapeLine};
+use super::frames;
 use super::input::split_token;
 
 #[derive(Debug)]
@@ -105,13 +107,9 @@ pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Reason> {
     spookery_kernel::api::store::talk_log::session_end_seq(root)
 }
 
-/// Stored lines with `seq` greater than `since`, in file order, inside the tape window.
-pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeLine>, Reason> {
-    let mut out = Vec::new();
-    for tape in read_session(root, since, None)? {
-        out.push(frames::parse_tape(&tape)?);
-    }
-    Ok(out)
+/// Stored records with `seq` greater than `since`, in file order, inside the tape window.
+pub fn tape_after(root: &std::path::Path, since: u64) -> Result<Vec<TapeRecord>, Reason> {
+    read_session(root, since, None)
 }
 
 fn append_speech(
@@ -125,48 +123,31 @@ fn append_speech(
 ) -> Result<Spoken, Reason> {
     let tick_index = world.now().tick_index;
     let world_time = world.now().world_time;
-    let from = from.to_string();
-    let address = address.to_string();
-    let seq = append_session(world.root(), |seq| {
-        frames::tape_body(&TapeLine {
-            seq,
-            from: from.clone(),
-            address: address.clone(),
-            place: place.clone(),
-            actor: actor.clone(),
-            recipients: recipients.clone(),
-            text: text.clone(),
-            tick_index,
-            world_time,
-        })
-    })?;
-    Ok(spoken_from(&TapeLine {
+    let stored = append_record(world.root(), |seq| TapeRecord {
         seq,
-        from,
-        address,
-        place,
-        actor,
-        recipients,
-        text,
+        from: from.to_string(),
+        address: address.to_string(),
+        place: place.clone(),
+        actor: actor.clone(),
+        recipients: recipients.clone(),
+        text: text.clone(),
         tick_index,
         world_time,
-    }))
+    })?;
+    Ok(spoken_from(&stored))
 }
 
 pub fn player_scrollback(root: &std::path::Path, actor_id: &str) -> Result<Vec<String>, Reason> {
     let mut out = Vec::new();
-    for tape in read_session(root, 0, Some(256))? {
-        let stored = frames::parse_tape(&tape)?;
-        if stored.recipients.iter().any(|id| id == actor_id) {
-            out.push(frames::player_replay_line(&stored));
-        }
+    for stored in read_tail(root, actor_id, 256)? {
+        out.push(frames::player_replay_line(&stored));
     }
     Ok(out)
 }
 
-fn spoken_from(stored: &TapeLine) -> Spoken {
+fn spoken_from(stored: &TapeRecord) -> Spoken {
     Spoken {
-        tape: frames::tape_body(stored),
+        tape: record_line(stored),
         player_event: frames::player_say_line(stored),
         gm_event: frames::say_event(stored),
         tool: frames::say_value(stored),

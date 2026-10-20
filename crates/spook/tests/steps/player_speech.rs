@@ -1,7 +1,11 @@
 use std::fs;
+use std::time::{Duration, Instant};
 
+use cucumber::{given, then, when};
+use serde_json::Value;
+
+use crate::support::temp_pack;
 use crate::World;
-use cucumber::{then, when};
 
 use super::table;
 
@@ -81,4 +85,149 @@ fn the_tape_file_is_absent(world: &mut World) {
     assert!(!table::pack(world)
         .join("state/journal/session.jsonl")
         .exists());
+}
+
+#[given(expr = "a docks table with {string} seated")]
+fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
+    let pack = temp_pack("speech");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, &actor);
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a docks table with {string} and {string} seated")]
+fn a_docks_table_with_two_seated(world: &mut World, first: String, second: String) {
+    let pack = temp_pack("speech");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, &first);
+    table::seat_actor(world, &pack, &second);
+    world.pack = Some(pack);
+}
+
+#[given(expr = "the GM has said {int} numbered lines to {string}")]
+fn the_gm_has_said_numbered_lines(world: &mut World, count: usize, actor: String) {
+    say_lines(world, &actor, count);
+}
+
+#[given(expr = "the GM has said {int} lines to {string} and then {int} lines to {string}")]
+fn the_gm_has_said_lines_then_more(
+    world: &mut World,
+    first_count: usize,
+    first: String,
+    second_count: usize,
+    second: String,
+) {
+    say_lines(world, &first, first_count);
+    let lines = say_lines(world, &second, second_count);
+    world.scratch = lines.join("\n");
+}
+
+#[when(expr = "{string} leaves and sits again")]
+fn leaves_and_sits_again(world: &mut World, actor: String) {
+    table::close_actor(world, &actor);
+    let start = Instant::now();
+    loop {
+        let (_, present) = table::live_presence(world);
+        if !present.iter().any(|id| id == &actor) {
+            break;
+        }
+        if start.elapsed() > Duration::from_secs(5) {
+            panic!("{actor} stayed seated: {present:?}");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    table::live_mut(world)
+        .players
+        .retain(|player| player.actor_id != actor);
+    let pack = table::pack(world).to_path_buf();
+    table::seat_actor(world, &pack, &actor);
+}
+
+#[then(expr = "the replayed say lines are {string} through {string}, in order")]
+fn the_replayed_say_lines_are(world: &mut World, start: String, end: String) {
+    let start = line_index(&start);
+    let end = line_index(&end);
+    let expected: Vec<String> = (start..=end).map(|index| format!("line{index}")).collect();
+    let actor = latest_actor(world);
+    assert_eq!(replay_texts(world, &actor), expected);
+}
+
+#[then(expr = "each replayed line has {string}: true")]
+fn each_replayed_line_has_flag(world: &mut World, field: String) {
+    assert_eq!(field, "replay");
+    let actor = latest_actor(world);
+    let says = replay_says(world, &actor);
+    assert!(!says.is_empty(), "no replayed say lines");
+    for say in &says {
+        assert_eq!(say.get("replay"), Some(&Value::Bool(true)), "{say}");
+    }
+}
+
+#[then(expr = "{string} gets exactly those {int} lines, in order")]
+fn gets_exactly_those_lines(world: &mut World, actor: String, count: usize) {
+    let expected: Vec<String> = world.scratch.lines().map(str::to_string).collect();
+    assert_eq!(expected.len(), count, "{}", world.scratch);
+    assert_eq!(replay_texts(world, &actor), expected);
+}
+
+fn say_lines(world: &mut World, actor: &str, count: usize) -> Vec<String> {
+    if table::live_mut(world).gm.is_none() {
+        table::seat_gm(world);
+    }
+    let mut texts = Vec::with_capacity(count);
+    for index in 0..count {
+        let text = format!("line{index}");
+        let args = format!(r#"{{"address":"actor","actor":"{actor}","text":"{text}"}}"#);
+        let said = table::gm_call(world, (index as u64) + 1, "say", &args);
+        let value: Value =
+            serde_json::from_str(&said).unwrap_or_else(|err| panic!("say json: {err}: {said}"));
+        let body = &value["result"]["structuredContent"];
+        let addressed = body
+            .get("recipients")
+            .and_then(Value::as_array)
+            .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(actor)));
+        assert!(addressed, "say {text} was not addressed to {actor}: {body}");
+        texts.push(text);
+    }
+    texts
+}
+
+fn latest_actor(world: &mut World) -> String {
+    table::live_mut(world)
+        .players
+        .last()
+        .unwrap_or_else(|| panic!("no seated player"))
+        .actor_id
+        .clone()
+}
+
+fn replay_texts(world: &World, actor: &str) -> Vec<String> {
+    replay_says(world, actor)
+        .iter()
+        .map(|say| {
+            say.get("text")
+                .and_then(Value::as_str)
+                .unwrap_or_else(|| panic!("say text\n{say}"))
+                .to_string()
+        })
+        .collect()
+}
+
+fn replay_says(world: &World, actor: &str) -> Vec<Value> {
+    let mut says = Vec::new();
+    for line in table::actor_text(world, actor).lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if value.get("kind").and_then(Value::as_str) == Some("say") {
+            says.push(value);
+        }
+    }
+    says
+}
+
+fn line_index(text: &str) -> usize {
+    text.strip_prefix("line")
+        .and_then(|rest| rest.parse().ok())
+        .unwrap_or_else(|| panic!("{text} is not a numbered line"))
 }

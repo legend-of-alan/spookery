@@ -14,11 +14,11 @@ use spookery_kernel::api::journal::{self, JournalEntry, TickRecord};
 use spookery_kernel::api::model::Now;
 use spookery_kernel::api::perceive::perceive_at;
 use spookery_kernel::api::store::codec::load_save;
-use spookery_kernel::api::store::talk_log::MAX_TAPE_BYTES;
+use spookery_kernel::api::store::talk_log::{self, TapeRecord};
 use spookery_kernel::api::Reason;
 use spookery_round::{replay_states, ReplayError};
 
-use crate::host::frames::{self, TapeLine};
+use crate::host::frames;
 
 pub struct AuditReport {
     pub text: String,
@@ -63,14 +63,14 @@ struct Secret {
 }
 
 /// Read the pack, replay every committed state, and render the report.
-/// Writes nothing, takes no lock, and binds no port.
+/// Writes nothing and binds no port.
 pub fn audit_pack(pack: &Path, strict: bool) -> Result<AuditReport, AuditError> {
     if !pack.join("pack.yaml").is_file() || !pack.join("state/save.yaml").is_file() {
         return Err(AuditError::Reason(Reason::NotInSpec));
     }
     let canon = load_canon(pack).map_err(|diags| AuditError::Reason(reason_of(diags)))?;
     let (snaps, ticks) = load_snaps(pack)?;
-    let tape = read_tape(pack)?;
+    let tape = talk_log::read_records(pack).map_err(AuditError::Reason)?;
     report_of(&canon, &snaps, &ticks, &tape, strict)
 }
 
@@ -122,36 +122,11 @@ fn replay_error(err: ReplayError) -> AuditError {
     }
 }
 
-fn read_tape(pack: &Path) -> Result<Vec<TapeLine>, AuditError> {
-    let path = pack.join("state/journal/session.jsonl");
-    if !path.is_file() {
-        return Ok(Vec::new());
-    }
-    let bytes = fs::read(&path).map_err(|_| AuditError::Reason(Reason::Schema))?;
-    if bytes.len() as u64 > MAX_TAPE_BYTES {
-        return Err(AuditError::Reason(Reason::OutOfRange));
-    }
-    let Some(last_nl) = bytes.iter().rposition(|byte| *byte == b'\n') else {
-        return Ok(Vec::new());
-    };
-    let text =
-        std::str::from_utf8(&bytes[..=last_nl]).map_err(|_| AuditError::Reason(Reason::Schema))?;
-    let mut lines = Vec::new();
-    for line in text.split_inclusive('\n') {
-        let line = line.trim_end_matches(['\n', '\r']);
-        if line.is_empty() {
-            continue;
-        }
-        lines.push(frames::parse_tape(line).map_err(AuditError::Reason)?);
-    }
-    Ok(lines)
-}
-
 fn report_of(
     canon: &Canon,
     snaps: &[Snap],
     ticks: &[TickRecord],
-    tape: &[TapeLine],
+    tape: &[TapeRecord],
     strict: bool,
 ) -> Result<AuditReport, AuditError> {
     let pcs = pcs_of(snaps);
@@ -322,7 +297,7 @@ fn narrate_findings(canon: &Canon, snaps: &[Snap], ticks: &[TickRecord]) -> Vec<
     findings
 }
 
-fn notes_of(canon: &Canon, snaps: &[Snap], tape: &[TapeLine]) -> (Vec<Note>, bool) {
+fn notes_of(canon: &Canon, snaps: &[Snap], tape: &[TapeRecord]) -> (Vec<Note>, bool) {
     let mut notes = Vec::new();
     let mut seen = BTreeSet::new();
     let mut used_final = false;
