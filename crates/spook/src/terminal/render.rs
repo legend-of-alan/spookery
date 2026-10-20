@@ -136,6 +136,11 @@ pub(crate) fn refusal(code: &str) -> String {
 }
 
 fn named_refusal(code: &str, missing: Option<&str>) -> String {
+    if let Some(text) = missing.filter(|text| !text.is_empty()) {
+        if matches!(code, "NO_EXIT" | "NOT_IN_SPEC") {
+            return format!("{text} [{code}]");
+        }
+    }
     let sentence = match code {
         "ILLEGAL_CLASS" => "That action is not allowed.",
         "ILLEGAL_KNOWLEDGE" => "You cannot know that.",
@@ -161,12 +166,7 @@ fn named_refusal(code: &str, missing: Option<&str>) -> String {
         "MISSING_ITEM" => "You do not have that.",
         "NOT_A_WEAPON" => "That is not a weapon.",
         "LINE_TOO_LONG" => "That line is too long.",
-        "NO_EXIT" => {
-            return match missing {
-                Some(text) if !text.is_empty() => format!("{text} [{code}]"),
-                _ => format!("There is no exit that way. [{code}]"),
-            };
-        }
+        "NO_EXIT" => "There is no exit that way.",
         "BUSY" => return format!("You are busy. [{code}]"),
         "CANT_AFFORD" => {
             return match missing {
@@ -536,6 +536,12 @@ Shop day: 1/1"
         });
         assert_eq!(afford, "You cannot afford grit. [CANT_AFFORD]");
         assert_readable(&afford);
+        let unusable = render(&PlayerMessage::Refused {
+            code: "NOT_IN_SPEC".to_string(),
+            missing: Some("Lamp oil can't be used.".to_string()),
+        });
+        assert_eq!(unusable, "Lamp oil can't be used. [NOT_IN_SPEC]");
+        assert_readable(&unusable);
         let wire = serde_json::to_string(&PlayerMessage::Refused {
             code: "CANT_AFFORD".to_string(),
             missing: Some("grit".to_string()),

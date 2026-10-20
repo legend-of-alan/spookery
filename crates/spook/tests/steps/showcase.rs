@@ -11,8 +11,13 @@ use crate::support;
 use crate::World;
 
 const EVENING: u64 = 1080;
-const OPENING: &[&str] = &["strike npc_briar", "drink"];
-const SCRIPT: &[&str] = &["strike npc_briar", "drink", "ask_briar", "travel mill_lane"];
+const OPENING: &[&str] = &["strike npc_briar", "use tonic"];
+const SCRIPT: &[&str] = &[
+    "strike npc_briar",
+    "use tonic",
+    "ask_briar",
+    "travel mill_lane",
+];
 const BRANCHES: &[&[&str]] = &[
     &["ask_briar", "travel mill_lane"],
     &["strike npc_briar", "strike npc_briar", "travel mill_lane"],

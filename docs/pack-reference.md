@@ -25,7 +25,7 @@ Check rejects `rules/moves.yaml`. Write those rules in `rules/verbs.yaml` or in 
 
 A rule's owner is the file it lives in. The full id is `verb:<id>`, `place:<place>/<id>`, `item:<item>/<id>`, `cast:<actor>/<id>`, or `story:<story>/<id>`. `spook check --rules <pack>` prints those ids when the pack has no problems.
 
-For `attack`, a wielded weapon's rule wins when that item has one. A verb uses the target item's rule, then the target actor's, then the rule on the current place, then `rules/verbs.yaml`. A habit runs only for the NPC whose cast file holds it.
+For `attack`, a wielded weapon's rule wins when that item has one. A verb uses the target item's rule, then the target actor's, then the rule on the current place, then `rules/verbs.yaml`. When no rule matches `use <item>`, the move is refused before the round with `NOT_IN_SPEC` and the sentence `<item name> can't be used.`, and the turn is not spent. So give an item its own `use` rule only when using it should do something. A habit runs only for the NPC whose cast file holds it.
 
 `pack_rev` in the save is the hash of `world/`, `cast/`, and `rules/`. After those files change, `spook migrate <pack>` stores the new hash. Migrate does not fix a shape error.
 
@@ -162,6 +162,7 @@ rules:
   - id: use
     when:
       verb: use
+      target: item
     do:
       - item:
           who: self

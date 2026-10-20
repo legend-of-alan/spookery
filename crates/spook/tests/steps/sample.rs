@@ -39,7 +39,7 @@ fn the_player_strikes_the_raider(world: &mut World) {
 
 #[when(expr = "the player drinks")]
 fn the_player_drinks(world: &mut World) {
-    let (mark, added) = table::player_send(world, "drink", "\"kind\":");
+    let (mark, added) = table::player_send(world, "use tonic", "\"kind\":");
     world.mark = mark;
     world.player_added = added;
 }

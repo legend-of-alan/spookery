@@ -8,6 +8,7 @@ use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rules::{faces, RollKey};
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 
+use super::table;
 use crate::support;
 use crate::World;
 
@@ -265,12 +266,72 @@ fn rowan_types(world: &mut World, line: String) {
     };
 }
 
-#[then(expr = "the line is rejected with MISSING_ITEM and no tick was written")]
-fn the_line_is_missing_and_quiet(world: &mut World) {
-    assert_eq!(world.scratch, "MISSING_ITEM");
+#[given(expr = "rowan holds 1 lamp_oil at a seated table")]
+fn rowan_holds_oil_at_a_table(world: &mut World) {
+    let pack = support::copy_pack("oneshot-docks", "use-oil");
+    save(&pack, |now| {
+        now.actors
+            .get_mut("pc_rowan")
+            .unwrap()
+            .inventory_mut()
+            .insert("lamp_oil".to_string(), 1);
+    });
+    table::listen(world, &pack);
+    table::seat_player(world, &pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "rowan plays {string}")]
+fn rowan_plays(world: &mut World, line: String) {
+    let before = table::now_of(world.pack.as_ref().unwrap());
+    world.scratch = format!("{} {}", before.world_time, before.tick_index);
+    let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
+    world.player_added = added;
+}
+
+fn refused_frame(world: &World) -> Value {
+    let row = world
+        .player_added
+        .lines()
+        .find(|row| row.contains("\"kind\":\"refused\""))
+        .unwrap_or_else(|| panic!("no refused frame\n{}", world.player_added));
+    serde_json::from_str(row).unwrap_or_else(|err| panic!("refused frame: {err}\n{row}"))
+}
+
+#[then(expr = "rowan is refused with {word} and the sentence {string}")]
+fn rowan_is_refused_with_a_sentence(world: &mut World, code: String, text: String) {
+    let frame = refused_frame(world);
+    assert_eq!(frame["code"], code.as_str(), "{frame}");
+    assert_eq!(frame["missing"], text.as_str(), "{frame}");
+}
+
+#[then(expr = "rowan is refused with {word} and no sentence")]
+fn rowan_is_refused_plainly(world: &mut World, code: String) {
+    let frame = refused_frame(world);
+    assert_eq!(frame["code"], code.as_str(), "{frame}");
+    assert!(frame.get("missing").is_none(), "{frame}");
+}
+
+#[then(expr = "no round was spent and rowan still holds 1 lamp_oil")]
+fn no_round_was_spent(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    assert_eq!(read_now(pack).tick_index, 0);
+    let now = table::now_of(pack);
+    assert_eq!(
+        format!("{} {}", now.world_time, now.tick_index),
+        world.scratch,
+        "a round was spent"
+    );
     assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
+    assert_eq!(now.actors.get("pc_rowan").unwrap().count("lamp_oil"), 1);
+}
+
+#[then(expr = "the line is rejected with NOT_IN_SPEC and nell still has 3 hp and 1 tonic")]
+fn drink_is_not_a_verb(world: &mut World) {
+    assert_eq!(world.scratch, "NOT_IN_SPEC");
+    let pack = world.pack.as_ref().unwrap();
+    assert_eq!(hp(pack, "pc_nell"), 3);
+    assert_eq!(count(pack, "pc_nell", "tonic"), 1);
+    assert_eq!(read_now(pack).tick_index, 0);
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]

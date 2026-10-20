@@ -1,6 +1,6 @@
 schema: now
 shard_id: starter
-pack_rev: blake2s:7a0339bf0b4ef4dfc2233f62d7f34e647df53a6d972e5e5a9e9fec431e805563
+pack_rev: blake2s:7c0319afc6c22c548fc94f0b846dbdd8d8cccfe779cd77450cc6dcdfcc64cb49
 rules_rev: 7
 state_rev: 0
 tick_index: 0

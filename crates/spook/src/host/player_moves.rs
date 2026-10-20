@@ -4,7 +4,7 @@ use spookery_kernel::api::ids::player_intent_id;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::model::ActorLive;
 use spookery_kernel::api::rule::{TargetKind, When};
-use spookery_kernel::api::rules::gate::{gate, verb_for, Miss};
+use spookery_kernel::api::rules::gate::{gate, refuse_unmatched, verb_for, Miss};
 use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
@@ -97,7 +97,10 @@ fn queue_verb(
     {
         return Err(Reason::Schema.into());
     }
-    let kind = verb_target(world, actor_id, verb, rest).ok_or(Reason::NotInSpec)?;
+    let kind = verb_target(world, actor_id, verb, rest).ok_or_else(|| {
+        let (token, _) = input::split_token(rest);
+        refuse_unmatched(world.canon(), verb, token)
+    })?;
     let target = match kind {
         TargetKind::None => {
             if !rest.is_empty() {

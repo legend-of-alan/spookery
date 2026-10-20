@@ -49,16 +49,6 @@ rules:
           id: target
           add: 1
 
-  - id: use
-    when:
-      verb: use
-      target: item
-    if:
-      - has_item:
-          who: self
-          id: target
-    do: []
-
   - id: wield
     when:
       verb: wield

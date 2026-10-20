@@ -44,7 +44,7 @@ impl Miss {
         }
     }
 
-    /// The gap, or the sentence a locked exit shows.
+    /// The gap, or the sentence a refusal shows the player.
     pub fn missing(&self) -> Option<&str> {
         match self {
             Miss::CantAfford(what) | Miss::Text { text: what, .. } => Some(what.as_str()),
@@ -132,9 +132,35 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     })
 }
 
+/// The verb every pack knows. With no rule for the item, it is refused with a sentence.
+pub const USE_VERB: &str = "use";
+
+/// Refuse a move no rule matched. `use` on an item says the item can't be used.
+pub fn refuse_unmatched(canon: &Canon, verb: &str, token: &str) -> Miss {
+    match canon.items.get(token) {
+        Some(item) if verb == USE_VERB => {
+            let name = if item.name.is_empty() {
+                token
+            } else {
+                item.name.as_str()
+            };
+            Miss::Text {
+                code: Reason::NotInSpec,
+                text: format!("{name} can't be used."),
+            }
+        }
+        _ => Reason::NotInSpec.into(),
+    }
+}
+
 /// Gate every intent. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, Miss> {
-    let rule = resolve(canon, now, intent)?;
+    let rule = resolve(canon, now, intent).map_err(|reason| match (&reason, &intent.target) {
+        (Reason::NotInSpec, Target::Actor(token)) => {
+            refuse_unmatched(canon, &intent.move_name, token)
+        }
+        _ => reason.into(),
+    })?;
     if let Some(actor) = now.actors.get(&intent.actor_id) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Reason::Busy.into());
