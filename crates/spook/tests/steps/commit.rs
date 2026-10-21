@@ -24,6 +24,19 @@ fn docks_rev() -> String {
     spookery_kernel::api::canon::pack_rev(&root).unwrap()
 }
 
+fn migrate_state_revs(pack: &Path) -> Vec<u64> {
+    use spookery_kernel::api::journal::{read_entries, JournalEntry};
+    let entries = read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
+    let mut revs = Vec::new();
+    for entry in &entries {
+        let JournalEntry::Migrate(record) = entry else {
+            continue;
+        };
+        revs.push(record.state_rev_after);
+    }
+    revs
+}
+
 #[when(expr = "a canon file gains a byte")]
 fn a_canon_file_gains_a_byte(world: &mut World) {
     let pack = table::pack(world);
@@ -207,16 +220,7 @@ fn state_rev_is_2(world: &mut World) {
 
 #[then(expr = "the journal has two migrate records, at state_rev 1 and 2")]
 fn the_journal_has_two_migrate_records(world: &mut World) {
-    use spookery_kernel::api::journal::{read_entries, JournalEntry};
-    let entries = read_entries(table::pack(world)).unwrap_or_else(|err| panic!("{}", err.detail));
-    let mut revs = Vec::new();
-    for entry in &entries {
-        let JournalEntry::Migrate(record) = entry else {
-            continue;
-        };
-        revs.push(record.state_rev_after);
-    }
-    assert_eq!(revs, [1, 2]);
+    assert_eq!(migrate_state_revs(table::pack(world)), [1, 2]);
 }
 
 #[then(expr = "migrate keeps the hand edit")]
@@ -232,13 +236,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
-}
-
-#[then(expr = "no studio log was written")]
-fn no_studio_log_was_written(world: &mut World) {
-    assert!(!table::pack(world)
-        .join("state/journal/studio.jsonl")
-        .exists());
+    assert_eq!(migrate_state_revs(pack), [1]);
 }
 
 #[given(expr = "a docks table with a GM and {string} seated")]

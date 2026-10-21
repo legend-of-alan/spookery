@@ -5,7 +5,8 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::canon::pack_rev;
+use crate::canon::{bind_inventory, bind_meters, pack_rev, unknown_save_items, Canon};
+use crate::diagnostic::reason_of;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
@@ -84,16 +85,12 @@ pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason>
 
 /// Bind meters and inventory, reject unknown items, and stamp the new pack rev.
 /// This does not touch the disk.
-pub fn migrated_now(
-    canon: &crate::canon::Canon,
-    mut now: Now,
-    pack_rev: &str,
-) -> Result<Now, Reason> {
-    crate::canon::bind_meters(canon, &mut now).map_err(crate::diagnostic::reason_of)?;
-    crate::canon::bind_inventory(&now).map_err(crate::diagnostic::reason_of)?;
-    let unknown = crate::canon::unknown_save_items(canon, &now);
+pub fn migrated_now(canon: &Canon, mut now: Now, pack_rev: &str) -> Result<Now, Reason> {
+    bind_meters(canon, &mut now).map_err(reason_of)?;
+    bind_inventory(&now).map_err(reason_of)?;
+    let unknown = unknown_save_items(canon, &now);
     if !unknown.is_empty() {
-        return Err(crate::diagnostic::reason_of(unknown));
+        return Err(reason_of(unknown));
     }
     now.pack_rev = pack_rev.to_string();
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
@@ -106,7 +103,7 @@ pub fn migrate_now(root: &Path, now: Now) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
-    let canon = crate::canon::load_canon(root).map_err(crate::diagnostic::reason_of)?;
+    let canon = crate::canon::load_canon(root).map_err(reason_of)?;
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
