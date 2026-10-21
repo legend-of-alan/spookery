@@ -14,6 +14,8 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
+const DOOR: &str = "effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
+
 const HOST: &str = "\
 effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
 clock assassination_debt 2 6 paused
@@ -64,6 +66,92 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     let debt = now.clocks.get("assassination_debt").unwrap();
     assert_eq!(debt.value, 2);
     assert!(debt.paused);
+}
+
+#[given(expr = "a docks table with {string} seated and no GM")]
+fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
+    let pack = crate::support::temp_pack("host-round");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, &actor);
+    world.pack = Some(pack);
+}
+
+#[given(expr = "{string} has waited once")]
+fn has_waited_once(world: &mut World, actor: String) {
+    table::actor_send(world, &actor, "wait", "\"kind\":");
+}
+
+#[when(expr = "{string} waits three times")]
+fn waits_three_times(world: &mut World, actor: String) {
+    for _ in 0..3 {
+        table::actor_send(world, &actor, "wait", "\"kind\":");
+    }
+}
+
+#[when(expr = "{string} closes the seat")]
+fn closes_the_seat(world: &mut World, actor: String) {
+    let mark = table::host_stdout(world).len();
+    world.host_mark = mark;
+    table::close_actor(world, &actor);
+    table::wait_host_until(world, "seat close", |text| {
+        text.get(mark..)
+            .is_some_and(|added| added.contains("clock "))
+    });
+}
+
+#[then(expr = "the status lists the door note")]
+fn the_status_lists_the_door_note(world: &mut World) {
+    assert!(world.stdout.contains(DOOR), "{}", world.stdout);
+}
+
+#[then(expr = "the host printed the door note exactly once")]
+fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
+    let text = table::host_stdout(world);
+    assert_eq!(text.matches(DOOR).count(), 1, "{text}");
+}
+
+#[then(expr = "every host printout ends with the clocks")]
+fn every_host_printout_ends_with_the_clocks(world: &mut World) {
+    let text = table::host_stdout(world);
+    let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
+    // `shop_day` sorts last, so it ends a printout. An effect after that starts the next one.
+    let mut in_clocks = false;
+    let mut open = false;
+    let mut saw = false;
+    for line in body.lines().filter(|line| !line.is_empty()) {
+        if line.starts_with("effect ") {
+            assert!(
+                !in_clocks,
+                "an effect followed a clock in one printout:\n{line}\n{body}"
+            );
+            open = true;
+        } else if line.starts_with("clock ") {
+            in_clocks = true;
+            open = true;
+            if line.starts_with("clock shop_day ") {
+                saw = true;
+                in_clocks = false;
+                open = false;
+            }
+        } else {
+            panic!("not an effect or a clock:\n{line}\n{body}");
+        }
+    }
+    assert!(
+        saw && !open,
+        "a printout did not end with the clocks\n{body}"
+    );
+}
+
+#[then(expr = "the host's last printout lists the clocks and no effect rows")]
+fn the_hosts_last_printout_lists_the_clocks(world: &mut World) {
+    let text = table::host_stdout(world);
+    let added = text.get(world.host_mark..).unwrap_or("");
+    let lines: Vec<&str> = added.lines().filter(|line| !line.is_empty()).collect();
+    assert!(
+        !lines.is_empty() && lines.iter().all(|line| line.starts_with("clock ")),
+        "{added}"
+    );
 }
 
 #[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]

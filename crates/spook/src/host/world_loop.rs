@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use spookery_kernel::api::model::{ActorLive, Presence};
 use spookery_kernel::api::perceive::perceive;
 use spookery_kernel::api::world::World;
-use spookery_kernel::api::{host_summary, player_digest, Reason};
+use spookery_kernel::api::{host_lines, player_digest, Reason};
 use spookery_round::RoundOutput;
 
 use super::frames;
@@ -117,12 +117,20 @@ pub(super) fn run_world_loop(
     }
 }
 
-pub(super) fn print_host(world: &World) {
-    if let Ok(text) = host_summary(world) {
-        if !text.is_empty() {
-            print!("{text}");
-            let _ = io::stdout().flush();
+pub(super) fn print_host(world: &World, outputs: &[RoundOutput]) {
+    // Each output is one committed round, and the batch ends at this tick.
+    let start = world.now().tick_index + 1 - outputs.len() as u64;
+    let mut effects = Vec::new();
+    for (offset, output) in outputs.iter().enumerate() {
+        let tick = start + offset as u64;
+        for effect in &output.effects {
+            effects.push((tick, effect));
         }
+    }
+    let text = host_lines(world, &effects);
+    if !text.is_empty() {
+        print!("{text}");
+        let _ = io::stdout().flush();
     }
 }
 
@@ -331,7 +339,7 @@ fn handle(
             let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
             if done.ticked {
                 refresh_players(world, seats, &outputs)?;
-                print_host(world);
+                print_host(world, &outputs);
             }
             if let Some(tape) = &done.tape {
                 println!("{tape}");
@@ -417,7 +425,7 @@ fn refresh_players(
     }
     for conn in failed {
         if drop_conn(world, seats, conn, SocketEnd::Write)? {
-            print_host(world);
+            print_host(world, &[]);
         }
     }
     Ok(())
@@ -426,7 +434,7 @@ fn refresh_players(
 fn shutdown(world: &mut World, seats: &mut Seats) -> ! {
     for conn in seats.players.conns() {
         match drop_conn(world, seats, conn, SocketEnd::Eof) {
-            Ok(true) => print_host(world),
+            Ok(true) => print_host(world, &[]),
             Ok(false) => {}
             Err(code) => {
                 eprintln!("{code}");
@@ -472,14 +480,14 @@ fn on_hello(
             Ok(bytes) => bytes,
             Err(code) => {
                 if release_player_seat(world, &session_id, id, SocketEnd::Close)? {
-                    print_host(world);
+                    print_host(world, &[]);
                 }
                 return Ok(HelloReply::Refused(refused_line(code)));
             }
         };
         if !super::limits::try_frame(&out, bytes) {
             if release_player_seat(world, &session_id, id, SocketEnd::Write)? {
-                print_host(world);
+                print_host(world, &[]);
             }
             return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
         }
@@ -491,11 +499,11 @@ fn on_hello(
             cancel,
         }) {
             if release_player_seat(world, &session_id, id, SocketEnd::Close)? {
-                print_host(world);
+                print_host(world, &[]);
             }
             return Ok(HelloReply::Refused(refused_line(code)));
         }
-        print_host(world);
+        print_host(world, &[]);
         return Ok(HelloReply::Player);
     }
     Ok(HelloReply::Refused(refused_line(Reason::Schema)))
@@ -538,7 +546,7 @@ fn on_player(
 ) -> Result<PlayerReply, Reason> {
     if is_close(line) {
         if drop_conn(world, seats, conn, SocketEnd::Close)? {
-            print_host(world);
+            print_host(world, &[]);
         }
         return Ok(PlayerReply::Hangup);
     }
@@ -610,7 +618,7 @@ fn on_mechanical(
             if advanced {
                 bump_sleep(restart);
             }
-            print_host(world);
+            print_host(world, &outputs);
             refresh_players(world, seats, &outputs)?;
         }
         Ok(player_moves::MoveOutcome::Busy {
@@ -626,7 +634,7 @@ fn on_mechanical(
             )?;
             if !outputs.is_empty() {
                 refresh_players(world, seats, &outputs)?;
-                print_host(world);
+                print_host(world, &outputs);
             }
         }
         Err(miss) => send_player(
@@ -651,7 +659,7 @@ fn send_player(
         None => false,
     };
     if failed && drop_conn(world, seats, conn, SocketEnd::Write)? {
-        print_host(world);
+        print_host(world, &[]);
     }
     Ok(())
 }
@@ -682,7 +690,7 @@ fn send_recipients(
     }
     for conn in failed {
         if drop_conn(world, seats, conn, SocketEnd::Write)? {
-            print_host(world);
+            print_host(world, &[]);
         }
     }
     Ok(())
@@ -717,7 +725,7 @@ fn on_fault(
     let result = if seats.players.by_conn(conn).is_some() {
         match drop_conn(world, seats, conn, end) {
             Ok(true) => {
-                print_host(world);
+                print_host(world, &[]);
                 Ok(())
             }
             Ok(false) => Ok(()),

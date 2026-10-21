@@ -35,6 +35,7 @@ pub struct RoundOutput {
     pub summary: Vec<String>,
     pub lines: Vec<Told>,
     pub seen: Vec<Seen>,
+    pub effects: Vec<Effect>,
     /// Set when this round wrote the journal.
     pub outcome: Option<CommitOutcome>,
 }
@@ -151,7 +152,7 @@ fn any_seated_busy(world: &World) -> bool {
 }
 
 pub fn play(world: &mut World, cause: RoundCause, now_wall: &str) -> Result<RoundOutput, Reason> {
-    play_with(world, cause, now_wall, None).map(|(_, output)| output)
+    play_with(world, cause, now_wall, None)
 }
 
 pub(crate) fn play_recorded(
@@ -159,7 +160,7 @@ pub(crate) fn play_recorded(
     now_wall: &str,
     recorded: RecordedRound,
 ) -> Result<Vec<Effect>, Reason> {
-    play_with(world, RoundCause::Replay, now_wall, Some(recorded)).map(|(effects, _)| effects)
+    play_with(world, RoundCause::Replay, now_wall, Some(recorded)).map(|output| output.effects)
 }
 
 fn play_with(
@@ -167,7 +168,7 @@ fn play_with(
     cause: RoundCause,
     now_wall: &str,
     recorded: Option<RecordedRound>,
-) -> Result<(Vec<Effect>, RoundOutput), Reason> {
+) -> Result<RoundOutput, Reason> {
     // A replayed round stays in memory, so only a live round takes the lock.
     let _lock = recorded
         .is_none()
@@ -189,8 +190,7 @@ fn play_with(
     triggers::run(&mut round, &mut draft)?;
     observe::run(&mut round, &mut draft)?;
     let output = record::run(world, &mut round, draft)?;
-    let output = drop_unseated_lines(world, output);
-    Ok((std::mem::take(&mut round.effects), output))
+    Ok(drop_unseated_lines(world, output))
 }
 
 /// Lines and seen from an empty table are not kept for a later seat.
