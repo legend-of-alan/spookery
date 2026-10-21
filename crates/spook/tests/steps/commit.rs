@@ -23,20 +23,17 @@ fn docks_rev() -> String {
     spookery_kernel::api::canon::pack_rev(&root).unwrap()
 }
 
-fn studio_matches(pack: &std::path::Path, revs: &[u64]) {
-    use spookery_kernel::api::journal::{emit_entry, read_entries, JournalEntry};
-    let studio = fs::read_to_string(pack.join("state/journal/studio.jsonl")).unwrap();
+fn migrate_state_revs(pack: &Path) -> Vec<u64> {
+    use spookery_kernel::api::journal::{read_entries, JournalEntry};
     let entries = read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
-    let mut expected = String::new();
+    let mut revs = Vec::new();
     for entry in &entries {
         let JournalEntry::Migrate(record) = entry else {
             continue;
         };
-        if revs.contains(&record.state_rev_after) {
-            expected.push_str(&emit_entry(entry));
-        }
+        revs.push(record.state_rev_after);
     }
-    assert_eq!(studio, expected);
+    revs
 }
 
 #[when(expr = "a canon file gains a byte")]
@@ -107,6 +104,25 @@ fn the_save_is_hand_edited(world: &mut World) {
     let mut mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
     mira.push('\n');
     fs::write(pack.join("cast/mira.md"), mira).unwrap();
+}
+
+#[when(expr = "the pack adds meter {string} with start {int}")]
+fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
+    let path = table::pack(world).join("rules/meters.yaml");
+    let mut text = fs::read_to_string(&path).unwrap();
+    text.push_str(&format!(
+        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    start: {start}\n"
+    ));
+    fs::write(&path, text).unwrap();
+}
+
+#[then(expr = "every actor has {string} at {int}")]
+fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
+    let now = table::now_of(table::pack(world));
+    for (actor, live) in &now.actors {
+        let got = live.meters().get(&id).map(|meter| meter.base);
+        assert_eq!(got, Some(base), "{actor} {id}");
+    }
 }
 
 #[when(expr = "the save is replaced with a broken document")]
@@ -220,9 +236,9 @@ fn state_rev_is_2(world: &mut World) {
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
 }
 
-#[then(expr = "the studio log records two migrates")]
-fn the_studio_log_records_two_migrates(world: &mut World) {
-    studio_matches(table::pack(world), &[1, 2]);
+#[then(expr = "the journal has two migrate records, at state_rev 1 and 2")]
+fn the_journal_has_two_migrate_records(world: &mut World) {
+    assert_eq!(migrate_state_revs(table::pack(world)), [1, 2]);
 }
 
 #[then(expr = "migrate keeps the hand edit")]
@@ -238,12 +254,5 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
-    studio_matches(pack, &[1]);
-}
-
-#[then(expr = "the studio log is absent")]
-fn the_studio_log_is_absent(world: &mut World) {
-    assert!(!table::pack(world)
-        .join("state/journal/studio.jsonl")
-        .exists());
+    assert_eq!(migrate_state_revs(pack), [1]);
 }

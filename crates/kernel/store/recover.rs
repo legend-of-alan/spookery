@@ -288,7 +288,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use crate::commit::commit_round;
+    use crate::commit::commit;
     use crate::draft::Draft;
     use crate::world::World;
 
@@ -298,7 +298,7 @@ mod tests {
         let mut world = World::open(&root).unwrap();
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let draft = Draft::begin(&world);
-        commit_round(&mut world, draft, &journal_line()).unwrap();
+        commit(&mut world, draft, journal_line()).unwrap();
         drop(world);
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let kept = fs::read(&bundle).unwrap();
@@ -325,9 +325,8 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn journal_line() -> String {
-        use crate::journal::{emit_entry, JournalEntry, TickRecord};
-        emit_entry(&JournalEntry::Tick(TickRecord {
+    fn journal_line() -> crate::journal::TickRecord {
+        crate::journal::TickRecord {
             tick_index: 0,
             rules_rev: 7,
             state_rev_before: 0,
@@ -349,7 +348,7 @@ mod tests {
             now_hash: String::new(),
             prev: String::new(),
             chain: String::new(),
-        }))
+        }
     }
 
     fn temp_docks(label: &str) -> PathBuf {

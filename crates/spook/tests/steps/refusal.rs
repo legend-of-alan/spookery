@@ -133,6 +133,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
 
@@ -300,6 +301,7 @@ rules:
 ",
     );
     edit_save(&pack, |_| {});
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);

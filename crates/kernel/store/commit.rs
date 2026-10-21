@@ -5,13 +5,14 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::canon::pack_rev;
+use crate::canon::{migrate_save, pack_rev};
+use crate::diagnostic::reason_of;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
-use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
+use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
 use crate::store::recover::close_finished;
 use crate::world::World;
@@ -20,56 +21,15 @@ const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
 
 pub struct CommitOutcome {
     pub state_rev: u64,
-    pub diff_summary: Vec<String>,
     pub log_path: String,
 }
 
-/// Where a played round's state goes.
-pub enum RoundStore {
-    /// The caller will write the round later.
-    Hold,
-    /// Append the journal record.
-    Write,
-    /// Keep the new state in memory. The journal already has this round.
-    Memory,
-}
-
-/// Hold one played round when the caller will write it. Spook queues intents; it does not write this.
-pub fn finish_round(
+/// Seal one played round, append it, finish a due checkpoint, and clear the queue.
+pub fn commit(
     world: &mut World,
     mut draft: Draft,
-    store: RoundStore,
-    record: String,
-    keep_queue: bool,
-    summary: Vec<String>,
-) -> Result<(), Reason> {
-    match store {
-        RoundStore::Hold => {
-            let now = draft.now().clone();
-            let memories = draft.memories().to_vec();
-            world.hold_uncommitted(now, record, memories, summary);
-            Ok(())
-        }
-        RoundStore::Write => {
-            commit_round(world, draft, &record)?;
-            world.note_committed(keep_queue);
-            Ok(())
-        }
-        RoundStore::Memory => {
-            draft.state.state_rev = draft
-                .state
-                .state_rev
-                .checked_add(1)
-                .ok_or(Reason::CommitConflict)?;
-            canonicalize(&mut draft.state);
-            world.now = draft.state;
-            world.note_committed(keep_queue);
-            Ok(())
-        }
-    }
-}
-
-pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> Result<(), Reason> {
+    record: journal::TickRecord,
+) -> Result<CommitOutcome, Reason> {
     settle_open_checkpoint(world)?;
     draft.state.state_rev = draft
         .state
@@ -78,7 +38,7 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
         .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut draft.state);
     let now_bytes = emit_save(&draft.state)?.into_bytes();
-    let line = seal_tick(round_jsonl, &now_bytes, &world.root, &draft.memories)?;
+    let line = seal_tick(record, &now_bytes, &world.root, &draft.memories)?;
     let due = checkpoint_due(world.canon().checkpoint_every, draft.state.tick_index);
     let (payload, chain) = if due {
         let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
@@ -93,41 +53,8 @@ pub fn commit_round(world: &mut World, mut draft: Draft, round_jsonl: &str) -> R
     } else {
         (line, None)
     };
-    append_bundle(&world.root, &payload)?;
-    world.now = draft.state;
-    if let Some(chain) = chain {
-        if !finish_checkpoint(world, &now_bytes, &chain) {
-            world.note_warning(CHECKPOINT_WARNING);
-        }
-    }
-    Ok(())
-}
-
-pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
-    settle_open_checkpoint(world)?;
-    let pending = world.pending.take().ok_or(Reason::CommitConflict)?;
-    let mut now = pending.now;
-    now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
-    canonicalize(&mut now);
-    let now_bytes = emit_save(&now)?.into_bytes();
-    let line = seal_tick(
-        &pending.round_jsonl,
-        &now_bytes,
-        &world.root,
-        &pending.memories,
-    )?;
-    let due = checkpoint_due(world.canon().checkpoint_every, now.tick_index);
-    let (payload, chain) = if due {
-        let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
-        let mark = journal::checkpoint_entry(now.tick_index, now.state_rev, &hash_now(&now_bytes));
-        let sealed = journal::seal(&mark, &prev);
-        let chain = journal::sealed_chain(&sealed).map_err(|_| Reason::Schema)?;
-        (format!("{line}{sealed}"), Some(chain))
-    } else {
-        (line, None)
-    };
     let mut log_path = append_bundle(&world.root, &payload)?;
-    world.now = now;
+    world.now = draft.state;
     world.queue.clear();
     if let Some(chain) = chain {
         if finish_checkpoint(world, &now_bytes, &chain) {
@@ -140,40 +67,37 @@ pub fn commit_pending(world: &mut World) -> Result<CommitOutcome, Reason> {
     }
     Ok(CommitOutcome {
         state_rev: world.now.state_rev,
-        diff_summary: pending.paths,
         log_path,
     })
 }
 
-pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
-    let now = load_file_now(root)?;
-    if journal_ahead(root, now.state_rev) {
-        return Err(Reason::CommitConflict);
-    }
-    migrate_now(root, now)
+/// The journal already has this round. Keep the new state in memory.
+pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason> {
+    draft.state.state_rev = draft
+        .state
+        .state_rev
+        .checked_add(1)
+        .ok_or(Reason::CommitConflict)?;
+    canonicalize(&mut draft.state);
+    world.now = draft.state;
+    Ok(())
 }
 
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
-pub fn migrate_now(root: &Path, mut now: Now) -> Result<(), Reason> {
+pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
-    let canon = crate::canon::load_canon(root).map_err(crate::diagnostic::reason_of)?;
-    crate::canon::bind_meters(&canon, &mut now).map_err(crate::diagnostic::reason_of)?;
-    crate::canon::bind_inventory(&now).map_err(crate::diagnostic::reason_of)?;
-    let unknown = crate::canon::unknown_save_items(&canon, &now);
-    if !unknown.is_empty() {
-        return Err(crate::diagnostic::reason_of(unknown));
-    }
+    let canon = crate::canon::load_canon(root).map_err(reason_of)?;
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
     let _lock = lock_world(root)?;
-    now.pack_rev = pack_rev_after;
-    now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
-    canonicalize(&mut now);
+    let state_rev_after = state_rev_before
+        .checked_add(1)
+        .ok_or(Reason::CommitConflict)?;
+    let now = migrate_save(&canon, now, &pack_rev_after, state_rev_after)?;
     let emitted = emit_save(&now)?.into_bytes();
-    let state = root.join("state");
     let record = journal::emit_migrate(
         &pack_rev_before,
         &now.pack_rev,
@@ -185,37 +109,15 @@ pub fn migrate_now(root: &Path, mut now: Now) -> Result<(), Reason> {
     let parsed = journal::parse_migrate("migrate.json", &record).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&journal::JournalEntry::Migrate(parsed), &prev);
     append_bundle(root, &line)?;
-    append_studio(&state, &line)?;
     Ok(())
 }
 
-fn load_file_now(root: &Path) -> Result<Now, Reason> {
-    if !root.join("state/save.yaml").is_file() {
-        return Err(Reason::NotInSpec);
-    }
-    let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    load_save(now_text).map_err(crate::diagnostic::reason_of)
-}
-
-fn journal_ahead(root: &Path, state_rev: u64) -> bool {
-    let Ok(entries) = journal::read_live(root) else {
-        return false;
-    };
-    entries.iter().any(|entry| {
-        !matches!(entry, journal::JournalEntry::Checkpoint(_))
-            && entry.state_rev_after() > state_rev
-    })
-}
-
 fn seal_tick(
-    round_jsonl: &str,
+    mut record: journal::TickRecord,
     now_bytes: &[u8],
     root: &Path,
     memories: &[MemoryLine],
 ) -> Result<String, Reason> {
-    let mut record: journal::TickRecord =
-        serde_json::from_str(round_jsonl.trim_end()).map_err(|_| Reason::Schema)?;
     record.now_hash = hash_now(now_bytes);
     record.memories = memories.to_vec();
     record.prev.clear();
@@ -373,22 +275,6 @@ fn snapshot_memories(root: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
-    let log_dir = state.join("journal");
-    fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
-    let path = log_dir.join("studio.jsonl");
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|_| Reason::CommitConflict)?;
-    file.write_all(line.as_bytes())
-        .map_err(|_| Reason::CommitConflict)?;
-    file.sync_all().map_err(|_| Reason::CommitConflict)?;
-    fsync_dir(&log_dir)?;
-    Ok(())
-}
-
 fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, String>, Reason> {
     let mut by_actor: BTreeMap<String, Vec<&MemoryLine>> = BTreeMap::new();
     for line in lines {
@@ -433,7 +319,7 @@ mod tests {
     use crate::store::durable::{self, Mark};
     use crate::world::World;
 
-    use super::commit_round;
+    use super::commit;
 
     #[test]
     fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
@@ -451,7 +337,7 @@ mod tests {
         });
         let line = journal_line(0, 0, 1);
         durable::start_trace();
-        commit_round(&mut world, draft, &line).unwrap();
+        commit(&mut world, draft, line).unwrap();
         let marks = durable::take_trace();
         // A new bundle is one file flush plus the directory flush.
         assert_eq!(
@@ -487,7 +373,7 @@ mod tests {
         let mut again = World::open(&root).unwrap();
         let next = Draft::begin(&again);
         durable::start_trace();
-        commit_round(&mut again, next, &journal_line(1, 0, 1)).unwrap();
+        commit(&mut again, next, journal_line(1, 0, 1)).unwrap();
         let marks = durable::take_trace();
         assert_eq!(labels(&marks), ["file bundle"], "{}", show(&marks));
         let _ = fs::remove_dir_all(&root);
@@ -502,7 +388,7 @@ mod tests {
         let mut draft = Draft::begin(&world);
         draft.state.tick_index = 1;
         durable::fail_next(".jsonl.gz.tmp");
-        commit_round(&mut world, draft, &journal_line(1, 0, 1)).unwrap();
+        commit(&mut world, draft, journal_line(1, 0, 1)).unwrap();
         let live = crate::journal::read_live(&root).unwrap();
         let tick_rev = live.iter().rev().find_map(|entry| match entry {
             crate::journal::JournalEntry::Tick(record) => Some(record.state_rev_after),
@@ -517,7 +403,7 @@ mod tests {
 
         let mut again = Draft::begin(&world);
         again.state.tick_index = 2;
-        commit_round(&mut world, again, &journal_line(2, 1, 2)).unwrap();
+        commit(&mut world, again, journal_line(2, 1, 2)).unwrap();
         assert!(world.take_warning().is_none());
         let bundles = crate::journal::bundle_entries(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
@@ -542,12 +428,12 @@ mod tests {
         let mut world = World::open(&root).unwrap();
         let mut first = Draft::begin(&world);
         first.state.tick_index = 1;
-        commit_round(&mut world, first, &journal_line(1, 0, 1)).unwrap();
+        commit(&mut world, first, journal_line(1, 0, 1)).unwrap();
 
         let mut second = Draft::begin(&world);
         second.state.tick_index = 2;
         durable::fail_next("save.yaml.tmp");
-        commit_round(&mut world, second, &journal_line(2, 1, 2)).unwrap();
+        commit(&mut world, second, journal_line(2, 1, 2)).unwrap();
         let live = crate::journal::read_live(&root).unwrap();
         let mark = crate::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(world.now().state_rev, mark.state_rev);
@@ -555,7 +441,7 @@ mod tests {
 
         let mut third = Draft::begin(&world);
         third.state.tick_index = 3;
-        commit_round(&mut world, third, &journal_line(3, 2, 3)).unwrap();
+        commit(&mut world, third, journal_line(3, 2, 3)).unwrap();
         let bundles = crate::journal::bundle_entries(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         let (first_name, first_entries) = &bundles[0];
@@ -694,9 +580,8 @@ mod tests {
         }
     }
 
-    fn journal_line(tick_index: u64, before: u64, after: u64) -> String {
-        use crate::journal::{emit_entry, JournalEntry, TickRecord};
-        emit_entry(&JournalEntry::Tick(TickRecord {
+    fn journal_line(tick_index: u64, before: u64, after: u64) -> crate::journal::TickRecord {
+        crate::journal::TickRecord {
             tick_index,
             rules_rev: 7,
             state_rev_before: before,
@@ -718,7 +603,7 @@ mod tests {
             now_hash: String::new(),
             prev: String::new(),
             chain: String::new(),
-        }))
+        }
     }
 
     fn temp_docks(label: &str) -> PathBuf {

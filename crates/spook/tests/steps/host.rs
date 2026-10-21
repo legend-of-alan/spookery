@@ -238,8 +238,7 @@ fn play_and_host_and_a_stub(world: &mut World) {
     let mut body = fs::read_to_string(&aldric).unwrap();
     body.push_str("\nCASTBODYONLY-FIXTURE\n");
     fs::write(&aldric, body).unwrap();
-    spookery_kernel::api::commit::migrate_pack(&pack)
-        .unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     let (stub_port, posts) = stub_server();
     let pack_arg = pack_arg(&pack);
     table::listen(world, &pack);

@@ -1151,6 +1151,7 @@ rules:
         now.presence.humans = 1;
         now.presence.actors_present = vec!["pc_rowan".to_string()];
     });
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
 }
 

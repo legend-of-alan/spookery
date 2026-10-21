@@ -548,7 +548,7 @@ rules:
 
 ## Meters
 
-`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `start` is the base a new actor stores. Current is base plus offset, and it is not stored. `hidden: true` keeps that meter off the player's view. Leave it out and the player sees the meter.
+`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `start` is the base a new meter takes on every existing actor when `spook migrate` runs. A save that lacks a meter the rules define, with no migrate to add it, is refused. Current is base plus offset, and it is not stored. `hidden: true` keeps that meter off the player's view. Leave it out and the player sees the meter.
 
 ```yaml file=rules/meters.yaml
 schema: meters
