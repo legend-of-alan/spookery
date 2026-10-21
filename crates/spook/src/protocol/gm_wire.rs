@@ -1,55 +1,9 @@
 //! JSON lines for the GM seat: tool calls, events, and status.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::protocol::{Outcome, ProtocolError};
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ToolCall {
-    pub id: u64,
-    pub name: String,
-    pub arguments: Value,
-}
-
-pub fn write_tool_call(call: &ToolCall) -> String {
-    let line = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": call.id,
-        "method": "tools/call",
-        "params": {
-            "name": call.name,
-            "arguments": call.arguments,
-        },
-    });
-    ended(&line)
-}
-
-pub fn read_tool_call(line: &str) -> Result<ToolCall, ProtocolError> {
-    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| ProtocolError)?;
-    if value.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
-        return Err(ProtocolError);
-    }
-    if value.get("method").and_then(Value::as_str) != Some("tools/call") {
-        return Err(ProtocolError);
-    }
-    let id = value
-        .get("id")
-        .and_then(Value::as_u64)
-        .ok_or(ProtocolError)?;
-    let params = value.get("params").ok_or(ProtocolError)?;
-    let name = params
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or(ProtocolError)?
-        .to_string();
-    let arguments = params.get("arguments").cloned().ok_or(ProtocolError)?;
-    Ok(ToolCall {
-        id,
-        name,
-        arguments,
-    })
-}
 
 /// The structured body of a tool-result line.
 pub fn read_tool_result(line: &str) -> Result<Value, ProtocolError> {
@@ -60,62 +14,6 @@ pub fn read_tool_result(line: &str) -> Result<Value, ProtocolError> {
         .or_else(|| result.get("structured_content"))
         .cloned()
         .unwrap_or(Value::Null))
-}
-
-/// A GM socket line, before the client's turn rules.
-pub enum Frame {
-    Result {
-        id: u64,
-    },
-    Say {
-        from: String,
-        seq: u64,
-        address: String,
-        place: Option<String>,
-        actor: Option<String>,
-        text: String,
-    },
-    Queued,
-    Dropped,
-}
-
-pub fn read_frame(line: &str) -> Result<Frame, ProtocolError> {
-    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| ProtocolError)?;
-    if let Some(id) = value.get("id").and_then(Value::as_u64) {
-        return Ok(Frame::Result { id });
-    }
-    if value.get("method").and_then(Value::as_str) != Some("spook/event") {
-        return Err(ProtocolError);
-    }
-    let Some(params) = value.get("params") else {
-        return Err(ProtocolError);
-    };
-    let kind = params.get("kind").and_then(Value::as_str).unwrap_or("");
-    match kind {
-        "check" => Ok(Frame::Dropped),
-        "say" => Ok(Frame::Say {
-            from: params
-                .get("from")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            seq: params.get("seq").and_then(Value::as_u64).unwrap_or(0),
-            address: params
-                .get("address")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-            place: nonempty_string(params.get("place")),
-            actor: nonempty_string(params.get("actor")),
-            text: params
-                .get("text")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-        }),
-        "queued" => Ok(Frame::Queued),
-        _ => Ok(Frame::Dropped),
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -292,7 +190,7 @@ pub fn read_intent_args(
     })
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionStatus {
     pub presence: StatusPresence,
     pub pause: StatusPause,
@@ -303,22 +201,27 @@ pub struct SessionStatus {
     pub last_tick_at: String,
     pub queued: Vec<QueueRow>,
     pub last_seq: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub events: Option<Vec<Value>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_says",
+        deserialize_with = "deserialize_says"
+    )]
+    pub events: Option<Vec<GmSay>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusPresence {
     pub humans: u32,
     pub actors_present: Vec<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusPause {
     pub named_plot_clocks: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QueueRow {
     pub id: String,
     pub actor_id: String,
@@ -332,7 +235,7 @@ impl SessionStatus {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitBody {
     pub state_rev: u64,
     pub diff_summary: Vec<String>,
@@ -348,7 +251,7 @@ impl CommitBody {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Roll {
     pub faces: Vec<u32>,
     pub stat: i64,
@@ -357,17 +260,7 @@ pub struct Roll {
     pub outcome: Outcome,
 }
 
-pub fn set_checks(value: &mut Value, rolls: &[Roll]) {
-    let Some(object) = value.as_object_mut() else {
-        return;
-    };
-    object.insert(
-        "checks".to_string(),
-        serde_json::to_value(rolls).expect("checks"),
-    );
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GmSay {
     pub seq: u64,
     pub from: String,
@@ -378,19 +271,44 @@ pub struct GmSay {
     pub text: String,
 }
 
+/// A `spook/event` body. `kind` is the serde tag, not a stored field.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum EventBody {
+    Say(GmSay),
+    Queued(QueueRow),
+    Check(Roll),
+}
+
 impl GmSay {
     pub fn to_value(&self) -> Value {
-        serde_json::json!({
-            "kind": "say",
-            "seq": self.seq,
-            "from": self.from,
-            "address": self.address,
-            "place": self.place,
-            "actor": self.actor,
-            "recipients": self.recipients,
-            "text": self.text,
-        })
+        serde_json::to_value(EventBody::Say(self.clone())).expect("say")
     }
+}
+
+fn serialize_says<S>(events: &Option<Vec<GmSay>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    events
+        .as_ref()
+        .map(|says| says.iter().cloned().map(EventBody::Say).collect::<Vec<_>>())
+        .serialize(serializer)
+}
+
+fn deserialize_says<'de, D>(deserializer: D) -> Result<Option<Vec<GmSay>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let events = Vec::<EventBody>::deserialize(deserializer)?;
+    events
+        .into_iter()
+        .map(|event| match event {
+            EventBody::Say(say) => Ok(say),
+            EventBody::Queued(_) | EventBody::Check(_) => Err(serde::de::Error::custom("say")),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
 }
 
 pub fn write_say_event(say: &GmSay) -> Vec<u8> {
@@ -477,13 +395,6 @@ fn optional_text(value: &Value) -> Result<Option<String>, ProtocolError> {
     }
 }
 
-fn nonempty_string(value: Option<&Value>) -> Option<String> {
-    match value {
-        Some(Value::String(text)) if !text.is_empty() => Some(text.clone()),
-        _ => None,
-    }
-}
-
 fn event_line(params: Value) -> Vec<u8> {
     let line = serde_json::json!({
         "jsonrpc": "2.0",
@@ -506,24 +417,6 @@ fn trim_line(line: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_tool_call_round_trips() {
-        let call = ToolCall {
-            id: 2,
-            name: "say".to_string(),
-            arguments: serde_json::json!({
-                "address": "table",
-                "text": "evening"
-            }),
-        };
-        let line = write_tool_call(&call);
-        assert_eq!(
-            line,
-            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/call\",\"params\":{\"name\":\"say\",\"arguments\":{\"address\":\"table\",\"text\":\"evening\"}}}\n"
-        );
-        assert_eq!(read_tool_call(&line).unwrap(), call);
-    }
 
     #[test]
     fn a_say_event_keeps_null_place_and_actor() {

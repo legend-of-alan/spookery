@@ -13,9 +13,9 @@ use crate::ai::prompt::{
     from_canon, keep, parse_actions, prepare_with, push_handled, render_prompt, HandledSay, Kept,
     MenuRow, OutgoingSay, Prepared, PromptSide, Prose, Wake,
 };
-use crate::ai::wire::{self, Status};
 use crate::ai::HostError;
 use crate::gm_connection::{self, EventBody, Incoming, ToolCallResult};
+use crate::protocol::{CommitBody, GmSay, SessionStatus};
 
 pub struct Watch {
     pub listening: AtomicBool,
@@ -126,7 +126,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         kinds,
         prose,
         &wake,
-        &status.present,
+        &status.presence.actors_present,
         &mut |viewer| match perceive(seat, viewer) {
             Ok(result) => result,
             Err(err) => {
@@ -187,7 +187,9 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         if outcome.refused {
             false
         } else {
-            checks = wire::rolls_of(&outcome.body);
+            let commit: CommitBody = serde_json::from_value(outcome.body.clone())
+                .map_err(|_| fail(outcome.raw.clone()))?;
+            checks = commit.checks;
             true
         }
     };
@@ -264,7 +266,8 @@ fn submit_say(seat: &mut GmLoop, say: &OutgoingSay) -> Result<Option<HandledSay>
     if outcome.refused {
         return Ok(None);
     }
-    Ok(Some(say.handled(wire::say_seq(&outcome.body))))
+    let spoken: GmSay = serde_json::from_value(outcome.body).map_err(|_| fail(outcome.raw))?;
+    Ok(Some(say.handled(Some(spoken.seq))))
 }
 
 fn perceive(
@@ -284,7 +287,7 @@ fn perceive(
     Ok(Ok(outcome.body))
 }
 
-fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<Status, HostError> {
+fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<SessionStatus, HostError> {
     let arguments = match since {
         Some(since) => json!({ "since": since }),
         None => json!({}),
@@ -293,15 +296,17 @@ fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<Status, HostErro
     if outcome.refused {
         return Err(fail(outcome.raw));
     }
-    wire::status_fields(&outcome.body).ok_or_else(|| fail(outcome.raw))
+    serde_json::from_value(outcome.body).map_err(|_| fail(outcome.raw))
 }
 
-fn player_lines(status: &Status, high: u64) -> Vec<HandledSay> {
+fn player_lines(status: &SessionStatus, high: u64) -> Vec<HandledSay> {
     status
         .events
         .iter()
-        .filter(|say| say.from.starts_with("player:") && say.seq.is_some_and(|seq| seq > high))
+        .flatten()
+        .filter(|say| say.from.starts_with("player:") && say.seq > high)
         .cloned()
+        .map(HandledSay::from)
         .collect()
 }
 
@@ -388,30 +393,23 @@ impl GmLoop {
     fn classify(&self, body: EventBody) -> Option<Wake> {
         let gen = self.gen;
         match body {
-            EventBody::Say {
-                from,
-                seq,
-                address,
-                place,
-                actor,
-                text,
-            } => {
-                if from.starts_with("player:") && seq > self.high_water {
+            EventBody::Say(say) => {
+                if say.from.starts_with("player:") && say.seq > self.high_water {
                     Some(Wake::Say {
-                        from,
-                        seq,
-                        address,
-                        place,
-                        actor,
-                        text,
+                        from: say.from,
+                        seq: say.seq,
+                        address: say.address,
+                        place: say.place,
+                        actor: say.actor,
+                        text: say.text,
                         gen,
                     })
                 } else {
                     None
                 }
             }
-            EventBody::Queued { .. } => Some(Wake::Queued { gen }),
-            EventBody::Check { .. } => None,
+            EventBody::Queued(_) => Some(Wake::Queued { gen }),
+            EventBody::Check(_) => None,
         }
     }
 }

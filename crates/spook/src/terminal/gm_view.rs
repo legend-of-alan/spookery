@@ -12,7 +12,7 @@ use spookery_kernel::api::canon::{Canon, CastKind};
 use spookery_kernel::api::rule::{TargetKind, When};
 
 use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
-use crate::protocol::PlayerMessage;
+use crate::protocol::{CommitBody, PlayerMessage, SessionStatus};
 
 use super::render::{self, humanize, refusal};
 
@@ -190,7 +190,10 @@ impl Session {
             return;
         };
         self.after_result(&outcome, |_session, outcome| {
-            emit(&render_status(&outcome.body));
+            match read_status(&outcome.body) {
+                Some(status) => emit(&render_status(&status)),
+                None => unread(),
+            }
         });
     }
 
@@ -250,34 +253,34 @@ impl Session {
         let Some(outcome) = self.call_tool("commit_round", json!({ "include_tick": true })) else {
             return;
         };
-        let checks = render_checks(&outcome.body);
-        let dice = render_dice(&outcome.body);
+        let reply = if outcome.refused {
+            None
+        } else {
+            read_commit(&outcome.body)
+        };
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
-        // either side is shown once.
-        if outcome.refused || self.raw {
-            self.show_arrived(&[]);
-        } else {
-            self.show_arrived(&checks);
-        }
+        // either side is shown once. Raw mode and a failed read show none.
+        let checks = reply.as_ref().filter(|_| !self.raw).map(render_checks);
+        self.show_arrived(checks.as_deref().unwrap_or(&[]));
         if outcome.refused {
             self.show_tool_refusal(&outcome);
-            self.show_ready();
-            return;
+        } else if let Some(reply) = reply {
+            if self.raw {
+                emit(&outcome.raw);
+            } else if let Some(checks) = checks {
+                emit(&render_diff(&reply));
+                for line in &checks {
+                    emit(line);
+                }
+                for line in &render_dice(&reply) {
+                    emit(line);
+                }
+                self.printed_checks.printed(checks);
+            }
+        } else {
+            unread();
         }
-        if self.raw {
-            emit(&outcome.raw);
-            self.show_ready();
-            return;
-        }
-        emit(&render_diff(&outcome.body));
-        for line in &checks {
-            emit(line);
-        }
-        for line in &dice {
-            emit(line);
-        }
-        self.printed_checks.printed(checks);
         self.show_ready();
     }
 
@@ -336,7 +339,7 @@ impl Session {
         let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
         let events = self.client.take_events();
         for event in &events {
-            if let EventBody::Check { .. } = event.body {
+            if let EventBody::Check(_) = event.body {
                 let line = render_event(&event.body);
                 if pending.front().copied() == Some(line.as_str()) {
                     pending.pop_front();
@@ -380,7 +383,7 @@ impl Session {
             return;
         }
         let line = render_event(&event.body);
-        if matches!(event.body, EventBody::Check { .. }) && self.printed_checks.skip(&line) {
+        if matches!(event.body, EventBody::Check(_)) && self.printed_checks.skip(&line) {
             return;
         }
         emit(&line);
@@ -439,7 +442,12 @@ impl Session {
         if self.raw {
             emit(&outcome.raw);
         }
-        let ids = seated_ids(&outcome.body);
+        let ids = read_status(&outcome.body)
+            .map(|status| seated_ids(&status))
+            .unwrap_or_else(|| {
+                unread();
+                Vec::new()
+            });
         self.show_ready();
         ids
     }
@@ -503,35 +511,31 @@ fn emit(line: &str) {
     let _ = io::stdout().flush();
 }
 
-fn seated_ids(body: &Value) -> Vec<String> {
-    body.get("presence")
-        .and_then(|presence| presence.get("actors_present"))
-        .and_then(Value::as_array)
-        .map(|rows| {
-            rows.iter()
-                .filter_map(|row| row.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
+fn read_status(body: &Value) -> Option<SessionStatus> {
+    serde_json::from_value(body.clone()).ok()
 }
 
-fn queue_rows(body: &Value) -> Vec<(String, String)> {
-    body.get("queued")
-        .and_then(Value::as_array)
-        .map(|rows| {
-            rows.iter()
-                .filter_map(|row| {
-                    Some((
-                        row.get("actor_id")?.as_str()?.to_string(),
-                        row.get("move")?.as_str()?.to_string(),
-                    ))
-                })
-                .collect()
-        })
-        .unwrap_or_default()
+fn read_commit(body: &Value) -> Option<CommitBody> {
+    serde_json::from_value(body.clone()).ok()
 }
 
-fn render_status(body: &Value) -> String {
+fn unread() {
+    eprintln!("The reply could not be read.");
+    let _ = io::stderr().flush();
+}
+
+fn seated_ids(body: &SessionStatus) -> Vec<String> {
+    body.presence.actors_present.clone()
+}
+
+fn queue_rows(body: &SessionStatus) -> Vec<(String, String)> {
+    body.queued
+        .iter()
+        .map(|row| (row.actor_id.clone(), row.move_name.clone()))
+        .collect()
+}
+
+fn render_status(body: &SessionStatus) -> String {
     let names = seated_ids(body);
     let seated = if names.is_empty() {
         "Seated: nobody".to_string()
@@ -557,62 +561,34 @@ fn render_status(body: &Value) -> String {
     format!("{seated}\n{queued}")
 }
 
-fn render_diff(body: &Value) -> String {
-    let rows = body
-        .get("diff_summary")
-        .and_then(Value::as_array)
-        .map(|rows| {
-            rows.iter()
-                .filter_map(|row| row.as_str().map(str::to_string))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    if rows.is_empty() {
+fn render_diff(body: &CommitBody) -> String {
+    if body.diff_summary.is_empty() {
         "Nothing changed.".to_string()
     } else {
-        format!("Changed:\n{}", rows.join("\n"))
+        format!("Changed:\n{}", body.diff_summary.join("\n"))
     }
 }
 
-fn render_dice(body: &Value) -> Vec<String> {
-    let Some(lines) = body.get("dice").and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    lines
+fn render_dice(body: &CommitBody) -> Vec<String> {
+    body.dice
         .iter()
-        .filter_map(|line| line.as_str().map(|line| format!("dice {line}")))
+        .map(|line| format!("dice {line}"))
         .collect()
 }
 
-fn render_checks(body: &Value) -> Vec<String> {
-    let Some(checks) = body.get("checks").and_then(Value::as_array) else {
-        return Vec::new();
-    };
-    checks.iter().filter_map(check_line).collect()
-}
-
-fn check_line(item: &Value) -> Option<String> {
-    let faces = item.get("faces")?.as_array()?;
-    let faces = faces
+fn render_checks(body: &CommitBody) -> Vec<String> {
+    body.checks
         .iter()
-        .map(Value::as_u64)
-        .collect::<Option<Vec<_>>>()?;
-    Some(render_check(
-        &faces,
-        item.get("stat")?.as_i64()?,
-        item.get("total")?.as_i64()?,
-        item.get("target")?.as_i64()?,
-        check_word(item.get("outcome")?)?,
-    ))
-}
-
-fn check_word(value: &Value) -> Option<&'static str> {
-    match value.as_str()? {
-        "success" => Some("success"),
-        "partial" => Some("partial"),
-        "miss" => Some("miss"),
-        _ => None,
-    }
+        .map(|roll| {
+            render_check(
+                &roll.faces,
+                roll.stat,
+                roll.total,
+                roll.target,
+                roll.outcome.as_str(),
+            )
+        })
+        .collect()
 }
 
 pub fn actor_name(id: &str) -> String {
@@ -625,26 +601,24 @@ pub fn actor_name(id: &str) -> String {
 
 pub fn render_event(body: &EventBody) -> String {
     match body {
-        EventBody::Say { from, text, .. } => format!("{}: {text}", actor_name(from)),
-        EventBody::Queued {
-            actor_id,
-            move_name,
-            ..
-        } => format!("{} queued: {move_name}", actor_name(actor_id)),
-        EventBody::Check {
-            faces,
-            stat,
-            total,
-            target,
-            outcome,
-        } => render_check(faces, *stat, *total, *target, outcome.as_str()),
+        EventBody::Say(say) => format!("{}: {}", actor_name(&say.from), say.text),
+        EventBody::Queued(row) => {
+            format!("{} queued: {}", actor_name(&row.actor_id), row.move_name)
+        }
+        EventBody::Check(roll) => render_check(
+            &roll.faces,
+            roll.stat,
+            roll.total,
+            roll.target,
+            roll.outcome.as_str(),
+        ),
     }
 }
 
-pub fn render_check(faces: &[u64], stat: i64, total: i64, target: i64, outcome: &str) -> String {
+pub fn render_check(faces: &[u32], stat: i64, total: i64, target: i64, outcome: &str) -> String {
     let dice = faces
         .iter()
-        .map(u64::to_string)
+        .map(u32::to_string)
         .collect::<Vec<_>>()
         .join(" + ");
     let sign = if stat >= 0 {
@@ -774,7 +748,49 @@ fn split_word(text: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::Outcome;
+    use crate::protocol::{GmSay, Outcome, QueueRow, Roll, StatusPause, StatusPresence};
+
+    fn say(from: &str, seq: u64, text: &str) -> EventBody {
+        EventBody::Say(GmSay {
+            seq,
+            from: from.to_string(),
+            address: "table".to_string(),
+            place: None,
+            actor: None,
+            recipients: Vec::new(),
+            text: text.to_string(),
+        })
+    }
+
+    fn roll(faces: Vec<u32>, stat: i64, total: i64, target: i64, outcome: Outcome) -> EventBody {
+        EventBody::Check(Roll {
+            faces,
+            stat,
+            total,
+            target,
+            outcome,
+        })
+    }
+
+    fn status(present: Vec<&str>, queued: Vec<QueueRow>) -> SessionStatus {
+        SessionStatus {
+            presence: StatusPresence {
+                humans: u32::try_from(present.len()).unwrap_or(0),
+                actors_present: present.into_iter().map(str::to_string).collect(),
+            },
+            pause: StatusPause {
+                named_plot_clocks: "running".to_string(),
+            },
+            world_time: 0,
+            tick_index: 0,
+            state_rev: 0,
+            pack_rev: String::new(),
+            last_tick_at: String::new(),
+            queued,
+            last_seq: 0,
+            events: None,
+        }
+    }
 
     #[test]
     fn a_commit_skips_its_own_check_events_once() {
@@ -903,87 +919,51 @@ mod tests {
 
     #[test]
     fn each_event_renders_as_text() {
-        let say = render_event(&EventBody::Say {
-            from: "player:pc_rowan".to_string(),
-            seq: 1,
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            text: "hello".to_string(),
-        });
-        assert_eq!(say, "Pc rowan: hello");
-        assert!(!say.contains('{'));
+        let player = render_event(&say("player:pc_rowan", 1, "hello"));
+        assert_eq!(player, "Pc rowan: hello");
+        assert!(!player.contains('{'));
 
-        let gm = render_event(&EventBody::Say {
-            from: "gm".to_string(),
-            seq: 2,
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            text: "good evening".to_string(),
-        });
+        let gm = render_event(&say("gm", 2, "good evening"));
         assert_eq!(gm, "GM: good evening");
 
-        let npc = render_event(&EventBody::Say {
-            from: "npc:mira".to_string(),
-            seq: 3,
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            text: "oil".to_string(),
-        });
+        let npc = render_event(&say("npc:mira", 3, "oil"));
         assert_eq!(npc, "Mira: oil");
 
-        let queued = render_event(&EventBody::Queued {
+        let queued = render_event(&EventBody::Queued(QueueRow {
             id: "id-1".to_string(),
             actor_id: "pc_wren".to_string(),
             move_name: "wait".to_string(),
-        });
+        }));
         assert_eq!(queued, "Pc wren queued: wait");
 
-        let success = render_event(&EventBody::Check {
-            faces: vec![4, 2],
-            stat: 1,
-            total: 7,
-            target: 0,
-            outcome: Outcome::Success,
-        });
+        let success = render_event(&roll(vec![4, 2], 1, 7, 0, Outcome::Success));
         assert_eq!(success, "Roll: 4 + 2, +1 = 7 vs 0, success");
 
-        let partial = render_event(&EventBody::Check {
-            faces: vec![3, 3],
-            stat: 1,
-            total: 7,
-            target: 10,
-            outcome: Outcome::Partial,
-        });
+        let partial = render_event(&roll(vec![3, 3], 1, 7, 10, Outcome::Partial));
         assert_eq!(partial, "Roll: 3 + 3, +1 = 7 vs 10, partial");
 
-        let failure = render_event(&EventBody::Check {
-            faces: vec![1],
-            stat: -2,
-            total: -1,
-            target: 3,
-            outcome: Outcome::Miss,
-        });
+        let failure = render_event(&roll(vec![1], -2, -1, 3, Outcome::Miss));
         assert_eq!(failure, "Roll: 1, -2 = -1 vs 3, miss");
         assert!(!failure.contains('{'));
     }
 
     #[test]
     fn a_status_names_the_seated_players_and_the_queue() {
-        let body = json!({
-            "presence": { "humans": 1, "actors_present": ["pc_rowan"] },
-            "queued": [{ "id": "q", "actor_id": "pc_rowan", "move": "wait" }]
-        });
+        let body = status(
+            vec!["pc_rowan"],
+            vec![QueueRow {
+                id: "q".to_string(),
+                actor_id: "pc_rowan".to_string(),
+                move_name: "wait".to_string(),
+            }],
+        );
         assert_eq!(
             render_status(&body),
             "Seated: Pc rowan\nQueue:\nPc rowan: wait"
         );
-        let empty = json!({
-            "presence": { "humans": 0, "actors_present": [] },
-            "queued": []
-        });
-        assert_eq!(render_status(&empty), "Seated: nobody\nQueue: empty");
+        assert_eq!(
+            render_status(&status(Vec::new(), Vec::new())),
+            "Seated: nobody\nQueue: empty"
+        );
     }
 }
