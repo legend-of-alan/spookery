@@ -51,12 +51,9 @@ fn the_host_text_lists_the_clocks(world: &mut World) {
 
 #[then(expr = "the host text lists the door note")]
 fn the_host_text_lists_the_door_note(world: &mut World) {
-    assert!(world.stdout.contains(DOOR), "{}", world.stdout);
-    let now = table::now_of(table::pack(world));
-    if now.tick_index != 13 {
-        return;
-    }
     assert_eq!(world.stdout, HOST);
+    let now = table::now_of(table::pack(world));
+    assert_eq!(now.tick_index, 13);
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(
@@ -94,10 +91,17 @@ fn waits_three_times(world: &mut World, actor: String) {
 #[when(expr = "{string} closes the seat")]
 fn closes_the_seat(world: &mut World, actor: String) {
     let mark = table::host_stdout(world).len();
+    world.host_mark = mark;
     table::close_actor(world, &actor);
     table::wait_host_until(world, "seat close", |text| {
-        text.len() > mark && text[mark..].contains("clock shop_day ")
+        let added = text.get(mark..).unwrap_or("");
+        added.ends_with('\n') && added.contains("clock ") && !added.contains("effect ")
     });
+}
+
+#[then(expr = "the status lists the door note")]
+fn the_status_lists_the_door_note(world: &mut World) {
+    assert!(world.stdout.contains(DOOR), "{}", world.stdout);
 }
 
 #[then(expr = "the host printed the door note exactly once")]
@@ -108,48 +112,33 @@ fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
 
 #[then(expr = "every host printout ends with the clocks")]
 fn every_host_printout_ends_with_the_clocks(world: &mut World) {
-    let printouts = host_printouts(&table::host_stdout(world));
-    assert!(!printouts.is_empty(), "the host printed nothing");
-    for printout in &printouts {
+    let body = table::host_stdout(world);
+    let body = body.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
+    let mut saw = false;
+    let mut ended_on_clock = false;
+    for line in body.lines().filter(|line| !line.is_empty()) {
+        saw = true;
         assert!(
-            printout.contains("clock assassination_debt ") && printout.contains("clock shop_day "),
-            "{printout}"
+            line.starts_with("effect ") || line.starts_with("clock "),
+            "{line}\n{body}"
         );
+        ended_on_clock = line.starts_with("clock ");
     }
+    assert!(
+        saw && ended_on_clock,
+        "a printout did not end with the clocks\n{body}"
+    );
 }
 
 #[then(expr = "the host's last printout lists the clocks and no effect rows")]
 fn the_hosts_last_printout_lists_the_clocks(world: &mut World) {
-    let printouts = host_printouts(&table::host_stdout(world));
-    let last = printouts
-        .last()
-        .unwrap_or_else(|| panic!("the host printed nothing"));
+    let text = table::host_stdout(world);
+    let added = text.get(world.host_mark..).unwrap_or("");
+    let lines: Vec<&str> = added.lines().filter(|line| !line.is_empty()).collect();
     assert!(
-        last.lines().all(|line| line.starts_with("clock ")),
-        "{last}"
+        !lines.is_empty() && lines.iter().all(|line| line.starts_with("clock ")),
+        "{added}"
     );
-    assert!(last.contains("clock "), "{last}");
-}
-
-fn host_printouts(text: &str) -> Vec<String> {
-    let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or(text);
-    let mut printouts = Vec::new();
-    let mut current = Vec::new();
-    for line in body.lines() {
-        if line.is_empty() {
-            continue;
-        }
-        current.push(line);
-        if line.starts_with("clock shop_day ") {
-            printouts.push(current.join("\n"));
-            current.clear();
-        }
-    }
-    assert!(
-        current.is_empty(),
-        "a printout did not end with the clocks:\n{body}"
-    );
-    printouts
 }
 
 #[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]

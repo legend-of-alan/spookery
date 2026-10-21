@@ -23,7 +23,7 @@ Feature: Status is the host view
     And the operator runs status
     Then the host printed the door note exactly once
     And every host printout ends with the clocks
-    And the host text lists the door note
+    And the status lists the door note
 
   Scenario: A seat change prints the clocks and no effects
     Given a docks table with "pc_rowan" seated and no GM

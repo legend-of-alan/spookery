@@ -118,6 +118,7 @@ pub(super) fn run_world_loop(
 }
 
 pub(super) fn print_host(world: &World, outputs: &[RoundOutput]) {
+    // Each output is one committed round, and the batch ends at this tick.
     let start = world.now().tick_index + 1 - outputs.len() as u64;
     let mut effects = Vec::new();
     for (offset, output) in outputs.iter().enumerate() {
