@@ -48,26 +48,9 @@ pub struct Event {
 /// Fields the seat put on the event. A check has no actor and no check id.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum EventBody {
-    Say {
-        from: String,
-        seq: u64,
-        address: String,
-        place: Option<String>,
-        actor: Option<String>,
-        text: String,
-    },
-    Queued {
-        id: String,
-        actor_id: String,
-        move_name: String,
-    },
-    Check {
-        faces: Vec<u64>,
-        stat: i64,
-        total: i64,
-        target: i64,
-        outcome: crate::protocol::Outcome,
-    },
+    Say(crate::protocol::GmSay),
+    Queued(crate::protocol::QueueRow),
+    Check(crate::protocol::Roll),
 }
 
 /// A message from the GM seat, before a client's own turn rules.
@@ -108,9 +91,7 @@ impl ClientHandler for Inbox {
         _context: NotificationContext<RoleClient>,
     ) -> impl std::future::Future<Output = ()> + Send + '_ {
         if notification.method == "spook/event" {
-            if let Some(incoming) = event_from(notification.params.as_ref()) {
-                let _ = self.events.send(incoming);
-            }
+            let _ = self.events.send(read_event(notification.params.as_ref()));
         }
         std::future::ready(())
     }
@@ -534,112 +515,31 @@ fn bracket_code(text: &str) -> Option<String> {
     Some(code.to_string())
 }
 
-fn event_from(params: Option<&Value>) -> Option<Incoming> {
+/// Read one `spook/event` notification. A body that is not a say, a queued
+/// move, or a check is `Incoming::Bad`.
+pub fn read_event(params: Option<&Value>) -> Incoming {
     let params = params.cloned().unwrap_or(Value::Null);
-    let line = serde_json::to_string(&serde_json::json!({
+    let raw = serde_json::to_string(&serde_json::json!({
         "jsonrpc": "2.0",
         "method": "spook/event",
-        "params": params,
+        "params": &params,
     }))
-    .ok()?;
-    classify_line(&line)
-}
-
-fn classify_line(line: &str) -> Option<Incoming> {
-    let value: Value = match serde_json::from_str(line) {
-        Ok(value) => value,
-        Err(_) => return Some(Incoming::Bad(line.to_string())),
+    .unwrap_or_else(|_| params.to_string());
+    let body = match params.get("kind").and_then(Value::as_str) {
+        Some("say") => serde_json::from_value(params.clone())
+            .ok()
+            .map(EventBody::Say),
+        Some("queued") => serde_json::from_value(params.clone())
+            .ok()
+            .map(EventBody::Queued),
+        Some("check") => serde_json::from_value(params.clone())
+            .ok()
+            .map(EventBody::Check),
+        _ => None,
     };
-    if value.get("kind").and_then(Value::as_str) == Some("refused") {
-        let code = value
-            .get("code")
-            .and_then(Value::as_str)
-            .unwrap_or("")
-            .to_string();
-        return Some(Incoming::Refused {
-            code,
-            raw: line.to_string(),
-        });
-    }
-    if let Some(id) = value.get("id").and_then(Value::as_u64) {
-        return Some(Incoming::Result {
-            id,
-            raw: line.to_string(),
-        });
-    }
-    if value.get("method").and_then(Value::as_str) != Some("spook/event") {
-        return Some(Incoming::Bad(line.to_string()));
-    }
-    let Some(params) = value.get("params") else {
-        return Some(Incoming::Bad(line.to_string()));
-    };
-    let kind = params.get("kind").and_then(Value::as_str).unwrap_or("");
-    match kind {
-        "say" => Some(Incoming::Event(Event {
-            raw: line.to_string(),
-            body: EventBody::Say {
-                from: text_field(params, "from"),
-                seq: params.get("seq").and_then(Value::as_u64).unwrap_or(0),
-                address: text_field(params, "address"),
-                place: nonempty(params.get("place")),
-                actor: nonempty(params.get("actor")),
-                text: text_field(params, "text"),
-            },
-        })),
-        "queued" => Some(Incoming::Event(Event {
-            raw: line.to_string(),
-            body: EventBody::Queued {
-                id: text_field(params, "id"),
-                actor_id: text_field(params, "actor_id"),
-                move_name: text_field(params, "move"),
-            },
-        })),
-        "check" => parse_check(params).map(|body| {
-            Incoming::Event(Event {
-                raw: line.to_string(),
-                body,
-            })
-        }),
-        _ => None,
-    }
-}
-
-fn parse_check(params: &Value) -> Option<EventBody> {
-    let faces = params.get("faces")?.as_array()?;
-    let faces = faces
-        .iter()
-        .map(Value::as_u64)
-        .collect::<Option<Vec<_>>>()?;
-    Some(EventBody::Check {
-        faces,
-        stat: params.get("stat")?.as_i64()?,
-        total: params.get("total")?.as_i64()?,
-        target: params.get("target")?.as_i64()?,
-        outcome: check_outcome(params.get("outcome")?)?,
-    })
-}
-
-fn check_outcome(value: &Value) -> Option<crate::protocol::Outcome> {
-    match value.as_str()? {
-        "success" => Some(crate::protocol::Outcome::Success),
-        "partial" => Some(crate::protocol::Outcome::Partial),
-        "miss" => Some(crate::protocol::Outcome::Miss),
-        _ => None,
-    }
-}
-
-fn text_field(params: &Value, key: &str) -> String {
-    params
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or("")
-        .to_string()
-}
-
-fn nonempty(value: Option<&Value>) -> Option<String> {
-    match value {
-        Some(Value::String(text)) if !text.is_empty() => Some(text.clone()),
-        _ => None,
+    match body {
+        Some(body) => Incoming::Event(Event { raw, body }),
+        None => Incoming::Bad(raw),
     }
 }
 
@@ -661,9 +561,23 @@ mod tests {
         );
     }
 
+    fn params_of(line: &str) -> Value {
+        let value: Value = serde_json::from_str(line.trim_end()).unwrap();
+        value.get("params").cloned().unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn a_body_that_matches_no_known_type_is_bad() {
+        let Incoming::Bad(line) = read_event(Some(&serde_json::json!({"kind": "nope"}))) else {
+            panic!("malformed event was dropped");
+        };
+        assert!(line.contains("\"kind\":\"nope\""), "{line}");
+    }
+
     #[test]
     fn a_say_event_keeps_the_speaker_and_the_text() {
         let line = String::from_utf8(crate::protocol::write_say_event(&crate::protocol::GmSay {
+            kind: "say".to_string(),
             seq: 4,
             from: "player:pc_rowan".to_string(),
             address: "table".to_string(),
@@ -673,19 +587,15 @@ mod tests {
             text: "hello".to_string(),
         }))
         .unwrap();
-        let Incoming::Event(event) = classify_line(line.trim_end()).unwrap() else {
+        let Incoming::Event(event) = read_event(Some(&params_of(&line))) else {
             panic!("say");
         };
-        match event.body {
-            EventBody::Say {
-                from, seq, text, ..
-            } => {
-                assert_eq!(from, "player:pc_rowan");
-                assert_eq!(seq, 4);
-                assert_eq!(text, "hello");
-            }
-            other => panic!("{other:?}"),
-        }
+        let EventBody::Say(say) = event.body else {
+            panic!("{:?}", event.body);
+        };
+        assert_eq!(say.from, "player:pc_rowan");
+        assert_eq!(say.seq, 4);
+        assert_eq!(say.text, "hello");
     }
 
     #[test]
@@ -694,41 +604,32 @@ mod tests {
             "id-1", "pc_rowan", "travel",
         ))
         .unwrap();
-        let Incoming::Event(event) = classify_line(line.trim_end()).unwrap() else {
+        let Incoming::Event(event) = read_event(Some(&params_of(&line))) else {
             panic!("queued");
         };
         assert_eq!(
             event.body,
-            EventBody::Queued {
+            EventBody::Queued(crate::protocol::QueueRow {
                 id: "id-1".to_string(),
                 actor_id: "pc_rowan".to_string(),
                 move_name: "travel".to_string(),
-            }
+            })
         );
     }
 
     #[test]
     fn a_check_event_keeps_faces_and_drops_nothing_it_was_given() {
-        let line = String::from_utf8(crate::protocol::write_check_event(&crate::protocol::Roll {
+        let roll = crate::protocol::Roll {
             faces: vec![4, 2],
             stat: 1,
             total: 7,
             target: 0,
             outcome: crate::protocol::Outcome::Success,
-        }))
-        .unwrap();
-        let Incoming::Event(event) = classify_line(line.trim_end()).unwrap() else {
+        };
+        let line = String::from_utf8(crate::protocol::write_check_event(&roll)).unwrap();
+        let Incoming::Event(event) = read_event(Some(&params_of(&line))) else {
             panic!("check");
         };
-        assert_eq!(
-            event.body,
-            EventBody::Check {
-                faces: vec![4, 2],
-                stat: 1,
-                total: 7,
-                target: 0,
-                outcome: crate::protocol::Outcome::Success,
-            }
-        );
+        assert_eq!(event.body, EventBody::Check(roll));
     }
 }

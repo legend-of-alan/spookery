@@ -1,7 +1,9 @@
+use std::fs;
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use cucumber::{then, when};
+use cucumber::{given, then, when};
+use serde_json::json;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -48,6 +50,87 @@ fn the_gm_says(world: &mut World, text: String) {
 fn the_gm_queues_restock_and_commits(world: &mut World) {
     write_gm(world, "queue mira restock_lamp_oil");
     write_gm(world, "commit");
+}
+
+#[given(expr = "a docks table with a GM and {string} seated")]
+fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
+    let pack = support::temp_pack("typed-gm");
+    world.pack = Some(pack);
+    let pack = table::pack(world).to_path_buf();
+    // Stock grit rolls a check and notes no expression dice. A 2d6 on the
+    // verb gives the commit reply one dice line beside that check.
+    let verbs = pack.join("rules/verbs.yaml");
+    let text = fs::read_to_string(&verbs).unwrap_or_else(|err| panic!("read verbs: {err}"));
+    let from = "    roll:\n      check: grit\n      target: 0\n    do: []\n";
+    let to = "    roll:\n      check: grit\n      target: 0\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: \"2d6\"\n";
+    assert!(text.contains(from), "{text}");
+    fs::write(&verbs, text.replacen(from, to, 1))
+        .unwrap_or_else(|err| panic!("write verbs: {err}"));
+    support::stamp_pack_rev(&pack);
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, &actor);
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
+    let pack_arg = support::pack_arg(&pack);
+    world.gm = Some(support::spawn(&[
+        "gm",
+        &pack_arg,
+        "--addr",
+        &addr,
+        "--mcp-http",
+        &door,
+    ]));
+    wait_gm(world, "Commands:");
+}
+
+#[when(expr = "the GM queues {string} for {string} and commits")]
+fn the_gm_queues_for_and_commits(world: &mut World, move_name: String, actor: String) {
+    write_gm(world, &format!("queue {actor} {move_name}"));
+    write_gm(world, "commit");
+}
+
+#[then(expr = "the GM terminal shows one check line and one dice line for {string}")]
+fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, actor: String) {
+    let queued = format!("{} queued:", shown_actor(&actor));
+    wait_gm(world, "Roll:");
+    let stdout = gm_stdout(world);
+    let checks = stdout
+        .lines()
+        .filter(|line| line.starts_with("Roll:"))
+        .count();
+    let dice = stdout
+        .lines()
+        .filter(|line| line.starts_with("dice "))
+        .count();
+    assert_eq!(checks, 1, "{stdout}");
+    assert_eq!(dice, 1, "{stdout}");
+    assert!(stdout.contains(&queued), "{stdout}");
+}
+
+#[given(expr = "a GM connection")]
+fn a_gm_connection(world: &mut World) {
+    world.scratch.clear();
+}
+
+#[when(expr = "the host sends an event whose body doesn't match any known type")]
+fn the_host_sends_an_unknown_event(world: &mut World) {
+    let incoming = spookery::gm_connection::read_event(Some(&json!({
+        "kind": "nope",
+        "text": "not an event"
+    })));
+    world.scratch = match incoming {
+        spookery::gm_connection::Incoming::Bad(line) => line,
+        other => format!("not bad: {other:?}"),
+    };
+}
+
+#[then(expr = "the GM client reports it as a bad event")]
+fn the_gm_client_reports_a_bad_event(world: &mut World) {
+    assert!(
+        world.scratch.contains("\"kind\":\"nope\""),
+        "dropped or not reported: {}",
+        world.scratch
+    );
 }
 
 #[when(expr = "the GM queues Rowan's grit and commits")]
@@ -357,6 +440,18 @@ fn wait_proc(proc: &mut Proc, needle: &str) {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
+}
+
+fn shown_actor(id: &str) -> String {
+    let spaced = id.replace('_', " ");
+    let mut chars = spaced.chars();
+    let Some(first) = chars.next() else {
+        return spaced;
+    };
+    let mut titled = String::new();
+    titled.push(first.to_ascii_uppercase());
+    titled.push_str(chars.as_str());
+    titled
 }
 
 fn gm_stdout(world: &mut World) -> String {

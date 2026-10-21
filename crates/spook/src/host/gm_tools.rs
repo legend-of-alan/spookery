@@ -306,23 +306,30 @@ fn commit_tool(
     }
     let before = world.now().world_time;
     let forwarded = player_moves::commit_then_fast_forward(world)?;
+    let outputs = forwarded.outputs;
     let mut done = match &forwarded.outcome {
         Some(outcome) => GmToolReply::new(frames::commit_reply(
             outcome.state_rev,
             &outcome.diff_summary,
             Some(&outcome.log_path),
+            &outputs,
         )),
-        None if forwarded.outputs.is_empty() => return Ok(noop(world)),
-        None => noop(world),
+        None if outputs.is_empty() => return Ok(noop(world)),
+        None => GmToolReply::new(frames::commit_reply(
+            world.now().state_rev,
+            &[],
+            None,
+            &outputs,
+        )),
     };
-    done.outputs = forwarded.outputs;
+    done.outputs = outputs;
     done.advanced = world.now().world_time != before;
     done.ticked = true;
     Ok(done)
 }
 
 fn noop(world: &World) -> GmToolReply {
-    GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None))
+    GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None, &[]))
 }
 
 fn refused_tool(code: Reason) -> GmToolReply {

@@ -11,11 +11,11 @@ use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
 use crate::ai::prompt::{
     from_canon, keep, parse_actions, prepare_with, push_handled, render_prompt, HandledSay, Kept,
-    MenuRow, OutgoingSay, Prepared, PromptSide, Prose, Wake,
+    MenuRow, OutgoingSay, Prepared, PromptSide, Prose, QueueItem, RollLine, Wake,
 };
-use crate::ai::wire::{self, Status};
 use crate::ai::HostError;
 use crate::gm_connection::{self, EventBody, Incoming, ToolCallResult};
+use crate::protocol::{CommitBody, GmSay, SessionStatus};
 
 pub struct Watch {
     pub listening: AtomicBool,
@@ -187,7 +187,19 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         if outcome.refused {
             false
         } else {
-            checks = wire::rolls_of(&outcome.body);
+            let commit: CommitBody = serde_json::from_value(outcome.body.clone())
+                .map_err(|_| fail(outcome.raw.clone()))?;
+            checks = commit
+                .checks
+                .into_iter()
+                .map(|roll| RollLine {
+                    faces: roll.faces.into_iter().map(u64::from).collect(),
+                    stat: roll.stat,
+                    total: roll.total,
+                    target: roll.target,
+                    outcome: roll.outcome.as_str().to_string(),
+                })
+                .collect();
             true
         }
     };
@@ -264,7 +276,8 @@ fn submit_say(seat: &mut GmLoop, say: &OutgoingSay) -> Result<Option<HandledSay>
     if outcome.refused {
         return Ok(None);
     }
-    Ok(Some(say.handled(wire::say_seq(&outcome.body))))
+    let spoken: GmSay = serde_json::from_value(outcome.body).map_err(|_| fail(outcome.raw))?;
+    Ok(Some(say.handled(Some(spoken.seq))))
 }
 
 fn perceive(
@@ -293,7 +306,35 @@ fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<Status, HostErro
     if outcome.refused {
         return Err(fail(outcome.raw));
     }
-    wire::status_fields(&outcome.body).ok_or_else(|| fail(outcome.raw))
+    let body: SessionStatus =
+        serde_json::from_value(outcome.body).map_err(|_| fail(outcome.raw))?;
+    Ok(Status {
+        pack_rev: body.pack_rev,
+        last_seq: body.last_seq,
+        present: body.presence.actors_present,
+        queued: body
+            .queued
+            .into_iter()
+            .map(|row| QueueItem {
+                id: row.id,
+                actor_id: row.actor_id,
+                move_name: row.move_name,
+            })
+            .collect(),
+        events: body
+            .events
+            .unwrap_or_default()
+            .into_iter()
+            .map(|say| HandledSay {
+                seq: Some(say.seq),
+                from: say.from,
+                address: say.address,
+                place: say.place,
+                actor: say.actor,
+                text: say.text,
+            })
+            .collect(),
+    })
 }
 
 fn player_lines(status: &Status, high: u64) -> Vec<HandledSay> {
@@ -388,32 +429,33 @@ impl GmLoop {
     fn classify(&self, body: EventBody) -> Option<Wake> {
         let gen = self.gen;
         match body {
-            EventBody::Say {
-                from,
-                seq,
-                address,
-                place,
-                actor,
-                text,
-            } => {
-                if from.starts_with("player:") && seq > self.high_water {
+            EventBody::Say(say) => {
+                if say.from.starts_with("player:") && say.seq > self.high_water {
                     Some(Wake::Say {
-                        from,
-                        seq,
-                        address,
-                        place,
-                        actor,
-                        text,
+                        from: say.from,
+                        seq: say.seq,
+                        address: say.address,
+                        place: say.place,
+                        actor: say.actor,
+                        text: say.text,
                         gen,
                     })
                 } else {
                     None
                 }
             }
-            EventBody::Queued { .. } => Some(Wake::Queued { gen }),
-            EventBody::Check { .. } => None,
+            EventBody::Queued(_) => Some(Wake::Queued { gen }),
+            EventBody::Check(_) => None,
         }
     }
+}
+
+struct Status {
+    pack_rev: String,
+    last_seq: u64,
+    present: Vec<String>,
+    queued: Vec<QueueItem>,
+    events: Vec<HandledSay>,
 }
 
 fn host_err(err: gm_connection::GmConnectionError) -> HostError {
