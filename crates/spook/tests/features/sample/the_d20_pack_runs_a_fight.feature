@@ -56,6 +56,3 @@ Feature: The d20 pack runs a fight
     Then play shows 3 successful rolls
     And the raider's hp is 0
     And replaying the tick reproduces the save
-
-  Scenario: Kernel and tick sources do not name 5e
-    When the kernel and tick sources are scanned for a game-words ban

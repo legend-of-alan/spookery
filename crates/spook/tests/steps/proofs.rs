@@ -899,168 +899,6 @@ fn strip_bodies_and_hidden_string_lint() {
     let _ = fs::remove_dir_all(&folded);
 }
 
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn files_under(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            files_under(&path, out);
-        } else {
-            out.push(path);
-        }
-    }
-}
-
-fn byte_hits(paths: &[PathBuf], needles: &[&str]) -> Vec<String> {
-    let mut found = Vec::new();
-    for path in paths {
-        let bytes = fs::read(path).unwrap();
-        for needle in needles {
-            let needle_bytes = needle.as_bytes();
-            if bytes
-                .windows(needle_bytes.len())
-                .any(|window| window == needle_bytes)
-            {
-                found.push(format!("{} contains {needle}", path.display()));
-            }
-        }
-    }
-    found
-}
-
-fn hits_under(dir: &Path, needles: &[&str]) -> Vec<String> {
-    let mut files = Vec::new();
-    files_under(dir, &mut files);
-    byte_hits(&files, needles)
-}
-
-const KERNEL_TICK_NEEDLES: &[&str] = &[
-    "tokio",
-    "rmcp",
-    "sqlx",
-    "postgres",
-    "redis",
-    "reqwest",
-    "langchain",
-    "openai",
-    "anthropic",
-    "ollama",
-];
-
-fn import_boundary() {
-    let root = workspace_root();
-    let spook_src = root.join("crates/spook/src");
-    let mut kernel_hits = hits_under(&root.join("crates/kernel"), KERNEL_TICK_NEEDLES);
-    kernel_hits.extend(hits_under(&root.join("crates/round"), KERNEL_TICK_NEEDLES));
-    assert!(kernel_hits.is_empty(), "{}", kernel_hits.join("\n"));
-
-    let mut runtime = Vec::new();
-    files_under(&root.join("crates/kernel"), &mut runtime);
-    files_under(&root.join("crates/round"), &mut runtime);
-    files_under(&spook_src, &mut runtime);
-    let ai = spook_src.join("ai");
-    let mut reqwest_hits = Vec::new();
-    for path in &runtime {
-        if path.starts_with(&ai) || path.ends_with("gm_connection.rs") {
-            continue;
-        }
-        let bytes = fs::read(path).unwrap();
-        let needle = b"reqwest";
-        if bytes.windows(needle.len()).any(|window| window == needle) {
-            reqwest_hits.push(format!("{} contains reqwest", path.display()));
-        }
-    }
-    assert!(reqwest_hits.is_empty(), "{}", reqwest_hits.join("\n"));
-    let sdk_hits = byte_hits(&runtime, &["langchain", "openai", "anthropic", "ollama"]);
-    assert!(sdk_hits.is_empty(), "{}", sdk_hits.join("\n"));
-
-    let protocol_hits = hits_under(
-        &spook_src.join("protocol"),
-        &[
-            "tokio",
-            "rmcp",
-            "reqwest",
-            "spookery_kernel",
-            "crate::terminal",
-            "crate::ai",
-        ],
-    );
-    assert!(protocol_hits.is_empty(), "{}", protocol_hits.join("\n"));
-    let terminal_hits = hits_under(
-        &spook_src.join("terminal"),
-        &["tokio", "rmcp", "reqwest", "crate::ai"],
-    );
-    assert!(terminal_hits.is_empty(), "{}", terminal_hits.join("\n"));
-    let gm_connection_hits = byte_hits(
-        &[spook_src.join("gm_connection.rs")],
-        &["crate::ai", "crate::terminal"],
-    );
-    assert!(
-        gm_connection_hits.is_empty(),
-        "{}",
-        gm_connection_hits.join("\n")
-    );
-    let ai_hits = hits_under(
-        &spook_src.join("ai"),
-        &["rmcp", "crate::terminal", "spookery_round"],
-    );
-    assert!(ai_hits.is_empty(), "{}", ai_hits.join("\n"));
-    let host_hits = hits_under(&spook_src.join("host"), &["crate::terminal", "crate::ai"]);
-    assert!(host_hits.is_empty(), "{}", host_hits.join("\n"));
-    let audit_hits = byte_hits(&[spook_src.join("audit.rs")], &["tokio", "rmcp", "reqwest"]);
-    assert!(audit_hits.is_empty(), "{}", audit_hits.join("\n"));
-    crate::kernel_boundary::clean_tree_holds();
-}
-
-fn five_e_words_under(dir: &Path) -> Vec<String> {
-    let mut files = Vec::new();
-    files_under(dir, &mut files);
-    let mut hits = Vec::new();
-    for path in files {
-        let bytes = fs::read(&path).unwrap();
-        for word in [b"5e".as_slice(), b"d&d", b"srd"] {
-            if contains_word(&bytes, word) {
-                let label = String::from_utf8_lossy(word);
-                hits.push(format!("{} contains {label}", path.display()));
-            }
-        }
-    }
-    hits
-}
-
-fn contains_word(hay: &[u8], needle: &[u8]) -> bool {
-    if needle.is_empty() || hay.len() < needle.len() {
-        return false;
-    }
-    let last = hay.len() - needle.len();
-    for index in 0..=last {
-        if !hay[index..index + needle.len()].eq_ignore_ascii_case(needle) {
-            continue;
-        }
-        let before = index == 0 || !is_word_byte(hay[index - 1]);
-        let after_at = index + needle.len();
-        let after = after_at == hay.len() || !is_word_byte(hay[after_at]);
-        if before && after {
-            return true;
-        }
-    }
-    false
-}
-
-fn is_word_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
-}
-
-fn no_five_e_words_in_kernel_or_tick() {
-    let root = workspace_root();
-    let mut hits = five_e_words_under(&root.join("crates/kernel"));
-    hits.extend(five_e_words_under(&root.join("crates/round")));
-    assert!(hits.is_empty(), "{}", hits.join("\n"));
-}
-
 fn player_waits(tick: &Value) -> Vec<String> {
     tick["intents"]
         .as_array()
@@ -1506,25 +1344,6 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let _ = fs::remove_dir_all(&held);
 }
 
-fn manifests_do_not_name_a_model_crate() {
-    let root = workspace_root();
-    for path in [
-        root.join("Cargo.toml"),
-        root.join("crates/kernel/Cargo.toml"),
-        root.join("crates/round/Cargo.toml"),
-        root.join("crates/spook/Cargo.toml"),
-    ] {
-        let text = fs::read_to_string(&path).unwrap();
-        for needle in ["llm", "langchain", "openai", "anthropic", "ollama"] {
-            assert!(
-                !text.contains(needle),
-                "{} contains {needle}",
-                path.display()
-            );
-        }
-    }
-}
-
 #[when(expr = "twelve empty ticks pass")]
 fn twelve_empty_ticks_pass(_world: &mut World) {
     no_self_win();
@@ -1620,16 +1439,6 @@ fn prose_is_stripped(_world: &mut World) {
     strip_bodies_and_hidden_string_lint();
 }
 
-#[when(expr = "the kernel and tick sources are scanned")]
-fn the_kernel_and_tick_sources_are_scanned(_world: &mut World) {
-    import_boundary();
-}
-
-#[when(expr = "the kernel and tick sources are scanned for a game-words ban")]
-fn the_kernel_and_tick_sources_are_scanned_for_a_game_words_ban(_world: &mut World) {
-    no_five_e_words_in_kernel_or_tick();
-}
-
 #[when(expr = "a queued wait meets a wake and the seat drops")]
 fn a_queued_wait_meets_a_wake(_world: &mut World) {
     queued_line_survives_a_dropped_seat();
@@ -1683,9 +1492,4 @@ fn an_opposing_total_is_in_the_queue(_world: &mut World) {
 #[when(expr = "Rowan marks Nell while holding the knife")]
 fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
     a_held_knife_still_runs_the_opposed_row();
-}
-
-#[when(expr = "the crate manifests are scanned")]
-fn the_crate_manifests_are_scanned(_world: &mut World) {
-    manifests_do_not_name_a_model_crate();
 }

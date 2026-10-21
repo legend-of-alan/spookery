@@ -89,18 +89,17 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 
 ## Ordering
 
-A round runs its stages in one fixed order. A later move sees what an earlier
-move in that round already changed. One refused effect rolls the whole rule
-back. A rule over the effect cap is refused whole, not cut short, and the log
-records the refusal. A refused roll is not reported as a success. A place's verb
-rule beats the shared rule. A wielded weapon's attack beats the shared attack.
-With nothing wielded, the shared attack runs. Typing a full rule id is refused
-and the save stays put. A note addressed to someone present runs before an
-unclaimed wait, even if the wait was queued first. An NPC habit stays quiet
-while a player shares the room. The GM can still queue it.
+A later move sees what an earlier move in that round already changed. One
+refused effect rolls the whole rule back. A rule over the effect cap is refused
+whole, not cut short, and the log records the refusal. A refused roll is not
+reported as a success. A place's verb rule beats the shared rule. A wielded
+weapon's attack beats the shared attack. With nothing wielded, the shared
+attack runs. Typing a full rule id is refused and the save stays put. A note
+addressed to someone present runs before an unclaimed wait, even if the wait
+was queued first. An NPC habit stays quiet while a player shares the room. The
+GM can still queue it.
 
-Tested in `features/round/a_round_runs_named_stages.feature`,
-`features/round/a_rules_effects_are_all_or_nothing.feature`,
+Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/rules/rules_live_with_their_owner.feature`,
 `features/items/items_are_real.feature`, and
 `features/stock/the_shop_restocks_and_a_busy_npc_skips.feature`.
