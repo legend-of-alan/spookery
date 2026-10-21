@@ -37,13 +37,6 @@ pub enum MeterWrite {
     Snap,
 }
 
-/// One cast work entry, or one literal meter template after the loader accepts it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkWrite {
-    pub key: String,
-    pub write: MeterWrite,
-}
-
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
 /// A sum outside `[min, max]` still returns true. `current` clamps that.
 pub fn stored(def: &MeterDef, base: i64, offset: i64) -> bool {
