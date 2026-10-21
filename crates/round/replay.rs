@@ -6,15 +6,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::api::canon::{add_meter_starts, check_save_except};
+use spookery_kernel::api::canon::{migrate_save, pending_meters};
 use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
 use spookery_kernel::api::model::{Now, Presence};
-use spookery_kernel::api::store::codec::{canonicalize, emit_effect, emit_save, load_save};
+use spookery_kernel::api::store::codec::{emit_effect, emit_save, load_save};
 use spookery_kernel::api::store::require_rules_rev;
-use spookery_kernel::api::world::World;
+use spookery_kernel::api::world::{meters_added_after, World};
 use spookery_kernel::api::Reason;
 
 use crate::play::{play_recorded, RecordedRound};
@@ -197,7 +197,7 @@ fn replay_walking(
         if rev <= base_rev || rev > cap {
             continue;
         }
-        apply(&mut world, entry)?;
+        apply(&mut world, entry, &BTreeSet::new())?;
         if !entry.changes_state() {
             continue;
         }
@@ -234,11 +234,19 @@ fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
     };
     let entries = journal::read_live(path).map_err(|fault| replay_reason(journal_fault(fault)))?;
     let base_rev = world.now().state_rev;
+    let coming = if migrating {
+        pending_meters(world.canon(), world.now())
+            .into_iter()
+            .map(|meter| meter.id)
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
     for entry in &entries {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
-        apply(&mut world, entry).map_err(replay_reason)?;
+        apply(&mut world, entry, &coming).map_err(replay_reason)?;
     }
     // Seats are this process. The journal records who was present so the round
     // replays, and the save leaves them out.
@@ -530,7 +538,7 @@ fn replay_bundle(
     let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
     let mut saved = start.to_vec();
     for entry in entries {
-        apply(&mut world, entry)?;
+        apply(&mut world, entry, &BTreeSet::new())?;
         if entry.changes_state() {
             saved = read_now_bytes(&world)?;
         }
@@ -647,10 +655,14 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
     Ok(())
 }
 
-fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
+fn apply(
+    world: &mut World,
+    entry: &JournalEntry,
+    coming: &BTreeSet<String>,
+) -> Result<(), ReplayError> {
     match entry {
         JournalEntry::Tick(record) => apply_recorded_round(world, record),
-        JournalEntry::Migrate(record) => apply_migrate(world, record),
+        JournalEntry::Migrate(record) => apply_migrate(world, record, coming),
         JournalEntry::Checkpoint(record) => {
             let written = read_now_bytes(world)?;
             if hash_now(&written) != record.state_hash {
@@ -764,8 +776,12 @@ fn effect_text(effect: Option<&Effect>) -> String {
     }
 }
 
-fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
-    let mut next = world.now().clone();
+fn apply_migrate(
+    world: &mut World,
+    record: &MigrateRecord,
+    coming: &BTreeSet<String>,
+) -> Result<(), ReplayError> {
+    let next = world.now().clone();
     if next.pack_rev != record.pack_rev_before {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -775,27 +791,17 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
             None,
         )));
     }
-    add_meter_starts(&mut next, &record.meters);
-    // Meters this record does not add are not required yet when an actor lacks them.
-    // A later migrate record, or the migrate being sealed, puts them on.
-    let mut except = BTreeSet::new();
-    for id in world.canon().meters.keys() {
-        if record.meters.iter().any(|meter| meter.id == *id) {
-            continue;
-        }
-        if next
-            .actors
-            .values()
-            .any(|actor| !actor.meters().contains_key(id))
-        {
-            except.insert(id.clone());
-        }
-    }
-    check_save_except(world.canon(), &next, &except)
-        .map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
-    next.pack_rev = record.pack_rev_after.clone();
-    next.state_rev = record.state_rev_after;
-    canonicalize(&mut next);
+    let mut except = meters_added_after(world.root(), record.state_rev_after);
+    except.extend(coming.iter().cloned());
+    let next = migrate_save(
+        world.canon(),
+        next,
+        &record.pack_rev_after,
+        record.state_rev_after,
+        &record.meters,
+        &except,
+    )
+    .map_err(ReplayError::Reason)?;
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(

@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::canon::world_settings::Budget;
-use crate::canon::{check_save_except, load_canon, meters_pending, pack_rev, Canon};
+use crate::canon::{check_save, load_canon, pack_rev, pending_meters, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
@@ -152,13 +152,17 @@ fn load_world(root: &Path, mode: OpenMode) -> Result<World, Reason> {
     if !problems.is_empty() {
         return Err(reason_of(problems));
     }
-    let mut later = meters_added_after(root, now.state_rev);
+    let mut later = if matches!(mode, OpenMode::Replay) {
+        meters_added_after(root, now.state_rev)
+    } else {
+        meters_added_in_live(root, now.state_rev)
+    };
     if matches!(mode, OpenMode::Migrate) {
-        for meter in meters_pending(&canon, &now) {
+        for meter in pending_meters(&canon, &now) {
             later.insert(meter.id);
         }
     }
-    check_save_except(&canon, &now, &later).map_err(reason_of)?;
+    check_save(&canon, &now, &later).map_err(reason_of)?;
     Ok(World {
         root: root.to_path_buf(),
         canon,
@@ -169,11 +173,21 @@ fn load_world(root: &Path, mode: OpenMode) -> Result<World, Reason> {
     })
 }
 
-/// Meter ids added by a migrate record newer than `state_rev`.
+/// Meter ids added by a migrate record newer than `state_rev`, in any bundle.
 pub fn meters_added_after(root: &Path, state_rev: u64) -> BTreeSet<String> {
-    let Ok(entries) = journal::read_entries(root) else {
-        return BTreeSet::new();
-    };
+    journal::read_entries(root)
+        .map(|entries| meter_ids_after(&entries, state_rev))
+        .unwrap_or_default()
+}
+
+/// Same as `meters_added_after`, reading only the live bundle.
+fn meters_added_in_live(root: &Path, state_rev: u64) -> BTreeSet<String> {
+    journal::read_live(root)
+        .map(|entries| meter_ids_after(&entries, state_rev))
+        .unwrap_or_default()
+}
+
+fn meter_ids_after(entries: &[JournalEntry], state_rev: u64) -> BTreeSet<String> {
     let mut ids = BTreeSet::new();
     for entry in entries {
         let JournalEntry::Migrate(record) = entry else {
@@ -182,8 +196,8 @@ pub fn meters_added_after(root: &Path, state_rev: u64) -> BTreeSet<String> {
         if record.state_rev_after <= state_rev {
             continue;
         }
-        for meter in record.meters {
-            ids.insert(meter.id);
+        for meter in &record.meters {
+            ids.insert(meter.id.clone());
         }
     }
     ids
@@ -318,8 +332,8 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         }
         diags.extend(problems);
         if let Some(canon) = &canon {
-            let later = meters_added_after(root, now.state_rev);
-            if let Err(more) = check_save_except(canon, now, &later) {
+            let later = meters_added_in_live(root, now.state_rev);
+            if let Err(more) = check_save(canon, now, &later) {
                 diags.extend(more);
             }
         }

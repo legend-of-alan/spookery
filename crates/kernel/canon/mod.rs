@@ -869,7 +869,7 @@ fn meter_schema_error(
 }
 
 /// Meters the pack defines that at least one actor lacks, each at its `start`.
-pub(crate) fn meters_pending(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
+pub fn pending_meters(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
     let mut pending = Vec::new();
     for (id, def) in &canon.meters {
         if now
@@ -886,8 +886,7 @@ pub(crate) fn meters_pending(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
     pending
 }
 
-/// Give each actor any of `meters` it lacks, at the recorded `start`.
-pub fn add_meter_starts(now: &mut Now, meters: &[AddedMeter]) {
+fn add_meters(now: &mut Now, meters: &[AddedMeter]) {
     for actor in now.actors.values_mut() {
         let live = actor.meters_mut();
         for meter in meters {
@@ -897,33 +896,28 @@ pub fn add_meter_starts(now: &mut Now, meters: &[AddedMeter]) {
     }
 }
 
-/// Migrate a save to the pack: add new meters at their `start`, check the
-/// result, then stamp `pack_rev` and `state_rev`. Live migrate calls this.
-/// Replay adds only the meters the record lists. This does not touch the disk.
+/// Add `meters`, skip ids in `except`, check, then stamp `pack_rev` and `state_rev`.
+/// Live migrate and replay both call this. It does not touch the disk.
 pub fn migrate_save(
     canon: &Canon,
     mut now: Now,
     pack_rev: &str,
     state_rev: u64,
+    meters: &[AddedMeter],
+    except: &BTreeSet<String>,
 ) -> Result<Now, Reason> {
-    let pending = meters_pending(canon, &now);
-    add_meter_starts(&mut now, &pending);
-    check_save(canon, &now).map_err(reason_of)?;
+    add_meters(&mut now, meters);
+    check_save(canon, &now, except).map_err(reason_of)?;
     now.pack_rev = pack_rev.to_string();
     now.state_rev = state_rev;
     canonicalize(&mut now);
     Ok(now)
 }
 
-/// Check the save against the pack without changing it. Refuse every meter,
-/// item and wielded slot the pack does not define, every meter the pack defines
-/// that an actor lacks, every meter outside its rules and every empty id or zero count.
-pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
-    check_save_except(canon, now, &BTreeSet::new())
-}
-
-/// Like `check_save`, but meters in `except` are not required yet.
-pub fn check_save_except(
+/// Check the save against the pack without changing it. Meters in `except` are
+/// not required yet. Refuse every other missing meter, every meter the pack does
+/// not define, every meter outside its rules, and every empty id or zero count.
+pub fn check_save(
     canon: &Canon,
     now: &Now,
     except: &BTreeSet<String>,
