@@ -7,9 +7,10 @@ use crate::World;
 
 #[given(expr = "a clean {word} runner and a fresh clone")]
 fn a_clean_runner(world: &mut World, os: String) {
-    if !matches!(os.as_str(), "ubuntu" | "macos" | "windows") {
-        panic!("unknown runner {os}");
-    }
+    assert!(
+        matches!(os.as_str(), "ubuntu" | "macos" | "windows"),
+        "unknown runner {os}"
+    );
     world.runner = os;
 }
 
