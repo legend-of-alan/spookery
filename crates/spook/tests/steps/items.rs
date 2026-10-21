@@ -266,64 +266,17 @@ fn rowan_types(world: &mut World, line: String) {
     };
 }
 
-/// Whether the Gate Yard has a trapdoor, and whether Lark knows it.
-#[derive(PartialEq)]
-enum Trapdoor {
-    Absent,
-    Hidden,
-    Known,
-}
-
-fn seat_lark_with_a_latch(world: &mut World, trapdoor: Trapdoor) {
+#[given(expr = "lark holds 1 latch at a seated table")]
+fn lark_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "use-latch");
-    if trapdoor != Trapdoor::Absent {
-        add_trapdoor(&pack);
-    }
     save(&pack, |now| {
         quiet(now);
         let lark = now.actors.get_mut("pc_lark").unwrap();
         lark.inventory_mut().insert("latch".to_string(), 1);
-        if trapdoor == Trapdoor::Known {
-            lark.known_facts_mut().push("fact_trapdoor".to_string());
-        }
     });
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
-}
-
-/// A hidden exit out of the Gate Yard, revealed by a hidden fact.
-fn add_trapdoor(pack: &Path) {
-    let path = pack.join("world/places/gate_yard.md");
-    let text = fs::read_to_string(&path).unwrap();
-    let next = text
-        .replacen(
-            "    name: wheel_shed\n",
-            "    name: wheel_shed\n  - to: loft\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
-            1,
-        )
-        .replacen(
-            "facts:\n",
-            "facts:\n  - id: fact_trapdoor\n    text: A trapdoor hides under the straw.\n    hidden: true\n",
-            1,
-        );
-    assert_ne!(text, next, "the trapdoor was not added");
-    fs::write(&path, next).unwrap();
-}
-
-#[given(expr = "lark holds 1 latch at a seated table")]
-fn lark_holds_a_latch_at_a_table(world: &mut World) {
-    seat_lark_with_a_latch(world, Trapdoor::Absent);
-}
-
-#[given(expr = "lark holds 1 latch at a seated table with a hidden trapdoor")]
-fn lark_holds_a_latch_by_a_hidden_trapdoor(world: &mut World) {
-    seat_lark_with_a_latch(world, Trapdoor::Hidden);
-}
-
-#[given(expr = "lark holds 1 latch at a seated table with a trapdoor lark knows about")]
-fn lark_holds_a_latch_by_a_known_trapdoor(world: &mut World) {
-    seat_lark_with_a_latch(world, Trapdoor::Known);
 }
 
 #[when(expr = "lark plays {string}")]
@@ -334,25 +287,14 @@ fn lark_plays(world: &mut World, line: String) {
     world.player_added = added;
 }
 
-fn refused_frame(world: &World) -> Value {
+#[then(expr = "lark is refused with {word}")]
+fn lark_is_refused(world: &mut World, code: String) {
     let row = world
         .player_added
         .lines()
         .find(|row| row.contains("\"kind\":\"refused\""))
         .unwrap_or_else(|| panic!("no refused frame\n{}", world.player_added));
-    serde_json::from_str(row).unwrap_or_else(|err| panic!("refused frame: {err}\n{row}"))
-}
-
-#[then(expr = "lark is refused with {word} and the sentence {string}")]
-fn lark_is_refused_with_a_sentence(world: &mut World, code: String, text: String) {
-    let frame = refused_frame(world);
-    assert_eq!(frame["code"], code.as_str(), "{frame}");
-    assert_eq!(frame["missing"], text.as_str(), "{frame}");
-}
-
-#[then(expr = "lark is refused with {word} and no sentence")]
-fn lark_is_refused_plainly(world: &mut World, code: String) {
-    let frame = refused_frame(world);
+    let frame: Value = serde_json::from_str(row).unwrap();
     assert_eq!(frame["code"], code.as_str(), "{frame}");
     assert!(frame.get("missing").is_none(), "{frame}");
 }

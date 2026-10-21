@@ -44,7 +44,7 @@ impl Miss {
         }
     }
 
-    /// The gap, or the sentence a refusal shows the player.
+    /// The gap, or the sentence a locked exit shows.
     pub fn missing(&self) -> Option<&str> {
         match self {
             Miss::CantAfford(what) | Miss::Text { text: what, .. } => Some(what.as_str()),
@@ -130,17 +130,6 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     canon.rules.iter().find(|rule| {
         &rule.owner == owner && matches!(&rule.when, When::Verb { verb: name, .. } if name == verb)
     })
-}
-
-/// Refuse a move no rule matched. A target the player can see is named, anything else is not.
-pub fn refuse_unmatched(verb: &str, seen: Option<&str>) -> Miss {
-    match seen {
-        Some(name) => Miss::Text {
-            code: Reason::NotInSpec,
-            text: format!("You can't {verb} {name}."),
-        },
-        None => Reason::NotInSpec.into(),
-    }
 }
 
 /// Gate every intent. A player-sourced habit skips its `if`. Cost is checked for every rule.

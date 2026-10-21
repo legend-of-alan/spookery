@@ -14,37 +14,13 @@ Feature: Items are real
   Scenario: Using an item with no use rule is refused, and the turn is kept
     Given lark holds 1 latch at a seated table
     When lark plays "use latch"
-    Then lark is refused with NOT_IN_SPEC and the sentence "You can't use Iron latch."
+    Then lark is refused with NOT_IN_SPEC
     And no round was spent and lark still holds 1 latch
 
-  Scenario: Using a cast member with no use rule is refused, and the turn is kept
-    Given lark holds 1 latch at a seated table
-    When lark plays "use npc_briar"
-    Then lark is refused with NOT_IN_SPEC and the sentence "You can't use Briar."
-    And no round was spent and lark still holds 1 latch
-
-  Scenario: Using something unknown keeps the plain refusal
+  Scenario: Using something unknown gets the same refusal
     Given lark holds 1 latch at a seated table
     When lark plays "use banana"
-    Then lark is refused with NOT_IN_SPEC and no sentence
-    And no round was spent and lark still holds 1 latch
-
-  Scenario: A hidden exit reads the same as an unknown word
-    Given lark holds 1 latch at a seated table with a hidden trapdoor
-    When lark plays "use trapdoor"
-    Then lark is refused with NOT_IN_SPEC and no sentence
-    And no round was spent and lark still holds 1 latch
-
-  Scenario: A revealed exit is named
-    Given lark holds 1 latch at a seated table with a trapdoor lark knows about
-    When lark plays "use trapdoor"
-    Then lark is refused with NOT_IN_SPEC and the sentence "You can't use trapdoor."
-    And no round was spent and lark still holds 1 latch
-
-  Scenario: Someone elsewhere reads the same as an unknown word
-    Given lark holds 1 latch at a seated table
-    When lark plays "use npc_oden"
-    Then lark is refused with NOT_IN_SPEC and no sentence
+    Then lark is refused with NOT_IN_SPEC
     And no round was spent and lark still holds 1 latch
 
   Scenario: The tonic has one verb, use

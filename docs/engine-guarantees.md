@@ -174,12 +174,9 @@ pass below zero from a count above zero, and the rest of that rule is not kept.
 move the actor does not have. `SESSION_FULL` is a fourth player or a second GM.
 `SEAT_TAKEN` is a hello for a character another seat holds. `LINE_TOO_LONG`
 closes the connection. `NOT_IN_SPEC` is a full rule id used as a move, a GM
-hello on the game port, an address that is not loopback, or a verb that no rule
-matches. That last one is refused before the round, so the turn is not spent.
-When the player can see the target, it also shows `You can't <verb> <name>.`
-A hidden exit or someone elsewhere gets the same plain refusal as an unknown
-word.
-`ILLEGAL_CLASS` is a journal effect the engine does not run. `INELIGIBLE` is a second wait that the
+hello on the game port, an address that is not loopback, or a verb no rule
+matches, which is refused before the round so the turn is kept. `ILLEGAL_CLASS` is
+a journal effect the engine does not run. `INELIGIBLE` is a second wait that the
 first one makes ineligible. `NO_EXIT` is a missing exit. `BUSY` is a move while
 busy.
 
