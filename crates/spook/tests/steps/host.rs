@@ -448,59 +448,19 @@ fn start_after_gm(
     thread::JoinHandle<Result<(), spookery::ai::HostError>>,
     Arc<Watch>,
 ) {
-    let mut last = String::new();
-    for _ in 0..40 {
-        script.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
-        let watch = Arc::new(Watch::default());
-        let watch_bg = Arc::clone(&watch);
-        let script_bg = script.clone();
-        let pack_bg = pack.to_path_buf();
-        let addr = table::game_addr(world);
-        let door = table::door_addr(world);
-        let handle = thread::spawn(move || {
-            let mut script = script_bg;
-            run_ai_gm(&pack_bg, &addr, Some(&door), &mut script, &watch_bg)
-        });
-        let start = Instant::now();
-        while start.elapsed() < Duration::from_millis(500) {
-            if watch.listening.load(Ordering::Acquire) {
-                return (handle, watch);
-            }
-            if handle.is_finished() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        if watch.listening.load(Ordering::Acquire) {
-            return (handle, watch);
-        }
-        let start = Instant::now();
-        while !handle.is_finished() && start.elapsed() < Duration::from_secs(2) {
-            if watch.listening.load(Ordering::Acquire) {
-                return (handle, watch);
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        if watch.listening.load(Ordering::Acquire) {
-            return (handle, watch);
-        }
-        if !handle.is_finished() {
-            last = "host still dialing".to_string();
-            break;
-        }
-        match handle.join() {
-            Ok(Err(err)) => last = err.message,
-            Ok(Ok(())) => last = "host exited".to_string(),
-            Err(_) => last = "host thread panicked".to_string(),
-        }
-        thread::sleep(Duration::from_millis(50));
-    }
-    let stderr = table::live_mut(world)
-        .server
-        .as_ref()
-        .map(|server| support::text_of(&server.stderr))
-        .unwrap_or_default();
-    panic!("host did not listen: {last}\n{stderr}");
+    script.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
+    let watch = Arc::new(Watch::default());
+    let watch_bg = Arc::clone(&watch);
+    let script_bg = script.clone();
+    let pack_bg = pack.to_path_buf();
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
+    let handle = thread::spawn(move || {
+        let mut script = script_bg;
+        run_ai_gm(&pack_bg, &addr, Some(&door), &mut script, &watch_bg)
+    });
+    wait_listening(&watch);
+    (handle, watch)
 }
 
 fn wait_listening(watch: &Watch) {
