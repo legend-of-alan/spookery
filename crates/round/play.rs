@@ -35,6 +35,8 @@ pub struct RoundOutput {
     pub summary: Vec<String>,
     pub lines: Vec<Told>,
     pub seen: Vec<Seen>,
+    /// Set when this round wrote the journal.
+    pub outcome: Option<CommitOutcome>,
 }
 
 pub struct RecordedRound {
@@ -43,20 +45,14 @@ pub struct RecordedRound {
     pub actors_present: Vec<String>,
 }
 
-pub fn commit_moves(world: &mut World) -> Result<(CommitOutcome, RoundOutput), Reason> {
+pub fn commit_moves(world: &mut World) -> Result<RoundOutput, Reason> {
     let wall = world.now().last_tick_at.clone();
     commit_moves_at(world, &wall)
 }
 
 /// `include_tick: true` with `last_tick_at` set to `wall`. The caller supplies the stamp.
-pub fn commit_moves_at(
-    world: &mut World,
-    wall: &str,
-) -> Result<(CommitOutcome, RoundOutput), Reason> {
-    let _lock = lock_world(world.root())?;
-    let output = play(world, RoundCause::Flush, wall)?;
-    let outcome = spookery_kernel::api::commit::commit_pending(world)?;
-    Ok((outcome, output))
+pub fn commit_moves_at(world: &mut World, wall: &str) -> Result<RoundOutput, Reason> {
+    play(world, RoundCause::Flush, wall)
 }
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
@@ -181,11 +177,7 @@ fn play_with(
     now_wall: &str,
     recorded: Option<RecordedRound>,
 ) -> Result<(Vec<Effect>, RoundOutput), Reason> {
-    let _lock = if cause == RoundCause::Flush {
-        None
-    } else {
-        Some(lock_world(world.root())?)
-    };
+    let _lock = lock_world(world.root())?;
     if let Some(recorded) = &recorded {
         world.set_presence(Presence {
             humans: recorded.presence_humans,
