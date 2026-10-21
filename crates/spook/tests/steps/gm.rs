@@ -91,7 +91,7 @@ fn the_gm_queues_for_and_commits(world: &mut World, move_name: String, actor: St
 
 #[then(expr = "the GM terminal shows one check line and one dice line for {string}")]
 fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, actor: String) {
-    let queued = format!("{} queued:", shown_actor(&actor));
+    let queued = format!("{} queued:", spookery::terminal::actor_name(&actor));
     wait_gm(world, "Roll:");
     let stdout = gm_stdout(world);
     let checks = stdout
@@ -107,13 +107,13 @@ fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, actor: String
     assert!(stdout.contains(&queued), "{stdout}");
 }
 
-#[given(expr = "a GM connection")]
-fn a_gm_connection(world: &mut World) {
+#[given(expr = "an event reader")]
+fn an_event_reader(world: &mut World) {
     world.scratch.clear();
 }
 
-#[when(expr = "the host sends an event whose body doesn't match any known type")]
-fn the_host_sends_an_unknown_event(world: &mut World) {
+#[when(expr = "the reader is given an event body that matches no known type")]
+fn the_reader_is_given_an_unknown_body(world: &mut World) {
     let incoming = spookery::gm_connection::read_event(Some(&json!({
         "kind": "nope",
         "text": "not an event"
@@ -124,8 +124,8 @@ fn the_host_sends_an_unknown_event(world: &mut World) {
     };
 }
 
-#[then(expr = "the GM client reports it as a bad event")]
-fn the_gm_client_reports_a_bad_event(world: &mut World) {
+#[then(expr = "the reader reports a bad event")]
+fn the_reader_reports_a_bad_event(world: &mut World) {
     assert!(
         world.scratch.contains("\"kind\":\"nope\""),
         "dropped or not reported: {}",
@@ -440,18 +440,6 @@ fn wait_proc(proc: &mut Proc, needle: &str) {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-}
-
-fn shown_actor(id: &str) -> String {
-    let spaced = id.replace('_', " ");
-    let mut chars = spaced.chars();
-    let Some(first) = chars.next() else {
-        return spaced;
-    };
-    let mut titled = String::new();
-    titled.push(first.to_ascii_uppercase());
-    titled.push_str(chars.as_str());
-    titled
 }
 
 fn gm_stdout(world: &mut World) -> String {

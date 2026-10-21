@@ -8,7 +8,7 @@ mod gm_view;
 mod player_view;
 mod render;
 
-pub use gm_view::run_gm_terminal;
+pub use gm_view::{actor_name, run_gm_terminal};
 pub use player_view::run_player_terminal;
 
 pub enum TerminalError {

@@ -5,7 +5,7 @@ Feature: The GM reads typed events
     When the GM queues "grit" for "pc_rowan" and commits
     Then the GM terminal shows one check line and one dice line for "pc_rowan"
 
-  Scenario: A malformed event is reported, not dropped
-    Given a GM connection
-    When the host sends an event whose body doesn't match any known type
-    Then the GM client reports it as a bad event
+  Scenario: A body that matches no known type is reported, not dropped
+    Given an event reader
+    When the reader is given an event body that matches no known type
+    Then the reader reports a bad event

@@ -41,7 +41,6 @@ pub fn say_event(tape: &TapeRecord) -> Vec<u8> {
 impl From<&TapeRecord> for GmSay {
     fn from(tape: &TapeRecord) -> Self {
         Self {
-            kind: "say".to_string(),
             seq: tape.seq,
             from: tape.from.clone(),
             address: tape.address.clone(),

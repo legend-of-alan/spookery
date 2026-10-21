@@ -201,7 +201,12 @@ pub struct SessionStatus {
     pub last_tick_at: String,
     pub queued: Vec<QueueRow>,
     pub last_seq: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_says",
+        deserialize_with = "deserialize_says"
+    )]
     pub events: Option<Vec<GmSay>>,
 }
 
@@ -255,14 +260,8 @@ pub struct Roll {
     pub outcome: Outcome,
 }
 
-fn say_kind() -> String {
-    "say".to_string()
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GmSay {
-    #[serde(default = "say_kind")]
-    pub(crate) kind: String,
     pub seq: u64,
     pub from: String,
     pub address: String,
@@ -272,10 +271,44 @@ pub struct GmSay {
     pub text: String,
 }
 
+/// A `spook/event` body. `kind` is the serde tag, not a stored field.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+pub enum EventBody {
+    Say(GmSay),
+    Queued(QueueRow),
+    Check(Roll),
+}
+
 impl GmSay {
     pub fn to_value(&self) -> Value {
-        serde_json::to_value(self).expect("say")
+        serde_json::to_value(EventBody::Say(self.clone())).expect("say")
     }
+}
+
+fn serialize_says<S>(events: &Option<Vec<GmSay>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    events
+        .as_ref()
+        .map(|says| says.iter().cloned().map(EventBody::Say).collect::<Vec<_>>())
+        .serialize(serializer)
+}
+
+fn deserialize_says<'de, D>(deserializer: D) -> Result<Option<Vec<GmSay>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let events = Vec::<EventBody>::deserialize(deserializer)?;
+    events
+        .into_iter()
+        .map(|event| match event {
+            EventBody::Say(say) => Ok(say),
+            EventBody::Queued(_) | EventBody::Check(_) => Err(serde::de::Error::custom("say")),
+        })
+        .collect::<Result<Vec<_>, _>>()
+        .map(Some)
 }
 
 pub fn write_say_event(say: &GmSay) -> Vec<u8> {
@@ -388,7 +421,6 @@ mod tests {
     #[test]
     fn a_say_event_keeps_null_place_and_actor() {
         let say = GmSay {
-            kind: say_kind(),
             seq: 3,
             from: "gm".to_string(),
             address: "table".to_string(),

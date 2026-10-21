@@ -38,19 +38,13 @@ impl std::fmt::Display for GmConnectionError {
 
 impl std::error::Error for GmConnectionError {}
 
+pub use crate::protocol::EventBody;
+
 /// One `spook/event` the seat already sent. `raw` is the notification line.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Event {
     pub raw: String,
     pub body: EventBody,
-}
-
-/// Fields the seat put on the event. A check has no actor and no check id.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum EventBody {
-    Say(crate::protocol::GmSay),
-    Queued(crate::protocol::QueueRow),
-    Check(crate::protocol::Roll),
 }
 
 /// A message from the GM seat, before a client's own turn rules.
@@ -525,21 +519,9 @@ pub fn read_event(params: Option<&Value>) -> Incoming {
         "params": &params,
     }))
     .unwrap_or_else(|_| params.to_string());
-    let body = match params.get("kind").and_then(Value::as_str) {
-        Some("say") => serde_json::from_value(params.clone())
-            .ok()
-            .map(EventBody::Say),
-        Some("queued") => serde_json::from_value(params.clone())
-            .ok()
-            .map(EventBody::Queued),
-        Some("check") => serde_json::from_value(params.clone())
-            .ok()
-            .map(EventBody::Check),
-        _ => None,
-    };
-    match body {
-        Some(body) => Incoming::Event(Event { raw, body }),
-        None => Incoming::Bad(raw),
+    match serde_json::from_value(params) {
+        Ok(body) => Incoming::Event(Event { raw, body }),
+        Err(_) => Incoming::Bad(raw),
     }
 }
 
@@ -577,7 +559,6 @@ mod tests {
     #[test]
     fn a_say_event_keeps_the_speaker_and_the_text() {
         let line = String::from_utf8(crate::protocol::write_say_event(&crate::protocol::GmSay {
-            kind: "say".to_string(),
             seq: 4,
             from: "player:pc_rowan".to_string(),
             address: "table".to_string(),

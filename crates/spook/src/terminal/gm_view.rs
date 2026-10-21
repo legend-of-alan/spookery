@@ -253,38 +253,34 @@ impl Session {
         let Some(outcome) = self.call_tool("commit_round", json!({ "include_tick": true })) else {
             return;
         };
-        if outcome.refused {
-            self.show_arrived(&[]);
-            self.show_tool_refusal(&outcome);
-            self.show_ready();
-            return;
-        }
-        let Some(reply) = read_commit(&outcome.body) else {
-            self.show_arrived(&[]);
-            unread();
-            self.show_ready();
-            return;
+        let reply = if outcome.refused {
+            None
+        } else {
+            read_commit(&outcome.body)
         };
-        let checks = render_checks(&reply);
-        let dice = render_dice(&reply);
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
-        // either side is shown once.
-        if self.raw {
-            self.show_arrived(&[]);
-            emit(&outcome.raw);
-            self.show_ready();
-            return;
+        // either side is shown once. Raw mode and a failed read show none.
+        let checks = reply.as_ref().filter(|_| !self.raw).map(render_checks);
+        self.show_arrived(checks.as_deref().unwrap_or(&[]));
+        if outcome.refused {
+            self.show_tool_refusal(&outcome);
+        } else if let Some(reply) = reply {
+            if self.raw {
+                emit(&outcome.raw);
+            } else if let Some(checks) = checks {
+                emit(&render_diff(&reply));
+                for line in &checks {
+                    emit(line);
+                }
+                for line in &render_dice(&reply) {
+                    emit(line);
+                }
+                self.printed_checks.printed(checks);
+            }
+        } else {
+            unread();
         }
-        self.show_arrived(&checks);
-        emit(&render_diff(&reply));
-        for line in &checks {
-            emit(line);
-        }
-        for line in &dice {
-            emit(line);
-        }
-        self.printed_checks.printed(checks);
         self.show_ready();
     }
 
@@ -756,7 +752,6 @@ mod tests {
 
     fn say(from: &str, seq: u64, text: &str) -> EventBody {
         EventBody::Say(GmSay {
-            kind: "say".to_string(),
             seq,
             from: from.to_string(),
             address: "table".to_string(),

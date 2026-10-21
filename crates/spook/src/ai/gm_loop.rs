@@ -11,7 +11,7 @@ use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
 use crate::ai::prompt::{
     from_canon, keep, parse_actions, prepare_with, push_handled, render_prompt, HandledSay, Kept,
-    MenuRow, OutgoingSay, Prepared, PromptSide, Prose, QueueItem, RollLine, Wake,
+    MenuRow, OutgoingSay, Prepared, PromptSide, Prose, Wake,
 };
 use crate::ai::HostError;
 use crate::gm_connection::{self, EventBody, Incoming, ToolCallResult};
@@ -126,7 +126,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         kinds,
         prose,
         &wake,
-        &status.present,
+        &status.presence.actors_present,
         &mut |viewer| match perceive(seat, viewer) {
             Ok(result) => result,
             Err(err) => {
@@ -189,17 +189,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         } else {
             let commit: CommitBody = serde_json::from_value(outcome.body.clone())
                 .map_err(|_| fail(outcome.raw.clone()))?;
-            checks = commit
-                .checks
-                .into_iter()
-                .map(|roll| RollLine {
-                    faces: roll.faces.into_iter().map(u64::from).collect(),
-                    stat: roll.stat,
-                    total: roll.total,
-                    target: roll.target,
-                    outcome: roll.outcome.as_str().to_string(),
-                })
-                .collect();
+            checks = commit.checks;
             true
         }
     };
@@ -297,7 +287,7 @@ fn perceive(
     Ok(Ok(outcome.body))
 }
 
-fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<Status, HostError> {
+fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<SessionStatus, HostError> {
     let arguments = match since {
         Some(since) => json!({ "since": since }),
         None => json!({}),
@@ -306,43 +296,17 @@ fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<Status, HostErro
     if outcome.refused {
         return Err(fail(outcome.raw));
     }
-    let body: SessionStatus =
-        serde_json::from_value(outcome.body).map_err(|_| fail(outcome.raw))?;
-    Ok(Status {
-        pack_rev: body.pack_rev,
-        last_seq: body.last_seq,
-        present: body.presence.actors_present,
-        queued: body
-            .queued
-            .into_iter()
-            .map(|row| QueueItem {
-                id: row.id,
-                actor_id: row.actor_id,
-                move_name: row.move_name,
-            })
-            .collect(),
-        events: body
-            .events
-            .unwrap_or_default()
-            .into_iter()
-            .map(|say| HandledSay {
-                seq: Some(say.seq),
-                from: say.from,
-                address: say.address,
-                place: say.place,
-                actor: say.actor,
-                text: say.text,
-            })
-            .collect(),
-    })
+    serde_json::from_value(outcome.body).map_err(|_| fail(outcome.raw))
 }
 
-fn player_lines(status: &Status, high: u64) -> Vec<HandledSay> {
+fn player_lines(status: &SessionStatus, high: u64) -> Vec<HandledSay> {
     status
         .events
         .iter()
-        .filter(|say| say.from.starts_with("player:") && say.seq.is_some_and(|seq| seq > high))
+        .flatten()
+        .filter(|say| say.from.starts_with("player:") && say.seq > high)
         .cloned()
+        .map(HandledSay::from)
         .collect()
 }
 
@@ -448,14 +412,6 @@ impl GmLoop {
             EventBody::Check(_) => None,
         }
     }
-}
-
-struct Status {
-    pack_rev: String,
-    last_seq: u64,
-    present: Vec<String>,
-    queued: Vec<QueueItem>,
-    events: Vec<HandledSay>,
 }
 
 fn host_err(err: gm_connection::GmConnectionError) -> HostError {
