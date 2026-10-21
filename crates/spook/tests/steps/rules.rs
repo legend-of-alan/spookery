@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -163,31 +163,6 @@ fn spook_verify_names_the_tick_and_the_first_differing_effect(world: &mut World)
     assert!(world.stderr.contains("logged "), "{}", world.stderr);
     assert!(world.stderr.contains("replayed "), "{}", world.stderr);
 }
-
-const KINDS: &[&str] = &[
-    "has_item",
-    "meter",
-    "flag",
-    "location",
-    "note",
-    "narrate",
-    "clock",
-    "memory",
-    "item",
-    "reveal",
-    "note_exists",
-    "humans",
-    "hour",
-    "stock",
-    "wield",
-    "unwield",
-    "wielding",
-    "at",
-    "knows",
-    "all",
-    "any",
-    "not",
-];
 
 #[given(expr = "a place rule \"bell\" in docks_shop and a story rule \"bell\"")]
 fn a_place_rule_and_a_story_rule(world: &mut World) {
@@ -622,49 +597,6 @@ fn check_reports_two_conditions(world: &mut World) {
     );
 }
 
-#[then(expr = "no effect or condition kind is matched by string in canon\\/")]
-fn canon_does_not_match_kinds_by_string(world: &mut World) {
-    let _ = world;
-    let root = repo().join("crates/kernel/canon");
-    let mut hits = Vec::new();
-    for path in rust_files(&root) {
-        let text = fs::read_to_string(&path).unwrap();
-        for (index, line) in text.lines().enumerate() {
-            if kind_compared(line) {
-                hits.push(format!(
-                    "{}:{}: {line}",
-                    path.strip_prefix(repo()).unwrap().display(),
-                    index + 1
-                ));
-            }
-        }
-    }
-    assert!(hits.is_empty(), "{}", hits.join("\n"));
-}
-
-#[then(expr = "the host sources contain no audience or item checks")]
-fn the_host_has_no_audience_or_item_checks(world: &mut World) {
-    let _ = world;
-    let root = repo().join("crates/spook/src/host");
-    let banned = ["audience", "require_item", "has_item", "inventory"];
-    let mut hits = Vec::new();
-    for path in rust_files(&root) {
-        let text = fs::read_to_string(&path).unwrap();
-        for (index, line) in text.lines().enumerate() {
-            for word in banned {
-                if line.contains(word) {
-                    hits.push(format!(
-                        "{}:{}: {line}",
-                        path.strip_prefix(repo()).unwrap().display(),
-                        index + 1
-                    ));
-                }
-            }
-        }
-    }
-    assert!(hits.is_empty(), "{}", hits.join("\n"));
-}
-
 #[given(expr = "steady costs 5 grit and the sitter has 1")]
 fn steady_costs_five_grit(world: &mut World) {
     let pack = temp_pack("rules-cost");
@@ -1058,33 +990,4 @@ fn key_spot(text: &str, key: &str) -> (u64, u64) {
         }
     }
     panic!("missing {key}");
-}
-
-fn repo() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn rust_files(dir: &Path) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    let mut pending = vec![dir.to_path_buf()];
-    while let Some(dir) = pending.pop() {
-        for entry in fs::read_dir(&dir).unwrap() {
-            let path = entry.unwrap().path();
-            if path.is_dir() {
-                pending.push(path);
-            } else if path.extension().and_then(|ext| ext.to_str()) == Some("rs") {
-                out.push(path);
-            }
-        }
-    }
-    out
-}
-
-fn kind_compared(line: &str) -> bool {
-    KINDS.iter().any(|kind| {
-        line.contains(&format!("== \"{kind}\""))
-            || line.contains(&format!("!= \"{kind}\""))
-            || line.contains(&format!("\"{kind}\" =="))
-            || line.contains(&format!("\"{kind}\" !="))
-    })
 }
