@@ -16,9 +16,9 @@ use rmcp::transport::streamable_http_server::session::{
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio::sync::oneshot;
 
-use super::gm_seat;
+use super::gm_seat::GmHost;
 use super::limits::GM_BODY_CAP;
-use super::world_loop::Msg;
+use super::world_loop::{Msg, SocketEnd};
 
 // HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
@@ -26,14 +26,9 @@ pub(super) async fn serve(
     tx: Sender<Msg>,
     next_conn: Arc<AtomicU64>,
 ) {
-    let service = StreamableHttpService::new(
-        move || {
-            let conn = next_conn.fetch_add(1, Ordering::Relaxed);
-            Ok(gm_seat::http_host(tx.clone(), conn))
-        },
-        Arc::new(SeatSessions::default()),
-        http_config(),
-    );
+    let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn));
+    let service =
+        StreamableHttpService::new(move || Ok(GmHost::new(tx.clone())), sessions, http_config());
     let app = axum::Router::new().route_service("/mcp", service);
     let _ = axum::serve(listener, app).await;
 }
@@ -46,27 +41,28 @@ fn http_config() -> StreamableHttpServerConfig {
     config
 }
 
-/// Rides on a session's `initialize` request to its `GmHost`. The host takes
-/// the sender and drops it after its seat is free, so the receiver resolves
-/// once the shard thread no longer holds the GM seat for that session.
-#[derive(Clone)]
-pub(super) struct SeatRelease(Arc<Mutex<Option<oneshot::Sender<()>>>>);
+/// The shard connection id for this HTTP session. `GmHost` reads it during initialize.
+#[derive(Clone, Copy)]
+pub(super) struct SeatConn(pub(super) u64);
 
-impl SeatRelease {
-    pub(super) fn take(&self) -> Option<oneshot::Sender<()>> {
-        self.0.lock().unwrap_or_else(|err| err.into_inner()).take()
-    }
-}
-
-/// rmcp's local sessions, except that closing a session (HTTP DELETE) answers
-/// only after that session's GM seat is released. rmcp's own close only queues
-/// the close for the session worker, and the handler, which holds the seat,
-/// drops later on another task. A GM that reconnects as soon as DELETE returns
-/// would otherwise find its old seat still taken.
-#[derive(Default)]
+/// rmcp's local sessions. Closing one answers only after the shard thread has
+/// freed that session's GM seat.
 struct SeatSessions {
     inner: LocalSessionManager,
-    released: Mutex<HashMap<SessionId, oneshot::Receiver<()>>>,
+    tx: Sender<Msg>,
+    next_conn: Arc<AtomicU64>,
+    conns: Mutex<HashMap<SessionId, u64>>,
+}
+
+impl SeatSessions {
+    fn new(tx: Sender<Msg>, next_conn: Arc<AtomicU64>) -> Self {
+        Self {
+            inner: LocalSessionManager::default(),
+            tx,
+            next_conn,
+            conns: Mutex::new(HashMap::new()),
+        }
+    }
 }
 
 impl SessionManager for SeatSessions {
@@ -83,15 +79,12 @@ impl SessionManager for SeatSessions {
         mut message: ClientJsonRpcMessage,
     ) -> Result<ServerJsonRpcMessage, Self::Error> {
         if let ClientJsonRpcMessage::Request(request) = &mut message {
-            let (tx, rx) = oneshot::channel();
-            self.released
+            let conn = self.next_conn.fetch_add(1, Ordering::Relaxed);
+            self.conns
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
-                .insert(id.clone(), rx);
-            request
-                .request
-                .extensions_mut()
-                .insert(SeatRelease(Arc::new(Mutex::new(Some(tx)))));
+                .insert(id.clone(), conn);
+            request.request.extensions_mut().insert(SeatConn(conn));
         }
         self.inner.initialize_session(id, message).await
     }
@@ -101,18 +94,28 @@ impl SessionManager for SeatSessions {
     }
 
     async fn close_session(&self, id: &SessionId) -> Result<(), Self::Error> {
-        let released = self
-            .released
+        // Remove first, so the worker's second call after a DELETE is a no-op.
+        let conn = self
+            .conns
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .remove(id);
-        self.inner.close_session(id).await?;
-        // The sender drops with the handler, after its seat is free, so this
-        // ends on every path: released, refused, or never claimed.
-        if let Some(released) = released {
-            let _ = released.await;
+        let closed = self.inner.close_session(id).await;
+        if let Some(conn) = conn {
+            let (ack_tx, ack_rx) = oneshot::channel();
+            if self
+                .tx
+                .send(Msg::Fault {
+                    conn,
+                    end: SocketEnd::Close,
+                    ack: ack_tx,
+                })
+                .is_ok()
+            {
+                let _ = ack_rx.await;
+            }
         }
-        Ok(())
+        closed
     }
 
     async fn create_stream(
@@ -155,36 +158,8 @@ mod tests {
     use rmcp::model::ProtocolVersion;
     use serde_json::Value;
 
-    use super::super::world_loop::{Ack, Msg};
-    use super::{serve, SeatSessions, SessionId, SessionManager};
-
-    // Close only answers once the session's seat release is confirmed. The
-    // release here is a bare sender, so nothing else can wake the close.
-    #[tokio::test]
-    async fn closing_a_session_waits_for_its_seat_release() {
-        use std::future::Future;
-        use std::task::{Context, Poll, Waker};
-
-        let sessions = SeatSessions::default();
-        let id: SessionId = Arc::from("held");
-        let (released, confirm) = tokio::sync::oneshot::channel::<()>();
-        sessions
-            .released
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
-            .insert(id.clone(), confirm);
-        let mut close = std::pin::pin!(sessions.close_session(&id));
-        let mut cx = Context::from_waker(Waker::noop());
-        assert!(
-            close.as_mut().poll(&mut cx).is_pending(),
-            "close answered while the seat was still held"
-        );
-        drop(released);
-        assert!(
-            matches!(close.as_mut().poll(&mut cx), Poll::Ready(Ok(()))),
-            "close did not answer once the seat was free"
-        );
-    }
+    use super::super::world_loop::Msg;
+    use super::serve;
 
     /// A stand-in for the shard thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real table. On a fault it tells
@@ -221,14 +196,7 @@ mod tests {
                         if seat == Some(conn) {
                             seat = None;
                         }
-                        match ack {
-                            Ack::Thread(tx) => {
-                                let _ = tx.try_send(());
-                            }
-                            Ack::Task(tx) => {
-                                let _ = tx.send(());
-                            }
-                        }
+                        let _ = ack.send(());
                     }
                     _ => {}
                 }

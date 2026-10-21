@@ -11,7 +11,7 @@ use std::time::Duration;
 use spookery_kernel::api::Reason;
 
 use super::mcp_http;
-use super::world_loop::{self, Ack, HelloReply, Msg, PlayerReply, SocketEnd};
+use super::world_loop::{self, HelloReply, Msg, PlayerReply, SocketEnd};
 
 pub enum Error {
     Reason(Reason),
@@ -305,7 +305,7 @@ pub(super) async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
         .send(Msg::Fault {
             conn,
             end,
-            ack: Ack::Task(ack_tx),
+            ack: ack_tx,
         })
         .is_err()
     {

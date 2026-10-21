@@ -1,9 +1,7 @@
 //! The MCP server that lists and runs the GM tools.
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::OnceLock;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResponse, CallToolResult, CustomNotification,
@@ -12,52 +10,20 @@ use rmcp::model::{
 };
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
-use spookery_kernel::api::Reason;
 
 use super::gm_tools;
-use super::world_loop::{Ack, Msg, SocketEnd, ToolReply};
-
-/// How long releasing an HTTP GM seat waits for the shard thread's ack.
-const RELEASE_WAIT: Duration = Duration::from_secs(2);
-
-struct HttpSeat {
-    conn: u64,
-    held: Arc<AtomicBool>,
-    /// Clone of the seat's outbound queue. Say and check frames go here, in
-    /// order, and the one forwarder below writes them.
-    out: std::sync::Mutex<Option<super::limits::OutTx>>,
-    /// Dropped after the seat is free. A DELETE on this session waits for it.
-    released: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>,
-}
+use super::world_loop::Msg;
 
 pub(super) struct GmHost {
     tx: Sender<Msg>,
-    http: Option<HttpSeat>,
+    conn: OnceLock<u64>,
 }
 
-pub(super) fn http_host(tx: Sender<Msg>, conn: u64) -> GmHost {
-    GmHost {
-        tx,
-        http: Some(HttpSeat {
-            conn,
-            held: Arc::new(AtomicBool::new(false)),
-            out: std::sync::Mutex::new(None),
-            released: std::sync::Mutex::new(None),
-        }),
-    }
-}
-
-impl Drop for GmHost {
-    fn drop(&mut self) {
-        self.release();
-        // The seat is free, so the session's DELETE may answer now.
-        if let Some(http) = &self.http {
-            drop(
-                http.released
-                    .lock()
-                    .unwrap_or_else(|err| err.into_inner())
-                    .take(),
-            );
+impl GmHost {
+    pub(super) fn new(tx: Sender<Msg>) -> Self {
+        Self {
+            tx,
+            conn: OnceLock::new(),
         }
     }
 }
@@ -92,20 +58,15 @@ impl ServerHandler for GmHost {
         request: InitializeRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<InitializeResult, McpError> {
-        if let Some(http) = &self.http {
-            if let Some(tag) = context.extensions.get::<super::mcp_http::SeatRelease>() {
-                *http.released.lock().unwrap_or_else(|err| err.into_inner()) = tag.take();
-            }
-            self.claim(&context).await?;
-        }
+        let conn = context
+            .extensions
+            .get::<super::mcp_http::SeatConn>()
+            .map(|seat| seat.0)
+            .ok_or_else(|| McpError::internal_error("no seat", None))?;
+        let _ = self.conn.set(conn);
+        self.claim(conn, &context).await?;
         context.peer.set_peer_info(request.clone());
-        match self.negotiate_initialize(&request) {
-            Ok(info) => Ok(info),
-            Err(err) => {
-                self.release();
-                Err(err)
-            }
-        }
+        self.negotiate_initialize(&request)
     }
 
     async fn call_tool(
@@ -113,17 +74,8 @@ impl ServerHandler for GmHost {
         request: CallToolRequestParams,
         _context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, McpError> {
-        let conn = {
-            let Some(http) = &self.http else {
-                return Err(McpError::internal_error("no seat", None));
-            };
-            if !http.held.load(Ordering::Acquire) {
-                return Ok(CallToolResult::structured(crate::protocol::code_result(
-                    Reason::NotInSpec.token(),
-                ))
-                .into());
-            }
-            http.conn
+        let Some(&conn) = self.conn.get() else {
+            return Err(McpError::internal_error("no seat", None));
         };
         let tx = self.tx.clone();
         let name = request.name.into_owned();
@@ -136,37 +88,20 @@ impl ServerHandler for GmHost {
             reply: reply_tx,
         })
         .map_err(|_| McpError::internal_error("shard closed", None))?;
-        let ToolReply {
-            value,
-            after,
-            released,
-        } = reply_rx
+        let value = reply_rx
             .await
             .map_err(|_| McpError::internal_error("shard closed", None))?;
-        if released {
-            if let Some(http) = &self.http {
-                http.held.store(false, Ordering::Release);
-            }
-        }
-        // Queue the events and return. Waiting here for the write stalls the
-        // client: it is blocked on this result, so it never reads the event.
-        // The forwarder started in `claim` drains this queue in order.
-        self.enqueue_after(after);
         Ok(CallToolResult::structured(value).into())
     }
 }
 
 impl GmHost {
-    async fn claim(&self, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
-        let Some(http) = &self.http else {
-            return Ok(());
-        };
+    async fn claim(&self, conn: u64, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
         let (out_tx, mut out_rx, cancel_tx, mut cancel_rx) = super::limits::outbound();
-        let queued = out_tx.clone();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(Msg::Claim {
-                conn: http.conn,
+                conn,
                 out: out_tx,
                 cancel: cancel_tx,
                 reply: reply_tx,
@@ -177,9 +112,8 @@ impl GmHost {
             .map_err(|_| McpError::internal_error("shard closed", None))?;
         match reply {
             Ok(()) => {
-                http.held.store(true, Ordering::Release);
-                *http.out.lock().unwrap_or_else(|err| err.into_inner()) = Some(queued);
                 let peer = context.peer.clone();
+                // One forwarder writes this queue, so two tool calls cannot pass each other.
                 tokio::spawn(async move {
                     loop {
                         let item = tokio::select! {
@@ -221,67 +155,6 @@ impl GmHost {
                 Ok(())
             }
             Err(line) => Err(refusal_error(&line)),
-        }
-    }
-
-    /// One forwarder writes this queue, so two tool calls cannot pass each
-    /// other. A full queue drops the seat.
-    fn enqueue_after(&self, frames: Vec<Vec<u8>>) {
-        let Some(http) = &self.http else {
-            return;
-        };
-        // Hold the queue lock across every frame of this call, then drop it
-        // before a full queue releases the seat.
-        let full = {
-            let guard = http.out.lock().unwrap_or_else(|err| err.into_inner());
-            let Some(out) = guard.as_ref() else {
-                return;
-            };
-            let mut full = false;
-            for frame in frames {
-                if !super::limits::try_frame(out, frame) {
-                    full = true;
-                    break;
-                }
-            }
-            full
-        };
-        if full {
-            self.release();
-        }
-    }
-
-    fn release(&self) {
-        let Some(http) = &self.http else {
-            return;
-        };
-        if !http.held.swap(false, Ordering::AcqRel) {
-            return;
-        }
-        let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(1);
-        if self
-            .tx
-            .send(Msg::Fault {
-                conn: http.conn,
-                end: SocketEnd::Close,
-                ack: Ack::Thread(ack_tx),
-            })
-            .is_err()
-        {
-            return;
-        }
-        // Wait until the shard thread has freed the seat, for at most RELEASE_WAIT.
-        // A dropped sender (the shard thread is gone) ends the wait at once.
-        // This runs from Drop, often on a tokio worker, so on the multi-thread
-        // runtime the wait is moved off the worker with block_in_place.
-        let wait = move || {
-            let _ = ack_rx.recv_timeout(RELEASE_WAIT);
-        };
-        match tokio::runtime::Handle::try_current() {
-            Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
-                tokio::task::block_in_place(wait);
-            }
-            _ => wait(),
         }
     }
 }

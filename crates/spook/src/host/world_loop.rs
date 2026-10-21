@@ -249,13 +249,13 @@ pub(super) enum Msg {
     Fault {
         conn: u64,
         end: SocketEnd,
-        ack: Ack,
+        ack: tokio::sync::oneshot::Sender<()>,
     },
     Tool {
         conn: u64,
         name: String,
         arguments: Option<serde_json::Map<String, serde_json::Value>>,
-        reply: tokio::sync::oneshot::Sender<ToolReply>,
+        reply: tokio::sync::oneshot::Sender<serde_json::Value>,
     },
     /// The HTTP session takes the one GM seat. The game port does not.
     Claim {
@@ -267,34 +267,6 @@ pub(super) enum Msg {
     Wake,
     Stdin(String),
     StdinEof,
-}
-
-/// The world thread answers a fault once the seat is released.
-/// An async caller awaits `Task`. A caller that must wait from a plain `Drop`
-/// uses `Thread` and blocks on it with a timeout.
-pub(super) enum Ack {
-    Task(tokio::sync::oneshot::Sender<()>),
-    Thread(std::sync::mpsc::SyncSender<()>),
-}
-
-impl Ack {
-    fn send(self) {
-        match self {
-            Ack::Task(tx) => {
-                let _ = tx.send(());
-            }
-            Ack::Thread(tx) => {
-                let _ = tx.try_send(());
-            }
-        }
-    }
-}
-
-pub(super) struct ToolReply {
-    pub value: serde_json::Value,
-    pub after: Vec<Vec<u8>>,
-    /// This call freed the GM seat. The session must not call again.
-    pub released: bool,
 }
 
 pub(super) enum HelloReply {
@@ -347,11 +319,7 @@ fn handle(
             reply,
         } => {
             if seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
-                let _ = reply.send(ToolReply {
-                    value: crate::protocol::code_result(Reason::NotInSpec.token()),
-                    after: Vec::new(),
-                    released: false,
-                });
+                let _ = reply.send(crate::protocol::code_result(Reason::NotInSpec.token()));
                 return Ok(());
             }
             let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
@@ -377,19 +345,17 @@ fn handle(
             }
             let mut after = done.after;
             after.extend(player_moves::gm_check_frames(&reports));
+            for frame in after {
+                send_gm(seats, frame);
+            }
             if done.advanced {
                 bump_sleep(restart);
             }
             // Free the seat before the client can read this result.
-            let released = done.release_seat;
-            if released {
+            if done.release_seat {
                 seats.gm = None;
             }
-            let _ = reply.send(ToolReply {
-                value: done.value,
-                after,
-                released,
-            });
+            let _ = reply.send(done.value);
         }
         Msg::Wake => {
             if idle_clock::on_scheduled_wake(world, !seats.players.is_empty(), seats.gm.is_some())?
@@ -746,7 +712,7 @@ fn on_fault(
     seats: &mut Seats,
     conn: u64,
     end: SocketEnd,
-    ack: Ack,
+    ack: tokio::sync::oneshot::Sender<()>,
 ) -> Result<(), Reason> {
     let result = if seats.players.by_conn(conn).is_some() {
         match drop_conn(world, seats, conn, end) {
@@ -763,7 +729,7 @@ fn on_fault(
     } else {
         Ok(())
     };
-    ack.send();
+    let _ = ack.send(());
     result
 }
 
