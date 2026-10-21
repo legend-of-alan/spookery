@@ -167,7 +167,11 @@ fn play_with(
     now_wall: &str,
     recorded: Option<RecordedRound>,
 ) -> Result<(Vec<Effect>, RoundOutput), Reason> {
-    let _lock = lock_world(world.root())?;
+    // A replayed round stays in memory, so only a live round takes the lock.
+    let _lock = match recorded {
+        None => Some(lock_world(world.root())?),
+        Some(_) => None,
+    };
     if let Some(recorded) = &recorded {
         world.set_presence(Presence {
             humans: recorded.presence_humans,

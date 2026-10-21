@@ -1,12 +1,11 @@
 //! An open pack, and the check that reads one without writing.
 
-use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::canon::world_settings::Budget;
-use crate::canon::{check_save_except, load_canon, meters_pending, pack_rev, Canon};
+use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
@@ -91,26 +90,29 @@ impl World {
         self.warning = Some(text);
     }
 
+    /// Open the pack. A save that later journal records continue is a checkpoint,
+    /// and resume checks the tip instead.
     pub fn open(root: &Path) -> Result<Self, Reason> {
-        load_world(root, OpenMode::Live)
+        load_world(root, false)
     }
 
-    /// Open a temp pack for replay. A base from before migrate may not match `pack_rev`.
-    pub fn open_for_replay(root: &Path) -> Result<Self, Reason> {
-        load_world(root, OpenMode::Replay)
-    }
-
-    /// Open so migrate can replay the tail. Meters no migrate has recorded yet
-    /// are not required: this migrate is about to add them.
+    /// Open without the `pack_rev` check, so migrate can replay the tail and store a new one.
     pub fn open_for_migrate(root: &Path) -> Result<Self, Reason> {
-        load_world(root, OpenMode::Migrate)
+        load_world(root, true)
     }
-}
 
-enum OpenMode {
-    Live,
-    Replay,
-    Migrate,
+    /// The pack's canon with a save from memory, for replay. Nothing is checked:
+    /// each journal record's hash proves the state it reaches.
+    pub fn open_for_replay(pack: &Path, now: Now) -> Result<Self, Reason> {
+        Ok(Self {
+            root: pack.to_path_buf(),
+            canon: Arc::new(load_canon(pack).map_err(reason_of)?),
+            now,
+            queue: Vec::new(),
+            next_session: 1,
+            warning: None,
+        })
+    }
 }
 
 impl Draft {
@@ -130,7 +132,7 @@ pub fn session_status(now: &Now) -> SessionStatus {
     }
 }
 
-fn load_world(root: &Path, mode: OpenMode) -> Result<World, Reason> {
+fn load_world(root: &Path, migrate: bool) -> Result<World, Reason> {
     if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -140,25 +142,21 @@ fn load_world(root: &Path, mode: OpenMode) -> Result<World, Reason> {
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
     let now = load_save(now_text).map_err(reason_of)?;
     let mut problems = save_problems(&now, &now_bytes);
-    let replay = !matches!(mode, OpenMode::Live);
-    if !replay {
+    if !migrate {
         if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
             problems.insert(0, diag);
         }
     }
-    if journal_continues(root, &now) {
+    let continues = journal_continues(root, &now);
+    if continues {
         problems.retain(|diag| diag.code != Reason::HandEdit.token());
     }
     if !problems.is_empty() {
         return Err(reason_of(problems));
     }
-    let mut later = meters_added_after(root, now.state_rev);
-    if matches!(mode, OpenMode::Migrate) {
-        for meter in meters_pending(&canon, &now) {
-            later.insert(meter.id);
-        }
+    if !continues {
+        check_save(&canon, &now).map_err(reason_of)?;
     }
-    check_save_except(&canon, &now, &later).map_err(reason_of)?;
     Ok(World {
         root: root.to_path_buf(),
         canon,
@@ -167,26 +165,6 @@ fn load_world(root: &Path, mode: OpenMode) -> Result<World, Reason> {
         next_session: 1,
         warning: None,
     })
-}
-
-/// Meter ids added by a migrate record newer than `state_rev`.
-pub fn meters_added_after(root: &Path, state_rev: u64) -> BTreeSet<String> {
-    let Ok(entries) = journal::read_entries(root) else {
-        return BTreeSet::new();
-    };
-    let mut ids = BTreeSet::new();
-    for entry in entries {
-        let JournalEntry::Migrate(record) = entry else {
-            continue;
-        };
-        if record.state_rev_after <= state_rev {
-            continue;
-        }
-        for meter in record.meters {
-            ids.insert(meter.id);
-        }
-    }
-    ids
 }
 
 /// Hash of the newest migrate past the checkpoint, or the save's own hash.
@@ -317,9 +295,9 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             problems.insert(0, diag);
         }
         diags.extend(problems);
-        if let Some(canon) = &canon {
-            let later = meters_added_after(root, now.state_rev);
-            if let Err(more) = check_save_except(canon, now, &later) {
+        // A checkpoint save is not the tip. Resume checks the tip when it opens.
+        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(root, now)) {
+            if let Err(more) = check_save(canon, now) {
                 diags.extend(more);
             }
         }

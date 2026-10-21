@@ -1,18 +1,15 @@
 //! Walk the journal and check that the save matches.
 
-use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
-use spookery_kernel::api::canon::{add_meter_starts, check_save_except};
+use spookery_kernel::api::canon::{add_meters, check_save};
 use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
 use spookery_kernel::api::model::{Now, Presence};
-use spookery_kernel::api::store::codec::{canonicalize, emit_effect, emit_save, load_save};
+use spookery_kernel::api::store::codec::{emit_effect, emit_save, load_save};
 use spookery_kernel::api::store::require_rules_rev;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
@@ -186,12 +183,8 @@ fn replay_walking(
             now_yaml: base_bytes,
         });
     }
-    let temp = TempDir::new();
-    copy_dir(pack, &temp.0)?;
-    let _ = fs::remove_dir_all(temp.0.join("state/.txn"));
-    fs::write(temp.0.join("state/save.yaml"), &base_bytes)
-        .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
+    let mut world =
+        World::open_for_replay(pack, load_base(&base_bytes)?).map_err(ReplayError::Reason)?;
     for entry in records.iter() {
         let rev = entry.state_rev_after();
         if rev <= base_rev || rev > cap {
@@ -234,11 +227,17 @@ fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
     };
     let entries = journal::read_live(path).map_err(|fault| replay_reason(journal_fault(fault)))?;
     let base_rev = world.now().state_rev;
+    let mut replayed = false;
     for entry in &entries {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
         apply(&mut world, entry).map_err(replay_reason)?;
+        replayed = true;
+    }
+    // Open checked a save with nothing past it. A replayed tip is checked here.
+    if replayed && !migrating {
+        check_save(world.canon(), world.now()).map_err(reason_of)?;
     }
     // Seats are this process. The journal records who was present so the round
     // replays, and the save leaves them out.
@@ -523,11 +522,7 @@ fn replay_bundle(
     start: &[u8],
     entries: &[JournalEntry],
 ) -> Result<Vec<u8>, ReplayError> {
-    let temp = TempDir::new();
-    copy_dir(pack, &temp.0)?;
-    fs::write(temp.0.join("state/save.yaml"), start)
-        .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
+    let mut world = World::open_for_replay(pack, load_base(start)?).map_err(ReplayError::Reason)?;
     let mut saved = start.to_vec();
     for entry in entries {
         apply(&mut world, entry)?;
@@ -775,27 +770,9 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
             None,
         )));
     }
-    add_meter_starts(&mut next, &record.meters);
-    // Meters this record does not add are not required yet when an actor lacks them.
-    // A later migrate record, or the migrate being sealed, puts them on.
-    let mut except = BTreeSet::new();
-    for id in world.canon().meters.keys() {
-        if record.meters.iter().any(|meter| meter.id == *id) {
-            continue;
-        }
-        if next
-            .actors
-            .values()
-            .any(|actor| !actor.meters().contains_key(id))
-        {
-            except.insert(id.clone());
-        }
-    }
-    check_save_except(world.canon(), &next, &except)
-        .map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
+    add_meters(&mut next, &record.meters);
     next.pack_rev = record.pack_rev_after.clone();
     next.state_rev = record.state_rev_after;
-    canonicalize(&mut next);
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
@@ -891,46 +868,6 @@ fn first_diff_line(live: &str, replayed: &str) -> Option<(u32, String)> {
         return Some((1, live.lines().next().unwrap_or("").to_string()));
     }
     None
-}
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_nanos())
-            .unwrap_or(0);
-        let path =
-            std::env::temp_dir().join(format!("spook-replay-{}-{n}-{nanos}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn copy_dir(from: &Path, to: &Path) -> Result<(), ReplayError> {
-    fs::create_dir_all(to).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    for entry in fs::read_dir(from).map_err(|_| ReplayError::Reason(Reason::Schema))? {
-        let entry = entry.map_err(|_| ReplayError::Reason(Reason::Schema))?;
-        let dest = to.join(entry.file_name());
-        let file_type = entry
-            .file_type()
-            .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest)?;
-        } else {
-            fs::copy(entry.path(), &dest).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]
