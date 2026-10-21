@@ -54,9 +54,9 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp(&pack);
     let mut shard = seat(&pack);
-    play(&mut shard, "spill");
-    world.summary = shard.change_summary().to_vec();
-    world.stdout = change_line(&mut shard);
+    let output = play(&mut shard, "spill");
+    world.summary = output.summary.clone();
+    world.stdout = change_line(&output);
 }
 
 #[when(expr = "lark's might is raised and the seeded strike succeeds")]
@@ -74,16 +74,16 @@ fn larks_might_is_raised(world: &mut World) {
         might.offset = 0;
     });
     let mut shard = seat(&pack);
-    play(&mut shard, "strike npc_briar");
-    world.stdout = change_line(&mut shard);
+    let output = play(&mut shard, "strike npc_briar");
+    world.stdout = change_line(&output);
 }
 
 #[when(expr = "lark uses a tonic")]
 fn lark_uses_a_tonic(world: &mut World) {
     let pack = pack(world).to_path_buf();
     let mut shard = seat(&pack);
-    play(&mut shard, "use tonic");
-    world.stdout = change_line(&mut shard);
+    let output = play(&mut shard, "use tonic");
+    world.stdout = change_line(&output);
 }
 
 #[when(expr = "lark uses her tonic while someone out of sight gains one")]
@@ -97,9 +97,9 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp(&pack);
     let mut shard = seat(&pack);
-    play(&mut shard, "sip");
-    world.summary = shard.change_summary().to_vec();
-    world.stdout = change_line(&mut shard);
+    let output = play(&mut shard, "sip");
+    world.summary = output.summary.clone();
+    world.stdout = change_line(&output);
 }
 
 #[then(expr = "that line does not mention the unseen gain")]
@@ -124,8 +124,8 @@ fn the_line_skips_the_unseen_gain(world: &mut World) {
 fn lark_drops_the_tonic(world: &mut World) {
     let pack = pack(world).to_path_buf();
     let mut shard = seat(&pack);
-    play(&mut shard, "drop tonic");
-    world.stdout = change_line(&mut shard);
+    let output = play(&mut shard, "drop tonic");
+    world.stdout = change_line(&output);
 }
 
 #[given(expr = "a tonic is on the ground")]
@@ -144,8 +144,8 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
 fn lark_takes_the_tonic(world: &mut World) {
     let pack = pack(world).to_path_buf();
     let mut shard = seat(&pack);
-    play(&mut shard, "take tonic");
-    world.stdout = change_line(&mut shard);
+    let output = play(&mut shard, "take tonic");
+    world.stdout = change_line(&output);
 }
 
 #[when(expr = "lark looks at their view")]
@@ -282,17 +282,20 @@ fn seat(pack: &Path) -> Shard {
     world
 }
 
-fn play(world: &mut Shard, line: &str) {
-    spookery::host::handle_player_move(world, "pc_lark", line, false)
-        .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
+fn play(world: &mut Shard, line: &str) -> spookery_round::RoundOutput {
+    match spookery::host::handle_player_move(world, "pc_lark", line, false) {
+        Ok(spookery::host::MoveOutcome::Committed { output, .. }) => output,
+        Ok(_) => panic!("{line} did not commit"),
+        Err(err) => panic!("{line}: {}", err.token()),
+    }
 }
 
-fn change_line(world: &mut Shard) -> String {
-    world
-        .take_seen()
-        .into_iter()
+fn change_line(output: &spookery_round::RoundOutput) -> String {
+    output
+        .seen
+        .iter()
         .find(|seen| seen.viewer == "pc_lark")
-        .map(|seen| seen.line)
+        .map(|seen| seen.line.clone())
         .unwrap_or_default()
 }
 

@@ -26,6 +26,8 @@ pub struct World {
     pub stdout: String,
     pub stderr: String,
     pub mark: usize,
+    pub host_mark: usize,
+    pub wren_mark: usize,
     pub player_added: String,
     pub now_bytes: Vec<u8>,
     pub state_files: Vec<(PathBuf, Vec<u8>)>,

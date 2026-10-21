@@ -4,14 +4,18 @@ use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::journal::{self, Arrival, Rejected, TickRecord};
-use spookery_kernel::api::world::{Delivered, World};
+use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 
-use crate::play::RoundCause;
+use crate::play::{RoundCause, RoundOutput};
 use crate::seed::round_seed;
 use crate::state::Round;
 
-pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<(), Reason> {
+pub(crate) fn run(
+    world: &mut World,
+    round: &mut Round,
+    draft: Draft,
+) -> Result<RoundOutput, Reason> {
     round.steps_run.push("record".to_string());
     if round.owns_commit {
         round.steps_run.push("commit_round".to_string());
@@ -44,20 +48,22 @@ pub(crate) fn run(world: &mut World, round: &mut Round, draft: Draft) -> Result<
     } else {
         spookery_kernel::api::commit::RoundStore::Write
     };
+    let output = RoundOutput {
+        reports: std::mem::take(&mut round.move_reports),
+        dice: std::mem::take(&mut round.dice),
+        summary: std::mem::take(&mut round.summary),
+        lines: std::mem::take(&mut round.lines),
+        seen: std::mem::take(&mut round.seen),
+    };
     spookery_kernel::api::commit::finish_round(
         world,
         draft,
         store,
         jsonl,
-        std::mem::take(&mut round.move_reports),
         round.recorded.is_some(),
-        Delivered {
-            summary: std::mem::take(&mut round.summary),
-            lines: std::mem::take(&mut round.lines),
-            seen: std::mem::take(&mut round.seen),
-            dice: std::mem::take(&mut round.dice),
-        },
-    )
+        output.summary.clone(),
+    )?;
+    Ok(output)
 }
 
 pub struct RoundLine<'a> {

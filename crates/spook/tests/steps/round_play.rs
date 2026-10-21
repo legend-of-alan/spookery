@@ -668,12 +668,11 @@ fn play_queued(
     for intent in intents {
         world.queue(intent);
     }
-    spookery_round::play(&mut world, RoundCause::Manual, &wall)
+    let output = spookery_round::play(&mut world, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = read_tick(pack, "tick-0001");
     let now = world.now().clone();
-    let rolls = world.take_reports();
-    (now, rolls, tick)
+    (now, output.reports, tick)
 }
 
 fn queued(id: &str, actor: &str, kind: ActorKind, move_name: &str, target: Target) -> Intent {

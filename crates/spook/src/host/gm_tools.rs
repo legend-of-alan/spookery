@@ -8,10 +8,9 @@ use spookery_kernel::api::perceive::perceive_budget;
 use spookery_kernel::api::rules::gate::resolve;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
-use spookery_round::{advance_while_busy, commit_moves_at};
+use spookery_round::RoundOutput;
 
 use super::frames;
-use super::idle_clock::wall_now;
 use super::player_moves::{self, QueuedNote};
 use super::speech;
 
@@ -28,6 +27,8 @@ pub struct GmToolReply {
     pub release_seat: bool,
     /// Set when the call was refused; the host logs it.
     pub refused: Option<Reason>,
+    /// Rounds this call played, commit first.
+    pub outputs: Vec<RoundOutput>,
 }
 
 impl GmToolReply {
@@ -42,6 +43,7 @@ impl GmToolReply {
             tape: None,
             release_seat: false,
             refused: None,
+            outputs: Vec::new(),
         }
     }
 }
@@ -302,28 +304,19 @@ fn commit_tool(
         }
         return Err(Reason::NotInSpec);
     }
-    if world.queued_intents().is_empty() {
-        let wall = wall_now()?;
-        let ran = advance_while_busy(world, &wall, 0)?;
-        if ran == 0 {
-            return Ok(noop(world));
-        }
-        let mut done = GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None));
-        done.advanced = true;
-        done.ticked = true;
-        return Ok(done);
-    }
     let before = world.now().world_time;
-    let wall = wall_now()?;
-    let outcome = commit_moves_at(world, &wall)?;
-    advance_while_busy(world, &wall, 1)?;
-    let advanced = world.now().world_time != before;
-    let mut done = GmToolReply::new(frames::commit_reply(
-        outcome.state_rev,
-        &outcome.diff_summary,
-        Some(&outcome.log_path),
-    ));
-    done.advanced = advanced;
+    let forwarded = player_moves::commit_then_fast_forward(world)?;
+    let mut done = match &forwarded.outcome {
+        Some(outcome) => GmToolReply::new(frames::commit_reply(
+            outcome.state_rev,
+            &outcome.diff_summary,
+            Some(&outcome.log_path),
+        )),
+        None if forwarded.outputs.is_empty() => return Ok(noop(world)),
+        None => noop(world),
+    };
+    done.outputs = forwarded.outputs;
+    done.advanced = world.now().world_time != before;
     done.ticked = true;
     Ok(done)
 }

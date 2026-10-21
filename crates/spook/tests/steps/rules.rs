@@ -490,8 +490,9 @@ fn lark_attacks(world: &mut World) {
     let reports =
         match spookery::host::handle_player_move(&mut opened, "pc_lark", "attack npc_briar", false)
         {
-            Ok(spookery::host::MoveOutcome::Committed { reports, .. }) => reports,
+            Ok(spookery::host::MoveOutcome::Committed { output, .. }) => output.reports,
             Ok(spookery::host::MoveOutcome::Queued(_)) => panic!("attack queued"),
+            Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("attack was busy"),
             Err(err) => panic!("attack {}", err.token()),
         };
     let rolled = reports.into_iter().find_map(|report| match report {
@@ -829,6 +830,7 @@ fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let mut opened = open_pack(&pack);
     world.scratch =
         match spookery::host::handle_player_move(&mut opened, "pc_rowan", "use tonic", true) {
+            Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
             Ok(spookery::host::MoveOutcome::Queued(note)) => {
                 let queued = opened
                     .queued_intents()

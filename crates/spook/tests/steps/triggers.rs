@@ -977,20 +977,22 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
-    spookery_round::play(&mut kernel, RoundCause::Manual, &wall).unwrap_or_else(|err| {
-        panic!("quiet: {err}");
-    });
+    let quiet =
+        spookery_round::play(&mut kernel, RoundCause::Manual, &wall).unwrap_or_else(|err| {
+            panic!("quiet: {err}");
+        });
     kernel.set_presence(spookery_kernel::api::model::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
     kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
-    spookery_round::play(&mut kernel, RoundCause::Manual, &wall)
+    let back = spookery_round::play(&mut kernel, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("back: {err}"));
-    world.told = kernel
-        .take_lines()
+    world.told = quiet
+        .lines
         .into_iter()
+        .chain(back.lines)
         .map(|line| (line.to, line.text))
         .collect();
     world.pack = Some(pack);
@@ -1298,24 +1300,24 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
     for intent in intents {
         round.queue(intent);
     }
-    spookery_round::play(&mut round, RoundCause::Manual, &wall)
+    let output = spookery_round::play(&mut round, RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = latest(pack);
-    let told = round
-        .take_lines()
+    let told = output
+        .lines
         .into_iter()
         .map(|line| (line.to, line.text))
         .collect();
-    let seen = round
-        .seen()
+    let seen = output
+        .seen
         .iter()
         .map(|item| (item.viewer.clone(), item.changes.clone()))
         .collect();
     Played {
         now: round.now().clone(),
-        rolls: round.take_reports(),
+        rolls: output.reports,
         tick,
-        summary: round.change_summary().to_vec(),
+        summary: output.summary,
         seen,
         told,
     }
