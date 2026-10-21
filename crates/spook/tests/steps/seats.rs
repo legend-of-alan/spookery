@@ -1,6 +1,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
+use spookery_kernel::api::journal::list_tick_keys;
 
 use crate::World;
 
@@ -337,7 +338,7 @@ fn each_wait_committed_its_own_tick(world: &mut World) {
     table::wait_world_time(pack, 1090);
     assert_eq!(table::now_of(pack).tick_index, 2);
     assert_eq!(
-        table::list_tick_keys(pack),
+        list_tick_keys(pack),
         vec!["tick-0001".to_string(), "tick-0002".to_string()]
     );
     assert_eq!(

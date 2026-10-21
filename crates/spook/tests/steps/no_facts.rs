@@ -5,6 +5,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::api::journal::list_tick_keys;
 use spookery_kernel::api::model::Presence;
 
 use super::common::edit_save;
@@ -46,7 +47,7 @@ fn nell_waits(world: &mut World) {
 fn the_wait_commits_with_nothing_rejected(world: &mut World) {
     let pack = table::pack(world);
     let mut found = false;
-    for key in table::list_tick_keys(pack) {
+    for key in list_tick_keys(pack) {
         let round = read_round(pack, &key);
         let waited = round["intents"].as_array().is_some_and(|intents| {
             intents
@@ -99,7 +100,7 @@ fn a_docks_round_plays(world: &mut World) {
 #[then(expr = "Mira's habit fires")]
 fn miras_habit_fires(world: &mut World) {
     let pack = table::pack(world);
-    let fired = table::list_tick_keys(pack).iter().any(|key| {
+    let fired = list_tick_keys(pack).iter().any(|key| {
         read_round(pack, key)["steps_run"]
             .as_array()
             .is_some_and(|steps| steps.iter().any(|step| step == "cast:mira/leave_door_note"))
@@ -147,7 +148,7 @@ fn place_of(pack: &Path, actor: &str) -> String {
 
 fn location_moves(pack: &Path, actor: &str) -> Vec<(String, String)> {
     let mut moves = Vec::new();
-    for key in table::list_tick_keys(pack) {
+    for key in list_tick_keys(pack) {
         for effect in read_round(pack, &key)["effects"].as_array().unwrap() {
             if effect["class"] == "location" && effect["actor_id"] == actor {
                 moves.push((

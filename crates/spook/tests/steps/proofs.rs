@@ -14,6 +14,7 @@ use spookery_kernel::api::check::Outcome;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::{Effect, EffectKind};
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::api::journal::list_tick_keys;
 use spookery_kernel::api::meter::MeterLive;
 use spookery_kernel::api::model::{
     ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
@@ -87,10 +88,6 @@ fn tick_value(pack: &Path, name: &str) -> Value {
     let text = spookery_kernel::api::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}"))
-}
-
-fn list_tick_keys(pack: &Path) -> Vec<String> {
-    spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {

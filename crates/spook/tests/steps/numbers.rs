@@ -4,6 +4,7 @@ use std::fs;
 
 use cucumber::{then, when};
 use serde_json::Value;
+use spookery_kernel::api::journal::list_tick_keys;
 
 use super::table;
 use crate::World;
@@ -209,7 +210,7 @@ fn grit_of(world: &World, actor: &str) -> i64 {
 
 fn latest_tick(world: &World) -> Value {
     let pack = table::pack(world);
-    let keys = table::list_tick_keys(pack);
+    let keys = list_tick_keys(pack);
     let name = keys.last().unwrap_or_else(|| panic!("no tick"));
     let text = spookery_kernel::api::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));

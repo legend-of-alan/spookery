@@ -3,6 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::api::journal::list_tick_keys;
 use spookery_kernel::api::model::Now;
 
 use super::common::{add_trapdoor, edit_save, give_key, EVENING};
@@ -34,10 +35,6 @@ fn tick_file(pack: &Path, name: &str) -> Value {
     let text = spookery_kernel::api::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
-}
-
-fn list_tick_keys(pack: &Path) -> Vec<String> {
-    spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
 fn add_toll(pack: &Path) {
