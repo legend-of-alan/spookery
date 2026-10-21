@@ -9,8 +9,8 @@ use serde::Deserialize;
 use crate::canon::world_settings::{load_world_settings, Budget};
 use crate::check::{load_checks, CheckDef};
 use crate::diagnostic::{
-    coded, locate_nth, locate_row_field, parse_file, reason_of, schema as schema_error,
-    tag_diagnostic, with_spot, Diagnostic,
+    coded, locate_nth, locate_row_field, parse_file, schema as schema_error, tag_diagnostic,
+    with_spot, Diagnostic,
 };
 use crate::error::Reason;
 use crate::format;

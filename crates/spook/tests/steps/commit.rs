@@ -164,18 +164,21 @@ fn the_save_drops_meter(world: &mut World, id: String) {
     let needle = format!("      {id}:");
     let mut out = String::new();
     let mut skip = 0;
+    let mut found = false;
     for line in text.lines() {
         if skip > 0 {
             skip -= 1;
             continue;
         }
         if line == needle {
+            found = true;
             skip = 2;
             continue;
         }
         out.push_str(line);
         out.push('\n');
     }
+    assert!(found, "save has no meter {id}");
     fs::write(&path, out).unwrap();
 }
 
