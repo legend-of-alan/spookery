@@ -96,9 +96,11 @@ pub struct CastCanon {
     pub tick: Option<TickProfile>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TickProfile {
     pub eligible: bool,
+    #[serde(default)]
     pub flags: Vec<String>,
 }
 
@@ -316,10 +318,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 fact_ok = false;
             }
         }
-        let tick = file.tick.map(|tick| TickProfile {
-            eligible: tick.eligible,
-            flags: tick.flags,
-        });
         if !fact_ok {
             continue;
         }
@@ -358,7 +356,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 display_name: file.display_name,
                 facts: fact_ids_of(&facts, &id),
                 body: body.to_string(),
-                tick,
+                tick: file.tick,
             },
         );
         match schema::compile(&rel, file.rules, &Owner::Cast(id)) {
@@ -1888,17 +1886,9 @@ struct CastFile {
     display_name: String,
     facts: Vec<FactFile>,
     #[serde(default)]
-    tick: Option<TickFile>,
+    tick: Option<TickProfile>,
     #[serde(default)]
     rules: Vec<RuleEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TickFile {
-    eligible: bool,
-    #[serde(default)]
-    flags: Vec<String>,
 }
 
 #[derive(Deserialize)]
