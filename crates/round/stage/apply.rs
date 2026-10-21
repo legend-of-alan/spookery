@@ -7,13 +7,12 @@ use spookery_kernel::api::expand::expand_outcome;
 use spookery_kernel::api::intent::{ActorKind, Intent};
 use spookery_kernel::api::journal::Rejected;
 use spookery_kernel::api::map;
-use spookery_kernel::api::perceive::perceive_at;
 use spookery_kernel::api::rules::cost;
 use spookery_kernel::api::rules::gate::{self, gate};
 use spookery_kernel::api::rules::{MoveReport, RollResult};
 use spookery_kernel::api::Reason;
 
-use super::resolve::{roll_with_key, viewer_token, SubjectRoll};
+use super::resolve::{roll_with_key, SubjectRoll};
 use crate::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
@@ -52,7 +51,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         let Resolution::Ready { rolled } = resolution else {
             continue;
         };
-        if let Some(miss) = live_gate(draft, &intent)? {
+        if let Err(miss) = gate(draft.canon(), draft.now(), &intent) {
             reject(round, &intent, &miss);
             continue;
         }
@@ -147,12 +146,6 @@ fn begin_timed(
     round.steps_run.push(rule.id.clone());
     round.applied.push(intent.clone());
     true
-}
-
-/// Perceive and eligibility see effects already applied in this round.
-fn live_gate(draft: &Draft, intent: &Intent) -> Result<Option<gate::Miss>, Reason> {
-    perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
-    Ok(gate(draft.canon(), draft.now(), intent).err())
 }
 
 fn commit_intent(

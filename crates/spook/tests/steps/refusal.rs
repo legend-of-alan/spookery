@@ -233,6 +233,15 @@ fn lark_queues(world: &mut World, line: String) {
     world.player_added = added;
 }
 
+#[when(expr = "the GM sends Lark's strike on {word}")]
+fn the_gm_sends_larks_strike(world: &mut World, target: String) {
+    let args = format!(
+        r#"{{"actor_id":"pc_lark","actor_kind":"player","source":"player","move":"strike","target":{{"actor":"{target}"}}}}"#
+    );
+    let text = table::gm_call(world, 4, "intent", &args);
+    assert!(text.contains("\"queued\""), "{text}");
+}
+
 #[then(expr = "Lark's refused frame for {string} has no missing field")]
 fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
     let line = format!("{{\"kind\":\"refused\",\"code\":\"{code}\"}}");
@@ -283,10 +292,9 @@ rules:
 \n  - id: sap
     when:
       verb: sap
-      target: actor
     do:
       - meter:
-          who: target
+          who: npc_oden
           key: grit
           add: -1
 ",
@@ -299,7 +307,7 @@ rules:
 
 #[when(expr = "Lark saps Oden")]
 fn lark_saps_oden(world: &mut World) {
-    let (mark, added) = table::player_send(world, "sap npc_oden", "\"kind\":\"resume\"");
+    let (mark, added) = table::player_send(world, "sap", "\"kind\":\"resume\"");
     world.mark = mark;
     world.player_added = added;
 }

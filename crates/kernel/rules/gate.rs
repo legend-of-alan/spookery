@@ -2,13 +2,14 @@
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::intent::{ActorKind, Intent, Source, Target};
+use crate::intent::{ActorKind, Intent, Source, Target, ViewerId};
 use crate::model::Now;
 use crate::rule::{Owner, Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
+use crate::rules::perceive::perceive_at;
 
 /// A gate refusal. `Reason` stays fieldless. A cost gap keeps the missing name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -141,38 +142,8 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
         }
     }
     crate::rules::exit::admit(canon, now, intent)?;
-    match &intent.target {
-        Target::Empty => {}
-        Target::Place(id) => {
-            if !matches!(
-                rule.when,
-                When::Verb {
-                    target: TargetKind::Place | TargetKind::Exit,
-                    ..
-                }
-            ) && !canon.places.contains_key(id)
-                && !now.places.contains_key(id)
-            {
-                return Err(Reason::UnknownKey.into());
-            }
-        }
-        Target::Actor(id) => {
-            let item = matches!(
-                rule.when,
-                When::Verb {
-                    target: TargetKind::Item,
-                    ..
-                }
-            );
-            if !item && !now.actors.contains_key(id) {
-                return Err(Reason::UnknownKey.into());
-            }
-        }
-        Target::Clock(id) => {
-            if !now.clocks.contains_key(id) {
-                return Err(Reason::UnknownKey.into());
-            }
-        }
+    if intent.source == Source::Player && !sees(canon, now, intent) {
+        return Err(Reason::NotInSpec.into());
     }
     if let When::Verb { target, .. } = &rule.when {
         let shaped = match target {
@@ -203,4 +174,27 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
         }
     }
     Ok(rule)
+}
+
+/// A player names only what they hold or what `look` shows them.
+fn sees(canon: &Canon, now: &Now, intent: &Intent) -> bool {
+    let id = match &intent.target {
+        Target::Empty => return true,
+        Target::Actor(id) | Target::Place(id) | Target::Clock(id) => id.as_str(),
+    };
+    let held = now
+        .actors
+        .get(&intent.actor_id)
+        .is_some_and(|actor| actor.count(id) > 0);
+    let Ok(viewer) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) else {
+        return false;
+    };
+    let Ok(view) = perceive_at(canon, now, &viewer.token()) else {
+        return false;
+    };
+    held || view.place == id
+        || view.visible_actors.iter().any(|other| other == id)
+        || view.items.iter().any(|item| item.id == id)
+        || view.exits.iter().any(|exit| exit.name == id)
+        || view.clocks.iter().any(|clock| clock.id == id)
 }

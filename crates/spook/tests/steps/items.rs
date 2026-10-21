@@ -26,21 +26,6 @@ fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     fs::write(pack.join("state/save.yaml"), emit_save(&now).unwrap()).unwrap();
 }
 
-fn place_of(now: &mut Now, actor: &str, place: &str) {
-    let from = now.actors.get(actor).unwrap().place().to_string();
-    if from == place {
-        return;
-    }
-    if let Some(live) = now.places.get_mut(&from) {
-        live.actors.retain(|id| id != actor);
-    }
-    let actors = &mut now.places.get_mut(place).unwrap().actors;
-    actors.push(actor.to_string());
-    actors.sort();
-    actors.dedup();
-    *now.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
-}
-
 fn quiet(now: &mut Now) {
     if let Some(briar) = now.actors.get_mut("npc_briar") {
         briar.act_mut().busy_until = Some(u64::MAX);
@@ -149,8 +134,8 @@ fn arm(pack: &Path, attack: &str) {
 }
 
 fn hold_dagger(now: &mut Now, wield: bool) {
-    place_of(now, "pc_lark", "gate_yard");
-    place_of(now, "pc_nell", "gate_yard");
+    support::place_of(now, "pc_lark", "gate_yard");
+    support::place_of(now, "pc_nell", "gate_yard");
     quiet(now);
     now.actors
         .get_mut("pc_lark")
@@ -171,7 +156,7 @@ fn nell_holds_a_tonic(world: &mut World) {
     assert_ne!(text, next, "hp meter was not narrowed");
     fs::write(&meters, next).unwrap();
     save(&pack, |now| {
-        place_of(now, "pc_nell", "gate_yard");
+        support::place_of(now, "pc_nell", "gate_yard");
         quiet(now);
         now.actors
             .get_mut("pc_nell")
@@ -205,14 +190,14 @@ fn nell_is_healed_and_empty(world: &mut World) {
     assert_eq!(count(pack, "pc_nell", "tonic"), 0);
 }
 
-#[then(expr = "{string} again is rejected with MISSING_ITEM by the kernel")]
-fn again_is_missing_item(world: &mut World, line: String) {
+#[then(expr = "{string} again is rejected with {word} by the kernel")]
+fn again_is_refused(world: &mut World, line: String, code: String) {
     let pack = world.pack.as_ref().unwrap();
     let err = match play(pack, "pc_nell", &line) {
         Err(err) => err,
         Ok(_) => panic!("the second use was accepted"),
     };
-    assert_eq!(err.token(), "MISSING_ITEM");
+    assert_eq!(err.token(), code);
     assert_eq!(hp(pack, "pc_nell"), 7);
     assert_eq!(count(pack, "pc_nell", "tonic"), 0);
     assert_eq!(
@@ -312,13 +297,12 @@ fn no_round_was_spent(world: &mut World) {
     assert_eq!(now.actors.get("pc_lark").unwrap().count("latch"), 1);
 }
 
-#[then(expr = "the line is rejected with NOT_IN_SPEC and nell still has 3 hp and 1 tonic")]
-fn drink_is_not_a_verb(world: &mut World) {
-    assert_eq!(world.scratch, "NOT_IN_SPEC");
+#[then(expr = "the line is rejected with {word} and no tick was written")]
+fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
+    assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
-    assert_eq!(hp(pack, "pc_nell"), 3);
-    assert_eq!(count(pack, "pc_nell", "tonic"), 1);
     assert_eq!(read_now(pack).tick_index, 0);
+    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]
@@ -347,23 +331,6 @@ fn tick_names_missing(pack: &Path) {
         rejected.iter().any(|item| item["reason"] == "MISSING_ITEM"),
         "{tick}"
     );
-}
-
-#[then(expr = "the tick names MISSING_ITEM and the shop has no lamp_oil")]
-fn the_take_was_missing(world: &mut World) {
-    let pack = world.pack.as_ref().unwrap();
-    tick_names_missing(pack);
-    let now = read_now(pack);
-    assert_eq!(
-        now.places
-            .get("docks_shop")
-            .unwrap()
-            .items
-            .get("lamp_oil")
-            .copied(),
-        None
-    );
-    assert_eq!(now.actors.get("pc_rowan").unwrap().count("lamp_oil"), 0);
 }
 
 #[then(expr = "the tick names MISSING_ITEM and rowan still has no lamp_oil")]
@@ -413,7 +380,7 @@ fn lark_holds_a_dagger(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "wield");
     write_dagger(&pack, "");
     save(&pack, |now| {
-        place_of(now, "pc_lark", "gate_yard");
+        support::place_of(now, "pc_lark", "gate_yard");
         quiet(now);
         now.actors
             .get_mut("pc_lark")

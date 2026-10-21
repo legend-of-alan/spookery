@@ -12,7 +12,6 @@ use spookery_kernel::api::rules::gate::{self, gate};
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::intent::{ActorKind, Intent, Source, Target, ViewerId};
 use spookery_kernel::api::model::Now;
-use spookery_kernel::api::perceive::perceive_at;
 use spookery_kernel::api::rules::{faces_from, roll, MoveReport, RollInput, RollKey, RollResult};
 use spookery_kernel::api::Reason;
 
@@ -33,7 +32,6 @@ fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolut
     round
         .steps_run
         .push(format!("perceive:{}", intent.actor_id));
-    perceive_at(draft.canon(), draft.now(), &viewer_token(intent)?)?;
     let rule = match gate(draft.canon(), draft.now(), intent) {
         Ok(rule) => rule.clone(),
         Err(miss) => return Ok(refused(miss, None)),
@@ -255,14 +253,6 @@ fn refused_check(intent: &Intent, code: Reason) -> Resolution {
             missing: None,
         }),
     )
-}
-
-pub(crate) fn viewer_token(intent: &Intent) -> Result<String, Reason> {
-    match intent.actor_kind {
-        ActorKind::Npc => Ok(format!("npc:{}", intent.actor_id)),
-        ActorKind::Player => Ok(format!("player:{}", intent.actor_id)),
-        ActorKind::System => Err(Reason::UnscopedPerceive),
-    }
 }
 
 /// Shared counter and dice lines. A roller and a resist roll can both use it.

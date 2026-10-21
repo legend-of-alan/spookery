@@ -171,12 +171,6 @@ where
                         .ok_or(Reason::UnknownKey)?;
                     let exit =
                         crate::rules::exit::named(canon, from, &name).ok_or(Reason::NoExit)?;
-                    if !crate::map::visible(canon, now, &intent.actor_id)
-                        .iter()
-                        .any(|view| view.name == exit.name)
-                    {
-                        return Err(Reason::NoExit);
-                    }
                     exit.to.clone()
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),

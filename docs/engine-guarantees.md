@@ -221,11 +221,14 @@ names a meter change and an item gained or lost. A hidden fact stays off the
 line. A hidden exit stays off the exit list. `help` lists the verbs whose `if`
 holds and those exits, and it does not take a round. `look` reprints the prose
 and the exits, and it does not take a round. A traveller who has not arrived
-sees where the journey ends, as `on the stairs until 21:40`. A pack that omits
-`display_name` fails check. An unknown word tells the player to type help.
+sees where the journey ends, as `on the stairs until 21:40`. A player names only
+what they hold or what that view shows. Anything else reads like an unknown
+word and takes no round. A pack that omits `display_name` fails check. An
+unknown word tells the player to type help.
 
-Tested in `features/seats/a_player_knows_the_place.feature` and
-`features/seats/actions_visibly_matter.feature`.
+Tested in `features/seats/a_player_knows_the_place.feature`,
+`features/seats/actions_visibly_matter.feature` and
+`features/items/items_are_real.feature`.
 
 ## What the engine does not do
 
