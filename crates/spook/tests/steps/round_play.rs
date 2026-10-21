@@ -623,6 +623,7 @@ fn lark_pack() -> PathBuf {
 ",
     );
     stamp(&pack);
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
 }
 

@@ -600,6 +600,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             },
         );
     });
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
     world.scratch = stat.to_string();
 }
