@@ -12,7 +12,7 @@ use spookery_kernel::api::rules::gate::{self, gate};
 use spookery_kernel::api::rules::{MoveReport, RollResult};
 use spookery_kernel::api::Reason;
 
-use super::resolve::{roll_with_key, SubjectRoll};
+use super::resolve::resist_outcome;
 use crate::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
@@ -21,8 +21,6 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     let max_npcs = draft.budget().max_npcs_acting;
     let mut slots = 0u64;
     let frozen = round.frozen.clone();
-    let checks = draft.canon().checks.clone();
-    let meters = draft.canon().meters.clone();
     let candidates = round.candidates.clone();
     for intent in candidates {
         if round.budget_stop {
@@ -83,24 +81,16 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
                 outcome,
                 &mut roller,
                 |actor_id, check_id, target| {
-                    let key = held.key(&intent.move_name, actor_id);
-                    let out = resist_roll(
+                    let (band, report) = resist_outcome(
+                        draft.canon(),
                         &frozen,
-                        &ResistCtx {
-                            checks: &checks,
-                            meters: &meters,
-                            intent: &intent,
-                        },
-                        &key,
+                        &intent.move_name,
                         actor_id,
                         check_id,
                         target,
+                        held,
                     )?;
-                    let band = out.outcome;
-                    resist_reports.push(MoveReport::Rolled {
-                        actor_id: actor_id.to_string(),
-                        out,
-                    });
+                    resist_reports.push(report);
                     Ok(band)
                 },
             )
@@ -206,42 +196,6 @@ fn commit_intent(
     }
     round.applied.push(intent.clone());
     true
-}
-
-struct ResistCtx<'a> {
-    checks: &'a std::collections::BTreeMap<String, spookery_kernel::api::check::CheckDef>,
-    meters: &'a std::collections::BTreeMap<String, spookery_kernel::api::meter::MeterDef>,
-    intent: &'a Intent,
-}
-
-fn resist_roll(
-    now: &spookery_kernel::api::model::Now,
-    ctx: &ResistCtx<'_>,
-    key: &spookery_kernel::api::rules::RollKey,
-    actor_id: &str,
-    check_id: &str,
-    target: i64,
-) -> Result<RollResult, Reason> {
-    let kind = if now.actors.get(actor_id).ok_or(Reason::UnknownKey)?.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
-    roll_with_key(
-        now,
-        ctx.checks,
-        ctx.meters,
-        &SubjectRoll {
-            rule_id: &ctx.intent.move_name,
-            actor_kind: kind,
-            actor_id,
-            check_id,
-            target,
-            partial_at: None,
-            live: None,
-        },
-        key,
-    )
 }
 
 fn refuse(round: &mut Round, intent: &Intent, code: Reason) {

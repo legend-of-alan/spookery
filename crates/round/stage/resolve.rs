@@ -4,13 +4,15 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::rc::Rc;
 
-use spookery_kernel::api::check::{classify, CheckDef};
+use spookery_kernel::api::canon::Canon;
+use spookery_kernel::api::check::{classify, CheckDef, Outcome};
 use spookery_kernel::api::meter::MeterDef;
+use spookery_kernel::api::rule::RollSpec;
 use spookery_kernel::api::rules::expr::{self, Ctx, Dice};
 use spookery_kernel::api::rules::gate::{self, gate};
 
 use spookery_kernel::api::draft::Draft;
-use spookery_kernel::api::intent::{ActorKind, Intent, Source, Target, ViewerId};
+use spookery_kernel::api::intent::{Intent, Source, Target, ViewerId};
 use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rules::{faces_from, roll, MoveReport, RollInput, RollKey, RollResult};
 use spookery_kernel::api::Reason;
@@ -132,13 +134,10 @@ fn supplied_target(
 
 pub(crate) struct SubjectRoll<'a> {
     pub rule_id: &'a str,
-    pub actor_kind: ActorKind,
     pub actor_id: &'a str,
     pub check_id: &'a str,
     pub target: i64,
     pub partial_at: Option<i64>,
-    /// The actor at completion. Absent means the actor frozen at gather.
-    pub live: Option<&'a spookery_kernel::api::model::ActorLive>,
 }
 
 /// The one `rules::roll` call. Action checks and resist rolls both come through here.
@@ -159,28 +158,85 @@ pub(crate) fn roll_with_key(
     spec: &SubjectRoll<'_>,
     key: &RollKey,
 ) -> Result<RollResult, Reason> {
-    let actor = match spec.live {
-        Some(actor) => actor.clone(),
-        None => now
-            .actors
-            .get(spec.actor_id)
-            .cloned()
-            .ok_or(Reason::UnknownKey)?,
-    };
-    let viewer = ViewerId::from_kind(spec.actor_kind, spec.actor_id)?;
+    let actor = now.actors.get(spec.actor_id).ok_or(Reason::UnknownKey)?;
+    let viewer = now.viewer_of(spec.actor_id).ok_or(Reason::UnknownKey)?;
     let check = checks.get(spec.check_id).ok_or(Reason::UnknownKey)?;
     roll(
         RollInput {
             check,
             defs: meters,
             actor_id: spec.actor_id,
-            actor: &actor,
+            actor,
             viewer: &viewer,
             target: spec.target,
             partial_at: spec.partial_at,
         },
         key,
     )
+}
+
+pub(crate) fn eval_roll_spec(
+    canon: &Canon,
+    now: &Now,
+    intent: &Intent,
+    spec: &RollSpec,
+    rule_id: &str,
+    held: &Held,
+    roller: &mut Roller,
+) -> Result<RollResult, Reason> {
+    let ctx = Ctx { intent };
+    let target = expr::show(canon, now, &ctx, &spec.target, roller)?.value;
+    let partial_at = match &spec.partial_at {
+        Some(expr) => Some(expr::show(canon, now, &ctx, expr, roller)?.value),
+        None => None,
+    };
+    let key = held.key(rule_id, &intent.actor_id);
+    roll_with_key(
+        now,
+        &canon.checks,
+        &canon.meters,
+        &SubjectRoll {
+            rule_id,
+            actor_id: &intent.actor_id,
+            check_id: &spec.check,
+            target,
+            partial_at,
+        },
+        &key,
+    )
+}
+
+pub(crate) fn resist_outcome(
+    canon: &Canon,
+    now: &Now,
+    rule_id: &str,
+    actor_id: &str,
+    check_id: &str,
+    target: i64,
+    held: &Held,
+) -> Result<(Outcome, MoveReport), Reason> {
+    let key = held.key(rule_id, actor_id);
+    let out = roll_with_key(
+        now,
+        &canon.checks,
+        &canon.meters,
+        &SubjectRoll {
+            rule_id,
+            actor_id,
+            check_id,
+            target,
+            partial_at: None,
+        },
+        &key,
+    )?;
+    let band = out.outcome;
+    Ok((
+        band,
+        MoveReport::Rolled {
+            actor_id: actor_id.to_string(),
+            out,
+        },
+    ))
 }
 
 fn roll_for(
@@ -198,12 +254,10 @@ fn roll_for(
         &canon.meters,
         &SubjectRoll {
             rule_id: &intent.move_name,
-            actor_kind: intent.actor_kind,
             actor_id: &intent.actor_id,
             check_id,
             target,
             partial_at,
-            live: None,
         },
     )
 }

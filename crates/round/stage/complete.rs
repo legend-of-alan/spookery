@@ -7,11 +7,10 @@ use spookery_kernel::api::expand::expand_outcome;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::api::journal::Arrival;
 use spookery_kernel::api::model::Pending;
-use spookery_kernel::api::rules::expr::{self, Ctx};
 use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::Reason;
 
-use super::resolve::{roll_with_key, SubjectRoll};
+use super::resolve::{eval_roll_spec, resist_outcome};
 use crate::state::Round;
 
 /// The stage mark. Arrivals land in [`finish`], after this tick's intents,
@@ -44,7 +43,7 @@ fn arrive(
     let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     let from = actor.place().to_string();
     let to = pending.arrive.clone().unwrap_or_default();
-    let kind = kind_of(actor.is_pc());
+    let kind = actor.actor_kind();
     let intent = arrival_intent(round, actor_id, kind, pending);
     let effect = Effect {
         class: EffectKind::Location {
@@ -73,13 +72,12 @@ fn resume(
     actor_id: &str,
     pending: &Pending,
 ) -> Result<(), Reason> {
-    let is_pc = draft
+    let kind = draft
         .now()
         .actors
         .get(actor_id)
         .ok_or(Reason::UnknownKey)?
-        .is_pc();
-    let kind = kind_of(is_pc);
+        .actor_kind();
     let intent = arrival_intent(round, actor_id, kind, pending);
     let roll_spec =
         spookery_kernel::api::rules::gate::resolve(draft.canon(), draft.now(), &intent)?
@@ -90,36 +88,16 @@ fn resume(
     let (effects, reports) = super::resolve::with_dice(round, |held| {
         let mut roller = held.roller(&intent.move_name, actor_id);
         let mut reports = Vec::new();
-        let ctx = Ctx { intent: &intent };
         let outcome = match &roll_spec {
             Some(spec) => {
-                let target = expr::show(&canon, &snapshot, &ctx, &spec.target, &mut roller)?.value;
-                let partial_at = match &spec.partial_at {
-                    Some(expr) => {
-                        Some(expr::show(&canon, &snapshot, &ctx, expr, &mut roller)?.value)
-                    }
-                    None => None,
-                };
-                let actor = snapshot
-                    .actors
-                    .get(actor_id)
-                    .ok_or(Reason::UnknownKey)?
-                    .clone();
-                let key = held.key(&spec.check, actor_id);
-                let out = roll_with_key(
+                let out = eval_roll_spec(
+                    &canon,
                     &snapshot,
-                    &canon.checks,
-                    &canon.meters,
-                    &SubjectRoll {
-                        rule_id: &spec.check,
-                        actor_kind: kind,
-                        actor_id,
-                        check_id: &spec.check,
-                        target,
-                        partial_at,
-                        live: Some(&actor),
-                    },
-                    &key,
+                    &intent,
+                    spec,
+                    &spec.check,
+                    held,
+                    &mut roller,
                 )?;
                 let band = out.outcome;
                 reports.push(MoveReport::Rolled {
@@ -137,30 +115,9 @@ fn resume(
             outcome,
             &mut roller,
             |who, check_id, target| {
-                let who_pc = snapshot.actors.get(who).ok_or(Reason::UnknownKey)?.is_pc();
-                let who_kind = kind_of(who_pc);
-                let actor = snapshot.actors.get(who).ok_or(Reason::UnknownKey)?.clone();
-                let key = held.key(check_id, who);
-                let out = roll_with_key(
-                    &snapshot,
-                    &canon.checks,
-                    &canon.meters,
-                    &SubjectRoll {
-                        rule_id: check_id,
-                        actor_kind: who_kind,
-                        actor_id: who,
-                        check_id,
-                        target,
-                        partial_at: None,
-                        live: Some(&actor),
-                    },
-                    &key,
-                )?;
-                let band = out.outcome;
-                reports.push(MoveReport::Rolled {
-                    actor_id: who.to_string(),
-                    out,
-                });
+                let (band, report) =
+                    resist_outcome(&canon, &snapshot, check_id, who, check_id, target, held)?;
+                reports.push(report);
                 Ok(band)
             },
         )?;
@@ -196,13 +153,5 @@ fn arrival_intent(round: &Round, actor_id: &str, kind: ActorKind, pending: &Pend
         },
         args: IntentArgs::default(),
         rationale_code: String::new(),
-    }
-}
-
-fn kind_of(is_pc: bool) -> ActorKind {
-    if is_pc {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
     }
 }
