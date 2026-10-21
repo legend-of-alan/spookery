@@ -33,12 +33,12 @@ pub fn idle_tick_if_due(world: &mut World) -> Result<(), Reason> {
     let wall = format_utc(now)?;
     let hours = elapsed / 3600;
     if hours == 0 {
-        play(world, RoundCause::Scheduler, &wall)
+        play(world, RoundCause::Scheduler, &wall).map(|_| ())
     } else {
         let humans = world.now().presence.humans;
         let ticks = plan_catchup(humans, world.budget(), hours)?;
         if ticks == 0 {
-            play(world, RoundCause::Scheduler, &wall)
+            play(world, RoundCause::Scheduler, &wall).map(|_| ())
         } else {
             catch_up(world, &wall, hours)
         }

@@ -11,10 +11,8 @@ use crate::error::Reason;
 use crate::intent::Intent;
 use crate::journal::{self, JournalEntry};
 use crate::model::{sort_unique, MemoryLine, Now, Presence};
-use crate::rules::MoveReport;
 use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
-use crate::visibility::{Seen, Told};
 
 use crate::draft::Draft;
 
@@ -24,22 +22,8 @@ pub struct World {
     pub(crate) now: Now,
     pub(crate) queue: Vec<Intent>,
     pub(crate) pending: Option<UncommittedRound>,
-    reports: Vec<MoveReport>,
-    dice: Vec<String>,
-    summary: Vec<String>,
-    lines: Vec<Told>,
-    seen: Vec<Seen>,
     next_session: u64,
     warning: Option<&'static str>,
-}
-
-/// What one round showed its viewers.
-pub struct Delivered {
-    pub summary: Vec<String>,
-    pub lines: Vec<Told>,
-    pub seen: Vec<Seen>,
-    /// Dice lines the round rolled, for the GM commit and audit.
-    pub dice: Vec<String>,
 }
 
 /// One round played and not yet written. A tick is only the time unit.
@@ -107,32 +91,6 @@ impl World {
         self.queue.push(intent);
     }
 
-    pub fn take_reports(&mut self) -> Vec<MoveReport> {
-        std::mem::take(&mut self.reports)
-    }
-
-    pub fn take_dice(&mut self) -> Vec<String> {
-        std::mem::take(&mut self.dice)
-    }
-
-    /// Change keys from the latest round. The GM sees every one.
-    pub fn change_summary(&self) -> &[String] {
-        &self.summary
-    }
-
-    /// Change keys each actor can see, from seated rounds since the last take.
-    pub fn seen(&self) -> &[Seen] {
-        &self.seen
-    }
-
-    pub fn take_lines(&mut self) -> Vec<Told> {
-        std::mem::take(&mut self.lines)
-    }
-
-    pub fn take_seen(&mut self) -> Vec<Seen> {
-        std::mem::take(&mut self.seen)
-    }
-
     /// A committed round whose checkpoint file was not finished. The host prints it.
     pub fn take_warning(&mut self) -> Option<&'static str> {
         self.warning.take()
@@ -151,28 +109,13 @@ impl World {
         load_world(root, true)
     }
 
-    pub(crate) fn store_delivery(&mut self, delivered: Delivered, humans: u32) -> Vec<String> {
-        self.summary = delivered.summary.clone();
-        if humans == 0 {
-            self.lines.clear();
-            self.seen.clear();
-        } else {
-            self.lines.extend(delivered.lines);
-            self.seen.extend(delivered.seen);
-        }
-        delivered.summary
-    }
-
     pub(crate) fn hold_uncommitted(
         &mut self,
         now: Now,
         round_jsonl: String,
         memories: Vec<MemoryLine>,
         paths: Vec<String>,
-        reports: Vec<MoveReport>,
-        dice: Vec<String>,
     ) {
-        self.dice = dice;
         self.pending = Some(UncommittedRound {
             tick_index: now.tick_index,
             now,
@@ -180,17 +123,9 @@ impl World {
             memories,
             paths,
         });
-        self.reports = reports;
     }
 
-    pub(crate) fn note_committed(
-        &mut self,
-        reports: Vec<MoveReport>,
-        dice: Vec<String>,
-        keep_queue: bool,
-    ) {
-        self.reports = reports;
-        self.dice = dice;
+    pub(crate) fn note_committed(&mut self, keep_queue: bool) {
         if !keep_queue {
             self.queue.clear();
         }
@@ -247,11 +182,6 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         now,
         queue: Vec::new(),
         pending: None,
-        reports: Vec::new(),
-        dice: Vec::new(),
-        summary: Vec::new(),
-        lines: Vec::new(),
-        seen: Vec::new(),
         next_session: 1,
         warning: None,
     })

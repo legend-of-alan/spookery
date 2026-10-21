@@ -44,3 +44,16 @@ Feature: Speech appends to the tape and does not tick
     And the tape names the actor "mira"
     And save.yaml matches the bytes from before the line
     And no tick file was written
+
+  Scenario: A rejoining player gets the newest speech
+    Given a docks table with "pc_rowan" seated
+    And the GM has said 300 numbered lines to "pc_rowan"
+    When "pc_rowan" leaves and sits again
+    Then the replayed say lines are "line44" through "line299", in order
+    And each replayed line has "replay": true
+
+  Scenario: Speech for someone else doesn't use up the replay window
+    Given a docks table with "pc_rowan" and "pc_wren" seated
+    And the GM has said 300 lines to "pc_wren" and then 3 lines to "pc_rowan"
+    When "pc_rowan" leaves and sits again
+    Then "pc_rowan" gets exactly those 3 lines, in order

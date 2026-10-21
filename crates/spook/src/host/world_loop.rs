@@ -6,6 +6,7 @@ use spookery_kernel::api::model::{ActorLive, Presence};
 use spookery_kernel::api::perceive::perceive;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::{host_summary, player_digest, Reason};
+use spookery_round::RoundOutput;
 
 use super::frames;
 use super::idle_clock;
@@ -358,16 +359,13 @@ fn handle(
                 println!("refused {name} {}", code.token());
                 let _ = io::stdout().flush();
             }
-            let reports = if done.ticked {
-                let reports = world.take_reports();
-                frames::write_checks(&mut done.value, &reports);
-                frames::write_dice(&mut done.value, &world.take_dice());
-                reports
-            } else {
-                Vec::new()
-            };
+            let outputs = std::mem::take(&mut done.outputs);
+            let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
             if done.ticked {
-                refresh_players(world, seats, &reports)?;
+                let dice: Vec<_> = outputs.iter().flat_map(|o| o.dice.clone()).collect();
+                frames::write_checks(&mut done.value, &reports);
+                frames::write_dice(&mut done.value, &dice);
+                refresh_players(world, seats, &outputs)?;
                 print_host(world);
             }
             if let Some(tape) = &done.tape {
@@ -419,13 +417,6 @@ fn narrate_for(lines: &[spookery_kernel::api::visibility::Told], viewer: &str) -
     out
 }
 
-fn change_line_for(seen: &[spookery_kernel::api::visibility::Seen], viewer: &str) -> String {
-    seen.iter()
-        .find(|item| item.viewer == viewer)
-        .map(|item| item.line.clone())
-        .unwrap_or_default()
-}
-
 fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
     let next = restart.borrow().wrapping_add(1);
     let _ = restart.send(next);
@@ -434,22 +425,24 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
 fn refresh_players(
     world: &mut World,
     seats: &mut Seats,
-    reports: &[spookery_kernel::api::rules::MoveReport],
+    outputs: &[RoundOutput],
 ) -> Result<(), Reason> {
-    let lines = world.take_lines();
-    let seen = world.take_seen();
+    let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
         let bytes = match player_refresh(world, &player.actor_id) {
             Ok(text) => {
-                let mut out = player_moves::player_report_lines(reports, &player.actor_id);
+                let mut out = player_moves::player_report_lines(&reports, &player.actor_id);
                 out.push_str(&text);
-                for line in narrate_for(&lines, &player.actor_id) {
-                    out.push_str(&frames::player_lines(&line));
-                }
-                let changed = change_line_for(&seen, &player.actor_id);
-                if !changed.is_empty() {
-                    out.push_str(&frames::player_lines(&changed));
+                for output in outputs {
+                    for line in narrate_for(&output.lines, &player.actor_id) {
+                        out.push_str(&frames::player_lines(&line));
+                    }
+                    for item in &output.seen {
+                        if item.viewer == player.actor_id && !item.line.is_empty() {
+                            out.push_str(&frames::player_lines(&item.line));
+                        }
+                    }
                 }
                 out.into_bytes()
             }
@@ -650,12 +643,28 @@ fn on_mechanical(
             send_gm(seats, note.gm_frame());
             send_player(world, seats, conn, note.player_line().into_bytes())?;
         }
-        Ok(player_moves::MoveOutcome::Committed { advanced, reports }) => {
+        Ok(player_moves::MoveOutcome::Committed { advanced, output }) => {
             if advanced {
                 bump_sleep(restart);
             }
             print_host(world);
-            refresh_players(world, seats, &reports)?;
+            refresh_players(world, seats, std::slice::from_ref(&output))?;
+        }
+        Ok(player_moves::MoveOutcome::Busy {
+            code,
+            missing,
+            outputs,
+        }) => {
+            send_player(
+                world,
+                seats,
+                conn,
+                frames::player_refused(code, missing.as_deref()).into_bytes(),
+            )?;
+            if !outputs.is_empty() {
+                refresh_players(world, seats, &outputs)?;
+                print_host(world);
+            }
         }
         Err(miss) => send_player(
             world,

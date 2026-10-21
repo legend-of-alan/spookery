@@ -373,7 +373,7 @@ fn the_player_waits(world: &mut World) {
 
 #[when(expr = "the GM commits the round")]
 fn the_gm_commits_the_round(world: &mut World) {
-    let _ = table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
+    world.stdout = table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
 }
 
 #[then(expr = "a tick file was written")]

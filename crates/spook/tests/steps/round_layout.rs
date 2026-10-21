@@ -12,6 +12,7 @@ const PUBLIC: &[&str] = &[
     "ReplayReport",
     "ReplayStep",
     "RoundCause",
+    "RoundOutput",
     "VerifyError",
     "VerifyReport",
     "advance_while_busy",
