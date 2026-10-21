@@ -1137,11 +1137,6 @@ rules:
     .unwrap();
     edit_save(world, &pack, |now| {
         seat(now, "aldric", "briar", "docks_shop");
-        for actor in now.actors.values_mut() {
-            actor
-                .meters_mut()
-                .insert("hp".to_string(), MeterLive { base: 8, offset: 0 });
-        }
         let briar = now.actors.get_mut("briar").unwrap();
         briar.meters_mut().insert(
             "hp".to_string(),
@@ -1156,6 +1151,7 @@ rules:
         now.presence.humans = 1;
         now.presence.actors_present = vec!["pc_rowan".to_string()];
     });
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
 }
 

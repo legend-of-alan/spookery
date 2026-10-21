@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::meter::MeterLive;
 
 use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
@@ -134,6 +133,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
 
@@ -301,6 +301,7 @@ rules:
 ",
     );
     edit_save(&pack, |_| {});
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
@@ -345,13 +346,6 @@ fn add_grit(pack: &Path) {
     start: 1
 ",
     );
-    edit_save(pack, |now| {
-        for actor in now.actors.values_mut() {
-            actor
-                .meters_mut()
-                .insert("grit".to_string(), MeterLive { base: 1, offset: 0 });
-        }
-    });
 }
 
 fn append(path: &Path, extra: &str) {

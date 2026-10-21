@@ -9,15 +9,16 @@ use serde::Deserialize;
 use crate::canon::world_settings::{load_world_settings, Budget};
 use crate::check::{load_checks, CheckDef};
 use crate::diagnostic::{
-    coded, locate_nth, locate_row_field, parse_file, schema as schema_error, tag_diagnostic,
-    with_spot, Diagnostic,
+    coded, locate_nth, locate_row_field, parse_file, reason_of, schema as schema_error,
+    tag_diagnostic, with_spot, Diagnostic,
 };
 use crate::error::Reason;
 use crate::format;
 use crate::hash::blake2s_hex;
-use crate::meter::{self, MeterDef};
+use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
 use crate::rule::{Cond, Cost, EffectTemplate, Expr, Owner, ResistSpec, Rule, RuleTable, Who};
+use crate::store::codec::canonicalize;
 
 pub mod schema;
 pub mod world_settings;
@@ -880,6 +881,34 @@ fn meter_schema_error(
         diag = diag.at_line(line, Some(column));
     }
     diag
+}
+
+/// Add each meter the pack defines that an actor lacks, at the meter's `start`.
+pub(crate) fn init_new_meters(canon: &Canon, now: &mut Now) {
+    for actor in now.actors.values_mut() {
+        let live = actor.meters_mut();
+        for (id, def) in &canon.meters {
+            live.entry(id.clone())
+                .or_insert_with(|| MeterLive::at_start(def));
+        }
+    }
+}
+
+/// Migrate a save to the pack: add new meters at their `start`, check the
+/// result, then stamp `pack_rev` and `state_rev`. Live migrate and replay both
+/// call this. It does not touch the disk.
+pub fn migrate_save(
+    canon: &Canon,
+    mut now: Now,
+    pack_rev: &str,
+    state_rev: u64,
+) -> Result<Now, Reason> {
+    init_new_meters(canon, &mut now);
+    check_save(canon, &now).map_err(reason_of)?;
+    now.pack_rev = pack_rev.to_string();
+    now.state_rev = state_rev;
+    canonicalize(&mut now);
+    Ok(now)
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,

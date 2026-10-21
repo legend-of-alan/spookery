@@ -19,11 +19,16 @@ Feature: A hand edit waits for migrate
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
     Given a docks table
     When the save is hand edited and the canon gains a byte
+    And the pack adds meter "stamina" with start 6
     And the operator runs migrate
     Then the command exits 0
     And stdout is empty
     And stderr is empty
     And migrate keeps the hand edit
+    When the operator runs spook check
+    Then the check exits 0
+    And spook verify passes
+    And every actor has "stamina" at 6
 
   Scenario: A schema failure writes nothing
     Given a docks table

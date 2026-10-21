@@ -3,7 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::meter::{self, MeterLive};
+use spookery_kernel::api::meter;
 use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rules::{faces, RollKey};
 use spookery_kernel::api::store::codec::{emit_save, load_save};
@@ -527,13 +527,6 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
         ),
     )
     .unwrap();
-    save(&pack, |now| {
-        for actor in now.actors.values_mut() {
-            actor
-                .meters_mut()
-                .insert("constitution".to_string(), MeterLive { base: 0, offset: 0 });
-        }
-    });
     let checks = fs::read_to_string(pack.join("rules/checks.yaml")).unwrap();
     fs::write(
         pack.join("rules/checks.yaml"),
@@ -607,6 +600,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             },
         );
     });
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
     world.scratch = stat.to_string();
 }

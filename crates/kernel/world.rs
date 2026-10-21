@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::canon::world_settings::Budget;
-use crate::canon::{check_save, load_canon, pack_rev, Canon};
+use crate::canon::{check_save, init_new_meters, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
@@ -125,7 +125,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     let canon = Arc::new(load_canon(root).map_err(reason_of)?);
     let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let now = load_save(now_text).map_err(reason_of)?;
+    let mut now = load_save(now_text).map_err(reason_of)?;
     let mut problems = save_problems(&now, &now_bytes);
     if !replay {
         if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
@@ -137,6 +137,9 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     }
     if !problems.is_empty() {
         return Err(reason_of(problems));
+    }
+    if migrate_continues(root, &now) {
+        init_new_meters(&canon, &mut now);
     }
     check_save(&canon, &now).map_err(reason_of)?;
     Ok(World {
@@ -277,7 +280,11 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         }
         diags.extend(problems);
         if let Some(canon) = &canon {
-            if let Err(more) = check_save(canon, now) {
+            let mut now = now.clone();
+            if migrate_continues(root, &now) {
+                init_new_meters(canon, &mut now);
+            }
+            if let Err(more) = check_save(canon, &now) {
                 diags.extend(more);
             }
         }

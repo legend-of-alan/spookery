@@ -5,12 +5,13 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::api::commit::{atomic_publish, init_new_meters};
+use spookery_kernel::api::canon::migrate_save;
+use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
 use spookery_kernel::api::model::{Now, Presence};
-use spookery_kernel::api::store::codec::{canonicalize, emit_effect, emit_save, load_save};
+use spookery_kernel::api::store::codec::{emit_effect, emit_save, load_save};
 use spookery_kernel::api::store::require_rules_rev;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
@@ -763,7 +764,7 @@ fn effect_text(effect: Option<&Effect>) -> String {
 }
 
 fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
-    let mut next = world.now().clone();
+    let next = world.now().clone();
     if next.pack_rev != record.pack_rev_before {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -773,10 +774,13 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
             None,
         )));
     }
-    init_new_meters(world.canon(), &mut next);
-    next.pack_rev = record.pack_rev_after.clone();
-    next.state_rev = record.state_rev_after;
-    canonicalize(&mut next);
+    let next = migrate_save(
+        world.canon(),
+        next,
+        &record.pack_rev_after,
+        record.state_rev_after,
+    )
+    .map_err(ReplayError::Reason)?;
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(

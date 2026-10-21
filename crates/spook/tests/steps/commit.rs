@@ -107,6 +107,25 @@ fn the_save_is_hand_edited(world: &mut World) {
     fs::write(pack.join("cast/mira.md"), mira).unwrap();
 }
 
+#[when(expr = "the pack adds meter {string} with start {int}")]
+fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
+    let path = table::pack(world).join("rules/meters.yaml");
+    let mut text = fs::read_to_string(&path).unwrap();
+    text.push_str(&format!(
+        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    start: {start}\n"
+    ));
+    fs::write(&path, text).unwrap();
+}
+
+#[then(expr = "every actor has {string} at {int}")]
+fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
+    let now = table::now_of(table::pack(world));
+    for (actor, live) in &now.actors {
+        let got = live.meters().get(&id).map(|meter| meter.base);
+        assert_eq!(got, Some(base), "{actor} {id}");
+    }
+}
+
 #[when(expr = "the save is replaced with a broken document")]
 fn the_save_is_replaced(world: &mut World) {
     let pack = table::pack(world);
