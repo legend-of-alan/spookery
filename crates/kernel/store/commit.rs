@@ -96,6 +96,7 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
     let state_rev_after = state_rev_before
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
+    let pending = crate::canon::meters_pending(&canon, &now);
     let now = migrate_save(&canon, now, &pack_rev_after, state_rev_after)?;
     let emitted = emit_save(&now)?.into_bytes();
     let record = journal::emit_migrate(
@@ -104,6 +105,7 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
         state_rev_before,
         now.state_rev,
         &hash_now(&emitted),
+        &pending,
     );
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     let parsed = journal::parse_migrate("migrate.json", &record).map_err(|_| Reason::Schema)?;

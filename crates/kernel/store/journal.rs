@@ -20,7 +20,7 @@ use crate::error::Reason;
 use crate::hash::blake2s_hex;
 
 pub use super::records::{
-    Arrival, CheckpointRecord, JournalEntry, MigrateRecord, Rejected, TickRecord,
+    AddedMeter, Arrival, CheckpointRecord, JournalEntry, MigrateRecord, Rejected, TickRecord,
 };
 use super::records::{CheckpointKind, MigrateKind};
 
@@ -61,6 +61,7 @@ pub(crate) fn emit_migrate(
     state_rev_before: u64,
     state_rev_after: u64,
     now_hash: &str,
+    meters: &[AddedMeter],
 ) -> String {
     emit_entry(&JournalEntry::Migrate(MigrateRecord {
         kind: MigrateKind::Migrate,
@@ -69,6 +70,7 @@ pub(crate) fn emit_migrate(
         state_rev_before,
         state_rev_after,
         now_hash: now_hash.to_string(),
+        meters: meters.to_vec(),
         prev: String::new(),
         chain: String::new(),
     }))
@@ -549,7 +551,7 @@ mod tests {
 
     #[test]
     fn migrate_records_round_trip() {
-        let migrate = emit_migrate("blake2s:aa", "blake2s:bb", 1, 2, "blake2s:cc");
+        let migrate = emit_migrate("blake2s:aa", "blake2s:bb", 1, 2, "blake2s:cc", &[]);
         let parsed = parse_migrate("migrate-0002.json", &migrate).unwrap();
         assert_eq!(parsed.pack_rev_before, "blake2s:aa");
         assert_eq!(parsed.pack_rev_after, "blake2s:bb");
@@ -562,7 +564,8 @@ mod tests {
                 &parsed.pack_rev_after,
                 parsed.state_rev_before,
                 parsed.state_rev_after,
-                &parsed.now_hash
+                &parsed.now_hash,
+                &parsed.meters,
             ),
             migrate
         );

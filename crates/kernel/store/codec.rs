@@ -531,7 +531,8 @@ messages: []
             memory,
             r#"{"tick_index":3,"actor_id":"mi\"ra","intent_id":"abc","fact_ids":["f"],"tags":[],"text":null}"#
         );
-        let migrate = crate::journal::emit_migrate("blake2s:aa", "blake2s:bb", 0, 1, "blake2s:cc");
+        let migrate =
+            crate::journal::emit_migrate("blake2s:aa", "blake2s:bb", 0, 1, "blake2s:cc", &[]);
         assert_eq!(
             migrate,
             "{\"kind\":\"migrate\",\"pack_rev_before\":\"blake2s:aa\",\"pack_rev_after\":\"blake2s:bb\",\"state_rev_before\":0,\"state_rev_after\":1,\"now_hash\":\"blake2s:cc\"}\n"

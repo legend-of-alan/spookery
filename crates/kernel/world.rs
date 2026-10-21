@@ -1,11 +1,12 @@
 //! An open pack, and the check that reads one without writing.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::canon::world_settings::Budget;
-use crate::canon::{check_save, init_new_meters, load_canon, pack_rev, Canon};
+use crate::canon::{check_save_except, load_canon, meters_pending, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
@@ -91,13 +92,25 @@ impl World {
     }
 
     pub fn open(root: &Path) -> Result<Self, Reason> {
-        load_world(root, false)
+        load_world(root, OpenMode::Live)
     }
 
     /// Open a temp pack for replay. A base from before migrate may not match `pack_rev`.
     pub fn open_for_replay(root: &Path) -> Result<Self, Reason> {
-        load_world(root, true)
+        load_world(root, OpenMode::Replay)
     }
+
+    /// Open so migrate can replay the tail. Meters no migrate has recorded yet
+    /// are not required: this migrate is about to add them.
+    pub fn open_for_migrate(root: &Path) -> Result<Self, Reason> {
+        load_world(root, OpenMode::Migrate)
+    }
+}
+
+enum OpenMode {
+    Live,
+    Replay,
+    Migrate,
 }
 
 impl Draft {
@@ -117,7 +130,7 @@ pub fn session_status(now: &Now) -> SessionStatus {
     }
 }
 
-fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
+fn load_world(root: &Path, mode: OpenMode) -> Result<World, Reason> {
     if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -125,8 +138,9 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     let canon = Arc::new(load_canon(root).map_err(reason_of)?);
     let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_save(now_text).map_err(reason_of)?;
+    let now = load_save(now_text).map_err(reason_of)?;
     let mut problems = save_problems(&now, &now_bytes);
+    let replay = !matches!(mode, OpenMode::Live);
     if !replay {
         if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
             problems.insert(0, diag);
@@ -138,10 +152,13 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     if !problems.is_empty() {
         return Err(reason_of(problems));
     }
-    if migrate_continues(root, &now) {
-        init_new_meters(&canon, &mut now);
+    let mut later = meters_added_after(root, now.state_rev);
+    if matches!(mode, OpenMode::Migrate) {
+        for meter in meters_pending(&canon, &now) {
+            later.insert(meter.id);
+        }
     }
-    check_save(&canon, &now).map_err(reason_of)?;
+    check_save_except(&canon, &now, &later).map_err(reason_of)?;
     Ok(World {
         root: root.to_path_buf(),
         canon,
@@ -150,6 +167,26 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         next_session: 1,
         warning: None,
     })
+}
+
+/// Meter ids added by a migrate record newer than `state_rev`.
+pub fn meters_added_after(root: &Path, state_rev: u64) -> BTreeSet<String> {
+    let Ok(entries) = journal::read_entries(root) else {
+        return BTreeSet::new();
+    };
+    let mut ids = BTreeSet::new();
+    for entry in entries {
+        let JournalEntry::Migrate(record) = entry else {
+            continue;
+        };
+        if record.state_rev_after <= state_rev {
+            continue;
+        }
+        for meter in record.meters {
+            ids.insert(meter.id);
+        }
+    }
+    ids
 }
 
 /// Hash of the newest migrate past the checkpoint, or the save's own hash.
@@ -281,11 +318,8 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         }
         diags.extend(problems);
         if let Some(canon) = &canon {
-            let mut now = now.clone();
-            if migrating {
-                init_new_meters(canon, &mut now);
-            }
-            if let Err(more) = check_save(canon, &now) {
+            let later = meters_added_after(root, now.state_rev);
+            if let Err(more) = check_save_except(canon, now, &later) {
                 diags.extend(more);
             }
         }

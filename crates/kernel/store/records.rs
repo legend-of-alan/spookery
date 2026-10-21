@@ -12,6 +12,14 @@ pub(crate) enum MigrateKind {
     Migrate,
 }
 
+/// One meter a migrate added, stored at that meter's `start`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AddedMeter {
+    pub id: String,
+    pub start: i64,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MigrateRecord {
@@ -21,6 +29,9 @@ pub struct MigrateRecord {
     pub state_rev_before: u64,
     pub state_rev_after: u64,
     pub now_hash: String,
+    /// Meters this migrate added. Omitted when it added none, so older lines stay the same.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub meters: Vec<AddedMeter>,
     /// Chain hash of the previous record. Empty on a record that has not been sealed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prev: String,

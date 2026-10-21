@@ -19,6 +19,7 @@ use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
 use crate::rule::{Cond, Cost, EffectTemplate, Expr, Owner, ResistSpec, Rule, RuleTable, Who};
 use crate::store::codec::canonicalize;
+use crate::store::records::AddedMeter;
 
 pub mod schema;
 pub mod world_settings;
@@ -883,27 +884,46 @@ fn meter_schema_error(
     diag
 }
 
-/// Add each meter the pack defines that an actor lacks, at the meter's `start`.
-pub(crate) fn init_new_meters(canon: &Canon, now: &mut Now) {
+/// Meters the pack defines that at least one actor lacks, each at its `start`.
+pub(crate) fn meters_pending(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
+    let mut pending = Vec::new();
+    for (id, def) in &canon.meters {
+        if now
+            .actors
+            .values()
+            .any(|actor| !actor.meters().contains_key(id))
+        {
+            pending.push(AddedMeter {
+                id: id.clone(),
+                start: def.start,
+            });
+        }
+    }
+    pending
+}
+
+/// Give each actor any of `meters` it lacks, at the recorded `start`.
+pub fn add_meter_starts(now: &mut Now, meters: &[AddedMeter]) {
     for actor in now.actors.values_mut() {
         let live = actor.meters_mut();
-        for (id, def) in &canon.meters {
-            live.entry(id.clone())
-                .or_insert_with(|| MeterLive::at_start(def));
+        for meter in meters {
+            live.entry(meter.id.clone())
+                .or_insert(MeterLive::at_start(meter.start));
         }
     }
 }
 
 /// Migrate a save to the pack: add new meters at their `start`, check the
-/// result, then stamp `pack_rev` and `state_rev`. Live migrate and replay both
-/// call this. It does not touch the disk.
+/// result, then stamp `pack_rev` and `state_rev`. Live migrate calls this.
+/// Replay adds only the meters the record lists. This does not touch the disk.
 pub fn migrate_save(
     canon: &Canon,
     mut now: Now,
     pack_rev: &str,
     state_rev: u64,
 ) -> Result<Now, Reason> {
-    init_new_meters(canon, &mut now);
+    let pending = meters_pending(canon, &now);
+    add_meter_starts(&mut now, &pending);
     check_save(canon, &now).map_err(reason_of)?;
     now.pack_rev = pack_rev.to_string();
     now.state_rev = state_rev;
@@ -915,10 +935,19 @@ pub fn migrate_save(
 /// item and wielded slot the pack does not define, every meter the pack defines
 /// that an actor lacks, every meter outside its rules and every empty id or zero count.
 pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
+    check_save_except(canon, now, &BTreeSet::new())
+}
+
+/// Like `check_save`, but meters in `except` are not required yet.
+pub fn check_save_except(
+    canon: &Canon,
+    now: &Now,
+    except: &BTreeSet<String>,
+) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &now.actors {
         for key in canon.meters.keys() {
-            if actor.meters().contains_key(key) {
+            if except.contains(key) || actor.meters().contains_key(key) {
                 continue;
             }
             diags.push(

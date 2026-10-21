@@ -1,17 +1,18 @@
 //! Walk the journal and check that the save matches.
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use spookery_kernel::api::canon::migrate_save;
+use spookery_kernel::api::canon::{add_meter_starts, check_save_except};
 use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
 use spookery_kernel::api::model::{Now, Presence};
-use spookery_kernel::api::store::codec::{emit_effect, emit_save, load_save};
+use spookery_kernel::api::store::codec::{canonicalize, emit_effect, emit_save, load_save};
 use spookery_kernel::api::store::require_rules_rev;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
@@ -227,7 +228,7 @@ pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
 fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
     let mut world = if migrating {
-        World::open_for_replay(path)?
+        World::open_for_migrate(path)?
     } else {
         World::open(path)?
     };
@@ -764,7 +765,7 @@ fn effect_text(effect: Option<&Effect>) -> String {
 }
 
 fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
-    let next = world.now().clone();
+    let mut next = world.now().clone();
     if next.pack_rev != record.pack_rev_before {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
@@ -774,13 +775,27 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
             None,
         )));
     }
-    let next = migrate_save(
-        world.canon(),
-        next,
-        &record.pack_rev_after,
-        record.state_rev_after,
-    )
-    .map_err(ReplayError::Reason)?;
+    add_meter_starts(&mut next, &record.meters);
+    // Meters this record does not add are not required yet when an actor lacks them.
+    // A later migrate record, or the migrate being sealed, puts them on.
+    let mut except = BTreeSet::new();
+    for id in world.canon().meters.keys() {
+        if record.meters.iter().any(|meter| meter.id == *id) {
+            continue;
+        }
+        if next
+            .actors
+            .values()
+            .any(|actor| !actor.meters().contains_key(id))
+        {
+            except.insert(id.clone());
+        }
+    }
+    check_save_except(world.canon(), &next, &except)
+        .map_err(|diag| ReplayError::Reason(reason_of(diag)))?;
+    next.pack_rev = record.pack_rev_after.clone();
+    next.state_rev = record.state_rev_after;
+    canonicalize(&mut next);
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
