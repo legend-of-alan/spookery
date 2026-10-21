@@ -882,9 +882,10 @@ fn meter_schema_error(
     diag
 }
 
-/// Unknown ids and pairs `stored` rejects are `SCHEMA`. A defined id missing
-/// from a present map is filled from `start` with offset 0.
-pub fn bind_meters(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> {
+/// Fit the save to the pack. Reject every meter, item and wielded slot the
+/// pack does not define, every meter outside its rules and every empty id or
+/// zero count. With nothing rejected, fill each missing meter at its start value.
+pub fn fit_save(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &now.actors {
         for key in actor.meters().keys() {
@@ -919,22 +920,6 @@ pub fn bind_meters(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> 
             );
         }
     }
-    if !diags.is_empty() {
-        return Err(diags);
-    }
-    for actor in now.actors.values_mut() {
-        let live = actor.meters_mut();
-        for (id, def) in &canon.meters {
-            live.entry(id.clone())
-                .or_insert_with(|| MeterLive::at_start(def));
-        }
-    }
-    Ok(())
-}
-
-/// An empty id or a count of zero is `SCHEMA`.
-pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
-    let mut diags = Vec::new();
     for (id, actor) in &now.actors {
         for (item, count) in actor.inventory() {
             if item.is_empty() {
@@ -973,16 +958,6 @@ pub fn bind_inventory(now: &Now) -> Result<(), Vec<Diagnostic>> {
             }
         }
     }
-    if diags.is_empty() {
-        Ok(())
-    } else {
-        Err(diags)
-    }
-}
-
-/// Item ids in the save that have no `world/items/<id>.md`.
-pub(crate) fn unknown_save_items(canon: &Canon, now: &Now) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
     for (actor_id, actor) in &now.actors {
         for item in actor.inventory().keys() {
             if !canon.items.contains_key(item) {
@@ -1036,7 +1011,17 @@ pub(crate) fn unknown_save_items(canon: &Canon, now: &Now) -> Vec<Diagnostic> {
             }
         }
     }
-    diags
+    if !diags.is_empty() {
+        return Err(diags);
+    }
+    for actor in now.actors.values_mut() {
+        let live = actor.meters_mut();
+        for (id, def) in &canon.meters {
+            live.entry(id.clone())
+                .or_insert_with(|| MeterLive::at_start(def));
+        }
+    }
+    Ok(())
 }
 
 fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {

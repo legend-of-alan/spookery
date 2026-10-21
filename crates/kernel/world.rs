@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::canon::world_settings::Budget;
-use crate::canon::{bind_inventory, bind_meters, load_canon, pack_rev, Canon};
+use crate::canon::{fit_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
@@ -138,12 +138,7 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
     if !problems.is_empty() {
         return Err(reason_of(problems));
     }
-    bind_meters(&canon, &mut now).map_err(reason_of)?;
-    bind_inventory(&now).map_err(reason_of)?;
-    let unknown = crate::canon::unknown_save_items(&canon, &now);
-    if !unknown.is_empty() {
-        return Err(reason_of(unknown));
-    }
+    fit_save(&canon, &mut now).map_err(reason_of)?;
     Ok(World {
         root: root.to_path_buf(),
         canon,
@@ -283,13 +278,9 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         diags.extend(problems);
         if let Some(canon) = &canon {
             let mut copy = now.clone();
-            if let Err(more) = bind_meters(canon, &mut copy) {
+            if let Err(more) = fit_save(canon, &mut copy) {
                 diags.extend(more);
             }
-            if let Err(more) = bind_inventory(&copy) {
-                diags.extend(more);
-            }
-            diags.extend(crate::canon::unknown_save_items(canon, &copy));
         }
     }
     if let Some(canon) = &canon {

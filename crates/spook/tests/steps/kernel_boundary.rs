@@ -84,7 +84,6 @@ const NARROWED: &[&str] = &[
     "track",
     "track_before",
     "track_many",
-    "unknown_save_items",
     "used_exit",
     "uses_teleport",
     "visit",
