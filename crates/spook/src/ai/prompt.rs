@@ -165,12 +165,8 @@ pub enum Wake {
         place: Option<String>,
         actor: Option<String>,
         text: String,
-        gen: u64,
     },
-    Queued {
-        gen: u64,
-    },
-    Sit,
+    Queued,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -402,7 +398,7 @@ pub fn prepare_with(
                 prose,
             ))
         }
-        Wake::Queued { .. } | Wake::Sit => {
+        Wake::Queued => {
             let pcs: Vec<&str> = present
                 .iter()
                 .filter(|id| kinds.get(id.as_str()) == Some(&CastKind::PcTemplate))
@@ -904,7 +900,6 @@ mod tests {
             place: None,
             actor: None,
             text: "hello".to_string(),
-            gen: 0,
         }
     }
 
@@ -1119,7 +1114,7 @@ mod tests {
     fn sit_with_no_pc_skips_the_model() {
         let canon = docks();
         let mut called = false;
-        let prepared = prepare(&canon, &Wake::Sit, &[], &mut |_| {
+        let prepared = prepare(&canon, &Wake::Queued, &[], &mut |_| {
             called = true;
             Err("called".into())
         });
@@ -1140,7 +1135,6 @@ mod tests {
             place: None,
             actor: Some("mira".to_string()),
             text: "good evening".to_string(),
-            gen: 0,
         };
         let mut calls = Vec::new();
         let prepared = prepare(&canon, &wake, &[], &mut |viewer| {

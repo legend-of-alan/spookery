@@ -70,7 +70,7 @@ pub fn run_ai_gm<M: Model>(
             prose: &prose,
             buffer: &mut buffer,
             high: &mut high,
-            wake: Wake::Sit,
+            wake: Wake::Queued,
             model,
             watch,
         })?;
@@ -206,6 +206,10 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         push_handled(buffer, say);
     }
     seat.retain_pending(*high, committed);
+    // Queued events and the commit result travel on different streams, so ask the host.
+    if committed && !call_status(seat, None)?.queued.is_empty() {
+        seat.wakes.push_back(Wake::Queued);
+    }
     if !checks.is_empty() {
         if let Some((turn_view, mut side)) = view {
             side.buffer = buffer.clone();
@@ -315,8 +319,6 @@ struct GmLoop {
     wakes: VecDeque<Wake>,
     /// Say events at or below this seq are not a wake. Starts closed.
     high_water: u64,
-    /// Advances when a `commit_round` result arrives, before later events.
-    gen: u64,
 }
 
 impl GmLoop {
@@ -330,7 +332,6 @@ impl GmLoop {
             client,
             wakes: VecDeque::new(),
             high_water: u64::MAX,
-            gen: 0,
         })
     }
 
@@ -339,15 +340,9 @@ impl GmLoop {
     }
 
     fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, HostError> {
-        let commit = name == "commit_round";
         let outcome = self.client.call(name, arguments).map_err(host_err)?;
-        // Lines already on the socket are folded in before the commit generation
-        // moves, which is the order the seat used to stamp them.
         let events = self.client.take_events();
         self.absorb(events);
-        if commit {
-            self.gen = self.gen.wrapping_add(1);
-        }
         Ok(outcome)
     }
 
@@ -372,13 +367,11 @@ impl GmLoop {
         }
     }
 
-    /// Drop say wakes already covered by `high`, and queued wakes from before a commit.
+    /// Drop say wakes already covered by `high`, and queued wakes once a commit ran.
     fn retain_pending(&mut self, high: u64, committed: bool) {
-        let gen = self.gen;
         self.wakes.retain(|wake| match wake {
             Wake::Say { seq, .. } => *seq > high,
-            Wake::Queued { gen: arrived } => !committed || *arrived >= gen,
-            Wake::Sit => false,
+            Wake::Queued => !committed,
         });
     }
 
@@ -391,7 +384,6 @@ impl GmLoop {
     }
 
     fn classify(&self, body: EventBody) -> Option<Wake> {
-        let gen = self.gen;
         match body {
             EventBody::Say(say) => {
                 if say.from.starts_with("player:") && say.seq > self.high_water {
@@ -402,13 +394,12 @@ impl GmLoop {
                         place: say.place,
                         actor: say.actor,
                         text: say.text,
-                        gen,
                     })
                 } else {
                     None
                 }
             }
-            EventBody::Queued(_) => Some(Wake::Queued { gen }),
+            EventBody::Queued(_) => Some(Wake::Queued),
             EventBody::Check(_) => None,
         }
     }
