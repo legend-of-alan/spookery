@@ -468,19 +468,3 @@ fn the_player_map_lists_the_room(world: &mut World) {
     assert!(map.contains("mira_rooms") || map.contains("Mira"), "{map}");
     assert!(!map.contains("trapdoor"), "{map}");
 }
-
-#[when(expr = "the operator runs spook map on the docks pack")]
-fn the_operator_runs_spook_map(world: &mut World) {
-    let pack = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    let output = support::spook(&["map", pack.to_str().unwrap()]);
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    world.code = output.status.code();
-}
-
-#[then(expr = "the map lists the stairs exit and does not hide it")]
-fn the_map_lists_the_stairs(world: &mut World) {
-    assert_eq!(world.code, Some(0), "{}", world.stderr);
-    assert!(world.stdout.contains("stairs"), "{}", world.stdout);
-    assert!(world.stdout.contains("mira_rooms"), "{}", world.stdout);
-}

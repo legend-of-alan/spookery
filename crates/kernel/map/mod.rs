@@ -442,43 +442,12 @@ fn verb_hints(canon: &Canon, now: &Now, actor_id: &str, target: TargetKind) -> V
     }
 }
 
-pub fn graph(canon: &Canon) -> String {
-    let mut text = String::from("exits\n");
-    let mut mermaid = String::from("flowchart LR\n");
-    for (id, place) in &canon.places {
-        text.push_str(&place_name(canon, id));
-        text.push('\n');
-        for exit in &place.exits {
-            text.push_str(&format!(
-                "  {} -> {} ({})\n",
-                exit.name,
-                exit.to,
-                minutes_label(exit.minutes)
-            ));
-            mermaid.push_str(&format!(
-                "  {id} -->|{}| {}\n",
-                exit.name.replace('|', "/"),
-                exit.to
-            ));
-        }
-    }
-    format!("{text}\n```mermaid\n{mermaid}```\n")
-}
-
 fn exit_line(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> String {
     exit_phrase(
         &exit.name,
         exit.minutes,
         exit::locked(canon, now, actor_id, exit),
     )
-}
-
-fn minutes_label(minutes: u64) -> String {
-    if minutes == 0 {
-        "0 min".to_string()
-    } else {
-        format!("{minutes} min")
-    }
 }
 
 pub fn place_name(canon: &Canon, id: &str) -> String {
