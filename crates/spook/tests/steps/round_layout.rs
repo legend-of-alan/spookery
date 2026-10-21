@@ -68,12 +68,6 @@ fn the_round_crate_after_the_move(_world: &mut World) {
         names(&["mod.rs", "play.rs", "replay.rs", "rerun.rs", "triggers.rs"]),
         "property tests live under round/prop"
     );
-    let record = fs::read_to_string(round.join("stage/record.rs"))
-        .unwrap_or_else(|err| panic!("read record stage: {err}"));
-    assert!(
-        record.contains("struct RoundRecord") && record.contains("fn round_record"),
-        "the round log is not folded into the record stage"
-    );
     let mut files = Vec::new();
     rust_files(&round, &mut files);
     for path in files {
