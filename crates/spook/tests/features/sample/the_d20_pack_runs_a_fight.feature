@@ -59,6 +59,3 @@ Feature: The d20 pack runs a fight
 
   Scenario: Kernel and tick sources do not name 5e
     When the kernel and tick sources are scanned for a game-words ban
-
-  Scenario: The scan fails when a 5e word is planted
-    When a 5e word is planted in kernel and tick

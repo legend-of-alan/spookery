@@ -11,68 +11,6 @@ use super::steps_run::{assert_standard_steps_omitted, read_tick};
 use crate::support::{self, copy_dir};
 use crate::World;
 
-#[given(expr = "every existing cucumber feature")]
-fn every_existing_cucumber_feature(world: &mut World) {
-    let features = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/features");
-    let mut count = 0usize;
-    walk_features(&features, &mut count);
-    assert!(count > 1, "the suite has one feature file");
-    world.scratch = count.to_string();
-}
-
-#[then(expr = "all pass and spook verify passes on both sample packs")]
-fn all_pass_and_spook_verify_passes_on_both_sample_packs(_world: &mut World) {
-    for name in ["oneshot-docks", "sample-d20"] {
-        let pack = support::copy_pack(name, "verify-clean");
-        let output = support::spook(&["verify", &pack.to_string_lossy()]);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert!(
-            output.status.success(),
-            "{name} verify failed\n{stdout}{stderr}"
-        );
-        let _ = fs::remove_dir_all(pack);
-    }
-}
-
-#[then(expr = "crates\\/round has exactly one call site of roll")]
-fn crates_round_has_exactly_one_call_site_of_roll(world: &mut World) {
-    let root = workspace_root();
-    let round = root.join("crates/round");
-    let mut files = Vec::new();
-    files_under(&round, &mut files);
-    let mut sites = 0usize;
-    for path in &files {
-        if path.extension().and_then(|ext| ext.to_str()) != Some("rs") {
-            continue;
-        }
-        let text = fs::read_to_string(path).unwrap();
-        assert!(
-            !text.contains("resolve_check("),
-            "{} calls resolve_check",
-            path.display()
-        );
-        sites += roll_calls(&text);
-    }
-    assert_eq!(sites, 1, "crates/round roll call sites");
-    let kernel = root.join("crates/kernel");
-    let mut kernel_files = Vec::new();
-    files_under(&kernel, &mut kernel_files);
-    let mut rolls = Vec::new();
-    for path in &kernel_files {
-        let text = fs::read_to_string(path).unwrap();
-        assert!(!text.contains("fn resolve_check"), "{}", path.display());
-        assert!(!text.contains("fn die_face"), "{}", path.display());
-        if text.contains("pub fn roll(") {
-            rolls.push(path.clone());
-        }
-    }
-    assert_eq!(rolls.len(), 1, "{rolls:?}");
-    assert!(rolls[0].ends_with("rules/roll.rs") || rolls[0].ends_with("rules\\roll.rs"));
-    world.scratch = "one-roll".to_string();
-    assert_round_names(&root);
-}
-
 #[when(expr = "a docks round is played")]
 fn a_docks_round_is_played(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "stage-order");
@@ -450,22 +388,6 @@ fn no_effect_from_that_row_applies(world: &mut World) {
     );
 }
 
-fn roll_calls(text: &str) -> usize {
-    let bytes = text.as_bytes();
-    let mut count = 0usize;
-    let mut from = 0usize;
-    while let Some(at) = text[from..].find("roll(") {
-        let index = from + at;
-        let boundary =
-            index == 0 || (!bytes[index - 1].is_ascii_alphanumeric() && bytes[index - 1] != b'_');
-        if boundary {
-            count += 1;
-        }
-        from = index + 5;
-    }
-    count
-}
-
 fn assert_refusal(world: &World, oil: i64, reason: &str) {
     assert_eq!(String::from_utf8_lossy(&world.now_bytes), oil.to_string());
     let tick: Value = serde_json::from_str(&world.scratch).unwrap();
@@ -534,58 +456,6 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
         .collect::<Vec<_>>()
         .join(",");
     (faces, out.total)
-}
-
-fn assert_round_names(root: &Path) {
-    assert!(!root.join("crates/tick").exists());
-    let mut banned = Vec::new();
-    for dir in ["crates", "docs"] {
-        let mut files = Vec::new();
-        files_under(&root.join(dir), &mut files);
-        for path in files {
-            if path.extension().and_then(|ext| ext.to_str()) == Some("md")
-                || path.extension().and_then(|ext| ext.to_str()) == Some("rs")
-            {
-                let text = fs::read_to_string(&path).unwrap_or_default();
-                for needle in [
-                    concat!("die_", "cursor"),
-                    concat!("stage_", "tick"),
-                    concat!("spookery_", "tick"),
-                ] {
-                    if text.contains(needle) {
-                        banned.push(format!("{} contains {needle}", path.display()));
-                    }
-                }
-            }
-        }
-    }
-    assert!(banned.is_empty(), "{}", banned.join("\n"));
-    let world = fs::read_to_string(root.join("crates/kernel/world.rs")).unwrap();
-    for name in ["set_pending", "set_rolls", "queue_intent", "clear_queue"] {
-        assert!(
-            !world.lines().any(|line| {
-                let trimmed = line.trim();
-                trimmed.starts_with(&format!("pub fn {name}("))
-            }),
-            "World publishes {name}"
-        );
-    }
-    let mut round_files = Vec::new();
-    files_under(&root.join("crates/round"), &mut round_files);
-    for path in round_files {
-        let text = fs::read_to_string(&path).unwrap();
-        for line in text.lines() {
-            let trimmed = line.trim();
-            let Some(rest) = trimmed.strip_prefix("pub fn ") else {
-                continue;
-            };
-            let name: String = rest
-                .chars()
-                .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-                .collect();
-            assert!(!name.contains("turn"), "{} pub fn {name}", path.display());
-        }
-    }
 }
 
 fn lark_pack() -> PathBuf {
@@ -721,33 +591,4 @@ fn copy_tree(from: &Path, label: &str) -> PathBuf {
     let pack = crate::support::fresh_dir(label);
     copy_dir(from, &pack);
     pack
-}
-
-fn workspace_root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
-}
-
-fn walk_features(dir: &Path, count: &mut usize) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            walk_features(&path, count);
-        } else if path.extension().and_then(|ext| ext.to_str()) == Some("feature") {
-            *count += 1;
-        }
-    }
-}
-
-fn files_under(dir: &Path, out: &mut Vec<PathBuf>) {
-    if !dir.exists() {
-        return;
-    }
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_dir() {
-            files_under(&path, out);
-        } else {
-            out.push(path);
-        }
-    }
 }

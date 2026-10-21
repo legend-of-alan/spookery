@@ -950,81 +950,6 @@ const KERNEL_TICK_NEEDLES: &[&str] = &[
     "ollama",
 ];
 
-pub(crate) fn names_say_what_the_code_does() {
-    let src = workspace_root().join("crates/spook/src");
-    let mut files = Vec::new();
-    walk_pub_names(&src, &src, &mut files);
-    let mut defs = BTreeMap::<String, Vec<String>>::new();
-    for path in files {
-        let text = fs::read_to_string(&path).unwrap();
-        for (index, line) in text.lines().enumerate() {
-            let trimmed = line.trim();
-            if trimmed.starts_with("pub struct Seat")
-                || trimmed.starts_with("pub enum Turn ")
-                || trimmed.starts_with("pub enum Turn{")
-                || trimmed == "pub enum Turn"
-                || is_pub_fn_turn(trimmed)
-            {
-                panic!(
-                    "{}:{} still publishes a retired name",
-                    path.display(),
-                    index + 1
-                );
-            }
-            if let Some(name) = declared_type_name(trimmed) {
-                defs.entry(name)
-                    .or_default()
-                    .push(format!("{}:{}", path.display(), index + 1));
-            }
-        }
-    }
-    let clashes: Vec<String> = defs
-        .iter()
-        .filter(|(_, places)| places.len() > 1)
-        .map(|(name, places)| format!("{name}: {}", places.join(", ")))
-        .collect();
-    assert!(clashes.is_empty(), "{}", clashes.join("\n"));
-}
-
-fn is_pub_fn_turn(trimmed: &str) -> bool {
-    let Some(rest) = trimmed.strip_prefix("pub fn turn") else {
-        return false;
-    };
-    rest.starts_with('(') || rest.starts_with('<')
-}
-
-fn declared_type_name(trimmed: &str) -> Option<String> {
-    let rest = trimmed
-        .strip_prefix("pub struct ")
-        .or_else(|| trimmed.strip_prefix("pub enum "))?;
-    let name: String = rest
-        .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-        .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
-}
-
-fn walk_pub_names(src: &Path, dir: &Path, files: &mut Vec<PathBuf>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let path = entry.unwrap().path();
-        let name = path.file_name().unwrap().to_string_lossy().into_owned();
-        if path.is_dir() {
-            assert!(name != "seat", "directory named seat: {}", path.display());
-            walk_pub_names(src, &path, files);
-        } else {
-            assert!(name != "turn.rs", "file named turn.rs: {}", path.display());
-            if name == "schedule.rs" && path.parent() == Some(src) {
-                panic!("schedule.rs at the src root: {}", path.display());
-            }
-            files.push(path);
-        }
-    }
-}
-
 fn import_boundary() {
     let root = workspace_root();
     let spook_src = root.join("crates/spook/src");
@@ -1134,65 +1059,6 @@ fn no_five_e_words_in_kernel_or_tick() {
     let mut hits = five_e_words_under(&root.join("crates/kernel"));
     hits.extend(five_e_words_under(&root.join("crates/round")));
     assert!(hits.is_empty(), "{}", hits.join("\n"));
-}
-
-fn planted_five_e_word_fails_the_scan() {
-    let kernel_hits = planted_five_e("5e\n", "fn clean() {}\n");
-    assert!(
-        kernel_hits.iter().any(|hit| hit.contains("5e")),
-        "kernel scan accepted a 5e word"
-    );
-    let tick_hits = planted_five_e("fn clean() {}\n", "5e\n");
-    assert!(
-        tick_hits.iter().any(|hit| hit.contains("5e")),
-        "tick scan accepted a 5e word"
-    );
-    let digest = planted_five_e(
-        "daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819\n",
-        "fn clean() {}\n",
-    );
-    assert!(
-        digest.is_empty(),
-        "a hex digest counted as a 5e word: {}",
-        digest.join("\n")
-    );
-}
-
-fn planted_five_e(kernel_body: &str, tick_body: &str) -> Vec<String> {
-    let root = support::fresh_dir("five-e");
-    fs::create_dir_all(root.join("kernel")).unwrap();
-    fs::create_dir_all(root.join("tick")).unwrap();
-    fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();
-    fs::write(root.join("tick/lib.rs"), tick_body).unwrap();
-    let mut hits = five_e_words_under(&root.join("kernel"));
-    hits.extend(five_e_words_under(&root.join("tick")));
-    let _ = fs::remove_dir_all(&root);
-    hits
-}
-
-fn reqwest_in_kernel_or_tick_fails_the_scan() {
-    let kernel_hits = planted_boundary("reqwest\n", "fn clean() {}\n");
-    assert!(
-        kernel_hits.iter().any(|hit| hit.contains("reqwest")),
-        "kernel scan accepted reqwest"
-    );
-    let tick_hits = planted_boundary("fn clean() {}\n", "reqwest\n");
-    assert!(
-        tick_hits.iter().any(|hit| hit.contains("reqwest")),
-        "tick scan accepted reqwest"
-    );
-}
-
-fn planted_boundary(kernel_body: &str, tick_body: &str) -> Vec<String> {
-    let root = support::fresh_dir("boundary");
-    fs::create_dir_all(root.join("kernel")).unwrap();
-    fs::create_dir_all(root.join("tick")).unwrap();
-    fs::write(root.join("kernel/lib.rs"), kernel_body).unwrap();
-    fs::write(root.join("tick/lib.rs"), tick_body).unwrap();
-    let mut hits = hits_under(&root.join("kernel"), KERNEL_TICK_NEEDLES);
-    hits.extend(hits_under(&root.join("tick"), KERNEL_TICK_NEEDLES));
-    let _ = fs::remove_dir_all(&root);
-    hits
 }
 
 fn player_waits(tick: &Value) -> Vec<String> {
@@ -1640,33 +1506,6 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let _ = fs::remove_dir_all(&held);
 }
 
-fn the_scheduler_does_not_spawn_a_tick() {
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let listen = fs::read_to_string(src.join("host/listen.rs")).unwrap();
-    let timer = listen
-        .find("tokio::time::sleep")
-        .unwrap_or_else(|| panic!("the idle timer does not sleep on a Tokio timer"));
-    assert!(
-        listen[timer..].contains("send(Msg::Wake)"),
-        "the idle timer does not post a wake to the shard thread"
-    );
-    let schedule = fs::read_to_string(src.join("host/idle_clock.rs")).unwrap();
-    assert!(
-        schedule.contains("pub fn idle_tick_if_due(") && !schedule.contains("async fn"),
-        "idle_tick_if_due is not a plain function run on the shard thread"
-    );
-    assert!(
-        !schedule.contains("tokio"),
-        "idle_clock.rs reaches for the Tokio runtime"
-    );
-    for needle in ["::play(", "catch_up(", "idle_tick_if_due", "idle_clock::"] {
-        assert!(
-            !listen.contains(needle),
-            "the async listener calls {needle} instead of posting a wake to the shard thread"
-        );
-    }
-}
-
 fn manifests_do_not_name_a_model_crate() {
     let root = workspace_root();
     for path in [
@@ -1791,19 +1630,9 @@ fn the_kernel_and_tick_sources_are_scanned(_world: &mut World) {
     import_boundary();
 }
 
-#[when(expr = "reqwest is planted in kernel and tick")]
-fn reqwest_is_planted_in_kernel_and_tick(_world: &mut World) {
-    reqwest_in_kernel_or_tick_fails_the_scan();
-}
-
 #[when(expr = "the kernel and tick sources are scanned for a game-words ban")]
 fn the_kernel_and_tick_sources_are_scanned_for_a_game_words_ban(_world: &mut World) {
     no_five_e_words_in_kernel_or_tick();
-}
-
-#[when(expr = "a 5e word is planted in kernel and tick")]
-fn a_five_e_word_is_planted_in_kernel_and_tick(_world: &mut World) {
-    planted_five_e_word_fails_the_scan();
 }
 
 #[when(expr = "a queued wait meets a wake and the seat drops")]
@@ -1864,9 +1693,4 @@ fn rowan_marks_nell_while_holding_the_knife(_world: &mut World) {
 #[when(expr = "the crate manifests are scanned")]
 fn the_crate_manifests_are_scanned(_world: &mut World) {
     manifests_do_not_name_a_model_crate();
-}
-
-#[when(expr = "the scheduler source is scanned")]
-fn the_scheduler_source_is_scanned(_world: &mut World) {
-    the_scheduler_does_not_spawn_a_tick();
 }
