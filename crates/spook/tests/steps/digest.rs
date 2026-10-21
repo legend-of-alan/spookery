@@ -94,8 +94,8 @@ fn closes_the_seat(world: &mut World, actor: String) {
     world.host_mark = mark;
     table::close_actor(world, &actor);
     table::wait_host_until(world, "seat close", |text| {
-        let added = text.get(mark..).unwrap_or("");
-        added.ends_with('\n') && added.contains("clock ") && !added.contains("effect ")
+        text.get(mark..)
+            .is_some_and(|added| added.contains("clock "))
     });
 }
 
@@ -112,20 +112,33 @@ fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
 
 #[then(expr = "every host printout ends with the clocks")]
 fn every_host_printout_ends_with_the_clocks(world: &mut World) {
-    let body = table::host_stdout(world);
-    let body = body.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
+    let text = table::host_stdout(world);
+    let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or("");
+    // `shop_day` sorts last, so it ends a printout. An effect after that starts the next one.
+    let mut in_clocks = false;
+    let mut open = false;
     let mut saw = false;
-    let mut ended_on_clock = false;
     for line in body.lines().filter(|line| !line.is_empty()) {
-        saw = true;
-        assert!(
-            line.starts_with("effect ") || line.starts_with("clock "),
-            "{line}\n{body}"
-        );
-        ended_on_clock = line.starts_with("clock ");
+        if line.starts_with("effect ") {
+            assert!(
+                !in_clocks,
+                "an effect followed a clock in one printout:\n{line}\n{body}"
+            );
+            open = true;
+        } else if line.starts_with("clock ") {
+            in_clocks = true;
+            open = true;
+            if line.starts_with("clock shop_day ") {
+                saw = true;
+                in_clocks = false;
+                open = false;
+            }
+        } else {
+            panic!("not an effect or a clock:\n{line}\n{body}");
+        }
     }
     assert!(
-        saw && ended_on_clock,
+        saw && !open,
         "a printout did not end with the clocks\n{body}"
     );
 }
