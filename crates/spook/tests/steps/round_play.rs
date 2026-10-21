@@ -121,7 +121,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
 "
         ),
     );
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     quiet_mira(&pack);
     world.pack = Some(pack);
 }
@@ -147,7 +147,7 @@ fn a_docks_row_spilled(world: &mut World, remove: i64) {
 "
         ),
     );
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     quiet_mira(&pack);
     world.pack = Some(pack);
 }
@@ -335,7 +335,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
           add: 1
 ",
     );
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     quiet_mira(&pack);
     let (now, _rolls, tick) = play_queued(
         &pack,
@@ -479,7 +479,7 @@ fn lark_pack() -> PathBuf {
     do: []
 ",
     );
-    stamp(&pack);
+    support::stamp_pack_rev(&pack);
     spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
 }
@@ -553,20 +553,7 @@ fn quiet_mira(pack: &Path) {
     let next = text.replace("  eligible: true\n", "  eligible: false\n");
     assert_ne!(text, next, "mira was already ineligible");
     fs::write(&path, next).unwrap();
-    stamp(pack);
-}
-
-fn stamp(pack: &Path) {
-    let now_path = pack.join("state/save.yaml");
-    let mut now =
-        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
-            .unwrap();
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
-    fs::write(
-        &now_path,
-        spookery_kernel::api::store::codec::emit_save(&now).unwrap(),
-    )
-    .unwrap();
+    support::stamp_pack_rev(pack);
 }
 
 fn append(path: &Path, extra: &str) {

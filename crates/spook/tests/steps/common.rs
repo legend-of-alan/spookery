@@ -6,6 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
+use spookery_kernel::api::journal::list_tick_keys;
 use spookery_kernel::api::model::Now;
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 
@@ -379,14 +380,14 @@ fn the_gm_commits_the_round(world: &mut World) {
 #[then(expr = "a tick file was written")]
 fn a_tick_file_was_written(world: &mut World) {
     assert_eq!(
-        table::list_tick_keys(table::pack(world)),
+        list_tick_keys(table::pack(world)),
         vec!["tick-0001".to_string()]
     );
 }
 
 #[then(expr = "no tick file was written")]
 fn no_tick_file(world: &mut World) {
-    assert!(table::list_tick_keys(table::pack(world)).is_empty());
+    assert!(list_tick_keys(table::pack(world)).is_empty());
 }
 
 #[then(expr = "save.yaml is unchanged since the seat")]

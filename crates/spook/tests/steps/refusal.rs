@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::api::journal::list_tick_keys;
 
 use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
@@ -360,7 +361,7 @@ fn append(path: &Path, extra: &str) {
 
 fn assert_one_rejection(world: &World, word: &str) {
     let pack = table::pack(world);
-    let keys = table::list_tick_keys(pack);
+    let keys = list_tick_keys(pack);
     let mut hits = 0;
     for key in &keys {
         let line = spookery_kernel::api::journal::read_record_line(pack, key)

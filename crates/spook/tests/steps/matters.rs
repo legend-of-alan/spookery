@@ -5,6 +5,7 @@ use cucumber::{given, then, when};
 use spookery_kernel::api::model::Presence;
 use spookery_kernel::api::World as Shard;
 
+use crate::support::stamp_pack_rev;
 use crate::World;
 
 const SECRET_ID: &str = "fact_sealed_name";
@@ -25,7 +26,7 @@ fn lark_has_a_hidden_meter(world: &mut World) {
         "  - id: omen\n    min: 0\n    base_cap: 5\n    max: 5\n    start: 1\n    hidden: true\n",
     );
     fs::write(pack.join("rules/meters.yaml"), meters).unwrap();
-    stamp(pack);
+    stamp_pack_rev(pack);
     spookery_round::migrate_pack(pack).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
@@ -43,7 +44,7 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
         "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          who: npc_briar\n          fact: {SECRET_ID}\n      - flag:\n          who: world\n          key: {SECRET_ID}\n          value: true\n      - meter:\n          who: npc_briar\n          key: hp\n          add: -1\n"
     ));
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
-    stamp(&pack);
+    stamp_pack_rev(&pack);
     let mut shard = seat(&pack);
     let output = play(&mut shard, "spill");
     world.summary = output.summary.clone();
@@ -86,7 +87,7 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
         "  - id: sip\n    when:\n      verb: sip\n    cost:\n      items:\n        tonic: 1\n    do:\n      - item:\n          who: npc_oden\n          id: tonic\n          add: 1\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
-    stamp(&pack);
+    stamp_pack_rev(&pack);
     let mut shard = seat(&pack);
     let output = play(&mut shard, "sip");
     world.summary = output.summary.clone();
@@ -228,12 +229,6 @@ fn pack(world: &World) -> &Path {
 
 fn copy_sample(label: &str) -> PathBuf {
     crate::support::copy_pack("sample-d20", label)
-}
-
-fn stamp(pack: &Path) {
-    edit_now(pack, |now| {
-        now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
-    });
 }
 
 fn edit_now(pack: &Path, edit: impl FnOnce(&mut spookery_kernel::api::model::Now)) {

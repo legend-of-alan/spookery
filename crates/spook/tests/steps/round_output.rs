@@ -2,6 +2,7 @@ use std::fs;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::api::journal::list_tick_keys;
 use spookery_kernel::api::model::Now;
 
 use super::common::edit_save;
@@ -91,7 +92,7 @@ fn the_commit_reply_lists_one_check(world: &mut World, actor: String) {
         .unwrap_or_else(|| panic!("checks\n{}", world.stdout));
     assert_eq!(checks.len(), 1, "checks\n{}", world.stdout);
     let pack = table::pack(world).to_path_buf();
-    let found = table::list_tick_keys(&pack).iter().any(|key| {
+    let found = list_tick_keys(&pack).iter().any(|key| {
         let text = spookery_kernel::api::journal::read_record_line(&pack, key)
             .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
         text.contains(&format!("\"actor_id\":\"{actor}\"")) && text.contains("\"move\":\"grit\"")

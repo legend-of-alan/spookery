@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
+use spookery_kernel::api::journal::list_tick_keys;
 use spookery_kernel::api::model::Now;
 
 use crate::support::{self, Proc};
@@ -109,10 +110,6 @@ pub fn now_of(pack: &Path) -> Now {
             Err(_) => std::thread::sleep(Duration::from_millis(10)),
         }
     }
-}
-
-pub fn list_tick_keys(pack: &Path) -> Vec<String> {
-    spookery_kernel::api::journal::list_tick_keys(pack)
 }
 
 /// The actors whose player `wait` is in that tick.

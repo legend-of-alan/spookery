@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::api::journal::list_tick_keys;
 
 use super::table;
 use crate::support;
@@ -195,7 +196,7 @@ fn sit(world: &mut World, label: &str) -> PathBuf {
 fn commit_line(world: &mut World, line: &str) {
     let mark = table::player_write(world, line);
     table::wait_player_from(world, mark, "\"kind\":\"queued\"");
-    let before = table::list_tick_keys(table::pack(world)).len();
+    let before = list_tick_keys(table::pack(world)).len();
     table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
     table::wait_tick_count(table::pack(world), before + 1);
 }
@@ -236,7 +237,7 @@ fn arrival_minute(pack: &Path) -> u64 {
 }
 
 fn ticks(pack: &Path) -> Vec<Value> {
-    spookery_kernel::api::journal::list_tick_keys(pack)
+    list_tick_keys(pack)
         .into_iter()
         .map(|name| {
             let text = spookery_kernel::api::journal::read_record_line(pack, &name)

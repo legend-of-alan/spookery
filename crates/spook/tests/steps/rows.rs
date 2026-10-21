@@ -8,7 +8,7 @@ use spookery_kernel::api::meter::MeterLive;
 use spookery_kernel::api::model::ActorLive;
 use spookery_kernel::api::Reason;
 
-use crate::support::temp_pack;
+use crate::support::{stamp_pack_rev, temp_pack};
 use crate::World;
 
 use super::table;
@@ -18,7 +18,7 @@ fn mark_needs_a_knife(world: &mut World) {
     let pack = temp_pack("item");
     add_knife_row(&pack);
     insert_nell(&pack);
-    stamp(&pack);
+    stamp_pack_rev(&pack);
     table::listen(world, &pack);
     table::seat_player(world, &pack);
     world.pack = Some(pack);
@@ -128,19 +128,6 @@ fn add_knife_row(pack: &Path) {
         "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-}
-
-fn stamp(pack: &Path) {
-    let now_path = pack.join("state/save.yaml");
-    let mut now =
-        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
-            .unwrap();
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
-    fs::write(
-        &now_path,
-        spookery_kernel::api::store::codec::emit_save(&now).unwrap(),
-    )
-    .unwrap();
 }
 
 fn insert_nell(pack: &Path) {

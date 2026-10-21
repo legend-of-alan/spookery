@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::json;
+use spookery_kernel::api::journal::list_tick_keys;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -290,7 +291,7 @@ fn the_tick_log_records_the_restock(world: &mut World) {
 fn the_tick_log_records_rowan_and_wren(world: &mut World) {
     let start = Instant::now();
     loop {
-        if table::list_tick_keys(table::pack(world)).is_empty() {
+        if list_tick_keys(table::pack(world)).is_empty() {
             if start.elapsed() > Duration::from_secs(8) {
                 panic!("no tick log");
             }
