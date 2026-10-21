@@ -84,7 +84,7 @@ pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason>
 }
 
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
-pub fn migrate(root: &Path, now: Now) -> Result<(), Reason> {
+pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }

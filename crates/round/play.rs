@@ -58,7 +58,7 @@ pub fn commit_moves_at(world: &mut World, wall: &str) -> Result<RoundOutput, Rea
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let now = tip_for_migrate(path)?;
-    spookery_kernel::api::commit::migrate(path, now)
+    spookery_kernel::api::commit::migrate_journal(path, now)
 }
 
 fn tip_for_migrate(path: &Path) -> Result<spookery_kernel::api::model::Now, Reason> {
