@@ -19,8 +19,7 @@ mod stage;
 mod state;
 
 pub use play::{
-    advance_while_busy, catch_up, commit_moves, commit_moves_at, migrate_pack, play,
-    play_pack_once, RoundCause, RoundOutput,
+    advance_while_busy, catch_up, migrate_pack, play, play_pack_once, RoundCause, RoundOutput,
 };
 pub use replay::{
     from_journal, replay_states, resume, verify_pack, verify_parallel, verify_quick, ReplayError,

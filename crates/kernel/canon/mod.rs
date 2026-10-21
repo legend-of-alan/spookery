@@ -96,9 +96,11 @@ pub struct CastCanon {
     pub tick: Option<TickProfile>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TickProfile {
     pub eligible: bool,
+    #[serde(default)]
     pub flags: Vec<String>,
 }
 
@@ -316,17 +318,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 fact_ok = false;
             }
         }
-        let (tick, tick_ok) = match file.tick {
-            Some(tick) => match validate_tick(&rel, text, tick) {
-                Ok(profile) => (Some(profile), true),
-                Err(more) => {
-                    diags.extend(more);
-                    (None, false)
-                }
-            },
-            None => (None, true),
-        };
-        if !fact_ok || !tick_ok {
+        if !fact_ok {
             continue;
         }
         let kind = match file.kind.as_str() {
@@ -364,7 +356,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 display_name: file.display_name,
                 facts: fact_ids_of(&facts, &id),
                 body: body.to_string(),
-                tick,
+                tick: file.tick,
             },
         );
         match schema::compile(&rel, file.rules, &Owner::Cast(id)) {
@@ -596,14 +588,6 @@ fn fact_schema_error(
         diag = diag.at_line(line, Some(column));
     }
     diag
-}
-
-fn validate_tick(file: &str, text: &str, tick: TickFile) -> Result<TickProfile, Vec<Diagnostic>> {
-    let _ = (file, text);
-    Ok(TickProfile {
-        eligible: tick.eligible,
-        flags: tick.flags,
-    })
 }
 
 fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
@@ -1547,7 +1531,6 @@ fn load_item(file: &str, yaml: &str) -> Result<ItemFile, Vec<Diagnostic>> {
             "write 'schema: item' with no version suffix",
         )]);
     }
-    let _ = (&item.name, &item.tags);
     Ok(item)
 }
 
@@ -1903,17 +1886,9 @@ struct CastFile {
     display_name: String,
     facts: Vec<FactFile>,
     #[serde(default)]
-    tick: Option<TickFile>,
+    tick: Option<TickProfile>,
     #[serde(default)]
     rules: Vec<RuleEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TickFile {
-    eligible: bool,
-    #[serde(default)]
-    flags: Vec<String>,
 }
 
 #[derive(Deserialize)]

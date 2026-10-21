@@ -117,7 +117,7 @@ pub fn call_gm_tool(
 
 fn run_intent(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match queue_tool_intent(world, arguments) {
-        Ok(note) => GmToolReply::new(frames::queued_ack(&note.id)),
+        Ok(note) => GmToolReply::new(crate::protocol::queued_ack(&note.id)),
         Err(code) => refused_tool(code),
     }
 }
@@ -161,7 +161,7 @@ fn run_close(_world: &mut World, arguments: Option<Map<String, Value>>) -> GmToo
     if arguments.is_some_and(|args| !args.is_empty()) {
         return refused_tool(Reason::Schema);
     }
-    let mut done = GmToolReply::new(frames::released_result());
+    let mut done = GmToolReply::new(crate::protocol::released_result());
     done.release_seat = true;
     done
 }
@@ -305,9 +305,9 @@ fn commit_tool(
         return Err(Reason::NotInSpec);
     }
     let before = world.now().world_time;
-    let forwarded = player_moves::commit_then_fast_forward(world)?;
-    let outputs = forwarded.outputs;
-    let mut done = if forwarded.committed {
+    let committed = !world.queued_intents().is_empty();
+    let outputs = player_moves::commit_then_fast_forward(world)?;
+    let mut done = if committed {
         let output = &outputs[0];
         let outcome = output
             .outcome
@@ -340,7 +340,7 @@ fn noop(world: &World) -> GmToolReply {
 }
 
 fn refused_tool(code: Reason) -> GmToolReply {
-    let mut done = GmToolReply::new(frames::code_result(code.token()));
+    let mut done = GmToolReply::new(crate::protocol::code_result(code.token()));
     done.refused = Some(code);
     done
 }
