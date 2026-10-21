@@ -110,6 +110,14 @@ impl Canon {
         self.cast.get(actor_id).and_then(|cast| cast.tick.as_ref())
     }
 
+    pub fn display_name(&self, id: &str) -> String {
+        self.cast
+            .get(id)
+            .map(|cast| cast.display_name.clone())
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| id.to_string())
+    }
+
     pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {
         let Some(fact) = self.facts.get(fact_id) else {
             return "";

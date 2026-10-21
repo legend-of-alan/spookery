@@ -4,8 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
-use crate::firewall::allows;
-use crate::intent::{ActorKind, ViewerId};
+use crate::firewall::{allows, text_leaks_fact};
 use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::Now;
 
@@ -194,7 +193,7 @@ fn subject(canon: &Canon, viewer: &str, actor: &str) -> String {
     if actor == viewer {
         "You".to_string()
     } else {
-        display_name(canon, actor)
+        canon.display_name(actor)
     }
 }
 
@@ -202,17 +201,8 @@ fn whose(canon: &Canon, viewer: &str, actor: &str) -> String {
     if actor == viewer {
         "Your".to_string()
     } else {
-        format!("{}'s", display_name(canon, actor))
+        format!("{}'s", canon.display_name(actor))
     }
-}
-
-fn display_name(canon: &Canon, id: &str) -> String {
-    canon
-        .cast
-        .get(id)
-        .map(|cast| cast.display_name.clone())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| id.to_string())
 }
 
 fn item_name(canon: &Canon, id: &str) -> String {
@@ -248,15 +238,13 @@ fn narrate_allowed(
     fact_ids: &[String],
     text: &str,
 ) -> bool {
-    let Some(seat) = viewer_of(now, viewer) else {
+    let Some(seat) = now.viewer_of(viewer) else {
         return false;
     };
     if fact_ids.iter().any(|fact| !allows(canon, now, &seat, fact)) {
         return false;
     }
-    !canon.facts.iter().any(|(fact_id, fact)| {
-        !fact.text.is_empty() && text.contains(&fact.text) && !allows(canon, now, &seat, fact_id)
-    })
+    !text_leaks_fact(canon, now, &seat, text)
 }
 
 fn can_see(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> bool {
@@ -317,7 +305,7 @@ fn message_visible(canon: &Canon, now: &Now, viewer: &str, id: &str) -> bool {
     if !in_room && !addressed {
         return false;
     }
-    let Some(seat) = viewer_of(now, viewer) else {
+    let Some(seat) = now.viewer_of(viewer) else {
         return false;
     };
     if message
@@ -327,19 +315,5 @@ fn message_visible(canon: &Canon, now: &Now, viewer: &str, id: &str) -> bool {
     {
         return false;
     }
-    !canon.facts.iter().any(|(fact_id, fact)| {
-        !fact.text.is_empty()
-            && message.text.contains(&fact.text)
-            && !allows(canon, now, &seat, fact_id)
-    })
-}
-
-fn viewer_of(now: &Now, id: &str) -> Option<ViewerId> {
-    let actor = now.actors.get(id)?;
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
-    ViewerId::from_kind(kind, id).ok()
+    !text_leaks_fact(canon, now, &seat, &message.text)
 }

@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::firewall::allows;
+use crate::firewall::{allows, text_leaks_fact};
 use crate::intent::ViewerId;
 use crate::map::ExitView;
 use crate::meter;
@@ -141,7 +141,9 @@ fn perceive_at_budget(
         {
             continue;
         }
-        if text_names_unallowed_fact(canon, now, &viewer, &message.text) {
+        // A place note stays in the save. Who can read it changes as actors move,
+        // so the drop is here and not in `apply`.
+        if text_leaks_fact(canon, now, &viewer, &message.text) {
             continue;
         }
         let mut copy = message.clone();
@@ -200,7 +202,7 @@ fn perceive_at_budget(
     let exits = crate::map::visible(canon, now, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
-        .map(|id| crate::map::cast_name(canon, id))
+        .map(|id| canon.display_name(id))
         .collect();
     let place_name = crate::map::place_name(canon, &place);
     let prose = crate::map::place_prose(canon, now, viewer.actor_id());
@@ -222,16 +224,6 @@ fn perceive_at_budget(
         habits,
         exits,
         status,
-    })
-}
-
-/// A place note stays in the save. Who can read it changes as actors move,
-/// so the drop is here and not in `apply`.
-fn text_names_unallowed_fact(canon: &Canon, now: &Now, viewer: &ViewerId, text: &str) -> bool {
-    canon.facts.iter().any(|(id, fact)| {
-        !fact.text.is_empty()
-            && text.contains(fact.text.as_str())
-            && !allows(canon, now, viewer, id)
     })
 }
 

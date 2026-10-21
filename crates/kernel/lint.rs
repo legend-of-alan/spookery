@@ -379,20 +379,11 @@ fn sets_watch(watch: &crate::rule::ChangeWatch, rule: &crate::rule::Rule, mark: 
         ) => id == written && gained == up,
         (ChangeWatch::Clock { id }, Mark::Clock(written)) => id == written,
         (ChangeWatch::Arrive { place, .. }, Mark::Arrive(dest)) => {
-            watched_place(rule, place) == dest
+            rule.watched_place(place) == dest
         }
         (ChangeWatch::Knows { fact }, Mark::Knows(written)) => fact == written,
         _ => false,
     }
-}
-
-fn watched_place<'a>(rule: &'a crate::rule::Rule, place: &'a str) -> &'a str {
-    if place == "here" {
-        if let crate::rule::Owner::Place(id) = &rule.owner {
-            return id;
-        }
-    }
-    place
 }
 
 fn sight_of(

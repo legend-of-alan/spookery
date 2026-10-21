@@ -3,7 +3,7 @@
 use crate::canon::{Canon, Exit};
 use crate::error::Reason;
 use crate::firewall::allows;
-use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::model::Now;
 use crate::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::cond;
@@ -87,15 +87,7 @@ pub(crate) fn revealed(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) ->
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(actor) = now.actors.get(actor_id) else {
-        return false;
-    };
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
-    let Ok(viewer) = ViewerId::from_kind(kind, actor_id) else {
+    let Some(viewer) = now.viewer_of(actor_id) else {
         return false;
     };
     allows(canon, now, &viewer, fact)
@@ -108,16 +100,11 @@ pub(crate) fn locked(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> b
     let Some(actor) = now.actors.get(actor_id) else {
         return true;
     };
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
     let intent = Intent {
         id: String::new(),
         tick_index: now.tick_index,
         actor_id: actor_id.to_string(),
-        actor_kind: kind,
+        actor_kind: actor.actor_kind(),
         source: Source::Player,
         move_name: "travel".to_string(),
         target: Target::Place(exit.name.clone()),

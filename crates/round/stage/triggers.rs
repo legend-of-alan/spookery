@@ -8,7 +8,7 @@ use spookery_kernel::api::expand::expand_rule;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::key::{ChangeRecord, StateKey, StateValue};
 use spookery_kernel::api::model::Now;
-use spookery_kernel::api::rule::{ChangeWatch, Op, Owner, Rule, When};
+use spookery_kernel::api::rule::{ChangeWatch, Op, Rule, When};
 use spookery_kernel::api::rules::cond;
 use spookery_kernel::api::rules::expr::{self, Ctx};
 use spookery_kernel::api::rules::{MoveReport, RollResult};
@@ -289,7 +289,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
     match watch {
         ChangeWatch::Arrive { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
-                let place = watched_place(rule, place);
+                let place = rule.watched_place(place);
                 text(&change.before) != Some(place)
                     && text(&change.after) == Some(place)
                     && who_ok(draft, who, actor)
@@ -298,7 +298,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         },
         ChangeWatch::Leave { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
-                let place = watched_place(rule, place);
+                let place = rule.watched_place(place);
                 text(&change.before) == Some(place)
                     && text(&change.after) != Some(place)
                     && who_ok(draft, who, actor)
@@ -346,15 +346,6 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
     }
-}
-
-fn watched_place<'a>(rule: &'a Rule, place: &'a str) -> &'a str {
-    if place == "here" {
-        if let Owner::Place(id) = &rule.owner {
-            return id;
-        }
-    }
-    place
 }
 
 fn who_ok(draft: &Draft, who: &str, actor_id: &str) -> bool {

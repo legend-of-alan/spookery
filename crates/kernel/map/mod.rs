@@ -7,7 +7,7 @@ use crate::diagnostic::Diagnostic;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::firewall::allows;
-use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::key::StateKey;
 use crate::model::{Now, Pending};
 use crate::rule::{Rule, TargetKind, When};
@@ -287,12 +287,7 @@ pub fn place_prose(canon: &Canon, now: &Now, actor_id: &str) -> String {
     let Some(place) = canon.places.get(actor.place()) else {
         return String::new();
     };
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
-    let Ok(viewer) = ViewerId::from_kind(kind, actor_id) else {
+    let Some(viewer) = now.viewer_of(actor_id) else {
         return String::new();
     };
     let mut body = place.body.clone();
@@ -309,15 +304,6 @@ pub fn place_prose(canon: &Canon, now: &Now, actor_id: &str) -> String {
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-pub fn cast_name(canon: &Canon, id: &str) -> String {
-    canon
-        .cast
-        .get(id)
-        .map(|cast| cast.display_name.clone())
-        .filter(|name| !name.is_empty())
-        .unwrap_or_else(|| id.to_string())
 }
 
 pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
@@ -373,11 +359,7 @@ fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: Targe
     };
     let place = actor.place().to_string();
     let wielded = actor.wielded().map(str::to_string);
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
+    let kind = actor.actor_kind();
     for hint in verb_hints(canon, now, actor_id, target) {
         let Some(rule) = gate::verb_for(
             canon,

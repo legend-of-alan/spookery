@@ -20,6 +20,17 @@ pub struct Rule {
     pub index: usize,
 }
 
+impl Rule {
+    pub fn watched_place<'a>(&'a self, place: &'a str) -> &'a str {
+        if place == "here" {
+            if let Owner::Place(id) = &self.owner {
+                return id;
+            }
+        }
+        place
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Owner {
     Verb,

@@ -36,6 +36,13 @@ pub struct Now {
     pub flags: Vec<String>,
 }
 
+impl Now {
+    pub fn viewer_of(&self, id: &str) -> Option<crate::intent::ViewerId> {
+        let actor = self.actors.get(id)?;
+        crate::intent::ViewerId::from_kind(actor.actor_kind(), id).ok()
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Presence {
@@ -175,6 +182,14 @@ impl ActorLive {
 
     pub fn is_pc(&self) -> bool {
         matches!(self, ActorLive::Pc { .. })
+    }
+
+    pub fn actor_kind(&self) -> crate::intent::ActorKind {
+        if self.is_pc() {
+            crate::intent::ActorKind::Player
+        } else {
+            crate::intent::ActorKind::Npc
+        }
     }
 
     pub fn meters(&self) -> &BTreeMap<String, MeterLive> {
