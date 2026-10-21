@@ -215,7 +215,6 @@ mod tests {
             "gather",
             "session_status",
             "resolve",
-            "perceive:mira",
             "apply",
             "apply_effect",
             "cast:mira/leave_door_note",
@@ -227,9 +226,7 @@ mod tests {
             steps.push(name.to_string());
         }
         let line = render(&steps);
-        assert!(line.contains(
-            "\"steps_run\":[\"perceive:mira\",\"apply_effect\",\"cast:mira/leave_door_note\"]"
-        ));
+        assert!(line.contains("\"steps_run\":[\"apply_effect\",\"cast:mira/leave_door_note\"]"));
         assert!(!line.contains("advance"), "{line}");
     }
 
@@ -237,9 +234,9 @@ mod tests {
     fn reordered_steps_are_stored_whole() {
         let line = render(&["complete".to_string()]);
         assert!(line.contains("\"steps_run\":[\"complete\"]"), "{line}");
-        let partial = render(&["advance".to_string(), "perceive:mira".to_string()]);
+        let partial = render(&["advance".to_string(), "apply_effect".to_string()]);
         assert!(
-            partial.contains("\"steps_run\":[\"advance\",\"perceive:mira\"]"),
+            partial.contains("\"steps_run\":[\"advance\",\"apply_effect\"]"),
             "{partial}"
         );
     }

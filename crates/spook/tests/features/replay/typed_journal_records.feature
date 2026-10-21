@@ -43,5 +43,5 @@ Feature: Journal records are typed
   Scenario: A quiet tick omits the standard steps
     Given a docks table
     When the operator runs 2 ticks
-    Then the first tick lists cast:mira/leave_door_note and omits the standard steps
+    Then the first tick lists only apply_effect and cast:mira/leave_door_note
     And the second tick omits steps_run

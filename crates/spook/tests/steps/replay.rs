@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::World;
 
-use super::steps_run::{assert_standard_steps_omitted, read_steps_run, read_tick};
+use super::steps_run::{read_steps_run, read_tick};
 use super::table;
 
 #[given(expr = "an empty directory")]
@@ -422,15 +422,13 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
     );
 }
 
-#[then(expr = "the first tick lists cast:mira\\/leave_door_note and omits the standard steps")]
+#[then(expr = "the first tick lists only apply_effect and cast:mira\\/leave_door_note")]
 fn the_first_tick_keeps_only_the_extra_steps(world: &mut World) {
     let tick = read_tick(table::pack(world), "tick-0001");
-    let names = read_steps_run(&tick);
-    assert!(
-        names.iter().any(|name| name == "cast:mira/leave_door_note"),
-        "{names:?}"
+    assert_eq!(
+        read_steps_run(&tick),
+        ["apply_effect", "cast:mira/leave_door_note"]
     );
-    assert_standard_steps_omitted(&tick);
 }
 
 #[then(expr = "the second tick omits steps_run")]
