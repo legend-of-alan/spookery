@@ -272,7 +272,8 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
     };
     if let Some((bytes, now)) = &loaded {
         let mut problems = save_problems(now, bytes);
-        if migrate_continues(root, now) {
+        let migrating = migrate_continues(root, now);
+        if migrating {
             problems.retain(|diag| diag.code != Reason::HandEdit.token());
         }
         if let Some(diag) = pack_rev_problem(root, now, bytes) {
@@ -281,7 +282,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         diags.extend(problems);
         if let Some(canon) = &canon {
             let mut now = now.clone();
-            if migrate_continues(root, &now) {
+            if migrating {
                 init_new_meters(canon, &mut now);
             }
             if let Err(more) = check_save(canon, &now) {
