@@ -84,10 +84,8 @@ pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason>
     Ok(())
 }
 
-/// Fit `now` to a new pack rev: add each meter the pack defines that an actor
-/// lacks, at the meter's `start`, then check the save and stamp `pack_rev`.
-/// This does not touch the disk or `state_rev`.
-pub fn migrate_save(canon: &Canon, mut now: Now, pack_rev: &str) -> Result<Now, Reason> {
+/// Add each meter the pack defines that an actor lacks, at the meter's `start`.
+pub fn init_new_meters(canon: &Canon, now: &mut Now) {
     for actor in now.actors.values_mut() {
         let live = actor.meters_mut();
         for (id, def) in &canon.meters {
@@ -95,14 +93,10 @@ pub fn migrate_save(canon: &Canon, mut now: Now, pack_rev: &str) -> Result<Now, 
                 .or_insert_with(|| MeterLive::at_start(def));
         }
     }
-    check_save(canon, &now).map_err(reason_of)?;
-    now.pack_rev = pack_rev.to_string();
-    canonicalize(&mut now);
-    Ok(now)
 }
 
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
-pub fn migrate(root: &Path, now: Now) -> Result<(), Reason> {
+pub fn migrate(root: &Path, mut now: Now) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -111,8 +105,11 @@ pub fn migrate(root: &Path, now: Now) -> Result<(), Reason> {
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
     let _lock = lock_world(root)?;
-    let mut now = migrate_save(&canon, now, &pack_rev_after)?;
+    init_new_meters(&canon, &mut now);
+    check_save(&canon, &now).map_err(reason_of)?;
+    now.pack_rev = pack_rev_after;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
+    canonicalize(&mut now);
     let emitted = emit_save(&now)?.into_bytes();
     let record = journal::emit_migrate(
         &pack_rev_before,
