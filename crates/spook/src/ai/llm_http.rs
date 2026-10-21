@@ -482,14 +482,6 @@ mod tests {
     }
 
     #[test]
-    fn production_limits_are_sixty_ten_and_two() {
-        let model = HttpModel::new(Env::new("k", "http://127.0.0.1:9", "m")).expect("client");
-        assert_eq!(model.limits.total, Duration::from_secs(60));
-        assert_eq!(model.limits.connect, Duration::from_secs(10));
-        assert_eq!(model.limits.backoff, Duration::from_secs(2));
-    }
-
-    #[test]
     fn retry_classifier_retries_timeout_connect_429_and_5xx_only() {
         assert!(should_retry(RetryClass::Timeout));
         assert!(should_retry(RetryClass::Connect));

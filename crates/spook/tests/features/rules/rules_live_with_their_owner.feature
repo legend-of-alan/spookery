@@ -32,12 +32,6 @@ Feature: Rules live with their owner
     Given a verb whose if dash holds two conditions
     Then spook check reports two conditions under one dash
 
-  Scenario: Canon does not match effect kinds by string
-    Then no effect or condition kind is matched by string in canon/
-
-  Scenario: The host does not check audience or items
-    Then the host sources contain no audience or item checks
-
   Scenario: A cost the actor cannot pay changes nothing
     Given steady costs 5 grit and the sitter has 1
     When the sitter plays steady

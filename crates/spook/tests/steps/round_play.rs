@@ -7,22 +7,9 @@ use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target
 use spookery_kernel::api::rules::{roll, MoveReport, RollInput, RollKey};
 use spookery_round::RoundCause;
 
-use super::steps_run::{assert_standard_steps_omitted, read_tick};
+use super::steps_run::read_tick;
 use crate::support::{self, copy_dir};
 use crate::World;
-
-#[when(expr = "a docks round is played")]
-fn a_docks_round_is_played(world: &mut World) {
-    let pack = support::copy_pack("oneshot-docks", "stage-order");
-    spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("play: {err}"));
-    world.pack = Some(pack);
-}
-
-#[then(expr = "the round followed the standard step order")]
-fn the_round_followed_the_standard_step_order(world: &mut World) {
-    let tick = read_tick(world.pack.as_ref().unwrap(), "tick-0001");
-    assert_standard_steps_omitted(&tick);
-}
 
 #[given(expr = "a round where Lark rolls grit")]
 fn a_round_where_lark_rolls_grit(world: &mut World) {

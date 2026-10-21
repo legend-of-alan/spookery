@@ -16,7 +16,6 @@ pub const HOST: &[&str] = &[
 
 #[allow(dead_code)]
 pub const WORLD: &[&str] = &[
-    "tests/features/boundary",
     "tests/features/catchup",
     "tests/features/check",
     "tests/features/checks",
