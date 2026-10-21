@@ -182,17 +182,18 @@ fn sees(canon: &Canon, now: &Now, intent: &Intent) -> bool {
         Target::Empty => return true,
         Target::Actor(id) | Target::Place(id) | Target::Clock(id) => id.as_str(),
     };
-    let held = now
+    if now
         .actors
         .get(&intent.actor_id)
-        .is_some_and(|actor| actor.count(id) > 0);
-    let Ok(viewer) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) else {
-        return false;
-    };
-    let Ok(view) = perceive_at(canon, now, &viewer.token()) else {
-        return false;
-    };
-    held || view.place == id
+        .is_some_and(|actor| actor.count(id) > 0)
+    {
+        return true;
+    }
+    let view = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)
+        .ok()
+        .and_then(|viewer| perceive_at(canon, now, &viewer.token()).ok());
+    let Some(view) = view else { return false };
+    view.place == id
         || view.visible_actors.iter().any(|other| other == id)
         || view.items.iter().any(|item| item.id == id)
         || view.exits.iter().any(|exit| exit.name == id)
