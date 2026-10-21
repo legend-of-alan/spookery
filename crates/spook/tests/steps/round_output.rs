@@ -9,9 +9,8 @@ use super::table;
 use crate::support::{self, temp_pack};
 use crate::World;
 
-#[given(expr = "a docks table with a GM and {string} seated")]
-fn a_docks_table_with_a_gm_and_one_pc(world: &mut World, actor: String) {
-    assert_eq!(actor, "pc_rowan");
+#[given(expr = "a docks table with a GM and pc_rowan seated")]
+fn a_docks_table_with_a_gm_and_one_pc(world: &mut World) {
     let pack = temp_pack("round-output");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
@@ -28,14 +27,12 @@ fn a_docks_table_with_a_gm_and_one_pc(world: &mut World, actor: String) {
     support::stamp_pack_rev(&pack);
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::seat_actor(world, &pack, &actor);
+    table::seat_actor(world, &pack, "pc_rowan");
     world.pack = Some(pack);
 }
 
-#[given(expr = "a docks table with {string} and {string} seated and no GM")]
-fn a_docks_table_with_two_players_and_no_gm(world: &mut World, first: String, second: String) {
-    assert_eq!(first, "pc_rowan");
-    assert_eq!(second, "pc_wren");
+#[given(expr = "a docks table with pc_rowan and pc_wren seated and no GM")]
+fn a_docks_table_with_two_players_and_no_gm(world: &mut World) {
     let pack = temp_pack("round-output-busy");
     edit_save(&pack, |now| {
         let until = now.world_time + 10;
@@ -43,8 +40,8 @@ fn a_docks_table_with_two_players_and_no_gm(world: &mut World, first: String, se
         set_busy(now, "pc_wren", until, "docks_shop", "docks_shop");
     });
     table::listen(world, &pack);
-    table::seat_actor(world, &pack, &first);
-    table::seat_actor(world, &pack, &second);
+    table::seat_actor(world, &pack, "pc_rowan");
+    table::seat_actor(world, &pack, "pc_wren");
     world.pack = Some(pack);
 }
 
@@ -70,11 +67,6 @@ fn the_gm_queues_a_move(world: &mut World, move_name: String, actor: String) {
 #[when(expr = "the GM queues a 10-minute travel for {string}")]
 fn the_gm_queues_a_ten_minute_travel(world: &mut World, actor: String) {
     queue_move(world, &actor, "travel", Some("docks_street"));
-}
-
-#[when(expr = "the GM commits")]
-fn the_gm_commits(world: &mut World) {
-    world.stdout = table::gm_call(world, 8, "commit_round", r#"{"include_tick":true}"#);
 }
 
 #[when(expr = "{string} sends a move")]

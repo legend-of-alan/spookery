@@ -80,12 +80,7 @@ pub fn handle_player_move(
     if gm_seated {
         return Ok(MoveOutcome::Queued(note));
     }
-    let Some((advanced, output)) = commit_queued(world)? else {
-        return Ok(MoveOutcome::Committed {
-            advanced: false,
-            output: RoundOutput::default(),
-        });
-    };
+    let (advanced, output) = commit_queued(world)?;
     Ok(MoveOutcome::Committed { advanced, output })
 }
 
@@ -241,14 +236,14 @@ fn player_line_id(world: &World, actor_id: &str, canonical: &str) -> Result<Stri
 }
 
 /// An empty round does not enter `play` and does not advance `world_time`.
-pub fn commit_queued(world: &mut World) -> Result<Option<(bool, RoundOutput)>, Reason> {
+pub fn commit_queued(world: &mut World) -> Result<(bool, RoundOutput), Reason> {
     if world.queued_intents().is_empty() {
-        return Ok(None);
+        return Ok((false, RoundOutput::default()));
     }
     let before = world.now().world_time;
     let wall = wall_now()?;
     let (_outcome, output) = commit_moves_at(world, &wall)?;
-    Ok(Some((world.now().world_time != before, output)))
+    Ok((world.now().world_time != before, output))
 }
 
 impl QueuedNote {

@@ -304,32 +304,17 @@ fn commit_tool(
         }
         return Err(Reason::NotInSpec);
     }
-    if world.queued_intents().is_empty() {
-        return fast_forward_reply(world);
-    }
     let before = world.now().world_time;
     let forwarded = player_moves::commit_then_fast_forward(world)?;
-    let outcome = forwarded
-        .outcome
-        .expect("a queued round commits before the burst");
-    let mut done = GmToolReply::new(frames::commit_reply(
-        outcome.state_rev,
-        &outcome.diff_summary,
-        Some(&outcome.log_path),
-    ));
-    done.outputs = forwarded.outputs;
-    done.advanced = world.now().world_time != before;
-    done.ticked = true;
-    Ok(done)
-}
-
-fn fast_forward_reply(world: &mut World) -> Result<GmToolReply, Reason> {
-    let before = world.now().world_time;
-    let forwarded = player_moves::commit_then_fast_forward(world)?;
-    if forwarded.outputs.is_empty() {
-        return Ok(noop(world));
-    }
-    let mut done = GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None));
+    let mut done = match &forwarded.outcome {
+        Some(outcome) => GmToolReply::new(frames::commit_reply(
+            outcome.state_rev,
+            &outcome.diff_summary,
+            Some(&outcome.log_path),
+        )),
+        None if forwarded.outputs.is_empty() => return Ok(noop(world)),
+        None => noop(world),
+    };
     done.outputs = forwarded.outputs;
     done.advanced = world.now().world_time != before;
     done.ticked = true;

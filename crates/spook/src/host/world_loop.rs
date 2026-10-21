@@ -4,7 +4,6 @@ use std::io::{self, Write};
 
 use spookery_kernel::api::model::{ActorLive, Presence};
 use spookery_kernel::api::perceive::perceive;
-use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::{host_summary, player_digest, Reason};
 use spookery_round::RoundOutput;
@@ -361,11 +360,12 @@ fn handle(
                 let _ = io::stdout().flush();
             }
             let outputs = std::mem::take(&mut done.outputs);
-            let collected = collect(&outputs);
+            let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
             if done.ticked {
-                frames::write_checks(&mut done.value, &collected.reports);
-                frames::write_dice(&mut done.value, &collected.dice);
-                refresh_players(world, seats, &collected.reports, &outputs)?;
+                let dice: Vec<_> = outputs.iter().flat_map(|o| o.dice.clone()).collect();
+                frames::write_checks(&mut done.value, &reports);
+                frames::write_dice(&mut done.value, &dice);
+                refresh_players(world, seats, &outputs)?;
                 print_host(world);
             }
             if let Some(tape) = &done.tape {
@@ -379,7 +379,7 @@ fn handle(
                 send_recipients(world, seats, recipients, line.clone())?;
             }
             let mut after = done.after;
-            after.extend(player_moves::gm_check_frames(&collected.reports));
+            after.extend(player_moves::gm_check_frames(&reports));
             if done.advanced {
                 bump_sleep(restart);
             }
@@ -422,32 +422,17 @@ fn bump_sleep(restart: &tokio::sync::watch::Sender<u64>) {
     let _ = restart.send(next);
 }
 
-struct Collected {
-    reports: Vec<MoveReport>,
-    dice: Vec<String>,
-}
-
-fn collect(outputs: &[RoundOutput]) -> Collected {
-    let mut reports = Vec::new();
-    let mut dice = Vec::new();
-    for output in outputs {
-        reports.extend(output.reports.clone());
-        dice.extend(output.dice.clone());
-    }
-    Collected { reports, dice }
-}
-
 fn refresh_players(
     world: &mut World,
     seats: &mut Seats,
-    reports: &[MoveReport],
     outputs: &[RoundOutput],
 ) -> Result<(), Reason> {
+    let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
         let bytes = match player_refresh(world, &player.actor_id) {
             Ok(text) => {
-                let mut out = player_moves::player_report_lines(reports, &player.actor_id);
+                let mut out = player_moves::player_report_lines(&reports, &player.actor_id);
                 out.push_str(&text);
                 for output in outputs {
                     for line in narrate_for(&output.lines, &player.actor_id) {
@@ -663,7 +648,7 @@ fn on_mechanical(
                 bump_sleep(restart);
             }
             print_host(world);
-            refresh_players(world, seats, &output.reports, std::slice::from_ref(&output))?;
+            refresh_players(world, seats, std::slice::from_ref(&output))?;
         }
         Ok(player_moves::MoveOutcome::Busy {
             code,
@@ -677,8 +662,7 @@ fn on_mechanical(
                 frames::player_refused(code, missing.as_deref()).into_bytes(),
             )?;
             if !outputs.is_empty() {
-                let collected = collect(&outputs);
-                refresh_players(world, seats, &collected.reports, &outputs)?;
+                refresh_players(world, seats, &outputs)?;
                 print_host(world);
             }
         }
