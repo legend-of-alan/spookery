@@ -183,19 +183,19 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
     );
 }
 
-#[then(expr = "rowan is still in docks_shop and busy until 21:40")]
-fn rowan_is_busy_until_half_past_eight(world: &mut World) {
+#[then(expr = "the world is at 21:40 and rowan is in mira_rooms")]
+fn rowan_has_arrived_by_half_past(world: &mut World) {
     let now = table::now_of(&pack_of(world));
     let rowan = now.actors.get("pc_rowan").unwrap();
-    assert_eq!(rowan.place(), "docks_shop");
-    assert_eq!(rowan.act().busy_until, Some(EVENING + 10));
-    assert!(rowan.is_busy(now.world_time));
+    assert_eq!(now.world_time, EVENING + 10);
+    assert_eq!(rowan.place(), "mira_rooms");
 }
 
-#[then(expr = "\"wait\" from rowan before 21:40 is rejected with BUSY")]
-fn wait_is_busy(world: &mut World) {
-    let (_mark, added) = table::player_send(world, "wait", "BUSY");
-    assert!(added.contains("BUSY"), "{added}");
+#[then(expr = "rowan's line shows {string}")]
+fn rowans_line_shows(world: &mut World, text: String) {
+    let needle = format!("\"place\":\"{text}\"");
+    let added = table::wait_player_from(world, world.mark, &needle);
+    assert!(added.contains(&needle), "{added}");
 }
 
 #[given(expr = "rowan arrives at 21:40 and nell at 21:35")]

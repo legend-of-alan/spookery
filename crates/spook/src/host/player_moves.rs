@@ -24,7 +24,7 @@ pub enum MoveOutcome {
     Queued(QueuedNote),
     Committed {
         advanced: bool,
-        output: RoundOutput,
+        outputs: Vec<RoundOutput>,
     },
     Busy {
         code: &'static str,
@@ -33,14 +33,14 @@ pub enum MoveOutcome {
     },
 }
 
-pub(super) struct Forwarded {
+pub struct Forwarded {
     pub outputs: Vec<RoundOutput>,
     pub committed: bool,
 }
 
 /// Commit a queued round, then fast-forward while every seated PC is busy.
 /// An empty queue only fast-forwards.
-pub(super) fn commit_then_fast_forward(world: &mut World) -> Result<Forwarded, Reason> {
+pub fn commit_then_fast_forward(world: &mut World) -> Result<Forwarded, Reason> {
     let wall = wall_now()?;
     let mut outputs = Vec::new();
     let committed = !world.queued_intents().is_empty();
@@ -76,8 +76,12 @@ pub fn handle_player_move(
     if gm_seated {
         return Ok(MoveOutcome::Queued(note));
     }
-    let (advanced, output) = commit_queued(world)?;
-    Ok(MoveOutcome::Committed { advanced, output })
+    let before = world.now().world_time;
+    let forwarded = commit_then_fast_forward(world)?;
+    Ok(MoveOutcome::Committed {
+        advanced: world.now().world_time != before,
+        outputs: forwarded.outputs,
+    })
 }
 
 pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
@@ -229,17 +233,6 @@ fn player_line_id(world: &World, actor_id: &str, canonical: &str) -> Result<Stri
         return Err(Reason::Schema);
     }
     Ok(id)
-}
-
-/// An empty round does not enter `play` and does not advance `world_time`.
-pub fn commit_queued(world: &mut World) -> Result<(bool, RoundOutput), Reason> {
-    if world.queued_intents().is_empty() {
-        return Ok((false, RoundOutput::default()));
-    }
-    let before = world.now().world_time;
-    let wall = wall_now()?;
-    let output = commit_moves_at(world, &wall)?;
-    Ok((world.now().world_time != before, output))
 }
 
 impl QueuedNote {

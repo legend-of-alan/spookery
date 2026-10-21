@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use spookery::host::{
-    call_gm_tool, commit_queued, handle_player_move, on_scheduled_wake, queue_wait,
+    call_gm_tool, commit_then_fast_forward, handle_player_move, on_scheduled_wake, queue_wait,
     release_player_seat, seat_player, MoveOutcome, SocketEnd,
 };
 use spookery_kernel::api::apply::apply_effect;
@@ -1117,7 +1117,7 @@ fn early_wake_does_not_tick_again() {
     let mut shard = open(&early);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
     queue_wait(&mut shard, "pc_rowan").unwrap();
-    assert!(commit_queued(&mut shard).unwrap().0);
+    commit_then_fast_forward(&mut shard).unwrap();
     let committed = shard.now().clone();
     assert_eq!(committed.world_time, 1085);
     assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
@@ -1425,9 +1425,8 @@ fn opposing_total_reused() {
             panic!("mark committed while a gm seat was requested");
         };
         assert_eq!(shard.now().world_time, 1080);
-        let (advanced, output) = commit_queued(&mut shard).unwrap();
-        assert!(advanced);
-        let reports = output.reports;
+        let forwarded = commit_then_fast_forward(&mut shard).unwrap();
+        let reports = forwarded.outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
         let tick = spookery_kernel::api::journal::read_record_line(&pack, "tick-0001")
@@ -1494,9 +1493,10 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let MoveOutcome::Queued(_) = queued else {
         panic!("held mark committed before the round");
     };
-    let (advanced, output) = commit_queued(&mut shard).unwrap();
-    assert!(advanced);
-    let rowan = rolled_stat(&output.reports, 1);
+    let before = shard.now().world_time;
+    let forwarded = commit_then_fast_forward(&mut shard).unwrap();
+    assert_ne!(shard.now().world_time, before);
+    let rowan = rolled_stat(&forwarded.outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
         !spookery_kernel::api::journal::read_record_line(&held, "tick-0001")
