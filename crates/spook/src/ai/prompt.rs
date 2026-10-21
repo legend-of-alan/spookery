@@ -165,11 +165,8 @@ pub enum Wake {
         place: Option<String>,
         actor: Option<String>,
         text: String,
-        gen: u64,
     },
-    Queued {
-        gen: u64,
-    },
+    Queued,
     Sit,
 }
 
@@ -402,7 +399,7 @@ pub fn prepare_with(
                 prose,
             ))
         }
-        Wake::Queued { .. } | Wake::Sit => {
+        Wake::Queued | Wake::Sit => {
             let pcs: Vec<&str> = present
                 .iter()
                 .filter(|id| kinds.get(id.as_str()) == Some(&CastKind::PcTemplate))
@@ -904,7 +901,6 @@ mod tests {
             place: None,
             actor: None,
             text: "hello".to_string(),
-            gen: 0,
         }
     }
 
@@ -1140,7 +1136,6 @@ mod tests {
             place: None,
             actor: Some("mira".to_string()),
             text: "good evening".to_string(),
-            gen: 0,
         };
         let mut calls = Vec::new();
         let prepared = prepare(&canon, &wake, &[], &mut |viewer| {
