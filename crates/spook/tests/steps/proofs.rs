@@ -1425,8 +1425,8 @@ fn opposing_total_reused() {
             panic!("mark committed while a gm seat was requested");
         };
         assert_eq!(shard.now().world_time, 1080);
-        let forwarded = commit_then_fast_forward(&mut shard).unwrap();
-        let reports = forwarded.outputs.into_iter().next().unwrap().reports;
+        let outputs = commit_then_fast_forward(&mut shard).unwrap();
+        let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
         let tick = spookery_kernel::api::journal::read_record_line(&pack, "tick-0001")
@@ -1494,9 +1494,9 @@ fn a_held_knife_still_runs_the_opposed_row() {
         panic!("held mark committed before the round");
     };
     let before = shard.now().world_time;
-    let forwarded = commit_then_fast_forward(&mut shard).unwrap();
+    let outputs = commit_then_fast_forward(&mut shard).unwrap();
     assert_ne!(shard.now().world_time, before);
-    let rowan = rolled_stat(&forwarded.outputs[0].reports, 1);
+    let rowan = rolled_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
         !spookery_kernel::api::journal::read_record_line(&held, "tick-0001")
@@ -1573,11 +1573,6 @@ fn the_gm_queues_the_door_note(_world: &mut World) {
 #[when(expr = "seventy-two hours of catch-up run")]
 fn seventy_two_hours(_world: &mut World) {
     catchup_cap();
-}
-
-#[when(expr = "twenty-four hours of catch-up run")]
-fn twenty_four_hours(_world: &mut World) {
-    catchup_for(24, 12);
 }
 
 #[when(expr = "one hour of catch-up runs")]
