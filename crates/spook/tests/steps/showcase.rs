@@ -92,8 +92,8 @@ fn the_ending_flag_is_set(world: &mut World) {
     assert!(finished(table::pack(world)), "finished is not set");
 }
 
-#[then(expr = "spook verify and spook audit pass on the save")]
-fn verify_and_audit_pass(world: &mut World) {
+#[then(expr = "spook verify passes on the save")]
+fn verify_passes_on_the_save(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::stop_server(world);
     prove(&pack);
@@ -257,11 +257,4 @@ fn prove(pack: &Path) {
         "verify failed\n{verify_out}\n{verify_err}"
     );
     assert!(verify_out.contains("verified"), "{verify_out}");
-    let audited = support::spook(&["audit", arg]);
-    let audit_out = String::from_utf8_lossy(&audited.stdout);
-    let audit_err = String::from_utf8_lossy(&audited.stderr);
-    assert!(
-        audited.status.success(),
-        "audit failed\n{audit_out}\n{audit_err}"
-    );
 }

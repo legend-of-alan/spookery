@@ -16,7 +16,7 @@ Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
 ## How this differs
 
-The model does not keep the world. It can talk, and it can ask the engine to commit a round. Dice, items, and places change only inside that commit. The journal records the round. Replay repeats the recorded rolls. `spook verify` checks the journal. A player sees a hidden fact only when that character knows it, and `spook audit` checks the view.
+The model does not keep the world. It can talk, and it can ask the engine to commit a round. Dice, items, and places change only inside that commit. The journal records the round. Replay repeats the recorded rolls. `spook verify` checks the journal. A player sees a hidden fact only when that character knows it.
 
 ## Glossary
 

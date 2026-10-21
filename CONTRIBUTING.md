@@ -43,13 +43,6 @@ spook verify /tmp/docks
 
 `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`.
 
-`spook audit` replays that same journal and checks each player character's view for a hidden fact. A clean table prints `pass` and the character id, one line each, and exits 0. Speech that repeats a hidden fact is a note and does not fail the command. `--strict` makes those notes fail.
-
-```sh
-spook audit /tmp/docks
-spook audit --strict /tmp/docks
-```
-
 ## Live AI CI
 
 The `Live AI` workflow runs it against Ollama on pull requests that touch the model host. It also runs it against xAI weekly and on demand, never on pull requests, with the `XAI_API_KEY` repo secret passed in as `SPOOK_GM_KEY`. Without that secret the xAI job skips with a notice. The xAI model is `grok-4.20-0309-non-reasoning` unless the `SPOOK_XAI_MODEL` repo variable names another.

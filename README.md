@@ -92,7 +92,7 @@ spook play $env:TEMP\yard
 spook verify $env:TEMP\yard
 ```
 
-`verify` prints `verified <n> records, state_rev <r>` when the journal matches. `spook audit` is described in [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
+`verify` prints `verified <n> records, state_rev <r>` when the journal matches. See [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
 
 ## Transcript
 

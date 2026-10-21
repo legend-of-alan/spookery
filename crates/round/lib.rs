@@ -22,8 +22,8 @@ pub use play::{
     advance_while_busy, catch_up, migrate_pack, play, play_pack_once, RoundCause, RoundOutput,
 };
 pub use replay::{
-    from_journal, replay_states, resume, verify_pack, verify_parallel, verify_quick, ReplayError,
-    ReplayReport, ReplayStep, VerifyError, VerifyReport,
+    from_journal, resume, verify_pack, verify_parallel, verify_quick, ReplayError, ReplayReport,
+    VerifyError, VerifyReport,
 };
 pub use stage::advance::plan_catchup;
 

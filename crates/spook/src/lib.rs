@@ -2,7 +2,6 @@
 //!
 //! Public API
 //! - `ai`: the model client and the GM loop that calls it.
-//! - `audit`: replay the journal and report a hidden fact in a player view.
 //! - `gm_connection`: the client that sits the GM seat over the agent door.
 //! - `host`: listen, seat players, and run the world.
 //! - `protocol`: the player wire, the GM wire, and the check band they share.
@@ -13,7 +12,6 @@
 //! None. Every module of this crate is public.
 
 pub mod ai;
-pub mod audit;
 pub mod gm_connection;
 pub mod host;
 pub mod protocol;

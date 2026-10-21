@@ -537,27 +537,6 @@ fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
     );
 }
 
-#[given(expr = "a verb narrates the ledger fact to pc_rowan")]
-fn a_verb_narrates_the_ledger(world: &mut World) {
-    let pack = temp_pack("trigger-ledger-narrate");
-    add_verb(
-        &pack,
-        "\n  - id: blurt\n    when:\n      verb: blurt\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The lamp-oil ledger is short.\n",
-    );
-    edit_save(world, &pack, |_| {});
-    world.pack = Some(pack);
-}
-
-#[when(expr = "that narrate runs")]
-fn that_narrate_runs(world: &mut World) {
-    let pack = world.pack.as_ref().unwrap().clone();
-    play(
-        world,
-        &pack,
-        vec![intent("rowan-blurt", "pc_rowan", "blurt", Target::Empty)],
-    );
-}
-
 #[given(expr = "the street has a hidden trapdoor")]
 fn the_street_has_a_hidden_trapdoor(world: &mut World) {
     let pack = temp_pack("trigger-reveal");

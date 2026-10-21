@@ -100,42 +100,12 @@ impl std::fmt::Display for VerifyError {
 
 impl std::error::Error for VerifyError {}
 
-/// One `save.yaml` after an applied journal record. The base save is not included.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ReplayStep {
-    pub state_rev: u64,
-    pub save_yaml: Vec<u8>,
-}
-
 /// Replay the journal. `from` is a directory whose `state/save.yaml` replaces the base.
 /// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
 pub fn from_journal(
     pack: &Path,
     from: Option<&Path>,
     until: Option<u64>,
-) -> Result<ReplayReport, ReplayError> {
-    replay_walking(pack, from, until, |_rev, _bytes| Ok(()))
-}
-
-/// Replay once, in one temp copy, and return `save.yaml` after each applied record.
-/// An empty journal, or a journal with nothing past the base, returns an empty vec.
-pub fn replay_states(pack: &Path) -> Result<Vec<ReplayStep>, ReplayError> {
-    let mut steps = Vec::new();
-    let _report = replay_walking(pack, None, None, |rev, bytes| {
-        steps.push(ReplayStep {
-            state_rev: rev,
-            save_yaml: bytes.to_vec(),
-        });
-        Ok(())
-    })?;
-    Ok(steps)
-}
-
-fn replay_walking(
-    pack: &Path,
-    from: Option<&Path>,
-    until: Option<u64>,
-    mut on_step: impl FnMut(u64, &[u8]) -> Result<(), ReplayError>,
 ) -> Result<ReplayReport, ReplayError> {
     if !pack.join("pack.yaml").is_file() {
         return Err(ReplayError::Reason(Reason::NotInSpec));
@@ -195,9 +165,7 @@ fn replay_walking(
             continue;
         }
         applied += 1;
-        let now_yaml = read_now_bytes(&world)?;
-        on_step(world.now().state_rev, &now_yaml)?;
-        saved = now_yaml;
+        saved = read_now_bytes(&world)?;
     }
     Ok(ReplayReport {
         state_rev: world.now().state_rev,
@@ -862,7 +830,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use super::{from_journal, replay_states, verify_pack};
+    use super::{from_journal, verify_pack};
     use crate::play_pack_once;
 
     #[test]
@@ -875,22 +843,6 @@ mod tests {
         assert_eq!(left.applied, 1);
         assert_eq!(right.applied, 1);
         assert_eq!(left.state_rev, 1);
-        let _ = fs::remove_dir_all(&pack);
-    }
-
-    #[test]
-    fn one_replay_returns_each_applied_save() {
-        let pack = temp_docks("replay-states");
-        play_pack_once(&pack).unwrap();
-        play_pack_once(&pack).unwrap();
-        let steps = replay_states(&pack).unwrap();
-        assert_eq!(steps.len(), 2, "{steps:?}");
-        assert_eq!(steps[0].state_rev, 1);
-        assert_eq!(steps[1].state_rev, 2);
-        assert_ne!(steps[0].save_yaml, steps[1].save_yaml);
-        let final_report = from_journal(&pack, None, None).unwrap();
-        assert_eq!(steps[1].save_yaml, final_report.now_yaml);
-        assert_eq!(final_report.applied, 2);
         let _ = fs::remove_dir_all(&pack);
     }
 

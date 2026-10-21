@@ -53,9 +53,6 @@ mod commit;
 #[path = "steps/proofs.rs"]
 mod proofs;
 
-#[path = "steps/leak_audit.rs"]
-mod leak_audit;
-
 #[path = "steps/sample.rs"]
 mod sample;
 

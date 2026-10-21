@@ -60,12 +60,6 @@ fn play_error_shows_once(world: &mut World, text: String) {
     }
 }
 
-#[when(expr = "the operator runs audit")]
-fn the_operator_runs_audit(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["audit", &support::pack_arg(&pack)]);
-}
-
 #[given(expr = "Oden's habit takes a tonic that is not there")]
 fn odens_habit_takes_a_missing_tonic(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "oden-habit");

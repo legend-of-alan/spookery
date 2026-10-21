@@ -71,16 +71,14 @@ Tested in `features/replay/the_journal_verifies.feature`,
 
 A player sees a hidden fact only when that character knows it. Stripping prose
 does not reveal a hidden sentence. Check flags a hidden sentence copied into a
-place body or a note. Audit fails when a player's view contains a hidden fact
-they do not know, or a note whose id is that fact. Saying a hidden fact does not
-teach it. Audit records a note and still passes. Strict audit fails. Roll faces
+place body or a note. Saying a hidden fact does not
+teach it. Roll faces
 go to the GM. Expression dice do too. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
 the player no roll line. Host status shows the host-only trace. The player's
 resume leaves that trace out. The resume digest shows only notes the view shows. A place lists only its own stock.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/firewall/a_hidden_fact_stays_hidden.feature`,
-`features/firewall/spook_audit_proves_no_leak.feature`,
 `features/check/spook_check_explains_a_broken_pack.feature`,
 `features/checks/the_player_sees_success_and_the_gm_sees_faces.feature`,
 `features/checks/an_npc_rolls_its_own_check.feature`,
@@ -118,8 +116,7 @@ roll, and it passes after a round that fired a change rule.
 
 A narrate line reaches each person it names, unless the line would show a fact
 that person is not allowed to know. Someone in another room does not hear a line
-addressed to the room. Audit fails when a narrate line repeats a hidden fact that
-person does not know. Reveal gives the person it names a fact, and a hidden exit
+addressed to the room. Reveal gives the person it names a fact, and a hidden exit
 that fact uncovers then shows up for them. A world flag can be set, and a later
 rule sees it for a person who is present. Each viewer gets their own change
 summary. The GM sees every change. Tick counters stay with the GM. A learned
@@ -236,7 +233,7 @@ The table does not open on a public address. A call that is not on the GM menu
 is refused, so a seat cannot patch the save by naming a tool. A player who stops
 reading is dropped, and the other seats keep going.
 
-Tested in `features/firewall/spook_audit_proves_no_leak.feature`,
+Tested in `features/speech/speech_appends_and_does_not_tick.feature`,
 `features/seats/one_gm_and_three_players.feature`,
 `features/loopback/only_loopback_binds.feature`,
 `features/host/the_host_sits_the_gm_seat.feature`, and

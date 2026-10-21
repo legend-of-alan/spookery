@@ -7,13 +7,6 @@ Feature: Trigger delivery
     And "pc_nell" is told "The bell rings."
     And spook verify passes on this pack
 
-  Scenario: A narrate that repeats a hidden fact fails audit
-    Given a verb narrates the ledger fact to pc_rowan
-    When that narrate runs
-    And the operator runs audit
-    Then the audit exits 1
-    And stdout names "FAIL pc_rowan"
-
   Scenario: Reveal teaches the fact that uncovers an exit
     Given the street has a hidden trapdoor
     When pc_nell reveals fact_trapdoor

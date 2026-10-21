@@ -10,9 +10,6 @@ Feature: A move refused in its round says why
     And play's error shows "[NOT_IN_SPEC]" once
     And play's error shows "[NOT_A_WEAPON]" once
     And play shows no protocol JSON
-    When the operator runs audit
-    Then the command exits 0
-    And stderr is empty
 
   Scenario: A refused NPC habit sends no player frame
     Given Oden's habit takes a tonic that is not there
