@@ -13,12 +13,6 @@ fn an_empty_directory(world: &mut World) {
     world.pack = Some(crate::support::fresh_dir("empty"));
 }
 
-#[when(expr = "the operator runs verify")]
-fn the_operator_runs_verify(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]);
-}
-
 #[when(expr = "the operator runs quick verify")]
 fn the_operator_runs_quick_verify(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
@@ -132,17 +126,6 @@ fn stdout_says_the_save_was_verified(world: &mut World) {
         "stdout {} live {rev}",
         world.stdout
     );
-}
-
-#[then(expr = "stdout shows the final state_rev")]
-fn stdout_shows_the_final_state_rev(world: &mut World) {
-    let rev = table::now_of(table::pack(world)).state_rev;
-    assert!(
-        world.stdout.contains(&format!("state_rev {rev}")),
-        "{}",
-        world.stdout
-    );
-    assert!(world.stdout.contains("records"), "{}", world.stdout);
 }
 
 #[then(expr = "stderr names that record")]

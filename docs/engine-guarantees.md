@@ -53,8 +53,8 @@ closed bundle. Verify names the record and the first save line that
 differs when a logged move no longer matches. An edit in a closed bundle fails
 verification and names that bundle. When logged effects differ from a fresh
 run, verify names that round and the first effect that differs. Each journal
-record reads back as the bytes that were written. Replay prints the ending
-revision and leaves the pack unchanged. Each roll keeps its own dice. An
+record reads back as the bytes that were written. Verify leaves the pack
+unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
 them. A number in a rule can roll dice, including an NPC habit's effect. Those faces are seeded with the
 round, written on the journal line, and shown to the GM. Replay rolls them

@@ -76,14 +76,6 @@ enum Command {
         /// Pack directory.
         pack: PathBuf,
     },
-    /// Replay the journal and print the final state_rev.
-    Replay {
-        /// Pack directory.
-        pack: PathBuf,
-        /// Directory whose `state/save.yaml` is the replay base.
-        #[arg(long)]
-        from: Option<PathBuf>,
-    },
     /// Replay the journal and byte-compare `save.yaml`.
     Verify {
         /// Pack directory.
@@ -191,18 +183,6 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         }
         Command::Migrate { pack } => {
             spookery_round::migrate_pack(&pack).map_err(spookery::Error::Reason)
-        }
-        Command::Replay { pack, from } => {
-            match spookery_round::from_journal(&pack, from.as_deref(), None) {
-                Ok(report) => {
-                    println!("state_rev {}, {} records", report.state_rev, report.applied);
-                    Ok(())
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    std::process::exit(1);
-                }
-            }
         }
         Command::Verify { pack, from, quick } => {
             if quick && from.is_some() {
@@ -368,8 +348,8 @@ mod tests {
     #[test]
     fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
-            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "replay", "verify",
-            "audit", "new",
+            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "verify", "audit",
+            "new",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
                 let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
@@ -449,11 +429,6 @@ mod tests {
         assert!(matches!(raw.command, Command::Play { raw: true, .. }));
         let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
         assert!(matches!(host.command, Command::AiGm { .. }));
-        let replay = Cli::try_parse_from(["spook", "replay", "pack", "--from", "snap"]).unwrap();
-        assert!(matches!(
-            replay.command,
-            Command::Replay { from: Some(path), .. } if path == Path::new("snap")
-        ));
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();
         assert!(matches!(
             verify.command,

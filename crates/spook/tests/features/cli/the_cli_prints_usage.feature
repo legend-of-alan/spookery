@@ -23,7 +23,6 @@ Feature: The CLI prints usage
       | migrate |
       | check   |
       | new     |
-      | replay  |
       | verify  |
       | audit   |
 

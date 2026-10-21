@@ -382,10 +382,10 @@ fn now_unchanged_since_the_seat(world: &mut World) {
     assert_eq!(now, seated);
 }
 
-#[when(expr = "the operator runs replay")]
-fn the_operator_runs_replay(world: &mut World) {
+#[when(expr = "the operator runs verify")]
+fn the_operator_runs_verify(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["replay", pack.to_str().unwrap()]);
+    table::run(world, &["verify", pack.to_str().unwrap()]);
 }
 
 #[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]
