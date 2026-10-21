@@ -23,7 +23,7 @@ pub(crate) fn run(
     let record = round.recorded.is_none().then(|| {
         let seed = round_seed(&round.world_id, round.tick_index);
         let actors = world.presence().actors_present.clone();
-        render_round_line(&RoundLine {
+        round_record(&RoundRecord {
             tick_index: round.tick_index,
             rules_rev: spookery_kernel::api::store::RULES_REV,
             state_rev_before: round.rev_before,
@@ -52,16 +52,14 @@ pub(crate) fn run(
         outcome: None,
     };
     if let Some(record) = record {
-        let mut outcome = spookery_kernel::api::commit::commit(world, draft, record)?;
-        outcome.diff_summary = output.summary.clone();
-        output.outcome = Some(outcome);
+        output.outcome = Some(spookery_kernel::api::commit::commit(world, draft, record)?);
     } else {
         spookery_kernel::api::commit::keep_in_memory(world, draft)?;
     }
     Ok(output)
 }
 
-pub struct RoundLine<'a> {
+pub struct RoundRecord<'a> {
     pub tick_index: u64,
     pub rules_rev: u64,
     pub state_rev_before: u64,
@@ -81,25 +79,25 @@ pub struct RoundLine<'a> {
     pub dice: &'a [String],
 }
 
-pub fn render_round_line(line: &RoundLine<'_>) -> TickRecord {
+pub fn round_record(record: &RoundRecord<'_>) -> TickRecord {
     TickRecord {
-        tick_index: line.tick_index,
-        rules_rev: line.rules_rev,
-        state_rev_before: line.state_rev_before,
-        state_rev_after: line.state_rev_after,
-        world_time_before: line.world_time_before,
-        world_time_after: line.world_time_after,
-        presence_humans: line.presence_humans,
-        actors_present: line.actors_present.to_vec(),
-        seed: line.seed.to_string(),
-        last_tick_at: line.last_tick_at.to_string(),
-        intents: line.intents.to_vec(),
-        rejected: line.rejected.to_vec(),
-        effects: line.effects.to_vec(),
-        arrivals: line.arrivals.to_vec(),
-        fast_forward: line.fast_forward,
-        dice: line.dice.to_vec(),
-        steps_run: trim_steps(line.steps_run),
+        tick_index: record.tick_index,
+        rules_rev: record.rules_rev,
+        state_rev_before: record.state_rev_before,
+        state_rev_after: record.state_rev_after,
+        world_time_before: record.world_time_before,
+        world_time_after: record.world_time_after,
+        presence_humans: record.presence_humans,
+        actors_present: record.actors_present.to_vec(),
+        seed: record.seed.to_string(),
+        last_tick_at: record.last_tick_at.to_string(),
+        intents: record.intents.to_vec(),
+        rejected: record.rejected.to_vec(),
+        effects: record.effects.to_vec(),
+        arrivals: record.arrivals.to_vec(),
+        fast_forward: record.fast_forward,
+        dice: record.dice.to_vec(),
+        steps_run: trim_steps(record.steps_run),
         memories: Vec::new(),
         now_hash: String::new(),
         prev: String::new(),
@@ -153,7 +151,7 @@ mod tests {
     use spookery_kernel::api::effect::{Effect, EffectKind};
     use spookery_kernel::api::intent::ViewerId;
 
-    use super::{render_round_line, RoundLine, STANDARD_STEPS};
+    use super::{round_record, RoundRecord, STANDARD_STEPS};
 
     #[test]
     fn round_line_embeds_the_flat_effect() {
@@ -168,7 +166,7 @@ mod tests {
             as_viewer: ViewerId::Npc("mira".to_string()),
             intent_id: "i".to_string(),
         };
-        let line = emit(&RoundLine {
+        let line = emit(&RoundRecord {
             tick_index: 1,
             rules_rev: spookery_kernel::api::store::RULES_REV,
             state_rev_before: 0,
@@ -247,7 +245,7 @@ mod tests {
     }
 
     fn render(steps: &[String]) -> String {
-        emit(&RoundLine {
+        emit(&RoundRecord {
             tick_index: 1,
             rules_rev: spookery_kernel::api::store::RULES_REV,
             state_rev_before: 0,
@@ -268,8 +266,8 @@ mod tests {
         })
     }
 
-    fn emit(line: &RoundLine<'_>) -> String {
-        let record = render_round_line(line);
+    fn emit(line: &RoundRecord<'_>) -> String {
+        let record = round_record(line);
         spookery_kernel::api::journal::emit_entry(
             &spookery_kernel::api::journal::JournalEntry::Tick(record),
         )

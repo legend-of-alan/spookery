@@ -1,6 +1,5 @@
 //! Queue a player verb until the round commits it.
 
-use spookery_kernel::api::commit::CommitOutcome;
 use spookery_kernel::api::ids::player_intent_id;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::model::ActorLive;
@@ -35,8 +34,8 @@ pub enum MoveOutcome {
 }
 
 pub(super) struct Forwarded {
-    pub outcome: Option<CommitOutcome>,
     pub outputs: Vec<RoundOutput>,
+    pub committed: bool,
 }
 
 /// Commit a queued round, then fast-forward while every seated PC is busy.
@@ -44,16 +43,13 @@ pub(super) struct Forwarded {
 pub(super) fn commit_then_fast_forward(world: &mut World) -> Result<Forwarded, Reason> {
     let wall = wall_now()?;
     let mut outputs = Vec::new();
-    let outcome = if world.queued_intents().is_empty() {
-        None
-    } else {
-        let (outcome, output) = commit_moves_at(world, &wall)?;
-        outputs.push(output);
-        Some(outcome)
-    };
-    let already = u32::from(outcome.is_some());
+    let committed = !world.queued_intents().is_empty();
+    if committed {
+        outputs.push(commit_moves_at(world, &wall)?);
+    }
+    let already = u32::from(committed);
     outputs.extend(advance_while_busy(world, &wall, already)?);
-    Ok(Forwarded { outcome, outputs })
+    Ok(Forwarded { outputs, committed })
 }
 
 pub fn handle_player_move(
@@ -242,7 +238,7 @@ pub fn commit_queued(world: &mut World) -> Result<(bool, RoundOutput), Reason> {
     }
     let before = world.now().world_time;
     let wall = wall_now()?;
-    let (_outcome, output) = commit_moves_at(world, &wall)?;
+    let output = commit_moves_at(world, &wall)?;
     Ok((world.now().world_time != before, output))
 }
 

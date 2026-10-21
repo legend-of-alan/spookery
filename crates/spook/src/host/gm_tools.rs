@@ -306,14 +306,21 @@ fn commit_tool(
     }
     let before = world.now().world_time;
     let forwarded = player_moves::commit_then_fast_forward(world)?;
-    let mut done = match &forwarded.outcome {
-        Some(outcome) => GmToolReply::new(frames::commit_reply(
+    let mut done = if forwarded.committed {
+        let output = &forwarded.outputs[0];
+        let outcome = output
+            .outcome
+            .as_ref()
+            .expect("a flush round writes the journal");
+        GmToolReply::new(frames::commit_reply(
             outcome.state_rev,
-            &outcome.diff_summary,
+            &output.summary,
             Some(&outcome.log_path),
-        )),
-        None if forwarded.outputs.is_empty() => return Ok(noop(world)),
-        None => noop(world),
+        ))
+    } else if forwarded.outputs.is_empty() {
+        return Ok(noop(world));
+    } else {
+        noop(world)
     };
     done.outputs = forwarded.outputs;
     done.advanced = world.now().world_time != before;

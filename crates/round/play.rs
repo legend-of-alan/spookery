@@ -45,19 +45,14 @@ pub struct RecordedRound {
     pub actors_present: Vec<String>,
 }
 
-pub fn commit_moves(world: &mut World) -> Result<(CommitOutcome, RoundOutput), Reason> {
+pub fn commit_moves(world: &mut World) -> Result<RoundOutput, Reason> {
     let wall = world.now().last_tick_at.clone();
     commit_moves_at(world, &wall)
 }
 
 /// `include_tick: true` with `last_tick_at` set to `wall`. The caller supplies the stamp.
-pub fn commit_moves_at(
-    world: &mut World,
-    wall: &str,
-) -> Result<(CommitOutcome, RoundOutput), Reason> {
-    let mut output = play(world, RoundCause::Flush, wall)?;
-    let outcome = output.outcome.take().ok_or(Reason::CommitConflict)?;
-    Ok((outcome, output))
+pub fn commit_moves_at(world: &mut World, wall: &str) -> Result<RoundOutput, Reason> {
+    play(world, RoundCause::Flush, wall)
 }
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.

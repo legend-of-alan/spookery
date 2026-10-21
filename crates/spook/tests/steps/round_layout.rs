@@ -71,7 +71,7 @@ fn the_round_crate_after_the_move(_world: &mut World) {
     let record = fs::read_to_string(round.join("stage/record.rs"))
         .unwrap_or_else(|err| panic!("read record stage: {err}"));
     assert!(
-        record.contains("struct RoundLine") && record.contains("fn render_round_line"),
+        record.contains("struct RoundRecord") && record.contains("fn round_record"),
         "the round log is not folded into the record stage"
     );
     let mut files = Vec::new();

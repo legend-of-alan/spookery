@@ -20,7 +20,6 @@ const CHECKPOINT_WARNING: &str = "the checkpoint bundle was not closed";
 
 pub struct CommitOutcome {
     pub state_rev: u64,
-    pub diff_summary: Vec<String>,
     pub log_path: String,
 }
 
@@ -67,7 +66,6 @@ pub fn commit(
     }
     Ok(CommitOutcome {
         state_rev: world.now.state_rev,
-        diff_summary: Vec::new(),
         log_path,
     })
 }
