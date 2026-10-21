@@ -134,6 +134,26 @@ fn one_player_says_the_ledger_fact(world: &mut World) {
     table::stop_server(world);
 }
 
+#[when(expr = "the tape has a line for {string}")]
+fn the_tape_has_a_line_for(world: &mut World, pc: String) {
+    let line = format!(
+        r#"{{"seq":1,"from":"gm","address":"actor","place":null,"actor":"{pc}","recipients":["{pc}"],"text":"line0","tick_index":0,"world_time":1080}}"#
+    );
+    write_tape(world, format!("{line}\n").into_bytes());
+}
+
+#[when(expr = "the tape is past 1 MiB")]
+fn the_tape_is_past_1_mib(world: &mut World) {
+    let max = spookery_kernel::api::store::talk_log::MAX_TAPE_BYTES as usize;
+    write_tape(world, vec![b'\n'; max + 1]);
+}
+
+fn write_tape(world: &mut World, bytes: Vec<u8>) {
+    let path = table::pack(world).join("state/journal/session.jsonl");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, bytes).unwrap();
+}
+
 #[then(expr = "the audit exits 0")]
 fn the_audit_exits_0(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
@@ -142,6 +162,11 @@ fn the_audit_exits_0(world: &mut World) {
 #[then(expr = "the audit exits 1")]
 fn the_audit_exits_1(world: &mut World) {
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
+}
+
+#[then(expr = "stderr is OUT_OF_RANGE")]
+fn stderr_is_out_of_range(world: &mut World) {
+    assert_eq!(world.stderr.trim(), "OUT_OF_RANGE", "{}", world.stdout);
 }
 
 #[then(expr = "stdout has a pass line for {string}")]

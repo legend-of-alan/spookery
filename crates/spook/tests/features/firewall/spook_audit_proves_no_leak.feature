@@ -62,3 +62,20 @@ Feature: spook audit proves no hidden fact reached a player
     When the operator runs audit --strict
     Then the audit exits 1
     And stdout has a note for speaker "player:pc_rowan" and recipient "pc_harbormouse"
+
+  Scenario: Audit reads the tape without writing a session lock
+    Given a docks table
+    When the tape has a line for "pc_rowan"
+    And the pack bytes are remembered
+    And the operator runs audit
+    Then the audit exits 0
+    And the pack bytes are unchanged
+
+  Scenario: Audit refuses a tape past 1 MiB and writes nothing
+    Given a docks table
+    When the tape is past 1 MiB
+    And the pack bytes are remembered
+    And the operator runs audit
+    Then the audit exits 1
+    And stderr is OUT_OF_RANGE
+    And the pack bytes are unchanged
