@@ -11,7 +11,7 @@ use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
-use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
+use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
 use crate::store::recover::close_finished;
 use crate::world::World;
@@ -82,35 +82,37 @@ pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason>
     Ok(())
 }
 
-pub fn migrate_pack(root: &Path) -> Result<(), Reason> {
-    let now = load_file_now(root)?;
-    if journal_ahead(root, now.state_rev) {
-        return Err(Reason::CommitConflict);
+/// Bind meters and inventory, reject unknown items, and stamp the new pack rev.
+/// This does not touch the disk.
+pub fn migrated_now(
+    canon: &crate::canon::Canon,
+    mut now: Now,
+    pack_rev: &str,
+) -> Result<Now, Reason> {
+    crate::canon::bind_meters(canon, &mut now).map_err(crate::diagnostic::reason_of)?;
+    crate::canon::bind_inventory(&now).map_err(crate::diagnostic::reason_of)?;
+    let unknown = crate::canon::unknown_save_items(canon, &now);
+    if !unknown.is_empty() {
+        return Err(crate::diagnostic::reason_of(unknown));
     }
-    migrate_now(root, now)
+    now.pack_rev = pack_rev.to_string();
+    now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
+    canonicalize(&mut now);
+    Ok(now)
 }
 
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
-pub fn migrate_now(root: &Path, mut now: Now) -> Result<(), Reason> {
+pub fn migrate_now(root: &Path, now: Now) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
     let canon = crate::canon::load_canon(root).map_err(crate::diagnostic::reason_of)?;
-    crate::canon::bind_meters(&canon, &mut now).map_err(crate::diagnostic::reason_of)?;
-    crate::canon::bind_inventory(&now).map_err(crate::diagnostic::reason_of)?;
-    let unknown = crate::canon::unknown_save_items(&canon, &now);
-    if !unknown.is_empty() {
-        return Err(crate::diagnostic::reason_of(unknown));
-    }
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
     let _lock = lock_world(root)?;
-    now.pack_rev = pack_rev_after;
-    now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
-    canonicalize(&mut now);
+    let now = migrated_now(&canon, now, &pack_rev_after)?;
     let emitted = emit_save(&now)?.into_bytes();
-    let state = root.join("state");
     let record = journal::emit_migrate(
         &pack_rev_before,
         &now.pack_rev,
@@ -122,27 +124,7 @@ pub fn migrate_now(root: &Path, mut now: Now) -> Result<(), Reason> {
     let parsed = journal::parse_migrate("migrate.json", &record).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&journal::JournalEntry::Migrate(parsed), &prev);
     append_bundle(root, &line)?;
-    append_studio(&state, &line)?;
     Ok(())
-}
-
-fn load_file_now(root: &Path) -> Result<Now, Reason> {
-    if !root.join("state/save.yaml").is_file() {
-        return Err(Reason::NotInSpec);
-    }
-    let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    load_save(now_text).map_err(crate::diagnostic::reason_of)
-}
-
-fn journal_ahead(root: &Path, state_rev: u64) -> bool {
-    let Ok(entries) = journal::read_live(root) else {
-        return false;
-    };
-    entries.iter().any(|entry| {
-        !matches!(entry, journal::JournalEntry::Checkpoint(_))
-            && entry.state_rev_after() > state_rev
-    })
 }
 
 fn seal_tick(
@@ -305,22 +287,6 @@ fn snapshot_memories(root: &Path) -> Result<(), Reason> {
         let path = root.join("state/memories").join(format!("{actor}.jsonl"));
         atomic_publish(&path, body.as_bytes())?;
     }
-    Ok(())
-}
-
-fn append_studio(state: &Path, line: &str) -> Result<(), Reason> {
-    let log_dir = state.join("journal");
-    fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
-    let path = log_dir.join("studio.jsonl");
-    let mut file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&path)
-        .map_err(|_| Reason::CommitConflict)?;
-    file.write_all(line.as_bytes())
-        .map_err(|_| Reason::CommitConflict)?;
-    file.sync_all().map_err(|_| Reason::CommitConflict)?;
-    fsync_dir(&log_dir)?;
     Ok(())
 }
 

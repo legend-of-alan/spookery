@@ -14,7 +14,8 @@ Feature: A hand edit waits for migrate
     And world_time is 1080
     And tick index is 0
     And no tick file was written
-    And the studio log records two migrates
+    And the journal has two migrate records, at state_rev 1 and 2
+    And no studio log was written
 
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
     Given a docks table
@@ -32,7 +33,7 @@ Feature: A hand edit waits for migrate
     Then the command exits 1
     And stderr is SCHEMA
     And the pack bytes are unchanged
-    And the studio log is absent
+    And no studio log was written
 
   Scenario: A canon edit after a committed round is refused
     Given a docks table

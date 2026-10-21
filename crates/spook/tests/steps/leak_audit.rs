@@ -60,8 +60,7 @@ fn the_door_note_text_contains_the_ledger_sentence(world: &mut World) {
     let to = format!("text: Back at dusk. {LEDGER}\n");
     assert!(text.contains(from), "{text}");
     fs::write(&path, text.replacen(from, &to, 1)).unwrap_or_else(|err| panic!("write: {err}"));
-    spookery_kernel::api::commit::migrate_pack(&pack)
-        .unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
 #[when(expr = "the evening tick runs on this copy")]
