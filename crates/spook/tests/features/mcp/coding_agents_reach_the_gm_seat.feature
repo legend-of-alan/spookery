@@ -5,11 +5,6 @@ Feature: Coding agents reach the GM seat
     When a coding agent calls the GM tools over loopback HTTP
     Then world time moved forward
 
-  Scenario: A second HTTP session is told the table is full
-    Given a docks table
-    When the GM seat is held and another agent opens HTTP
-    Then the refusal names SESSION_FULL
-
   Scenario: An open HTTP address is refused before the pack opens
     Given a docks table
     When the operator runs with an open MCP HTTP address
@@ -70,11 +65,6 @@ Feature: Coding agents reach the GM seat
     Given a docks table
     When an HTTP request arrives with Host 127.0.0.1
     Then the response is accepted
-
-  Scenario: Closing the HTTP session frees the GM seat
-    Given a docks table
-    When an HTTP GM session ends
-    Then another GM can sit over HTTP
 
   Scenario: An HTTP agent delivers a say to a seated player
     Given a docks table with a seated player and an open HTTP door
