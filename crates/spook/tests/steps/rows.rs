@@ -24,38 +24,6 @@ fn mark_needs_a_knife(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "the moves file gains an unknown key")]
-fn gains_an_unknown_key(world: &mut World) {
-    append_moves(
-        world,
-        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    gear: extra\n    do: []\n",
-    );
-}
-
-#[when(expr = "the moves file gains a system audience")]
-fn gains_a_system_audience(world: &mut World) {
-    append_moves(
-        world,
-        "\n  - id: night\n    when: habit\n    audience: system\n    do: []\n",
-    );
-}
-
-#[when(expr = "the moves file gains a relationship row")]
-fn gains_a_relationship_row(world: &mut World) {
-    append_moves(
-        world,
-        "\n  - id: mark\n    when: habit\n    do:\n      - relationship:\n          to: bram\n          delta: -1\n",
-    );
-}
-
-#[when(expr = "the moves file gains a reputation row")]
-fn gains_a_reputation_row(world: &mut World) {
-    append_moves(
-        world,
-        "\n  - id: mark\n    when: habit\n    do:\n      - reputation:\n          faction: harbor\n          delta: 1\n",
-    );
-}
-
 #[when(expr = "the moves file gains a rumor row")]
 fn gains_a_rumor_row(world: &mut World) {
     append_moves(

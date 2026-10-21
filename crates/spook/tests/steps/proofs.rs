@@ -1736,11 +1736,6 @@ fn seventy_two_hours(_world: &mut World) {
     catchup_cap();
 }
 
-#[when(expr = "twenty-four hours of catch-up run")]
-fn twenty_four_hours(_world: &mut World) {
-    catchup_for(24, 12);
-}
-
 #[when(expr = "one hour of catch-up runs")]
 fn one_hour_of_catch_up(_world: &mut World) {
     catchup_for(1, 8);

@@ -1,13 +1,5 @@
 Feature: Only loopback binds
 
-  Scenario: An open address is refused
-    Given a docks table
-    When the operator runs run bound to "0.0.0.0"
-    Then the command exits 1
-    And stderr is NOT_IN_SPEC
-    And stdout is empty
-    And the pack bytes are unchanged
-
   Scenario Outline: Every command refuses an open address before the pack opens
     Given a docks table
     When the operator runs <command> bound to "<addr>"
@@ -18,6 +10,7 @@ Feature: Only loopback binds
 
     Examples:
       | command | addr          |
+      | run     | 0.0.0.0       |
       | play    | 0.0.0.0       |
       | gm      | 0.0.0.0       |
       | ai-gm   | 0.0.0.0       |
