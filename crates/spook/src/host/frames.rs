@@ -11,6 +11,7 @@ use spookery_kernel::api::model::{Message, Now, RunState};
 use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 use spookery_kernel::api::rules::{MoveReport, RollResult};
 use spookery_kernel::api::store::talk_log::TapeRecord;
+use spookery_round::RoundOutput;
 
 pub fn player_say_line(tape: &TapeRecord) -> String {
     say_line(tape, false)
@@ -108,39 +109,32 @@ pub fn perceive_value(view: &View) -> Value {
     serde_json::to_value(player_view(view)).expect("perceive")
 }
 
-pub fn commit_reply(state_rev: u64, diff_summary: &[String], log_path: Option<&str>) -> Value {
-    CommitBody {
-        state_rev,
-        diff_summary: diff_summary.to_vec(),
-        log_path: log_path.map(str::to_string),
-        checks: Vec::new(),
-        dice: Vec::new(),
-    }
-    .to_value()
-}
-
-pub fn write_checks(value: &mut Value, reports: &[MoveReport]) {
-    let rolls = reports
+pub fn commit_reply(
+    state_rev: u64,
+    diff_summary: &[String],
+    log_path: Option<&str>,
+    outputs: &[RoundOutput],
+) -> Value {
+    let checks = outputs
         .iter()
+        .flat_map(|output| output.reports.iter())
         .filter_map(|report| match report {
             MoveReport::Rolled { out, .. } => Some(roll_of(out)),
             MoveReport::Refused { .. } => None,
         })
-        .collect::<Vec<_>>();
-    crate::protocol::set_checks(value, &rolls);
-}
-
-pub fn write_dice(value: &mut Value, lines: &[String]) {
-    if lines.is_empty() {
-        return;
+        .collect();
+    let dice = outputs
+        .iter()
+        .flat_map(|output| output.dice.iter().cloned())
+        .collect();
+    CommitBody {
+        state_rev,
+        diff_summary: diff_summary.to_vec(),
+        log_path: log_path.map(str::to_string),
+        checks,
+        dice,
     }
-    let Some(object) = value.as_object_mut() else {
-        return;
-    };
-    object.insert(
-        "dice".to_string(),
-        Value::Array(lines.iter().cloned().map(Value::String).collect()),
-    );
+    .to_value()
 }
 
 pub fn queued_ack(id: &str) -> Value {
@@ -183,7 +177,7 @@ pub fn session_status(
             })
             .collect(),
         last_seq,
-        events: events.map(|events| events.iter().map(say_value).collect()),
+        events: events.map(|events| events.iter().map(GmSay::from).collect()),
     }
     .to_value()
 }

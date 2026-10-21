@@ -6,6 +6,8 @@ use serde_json::{Map, Value};
 use spookery_kernel::api::canon::{Canon, CastKind};
 use spookery_kernel::api::rule::{Owner, TargetKind, When};
 
+use crate::protocol::{QueueRow, Roll};
+
 /// Characters. The same budget `perceive` uses when it trims this prose.
 const PROSE_BUDGET: usize = 800;
 
@@ -25,22 +27,6 @@ pub struct HandledSay {
     pub place: Option<String>,
     pub actor: Option<String>,
     pub text: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QueueItem {
-    pub id: String,
-    pub actor_id: String,
-    pub move_name: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RollLine {
-    pub faces: Vec<u64>,
-    pub stat: i64,
-    pub total: i64,
-    pub target: i64,
-    pub outcome: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -103,6 +89,19 @@ impl OutgoingSay {
                 actor: Some(actor.clone()),
                 text: text.clone(),
             },
+        }
+    }
+}
+
+impl From<crate::protocol::GmSay> for HandledSay {
+    fn from(say: crate::protocol::GmSay) -> Self {
+        Self {
+            seq: Some(say.seq),
+            from: say.from,
+            address: say.address,
+            place: say.place,
+            actor: say.actor,
+            text: say.text,
         }
     }
 }
@@ -201,8 +200,8 @@ pub enum Prepared {
 pub struct PromptSide {
     pub buffer: Vec<HandledSay>,
     pub new_lines: Vec<HandledSay>,
-    pub queue: Vec<QueueItem>,
-    pub checks: Vec<RollLine>,
+    pub queue: Vec<QueueRow>,
+    pub checks: Vec<Roll>,
 }
 
 pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>, Prose) {
@@ -433,7 +432,7 @@ pub fn render_prompt(
     menu: &[MenuRow],
     side: &PromptSide,
     view: &TurnView,
-    checks: &[RollLine],
+    checks: &[Roll],
 ) -> String {
     let mut map = Map::new();
     map.insert(
@@ -825,7 +824,7 @@ fn say_value(say: &HandledSay) -> Value {
     Value::Object(map)
 }
 
-fn queue_value(item: &QueueItem) -> Value {
+fn queue_value(item: &QueueRow) -> Value {
     obj([
         ("id", json_str(&item.id)),
         ("actor_id", json_str(&item.actor_id)),
@@ -833,7 +832,7 @@ fn queue_value(item: &QueueItem) -> Value {
     ])
 }
 
-fn roll_value(roll: &RollLine) -> Value {
+fn roll_value(roll: &Roll) -> Value {
     obj([
         (
             "faces",
@@ -842,7 +841,7 @@ fn roll_value(roll: &RollLine) -> Value {
         ("stat", Value::from(roll.stat)),
         ("total", Value::from(roll.total)),
         ("target", Value::from(roll.target)),
-        ("outcome", json_str(&roll.outcome)),
+        ("outcome", json_str(roll.outcome.as_str())),
     ])
 }
 

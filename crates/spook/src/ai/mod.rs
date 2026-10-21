@@ -13,7 +13,7 @@ pub use llm::{CompleteError, CompletionRequest, Model, Script};
 pub use llm_http::{Clock, Env, HttpModel, Limits, WallClock};
 pub use prompt::{
     from_canon, keep, parse_actions, prepare, render_prompt, ActionKind, HandledSay, MenuRow,
-    OutgoingSay, Prepared, PromptSide, QueueItem, RollLine, TurnView, Wake,
+    OutgoingSay, Prepared, PromptSide, TurnView, Wake,
 };
 pub use wire::parse_tool_line;
 
