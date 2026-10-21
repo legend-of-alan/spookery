@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
+use serde_json::Value;
 
 use crate::support;
 use crate::World;
@@ -246,4 +247,90 @@ fn the_studio_log_is_absent(world: &mut World) {
     assert!(!table::pack(world)
         .join("state/journal/studio.jsonl")
         .exists());
+}
+
+#[given(expr = "a docks table with a GM and {string} seated")]
+fn a_docks_table_with_a_gm_and_named_pc(world: &mut World, actor: String) {
+    let pack = support::temp_pack("one-commit");
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_actor(world, &pack, &actor);
+    world.pack = Some(pack);
+}
+
+#[given(expr = "a docks table one tick before a checkpoint")]
+fn a_docks_table_one_tick_before_a_checkpoint(world: &mut World) {
+    let pack = support::temp_pack("checkpoint-commit");
+    let path = pack.join("pack.yaml");
+    let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read pack.yaml: {err}"));
+    if !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push_str("checkpoint_every: 1\n");
+    fs::write(&path, text).unwrap_or_else(|err| panic!("write pack.yaml: {err}"));
+    support::stamp_pack_rev(&pack);
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_actor(world, &pack, "pc_rowan");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "the GM queues a move for {string} and commits")]
+fn the_gm_queues_a_move_for_and_commits(world: &mut World, actor: String) {
+    queue_wait_and_commit(world, &actor);
+}
+
+#[when(expr = "the GM queues a move and commits")]
+fn the_gm_queues_a_move_and_commits(world: &mut World) {
+    queue_wait_and_commit(world, "pc_rowan");
+}
+
+#[then(expr = "the journal has two tick records")]
+fn the_journal_has_two_tick_records(world: &mut World) {
+    assert_eq!(world.code, Some(0), "{}", world.stderr);
+    let keys = table::list_tick_keys(table::pack(world));
+    assert_eq!(keys.len(), 2, "{keys:?}");
+}
+
+#[then(expr = "the commit reply names the bundle path")]
+fn the_commit_reply_names_the_bundle_path(world: &mut World) {
+    let path = commit_log_path(world);
+    assert!(
+        path.contains("state/journal/bundle-"),
+        "commit reply log path\n{path}"
+    );
+    assert!(
+        table::pack(world).join(&path).is_file(),
+        "missing bundle {path}"
+    );
+}
+
+#[then(expr = "the commit reply's log path ends in {string}")]
+fn the_commit_reply_log_path_ends_in(world: &mut World, suffix: String) {
+    let path = commit_log_path(world);
+    assert!(path.ends_with(&suffix), "{path}");
+    assert!(
+        table::pack(world).join(&path).is_file(),
+        "missing bundle {path}"
+    );
+}
+
+fn queue_wait_and_commit(world: &mut World, actor: &str) {
+    let args = format!(
+        r#"{{"actor_id":"{actor}","actor_kind":"player","source":"player","move":"wait"}}"#
+    );
+    let queued = table::gm_call(world, 4, "intent", &args);
+    assert!(queued.contains("\"queued\""), "queue wait\n{queued}");
+    let reply = table::gm_call(world, 5, "commit_round", r#"{"include_tick":true}"#);
+    world.stdout = reply.clone();
+    world.scratch = reply;
+}
+
+fn commit_log_path(world: &World) -> String {
+    let value: Value = serde_json::from_str(&world.scratch)
+        .unwrap_or_else(|err| panic!("commit reply: {err}\n{}", world.scratch));
+    value["result"]["structuredContent"]["log_path"]
+        .as_str()
+        .unwrap_or_else(|| panic!("no log path\n{}", world.scratch))
+        .to_string()
 }

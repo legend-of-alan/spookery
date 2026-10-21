@@ -35,6 +35,8 @@ pub struct RoundOutput {
     pub summary: Vec<String>,
     pub lines: Vec<Told>,
     pub seen: Vec<Seen>,
+    /// Set when this round wrote the journal.
+    pub outcome: Option<CommitOutcome>,
 }
 
 pub struct RecordedRound {
@@ -53,9 +55,8 @@ pub fn commit_moves_at(
     world: &mut World,
     wall: &str,
 ) -> Result<(CommitOutcome, RoundOutput), Reason> {
-    let _lock = lock_world(world.root())?;
-    let output = play(world, RoundCause::Flush, wall)?;
-    let outcome = spookery_kernel::api::commit::commit_pending(world)?;
+    let mut output = play(world, RoundCause::Flush, wall)?;
+    let outcome = output.outcome.take().ok_or(Reason::CommitConflict)?;
     Ok((outcome, output))
 }
 
@@ -181,11 +182,7 @@ fn play_with(
     now_wall: &str,
     recorded: Option<RecordedRound>,
 ) -> Result<(Vec<Effect>, RoundOutput), Reason> {
-    let _lock = if cause == RoundCause::Flush {
-        None
-    } else {
-        Some(lock_world(world.root())?)
-    };
+    let _lock = lock_world(world.root())?;
     if let Some(recorded) = &recorded {
         world.set_presence(Presence {
             humans: recorded.presence_humans,

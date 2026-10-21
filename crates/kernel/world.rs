@@ -10,7 +10,7 @@ use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
 use crate::journal::{self, JournalEntry};
-use crate::model::{sort_unique, MemoryLine, Now, Presence};
+use crate::model::{sort_unique, Now, Presence};
 use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
 
@@ -21,18 +21,8 @@ pub struct World {
     canon: Arc<Canon>,
     pub(crate) now: Now,
     pub(crate) queue: Vec<Intent>,
-    pub(crate) pending: Option<UncommittedRound>,
     next_session: u64,
     warning: Option<&'static str>,
-}
-
-/// One round played and not yet written. A tick is only the time unit.
-pub struct UncommittedRound {
-    pub now: Now,
-    pub round_jsonl: String,
-    pub tick_index: u64,
-    pub memories: Vec<MemoryLine>,
-    pub paths: Vec<String>,
 }
 
 pub struct SessionStatus {
@@ -108,28 +98,6 @@ impl World {
     pub fn open_for_replay(root: &Path) -> Result<Self, Reason> {
         load_world(root, true)
     }
-
-    pub(crate) fn hold_uncommitted(
-        &mut self,
-        now: Now,
-        round_jsonl: String,
-        memories: Vec<MemoryLine>,
-        paths: Vec<String>,
-    ) {
-        self.pending = Some(UncommittedRound {
-            tick_index: now.tick_index,
-            now,
-            round_jsonl,
-            memories,
-            paths,
-        });
-    }
-
-    pub(crate) fn note_committed(&mut self, keep_queue: bool) {
-        if !keep_queue {
-            self.queue.clear();
-        }
-    }
 }
 
 impl Draft {
@@ -181,7 +149,6 @@ fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
         canon,
         now,
         queue: Vec::new(),
-        pending: None,
         next_session: 1,
         warning: None,
     })
