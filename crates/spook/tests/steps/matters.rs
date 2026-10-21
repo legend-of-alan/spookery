@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
+use spookery_kernel::api::meter::MeterLive;
 use spookery_kernel::api::model::Presence;
 use spookery_kernel::api::World as Shard;
 
@@ -25,16 +26,13 @@ fn lark_has_a_hidden_meter(world: &mut World) {
         "  - id: omen\n    min: 0\n    base_cap: 5\n    max: 5\n    start: 1\n    hidden: true\n",
     );
     fs::write(pack.join("rules/meters.yaml"), meters).unwrap();
-    let path = pack.join("state/save.yaml");
-    let text = fs::read_to_string(&path).unwrap();
-    let from = "      might:\n        base: 30\n        offset: 0\n";
-    assert_eq!(text.matches(from).count(), 1, "lark's might was not unique");
-    let next = text.replacen(
-        from,
-        "      might:\n        base: 30\n        offset: 0\n      omen:\n        base: 1\n        offset: 0\n",
-        1,
-    );
-    fs::write(&path, next).unwrap();
+    edit_now(pack, |now| {
+        for actor in now.actors.values_mut() {
+            actor
+                .meters_mut()
+                .insert("omen".to_string(), MeterLive { base: 1, offset: 0 });
+        }
+    });
     stamp(pack);
 }
 

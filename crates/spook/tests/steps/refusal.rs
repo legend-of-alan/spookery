@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_kernel::api::meter::MeterLive;
 
 use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
@@ -344,6 +345,13 @@ fn add_grit(pack: &Path) {
     start: 1
 ",
     );
+    edit_save(pack, |now| {
+        for actor in now.actors.values_mut() {
+            actor
+                .meters_mut()
+                .insert("grit".to_string(), MeterLive { base: 1, offset: 0 });
+        }
+    });
 }
 
 fn append(path: &Path, extra: &str) {

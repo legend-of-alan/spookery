@@ -15,7 +15,7 @@ use crate::diagnostic::{
 use crate::error::Reason;
 use crate::format;
 use crate::hash::blake2s_hex;
-use crate::meter::{self, MeterDef, MeterLive};
+use crate::meter::{self, MeterDef};
 use crate::model::Now;
 use crate::rule::{Cond, Cost, EffectTemplate, Expr, Owner, ResistSpec, Rule, RuleTable, Who};
 
@@ -882,12 +882,25 @@ fn meter_schema_error(
     diag
 }
 
-/// Fit the save to the pack. Reject every meter, item and wielded slot the
-/// pack does not define, every meter outside its rules and every empty id or
-/// zero count. With nothing rejected, fill each missing meter at its start value.
-pub fn fit_save(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> {
+/// Check the save against the pack without changing it. Refuse every meter,
+/// item and wielded slot the pack does not define, every meter the pack defines
+/// that an actor lacks, every meter outside its rules and every empty id or zero count.
+pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &now.actors {
+        for key in canon.meters.keys() {
+            if actor.meters().contains_key(key) {
+                continue;
+            }
+            diags.push(
+                schema_error(
+                    "state/save.yaml",
+                    &format!("actor '{id}' lacks meter '{key}', which rules/meters.yaml defines"),
+                    "run spook migrate to add the meter",
+                )
+                .with_path(format!("actors.{id}.meters.{key}")),
+            );
+        }
         for key in actor.meters().keys() {
             if canon.meters.contains_key(key) {
                 continue;
@@ -1011,17 +1024,11 @@ pub fn fit_save(canon: &Canon, now: &mut Now) -> Result<(), Vec<Diagnostic>> {
             }
         }
     }
-    if !diags.is_empty() {
-        return Err(diags);
+    if diags.is_empty() {
+        Ok(())
+    } else {
+        Err(diags)
     }
-    for actor in now.actors.values_mut() {
-        let live = actor.meters_mut();
-        for (id, def) in &canon.meters {
-            live.entry(id.clone())
-                .or_insert_with(|| MeterLive::at_start(def));
-        }
-    }
-    Ok(())
 }
 
 fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {

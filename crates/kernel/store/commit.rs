@@ -5,12 +5,13 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
-use crate::canon::{fit_save, pack_rev};
+use crate::canon::{check_save, pack_rev, Canon};
 use crate::diagnostic::reason_of;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
+use crate::meter::MeterLive;
 use crate::model::{MemoryLine, Now};
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
@@ -83,8 +84,25 @@ pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason>
     Ok(())
 }
 
+/// Fit `now` to a new pack rev: add each meter the pack defines that an actor
+/// lacks, at the meter's `start`, then check the save and stamp `pack_rev`.
+/// This does not touch the disk or `state_rev`.
+pub fn migrate_save(canon: &Canon, mut now: Now, pack_rev: &str) -> Result<Now, Reason> {
+    for actor in now.actors.values_mut() {
+        let live = actor.meters_mut();
+        for (id, def) in &canon.meters {
+            live.entry(id.clone())
+                .or_insert_with(|| MeterLive::at_start(def));
+        }
+    }
+    check_save(canon, &now).map_err(reason_of)?;
+    now.pack_rev = pack_rev.to_string();
+    canonicalize(&mut now);
+    Ok(now)
+}
+
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
-pub fn migrate(root: &Path, mut now: Now) -> Result<(), Reason> {
+pub fn migrate(root: &Path, now: Now) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -93,10 +111,8 @@ pub fn migrate(root: &Path, mut now: Now) -> Result<(), Reason> {
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
     let _lock = lock_world(root)?;
-    fit_save(&canon, &mut now).map_err(reason_of)?;
-    now.pack_rev = pack_rev_after;
+    let mut now = migrate_save(&canon, now, &pack_rev_after)?;
     now.state_rev = now.state_rev.checked_add(1).ok_or(Reason::CommitConflict)?;
-    canonicalize(&mut now);
     let emitted = emit_save(&now)?.into_bytes();
     let record = journal::emit_migrate(
         &pack_rev_before,

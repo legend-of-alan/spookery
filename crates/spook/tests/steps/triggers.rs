@@ -1137,6 +1137,11 @@ rules:
     .unwrap();
     edit_save(world, &pack, |now| {
         seat(now, "aldric", "briar", "docks_shop");
+        for actor in now.actors.values_mut() {
+            actor
+                .meters_mut()
+                .insert("hp".to_string(), MeterLive { base: 8, offset: 0 });
+        }
         let briar = now.actors.get_mut("briar").unwrap();
         briar.meters_mut().insert(
             "hp".to_string(),

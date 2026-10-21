@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::api::meter::MeterLive;
 use spookery_kernel::api::rules::{roll, MoveReport, RollInput, RollKey};
 use spookery_round::RoundCause;
 
@@ -622,7 +623,13 @@ fn lark_pack() -> PathBuf {
     do: []
 ",
     );
-    stamp(&pack);
+    super::common::edit_save(&pack, |now| {
+        for actor in now.actors.values_mut() {
+            actor
+                .meters_mut()
+                .insert("grit".to_string(), MeterLive { base: 1, offset: 0 });
+        }
+    });
     pack
 }
 
