@@ -1,7 +1,6 @@
 //! The host digest, and the player digest built from the view.
 
-use std::path::Path;
-
+use crate::effect::Effect;
 use crate::error::Reason;
 use crate::intent::ViewerId;
 use crate::journal::{self, JournalEntry};
@@ -10,11 +9,39 @@ use crate::store::codec::emit_effect_payload;
 use crate::world::World;
 
 pub fn host_summary(world: &World) -> Result<String, Reason> {
-    let mut rows = effect_rows(world.root())?;
+    let entries = journal::load_journal(world.root()).map_err(|fault| {
+        if fault.detail.contains("ILLEGAL_CLASS") {
+            Reason::IllegalClass
+        } else {
+            Reason::Schema
+        }
+    })?;
+    let mut effects = Vec::new();
+    for entry in &entries {
+        let JournalEntry::Tick(record) = entry else {
+            continue;
+        };
+        for effect in &record.effects {
+            effects.push((record.tick_index, effect));
+        }
+    }
+    Ok(host_lines(world, &effects))
+}
+
+/// Effect rows, then the clocks. Does not read the journal.
+pub fn host_lines(world: &World, effects: &[(u64, &Effect)]) -> String {
+    let mut rows = Vec::new();
+    for (tick_index, effect) in effects {
+        rows.push(format!(
+            "effect {} {tick_index} {}",
+            effect.class_name(),
+            emit_effect_payload(effect)
+        ));
+    }
     for (id, clock) in &world.now().clocks {
         rows.push(clock_line(id, clock.value, clock.max, clock.paused));
     }
-    Ok(join_rows(rows))
+    join_rows(rows)
 }
 
 /// Notes addressed to this viewer, then their clocks. Which notes are on the
@@ -45,33 +72,4 @@ fn join_rows(rows: Vec<String>) -> String {
     } else {
         rows.join("\n") + "\n"
     }
-}
-
-fn effect_rows(root: &Path) -> Result<Vec<String>, Reason> {
-    let entries = journal::load_journal(root).map_err(|fault| {
-        if fault.detail.contains("ILLEGAL_CLASS") {
-            Reason::IllegalClass
-        } else {
-            Reason::Schema
-        }
-    })?;
-    let mut rows = Vec::new();
-    for entry in entries {
-        let JournalEntry::Tick(record) = entry else {
-            continue;
-        };
-        let tick_index = record.tick_index;
-        for effect in record.effects {
-            rows.push((
-                tick_index,
-                format!(
-                    "effect {} {tick_index} {}",
-                    effect.class_name(),
-                    emit_effect_payload(&effect)
-                ),
-            ));
-        }
-    }
-    rows.sort_by_key(|(tick_index, _)| *tick_index);
-    Ok(rows.into_iter().map(|(_, row)| row).collect())
 }

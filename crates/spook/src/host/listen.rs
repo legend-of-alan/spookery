@@ -26,7 +26,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Re
     let door_addr = http_listener.local_addr().map_err(Error::Io)?;
     let mut world = spookery_round::resume(pack).map_err(Error::Reason)?;
     if world_loop::clear_crashed(&mut world).map_err(Error::Reason)? {
-        world_loop::print_host(&world);
+        world_loop::print_host(&world, &[]);
     }
     report_bound(game_addr, door_addr)?;
     // Keepalive stays the pack interval. The idle switch does not change it.

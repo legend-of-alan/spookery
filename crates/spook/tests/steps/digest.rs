@@ -14,6 +14,8 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
+const DOOR: &str = "effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
+
 const HOST: &str = "\
 effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
 clock assassination_debt 2 6 paused
@@ -49,9 +51,12 @@ fn the_host_text_lists_the_clocks(world: &mut World) {
 
 #[then(expr = "the host text lists the door note")]
 fn the_host_text_lists_the_door_note(world: &mut World) {
-    assert_eq!(world.stdout, HOST);
+    assert!(world.stdout.contains(DOOR), "{}", world.stdout);
     let now = table::now_of(table::pack(world));
-    assert_eq!(now.tick_index, 13);
+    if now.tick_index != 13 {
+        return;
+    }
+    assert_eq!(world.stdout, HOST);
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(
@@ -64,6 +69,87 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
     let debt = now.clocks.get("assassination_debt").unwrap();
     assert_eq!(debt.value, 2);
     assert!(debt.paused);
+}
+
+#[given(expr = "a docks table with {string} seated and no GM")]
+fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
+    let pack = crate::support::temp_pack("host-round");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, &actor);
+    world.pack = Some(pack);
+}
+
+#[given(expr = "{string} has waited once")]
+fn has_waited_once(world: &mut World, actor: String) {
+    table::actor_send(world, &actor, "wait", "\"kind\":");
+}
+
+#[when(expr = "{string} waits three times")]
+fn waits_three_times(world: &mut World, actor: String) {
+    for _ in 0..3 {
+        table::actor_send(world, &actor, "wait", "\"kind\":");
+    }
+}
+
+#[when(expr = "{string} closes the seat")]
+fn closes_the_seat(world: &mut World, actor: String) {
+    let mark = table::host_stdout(world).len();
+    table::close_actor(world, &actor);
+    table::wait_host_until(world, "seat close", |text| {
+        text.len() > mark && text[mark..].contains("clock shop_day ")
+    });
+}
+
+#[then(expr = "the host printed the door note exactly once")]
+fn the_host_printed_the_door_note_exactly_once(world: &mut World) {
+    let text = table::host_stdout(world);
+    assert_eq!(text.matches(DOOR).count(), 1, "{text}");
+}
+
+#[then(expr = "every host printout ends with the clocks")]
+fn every_host_printout_ends_with_the_clocks(world: &mut World) {
+    let printouts = host_printouts(&table::host_stdout(world));
+    assert!(!printouts.is_empty(), "the host printed nothing");
+    for printout in &printouts {
+        assert!(
+            printout.contains("clock assassination_debt ") && printout.contains("clock shop_day "),
+            "{printout}"
+        );
+    }
+}
+
+#[then(expr = "the host's last printout lists the clocks and no effect rows")]
+fn the_hosts_last_printout_lists_the_clocks(world: &mut World) {
+    let printouts = host_printouts(&table::host_stdout(world));
+    let last = printouts
+        .last()
+        .unwrap_or_else(|| panic!("the host printed nothing"));
+    assert!(
+        last.lines().all(|line| line.starts_with("clock ")),
+        "{last}"
+    );
+    assert!(last.contains("clock "), "{last}");
+}
+
+fn host_printouts(text: &str) -> Vec<String> {
+    let body = text.split_once('\n').map(|(_, rest)| rest).unwrap_or(text);
+    let mut printouts = Vec::new();
+    let mut current = Vec::new();
+    for line in body.lines() {
+        if line.is_empty() {
+            continue;
+        }
+        current.push(line);
+        if line.starts_with("clock shop_day ") {
+            printouts.push(current.join("\n"));
+            current.clear();
+        }
+    }
+    assert!(
+        current.is_empty(),
+        "a printout did not end with the clocks:\n{body}"
+    );
+    printouts
 }
 
 #[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]

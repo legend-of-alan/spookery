@@ -35,6 +35,7 @@ pub struct RoundOutput {
     pub summary: Vec<String>,
     pub lines: Vec<Told>,
     pub seen: Vec<Seen>,
+    pub effects: Vec<Effect>,
     /// Set when this round wrote the journal.
     pub outcome: Option<CommitOutcome>,
 }

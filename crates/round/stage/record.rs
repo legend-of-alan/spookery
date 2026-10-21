@@ -47,6 +47,7 @@ pub(crate) fn run(
         summary: std::mem::take(&mut round.summary),
         lines: std::mem::take(&mut round.lines),
         seen: std::mem::take(&mut round.seen),
+        effects: round.effects.clone(),
         outcome: None,
     };
     if let Some(record) = record {
