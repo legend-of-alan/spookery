@@ -516,9 +516,9 @@ fn gunzip_closed(path: &std::path::Path) -> Vec<u8> {
 #[then(expr = "parallel full verification matches serial replay")]
 fn parallel_full_verification_matches_serial_replay(world: &mut World) {
     let pack = table::pack(world);
-    let parallel = spookery_round::verify_parallel(pack).unwrap_or_else(|err| panic!("{err}"));
+    let verified = spookery_round::verify_pack(pack, None).unwrap_or_else(|err| panic!("{err}"));
     let serial =
         spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
-    assert_eq!(parallel.state_rev, serial.state_rev);
-    assert!(parallel.applied > 0, "{parallel:?}");
+    assert_eq!(verified.state_rev, serial.state_rev);
+    assert!(verified.applied > 0, "{verified:?}");
 }

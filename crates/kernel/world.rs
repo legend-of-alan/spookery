@@ -321,7 +321,7 @@ fn save_problems(now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
         Ok(emitted) if emitted.as_bytes() != bytes => {
             let line = std::str::from_utf8(bytes)
                 .ok()
-                .and_then(|live| first_diff_line(live, &emitted));
+                .and_then(|live| first_diff_line(live, &emitted).map(|(line_no, _)| line_no));
             let mut diag = coded(
                 "state/save.yaml",
                 Reason::HandEdit,
@@ -348,14 +348,27 @@ fn save_problems(now: &Now, bytes: &[u8]) -> Vec<Diagnostic> {
     diags
 }
 
-fn first_diff_line(live: &str, emitted: &str) -> Option<u32> {
-    for (index, (left, right)) in live.lines().zip(emitted.lines()).enumerate() {
+/// First 1-based line number and line text from `live` that differs from `expected`.
+pub fn first_diff_line(live: &str, expected: &str) -> Option<(u32, String)> {
+    for (index, (left, right)) in live.lines().zip(expected.lines()).enumerate() {
         if left != right {
-            return Some(index as u32 + 1);
+            return Some(((index + 1) as u32, left.to_string()));
         }
     }
-    if live.lines().count() != emitted.lines().count() {
-        return Some(live.lines().count().min(emitted.lines().count()) as u32 + 1);
+    let live_count = live.lines().count();
+    let expected_count = expected.lines().count();
+    if live_count != expected_count {
+        let number = live_count.min(expected_count) + 1;
+        let line = live
+            .lines()
+            .nth(number - 1)
+            .or_else(|| expected.lines().nth(number - 1))
+            .unwrap_or("")
+            .to_string();
+        return Some((number as u32, line));
+    }
+    if live.as_bytes() != expected.as_bytes() {
+        return Some((1, live.lines().next().unwrap_or("").to_string()));
     }
     None
 }

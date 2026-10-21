@@ -263,9 +263,76 @@ fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
     Ok(())
 }
 
-/// Read the journal and replay it. A stale `save.yaml` is not the tip.
+/// Read the journal, replay it, and check checkpoints and `state/save.yaml`.
 pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, VerifyError> {
-    verify_serial(pack, from).map(|(report, _yaml)| report)
+    if !pack.join("pack.yaml").is_file() {
+        return Err(VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)));
+    }
+    if !pack.join("state/save.yaml").is_file()
+        && !pack.join("state").join(journal::base_rel()).is_file()
+    {
+        return Err(VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)));
+    }
+    let records = load_entries(pack).map_err(VerifyError::Replay)?;
+    if records.is_empty() && from.is_none() {
+        let genesis = read_genesis(pack)?;
+        verify_save_file(pack, &records, &genesis)?;
+        return Ok(VerifyReport {
+            state_rev: state_rev_of(&genesis).map_err(VerifyError::Replay)?,
+            applied: 0,
+        });
+    }
+    let cap = records.iter().map(JournalEntry::state_rev_after).max();
+    let report = match from_journal(pack, from, cap) {
+        Ok(report) => report,
+        Err(ReplayError::Diverged(diverged)) => {
+            return Err(with_diff(diverged, &read_snapshot(pack)));
+        }
+        Err(err) => return Err(VerifyError::Replay(err)),
+    };
+    let verified = VerifyReport {
+        state_rev: report.state_rev,
+        applied: report.applied,
+    };
+    if from.is_some() {
+        return Ok(verified);
+    }
+    if let Err(fault) = journal::check_chain(pack, &records) {
+        return Err(VerifyError::Replay(journal_fault(fault)));
+    }
+    let genesis = read_genesis(pack)?;
+    let bundles =
+        journal::bundle_entries(pack).map_err(|fault| VerifyError::Replay(journal_fault(fault)))?;
+    let starts = bundle_starts(pack, &genesis, &bundles)?;
+    let mut ends: Vec<Option<Result<Vec<u8>, ReplayError>>> =
+        (0..starts.len()).map(|_| None).collect();
+    std::thread::scope(|scope| {
+        let mut handles = Vec::new();
+        for (index, (start, entries)) in starts.iter().enumerate() {
+            handles.push(scope.spawn(move || (index, replay_bundle(pack, start, entries))));
+        }
+        for handle in handles {
+            let (index, end) = handle.join().expect("replay");
+            ends[index] = Some(end);
+        }
+    });
+    let mut tip = genesis.clone();
+    for (index, end) in ends.into_iter().enumerate() {
+        let end = end.unwrap_or(Err(ReplayError::Reason(Reason::Schema)));
+        let (name, entries) = &bundles[index];
+        tip = check_bundle_end(pack, name, entries, end)?;
+    }
+    if report.now_yaml != tip {
+        return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
+            verified.state_rev,
+            "save",
+            None,
+            "parallel replay differed from serial replay".to_string(),
+            Some(tip),
+        ))));
+    }
+    verify_save_file(pack, &records, &genesis)?;
+    Ok(verified)
 }
 
 /// Check every chain hash, then replay the latest bundle from the snapshot it starts at.
@@ -274,20 +341,37 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, VerifyError> {
     if let Err(fault) = journal::check_chain(pack, &records) {
         return Err(VerifyError::Replay(journal_fault(fault)));
     }
+    let genesis = read_genesis(pack)?;
     let bundles =
         journal::bundle_entries(pack).map_err(|fault| VerifyError::Replay(journal_fault(fault)))?;
-    if bundles.is_empty() {
-        let live = fs::read(pack.join("state/save.yaml"))
-            .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
+    let Some((start, entries)) = bundle_starts(pack, &genesis, &bundles)?.pop() else {
+        verify_save_file(pack, &records, &genesis)?;
         return Ok(VerifyReport {
-            state_rev: state_rev_of(&live).map_err(VerifyError::Replay)?,
+            state_rev: state_rev_of(&genesis).map_err(VerifyError::Replay)?,
             applied: 0,
         });
-    }
-    let mut start = read_genesis(pack)?;
-    let last = bundles.len() - 1;
+    };
+    let (name, _) = bundles.last().expect("bundle");
+    let end = check_bundle_end(pack, name, entries, replay_bundle(pack, &start, entries))?;
+    verify_save_file(pack, &records, &genesis)?;
+    Ok(VerifyReport {
+        state_rev: state_rev_of(&end).map_err(VerifyError::Replay)?,
+        applied: entries.iter().filter(|entry| entry.changes_state()).count() as u64,
+    })
+}
+
+type BundleStart<'a> = (Vec<u8>, &'a [JournalEntry]);
+
+fn bundle_starts<'a>(
+    pack: &Path,
+    genesis: &[u8],
+    bundles: &'a [(String, Vec<JournalEntry>)],
+) -> Result<Vec<BundleStart<'a>>, VerifyError> {
+    let mut starts = Vec::with_capacity(bundles.len());
+    let mut current = genesis.to_vec();
     for (index, (name, entries)) in bundles.iter().enumerate() {
-        if index == last {
+        starts.push((current, entries.as_slice()));
+        if index + 1 == bundles.len() {
             break;
         }
         let Some(mark) = journal::latest_checkpoint(entries) else {
@@ -302,7 +386,7 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, VerifyError> {
         let snap = pack
             .join("state/checkpoints")
             .join(format!("{}.yaml", mark.state_rev));
-        start = fs::read(&snap).map_err(|_| {
+        current = fs::read(&snap).map_err(|_| {
             VerifyError::Replay(ReplayError::Diverged(diverge(
                 mark.state_rev,
                 "checkpoint",
@@ -311,18 +395,26 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, VerifyError> {
                 None,
             )))
         })?;
-        if journal::hash_now(&start) != mark.state_hash {
+        if journal::hash_now(&current) != mark.state_hash {
             return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
                 mark.state_rev,
                 "checkpoint",
                 Some(mark.tick_index),
                 format!("{name}: state hash differed"),
-                Some(start),
+                Some(current),
             ))));
         }
     }
-    let (name, entries) = &bundles[last];
-    let end = replay_bundle(pack, &start, entries).map_err(|err| match err {
+    Ok(starts)
+}
+
+fn check_bundle_end(
+    pack: &Path,
+    name: &str,
+    entries: &[JournalEntry],
+    end: Result<Vec<u8>, ReplayError>,
+) -> Result<Vec<u8>, VerifyError> {
+    let end = end.map_err(|err| match err {
         ReplayError::Diverged(diverged) => with_diff(diverged, &read_snapshot(pack)),
         other => VerifyError::Replay(other),
     })?;
@@ -337,138 +429,65 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, VerifyError> {
             ))));
         }
     }
-    Ok(VerifyReport {
-        state_rev: state_rev_of(&end).map_err(VerifyError::Replay)?,
-        applied: entries.iter().filter(|entry| entry.changes_state()).count() as u64,
-    })
+    Ok(end)
 }
 
-/// Replay every bundle from its checkpoint snapshot, at the same time.
-/// The tip matches one serial replay.
-pub fn verify_parallel(pack: &Path) -> Result<VerifyReport, VerifyError> {
-    let (serial, serial_yaml) = verify_serial(pack, None)?;
-    let bundles =
-        journal::bundle_entries(pack).map_err(|fault| VerifyError::Replay(journal_fault(fault)))?;
-    if bundles.is_empty() {
-        return Ok(serial);
-    }
-    let mut starts = Vec::new();
-    let genesis = read_genesis(pack)?;
-    let mut previous: Option<Vec<u8>> = None;
-    for (index, (name, entries)) in bundles.iter().enumerate() {
-        if index + 1 < bundles.len() && journal::latest_checkpoint(entries).is_none() {
-            return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
-                0,
-                "checkpoint",
-                None,
-                format!("{name}: a closed bundle has no checkpoint"),
-                None,
-            ))));
-        }
-        let start = previous.clone().unwrap_or_else(|| genesis.clone());
-        starts.push((start, entries));
-        if let Some(mark) = journal::latest_checkpoint(entries) {
-            let snap = pack
-                .join("state/checkpoints")
-                .join(format!("{}.yaml", mark.state_rev));
-            previous = Some(fs::read(&snap).map_err(|_| {
-                VerifyError::Replay(ReplayError::Diverged(diverge(
-                    mark.state_rev,
-                    "checkpoint",
-                    Some(mark.tick_index),
-                    format!("{name}: missing snapshot"),
+fn verify_save_file(
+    pack: &Path,
+    records: &[JournalEntry],
+    genesis: &[u8],
+) -> Result<(), VerifyError> {
+    let live = fs::read(pack.join("state/save.yaml"))
+        .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
+    let now = load_base(&live).map_err(VerifyError::Replay)?;
+    if records.is_empty() {
+        let canonical = emit_save(&now)
+            .map(|text| text.into_bytes())
+            .map_err(|reason| VerifyError::Replay(ReplayError::Reason(reason)))?;
+        if live != canonical {
+            return Err(with_diff(
+                diverge(
+                    now.state_rev,
+                    "save",
                     None,
-                )))
-            })?);
+                    Reason::HandEdit.token().to_string(),
+                    Some(canonical),
+                ),
+                &live,
+            ));
         }
     }
-    let mut ends: Vec<Option<Result<Vec<u8>, ReplayError>>> =
-        (0..starts.len()).map(|_| None).collect();
-    std::thread::scope(|scope| {
-        let mut handles = Vec::new();
-        for (index, (start, entries)) in starts.iter().enumerate() {
-            handles.push(scope.spawn(move || (index, replay_bundle(pack, start, entries))));
-        }
-        for handle in handles {
-            let (index, end) = handle.join().expect("replay");
-            ends[index] = Some(end);
-        }
-    });
-    let mut tip = genesis;
-    for (index, end) in ends.into_iter().enumerate() {
-        let end = end.unwrap_or(Err(ReplayError::Reason(Reason::Schema)));
-        let end = end.map_err(|err| match err {
-            ReplayError::Diverged(diverged) => with_diff(diverged, &read_snapshot(pack)),
-            other => VerifyError::Replay(other),
-        })?;
-        let (name, entries) = &bundles[index];
-        if let Some(mark) = journal::latest_checkpoint(entries) {
-            if journal::hash_now(&end) != mark.state_hash {
-                return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
+    if let Some(mark) = journal::latest_checkpoint(records) {
+        if journal::hash_now(&live) != mark.state_hash {
+            let snap = fs::read(
+                pack.join("state/checkpoints")
+                    .join(format!("{}.yaml", mark.state_rev)),
+            )
+            .ok();
+            return Err(with_diff(
+                diverge(
                     mark.state_rev,
-                    "checkpoint",
+                    "save",
                     Some(mark.tick_index),
-                    format!("{name}: state hash differed"),
-                    Some(end),
-                ))));
-            }
+                    "state hash differed".to_string(),
+                    snap,
+                ),
+                &live,
+            ));
         }
-        tip = end;
-    }
-    if serial_yaml != tip {
-        return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
-            serial.state_rev,
-            "save",
-            None,
-            "parallel replay differed from serial replay".to_string(),
-            Some(tip),
-        ))));
-    }
-    Ok(serial)
-}
-
-fn verify_serial(pack: &Path, from: Option<&Path>) -> Result<(VerifyReport, Vec<u8>), VerifyError> {
-    if !pack.join("pack.yaml").is_file() {
-        return Err(VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)));
-    }
-    if !pack.join("state/save.yaml").is_file()
-        && !pack.join("state").join(journal::base_rel()).is_file()
-    {
-        return Err(VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)));
-    }
-    let records = load_entries(pack).map_err(VerifyError::Replay)?;
-    if records.is_empty() && from.is_none() {
-        let live = fs::read(pack.join("state/save.yaml"))
-            .map_err(|_| VerifyError::Replay(ReplayError::Reason(Reason::NotInSpec)))?;
-        let rev = state_rev_of(&live).map_err(VerifyError::Replay)?;
-        return Ok((
-            VerifyReport {
-                state_rev: rev,
-                applied: 0,
-            },
-            live,
+    } else if live != genesis {
+        return Err(with_diff(
+            diverge(
+                now.state_rev,
+                "save",
+                None,
+                "state hash differed".to_string(),
+                Some(genesis.to_vec()),
+            ),
+            &live,
         ));
     }
-    let cap = records.iter().map(JournalEntry::state_rev_after).max();
-    let report = match from_journal(pack, from, cap) {
-        Ok(report) => report,
-        Err(ReplayError::Diverged(diverged)) => {
-            return Err(with_diff(diverged, &read_snapshot(pack)));
-        }
-        Err(err) => return Err(VerifyError::Replay(err)),
-    };
-    if from.is_none() {
-        if let Err(fault) = journal::check_chain(pack, &records) {
-            return Err(VerifyError::Replay(journal_fault(fault)));
-        }
-    }
-    Ok((
-        VerifyReport {
-            state_rev: report.state_rev,
-            applied: report.applied,
-        },
-        report.now_yaml,
-    ))
+    Ok(())
 }
 
 fn read_snapshot(pack: &Path) -> Vec<u8> {
@@ -789,7 +808,7 @@ fn with_diff(diverged: ReplayDivergence, live: &[u8]) -> VerifyError {
     let diff = diverged.replayed.as_deref().and_then(|replayed| {
         let live_text = std::str::from_utf8(live).ok()?;
         let replayed_text = std::str::from_utf8(replayed).ok()?;
-        first_diff_line(live_text, replayed_text)
+        spookery_kernel::api::world::first_diff_line(live_text, replayed_text)
     });
     match diff {
         Some((line_no, line)) => VerifyError::Mismatch {
@@ -801,36 +820,12 @@ fn with_diff(diverged: ReplayDivergence, live: &[u8]) -> VerifyError {
     }
 }
 
-fn first_diff_line(live: &str, replayed: &str) -> Option<(u32, String)> {
-    for (index, (left, right)) in live.lines().zip(replayed.lines()).enumerate() {
-        if left != right {
-            return Some(((index + 1) as u32, left.to_string()));
-        }
-    }
-    let live_count = live.lines().count();
-    let replay_count = replayed.lines().count();
-    if live_count != replay_count {
-        let number = live_count.min(replay_count) + 1;
-        let line = live
-            .lines()
-            .nth(number - 1)
-            .or_else(|| replayed.lines().nth(number - 1))
-            .unwrap_or("")
-            .to_string();
-        return Some((number as u32, line));
-    }
-    if live.as_bytes() != replayed.as_bytes() {
-        return Some((1, live.lines().next().unwrap_or("").to_string()));
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
 
-    use super::{from_journal, verify_pack};
+    use super::{from_journal, verify_pack, verify_quick};
     use crate::play_pack_once;
 
     #[test]
@@ -860,6 +855,29 @@ mod tests {
         assert!(message.contains("state_rev 1"), "{message}");
         assert!(message.contains("tick 1"), "{message}");
         assert!(message.contains("now_hash differed"), "{message}");
+        let _ = fs::remove_dir_all(&pack);
+    }
+
+    #[test]
+    fn verify_and_quick_verify_reject_tampered_save_after_checkpoint() {
+        let pack = temp_docks("replay-save-tamper");
+        let pack_yaml = pack.join("pack.yaml");
+        let mut cfg = fs::read_to_string(&pack_yaml).unwrap();
+        cfg.push_str("\ncheckpoint_every: 2\n");
+        fs::write(&pack_yaml, cfg).unwrap();
+        play_pack_once(&pack).unwrap();
+        play_pack_once(&pack).unwrap();
+        let save = pack.join("state/save.yaml");
+        let text = fs::read_to_string(&save).unwrap();
+        let tampered = text.replacen("state_rev: 2", "state_rev: 99", 1);
+        assert_ne!(tampered, text);
+        fs::write(&save, tampered).unwrap();
+        let full_err = verify_pack(&pack, None).unwrap_err().to_string();
+        assert!(full_err.contains("state_rev 2 save"), "{full_err}");
+        assert!(full_err.contains("save.yaml:"), "{full_err}");
+        let quick_err = verify_quick(&pack).unwrap_err().to_string();
+        assert!(quick_err.contains("state_rev 2 save"), "{quick_err}");
+        assert!(quick_err.contains("save.yaml:"), "{quick_err}");
         let _ = fs::remove_dir_all(&pack);
     }
 

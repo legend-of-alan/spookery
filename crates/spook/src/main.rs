@@ -183,8 +183,6 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             }
             let checked = if quick {
                 spookery_round::verify_quick(&pack)
-            } else if from.is_none() {
-                spookery_round::verify_parallel(&pack)
             } else {
                 spookery_round::verify_pack(&pack, from.as_deref())
             };
