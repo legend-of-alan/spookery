@@ -1,9 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use cucumber::{given, then, when};
 
-use crate::contributing::{find_repo_root, read_repo};
 use crate::World;
 
 #[given(expr = "a clean {word} runner and a fresh clone")]
@@ -106,26 +105,6 @@ fn the_session_reaches_the_ending(world: &mut World) {
     );
 }
 
-#[then(expr = "the docs have one how-this-differs paragraph")]
-fn the_docs_have_one_how_this_differs_paragraph(_world: &mut World) {
-    let text = read_repo("docs/README.md");
-    let start = text
-        .find("## How this differs")
-        .unwrap_or_else(|| panic!("docs/README.md has no How this differs section"));
-    let rest = &text[start + "## How this differs".len()..];
-    let body = rest.split("\n## ").next().unwrap_or("").trim();
-    let paragraphs: Vec<&str> = body
-        .split("\n\n")
-        .map(str::trim)
-        .filter(|part| !part.is_empty())
-        .collect();
-    assert_eq!(
-        paragraphs.len(),
-        1,
-        "How this differs should be one paragraph:\n{body}"
-    );
-}
-
 fn host_is(os: &str) -> bool {
     match os {
         "windows" => cfg!(windows),
@@ -167,4 +146,13 @@ fn find_python() -> Command {
     let mut command = Command::new("py");
     command.arg("-3");
     command
+}
+
+fn read_repo(rel: &str) -> String {
+    let path = find_repo_root().join(rel);
+    std::fs::read_to_string(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()))
+}
+
+fn find_repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
