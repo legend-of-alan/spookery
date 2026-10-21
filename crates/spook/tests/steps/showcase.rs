@@ -11,10 +11,10 @@ use crate::support;
 use crate::World;
 
 const EVENING: u64 = 1080;
-const OPENING: &[&str] = &["strike npc_briar", "drink"];
+const OPENING: &[&str] = &["strike npc_briar", "use tonic"];
 const SCRIPT: &[&str] = &[
     "strike npc_briar",
-    "drink",
+    "use tonic",
     "travel loft",
     "travel gate_yard",
     "ask_briar",

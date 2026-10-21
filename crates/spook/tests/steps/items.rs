@@ -8,6 +8,7 @@ use spookery_kernel::api::model::Now;
 use spookery_kernel::api::rules::{faces, RollKey};
 use spookery_kernel::api::store::codec::{emit_save, load_save};
 
+use super::table;
 use crate::support;
 use crate::World;
 
@@ -265,12 +266,59 @@ fn rowan_types(world: &mut World, line: String) {
     };
 }
 
-#[then(expr = "the line is rejected with MISSING_ITEM and no tick was written")]
-fn the_line_is_missing_and_quiet(world: &mut World) {
-    assert_eq!(world.scratch, "MISSING_ITEM");
+#[given(expr = "lark holds 1 latch at a seated table")]
+fn lark_holds_a_latch_at_a_table(world: &mut World) {
+    let pack = support::copy_pack("sample-d20", "use-latch");
+    save(&pack, |now| {
+        quiet(now);
+        let lark = now.actors.get_mut("pc_lark").unwrap();
+        lark.inventory_mut().insert("latch".to_string(), 1);
+    });
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, "pc_lark");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "lark plays {string}")]
+fn lark_plays(world: &mut World, line: String) {
+    let before = table::now_of(world.pack.as_ref().unwrap());
+    world.scratch = format!("{} {}", before.world_time, before.tick_index);
+    let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
+    world.player_added = added;
+}
+
+#[then(expr = "lark is refused with {word}")]
+fn lark_is_refused(world: &mut World, code: String) {
+    let row = world
+        .player_added
+        .lines()
+        .find(|row| row.contains("\"kind\":\"refused\""))
+        .unwrap_or_else(|| panic!("no refused frame\n{}", world.player_added));
+    let frame: Value = serde_json::from_str(row).unwrap();
+    assert_eq!(frame["code"], code.as_str(), "{frame}");
+    assert!(frame.get("missing").is_none(), "{frame}");
+}
+
+#[then(expr = "no round was spent and lark still holds 1 latch")]
+fn no_round_was_spent(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    assert_eq!(read_now(pack).tick_index, 0);
+    let now = table::now_of(pack);
+    assert_eq!(
+        format!("{} {}", now.world_time, now.tick_index),
+        world.scratch,
+        "a round was spent"
+    );
     assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
+    assert_eq!(now.actors.get("pc_lark").unwrap().count("latch"), 1);
+}
+
+#[then(expr = "the line is rejected with NOT_IN_SPEC and nell still has 3 hp and 1 tonic")]
+fn drink_is_not_a_verb(world: &mut World) {
+    assert_eq!(world.scratch, "NOT_IN_SPEC");
+    let pack = world.pack.as_ref().unwrap();
+    assert_eq!(hp(pack, "pc_nell"), 3);
+    assert_eq!(count(pack, "pc_nell", "tonic"), 1);
+    assert_eq!(read_now(pack).tick_index, 0);
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]

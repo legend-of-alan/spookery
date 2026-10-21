@@ -810,28 +810,15 @@ rules:
 A small bottle.
 ",
     );
-    let verbs = pack.join("rules/verbs.yaml");
-    let text = fs::read_to_string(&verbs).unwrap();
-    let from = "  - id: use
-    when:
-      verb: use
-      target: item
-    if:
-      - has_item:
-          who: self
-          id: target
-    do: []
-";
-    let to = "  - id: use
+    append(
+        &pack.join("rules/verbs.yaml"),
+        "
+  - id: use
     when:
       verb: use
     do: []
-";
-    assert!(
-        text.contains(from),
-        "shared use was not the item-target fallback"
+",
     );
-    fs::write(&verbs, text.replacen(from, to, 1)).unwrap();
     save(&pack, |_| {});
     world.pack = Some(pack);
 }

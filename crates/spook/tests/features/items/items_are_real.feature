@@ -11,10 +11,22 @@ Feature: Items are real
     When rowan takes lamp_oil
     Then docks_shop has 2 and rowan has 1
 
-  Scenario: Using an item you do not hold is refused
-    Given docks_shop has 3 lamp_oil
-    When rowan types "use lamp_oil"
-    Then the line is rejected with MISSING_ITEM and no tick was written
+  Scenario: Using an item with no use rule is refused, and the turn is kept
+    Given lark holds 1 latch at a seated table
+    When lark plays "use latch"
+    Then lark is refused with NOT_IN_SPEC
+    And no round was spent and lark still holds 1 latch
+
+  Scenario: Using something unknown gets the same refusal
+    Given lark holds 1 latch at a seated table
+    When lark plays "use banana"
+    Then lark is refused with NOT_IN_SPEC
+    And no round was spent and lark still holds 1 latch
+
+  Scenario: The tonic has one verb, use
+    Given nell holds 1 tonic and has 3 of 10 hp
+    When nell types "drink"
+    Then the line is rejected with NOT_IN_SPEC and nell still has 3 hp and 1 tonic
 
   Scenario: Taking an item that is not there is refused
     Given docks_shop has no lamp_oil
