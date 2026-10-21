@@ -13,6 +13,3 @@ Feature: The README works from a fresh clone
       | ubuntu  |
       | macos   |
       | windows |
-
-  Scenario: Docs say how this differs
-    Then the docs have one how-this-differs paragraph

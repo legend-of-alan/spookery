@@ -64,7 +64,7 @@ impl ServerHandler for GmHost {
             .map(|seat| seat.0)
             .ok_or_else(|| McpError::internal_error("no seat", None))?;
         let _ = self.conn.set(conn);
-        self.claim(&context).await?;
+        self.claim(conn, &context).await?;
         context.peer.set_peer_info(request.clone());
         self.negotiate_initialize(&request)
     }
@@ -96,10 +96,7 @@ impl ServerHandler for GmHost {
 }
 
 impl GmHost {
-    async fn claim(&self, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
-        let Some(&conn) = self.conn.get() else {
-            return Err(McpError::internal_error("no seat", None));
-        };
+    async fn claim(&self, conn: u64, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
         let (out_tx, mut out_rx, cancel_tx, mut cancel_rx) = super::limits::outbound();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx

@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::canon::world_settings::Budget;
-use crate::canon::{check_save, init_new_meters, load_canon, pack_rev, Canon};
+use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
 use crate::intent::Intent;
@@ -90,13 +90,52 @@ impl World {
         self.warning = Some(text);
     }
 
+    /// Open the pack. A save that later journal records continue is a checkpoint,
+    /// and resume checks the tip instead.
     pub fn open(root: &Path) -> Result<Self, Reason> {
-        load_world(root, false)
+        if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
+            return Err(Reason::NotInSpec);
+        }
+        recover(root)?;
+        let canon = Arc::new(load_canon(root).map_err(reason_of)?);
+        let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+        let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
+        let now = load_save(now_text).map_err(reason_of)?;
+        let mut problems = save_problems(&now, &now_bytes);
+        if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
+            problems.insert(0, diag);
+        }
+        let continues = journal_continues(root, &now);
+        if continues {
+            problems.retain(|diag| diag.code != Reason::HandEdit.token());
+        }
+        if !problems.is_empty() {
+            return Err(reason_of(problems));
+        }
+        if !continues {
+            check_save(&canon, &now).map_err(reason_of)?;
+        }
+        Ok(Self {
+            root: root.to_path_buf(),
+            canon,
+            now,
+            queue: Vec::new(),
+            next_session: 1,
+            warning: None,
+        })
     }
 
-    /// Open a temp pack for replay. A base from before migrate may not match `pack_rev`.
-    pub fn open_for_replay(root: &Path) -> Result<Self, Reason> {
-        load_world(root, true)
+    /// The pack's canon with a save from memory, for replay. Nothing is checked:
+    /// each journal record's hash proves the state it reaches.
+    pub fn open_for_replay(pack: &Path, now: Now) -> Result<Self, Reason> {
+        Ok(Self {
+            root: pack.to_path_buf(),
+            canon: Arc::new(load_canon(pack).map_err(reason_of)?),
+            now,
+            queue: Vec::new(),
+            next_session: 1,
+            warning: None,
+        })
     }
 }
 
@@ -115,41 +154,6 @@ pub fn session_status(now: &Now) -> SessionStatus {
         humans: now.presence.humans,
         actors_present: now.presence.actors_present.clone(),
     }
-}
-
-fn load_world(root: &Path, replay: bool) -> Result<World, Reason> {
-    if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
-        return Err(Reason::NotInSpec);
-    }
-    recover(root)?;
-    let canon = Arc::new(load_canon(root).map_err(reason_of)?);
-    let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let mut now = load_save(now_text).map_err(reason_of)?;
-    let mut problems = save_problems(&now, &now_bytes);
-    if !replay {
-        if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
-            problems.insert(0, diag);
-        }
-    }
-    if journal_continues(root, &now) {
-        problems.retain(|diag| diag.code != Reason::HandEdit.token());
-    }
-    if !problems.is_empty() {
-        return Err(reason_of(problems));
-    }
-    if migrate_continues(root, &now) {
-        init_new_meters(&canon, &mut now);
-    }
-    check_save(&canon, &now).map_err(reason_of)?;
-    Ok(World {
-        root: root.to_path_buf(),
-        canon,
-        now,
-        queue: Vec::new(),
-        next_session: 1,
-        warning: None,
-    })
 }
 
 /// Hash of the newest migrate past the checkpoint, or the save's own hash.
@@ -280,12 +284,9 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
             problems.insert(0, diag);
         }
         diags.extend(problems);
-        if let Some(canon) = &canon {
-            let mut now = now.clone();
-            if migrating {
-                init_new_meters(canon, &mut now);
-            }
-            if let Err(more) = check_save(canon, &now) {
+        // A checkpoint save is not the tip. Resume checks the tip when it opens.
+        if let Some(canon) = canon.as_ref().filter(|_| !journal_continues(root, now)) {
+            if let Err(more) = check_save(canon, now) {
                 diags.extend(more);
             }
         }

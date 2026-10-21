@@ -22,11 +22,11 @@ Feature: Travel follows the map
     Given a place rule with location to cellar, teleport true
     Then the PC reaches cellar with no exit
 
-  Scenario: A traveller is busy until arrival
+  Scenario: With no GM, a lone traveller arrives on the travel line
     Given the stairs exit costs 10 minutes
     When rowan travels via stairs at 21:30
-    Then rowan is still in docks_shop and busy until 21:40
-    And "wait" from rowan before 21:40 is rejected with BUSY
+    Then the world is at 21:40 and rowan is in mira_rooms
+    And rowan's line shows "mira_rooms"
 
   Scenario: Arrivals complete in time order
     Given rowan arrives at 21:40 and nell at 21:35

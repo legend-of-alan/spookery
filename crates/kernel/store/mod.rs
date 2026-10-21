@@ -8,7 +8,7 @@ pub(crate) mod durable;
 pub(crate) mod journal;
 pub(crate) mod lock;
 pub(crate) mod records;
-pub(crate) mod recover;
+pub mod recover;
 pub mod talk_log;
 
 /// Rules version stamped on every save and every tick.

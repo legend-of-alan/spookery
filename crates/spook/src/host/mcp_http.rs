@@ -100,23 +100,22 @@ impl SessionManager for SeatSessions {
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .remove(id);
-        self.inner.close_session(id).await?;
-        let Some(conn) = conn else {
-            return Ok(());
-        };
-        let (ack_tx, ack_rx) = oneshot::channel();
-        if self
-            .tx
-            .send(Msg::Fault {
-                conn,
-                end: SocketEnd::Close,
-                ack: ack_tx,
-            })
-            .is_ok()
-        {
-            let _ = ack_rx.await;
+        let closed = self.inner.close_session(id).await;
+        if let Some(conn) = conn {
+            let (ack_tx, ack_rx) = oneshot::channel();
+            if self
+                .tx
+                .send(Msg::Fault {
+                    conn,
+                    end: SocketEnd::Close,
+                    ack: ack_tx,
+                })
+                .is_ok()
+            {
+                let _ = ack_rx.await;
+            }
         }
-        Ok(())
+        closed
     }
 
     async fn create_stream(

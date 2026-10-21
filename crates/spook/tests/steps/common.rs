@@ -445,6 +445,7 @@ fn the_stairs_cost_ten_minutes(world: &mut World) {
 
 #[when(expr = "rowan travels via stairs at 21:30")]
 fn rowan_travels_at_half_past(world: &mut World) {
-    let (_mark, added) = table::player_send(world, "travel stairs", "\"kind\":");
+    let (mark, added) = table::player_send(world, "travel stairs", "\"kind\":");
+    world.mark = mark;
     world.player_added = added;
 }

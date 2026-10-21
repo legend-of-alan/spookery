@@ -26,6 +26,12 @@ fn rowan_starts_in_docks_street(world: &mut World) {
     world.pack = Some(pack);
 }
 
+#[given(expr = "pc_wren is seated and not travelling")]
+fn pc_wren_is_seated(world: &mut World) {
+    let pack = world.pack.clone().unwrap();
+    table::seat_actor(world, &pack, "pc_wren");
+}
+
 #[then(expr = "the seated player sees {string}")]
 fn the_seated_player_sees(world: &mut World, text: String) {
     let added = if world.player_added.contains(&text) {

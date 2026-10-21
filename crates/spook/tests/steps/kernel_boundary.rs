@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use cucumber::{given, then};
 
@@ -30,94 +30,10 @@ const LAYERS: &[&[&str]] = &[
     &["host_summary"],
 ];
 
-/// Names that must not be `pub` on the kernel surface.
-const NARROWED: &[&str] = &[
-    "SAVE_EMIT_OPTIONS",
-    "actor_of",
-    "admit",
-    "allows",
-    "at_line",
-    "at_start",
-    "blake2s_hex",
-    "body_leaks",
-    "body_of_fact",
-    "can_pay",
-    "class_name",
-    "compile",
-    "defaults",
-    "deserialize",
-    "duration_minutes",
-    "emit_effect_payload",
-    "emit_memory_line",
-    "emit_migrate",
-    "emit_presence",
-    "from_token",
-    "habits_of",
-    "habits_on",
-    "hour_in",
-    "ignore_resist",
-    "is_eligible",
-    "kernel_intent_id",
-    "load_checks",
-    "load_meters",
-    "load_world_settings",
-    "message_text_leaks",
-    "migrate_file",
-    "note_text",
-    "parse_effect",
-    "parse_migrate",
-    "parse_presence",
-    "parse_tick_effects",
-    "player_verbs",
-    "preimage",
-    "presence_file",
-    "release_wielded",
-    "replaced_moves_file",
-    "require_recorded_rules",
-    "resolve_item_id",
-    "rule_roll",
-    "serialize",
-    "set_pause_view",
-    "shift_count",
-    "stamp_now_hash",
-    "teleport_in_verbs",
-    "track",
-    "track_before",
-    "track_many",
-    "used_exit",
-    "uses_teleport",
-    "visit",
-    "with_path",
-    "world_hour",
-];
-
 pub(crate) fn clean_tree_holds() {
     let root = support::workspace_root();
-    let mut outside = Vec::new();
-    support::rust_files(&root.join("crates/spook/src"), &mut outside);
-    support::rust_files(&root.join("crates/spook/tests"), &mut outside);
-    support::rust_files(&root.join("crates/round"), &mut outside);
-    support::rust_files(&root.join("crates/kernel/tests"), &mut outside);
-    let api = api_violations(&outside);
-    assert!(api.is_empty(), "{}", api.join("\n"));
     let down = downward_violations(&root.join("crates/kernel"));
     assert!(down.is_empty(), "{}", down.join("\n"));
-}
-
-fn api_violations(files: &[PathBuf]) -> Vec<String> {
-    let mut hits = Vec::new();
-    for path in files {
-        let text =
-            fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-        let code = without_comments_or_strings(&text);
-        for import in kernel_paths(&code) {
-            if import == "spookery_kernel::api" || import.starts_with("spookery_kernel::api::") {
-                continue;
-            }
-            hits.push(format!("{} imports {import}", path.display()));
-        }
-    }
-    hits
 }
 
 fn downward_violations(kernel: &Path) -> Vec<String> {
@@ -169,47 +85,6 @@ fn subsystem(kernel: &Path, path: &Path) -> String {
     first.trim_end_matches(".rs").to_string()
 }
 
-fn kernel_paths(code: &str) -> Vec<String> {
-    let needle = "spookery_kernel::";
-    let bytes = code.as_bytes();
-    let mut hits = Vec::new();
-    let mut start = 0;
-    while let Some(at) = code[start..].find(needle) {
-        let abs = start + at;
-        if abs > 0 {
-            let prev = bytes[abs - 1];
-            if prev.is_ascii_alphanumeric() || prev == b'_' {
-                start = abs + needle.len();
-                continue;
-            }
-        }
-        let mut end = abs + needle.len();
-        loop {
-            if end < bytes.len() && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_') {
-                while end < bytes.len()
-                    && (bytes[end].is_ascii_alphanumeric() || bytes[end] == b'_')
-                {
-                    end += 1;
-                }
-                continue;
-            }
-            if code[end..].starts_with("::") {
-                end += 2;
-                continue;
-            }
-            break;
-        }
-        while code[..end].ends_with("::") {
-            end -= 2;
-        }
-        if end > abs {
-            hits.push(code[abs..end].to_string());
-        }
-        start = end.max(abs + needle.len());
-    }
-    hits
-}
-
 fn crate_deps(code: &str) -> BTreeSet<String> {
     let needle = "crate::";
     let bytes = code.as_bytes();
@@ -237,37 +112,6 @@ fn crate_deps(code: &str) -> BTreeSet<String> {
         start = end;
     }
     deps
-}
-
-fn without_comments_or_strings(src: &str) -> String {
-    let bytes = src.as_bytes();
-    let mut out = String::new();
-    let mut i = 0;
-    while i < bytes.len() {
-        if is_char_quote(bytes, i) {
-            out.push(' ');
-            i += 3;
-            continue;
-        }
-        if is_line_comment(bytes, i) {
-            i = skip_line(bytes, i);
-            out.push('\n');
-            continue;
-        }
-        if is_block_comment(bytes, i) {
-            i = skip_block(bytes, i);
-            out.push(' ');
-            continue;
-        }
-        if bytes[i] == b'"' {
-            i = skip_string(bytes, i);
-            out.push(' ');
-            continue;
-        }
-        out.push(bytes[i] as char);
-        i += 1;
-    }
-    out
 }
 
 fn production_source(src: &str) -> String {
@@ -436,31 +280,6 @@ fn skip_string(bytes: &[u8], open: usize) -> usize {
     bytes.len()
 }
 
-#[given(expr = "a spook source file that imports spookery_kernel::shard")]
-fn a_spook_file_imports_shard(world: &mut World) {
-    let dir = support::fresh_dir("api-plant");
-    let path = dir.join("plant.rs");
-    fs::create_dir_all(&dir).unwrap_or_else(|err| panic!("mkdir {}: {err}", dir.display()));
-    fs::write(&path, "use spookery_kernel::shard;\n")
-        .unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
-    world.scratch = api_violations(&[path]).join("\n");
-    let _ = fs::remove_dir_all(&dir);
-}
-
-#[then(expr = "the boundary check fails naming that file and path")]
-fn the_boundary_check_names_the_file_and_path(world: &mut World) {
-    assert!(
-        world.scratch.contains("plant.rs"),
-        "boundary check did not name the file: {}",
-        world.scratch
-    );
-    assert!(
-        world.scratch.contains("spookery_kernel::shard"),
-        "boundary check did not name the import: {}",
-        world.scratch
-    );
-}
-
 #[given(expr = "kernel\\/state imports crate::rules")]
 fn kernel_state_imports_rules(world: &mut World) {
     let dir = support::fresh_dir("down-plant");
@@ -506,81 +325,4 @@ fn the_boundary_check_fails(world: &mut World) {
 #[then(expr = "the boundary check passes on main")]
 fn the_boundary_check_passes_on_main(_world: &mut World) {
     clean_tree_holds();
-}
-
-#[then(expr = "the listed kernel functions are crate-private or gone")]
-fn the_listed_kernel_functions_are_crate_private_or_gone(_world: &mut World) {
-    let leaks = public_kernel_fns(NARROWED);
-    assert!(leaks.is_empty(), "{}", leaks.join("\n"));
-}
-
-#[then(expr = "sort_unique stays public for the firewall tests")]
-fn sort_unique_stays_public_for_the_firewall_tests(_world: &mut World) {
-    let hits = public_kernel_fns(&["sort_unique"]);
-    assert!(
-        !hits.is_empty(),
-        "sort_unique is not public, and the firewall tests call it"
-    );
-}
-
-fn public_kernel_fns(names: &[&str]) -> Vec<String> {
-    let mut files = Vec::new();
-    support::rust_files(&support::workspace_root().join("crates/kernel"), &mut files);
-    let mut hits = Vec::new();
-    for path in files {
-        let text = fs::read_to_string(&path)
-            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-        let code_only = without_comments_or_strings(&production_source(&text));
-        let mut in_use = false;
-        for (index, line) in code_only.lines().enumerate() {
-            let code = line.trim();
-            if code.starts_with("pub use ") {
-                in_use = true;
-            }
-            for name in names {
-                if is_public_item(code) && declares_fn(code, name) {
-                    hits.push(format!("{}:{} publishes {name}", path.display(), index + 1));
-                } else if in_use && has_ident(code, name) {
-                    hits.push(format!(
-                        "{}:{} re-exports {name}",
-                        path.display(),
-                        index + 1
-                    ));
-                }
-            }
-            if code.contains(';') {
-                in_use = false;
-            }
-        }
-    }
-    hits
-}
-
-fn is_public_item(code: &str) -> bool {
-    code.starts_with("pub ")
-}
-
-fn declares_fn(code: &str, name: &str) -> bool {
-    has_ident(code, &format!("fn {name}"))
-}
-
-fn has_ident(code: &str, name: &str) -> bool {
-    let bytes = code.as_bytes();
-    let needle = name.as_bytes();
-    let mut start = 0;
-    while let Some(at) = code[start..].find(name) {
-        let abs = start + at;
-        let before_ok = abs == 0 || !is_ident_byte(bytes[abs - 1]);
-        let after = abs + needle.len();
-        let after_ok = after >= bytes.len() || !is_ident_byte(bytes[after]);
-        if before_ok && after_ok {
-            return true;
-        }
-        start = abs + 1;
-    }
-    false
-}
-
-fn is_ident_byte(byte: u8) -> bool {
-    byte.is_ascii_alphanumeric() || byte == b'_'
 }

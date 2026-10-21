@@ -319,7 +319,7 @@ fn handle(
             reply,
         } => {
             if seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
-                let _ = reply.send(frames::code_result(Reason::NotInSpec.token()));
+                let _ = reply.send(crate::protocol::code_result(Reason::NotInSpec.token()));
                 return Ok(());
             }
             let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
@@ -606,12 +606,12 @@ fn on_mechanical(
             send_gm(seats, note.gm_frame());
             send_player(world, seats, conn, note.player_line().into_bytes())?;
         }
-        Ok(player_moves::MoveOutcome::Committed { advanced, output }) => {
+        Ok(player_moves::MoveOutcome::Committed { advanced, outputs }) => {
             if advanced {
                 bump_sleep(restart);
             }
             print_host(world);
-            refresh_players(world, seats, std::slice::from_ref(&output))?;
+            refresh_players(world, seats, &outputs)?;
         }
         Ok(player_moves::MoveOutcome::Busy {
             code,
@@ -734,7 +734,7 @@ fn on_fault(
 }
 
 fn refused_line(code: Reason) -> String {
-    frames::player_refused_line(code.token())
+    frames::player_refused(code.token(), None)
 }
 
 fn debug_seats(seats: &Seats, world: &World) {

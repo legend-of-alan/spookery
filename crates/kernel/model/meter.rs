@@ -21,27 +21,11 @@ pub struct MeterLive {
     pub offset: i64,
 }
 
-impl MeterLive {
-    pub(crate) fn at_start(def: &MeterDef) -> Self {
-        Self {
-            base: def.start,
-            offset: 0,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MeterWrite {
     Base(i64),
     Offset(i64),
     Snap,
-}
-
-/// One cast work entry, or one literal meter template after the loader accepts it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct WorkWrite {
-    pub key: String,
-    pub write: MeterWrite,
 }
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.

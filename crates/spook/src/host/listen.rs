@@ -296,7 +296,7 @@ async fn player_session(
 }
 
 fn refused_frame(code: Reason) -> Vec<u8> {
-    super::frames::player_refused_line(code.token()).into_bytes()
+    super::frames::player_refused(code.token(), None).into_bytes()
 }
 
 pub(super) async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
