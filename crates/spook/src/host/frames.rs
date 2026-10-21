@@ -90,10 +90,6 @@ pub fn player_lines(text: &str) -> String {
     })
 }
 
-pub fn player_refused_line(code: &str) -> String {
-    player_refused(code, None)
-}
-
 pub fn player_refused(code: &str, missing: Option<&str>) -> String {
     crate::protocol::write_player(&PlayerMessage::Refused {
         code: code.to_string(),
@@ -135,18 +131,6 @@ pub fn commit_reply(
         dice,
     }
     .to_value()
-}
-
-pub fn queued_ack(id: &str) -> Value {
-    crate::protocol::queued_ack(id)
-}
-
-pub fn code_result(code: &str) -> Value {
-    crate::protocol::code_result(code)
-}
-
-pub fn released_result() -> Value {
-    crate::protocol::released_result()
 }
 
 pub fn session_status(

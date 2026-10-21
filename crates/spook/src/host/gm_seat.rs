@@ -118,7 +118,7 @@ impl ServerHandler for GmHost {
                 return Err(McpError::internal_error("no seat", None));
             };
             if !http.held.load(Ordering::Acquire) {
-                return Ok(CallToolResult::structured(super::frames::code_result(
+                return Ok(CallToolResult::structured(crate::protocol::code_result(
                     Reason::NotInSpec.token(),
                 ))
                 .into());
