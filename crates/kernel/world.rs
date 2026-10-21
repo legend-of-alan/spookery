@@ -93,12 +93,36 @@ impl World {
     /// Open the pack. A save that later journal records continue is a checkpoint,
     /// and resume checks the tip instead.
     pub fn open(root: &Path) -> Result<Self, Reason> {
-        load_world(root, false)
-    }
-
-    /// Open without the `pack_rev` check, so migrate can replay the tail and store a new one.
-    pub fn open_for_migrate(root: &Path) -> Result<Self, Reason> {
-        load_world(root, true)
+        if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
+            return Err(Reason::NotInSpec);
+        }
+        recover(root)?;
+        let canon = Arc::new(load_canon(root).map_err(reason_of)?);
+        let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+        let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
+        let now = load_save(now_text).map_err(reason_of)?;
+        let mut problems = save_problems(&now, &now_bytes);
+        if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
+            problems.insert(0, diag);
+        }
+        let continues = journal_continues(root, &now);
+        if continues {
+            problems.retain(|diag| diag.code != Reason::HandEdit.token());
+        }
+        if !problems.is_empty() {
+            return Err(reason_of(problems));
+        }
+        if !continues {
+            check_save(&canon, &now).map_err(reason_of)?;
+        }
+        Ok(Self {
+            root: root.to_path_buf(),
+            canon,
+            now,
+            queue: Vec::new(),
+            next_session: 1,
+            warning: None,
+        })
     }
 
     /// The pack's canon with a save from memory, for replay. Nothing is checked:
@@ -130,41 +154,6 @@ pub fn session_status(now: &Now) -> SessionStatus {
         humans: now.presence.humans,
         actors_present: now.presence.actors_present.clone(),
     }
-}
-
-fn load_world(root: &Path, migrate: bool) -> Result<World, Reason> {
-    if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
-        return Err(Reason::NotInSpec);
-    }
-    recover(root)?;
-    let canon = Arc::new(load_canon(root).map_err(reason_of)?);
-    let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;
-    let now = load_save(now_text).map_err(reason_of)?;
-    let mut problems = save_problems(&now, &now_bytes);
-    if !migrate {
-        if let Some(diag) = pack_rev_problem(root, &now, &now_bytes) {
-            problems.insert(0, diag);
-        }
-    }
-    let continues = journal_continues(root, &now);
-    if continues {
-        problems.retain(|diag| diag.code != Reason::HandEdit.token());
-    }
-    if !problems.is_empty() {
-        return Err(reason_of(problems));
-    }
-    if !continues {
-        check_save(&canon, &now).map_err(reason_of)?;
-    }
-    Ok(World {
-        root: root.to_path_buf(),
-        canon,
-        now,
-        queue: Vec::new(),
-        next_session: 1,
-        warning: None,
-    })
 }
 
 /// Hash of the newest migrate past the checkpoint, or the save's own hash.

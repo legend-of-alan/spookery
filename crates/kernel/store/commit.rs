@@ -100,7 +100,7 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
     let now = migrate_save(now, &pack_rev_after, state_rev_after, &added);
     check_save(&canon, &now).map_err(reason_of)?;
     let emitted = emit_save(&now)?.into_bytes();
-    let record = journal::emit_migrate(
+    let entry = journal::migrate_entry(
         &pack_rev_before,
         &now.pack_rev,
         state_rev_before,
@@ -109,8 +109,7 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
         &added,
     );
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
-    let parsed = journal::parse_migrate("migrate.json", &record).map_err(|_| Reason::Schema)?;
-    let line = journal::seal(&journal::JournalEntry::Migrate(parsed), &prev);
+    let line = journal::seal(&entry, &prev);
     append_bundle(root, &line)?;
     Ok(())
 }
@@ -194,7 +193,7 @@ fn store_checkpoint(
     }
     let snap_dir = state.join("checkpoints");
     fs::create_dir_all(&snap_dir).map_err(|_| Reason::CommitConflict)?;
-    atomic_publish(&state.join("save.yaml"), now_bytes)?;
+    atomic_publish(&save, now_bytes)?;
     atomic_publish(&snap_dir.join(format!("{state_rev}.yaml")), now_bytes)?;
     Ok(())
 }
@@ -202,8 +201,7 @@ fn store_checkpoint(
 /// The journal line is already durable. `false` means `save.yaml` or the gzip did
 /// not finish. The round stays committed either way.
 fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> bool {
-    let rev = world.now.state_rev;
-    let tick = world.now.tick_index;
+    let (rev, tick) = (world.now.state_rev, world.now.tick_index);
     store_checkpoint(&world.root, now_bytes, rev, tick, chain).is_ok()
         && close_finished(&world.root).is_ok()
 }

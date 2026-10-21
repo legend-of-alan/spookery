@@ -892,8 +892,10 @@ pub fn migrate_save(mut now: Now, pack_rev: &str, state_rev: u64, meters: &[Adde
     for actor in now.actors.values_mut() {
         let live = actor.meters_mut();
         for meter in meters {
-            live.entry(meter.id.clone())
-                .or_insert(MeterLive::at_start(meter.start));
+            live.entry(meter.id.clone()).or_insert(MeterLive {
+                base: meter.start,
+                offset: 0,
+            });
         }
     }
     now.pack_rev = pack_rev.to_string();

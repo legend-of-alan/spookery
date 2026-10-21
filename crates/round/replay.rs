@@ -144,7 +144,8 @@ fn replay_walking(
     let base_path = pack.join("state").join(journal::base_rel());
     let save_path = pack.join("state/save.yaml");
     let base_bytes = if let Some(from) = from {
-        read_from_now(from)?
+        fs::read(from.join("state/save.yaml"))
+            .map_err(|_| ReplayError::Reason(Reason::NotInSpec))?
     } else if base_path.is_file() {
         fs::read(&base_path).map_err(|_| ReplayError::Reason(Reason::Schema))?
     } else if save_path.is_file() {
@@ -165,7 +166,6 @@ fn replay_walking(
         records
             .iter()
             .map(JournalEntry::state_rev_after)
-            .filter(|rev| until_allows(*rev, until))
             .max()
             .unwrap_or(base_rev)
     });
@@ -196,12 +196,11 @@ fn replay_walking(
         }
         applied += 1;
         let now_yaml = read_now_bytes(&world)?;
-        let saved_rev = state_rev_of(&now_yaml)?;
-        on_step(saved_rev, &now_yaml)?;
+        on_step(world.now().state_rev, &now_yaml)?;
         saved = now_yaml;
     }
     Ok(ReplayReport {
-        state_rev: state_rev_of(&saved)?,
+        state_rev: world.now().state_rev,
         applied,
         now_yaml: saved,
     })
@@ -210,34 +209,37 @@ fn replay_walking(
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 pub fn resume(path: &Path) -> Result<World, Reason> {
-    resume_from(path, false)
-}
-
-/// The journal tip, opened without the tip hash check, so migrate can store a new one.
-pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
-    resume_from(path, true)
-}
-
-fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
-    let mut world = if migrating {
-        World::open_for_migrate(path)?
-    } else {
-        World::open(path)?
-    };
-    let entries = journal::read_live(path).map_err(|fault| replay_reason(journal_fault(fault)))?;
+    let mut world = World::open(path)?;
+    // Open checked a save with nothing past it. A replayed tip is checked here.
+    if replay_tail(&mut world)? {
+        check_save(world.canon(), world.now()).map_err(reason_of)?;
+    }
+    Ok(world)
+}
+
+/// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
+/// The caller runs crash recovery first.
+pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
+    rebuild_snapshot(path).map_err(replay_reason)?;
+    let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let mut world = World::open_for_replay(path, load_base(&save).map_err(replay_reason)?)?;
+    replay_tail(&mut world)?;
+    Ok(world)
+}
+
+/// Replay the live records past the save. `true` when any record was replayed.
+fn replay_tail(world: &mut World) -> Result<bool, Reason> {
+    let entries =
+        journal::read_live(world.root()).map_err(|fault| replay_reason(journal_fault(fault)))?;
     let base_rev = world.now().state_rev;
     let mut replayed = false;
     for entry in &entries {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
-        apply(&mut world, entry).map_err(replay_reason)?;
+        apply(world, entry).map_err(replay_reason)?;
         replayed = true;
-    }
-    // Open checked a save with nothing past it. A replayed tip is checked here.
-    if replayed && !migrating {
-        check_save(world.canon(), world.now()).map_err(reason_of)?;
     }
     // Seats are this process. The journal records who was present so the round
     // replays, and the save leaves them out.
@@ -245,8 +247,8 @@ fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
         humans: 0,
         actors_present: Vec::new(),
     });
-    spookery_kernel::api::commit::settle_open_checkpoint(&world)?;
-    Ok(world)
+    spookery_kernel::api::commit::settle_open_checkpoint(world)?;
+    Ok(replayed)
 }
 
 fn replay_reason(err: ReplayError) -> Reason {
@@ -533,10 +535,6 @@ fn replay_bundle(
     Ok(saved)
 }
 
-fn until_allows(rev: u64, until: Option<u64>) -> bool {
-    until.is_none_or(|cap| rev <= cap)
-}
-
 fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
     journal::read_entries(pack).map_err(journal_fault)
 }
@@ -683,10 +681,9 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             None,
         )));
     }
-    let wall = record.last_tick_at.clone();
     let replayed = play_recorded(
         world,
-        &wall,
+        &record.last_tick_at,
         RecordedRound {
             intents: record.intents.clone(),
             presence_humans: record.presence_humans,
@@ -699,7 +696,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             "tick",
             Some(record.tick_index),
             code.token().to_string(),
-            read_now(world),
+            read_now_bytes(world).ok(),
         ))
     })?;
     let effect_diff = first_effect_difference(&record.effects, &replayed);
@@ -709,7 +706,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             "tick",
             Some(record.tick_index),
             "state_rev differed".to_string(),
-            read_now(world),
+            read_now_bytes(world).ok(),
         )));
     }
     let written = read_now_bytes(world)?;
@@ -789,14 +786,6 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
     Ok(())
 }
 
-fn read_from_now(from: &Path) -> Result<Vec<u8>, ReplayError> {
-    let path = from.join("state/save.yaml");
-    if !path.is_file() {
-        return Err(ReplayError::Reason(Reason::NotInSpec));
-    }
-    fs::read(&path).map_err(|_| ReplayError::Reason(Reason::NotInSpec))
-}
-
 fn load_base(bytes: &[u8]) -> Result<Now, ReplayError> {
     let text = std::str::from_utf8(bytes).map_err(|_| ReplayError::Reason(Reason::Schema))?;
     load_save(text).map_err(|diag| ReplayError::Reason(reason_of(diag)))
@@ -810,10 +799,6 @@ fn read_now_bytes(world: &World) -> Result<Vec<u8>, ReplayError> {
     emit_save(world.now())
         .map(|text| text.into_bytes())
         .map_err(ReplayError::Reason)
-}
-
-fn read_now(world: &World) -> Option<Vec<u8>> {
-    read_now_bytes(world).ok()
 }
 
 fn diverge(

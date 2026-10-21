@@ -21,15 +21,6 @@ pub struct MeterLive {
     pub offset: i64,
 }
 
-impl MeterLive {
-    pub(crate) fn at_start(start: i64) -> Self {
-        Self {
-            base: start,
-            offset: 0,
-        }
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MeterWrite {
     Base(i64),

@@ -101,9 +101,7 @@ fn the_save_is_hand_edited(world: &mut World) {
         "    actors:\n      - mira\n      - pc_rowan\n",
     );
     fs::write(&now_path, text).unwrap();
-    let mut mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
-    mira.push('\n');
-    fs::write(pack.join("cast/mira.md"), mira).unwrap();
+    a_canon_file_gains_a_byte(world);
 }
 
 #[when(expr = "the pack adds meter {string} with start {int}")]
