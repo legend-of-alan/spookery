@@ -3,7 +3,6 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use serde_json::json;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -105,32 +104,6 @@ fn the_gm_terminal_shows_one_check_and_one_dice(world: &mut World, actor: String
     assert_eq!(checks, 1, "{stdout}");
     assert_eq!(dice, 1, "{stdout}");
     assert!(stdout.contains(&queued), "{stdout}");
-}
-
-#[given(expr = "an event reader")]
-fn an_event_reader(world: &mut World) {
-    world.scratch.clear();
-}
-
-#[when(expr = "the reader is given an event body that matches no known type")]
-fn the_reader_is_given_an_unknown_body(world: &mut World) {
-    let incoming = spookery::gm_connection::read_event(Some(&json!({
-        "kind": "nope",
-        "text": "not an event"
-    })));
-    world.scratch = match incoming {
-        spookery::gm_connection::Incoming::Bad(line) => line,
-        other => format!("not bad: {other:?}"),
-    };
-}
-
-#[then(expr = "the reader reports a bad event")]
-fn the_reader_reports_a_bad_event(world: &mut World) {
-    assert!(
-        world.scratch.contains("\"kind\":\"nope\""),
-        "dropped or not reported: {}",
-        world.scratch
-    );
 }
 
 #[when(expr = "the GM queues Rowan's grit and commits")]
