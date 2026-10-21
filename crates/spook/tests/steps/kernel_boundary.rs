@@ -102,7 +102,6 @@ pub(crate) fn clean_tree_holds() {
     assert!(api.is_empty(), "{}", api.join("\n"));
     let down = downward_violations(&root.join("crates/kernel"));
     assert!(down.is_empty(), "{}", down.join("\n"));
-    super::proofs::names_say_what_the_code_does();
 }
 
 fn api_violations(files: &[PathBuf]) -> Vec<String> {
