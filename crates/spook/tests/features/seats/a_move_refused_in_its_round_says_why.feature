@@ -4,10 +4,10 @@ Feature: A move refused in its round says why
     Given a copy of the sample-d20 pack
     When play joins the sample table
     And play types "take stick"
-    Then play's error shows "You do not have that. [MISSING_ITEM]"
+    Then play's error shows "The table does not understand that. Type help. [NOT_IN_SPEC]"
     When play types "wield tonic"
     Then play's error shows "That is not a weapon. [NOT_A_WEAPON]"
-    And play's error shows "[MISSING_ITEM]" once
+    And play's error shows "[NOT_IN_SPEC]" once
     And play's error shows "[NOT_A_WEAPON]" once
     And play shows no protocol JSON
     When the operator runs audit

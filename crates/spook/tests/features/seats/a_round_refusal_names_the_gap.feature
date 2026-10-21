@@ -22,9 +22,23 @@ Feature: A round refusal names the gap
 
   Scenario: A missing item refused during the round sends no missing field
     Given a sample table with the GM seated
-    When Lark queues "take stick"
+    When Lark queues "drop tonic"
+    And Lark queues "use tonic"
     And the GM commits the round
     Then Lark's refused frame for "MISSING_ITEM" has no missing field
+
+  Scenario: A strike on someone who is out of sight when the round applies is refused
+    Given a sample table with the GM seated
+    When Lark queues "travel wheel_shed"
+    And Lark queues "strike npc_briar"
+    And the GM commits the round
+    Then Lark's refused frame for "NOT_IN_SPEC" has no missing field
+
+  Scenario: A strike the GM sends across rooms is refused in the round
+    Given a sample table with the GM seated
+    When the GM sends Lark's strike on npc_oden
+    And the GM commits the round
+    Then the round rejects that habit with "NOT_IN_SPEC"
 
   Scenario: A budget refusal during the round sends no missing field
     Given a sample table where one effect is over budget and the GM is seated

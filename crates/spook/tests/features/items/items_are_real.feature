@@ -4,7 +4,7 @@ Feature: Items are real
     Given nell holds 1 tonic and has 3 of 10 hp
     When nell types "use tonic"
     Then nell has 7 hp and 0 tonic
-    And "use tonic" again is rejected with MISSING_ITEM by the kernel
+    And "use tonic" again is rejected with NOT_IN_SPEC by the kernel
 
   Scenario: Take and drop
     Given docks_shop has 3 lamp_oil
@@ -26,12 +26,24 @@ Feature: Items are real
   Scenario: The tonic has one verb, use
     Given nell holds 1 tonic and has 3 of 10 hp
     When nell types "drink"
-    Then the line is rejected with NOT_IN_SPEC and nell still has 3 hp and 1 tonic
+    Then the line is rejected with NOT_IN_SPEC and no tick was written
 
   Scenario: Taking an item that is not there is refused
     Given docks_shop has no lamp_oil
-    When rowan takes lamp_oil
-    Then the tick names MISSING_ITEM and the shop has no lamp_oil
+    When rowan types "take lamp_oil"
+    Then the line is rejected with NOT_IN_SPEC and no tick was written
+
+  Scenario Outline: Something out of sight reads like an unknown word
+    When lark types "<line>"
+    Then the line is rejected with NOT_IN_SPEC and no tick was written
+
+    Examples:
+      | line              |
+      | strike npc_oden   |
+      | strike npc_nobody |
+      | wield chock       |
+      | wield zzz         |
+      | take latch        |
 
   Scenario: Dropping an item you do not hold is refused
     Given docks_shop has 3 lamp_oil

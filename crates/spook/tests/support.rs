@@ -150,6 +150,21 @@ pub fn pack_arg(pack: &Path) -> String {
         .to_string()
 }
 
+pub fn place_of(now: &mut spookery_kernel::api::model::Now, actor: &str, place: &str) {
+    let from = now.actors.get(actor).unwrap().place().to_string();
+    if from == place {
+        return;
+    }
+    if let Some(live) = now.places.get_mut(&from) {
+        live.actors.retain(|id| id != actor);
+    }
+    let actors = &mut now.places.get_mut(place).unwrap().actors;
+    actors.push(actor.to_string());
+    actors.sort();
+    actors.dedup();
+    *now.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
+}
+
 /// Set the save's `pack_rev` to the pack as it is now, after a step edits the pack.
 pub fn stamp_pack_rev(pack: &Path) {
     let now_path = pack.join("state/save.yaml");

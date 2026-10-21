@@ -162,7 +162,7 @@ fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     append_moves(&pack, OPPOSE_ROWS);
     insert_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
-    support::stamp_pack_rev(&pack);
+    super::common::edit_save(&pack, |now| support::place_of(now, "mira", "docks_shop"));
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
@@ -573,7 +573,7 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     insert_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
-    support::stamp_pack_rev(&pack);
+    super::common::edit_save(&pack, |now| support::place_of(now, "mira", "docks_shop"));
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
@@ -722,7 +722,7 @@ fn prepare_press(world: &mut World, base: i64, sit: bool) {
     append_check(&pack, BAND_CHECK);
     insert_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
-    support::stamp_pack_rev(&pack);
+    super::common::edit_save(&pack, |now| support::place_of(now, "mira", "docks_shop"));
     if sit {
         listen_both(world, &pack);
         world.scratch = snapshot_of(&pack).display().to_string();

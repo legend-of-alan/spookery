@@ -38,7 +38,7 @@ Feature: The d20 pack runs a fight
   Scenario: Drinking without a tonic is refused
     Given a sample-d20 table where Lark has no tonic
     When the player drinks
-    Then the player was refused MISSING_ITEM
+    Then lark is refused with NOT_IN_SPEC
     And save.yaml is unchanged since the seat
     And no tick file was written
 

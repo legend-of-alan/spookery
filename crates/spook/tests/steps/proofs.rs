@@ -1416,6 +1416,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
     );
     assert_ne!(next, text, "mira tick block was not patched");
     fs::write(&path, next).unwrap();
+    super::common::edit_save(pack, |now| support::place_of(now, "mira", "docks_shop"));
 }
 
 fn play_mark(pack: &Path, line: &str) -> Now {

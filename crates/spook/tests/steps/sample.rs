@@ -89,15 +89,6 @@ fn larks_hp_is(world: &mut World, hp: usize) {
     wait_hp(world, "pc_lark", hp as i64);
 }
 
-#[then(expr = "the player was refused MISSING_ITEM")]
-fn the_player_was_refused_missing_item(world: &mut World) {
-    assert!(
-        world.player_added.contains("\"code\":\"MISSING_ITEM\""),
-        "{}",
-        world.player_added
-    );
-}
-
 #[then(expr = "play shows {int} successful rolls")]
 fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
     let needle = "Your roll succeeded.";

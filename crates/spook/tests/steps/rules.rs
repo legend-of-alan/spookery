@@ -315,7 +315,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
         humans: 1,
         actors_present: Vec::new(),
     });
-    spookery::host::handle_player_move(&mut opened, "pc_rowan", "travel docks_street", false)
+    spookery::host::handle_player_move(&mut opened, "pc_rowan", "travel ferry_dock", false)
         .unwrap_or_else(|err| panic!("travel {}", err.token()));
 }
 
@@ -820,7 +820,10 @@ A small bottle.
     do: []
 ",
     );
-    save(&pack, |_| {});
+    save(&pack, |now| {
+        let rowan = now.actors.get_mut("pc_rowan").unwrap();
+        rowan.inventory_mut().insert("tonic".to_string(), 1);
+    });
     world.pack = Some(pack);
 }
 
