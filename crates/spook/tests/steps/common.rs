@@ -266,14 +266,9 @@ fn the_copy_is_broken_by(world: &mut World, fault: String) {
     world.before = table::files(&pack);
 }
 
-#[then(expr = "the check exits 0")]
-fn the_check_exits_0(world: &mut World) {
-    assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
-}
-
-#[then(expr = "the check exits 1")]
-fn the_check_exits_1(world: &mut World) {
-    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
+#[then(expr = "the check exits {int}")]
+fn the_check_exits(world: &mut World, code: i32) {
+    assert_eq!(world.code, Some(code), "{}\n{}", world.stdout, world.stderr);
 }
 
 #[then(expr = "stdout says {string}")]
@@ -318,22 +313,11 @@ fn play_shows_no_protocol_json(world: &mut World) {
     assert!(!stdout.contains("\"kind\""), "{stdout}");
 }
 
-#[then(expr = "the command exits 0")]
-fn the_command_exits_0(world: &mut World) {
+#[then(expr = "the command exits {int}")]
+fn the_command_exits(world: &mut World, code: i32) {
     assert_eq!(
         world.code,
-        Some(0),
-        "stdout:\n{}\nstderr:\n{}",
-        world.stdout,
-        world.stderr
-    );
-}
-
-#[then(expr = "the command exits 1")]
-fn the_command_exits_1(world: &mut World) {
-    assert_eq!(
-        world.code,
-        Some(1),
+        Some(code),
         "stdout:\n{}\nstderr:\n{}",
         world.stdout,
         world.stderr
@@ -345,9 +329,9 @@ fn stderr_is_empty(world: &mut World) {
     assert!(world.stderr.is_empty(), "{}", world.stderr);
 }
 
-#[then(expr = "stderr is NOT_IN_SPEC")]
-fn stderr_is_not_in_spec(world: &mut World) {
-    assert_eq!(world.stderr.trim(), "NOT_IN_SPEC", "{}", world.stdout);
+#[then(regex = r"^stderr is ([A-Z_]+)$")]
+fn stderr_is(world: &mut World, code: String) {
+    assert_eq!(world.stderr.trim(), code, "{}", world.stdout);
 }
 
 #[then(expr = "stdout is empty")]

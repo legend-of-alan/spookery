@@ -292,7 +292,6 @@ fn check_warns_of_a_cycle_and_the_tick_stops(world: &mut World) {
     a_tick_stops_at_depth_4(world);
 }
 
-#[then(expr = "a tick stops at depth 4 and logs trigger_depth")]
 fn a_tick_stops_at_depth_4(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
