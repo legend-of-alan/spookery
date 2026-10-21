@@ -275,7 +275,9 @@ fn seat(pack: &Path) -> Shard {
 
 fn play(world: &mut Shard, line: &str) -> spookery_round::RoundOutput {
     match spookery::host::handle_player_move(world, "pc_lark", line, false) {
-        Ok(spookery::host::MoveOutcome::Committed { output, .. }) => output,
+        Ok(spookery::host::MoveOutcome::Committed { outputs, .. }) => {
+            outputs.into_iter().next().unwrap()
+        }
         Ok(_) => panic!("{line} did not commit"),
         Err(err) => panic!("{line}: {}", err.token()),
     }

@@ -388,7 +388,7 @@ CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest
 
 ### No GM
 
-Leave the GM seat empty. Speech is stored on the tape and does not advance time. Each player move is committed as its own tick. There is no narration and no model call.
+Leave the GM seat empty. Speech is stored on the tape and does not advance time. Each player move is committed as its own tick, and a move that leaves every seated player busy runs on to the arrival. There is no narration and no model call.
 
 ### Model GM
 

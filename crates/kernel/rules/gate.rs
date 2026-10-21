@@ -71,10 +71,7 @@ pub fn resolve<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a R
     match intent.source {
         Source::Kernel => habit.or(verb).ok_or(Reason::UnknownMove),
         Source::Player | Source::System if intent.actor_kind == ActorKind::Npc => {
-            if let Some(rule) = habit {
-                return Ok(rule);
-            }
-            verb.ok_or(Reason::UnknownMove)
+            habit.or(verb).ok_or(Reason::UnknownMove)
         }
         Source::Player | Source::System => {
             if verb.is_none() && habit.is_some() {

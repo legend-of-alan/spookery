@@ -32,6 +32,7 @@ Feature: A player knows where they are and what they can do
 
   Scenario: A busy traveller sees where they are
     Given the stairs exit costs 10 minutes
+    And pc_wren is seated and not travelling
     When rowan travels via stairs at 21:30
     Then the seated player sees "on the stairs until 21:40"
 

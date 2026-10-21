@@ -16,6 +16,6 @@ pub use gm_tools::{call_gm_tool, GmToolReply};
 pub use idle_clock::on_scheduled_wake;
 pub use limits::{OUTBOUND_BYTES, OUTBOUND_FRAMES, REQUESTED_SEND_BUFFER};
 pub use listen::{listen, Error};
-pub use player_moves::{commit_queued, handle_player_move, queue_wait, MoveOutcome};
+pub use player_moves::{commit_then_fast_forward, handle_player_move, queue_wait, MoveOutcome};
 pub use speech::{player_scrollback, speak};
 pub use world_loop::{release_player_seat, seat_player, SocketEnd};

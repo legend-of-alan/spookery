@@ -6,8 +6,6 @@ use crate::diagnostic::{locate_nth, parse_file, schema, tag_diagnostic, Diagnost
 
 const TICK_FILE: &str = "rules/tick.yaml";
 
-pub const MINUTES_PER_DAY: u64 = 1440;
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {
     pub max_intents_applied: u64,
