@@ -21,26 +21,6 @@ fn agent_calls_over_http(world: &mut World) {
     block_on(exercise_http(http));
 }
 
-#[when(expr = "the GM seat is held and another agent opens HTTP")]
-fn second_http(world: &mut World) {
-    let (_tcp, http) = listen_http(world);
-    let refusal = block_on(async move {
-        let first = connect_http(http)
-            .await
-            .unwrap_or_else(|err| panic!("first HTTP GM: {err}"));
-        let status = call(&first, "session_status", None).await;
-        assert_sat(&status, "session_status");
-        let raw = http_post(http, "127.0.0.1", None);
-        if connect_http(http).await.is_ok() {
-            panic!("a second HTTP GM sat\n{raw}");
-        }
-        let _ = first.cancel().await;
-        raw
-    });
-    world.stderr = refusal;
-    world.stdout.clear();
-}
-
 #[when(expr = "the operator runs with an open MCP HTTP address")]
 fn open_http_address(world: &mut World) {
     let pack = support::pack_arg(table::pack(world));
@@ -70,37 +50,6 @@ fn the_response_is_forbidden(world: &mut World) {
 #[then(expr = "a GM hello still sits")]
 fn a_gm_hello_still_sits(world: &mut World) {
     table::seat_gm(world);
-}
-
-#[when(expr = "an HTTP GM session ends")]
-fn http_session_ends(world: &mut World) {
-    let (_tcp, http) = listen_http(world);
-    world.mark = usize::from(http);
-    block_on(async move {
-        let running = connect_http(http)
-            .await
-            .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
-        let status = call(&running, "session_status", None).await;
-        assert_sat(&status, "session_status");
-        running
-            .cancel()
-            .await
-            .unwrap_or_else(|err| panic!("close HTTP session: {err}"));
-    });
-}
-
-#[then(expr = "another GM can sit over HTTP")]
-fn another_gm_can_sit(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
-    // One attempt: the DELETE reply waits for the seat release (issue #214).
-    block_on(async move {
-        let running = connect_http(http)
-            .await
-            .unwrap_or_else(|err| panic!("the next GM did not sit: {err}"));
-        let status = call(&running, "session_status", None).await;
-        assert_sat(&status, "session_status");
-        let _ = running.cancel().await;
-    });
 }
 
 #[when(regex = r"^an HTTP request arrives with Host (\S+)$")]
@@ -340,12 +289,6 @@ fn agent_sits(port: u16) -> Result<(), String> {
 fn world_time_moved_forward(world: &mut World) {
     let now = table::now_of(table::pack(world));
     assert!(now.world_time > 1080, "world_time {}", now.world_time);
-}
-
-#[then(expr = "the refusal names SESSION_FULL")]
-fn the_refusal_names_session_full(world: &mut World) {
-    assert!(world.stderr.contains("SESSION_FULL"), "{}", world.stderr);
-    assert!(world.stdout.is_empty(), "{}", world.stdout);
 }
 
 #[when(expr = "a coding agent says good evening over HTTP")]

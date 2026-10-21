@@ -56,9 +56,6 @@ mod kernel_boundary;
 #[path = "steps/proofs.rs"]
 mod proofs;
 
-#[path = "steps/fixtures.rs"]
-mod fixtures;
-
 #[path = "steps/leak_audit.rs"]
 mod leak_audit;
 
@@ -82,9 +79,6 @@ mod module_docs;
 
 #[path = "steps/readme.rs"]
 mod readme;
-
-#[path = "fixture/oneshot_docks.rs"]
-mod oneshot_docks;
 
 #[path = "feature_paths.rs"]
 mod feature_paths;

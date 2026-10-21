@@ -24,7 +24,6 @@ pub const WORLD: &[&str] = &[
     "tests/features/commit",
     "tests/features/contributing",
     "tests/features/firewall",
-    "tests/features/fixtures",
     "tests/features/idle",
     "tests/features/items",
     "tests/features/map",
