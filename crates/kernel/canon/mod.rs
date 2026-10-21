@@ -9,8 +9,8 @@ use serde::Deserialize;
 use crate::canon::world_settings::{load_world_settings, Budget};
 use crate::check::{load_checks, CheckDef};
 use crate::diagnostic::{
-    coded, locate_nth, locate_row_field, parse_file, reason_of, schema as schema_error,
-    tag_diagnostic, with_spot, Diagnostic,
+    coded, locate_nth, locate_row_field, parse_file, schema as schema_error, tag_diagnostic,
+    with_spot, Diagnostic,
 };
 use crate::error::Reason;
 use crate::format;
@@ -19,6 +19,7 @@ use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
 use crate::rule::{Cond, Cost, EffectTemplate, Expr, Owner, ResistSpec, Rule, RuleTable, Who};
 use crate::store::codec::canonicalize;
+use crate::store::records::AddedMeter;
 
 pub mod schema;
 pub mod world_settings;
@@ -867,32 +868,40 @@ fn meter_schema_error(
     diag
 }
 
-/// Add each meter the pack defines that an actor lacks, at the meter's `start`.
-pub(crate) fn init_new_meters(canon: &Canon, now: &mut Now) {
-    for actor in now.actors.values_mut() {
-        let live = actor.meters_mut();
-        for (id, def) in &canon.meters {
-            live.entry(id.clone())
-                .or_insert_with(|| MeterLive::at_start(def));
-        }
-    }
+/// Meters the pack defines that at least one actor lacks, each at its `start`.
+pub(crate) fn pending_meters(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
+    canon
+        .meters
+        .iter()
+        .filter(|(id, _)| {
+            now.actors
+                .values()
+                .any(|actor| !actor.meters().contains_key(*id))
+        })
+        .map(|(id, def)| AddedMeter {
+            id: id.clone(),
+            start: def.start,
+        })
+        .collect()
 }
 
-/// Migrate a save to the pack: add new meters at their `start`, check the
-/// result, then stamp `pack_rev` and `state_rev`. Live migrate and replay both
-/// call this. It does not touch the disk.
-pub fn migrate_save(
-    canon: &Canon,
-    mut now: Now,
-    pack_rev: &str,
-    state_rev: u64,
-) -> Result<Now, Reason> {
-    init_new_meters(canon, &mut now);
-    check_save(canon, &now).map_err(reason_of)?;
+/// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
+/// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
+/// It does not touch the disk.
+pub fn migrate_save(mut now: Now, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> Now {
+    for actor in now.actors.values_mut() {
+        let live = actor.meters_mut();
+        for meter in meters {
+            live.entry(meter.id.clone()).or_insert(MeterLive {
+                base: meter.start,
+                offset: 0,
+            });
+        }
+    }
     now.pack_rev = pack_rev.to_string();
     now.state_rev = state_rev;
     canonicalize(&mut now);
-    Ok(now)
+    now
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,

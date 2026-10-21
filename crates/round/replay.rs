@@ -1,11 +1,9 @@
 //! Walk the journal and check that the save matches.
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::path::Path;
 
-use spookery_kernel::api::canon::migrate_save;
+use spookery_kernel::api::canon::{check_save, migrate_save};
 use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
@@ -146,7 +144,8 @@ fn replay_walking(
     let base_path = pack.join("state").join(journal::base_rel());
     let save_path = pack.join("state/save.yaml");
     let base_bytes = if let Some(from) = from {
-        read_from_now(from)?
+        fs::read(from.join("state/save.yaml"))
+            .map_err(|_| ReplayError::Reason(Reason::NotInSpec))?
     } else if base_path.is_file() {
         fs::read(&base_path).map_err(|_| ReplayError::Reason(Reason::Schema))?
     } else if save_path.is_file() {
@@ -167,7 +166,6 @@ fn replay_walking(
         records
             .iter()
             .map(JournalEntry::state_rev_after)
-            .filter(|rev| until_allows(*rev, until))
             .max()
             .unwrap_or(base_rev)
     });
@@ -185,12 +183,8 @@ fn replay_walking(
             now_yaml: base_bytes,
         });
     }
-    let temp = TempDir::new();
-    copy_dir(pack, &temp.0)?;
-    let _ = fs::remove_dir_all(temp.0.join("state/.txn"));
-    fs::write(temp.0.join("state/save.yaml"), &base_bytes)
-        .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
+    let mut world =
+        World::open_for_replay(pack, load_base(&base_bytes)?).map_err(ReplayError::Reason)?;
     for entry in records.iter() {
         let rev = entry.state_rev_after();
         if rev <= base_rev || rev > cap {
@@ -202,12 +196,11 @@ fn replay_walking(
         }
         applied += 1;
         let now_yaml = read_now_bytes(&world)?;
-        let saved_rev = state_rev_of(&now_yaml)?;
-        on_step(saved_rev, &now_yaml)?;
+        on_step(world.now().state_rev, &now_yaml)?;
         saved = now_yaml;
     }
     Ok(ReplayReport {
-        state_rev: state_rev_of(&saved)?,
+        state_rev: world.now().state_rev,
         applied,
         now_yaml: saved,
     })
@@ -216,28 +209,37 @@ fn replay_walking(
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
 pub fn resume(path: &Path) -> Result<World, Reason> {
-    resume_from(path, false)
-}
-
-/// The journal tip, opened without the tip hash check, so migrate can store a new one.
-pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
-    resume_from(path, true)
-}
-
-fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
-    let mut world = if migrating {
-        World::open_for_replay(path)?
-    } else {
-        World::open(path)?
-    };
-    let entries = journal::read_live(path).map_err(|fault| replay_reason(journal_fault(fault)))?;
+    let mut world = World::open(path)?;
+    // Open checked a save with nothing past it. A replayed tip is checked here.
+    if replay_tail(&mut world)? {
+        check_save(world.canon(), world.now()).map_err(reason_of)?;
+    }
+    Ok(world)
+}
+
+/// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
+/// The caller runs crash recovery first.
+pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
+    rebuild_snapshot(path).map_err(replay_reason)?;
+    let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let mut world = World::open_for_replay(path, load_base(&save).map_err(replay_reason)?)?;
+    replay_tail(&mut world)?;
+    Ok(world)
+}
+
+/// Replay the live records past the save. `true` when any record was replayed.
+fn replay_tail(world: &mut World) -> Result<bool, Reason> {
+    let entries =
+        journal::read_live(world.root()).map_err(|fault| replay_reason(journal_fault(fault)))?;
     let base_rev = world.now().state_rev;
+    let mut replayed = false;
     for entry in &entries {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
-        apply(&mut world, entry).map_err(replay_reason)?;
+        apply(world, entry).map_err(replay_reason)?;
+        replayed = true;
     }
     // Seats are this process. The journal records who was present so the round
     // replays, and the save leaves them out.
@@ -245,8 +247,8 @@ fn resume_from(path: &Path, migrating: bool) -> Result<World, Reason> {
         humans: 0,
         actors_present: Vec::new(),
     });
-    spookery_kernel::api::commit::settle_open_checkpoint(&world)?;
-    Ok(world)
+    spookery_kernel::api::commit::settle_open_checkpoint(world)?;
+    Ok(replayed)
 }
 
 fn replay_reason(err: ReplayError) -> Reason {
@@ -522,11 +524,7 @@ fn replay_bundle(
     start: &[u8],
     entries: &[JournalEntry],
 ) -> Result<Vec<u8>, ReplayError> {
-    let temp = TempDir::new();
-    copy_dir(pack, &temp.0)?;
-    fs::write(temp.0.join("state/save.yaml"), start)
-        .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    let mut world = World::open_for_replay(&temp.0).map_err(ReplayError::Reason)?;
+    let mut world = World::open_for_replay(pack, load_base(start)?).map_err(ReplayError::Reason)?;
     let mut saved = start.to_vec();
     for entry in entries {
         apply(&mut world, entry)?;
@@ -535,10 +533,6 @@ fn replay_bundle(
         }
     }
     Ok(saved)
-}
-
-fn until_allows(rev: u64, until: Option<u64>) -> bool {
-    until.is_none_or(|cap| rev <= cap)
 }
 
 fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
@@ -687,10 +681,9 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             None,
         )));
     }
-    let wall = record.last_tick_at.clone();
     let replayed = play_recorded(
         world,
-        &wall,
+        &record.last_tick_at,
         RecordedRound {
             intents: record.intents.clone(),
             presence_humans: record.presence_humans,
@@ -703,7 +696,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             "tick",
             Some(record.tick_index),
             code.token().to_string(),
-            read_now(world),
+            read_now_bytes(world).ok(),
         ))
     })?;
     let effect_diff = first_effect_difference(&record.effects, &replayed);
@@ -713,7 +706,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
             "tick",
             Some(record.tick_index),
             "state_rev differed".to_string(),
-            read_now(world),
+            read_now_bytes(world).ok(),
         )));
     }
     let written = read_now_bytes(world)?;
@@ -764,8 +757,7 @@ fn effect_text(effect: Option<&Effect>) -> String {
 }
 
 fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
-    let next = world.now().clone();
-    if next.pack_rev != record.pack_rev_before {
+    if world.now().pack_rev != record.pack_rev_before {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "migrate",
@@ -775,12 +767,11 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
         )));
     }
     let next = migrate_save(
-        world.canon(),
-        next,
+        world.now().clone(),
         &record.pack_rev_after,
         record.state_rev_after,
-    )
-    .map_err(ReplayError::Reason)?;
+        &record.meters,
+    );
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
@@ -793,14 +784,6 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
     }
     world.install_replayed(next);
     Ok(())
-}
-
-fn read_from_now(from: &Path) -> Result<Vec<u8>, ReplayError> {
-    let path = from.join("state/save.yaml");
-    if !path.is_file() {
-        return Err(ReplayError::Reason(Reason::NotInSpec));
-    }
-    fs::read(&path).map_err(|_| ReplayError::Reason(Reason::NotInSpec))
 }
 
 fn load_base(bytes: &[u8]) -> Result<Now, ReplayError> {
@@ -816,10 +799,6 @@ fn read_now_bytes(world: &World) -> Result<Vec<u8>, ReplayError> {
     emit_save(world.now())
         .map(|text| text.into_bytes())
         .map_err(ReplayError::Reason)
-}
-
-fn read_now(world: &World) -> Option<Vec<u8>> {
-    read_now_bytes(world).ok()
 }
 
 fn diverge(
@@ -876,46 +855,6 @@ fn first_diff_line(live: &str, replayed: &str) -> Option<(u32, String)> {
         return Some((1, live.lines().next().unwrap_or("").to_string()));
     }
     None
-}
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        let n = NEXT.fetch_add(1, Ordering::Relaxed);
-        let nanos = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|elapsed| elapsed.as_nanos())
-            .unwrap_or(0);
-        let path =
-            std::env::temp_dir().join(format!("spook-replay-{}-{n}-{nanos}", std::process::id()));
-        let _ = fs::remove_dir_all(&path);
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
-fn copy_dir(from: &Path, to: &Path) -> Result<(), ReplayError> {
-    fs::create_dir_all(to).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-    for entry in fs::read_dir(from).map_err(|_| ReplayError::Reason(Reason::Schema))? {
-        let entry = entry.map_err(|_| ReplayError::Reason(Reason::Schema))?;
-        let dest = to.join(entry.file_name());
-        let file_type = entry
-            .file_type()
-            .map_err(|_| ReplayError::Reason(Reason::Schema))?;
-        if file_type.is_dir() {
-            copy_dir(&entry.path(), &dest)?;
-        } else {
-            fs::copy(entry.path(), &dest).map_err(|_| ReplayError::Reason(Reason::Schema))?;
-        }
-    }
-    Ok(())
 }
 
 #[cfg(test)]

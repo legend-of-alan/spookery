@@ -20,7 +20,7 @@ use crate::error::Reason;
 use crate::hash::blake2s_hex;
 
 pub use super::records::{
-    Arrival, CheckpointRecord, JournalEntry, MigrateRecord, Rejected, TickRecord,
+    AddedMeter, Arrival, CheckpointRecord, JournalEntry, MigrateRecord, Rejected, TickRecord,
 };
 use super::records::{CheckpointKind, MigrateKind};
 
@@ -55,23 +55,25 @@ pub fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault> {
     Ok(Some(read_json("head.json", &text)?))
 }
 
-pub(crate) fn emit_migrate(
+pub(crate) fn migrate_entry(
     pack_rev_before: &str,
     pack_rev_after: &str,
     state_rev_before: u64,
     state_rev_after: u64,
     now_hash: &str,
-) -> String {
-    emit_entry(&JournalEntry::Migrate(MigrateRecord {
+    meters: &[AddedMeter],
+) -> JournalEntry {
+    JournalEntry::Migrate(MigrateRecord {
         kind: MigrateKind::Migrate,
         pack_rev_before: pack_rev_before.to_string(),
         pack_rev_after: pack_rev_after.to_string(),
         state_rev_before,
         state_rev_after,
         now_hash: now_hash.to_string(),
+        meters: meters.to_vec(),
         prev: String::new(),
         chain: String::new(),
-    }))
+    })
 }
 
 #[derive(Debug)]
@@ -517,10 +519,6 @@ pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFa
     read_json(name, text)
 }
 
-pub(crate) fn parse_migrate(name: &str, text: &str) -> Result<MigrateRecord, JournalFault> {
-    read_json(name, text)
-}
-
 fn read_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, JournalFault> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
     match serde_path_to_error::deserialize(&mut de) {
@@ -549,23 +547,25 @@ mod tests {
 
     #[test]
     fn migrate_records_round_trip() {
-        let migrate = emit_migrate("blake2s:aa", "blake2s:bb", 1, 2, "blake2s:cc");
-        let parsed = parse_migrate("migrate-0002.json", &migrate).unwrap();
+        let migrate = emit_entry(&migrate_entry(
+            "blake2s:aa",
+            "blake2s:bb",
+            1,
+            2,
+            "blake2s:cc",
+            &[],
+        ));
+        let JournalEntry::Migrate(parsed) =
+            parse_line("migrate-0002.json", migrate.trim_end()).unwrap()
+        else {
+            panic!("not a migrate record");
+        };
         assert_eq!(parsed.pack_rev_before, "blake2s:aa");
         assert_eq!(parsed.pack_rev_after, "blake2s:bb");
         assert_eq!(parsed.state_rev_before, 1);
         assert_eq!(parsed.state_rev_after, 2);
         assert_eq!(parsed.now_hash, "blake2s:cc");
-        assert_eq!(
-            emit_migrate(
-                &parsed.pack_rev_before,
-                &parsed.pack_rev_after,
-                parsed.state_rev_before,
-                parsed.state_rev_after,
-                &parsed.now_hash
-            ),
-            migrate
-        );
+        assert_eq!(emit_entry(&JournalEntry::Migrate(parsed)), migrate);
     }
 
     #[test]
@@ -602,7 +602,7 @@ mod tests {
         }));
 
         let migrate = include_str!("../fixtures/migrate.json");
-        let parsed = parse_migrate("migrate.json", migrate).unwrap();
-        assert_eq!(emit_entry(&JournalEntry::Migrate(parsed)), migrate);
+        let parsed = parse_line("migrate.json", migrate.trim_end()).unwrap();
+        assert_eq!(emit_entry(&parsed), migrate);
     }
 }

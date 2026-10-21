@@ -58,8 +58,14 @@ Feature: A hand edit waits for migrate
     Given a docks table
     And one round has committed
     When a canon file gains a byte
+    And the pack adds meter "stamina" with start 6
     And the operator runs migrate
-    And the operator runs tick
+    Then the command exits 0
+    When the operator runs spook check
+    Then the check exits 0
+    And spook verify passes
+    And every actor has "stamina" at 6
+    When the operator runs tick
     Then the command exits 0
     And spook verify passes
 
@@ -82,10 +88,24 @@ Feature: A hand edit waits for migrate
     And the operator runs migrate
     And the operator runs tick
     And a canon file gains a byte
+    And the pack adds meter "stamina" with start 6
     And the operator runs migrate
-    And the operator runs tick
+    Then the command exits 0
+    When the operator runs spook check
+    Then the check exits 0
+    And spook verify passes
+    And every actor has "stamina" at 6
+    When the operator runs tick
     Then the command exits 0
     And spook verify passes
+
+  Scenario: A meter missing from the save with no migrate is refused
+    Given a docks table
+    When the save drops meter "rest"
+    And the operator runs spook check
+    Then the check exits 1
+    And stderr names SCHEMA
+    And the host refuses to start with SCHEMA
 
   Scenario: Verify replays a migrate from before a later canon edit
     Given a docks table

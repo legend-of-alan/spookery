@@ -101,9 +101,7 @@ fn the_save_is_hand_edited(world: &mut World) {
         "    actors:\n      - mira\n      - pc_rowan\n",
     );
     fs::write(&now_path, text).unwrap();
-    let mut mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
-    mira.push('\n');
-    fs::write(pack.join("cast/mira.md"), mira).unwrap();
+    a_canon_file_gains_a_byte(world);
 }
 
 #[when(expr = "the pack adds meter {string} with start {int}")]
@@ -137,13 +135,9 @@ fn stderr_is_schema(world: &mut World) {
     assert_eq!(world.stderr.trim(), "SCHEMA", "{}", world.stdout);
 }
 
-#[then(expr = "stderr names PACK_REV_MISMATCH")]
-fn stderr_names_pack_rev_mismatch(world: &mut World) {
-    assert!(
-        world.stderr.contains("PACK_REV_MISMATCH"),
-        "{}",
-        world.stderr
-    );
+#[then(expr = "stderr names {word}")]
+fn stderr_names(world: &mut World, code: String) {
+    assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
 #[then(expr = "the tick writes nothing")]
@@ -161,20 +155,41 @@ fn the_tick_writes_nothing(world: &mut World) {
     );
 }
 
-#[then(expr = "spook check reports PACK_REV_MISMATCH")]
-fn spook_check_reports_pack_rev_mismatch(world: &mut World) {
+#[when(expr = "the save drops meter {string}")]
+fn the_save_drops_meter(world: &mut World, id: String) {
+    let path = table::pack(world).join("state/save.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let needle = format!("      {id}:");
+    let mut out = String::new();
+    let mut skip = 0;
+    let mut found = false;
+    for line in text.lines() {
+        if skip > 0 {
+            skip -= 1;
+            continue;
+        }
+        if line == needle {
+            found = true;
+            skip = 2;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    assert!(found, "save has no meter {id}");
+    fs::write(&path, out).unwrap();
+}
+
+#[then(expr = "spook check reports {word}")]
+fn spook_check_reports(world: &mut World, code: String) {
     let pack = table::pack(world).to_path_buf();
     table::run(world, &["check", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
-    assert!(
-        world.stderr.contains("PACK_REV_MISMATCH"),
-        "{}",
-        world.stderr
-    );
+    assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
-#[then(expr = "the host refuses to start with PACK_REV_MISMATCH")]
-fn the_host_refuses_to_start(world: &mut World) {
+#[then(expr = "the host refuses to start with {word}")]
+fn the_host_refuses_to_start(world: &mut World, code: String) {
     let pack = table::pack(world).to_path_buf();
     let arg = support::pack_arg(&pack);
     let mut proc = support::spawn(&["run", &arg, "--addr", "127.0.0.1:0"]);
@@ -198,11 +213,7 @@ fn the_host_refuses_to_start(world: &mut World) {
     world.code = status.code();
     world.stderr = stderr;
     assert_eq!(world.code, Some(1), "{}", world.stderr);
-    assert!(
-        world.stderr.contains("PACK_REV_MISMATCH"),
-        "{}",
-        world.stderr
-    );
+    assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
 #[then(expr = "spook verify passes")]
