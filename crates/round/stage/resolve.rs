@@ -29,9 +29,6 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
 }
 
 fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolution, Reason> {
-    round
-        .steps_run
-        .push(format!("perceive:{}", intent.actor_id));
     let rule = match gate(draft.canon(), draft.now(), intent) {
         Ok(rule) => rule.clone(),
         Err(miss) => return Ok(refused(miss, None)),
