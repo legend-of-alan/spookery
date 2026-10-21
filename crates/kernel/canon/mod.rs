@@ -868,27 +868,9 @@ fn meter_schema_error(
     diag
 }
 
-/// Give each actor any of `meters` it lacks, at the recorded `start`.
-pub fn add_meters(now: &mut Now, meters: &[AddedMeter]) {
-    for actor in now.actors.values_mut() {
-        let live = actor.meters_mut();
-        for meter in meters {
-            live.entry(meter.id.clone())
-                .or_insert(MeterLive::at_start(meter.start));
-        }
-    }
-}
-
-/// Migrate a save to the pack: add new meters at their `start`, check the
-/// result, then stamp `pack_rev` and `state_rev`. Returns the meters it added,
-/// so the migrate record can list them. This does not touch the disk.
-pub(crate) fn migrate_save(
-    canon: &Canon,
-    mut now: Now,
-    pack_rev: &str,
-    state_rev: u64,
-) -> Result<(Now, Vec<AddedMeter>), Reason> {
-    let added: Vec<AddedMeter> = canon
+/// Meters the pack defines that at least one actor lacks, each at its `start`.
+pub(crate) fn pending_meters(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
+    canon
         .meters
         .iter()
         .filter(|(id, _)| {
@@ -900,13 +882,24 @@ pub(crate) fn migrate_save(
             id: id.clone(),
             start: def.start,
         })
-        .collect();
-    add_meters(&mut now, &added);
-    check_save(canon, &now).map_err(reason_of)?;
+        .collect()
+}
+
+/// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
+/// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
+/// It does not touch the disk.
+pub fn migrate_save(mut now: Now, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> Now {
+    for actor in now.actors.values_mut() {
+        let live = actor.meters_mut();
+        for meter in meters {
+            live.entry(meter.id.clone())
+                .or_insert(MeterLive::at_start(meter.start));
+        }
+    }
     now.pack_rev = pack_rev.to_string();
     now.state_rev = state_rev;
     canonicalize(&mut now);
-    Ok((now, added))
+    now
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,

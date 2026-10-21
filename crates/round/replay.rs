@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::Path;
 
-use spookery_kernel::api::canon::{add_meters, check_save};
+use spookery_kernel::api::canon::{check_save, migrate_save};
 use spookery_kernel::api::commit::atomic_publish;
 use spookery_kernel::api::diagnostic::reason_of;
 use spookery_kernel::api::effect::Effect;
@@ -760,8 +760,7 @@ fn effect_text(effect: Option<&Effect>) -> String {
 }
 
 fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), ReplayError> {
-    let mut next = world.now().clone();
-    if next.pack_rev != record.pack_rev_before {
+    if world.now().pack_rev != record.pack_rev_before {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "migrate",
@@ -770,9 +769,12 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
             None,
         )));
     }
-    add_meters(&mut next, &record.meters);
-    next.pack_rev = record.pack_rev_after.clone();
-    next.state_rev = record.state_rev_after;
+    let next = migrate_save(
+        world.now().clone(),
+        &record.pack_rev_after,
+        record.state_rev_after,
+        &record.meters,
+    );
     let bytes = emit_save(&next).map_err(ReplayError::Reason)?.into_bytes();
     if hash_now(&bytes) != record.now_hash {
         return Err(ReplayError::Diverged(diverge(
