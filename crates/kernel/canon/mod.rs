@@ -316,17 +316,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 fact_ok = false;
             }
         }
-        let (tick, tick_ok) = match file.tick {
-            Some(tick) => match validate_tick(&rel, text, tick) {
-                Ok(profile) => (Some(profile), true),
-                Err(more) => {
-                    diags.extend(more);
-                    (None, false)
-                }
-            },
-            None => (None, true),
-        };
-        if !fact_ok || !tick_ok {
+        let tick = file.tick.map(|tick| TickProfile {
+            eligible: tick.eligible,
+            flags: tick.flags,
+        });
+        if !fact_ok {
             continue;
         }
         let kind = match file.kind.as_str() {
@@ -596,14 +590,6 @@ fn fact_schema_error(
         diag = diag.at_line(line, Some(column));
     }
     diag
-}
-
-fn validate_tick(file: &str, text: &str, tick: TickFile) -> Result<TickProfile, Vec<Diagnostic>> {
-    let _ = (file, text);
-    Ok(TickProfile {
-        eligible: tick.eligible,
-        flags: tick.flags,
-    })
 }
 
 fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
@@ -1547,7 +1533,6 @@ fn load_item(file: &str, yaml: &str) -> Result<ItemFile, Vec<Diagnostic>> {
             "write 'schema: item' with no version suffix",
         )]);
     }
-    let _ = (&item.name, &item.tags);
     Ok(item)
 }
 

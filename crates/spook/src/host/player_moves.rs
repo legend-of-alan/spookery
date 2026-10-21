@@ -8,7 +8,7 @@ use spookery_kernel::api::rules::gate::{gate, verb_for, Miss};
 use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
-use spookery_round::{advance_while_busy, commit_moves_at, RoundOutput};
+use spookery_round::{advance_while_busy, play, RoundCause, RoundOutput};
 
 use super::frames;
 use super::idle_clock::wall_now;
@@ -33,23 +33,18 @@ pub enum MoveOutcome {
     },
 }
 
-pub(super) struct Forwarded {
-    pub outputs: Vec<RoundOutput>,
-    pub committed: bool,
-}
-
 /// Commit a queued round, then fast-forward while every seated PC is busy.
 /// An empty queue only fast-forwards.
-pub(super) fn commit_then_fast_forward(world: &mut World) -> Result<Forwarded, Reason> {
+pub(super) fn commit_then_fast_forward(world: &mut World) -> Result<Vec<RoundOutput>, Reason> {
     let wall = wall_now()?;
     let mut outputs = Vec::new();
     let committed = !world.queued_intents().is_empty();
     if committed {
-        outputs.push(commit_moves_at(world, &wall)?);
+        outputs.push(play(world, RoundCause::Flush, &wall)?);
     }
     let already = u32::from(committed);
     outputs.extend(advance_while_busy(world, &wall, already)?);
-    Ok(Forwarded { outputs, committed })
+    Ok(outputs)
 }
 
 pub fn handle_player_move(
@@ -63,11 +58,11 @@ pub fn handle_player_move(
         Ok(note) => note,
         Err(miss) => {
             if !gm_seated && miss.reason() == spookery_kernel::api::Reason::Busy {
-                let forwarded = commit_then_fast_forward(world).map_err(Miss::from)?;
+                let outputs = commit_then_fast_forward(world).map_err(Miss::from)?;
                 return Ok(MoveOutcome::Busy {
                     code: miss.token(),
                     missing: miss.missing().map(str::to_string),
-                    outputs: forwarded.outputs,
+                    outputs,
                 });
             }
             return Err(miss);
@@ -238,7 +233,7 @@ pub fn commit_queued(world: &mut World) -> Result<(bool, RoundOutput), Reason> {
     }
     let before = world.now().world_time;
     let wall = wall_now()?;
-    let output = commit_moves_at(world, &wall)?;
+    let output = play(world, RoundCause::Flush, &wall)?;
     Ok((world.now().world_time != before, output))
 }
 

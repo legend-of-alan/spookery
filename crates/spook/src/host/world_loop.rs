@@ -348,7 +348,7 @@ fn handle(
         } => {
             if seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
                 let _ = reply.send(ToolReply {
-                    value: frames::code_result(Reason::NotInSpec.token()),
+                    value: crate::protocol::code_result(Reason::NotInSpec.token()),
                     after: Vec::new(),
                     released: false,
                 });
@@ -768,7 +768,7 @@ fn on_fault(
 }
 
 fn refused_line(code: Reason) -> String {
-    frames::player_refused_line(code.token())
+    frames::player_refused(code.token(), None)
 }
 
 fn debug_seats(seats: &Seats, world: &World) {

@@ -17,8 +17,6 @@ const PUBLIC: &[&str] = &[
     "VerifyReport",
     "advance_while_busy",
     "catch_up",
-    "commit_moves",
-    "commit_moves_at",
     "from_journal",
     "migrate_pack",
     "plan_catchup",
