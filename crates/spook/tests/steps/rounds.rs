@@ -15,14 +15,9 @@ fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "tick index is 0")]
-fn tick_index_is_0(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).tick_index, 0);
-}
-
-#[then(expr = "tick index is 1")]
-fn tick_index_is_1(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).tick_index, 1);
+#[then(expr = "tick index is {int}")]
+fn tick_index_is(world: &mut World, index: u64) {
+    assert_eq!(table::now_of(table::pack(world)).tick_index, index);
 }
 
 #[then(expr = "the player line is queued")]

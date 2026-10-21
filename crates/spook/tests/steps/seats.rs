@@ -33,19 +33,14 @@ fn now_unchanged_since_open(world: &mut World) {
     assert_eq!(now, opened);
 }
 
-#[then(expr = "humans is 1")]
-fn humans_is_1(world: &mut World) {
-    assert_eq!(table::live_presence(world).0, 1);
+#[then(expr = "humans is {int}")]
+fn humans_is(world: &mut World, count: u32) {
+    assert_eq!(table::live_presence(world).0, count);
 }
 
 #[then(expr = "the present actor is pc_rowan")]
 fn the_present_actor_is_pc_rowan(world: &mut World) {
     assert_eq!(table::live_presence(world).1, vec!["pc_rowan".to_string()]);
-}
-
-#[then(expr = "state_rev is 1")]
-fn state_rev_is_1(world: &mut World) {
-    assert_eq!(table::now_of(table::pack(world)).state_rev, 1);
 }
 
 #[then(expr = "state_rev is 0")]
@@ -103,11 +98,6 @@ fn the_session_ids_differ(world: &mut World) {
     assert_ne!(rowan, wren);
     assert_ne!(again, wren);
     assert_ne!(again, rowan);
-}
-
-#[then(expr = "humans is 0")]
-fn humans_is_0(world: &mut World) {
-    assert_eq!(table::live_presence(world).0, 0);
 }
 
 const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
@@ -171,16 +161,6 @@ fn the_hello_is_refused_with(world: &mut World, code: String) {
         "hello reply:\n{}",
         world.scratch
     );
-}
-
-#[then(expr = "humans is 3")]
-fn humans_is_3(world: &mut World) {
-    assert_eq!(table::live_presence(world).0, 3);
-}
-
-#[then(expr = "humans is 2")]
-fn humans_is_2(world: &mut World) {
-    assert_eq!(table::live_presence(world).0, 2);
 }
 
 #[then(expr = "the present actors are the three docks PCs")]

@@ -130,11 +130,6 @@ fn the_save_is_replaced(world: &mut World) {
     world.before = table::files(pack);
 }
 
-#[then(expr = "stderr is SCHEMA")]
-fn stderr_is_schema(world: &mut World) {
-    assert_eq!(world.stderr.trim(), "SCHEMA", "{}", world.stdout);
-}
-
 #[then(expr = "stderr names {word}")]
 fn stderr_names(world: &mut World, code: String) {
     assert!(world.stderr.contains(&code), "{}", world.stderr);

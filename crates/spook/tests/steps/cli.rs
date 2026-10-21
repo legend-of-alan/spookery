@@ -24,17 +24,6 @@ fn the_operator_runs_two_arguments(world: &mut World, first: String, second: Str
     table::run(world, &[&first, &second]);
 }
 
-#[then(expr = "the command exits 2")]
-fn the_command_exits_2(world: &mut World) {
-    assert_eq!(
-        world.code,
-        Some(2),
-        "stdout:\n{}\nstderr:\n{}",
-        world.stdout,
-        world.stderr
-    );
-}
-
 #[then(expr = "stdout shows usage")]
 fn stdout_shows_usage(world: &mut World) {
     assert!(world.stdout.contains("Usage:"), "{}", world.stdout);

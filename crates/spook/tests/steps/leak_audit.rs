@@ -153,19 +153,9 @@ fn write_tape(world: &mut World, bytes: Vec<u8>) {
     fs::write(path, bytes).unwrap();
 }
 
-#[then(expr = "the audit exits 0")]
-fn the_audit_exits_0(world: &mut World) {
-    assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
-}
-
-#[then(expr = "the audit exits 1")]
-fn the_audit_exits_1(world: &mut World) {
-    assert_eq!(world.code, Some(1), "{}\n{}", world.stdout, world.stderr);
-}
-
-#[then(expr = "stderr is OUT_OF_RANGE")]
-fn stderr_is_out_of_range(world: &mut World) {
-    assert_eq!(world.stderr.trim(), "OUT_OF_RANGE", "{}", world.stdout);
+#[then(expr = "the audit exits {int}")]
+fn the_audit_exits(world: &mut World, code: i32) {
+    assert_eq!(world.code, Some(code), "{}\n{}", world.stdout, world.stderr);
 }
 
 #[then(expr = "stdout has a pass line for {string}")]

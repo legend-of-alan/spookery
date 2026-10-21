@@ -80,13 +80,6 @@ fn now_matches_the_bytes_from_before_the_line(world: &mut World) {
     assert_eq!(now, world.now_bytes);
 }
 
-#[then(expr = "the tape file is absent")]
-fn the_tape_file_is_absent(world: &mut World) {
-    assert!(!table::pack(world)
-        .join("state/journal/session.jsonl")
-        .exists());
-}
-
 #[given(expr = "a docks table with {string} seated")]
 fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
     let pack = temp_pack("speech");
