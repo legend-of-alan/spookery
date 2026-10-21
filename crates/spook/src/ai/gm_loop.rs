@@ -70,7 +70,7 @@ pub fn run_ai_gm<M: Model>(
             prose: &prose,
             buffer: &mut buffer,
             high: &mut high,
-            wake: Wake::Sit,
+            wake: Wake::Queued,
             model,
             watch,
         })?;
@@ -372,7 +372,6 @@ impl GmLoop {
         self.wakes.retain(|wake| match wake {
             Wake::Say { seq, .. } => *seq > high,
             Wake::Queued => !committed,
-            Wake::Sit => false,
         });
     }
 
