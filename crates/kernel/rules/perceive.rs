@@ -225,6 +225,22 @@ fn perceive_at_budget(
     })
 }
 
+/// The display name of something this player can see or holds, or `None` for anything else.
+/// A hidden exit, or someone elsewhere, reads the same as an unknown id.
+pub fn seen_name<'a>(canon: &'a Canon, now: &Now, actor_id: &str, id: &str) -> Option<&'a str> {
+    let actor = now.actors.get(actor_id)?;
+    let view = perceive_at(canon, now, &format!("player:{actor_id}")).ok()?;
+    let seen = actor.count(id) > 0
+        || view.place == id
+        || view.visible_actors.iter().any(|other| other == id)
+        || view.items.iter().any(|item| item.id == id)
+        || view
+            .exits
+            .iter()
+            .any(|exit| exit.name == id || exit.to == id);
+    seen.then(|| canon.name(id)).flatten()
+}
+
 /// A place note stays in the save. Who can read it changes as actors move,
 /// so the drop is here and not in `apply`.
 fn text_names_unallowed_fact(canon: &Canon, now: &Now, viewer: &ViewerId, text: &str) -> bool {

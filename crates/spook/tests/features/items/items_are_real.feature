@@ -29,6 +29,24 @@ Feature: Items are real
     Then lark is refused with NOT_IN_SPEC and no sentence
     And no round was spent and lark still holds 1 latch
 
+  Scenario: A hidden exit reads the same as an unknown word
+    Given lark holds 1 latch at a seated table with a hidden trapdoor
+    When lark plays "use trapdoor"
+    Then lark is refused with NOT_IN_SPEC and no sentence
+    And no round was spent and lark still holds 1 latch
+
+  Scenario: A revealed exit is named
+    Given lark holds 1 latch at a seated table with a trapdoor lark knows about
+    When lark plays "use trapdoor"
+    Then lark is refused with NOT_IN_SPEC and the sentence "You can't use trapdoor."
+    And no round was spent and lark still holds 1 latch
+
+  Scenario: Someone elsewhere reads the same as an unknown word
+    Given lark holds 1 latch at a seated table
+    When lark plays "use npc_oden"
+    Then lark is refused with NOT_IN_SPEC and no sentence
+    And no round was spent and lark still holds 1 latch
+
   Scenario: The tonic has one verb, use
     Given nell holds 1 tonic and has 3 of 10 hp
     When nell types "drink"

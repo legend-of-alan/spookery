@@ -266,20 +266,64 @@ fn rowan_types(world: &mut World, line: String) {
     };
 }
 
-#[given(expr = "lark holds 1 latch at a seated table")]
-fn lark_holds_a_latch_at_a_table(world: &mut World) {
+/// Whether the Gate Yard has a trapdoor, and whether Lark knows it.
+#[derive(PartialEq)]
+enum Trapdoor {
+    Absent,
+    Hidden,
+    Known,
+}
+
+fn seat_lark_with_a_latch(world: &mut World, trapdoor: Trapdoor) {
     let pack = support::copy_pack("sample-d20", "use-latch");
+    if trapdoor != Trapdoor::Absent {
+        add_trapdoor(&pack);
+    }
     save(&pack, |now| {
         quiet(now);
-        now.actors
-            .get_mut("pc_lark")
-            .unwrap()
-            .inventory_mut()
-            .insert("latch".to_string(), 1);
+        let lark = now.actors.get_mut("pc_lark").unwrap();
+        lark.inventory_mut().insert("latch".to_string(), 1);
+        if trapdoor == Trapdoor::Known {
+            lark.known_facts_mut().push("fact_trapdoor".to_string());
+        }
     });
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
+}
+
+/// A hidden exit out of the Gate Yard, revealed by a hidden fact.
+fn add_trapdoor(pack: &Path) {
+    let path = pack.join("world/places/gate_yard.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text
+        .replacen(
+            "    name: wheel_shed\n",
+            "    name: wheel_shed\n  - to: loft\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
+            1,
+        )
+        .replacen(
+            "facts:\n",
+            "facts:\n  - id: fact_trapdoor\n    text: A trapdoor hides under the straw.\n    hidden: true\n",
+            1,
+        );
+    assert_ne!(text, next, "the trapdoor was not added");
+    fs::write(&path, next).unwrap();
+}
+
+#[given(expr = "lark holds 1 latch at a seated table")]
+fn lark_holds_a_latch_at_a_table(world: &mut World) {
+    seat_lark_with_a_latch(world, Trapdoor::Absent);
+}
+
+#[given(expr = "lark holds 1 latch at a seated table with a hidden trapdoor")]
+fn lark_holds_a_latch_by_a_hidden_trapdoor(world: &mut World) {
+    seat_lark_with_a_latch(world, Trapdoor::Hidden);
+}
+
+#[given(expr = "lark holds 1 latch at a seated table with a trapdoor lark knows about")]
+fn lark_holds_a_latch_by_a_known_trapdoor(world: &mut World) {
+    seat_lark_with_a_latch(world, Trapdoor::Known);
 }
 
 #[when(expr = "lark plays {string}")]

@@ -132,9 +132,9 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     })
 }
 
-/// Refuse a move no rule matched. A known target says the verb can't be done to it.
-pub fn refuse_unmatched(canon: &Canon, verb: &str, token: &str) -> Miss {
-    match canon.name(token) {
+/// Refuse a move no rule matched. A target the player can see is named, anything else is not.
+pub fn refuse_unmatched(verb: &str, seen: Option<&str>) -> Miss {
+    match seen {
         Some(name) => Miss::Text {
             code: Reason::NotInSpec,
             text: format!("You can't {verb} {name}."),
@@ -145,12 +145,7 @@ pub fn refuse_unmatched(canon: &Canon, verb: &str, token: &str) -> Miss {
 
 /// Gate every intent. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, Miss> {
-    let rule = resolve(canon, now, intent).map_err(|reason| match (&reason, &intent.target) {
-        (Reason::NotInSpec, Target::Actor(token) | Target::Place(token)) => {
-            refuse_unmatched(canon, &intent.move_name, token)
-        }
-        _ => reason.into(),
-    })?;
+    let rule = resolve(canon, now, intent)?;
     if let Some(actor) = now.actors.get(&intent.actor_id) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Reason::Busy.into());
