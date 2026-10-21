@@ -45,16 +45,6 @@ pub struct RecordedRound {
     pub actors_present: Vec<String>,
 }
 
-pub fn commit_moves(world: &mut World) -> Result<RoundOutput, Reason> {
-    let wall = world.now().last_tick_at.clone();
-    commit_moves_at(world, &wall)
-}
-
-/// `include_tick: true` with `last_tick_at` set to `wall`. The caller supplies the stamp.
-pub fn commit_moves_at(world: &mut World, wall: &str) -> Result<RoundOutput, Reason> {
-    play(world, RoundCause::Flush, wall)
-}
-
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let now = tip_for_migrate(path)?;
@@ -67,6 +57,7 @@ fn tip_for_migrate(path: &Path) -> Result<spookery_kernel::api::model::Now, Reas
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_now = load_save(text).map_err(spookery_kernel::api::diagnostic::reason_of)?;
+    spookery_kernel::api::store::recover::recover(path)?;
     let ahead = read_live(path)
         .map_err(|_| Reason::Schema)?
         .iter()
@@ -177,30 +168,27 @@ fn play_with(
     now_wall: &str,
     recorded: Option<RecordedRound>,
 ) -> Result<(Vec<Effect>, RoundOutput), Reason> {
-    let _lock = lock_world(world.root())?;
+    // A replayed round stays in memory, so only a live round takes the lock.
+    let _lock = recorded
+        .is_none()
+        .then(|| lock_world(world.root()))
+        .transpose()?;
     if let Some(recorded) = &recorded {
         world.set_presence(Presence {
             humans: recorded.presence_humans,
             actors_present: recorded.actors_present.clone(),
         });
     }
-    let mut draft_slot = Some(Draft::begin(world));
-    let mut round = Round::prepare(
-        world,
-        draft_slot.as_ref().expect("draft"),
-        cause,
-        now_wall,
-        recorded,
-    );
-    let draft = draft_slot.as_mut().expect("draft");
-    advance::run(&mut round, draft)?;
-    complete::run(&mut round, draft)?;
-    gather::run(&mut round, draft)?;
-    resolve::run(&mut round, draft)?;
-    apply::run(&mut round, draft)?;
-    triggers::run(&mut round, draft)?;
-    observe::run(&mut round, draft)?;
-    let output = record::run(world, &mut round, draft_slot.take().expect("draft"))?;
+    let mut draft = Draft::begin(world);
+    let mut round = Round::prepare(world, &draft, cause, now_wall, recorded);
+    advance::run(&mut round, &mut draft)?;
+    complete::run(&mut round, &mut draft)?;
+    gather::run(&mut round, &mut draft)?;
+    resolve::run(&mut round, &mut draft)?;
+    apply::run(&mut round, &mut draft)?;
+    triggers::run(&mut round, &mut draft)?;
+    observe::run(&mut round, &mut draft)?;
+    let output = record::run(world, &mut round, draft)?;
     let output = drop_unseated_lines(world, output);
     Ok((std::mem::take(&mut round.effects), output))
 }

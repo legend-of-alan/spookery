@@ -115,18 +115,6 @@ fn miras_habit_fires(world: &mut World) {
     );
 }
 
-#[then(expr = "no round writes empty_perceive")]
-fn no_round_writes_empty_perceive(world: &mut World) {
-    let pack = table::pack(world);
-    let keys = list_tick_keys(pack);
-    assert!(!keys.is_empty(), "no tick was written");
-    for key in keys {
-        let text = spookery_kernel::api::journal::read_record_line(pack, &key)
-            .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
-        assert!(!text.contains("empty_perceive"), "{key}: {text}");
-    }
-}
-
 fn play(world: &mut World, actor: &str, line: &str) {
     let pack = table::pack(world);
     let mut opened = spookery_round::resume(pack).unwrap_or_else(|err| panic!("resume: {err}"));

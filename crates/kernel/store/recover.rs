@@ -11,7 +11,8 @@ use crate::model::MemoryLine;
 use crate::store::codec::emit_memory_line;
 use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
 
-pub(crate) fn recover(root: &Path) -> Result<(), Reason> {
+/// Run before reading a pack that a crash may have left mid-commit.
+pub fn recover(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
     let txn = state.join(".txn");
     if txn.is_dir() {

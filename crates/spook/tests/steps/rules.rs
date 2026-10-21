@@ -465,7 +465,9 @@ fn lark_attacks(world: &mut World) {
     let reports =
         match spookery::host::handle_player_move(&mut opened, "pc_lark", "attack npc_briar", false)
         {
-            Ok(spookery::host::MoveOutcome::Committed { output, .. }) => output.reports,
+            Ok(spookery::host::MoveOutcome::Committed { outputs, .. }) => {
+                outputs.into_iter().next().unwrap().reports
+            }
             Ok(spookery::host::MoveOutcome::Queued(_)) => panic!("attack queued"),
             Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("attack was busy"),
             Err(err) => panic!("attack {}", err.token()),

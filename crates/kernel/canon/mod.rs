@@ -9,8 +9,8 @@ use serde::Deserialize;
 use crate::canon::world_settings::{load_world_settings, Budget};
 use crate::check::{load_checks, CheckDef};
 use crate::diagnostic::{
-    coded, locate_nth, locate_row_field, parse_file, reason_of, schema as schema_error,
-    tag_diagnostic, with_spot, Diagnostic,
+    coded, locate_nth, locate_row_field, parse_file, schema as schema_error, tag_diagnostic,
+    with_spot, Diagnostic,
 };
 use crate::error::Reason;
 use crate::format;
@@ -19,6 +19,7 @@ use crate::meter::{self, MeterDef, MeterLive};
 use crate::model::Now;
 use crate::rule::{Cond, Cost, EffectTemplate, Expr, Owner, ResistSpec, Rule, RuleTable, Who};
 use crate::store::codec::canonicalize;
+use crate::store::records::AddedMeter;
 
 pub mod schema;
 pub mod world_settings;
@@ -96,9 +97,11 @@ pub struct CastCanon {
     pub tick: Option<TickProfile>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TickProfile {
     pub eligible: bool,
+    #[serde(default)]
     pub flags: Vec<String>,
 }
 
@@ -316,17 +319,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 fact_ok = false;
             }
         }
-        let (tick, tick_ok) = match file.tick {
-            Some(tick) => match validate_tick(&rel, text, tick) {
-                Ok(profile) => (Some(profile), true),
-                Err(more) => {
-                    diags.extend(more);
-                    (None, false)
-                }
-            },
-            None => (None, true),
-        };
-        if !fact_ok || !tick_ok {
+        if !fact_ok {
             continue;
         }
         let kind = match file.kind.as_str() {
@@ -364,7 +357,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 display_name: file.display_name,
                 facts: fact_ids_of(&facts, &id),
                 body: body.to_string(),
-                tick,
+                tick: file.tick,
             },
         );
         match schema::compile(&rel, file.rules, &Owner::Cast(id)) {
@@ -596,14 +589,6 @@ fn fact_schema_error(
         diag = diag.at_line(line, Some(column));
     }
     diag
-}
-
-fn validate_tick(file: &str, text: &str, tick: TickFile) -> Result<TickProfile, Vec<Diagnostic>> {
-    let _ = (file, text);
-    Ok(TickProfile {
-        eligible: tick.eligible,
-        flags: tick.flags,
-    })
 }
 
 fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
@@ -883,32 +868,40 @@ fn meter_schema_error(
     diag
 }
 
-/// Add each meter the pack defines that an actor lacks, at the meter's `start`.
-pub(crate) fn init_new_meters(canon: &Canon, now: &mut Now) {
-    for actor in now.actors.values_mut() {
-        let live = actor.meters_mut();
-        for (id, def) in &canon.meters {
-            live.entry(id.clone())
-                .or_insert_with(|| MeterLive::at_start(def));
-        }
-    }
+/// Meters the pack defines that at least one actor lacks, each at its `start`.
+pub(crate) fn pending_meters(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
+    canon
+        .meters
+        .iter()
+        .filter(|(id, _)| {
+            now.actors
+                .values()
+                .any(|actor| !actor.meters().contains_key(*id))
+        })
+        .map(|(id, def)| AddedMeter {
+            id: id.clone(),
+            start: def.start,
+        })
+        .collect()
 }
 
-/// Migrate a save to the pack: add new meters at their `start`, check the
-/// result, then stamp `pack_rev` and `state_rev`. Live migrate and replay both
-/// call this. It does not touch the disk.
-pub fn migrate_save(
-    canon: &Canon,
-    mut now: Now,
-    pack_rev: &str,
-    state_rev: u64,
-) -> Result<Now, Reason> {
-    init_new_meters(canon, &mut now);
-    check_save(canon, &now).map_err(reason_of)?;
+/// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
+/// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
+/// It does not touch the disk.
+pub fn migrate_save(mut now: Now, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> Now {
+    for actor in now.actors.values_mut() {
+        let live = actor.meters_mut();
+        for meter in meters {
+            live.entry(meter.id.clone()).or_insert(MeterLive {
+                base: meter.start,
+                offset: 0,
+            });
+        }
+    }
     now.pack_rev = pack_rev.to_string();
     now.state_rev = state_rev;
     canonicalize(&mut now);
-    Ok(now)
+    now
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,
@@ -1547,7 +1540,6 @@ fn load_item(file: &str, yaml: &str) -> Result<ItemFile, Vec<Diagnostic>> {
             "write 'schema: item' with no version suffix",
         )]);
     }
-    let _ = (&item.name, &item.tags);
     Ok(item)
 }
 
@@ -1903,17 +1895,9 @@ struct CastFile {
     display_name: String,
     facts: Vec<FactFile>,
     #[serde(default)]
-    tick: Option<TickFile>,
+    tick: Option<TickProfile>,
     #[serde(default)]
     rules: Vec<RuleEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TickFile {
-    eligible: bool,
-    #[serde(default)]
-    flags: Vec<String>,
 }
 
 #[derive(Deserialize)]

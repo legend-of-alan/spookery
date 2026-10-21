@@ -610,9 +610,10 @@ fn lark_hits_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let played =
         play(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
-    let spookery::host::MoveOutcome::Committed { output, .. } = played else {
+    let spookery::host::MoveOutcome::Committed { outputs, .. } = played else {
         panic!("the hit stayed queued");
     };
+    let output = &outputs[0];
     let nell = output.reports.iter().find_map(|report| match report {
         spookery_kernel::api::rules::MoveReport::Rolled { actor_id, out }
             if actor_id == "pc_nell" =>
