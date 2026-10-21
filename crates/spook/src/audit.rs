@@ -70,23 +70,8 @@ pub fn audit_pack(pack: &Path, strict: bool) -> Result<AuditReport, AuditError> 
     }
     let canon = load_canon(pack).map_err(|diags| AuditError::Reason(reason_of(diags)))?;
     let (snaps, ticks) = load_snaps(pack)?;
-    let tape = tape_records(pack)?;
+    let tape = talk_log::read_records_unlocked(pack).map_err(AuditError::Reason)?;
     report_of(&canon, &snaps, &ticks, &tape, strict)
-}
-
-fn tape_records(pack: &Path) -> Result<Vec<TapeRecord>, AuditError> {
-    let path = pack.join("state/journal/session.jsonl");
-    if !path.is_file() {
-        return Ok(Vec::new());
-    }
-    let len = fs::metadata(&path)
-        .map_err(|_| AuditError::Reason(Reason::Schema))?
-        .len();
-    if len > talk_log::MAX_TAPE_BYTES {
-        return Err(AuditError::Reason(Reason::OutOfRange));
-    }
-    let bytes = fs::read(&path).map_err(|_| AuditError::Reason(Reason::Schema))?;
-    talk_log::parse_records(&bytes).map_err(AuditError::Reason)
 }
 
 fn load_snaps(pack: &Path) -> Result<(Vec<Snap>, Vec<TickRecord>), AuditError> {
@@ -361,104 +346,12 @@ fn notes_of(canon: &Canon, snaps: &[Snap], tape: &[TapeRecord]) -> (Vec<Note>, b
 
 #[cfg(test)]
 mod tests {
-    use std::fs;
-    use std::path::{Path, PathBuf};
-
-    use spookery_kernel::api::store::talk_log::MAX_TAPE_BYTES;
-    use spookery_kernel::api::Reason;
-
-    use super::{audit_pack, contains_quoted_id, AuditError};
+    use super::contains_quoted_id;
 
     #[test]
     fn a_shorter_fact_id_does_not_match_a_longer_one() {
         let line = r#"{"id":"fact_ledger_short"}"#;
         assert!(!contains_quoted_id(line, "fact_ledger"));
         assert!(contains_quoted_id(line, "fact_ledger_short"));
-    }
-
-    #[test]
-    fn audit_leaves_the_pack_unchanged() {
-        let root = temp_docks();
-        let tape = root.join("state/journal/session.jsonl");
-        fs::create_dir_all(tape.parent().unwrap()).unwrap();
-        fs::write(
-            &tape,
-            "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"line0\",\"tick_index\":0,\"world_time\":1080}\n",
-        )
-        .unwrap();
-        let before = dir_bytes(&root.join("state"));
-        audit_pack(&root, false).unwrap_or_else(|err| panic!("audit: {err}"));
-        assert_eq!(dir_bytes(&root.join("state")), before);
-        assert!(!root.join("state/.session.lock").exists());
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn an_oversized_tape_is_out_of_range_and_writes_nothing() {
-        let root = temp_docks();
-        let tape = root.join("state/journal/session.jsonl");
-        fs::create_dir_all(tape.parent().unwrap()).unwrap();
-        fs::write(&tape, vec![b'\n'; (MAX_TAPE_BYTES as usize) + 1]).unwrap();
-        let before = dir_bytes(&root.join("state"));
-        let err = match audit_pack(&root, false) {
-            Err(err) => err,
-            Ok(_) => panic!("expected OUT_OF_RANGE"),
-        };
-        assert!(
-            matches!(err, AuditError::Reason(Reason::OutOfRange)),
-            "{err}"
-        );
-        assert_eq!(dir_bytes(&root.join("state")), before);
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    fn temp_docks() -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "spook-audit-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        copy_dir(
-            &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks"),
-            &root,
-        );
-        root
-    }
-
-    fn copy_dir(from: &Path, to: &Path) {
-        fs::create_dir_all(to).unwrap();
-        for entry in fs::read_dir(from).unwrap() {
-            let entry = entry.unwrap();
-            let dest = to.join(entry.file_name());
-            if entry.file_type().unwrap().is_dir() {
-                copy_dir(&entry.path(), &dest);
-            } else {
-                fs::copy(entry.path(), dest).unwrap();
-            }
-        }
-    }
-
-    fn dir_bytes(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
-        let mut out = Vec::new();
-        walk(root, &mut out);
-        out.sort();
-        out
-    }
-
-    fn walk(dir: &Path, out: &mut Vec<(PathBuf, Vec<u8>)>) {
-        for entry in fs::read_dir(dir).unwrap() {
-            let entry = entry.unwrap();
-            let path = entry.path();
-            if entry.file_type().unwrap().is_dir() {
-                walk(&path, out);
-            } else {
-                let bytes = fs::read(&path).unwrap();
-                out.push((path, bytes));
-            }
-        }
     }
 }

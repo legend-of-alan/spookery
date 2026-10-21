@@ -18,65 +18,19 @@ const MAX_TAPE_LIMIT: usize = 256;
 
 /// One tape line. Field order is the order of the bytes on disk.
 /// `place` and `actor` may be null. A missing key is not a record.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TapeRecord {
     pub seq: u64,
     pub from: String,
     pub address: String,
+    #[serde(deserialize_with = "Option::deserialize")]
     pub place: Option<String>,
+    #[serde(deserialize_with = "Option::deserialize")]
     pub actor: Option<String>,
     pub recipients: Vec<String>,
     pub text: String,
     pub tick_index: u64,
     pub world_time: u64,
-}
-
-impl<'de> Deserialize<'de> for TapeRecord {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        // `Option<Option<_>>` with `deserialize_some` tells a missing key from null.
-        #[derive(Deserialize)]
-        struct Raw {
-            seq: u64,
-            from: String,
-            address: String,
-            #[serde(default, deserialize_with = "deserialize_some")]
-            place: Option<Option<String>>,
-            #[serde(default, deserialize_with = "deserialize_some")]
-            actor: Option<Option<String>>,
-            recipients: Vec<String>,
-            text: String,
-            tick_index: u64,
-            world_time: u64,
-        }
-        let raw = Raw::deserialize(deserializer)?;
-        Ok(Self {
-            seq: raw.seq,
-            from: raw.from,
-            address: raw.address,
-            place: raw
-                .place
-                .ok_or_else(|| serde::de::Error::missing_field("place"))?,
-            actor: raw
-                .actor
-                .ok_or_else(|| serde::de::Error::missing_field("actor"))?,
-            recipients: raw.recipients,
-            text: raw.text,
-            tick_index: raw.tick_index,
-            world_time: raw.world_time,
-        })
-    }
-}
-
-/// A present value, including null. A missing key stays the `Option` default.
-fn deserialize_some<'de, T, D>(deserializer: D) -> Result<Option<T>, D::Error>
-where
-    T: Deserialize<'de>,
-    D: serde::Deserializer<'de>,
-{
-    T::deserialize(deserializer).map(Some)
 }
 
 /// The JSON object written as one tape line, without the trailing newline.
@@ -85,24 +39,11 @@ pub fn record_line(record: &TapeRecord) -> String {
 }
 
 /// Append one tape record under `state/.session.lock`.
-/// `body` receives the assigned `seq`.
+/// `body` receives the assigned `seq`. Drops a trailing partial line and does not open a `Draft`.
 pub fn append_record(
     root: &Path,
     body: impl FnOnce(u64) -> TapeRecord,
 ) -> Result<TapeRecord, Reason> {
-    let mut stored = None;
-    append_session(root, |seq| {
-        let record = body(seq);
-        let line = record_line(&record);
-        stored = Some(record);
-        line
-    })?;
-    Ok(stored.expect("record"))
-}
-
-/// Append one session tape line under `state/.session.lock`.
-/// Assigns `seq`, drops a trailing partial line, and does not open a `Draft`.
-fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u64, Reason> {
     let _lock = lock_session(root)?;
     let log_dir = root.join("state/journal");
     fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
@@ -120,7 +61,8 @@ fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u64, 
     }
     let (end, last_seq) = tail_seq(&mut file, len)?;
     let seq = last_seq.checked_add(1).ok_or(Reason::CommitConflict)?;
-    let mut line = body(seq);
+    let record = body(seq);
+    let mut line = record_line(&record);
     if line.is_empty() || line.bytes().any(|byte| byte == b'\n' || byte == b'\r') {
         return Err(Reason::Schema);
     }
@@ -138,7 +80,7 @@ fn append_session(root: &Path, body: impl FnOnce(u64) -> String) -> Result<u64, 
         .map_err(|_| Reason::CommitConflict)?;
     file.sync_all().map_err(|_| Reason::CommitConflict)?;
     fsync_dir(&log_dir)?;
-    Ok(seq)
+    Ok(record)
 }
 
 /// Records with `seq` greater than `after_seq`, at most `limit` of them.
@@ -177,13 +119,22 @@ pub fn read_tail(root: &Path, player: &str, n: usize) -> Result<Vec<TapeRecord>,
     Ok(matched.split_off(skip))
 }
 
-/// Every complete record, oldest first. A missing file is empty.
+/// Every complete record, oldest first, under `state/.session.lock`. A missing file is empty.
 pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
+    if !root.join("state/journal/session.jsonl").is_file() {
+        return Ok(Vec::new());
+    }
+    let _lock = lock_session(root)?;
+    read_records_unlocked(root)
+}
+
+/// `read_records` without the lock, so it writes nothing. A trailing partial line is not
+/// a record. A complete line that does not parse is `SCHEMA`. Past 1 MiB is `OUT_OF_RANGE`.
+pub fn read_records_unlocked(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
     let path = root.join("state/journal/session.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());
     }
-    let _lock = lock_session(root)?;
     let len = fs::metadata(&path)
         .map_err(|_| Reason::CommitConflict)?
         .len();
@@ -191,15 +142,6 @@ pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
         return Err(Reason::OutOfRange);
     }
     let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
-    parse_records(&bytes)
-}
-
-/// Records in `bytes`, oldest first. A trailing partial line is not a record.
-/// A complete line that does not parse is `SCHEMA`. More than 1 MiB is `OUT_OF_RANGE`.
-pub fn parse_records(bytes: &[u8]) -> Result<Vec<TapeRecord>, Reason> {
-    if bytes.len() as u64 > MAX_TAPE_BYTES {
-        return Err(Reason::OutOfRange);
-    }
     let Some(last_nl) = bytes.iter().rposition(|byte| *byte == b'\n') else {
         return Ok(Vec::new());
     };
@@ -357,9 +299,7 @@ mod tests {
         let path = root.join("state/journal/session.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, vec![b'\n'; (MAX_TAPE_BYTES as usize) + 1]).unwrap();
-        let bytes = fs::read(&path).unwrap();
         assert_eq!(read_records(&root).unwrap_err(), Reason::OutOfRange);
-        assert_eq!(parse_records(&bytes).unwrap_err(), Reason::OutOfRange);
         let _ = fs::remove_dir_all(&root);
     }
 
