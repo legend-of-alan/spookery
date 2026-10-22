@@ -11,7 +11,7 @@ use spookery_kernel::api::Reason;
 use spookery_round::RoundOutput;
 
 use super::frames;
-use super::player_moves::{self, QueuedNote};
+use super::player_moves::{self, QueuedMove};
 use super::speech;
 
 pub struct GmToolReply {
@@ -117,7 +117,7 @@ pub fn call_gm_tool(
 
 fn run_intent(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
     match queue_tool_intent(world, arguments) {
-        Ok(note) => GmToolReply::new(crate::protocol::queued_ack(&note.id)),
+        Ok(queued) => GmToolReply::new(crate::protocol::queued_ack(&queued.id)),
         Err(code) => refused_tool(code),
     }
 }
@@ -385,7 +385,7 @@ fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Re
 fn queue_tool_intent(
     world: &mut World,
     arguments: Option<Map<String, Value>>,
-) -> Result<QueuedNote, Reason> {
+) -> Result<QueuedMove, Reason> {
     let call = crate::protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let id = call.id;
     let tick_index = call.tick_index;
@@ -460,7 +460,7 @@ fn queue_tool_intent(
             tick_index,
         },
     )?;
-    Ok(QueuedNote {
+    Ok(QueuedMove {
         id,
         actor_id,
         move_name,

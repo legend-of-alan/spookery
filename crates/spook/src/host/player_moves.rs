@@ -14,14 +14,14 @@ use super::frames;
 use super::idle_clock::wall_now;
 use super::input::{self, canonical_line};
 
-pub struct QueuedNote {
+pub struct QueuedMove {
     pub id: String,
     pub actor_id: String,
     pub move_name: String,
 }
 
 pub enum MoveOutcome {
-    Queued(QueuedNote),
+    Queued(QueuedMove),
     Committed {
         advanced: bool,
         outputs: Vec<RoundOutput>,
@@ -54,8 +54,8 @@ pub fn handle_player_move(
     gm_seated: bool,
 ) -> Result<MoveOutcome, GateRefusal> {
     let (verb, rest) = input::verb_line(line, actor_id)?;
-    let note = match queue_verb(world, actor_id, verb, rest) {
-        Ok(note) => note,
+    let queued = match queue_verb(world, actor_id, verb, rest) {
+        Ok(queued) => queued,
         Err(refusal) => {
             if !gm_seated && refusal.reason() == spookery_kernel::api::Reason::Busy {
                 let outputs = commit_then_fast_forward(world).map_err(GateRefusal::from)?;
@@ -69,7 +69,7 @@ pub fn handle_player_move(
         }
     };
     if gm_seated {
-        return Ok(MoveOutcome::Queued(note));
+        return Ok(MoveOutcome::Queued(queued));
     }
     let before = world.now().world_time;
     let outputs = commit_then_fast_forward(world)?;
@@ -112,7 +112,7 @@ fn queue_verb(
     actor_id: &str,
     verb: &str,
     rest: &str,
-) -> Result<QueuedNote, GateRefusal> {
+) -> Result<QueuedMove, GateRefusal> {
     if !world
         .now()
         .actors
@@ -146,16 +146,16 @@ fn queue_verb(
     };
     let intent = player_intent(world, actor_id, verb, target)?;
     gate(world.canon(), world.now(), &intent)?;
-    let note = QueuedNote {
+    let queued = QueuedMove {
         id: intent.id.clone(),
         actor_id: actor_id.to_string(),
         move_name: verb.to_string(),
     };
     world.queue(intent);
-    Ok(note)
+    Ok(queued)
 }
 
-pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, GateRefusal> {
+pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedMove, GateRefusal> {
     queue_verb(world, actor_id, "wait", "")
 }
 
@@ -213,7 +213,7 @@ fn player_intent(
     })
 }
 
-impl QueuedNote {
+impl QueuedMove {
     pub fn player_line(&self) -> String {
         frames::player_queued_line(&self.id)
     }

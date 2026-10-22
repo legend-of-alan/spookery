@@ -911,10 +911,10 @@ fn queued_line_survives_a_dropped_seat() {
     let mut shard = open(&held);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
     assert!(!on_scheduled_wake(&mut shard, true, false).unwrap());
-    let note = queue_wait(&mut shard, "pc_rowan").unwrap();
+    let queued = queue_wait(&mut shard, "pc_rowan").unwrap();
     assert!(!on_scheduled_wake(&mut shard, true, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
-    assert_eq!(shard.queued_intents()[0].id, note.id);
+    assert_eq!(shard.queued_intents()[0].id, queued.id);
     assert_eq!(shard.now().world_time, 1080);
     assert!(list_tick_keys(&held).is_empty());
     assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
@@ -930,8 +930,8 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let dropped = support::temp_pack("drop-queue");
     let mut shard = open(&dropped);
     let session = seat_player(&mut shard, "pc_rowan").unwrap();
-    let note = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
-    let MoveOutcome::Queued(note) = note else {
+    let outcome = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
+    let MoveOutcome::Queued(queued) = outcome else {
         panic!("queued wait committed");
     };
     assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
@@ -942,7 +942,7 @@ fn a_reseated_player_keeps_the_queued_wait() {
     seat_player(&mut shard, "pc_rowan").unwrap();
     assert_eq!(shard.now().world_time, 1080);
     assert_eq!(shard.now().tick_index, 0);
-    assert_eq!(shard.queued_intents()[0].id, note.id);
+    assert_eq!(shard.queued_intents()[0].id, queued.id);
     assert!(list_tick_keys(&dropped).is_empty());
     let _ = fs::remove_dir_all(&dropped);
 }

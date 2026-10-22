@@ -39,12 +39,12 @@ fn speaker(from: &str) -> String {
 }
 
 /// Readable text for the frames of one sitting.
-pub struct PlayerText {
+pub struct PlayerFormatter {
     seen_resume: bool,
     earlier_open: bool,
 }
 
-impl PlayerText {
+impl PlayerFormatter {
     pub fn new() -> Self {
         Self {
             seen_resume: false,
@@ -183,7 +183,7 @@ fn view_text(message: &PlayerMessage) -> String {
     let PlayerMessage::View {
         viewer,
         place,
-        shown,
+        scene,
         visible_actors,
         known_facts,
         messages,
@@ -198,18 +198,18 @@ fn view_text(message: &PlayerMessage) -> String {
         return String::new();
     };
     let mut sections = Vec::new();
-    let titled = if !shown.place_name.is_empty() {
-        shown.place_name.as_str()
+    let titled = if !scene.place_name.is_empty() {
+        scene.place_name.as_str()
     } else {
         place.as_str()
     };
     if !titled.is_empty() {
         sections.push(format!("You are in {titled}."));
     }
-    if !shown.status.is_empty() {
-        sections.push(shown.status.clone());
+    if !scene.status.is_empty() {
+        sections.push(scene.status.clone());
     }
-    let prose = shown.prose.trim();
+    let prose = scene.prose.trim();
     if !prose.is_empty() {
         sections.push(prose.to_string());
     }
@@ -221,7 +221,7 @@ fn view_text(message: &PlayerMessage) -> String {
                 if is_self(id, viewer) {
                     "You".to_string()
                 } else {
-                    shown
+                    scene
                         .actor_names
                         .get(index)
                         .filter(|name| !name.is_empty())
@@ -331,7 +331,7 @@ pub(crate) fn humanize(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{FactNote, WireFact, WireItem};
+    use crate::protocol::{WireFact, WireItem, WireMessage};
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -421,18 +421,18 @@ mod tests {
 
     #[test]
     fn a_later_resume_has_no_away_heading() {
-        let mut seat = PlayerText::new();
-        let first = seat.show(&PlayerMessage::Resume {
+        let mut formatter = PlayerFormatter::new();
+        let first = formatter.show(&PlayerMessage::Resume {
             text: "the shop restocked\n".to_string(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
-            seat.show(&PlayerMessage::Resume {
+            formatter.show(&PlayerMessage::Resume {
                 text: String::new(),
             }),
             ""
         );
-        let later = seat.show(&PlayerMessage::Resume {
+        let later = formatter.show(&PlayerMessage::Resume {
             text: "the yard stays watched\n".to_string(),
         });
         assert_eq!(later, "");
@@ -440,15 +440,15 @@ mod tests {
 
     #[test]
     fn replayed_speech_sits_under_one_heading() {
-        let mut seat = PlayerText::new();
-        let first = seat.show(&PlayerMessage::Say {
+        let mut formatter = PlayerFormatter::new();
+        let first = formatter.show(&PlayerMessage::Say {
             from: "player:pc_lark".to_string(),
             address: "table".to_string(),
             text: "hello Briar".to_string(),
             replay: true,
         });
         assert_eq!(first, "Earlier:\nYou: hello Briar");
-        let second = seat.show(&PlayerMessage::Say {
+        let second = formatter.show(&PlayerMessage::Say {
             from: "gm".to_string(),
             address: "table".to_string(),
             text: "evening".to_string(),
@@ -456,12 +456,12 @@ mod tests {
         });
         assert_eq!(second, "GM: evening");
         assert_eq!(
-            seat.show(&PlayerMessage::Resume {
+            formatter.show(&PlayerMessage::Resume {
                 text: String::new(),
             }),
             ""
         );
-        let place = seat.show(&PlayerMessage::Lines {
+        let place = formatter.show(&PlayerMessage::Lines {
             text: "You are in Gate Yard.".to_string(),
         });
         assert_eq!(place, "\nYou are in Gate Yard.");
@@ -558,7 +558,7 @@ Shop day: 1/1"
         let text = render(&PlayerMessage::View {
             viewer: "player:pc_rowan".to_string(),
             place: "docks_shop".to_string(),
-            shown: Box::new(crate::protocol::Shown {
+            scene: Box::new(crate::protocol::ViewScene {
                 place_name: "Docks Shop".to_string(),
                 prose: "The shop faces the water. Tins sit in a row.".to_string(),
                 actor_names: vec!["Aldric".to_string(), "Rowan".to_string()],
@@ -570,7 +570,7 @@ Shop day: 1/1"
                 text: "Oil is on the shelf.".to_string(),
                 body: "CANON-BODY".to_string(),
             }],
-            messages: vec![FactNote {
+            messages: vec![WireMessage {
                 id: "note_door".to_string(),
                 to: vec!["pc_rowan".to_string()],
                 place: Some("docks_shop".to_string()),
@@ -648,7 +648,7 @@ stairs (locked) — 2 min"
         let quiet = render(&PlayerMessage::View {
             viewer: "player:pc_rowan".to_string(),
             place: "docks_street".to_string(),
-            shown: Box::new(crate::protocol::Shown {
+            scene: Box::new(crate::protocol::ViewScene {
                 place_name: "Docks Street".to_string(),
                 prose: String::new(),
                 actor_names: vec!["Bram".to_string()],

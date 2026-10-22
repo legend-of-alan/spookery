@@ -11,7 +11,7 @@ use std::time::Duration;
 use spookery_kernel::api::Reason;
 
 use super::mcp_http;
-use super::world_loop::{self, HelloReply, Msg, PlayerReply, SocketEnd};
+use super::world_loop::{self, HelloReply, PlayerReply, SocketEnd, WorldMsg};
 
 pub enum Error {
     Reason(Reason),
@@ -85,7 +85,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Re
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
-                        if tx_timer.send(Msg::Wake).is_err() {
+                        if tx_timer.send(WorldMsg::Wake).is_err() {
                             break;
                         }
                     }
@@ -105,14 +105,14 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Re
         for line in io::stdin().lines() {
             match line {
                 Ok(line) => {
-                    if tx_stdin.send(Msg::Stdin(line)).is_err() {
+                    if tx_stdin.send(WorldMsg::Stdin(line)).is_err() {
                         return;
                     }
                 }
                 Err(_) => break,
             }
         }
-        let _ = tx_stdin.send(Msg::StdinEof);
+        let _ = tx_stdin.send(WorldMsg::StdinEof);
     });
     world_loop::run_world_loop(world, rx, &restart_tx)
 }
@@ -152,10 +152,10 @@ fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
     socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)
 }
 
-async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u64) {
+async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<WorldMsg>, conn: u64) {
     let line = {
         let read = async {
-            let mut reader = super::limits::Unbuffered::new(&mut stream);
+            let mut reader = super::limits::ByteReader::new(&mut stream);
             super::limits::read_capped_line(&mut reader, super::limits::PLAYER_LINE_CAP).await
         };
         match tokio::time::timeout(super::limits::hello_timeout(), read).await {
@@ -165,15 +165,15 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
                 report_fault(&tx, conn, SocketEnd::Eof).await;
                 return;
             }
-            Ok(Err(super::limits::LineFail::Io)) => {
+            Ok(Err(super::limits::LineReadError::Io)) => {
                 report_fault(&tx, conn, SocketEnd::Read).await;
                 return;
             }
-            Ok(Err(super::limits::LineFail::TooLong)) => {
+            Ok(Err(super::limits::LineReadError::TooLong)) => {
                 refuse(&mut stream, &refused_frame(Reason::LineTooLong)).await;
                 return;
             }
-            Ok(Err(super::limits::LineFail::BadUtf8)) => {
+            Ok(Err(super::limits::LineReadError::BadUtf8)) => {
                 refuse(&mut stream, &refused_frame(Reason::Schema)).await;
                 return;
             }
@@ -182,7 +182,7 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
     let (out_tx, out_rx, cancel_tx, cancel_rx) = super::limits::outbound();
     let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
     if tx
-        .send(Msg::Hello {
+        .send(WorldMsg::Hello {
             conn,
             line,
             out: out_tx.clone(),
@@ -217,7 +217,7 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<Msg>, conn: u6
 
 async fn player_session(
     stream: tokio::net::TcpStream,
-    tx: Sender<Msg>,
+    tx: Sender<WorldMsg>,
     conn: u64,
     out_tx: super::limits::OutTx,
     out_rx: super::limits::OutRx,
@@ -255,7 +255,7 @@ async fn player_session(
                 let _ = bucket.allow(std::time::Instant::now());
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 if tx
-                    .send(Msg::Player {
+                    .send(WorldMsg::Player {
                         conn,
                         line,
                         reply: reply_tx,
@@ -273,19 +273,19 @@ async fn player_session(
                 report_fault(&tx, conn, SocketEnd::Eof).await;
                 break;
             }
-            Err(super::limits::LineFail::TooLong) => {
+            Err(super::limits::LineReadError::TooLong) => {
                 super::limits::send_last(&out_tx, refused_frame(Reason::LineTooLong)).await;
                 report_fault(&tx, conn, SocketEnd::Close).await;
                 break;
             }
-            Err(super::limits::LineFail::BadUtf8) => {
+            Err(super::limits::LineReadError::BadUtf8) => {
                 let _ = bucket.allow(std::time::Instant::now());
                 if !super::limits::try_frame(&out_tx, refused_frame(Reason::Schema)) {
                     report_fault(&tx, conn, SocketEnd::Write).await;
                     break;
                 }
             }
-            Err(super::limits::LineFail::Io) => {
+            Err(super::limits::LineReadError::Io) => {
                 report_fault(&tx, conn, SocketEnd::Read).await;
                 break;
             }
@@ -299,10 +299,10 @@ fn refused_frame(code: Reason) -> Vec<u8> {
     super::frames::player_refused(code.token(), None).into_bytes()
 }
 
-pub(super) async fn report_fault(tx: &Sender<Msg>, conn: u64, end: SocketEnd) {
+pub(super) async fn report_fault(tx: &Sender<WorldMsg>, conn: u64, end: SocketEnd) {
     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
     if tx
-        .send(Msg::Fault {
+        .send(WorldMsg::Fault {
             conn,
             end,
             ack: ack_tx,

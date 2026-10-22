@@ -12,15 +12,15 @@ use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
 
 use super::gm_tools;
-use super::world_loop::Msg;
+use super::world_loop::WorldMsg;
 
-pub(super) struct GmHost {
-    tx: Sender<Msg>,
+pub(super) struct GmSeatHandler {
+    tx: Sender<WorldMsg>,
     conn: OnceLock<u64>,
 }
 
-impl GmHost {
-    pub(super) fn new(tx: Sender<Msg>) -> Self {
+impl GmSeatHandler {
+    pub(super) fn new(tx: Sender<WorldMsg>) -> Self {
         Self {
             tx,
             conn: OnceLock::new(),
@@ -28,7 +28,7 @@ impl GmHost {
     }
 }
 
-impl ServerHandler for GmHost {
+impl ServerHandler for GmSeatHandler {
     fn get_info(&self) -> ServerConfig {
         let mut info = ServerConfig::default();
         info.capabilities.tools = Some(ToolsCapability::default());
@@ -81,7 +81,7 @@ impl ServerHandler for GmHost {
         let name = request.name.into_owned();
         let arguments = request.arguments;
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
-        tx.send(Msg::Tool {
+        tx.send(WorldMsg::Tool {
             conn,
             name,
             arguments,
@@ -95,12 +95,12 @@ impl ServerHandler for GmHost {
     }
 }
 
-impl GmHost {
+impl GmSeatHandler {
     async fn claim(&self, conn: u64, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
         let (out_tx, mut out_rx, cancel_tx, mut cancel_rx) = super::limits::outbound();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
-            .send(Msg::Claim {
+            .send(WorldMsg::Claim {
                 conn,
                 out: out_tx,
                 cancel: cancel_tx,

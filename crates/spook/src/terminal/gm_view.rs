@@ -38,30 +38,21 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub fn run_gm_terminal(
-    pack: &Path,
-    addr: &str,
-    door: Option<&str>,
-    raw: bool,
-) -> Result<(), super::TerminalError> {
+pub fn run_gm(pack: &Path, addr: &str, door: Option<&str>, raw: bool) -> Result<(), super::Error> {
     let connected = match door {
         Some(door) => GmConnection::connect_door(door),
         None => GmConnection::connect(addr),
     };
     let client = match connected {
         Ok(client) => client,
-        Err(gm_connection::GmConnectionError::Io(err)) => {
-            return Err(super::TerminalError::Io(err))
-        }
-        Err(gm_connection::GmConnectionError::Refused { code, raw: line }) => {
-            exit_refused(&code, &line, raw)
-        }
-        Err(gm_connection::GmConnectionError::Bad(line)) => {
+        Err(gm_connection::Error::Io(err)) => return Err(super::Error::Io(err)),
+        Err(gm_connection::Error::Refused { code, raw: line }) => exit_refused(&code, &line, raw),
+        Err(gm_connection::Error::Bad(line)) => {
             eprintln!("{line}");
             let _ = io::stderr().flush();
             std::process::exit(1);
         }
-        Err(gm_connection::GmConnectionError::Closed) => {
+        Err(gm_connection::Error::Closed) => {
             eprintln!("seat closed");
             let _ = io::stderr().flush();
             std::process::exit(1);
@@ -75,7 +66,7 @@ pub fn run_gm_terminal(
             std::process::exit(1);
         }
     };
-    let mut session = Session {
+    let mut session = GmSession {
         client,
         canon,
         raw,
@@ -121,7 +112,7 @@ pub fn run_gm_terminal(
     Ok(())
 }
 
-struct Session {
+struct GmSession {
     client: GmConnection,
     canon: Canon,
     raw: bool,
@@ -156,7 +147,7 @@ impl PrintedChecks {
     }
 }
 
-impl Session {
+impl GmSession {
     fn on_line(&mut self, line: &str) -> bool {
         match parse_command(line) {
             Parsed::Empty => true,
@@ -287,17 +278,17 @@ impl Session {
     fn call_tool(&mut self, name: &str, arguments: Value) -> Option<ToolCallResult> {
         match self.client.call(name, arguments) {
             Ok(outcome) => Some(outcome),
-            Err(gm_connection::GmConnectionError::Io(err)) => {
+            Err(gm_connection::Error::Io(err)) => {
                 eprintln!("{err}");
                 let _ = io::stderr().flush();
                 std::process::exit(1);
             }
-            Err(gm_connection::GmConnectionError::Closed) => None,
-            Err(gm_connection::GmConnectionError::Refused { code, raw }) => {
+            Err(gm_connection::Error::Closed) => None,
+            Err(gm_connection::Error::Refused { code, raw }) => {
                 self.show_refusal(&code, &raw);
                 None
             }
-            Err(gm_connection::GmConnectionError::Bad(line)) => {
+            Err(gm_connection::Error::Bad(line)) => {
                 if self.raw {
                     emit(&line);
                 } else {

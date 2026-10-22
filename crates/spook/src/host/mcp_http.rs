@@ -16,19 +16,22 @@ use rmcp::transport::streamable_http_server::session::{
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio::sync::oneshot;
 
-use super::gm_seat::GmHost;
+use super::gm_seat::GmSeatHandler;
 use super::limits::GM_BODY_CAP;
-use super::world_loop::{Msg, SocketEnd};
+use super::world_loop::{SocketEnd, WorldMsg};
 
 // HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
-    tx: Sender<Msg>,
+    tx: Sender<WorldMsg>,
     next_conn: Arc<AtomicU64>,
 ) {
     let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn));
-    let service =
-        StreamableHttpService::new(move || Ok(GmHost::new(tx.clone())), sessions, http_config());
+    let service = StreamableHttpService::new(
+        move || Ok(GmSeatHandler::new(tx.clone())),
+        sessions,
+        http_config(),
+    );
     let app = axum::Router::new().route_service("/mcp", service);
     let _ = axum::serve(listener, app).await;
 }
@@ -41,7 +44,7 @@ fn http_config() -> StreamableHttpServerConfig {
     config
 }
 
-/// The shard connection id for this HTTP session. `GmHost` reads it during initialize.
+/// The shard connection id for this HTTP session. `GmSeatHandler` reads it during initialize.
 #[derive(Clone, Copy)]
 pub(super) struct SeatConn(pub(super) u64);
 
@@ -49,13 +52,13 @@ pub(super) struct SeatConn(pub(super) u64);
 /// freed that session's GM seat.
 struct SeatSessions {
     inner: LocalSessionManager,
-    tx: Sender<Msg>,
+    tx: Sender<WorldMsg>,
     next_conn: Arc<AtomicU64>,
     conns: Mutex<HashMap<SessionId, u64>>,
 }
 
 impl SeatSessions {
-    fn new(tx: Sender<Msg>, next_conn: Arc<AtomicU64>) -> Self {
+    fn new(tx: Sender<WorldMsg>, next_conn: Arc<AtomicU64>) -> Self {
         Self {
             inner: LocalSessionManager::default(),
             tx,
@@ -105,7 +108,7 @@ impl SessionManager for SeatSessions {
             let (ack_tx, ack_rx) = oneshot::channel();
             if self
                 .tx
-                .send(Msg::Fault {
+                .send(WorldMsg::Fault {
                     conn,
                     end: SocketEnd::Close,
                     ack: ack_tx,
@@ -158,14 +161,14 @@ mod tests {
     use rmcp::model::ProtocolVersion;
     use serde_json::Value;
 
-    use super::super::world_loop::Msg;
+    use super::super::world_loop::WorldMsg;
     use super::serve;
 
     /// A stand-in for the shard thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real table. On a fault it tells
     /// the test, then holds the seat until the test lets the release through.
     fn spawn_fake_world_loop(
-        rx: mpsc::Receiver<Msg>,
+        rx: mpsc::Receiver<WorldMsg>,
         fault_seen: tokio::sync::mpsc::UnboundedSender<()>,
         let_go: mpsc::Receiver<()>,
     ) {
@@ -174,7 +177,7 @@ mod tests {
             let mut kept = Vec::new();
             for msg in rx {
                 match msg {
-                    Msg::Claim {
+                    WorldMsg::Claim {
                         conn,
                         out,
                         cancel,
@@ -188,7 +191,7 @@ mod tests {
                             let _ = reply.send(Ok(()));
                         }
                     }
-                    Msg::Fault { conn, ack, .. } => {
+                    WorldMsg::Fault { conn, ack, .. } => {
                         let _ = fault_seen.send(());
                         if let_go.recv().is_err() {
                             return;

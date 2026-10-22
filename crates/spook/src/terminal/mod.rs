@@ -8,10 +8,10 @@ mod gm_view;
 mod player_view;
 mod render;
 
-pub use gm_view::{actor_name, run_gm_terminal};
-pub use player_view::run_player_terminal;
+pub use gm_view::{actor_name, run_gm};
+pub use player_view::run_player;
 
-pub enum TerminalError {
+pub enum Error {
     Reason(Reason),
     Io(io::Error),
 }

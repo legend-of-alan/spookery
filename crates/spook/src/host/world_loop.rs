@@ -92,7 +92,7 @@ pub(super) fn clear_crashed(world: &mut World) -> Result<bool, Reason> {
 
 pub(super) fn run_world_loop(
     mut world: World,
-    rx: std::sync::mpsc::Receiver<Msg>,
+    rx: std::sync::mpsc::Receiver<WorldMsg>,
     restart: &tokio::sync::watch::Sender<u64>,
 ) -> ! {
     let mut seats = Seats::default();
@@ -230,7 +230,7 @@ impl Drop for GmSeat {
     }
 }
 
-pub(super) enum Msg {
+pub(super) enum WorldMsg {
     Hello {
         conn: u64,
         line: String,
@@ -280,10 +280,10 @@ fn handle(
     world: &mut World,
     seats: &mut Seats,
     restart: &tokio::sync::watch::Sender<u64>,
-    msg: Msg,
+    msg: WorldMsg,
 ) -> Result<(), Reason> {
     match msg {
-        Msg::Hello {
+        WorldMsg::Hello {
             conn,
             line,
             out,
@@ -293,7 +293,7 @@ fn handle(
             let answer = on_hello(world, seats, conn, &line, out, cancel)?;
             let _ = reply.send(answer);
         }
-        Msg::Claim {
+        WorldMsg::Claim {
             conn,
             out,
             cancel,
@@ -304,12 +304,12 @@ fn handle(
                 seats.gm = None;
             }
         }
-        Msg::Player { conn, line, reply } => {
+        WorldMsg::Player { conn, line, reply } => {
             let answer = on_player(world, seats, restart, conn, &line)?;
             let _ = reply.send(answer);
         }
-        Msg::Fault { conn, end, ack } => on_fault(world, seats, conn, end, ack)?,
-        Msg::Tool {
+        WorldMsg::Fault { conn, end, ack } => on_fault(world, seats, conn, end, ack)?,
+        WorldMsg::Tool {
             conn,
             name,
             arguments,
@@ -354,15 +354,15 @@ fn handle(
             }
             let _ = reply.send(done.value);
         }
-        Msg::Wake => {
+        WorldMsg::Wake => {
             if idle_clock::on_scheduled_wake(world, !seats.players.is_empty(), seats.gm.is_some())?
             {
                 bump_sleep(restart);
             }
         }
-        Msg::Stdin(line) if line == "stop" => shutdown(world, seats),
-        Msg::Stdin(_) => eprintln!("{}", Reason::NotInSpec),
-        Msg::StdinEof => shutdown(world, seats),
+        WorldMsg::Stdin(line) if line == "stop" => shutdown(world, seats),
+        WorldMsg::Stdin(_) => eprintln!("{}", Reason::NotInSpec),
+        WorldMsg::StdinEof => shutdown(world, seats),
     }
     Ok(())
 }
@@ -588,9 +588,9 @@ fn on_mechanical(
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
     match player_moves::handle_player_move(world, actor_id, line, gm_seated) {
-        Ok(player_moves::MoveOutcome::Queued(note)) => {
-            send_gm(seats, note.gm_frame());
-            send_player(world, seats, conn, note.player_line().into_bytes())?;
+        Ok(player_moves::MoveOutcome::Queued(queued)) => {
+            send_gm(seats, queued.gm_frame());
+            send_player(world, seats, conn, queued.player_line().into_bytes())?;
         }
         Ok(player_moves::MoveOutcome::Committed { advanced, outputs }) => {
             if advanced {

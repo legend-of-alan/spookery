@@ -1,8 +1,8 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, FactNote, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus,
-    StatusPause, StatusPresence, WireClock, WireFact, WireItem, WireMeter,
+    CommitBody, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus, StatusPause,
+    StatusPresence, ViewScene, WireClock, WireFact, WireItem, WireMessage, WireMeter,
 };
 use serde_json::Value;
 use spookery_kernel::api::intent::Intent;
@@ -170,7 +170,7 @@ fn player_view(view: &View) -> PlayerMessage {
     PlayerMessage::View {
         viewer: view.viewer.clone(),
         place: view.place.clone(),
-        shown: Box::new(crate::protocol::Shown {
+        scene: Box::new(ViewScene {
             place_name: view.place_name.clone(),
             prose: view.prose.clone(),
             actor_names: view.actor_names.clone(),
@@ -178,7 +178,7 @@ fn player_view(view: &View) -> PlayerMessage {
         }),
         visible_actors: view.visible_actors.clone(),
         known_facts: view.known_facts.iter().map(wire_fact).collect(),
-        messages: view.messages.iter().map(wire_note).collect(),
+        messages: view.messages.iter().map(wire_message).collect(),
         unknown_mentioned: view.unknown_mentioned.clone(),
         clocks: view.clocks.iter().map(wire_clock).collect(),
         items: view.items.iter().map(wire_item).collect(),
@@ -206,8 +206,8 @@ fn wire_fact(fact: &KnownFact) -> WireFact {
     }
 }
 
-fn wire_note(message: &Message) -> FactNote {
-    FactNote {
+fn wire_message(message: &Message) -> WireMessage {
+    WireMessage {
         id: message.id.clone(),
         to: message.to.clone(),
         place: message.place.clone(),

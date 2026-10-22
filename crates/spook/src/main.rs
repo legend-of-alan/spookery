@@ -132,7 +132,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             pack,
             as_player,
             raw,
-        } => from_terminal(spookery::terminal::run_player_terminal(
+        } => from_terminal(spookery::terminal::run_player(
             &pack,
             as_player.as_deref(),
             &addr.to_string(),
@@ -144,7 +144,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             raw,
         } => {
             let door = door_addr(mcp_http)?;
-            from_terminal(spookery::terminal::run_gm_terminal(
+            from_terminal(spookery::terminal::run_gm(
                 &pack,
                 &addr.to_string(),
                 door.as_deref(),
@@ -247,12 +247,10 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
     }
 }
 
-fn from_terminal(
-    result: Result<(), spookery::terminal::TerminalError>,
-) -> Result<(), spookery::Error> {
+fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), spookery::Error> {
     result.map_err(|err| match err {
-        spookery::terminal::TerminalError::Reason(code) => spookery::Error::Reason(code),
-        spookery::terminal::TerminalError::Io(err) => spookery::Error::Io(err),
+        spookery::terminal::Error::Reason(code) => spookery::Error::Reason(code),
+        spookery::terminal::Error::Io(err) => spookery::Error::Io(err),
     })
 }
 

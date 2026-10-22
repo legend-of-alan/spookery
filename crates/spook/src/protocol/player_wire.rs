@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{Outcome, ProtocolError};
+use crate::protocol::{Error, Outcome};
 
 /// Names and prose for one place view. Boxed on the wire so the message stays small.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Shown {
+pub struct ViewScene {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub place_name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -51,10 +51,10 @@ pub enum PlayerMessage {
         viewer: String,
         place: String,
         #[serde(flatten, default)]
-        shown: Box<Shown>,
+        scene: Box<ViewScene>,
         visible_actors: Vec<String>,
         known_facts: Vec<WireFact>,
-        messages: Vec<FactNote>,
+        messages: Vec<WireMessage>,
         unknown_mentioned: Vec<String>,
         clocks: Vec<WireClock>,
         items: Vec<WireItem>,
@@ -86,7 +86,7 @@ pub struct WireFact {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct FactNote {
+pub struct WireMessage {
     pub id: String,
     pub to: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -125,8 +125,8 @@ pub fn write_player(message: &PlayerMessage) -> String {
     line
 }
 
-pub fn read_player(line: &str) -> Result<PlayerMessage, ProtocolError> {
-    serde_json::from_str(trim_line(line)).map_err(|_| ProtocolError)
+pub fn read_player(line: &str) -> Result<PlayerMessage, Error> {
+    serde_json::from_str(trim_line(line)).map_err(|_| Error)
 }
 
 /// `player:{id}\n`. An empty id, or an id with whitespace, is not a hello.

@@ -405,11 +405,11 @@ impl GmLoop {
     }
 }
 
-fn host_err(err: gm_connection::GmConnectionError) -> HostError {
+fn host_err(err: gm_connection::Error) -> HostError {
     match err {
-        gm_connection::GmConnectionError::Io(err) => fail(err.to_string()),
-        gm_connection::GmConnectionError::Closed => fail("seat closed".to_string()),
-        gm_connection::GmConnectionError::Bad(line) => fail(line),
-        gm_connection::GmConnectionError::Refused { raw, .. } => fail(raw),
+        gm_connection::Error::Io(err) => fail(err.to_string()),
+        gm_connection::Error::Closed => fail("seat closed".to_string()),
+        gm_connection::Error::Bad(line) => fail(line),
+        gm_connection::Error::Refused { raw, .. } => fail(raw),
     }
 }

@@ -31,18 +31,18 @@ pub use gm_wire::{
     PerceiveArgs, QueueRow, Roll, SayArgs, SessionStatus, StatusArgs, StatusPause, StatusPresence,
 };
 pub use player_wire::{
-    read_player, read_player_hello, write_player, write_player_hello, FactNote, PlayerMessage,
-    Shown, WireClock, WireExit, WireFact, WireItem, WireMeter,
+    read_player, read_player_hello, write_player, write_player_hello, PlayerMessage, ViewScene,
+    WireClock, WireExit, WireFact, WireItem, WireMessage, WireMeter,
 };
 
 /// A line that is not one of the two message sets.
 #[derive(Debug, PartialEq, Eq)]
-pub struct ProtocolError;
+pub struct Error;
 
-impl std::fmt::Display for ProtocolError {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("protocol")
     }
 }
 
-impl std::error::Error for ProtocolError {}
+impl std::error::Error for Error {}

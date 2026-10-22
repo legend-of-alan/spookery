@@ -154,7 +154,7 @@ pub(super) fn hello_timeout() -> Duration {
 }
 
 #[derive(Debug)]
-pub(super) enum LineFail {
+pub(super) enum LineReadError {
     Io,
     TooLong,
     BadUtf8,
@@ -165,16 +165,16 @@ pub(super) enum LineFail {
 pub(super) async fn read_capped_line<R: AsyncBufRead + Unpin>(
     reader: &mut R,
     cap: usize,
-) -> Result<Option<String>, LineFail> {
+) -> Result<Option<String>, LineReadError> {
     use tokio::io::AsyncBufReadExt;
     let mut buf = Vec::new();
     loop {
         if buf.len() > cap {
-            return Err(LineFail::TooLong);
+            return Err(LineReadError::TooLong);
         }
         let room = cap - buf.len();
         let (take, finished, too_long, eof) = {
-            let filled = reader.fill_buf().await.map_err(|_| LineFail::Io)?;
+            let filled = reader.fill_buf().await.map_err(|_| LineReadError::Io)?;
             if filled.is_empty() {
                 (0, true, false, true)
             } else if let Some(pos) = filled.iter().position(|byte| *byte == b'\n') {
@@ -196,12 +196,12 @@ pub(super) async fn read_capped_line<R: AsyncBufRead + Unpin>(
             return finish(buf);
         }
         if take > 0 {
-            let filled = reader.fill_buf().await.map_err(|_| LineFail::Io)?;
+            let filled = reader.fill_buf().await.map_err(|_| LineReadError::Io)?;
             buf.extend_from_slice(&filled[..take]);
             reader.consume(take);
         }
         if too_long {
-            return Err(LineFail::TooLong);
+            return Err(LineReadError::TooLong);
         }
         if finished {
             if buf.last() == Some(&b'\n') {
@@ -215,21 +215,21 @@ pub(super) async fn read_capped_line<R: AsyncBufRead + Unpin>(
     }
 }
 
-fn finish(buf: Vec<u8>) -> Result<Option<String>, LineFail> {
+fn finish(buf: Vec<u8>) -> Result<Option<String>, LineReadError> {
     match String::from_utf8(buf) {
         Ok(text) => Ok(Some(text)),
-        Err(_) => Err(LineFail::BadUtf8),
+        Err(_) => Err(LineReadError::BadUtf8),
     }
 }
 
 /// Reads one byte at a time and only the bytes the line reader consumes.
-pub(super) struct Unbuffered<R> {
+pub(super) struct ByteReader<R> {
     inner: R,
     buf: [u8; 1],
     len: usize,
 }
 
-impl<R> Unbuffered<R> {
+impl<R> ByteReader<R> {
     pub(super) fn new(inner: R) -> Self {
         Self {
             inner,
@@ -239,7 +239,7 @@ impl<R> Unbuffered<R> {
     }
 }
 
-impl<R: AsyncRead + Unpin> AsyncRead for Unbuffered<R> {
+impl<R: AsyncRead + Unpin> AsyncRead for ByteReader<R> {
     fn poll_read(
         self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -278,7 +278,7 @@ impl<R: AsyncRead + Unpin> AsyncRead for Unbuffered<R> {
     }
 }
 
-impl<R: AsyncRead + Unpin> AsyncBufRead for Unbuffered<R> {
+impl<R: AsyncRead + Unpin> AsyncBufRead for ByteReader<R> {
     fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
         let this = self.get_mut();
         if this.len > 0 {
@@ -575,7 +575,7 @@ mod tests {
         let err = read_capped_line(&mut reader, PLAYER_LINE_CAP)
             .await
             .expect_err("cap");
-        assert!(matches!(err, LineFail::TooLong));
+        assert!(matches!(err, LineReadError::TooLong));
     }
 
     #[tokio::test]
@@ -593,13 +593,13 @@ mod tests {
 
         let mut reader = BufReader::new(Cursor::new(&b"\xff\n"[..]));
         let err = read_capped_line(&mut reader, 8).await.unwrap_err();
-        assert!(matches!(err, LineFail::BadUtf8));
+        assert!(matches!(err, LineReadError::BadUtf8));
     }
 
     #[tokio::test]
     async fn a_hello_read_stops_at_the_newline() {
         let data = b"player:ada\n{\"jsonrpc\":1}\n";
-        let mut reader = Unbuffered::new(Cursor::new(&data[..]));
+        let mut reader = ByteReader::new(Cursor::new(&data[..]));
         let line = read_capped_line(&mut reader, PLAYER_LINE_CAP)
             .await
             .unwrap()

@@ -18,25 +18,25 @@ use serde_json::Value;
 
 /// A GM-seat failure. The display text is the seat's message or the I/O error.
 #[derive(Debug)]
-pub enum GmConnectionError {
+pub enum Error {
     Io(std::io::Error),
     Closed,
     Bad(String),
     Refused { code: String, raw: String },
 }
 
-impl std::fmt::Display for GmConnectionError {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GmConnectionError::Io(err) => write!(f, "{err}"),
-            GmConnectionError::Closed => f.write_str("seat closed"),
-            GmConnectionError::Bad(line) => f.write_str(line),
-            GmConnectionError::Refused { raw, .. } => f.write_str(raw),
+            Error::Io(err) => write!(f, "{err}"),
+            Error::Closed => f.write_str("seat closed"),
+            Error::Bad(line) => f.write_str(line),
+            Error::Refused { raw, .. } => f.write_str(raw),
         }
     }
 }
 
-impl std::error::Error for GmConnectionError {}
+impl std::error::Error for Error {}
 
 pub use crate::protocol::EventBody;
 
@@ -69,7 +69,7 @@ enum Command {
     Call {
         name: String,
         arguments: Value,
-        reply: mpsc::Sender<Result<ToolCallResult, GmConnectionError>>,
+        reply: mpsc::Sender<Result<ToolCallResult, Error>>,
     },
     Shutdown,
 }
@@ -111,17 +111,17 @@ pub struct GmConnection {
 
 impl GmConnection {
     /// Dial `http://127.0.0.1:<port + 1>/mcp` and finish the handshake.
-    pub fn connect(addr: &str) -> Result<Self, GmConnectionError> {
+    pub fn connect(addr: &str) -> Result<Self, Error> {
         dial(http_url(addr)?)
     }
 
     /// Dial `http://127.0.0.1:<port>/mcp`. `addr` is the agent door, not the game port.
-    pub fn connect_door(addr: &str) -> Result<Self, GmConnectionError> {
+    pub fn connect_door(addr: &str) -> Result<Self, Error> {
         dial(door_url(addr)?)
     }
 }
 
-fn dial(url: String) -> Result<GmConnection, GmConnectionError> {
+fn dial(url: String) -> Result<GmConnection, Error> {
     let (commands, commands_rx) = tokio::sync::mpsc::channel(4);
     let (events, incoming) = mpsc::channel();
     let (ready_tx, ready_rx) = mpsc::channel();
@@ -134,7 +134,7 @@ fn dial(url: String) -> Result<GmConnection, GmConnectionError> {
         }
         Err(_) => {
             let _ = worker.join();
-            Err(GmConnectionError::Closed)
+            Err(Error::Closed)
         }
     })?;
     Ok(GmConnection {
@@ -153,11 +153,7 @@ impl GmConnection {
         &self.opened
     }
 
-    pub fn call(
-        &mut self,
-        name: &str,
-        arguments: Value,
-    ) -> Result<ToolCallResult, GmConnectionError> {
+    pub fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, Error> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
         let (reply_tx, reply_rx) = mpsc::channel();
@@ -169,9 +165,9 @@ impl GmConnection {
                     arguments,
                     reply: reply_tx,
                 })
-                .map_err(|_| GmConnectionError::Closed)
+                .map_err(|_| Error::Closed)
         })?;
-        let mut outcome = park(move || reply_rx.recv().unwrap_or(Err(GmConnectionError::Closed)))?;
+        let mut outcome = park(move || reply_rx.recv().unwrap_or(Err(Error::Closed)))?;
         while let Ok(item) = self.incoming.try_recv() {
             self.buffered.push_back(item);
         }
@@ -283,7 +279,7 @@ fn worker(
     url: String,
     mut commands: tokio::sync::mpsc::Receiver<Command>,
     events: mpsc::Sender<Incoming>,
-    ready: mpsc::Sender<Result<String, GmConnectionError>>,
+    ready: mpsc::Sender<Result<String, Error>>,
 ) {
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -291,7 +287,7 @@ fn worker(
     {
         Ok(runtime) => runtime,
         Err(err) => {
-            let _ = ready.send(Err(GmConnectionError::Io(err)));
+            let _ = ready.send(Err(Error::Io(err)));
             return;
         }
     };
@@ -375,15 +371,15 @@ async fn call_tool(
     running: &rmcp::service::RunningService<RoleClient, Inbox>,
     name: &str,
     arguments: Value,
-) -> Result<ToolCallResult, GmConnectionError> {
+) -> Result<ToolCallResult, Error> {
     let params = match arguments {
         Value::Object(map) => CallToolRequestParams::new(name.to_string()).with_arguments(map),
         Value::Null => CallToolRequestParams::new(name.to_string()),
-        other => return Err(GmConnectionError::Bad(other.to_string())),
+        other => return Err(Error::Bad(other.to_string())),
     };
     match running.call_tool(params).await {
         Ok(result) => Ok(tool_result(result)),
-        Err(err) => Err(GmConnectionError::Bad(err.to_string())),
+        Err(err) => Err(Error::Bad(err.to_string())),
     }
 }
 
@@ -411,26 +407,26 @@ fn agent_addr(url: &str) -> Option<std::net::SocketAddr> {
     host.parse().ok()
 }
 
-fn loopback_port(addr: &str) -> Result<u16, GmConnectionError> {
+fn loopback_port(addr: &str) -> Result<u16, Error> {
     addr.strip_prefix("127.0.0.1:")
         .and_then(|text| text.parse::<u16>().ok())
-        .ok_or_else(|| GmConnectionError::Bad(addr.to_string()))
+        .ok_or_else(|| Error::Bad(addr.to_string()))
 }
 
-fn http_url(addr: &str) -> Result<String, GmConnectionError> {
+fn http_url(addr: &str) -> Result<String, Error> {
     let port = loopback_port(addr)?;
     let http = port
         .checked_add(1)
-        .ok_or_else(|| GmConnectionError::Bad(addr.to_string()))?;
+        .ok_or_else(|| Error::Bad(addr.to_string()))?;
     Ok(format!("http://127.0.0.1:{http}/mcp"))
 }
 
-fn door_url(addr: &str) -> Result<String, GmConnectionError> {
+fn door_url(addr: &str) -> Result<String, Error> {
     let port = loopback_port(addr)?;
     Ok(format!("http://127.0.0.1:{port}/mcp"))
 }
 
-async fn read_seat_refusal(url: &str) -> Option<GmConnectionError> {
+async fn read_seat_refusal(url: &str) -> Option<Error> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -465,17 +461,17 @@ async fn read_seat_refusal(url: &str) -> Option<GmConnectionError> {
             .await;
     }
     let code = bracket_code(&text)?;
-    Some(GmConnectionError::Refused { code, raw: text })
+    Some(Error::Refused { code, raw: text })
 }
 
-fn from_initialize(err: ClientInitializeError) -> GmConnectionError {
+fn from_initialize(err: ClientInitializeError) -> Error {
     if let Some(refused) = refusal_of(&err) {
         return refused;
     }
-    GmConnectionError::Io(std::io::Error::other(err.to_string()))
+    Error::Io(std::io::Error::other(err.to_string()))
 }
 
-fn refusal_of(err: &ClientInitializeError) -> Option<GmConnectionError> {
+fn refusal_of(err: &ClientInitializeError) -> Option<Error> {
     match err {
         ClientInitializeError::JsonRpcError(data) => Some(refused_message(data.message.as_ref())),
         ClientInitializeError::LegacyFallbackFailed { discover, fallback } => {
@@ -483,14 +479,14 @@ fn refusal_of(err: &ClientInitializeError) -> Option<GmConnectionError> {
         }
         other => {
             let text = other.to_string();
-            bracket_code(&text).map(|code| GmConnectionError::Refused { code, raw: text })
+            bracket_code(&text).map(|code| Error::Refused { code, raw: text })
         }
     }
 }
 
-fn refused_message(raw: &str) -> GmConnectionError {
+fn refused_message(raw: &str) -> Error {
     let code = bracket_code(raw).unwrap_or_else(|| "SESSION_FULL".to_string());
-    GmConnectionError::Refused {
+    Error::Refused {
         code,
         raw: raw.to_string(),
     }

@@ -768,13 +768,13 @@ fn the_sitter_lines_up_use_tonic(world: &mut World) {
     world.scratch =
         match spookery::host::handle_player_move(&mut opened, "pc_rowan", "use tonic", true) {
             Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
-            Ok(spookery::host::MoveOutcome::Queued(note)) => {
-                let queued = opened
+            Ok(spookery::host::MoveOutcome::Queued(queued)) => {
+                let intent = opened
                     .queued_intents()
                     .iter()
-                    .find(|intent| intent.id == note.id)
+                    .find(|intent| intent.id == queued.id)
                     .unwrap();
-                format!("{:?} {}", queued.target, queued.move_name)
+                format!("{:?} {}", intent.target, intent.move_name)
             }
             Ok(spookery::host::MoveOutcome::Committed { .. }) => "committed".to_string(),
             Err(err) => err.token().to_string(),
