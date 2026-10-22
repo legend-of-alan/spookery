@@ -4,7 +4,7 @@ use spookery_kernel::api::ids::player_intent_id;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::model::ActorLive;
 use spookery_kernel::api::rule::{TargetKind, When};
-use spookery_kernel::api::rules::gate::{gate, verb_for, Miss};
+use spookery_kernel::api::rules::gate::{gate, verb_for, GateRefusal};
 use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
@@ -52,20 +52,20 @@ pub fn handle_player_move(
     actor_id: &str,
     line: &str,
     gm_seated: bool,
-) -> Result<MoveOutcome, Miss> {
+) -> Result<MoveOutcome, GateRefusal> {
     let (verb, rest) = input::verb_line(line, actor_id)?;
     let note = match queue_verb(world, actor_id, verb, rest) {
         Ok(note) => note,
-        Err(miss) => {
-            if !gm_seated && miss.reason() == spookery_kernel::api::Reason::Busy {
-                let outputs = commit_then_fast_forward(world).map_err(Miss::from)?;
+        Err(refusal) => {
+            if !gm_seated && refusal.reason() == spookery_kernel::api::Reason::Busy {
+                let outputs = commit_then_fast_forward(world).map_err(GateRefusal::from)?;
                 return Ok(MoveOutcome::Busy {
-                    code: miss.token(),
-                    missing: miss.missing().map(str::to_string),
+                    code: refusal.token(),
+                    missing: refusal.missing().map(str::to_string),
                     outputs,
                 });
             }
-            return Err(miss);
+            return Err(refusal);
         }
     };
     if gm_seated {
@@ -112,7 +112,7 @@ fn queue_verb(
     actor_id: &str,
     verb: &str,
     rest: &str,
-) -> Result<QueuedNote, Miss> {
+) -> Result<QueuedNote, GateRefusal> {
     if !world
         .now()
         .actors
@@ -155,7 +155,7 @@ fn queue_verb(
     Ok(note)
 }
 
-pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, Miss> {
+pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedNote, GateRefusal> {
     queue_verb(world, actor_id, "wait", "")
 }
 

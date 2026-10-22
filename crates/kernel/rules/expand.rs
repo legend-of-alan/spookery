@@ -116,8 +116,8 @@ where
                 target,
                 resisted,
             } => {
-                let actor = expr::actor_of(now, ctx, who)?;
-                let number = expr::show(canon, now, ctx, target, dice)?.value;
+                let actor = expr::resolve_who_id(now, ctx, who)?;
+                let number = expr::eval_with_dice(canon, now, ctx, target, dice)?.value;
                 let band = resist_roll(&actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
@@ -141,7 +141,7 @@ where
             let actor_id = if matches!(who, Who::World) {
                 crate::effect::WORLD.to_string()
             } else {
-                expr::actor_of(now, ctx, who)?
+                expr::resolve_who_id(now, ctx, who)?
             };
             effects.push(wrap(
                 viewer,
@@ -185,13 +185,13 @@ where
         EffectTemplate::Meter {
             who, key, add, set, ..
         } => {
-            let actor_id = expr::actor_of(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(now, ctx, who)?;
             let write = meter_write(
                 canon,
                 now,
                 &actor_id,
                 key,
-                Amount {
+                MeterChange {
                     ctx,
                     add: add.as_ref(),
                     set: set.as_ref(),
@@ -226,7 +226,7 @@ where
             ));
         }
         EffectTemplate::Wield { who, id } => {
-            let actor_id = expr::actor_of(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(now, ctx, who)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
@@ -237,7 +237,7 @@ where
             ));
         }
         EffectTemplate::Unwield { who } => {
-            let actor_id = expr::actor_of(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(now, ctx, who)?;
             effects.push(wrap(viewer, &intent.id, EffectKind::Unwield { actor_id }));
         }
         EffectTemplate::Clock { id, add, start } => {
@@ -293,7 +293,7 @@ where
             fact_ids,
             text,
         } => {
-            let actor_id = expr::actor_of(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(now, ctx, who)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
@@ -309,7 +309,7 @@ where
             if matches!(who, Who::World) {
                 return Err(Reason::Schema);
             }
-            let actor_id = expr::actor_of(now, ctx, who)?;
+            let actor_id = expr::resolve_who_id(now, ctx, who)?;
             effects.push(wrap(
                 viewer,
                 &intent.id,
@@ -323,7 +323,7 @@ where
     Ok(())
 }
 
-struct Amount<'a> {
+struct MeterChange<'a> {
     ctx: &'a Ctx<'a>,
     add: Option<&'a Expr>,
     set: Option<&'a Expr>,
@@ -335,18 +335,18 @@ fn meter_write(
     now: &Now,
     actor_id: &str,
     key: &str,
-    amount: Amount<'_>,
+    change: MeterChange<'_>,
 ) -> Result<MeterWrite, Reason> {
-    if let Some(expr) = amount.add {
-        let delta = expr::show(canon, now, amount.ctx, expr, amount.dice)?.value;
+    if let Some(expr) = change.add {
+        let delta = expr::eval_with_dice(canon, now, change.ctx, expr, change.dice)?.value;
         return Ok(MeterWrite::Offset(delta));
     }
-    let desired = expr::show(
+    let desired = expr::eval_with_dice(
         canon,
         now,
-        amount.ctx,
-        amount.set.ok_or(Reason::Schema)?,
-        amount.dice,
+        change.ctx,
+        change.set.ok_or(Reason::Schema)?,
+        change.dice,
     )?
     .value;
     let def = canon.meters.get(key).ok_or(Reason::UnknownKey)?;
@@ -371,14 +371,14 @@ fn resolve_holder(
 ) -> Result<(Option<String>, Option<String>), Reason> {
     match who {
         Who::Place(id) => Ok((None, Some(id.clone()))),
-        Who::Here => Ok((None, Some(expr::actor_of(now, ctx, &Who::Here)?))),
+        Who::Here => Ok((None, Some(expr::resolve_who_id(now, ctx, &Who::Here)?))),
         Who::World => Err(Reason::Schema),
-        other => Ok((Some(expr::actor_of(now, ctx, other)?), None)),
+        other => Ok((Some(expr::resolve_who_id(now, ctx, other)?), None)),
     }
 }
 
 fn resolve_actors_here(now: &Now, ctx: &Ctx<'_>) -> Result<Vec<String>, Reason> {
-    let place = expr::actor_of(now, ctx, &Who::Here)?;
+    let place = expr::resolve_who_id(now, ctx, &Who::Here)?;
     let mut ids: Vec<String> = now
         .actors
         .iter()
@@ -430,7 +430,8 @@ pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
 }
 
 pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    let Ok(effects) = expand_outcome(canon, now, intent, None, &mut StandIn, ignore_resist) else {
+    let Ok(effects) = expand_outcome(canon, now, intent, None, &mut PreviewDice, ignore_resist)
+    else {
         return;
     };
     // A verb with no target must stay empty. Filling it from a location effect
@@ -467,7 +468,7 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
         if gate::gate(canon, now, &intent).is_err() {
             continue;
         }
-        match expand_outcome(canon, now, &intent, None, &mut StandIn, ignore_resist) {
+        match expand_outcome(canon, now, &intent, None, &mut PreviewDice, ignore_resist) {
             Ok(effects) => {
                 let mut intent = intent;
                 stamp(&mut intent, &effects);
@@ -481,9 +482,9 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
 
 /// Faces of 1, and no journal line. Gather only needs the effect shape.
 /// The round rolls the real faces when it applies the intent.
-struct StandIn;
+struct PreviewDice;
 
-impl Dice for StandIn {
+impl Dice for PreviewDice {
     fn begin(&mut self) {}
 
     fn draw(&mut self, count: u32, _sides: u32) -> Result<Vec<u32>, Reason> {

@@ -185,7 +185,7 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
         .unwrap_or_else(|| panic!("no {actor}"))
         .act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(spookery_kernel::api::model::Pending {
+    act.busy_for = Some(spookery_kernel::api::model::PendingAction {
         rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
         target: via.to_string(),

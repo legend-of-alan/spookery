@@ -24,13 +24,13 @@ pub struct Delivery {
 }
 
 /// One narrate line addressed to one person.
-pub struct Told {
+pub struct RecipientLine {
     pub to: String,
     pub text: String,
 }
 
 /// The change keys one actor can see, and the line they are shown.
-pub struct Seen {
+pub struct ViewerChanges {
     pub viewer: String,
     pub changes: Vec<String>,
     pub line: String,

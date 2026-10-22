@@ -9,9 +9,9 @@ use spookery_kernel::api::intent::Intent;
 use spookery_kernel::api::journal::{Arrival, Rejected};
 use spookery_kernel::api::key::ChangeRecord;
 use spookery_kernel::api::model::Now;
-use spookery_kernel::api::rules::gate::Miss;
+use spookery_kernel::api::rules::gate::GateRefusal;
 use spookery_kernel::api::rules::{MoveReport, RollResult};
-use spookery_kernel::api::visibility::{Seen, Told};
+use spookery_kernel::api::visibility::{RecipientLine, ViewerChanges};
 use spookery_kernel::api::world::{session_status, World};
 
 /// One pass of the rules over one tick.
@@ -36,8 +36,8 @@ pub struct Round {
     pub move_reports: Vec<MoveReport>,
     pub changes: Vec<ChangeRecord>,
     pub summary: Vec<String>,
-    pub lines: Vec<Told>,
-    pub seen: Vec<Seen>,
+    pub lines: Vec<RecipientLine>,
+    pub seen: Vec<ViewerChanges>,
     pub opposed: BTreeMap<String, RollResult>,
     pub roll_counts: BTreeMap<(String, String), u32>,
     pub dice: Vec<String>,
@@ -54,7 +54,7 @@ pub enum Resolution {
         rolled: Option<RollResult>,
     },
     Refused {
-        miss: Miss,
+        refusal: GateRefusal,
         report: Option<MoveReport>,
     },
 }

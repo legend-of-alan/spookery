@@ -1,6 +1,6 @@
 //! Pause plot clocks while the table is empty.
 
-use crate::canon::world_settings::PausePolicy;
+use crate::canon::tick_settings::PausePolicy;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::key::StateKey;

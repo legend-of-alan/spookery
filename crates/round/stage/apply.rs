@@ -34,23 +34,23 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         let Some(resolution) = round.resolutions.get(&intent.id).cloned() else {
             continue;
         };
-        if let Resolution::Refused { miss, report } = resolution {
+        if let Resolution::Refused { refusal, report } = resolution {
             round.rejected.push(Rejected {
                 id: intent.id.clone(),
-                reason: miss.named(),
+                reason: refusal.named(),
             });
             if let Some(report) = report {
                 round.move_reports.push(report);
             } else {
-                report_player(round, &intent, &miss);
+                report_player(round, &intent, &refusal);
             }
             continue;
         }
         let Resolution::Ready { rolled } = resolution else {
             continue;
         };
-        if let Err(miss) = gate(draft.canon(), draft.now(), &intent) {
-            reject(round, &intent, &miss);
+        if let Err(refusal) = gate(draft.canon(), draft.now(), &intent) {
+            reject(round, &intent, &refusal);
             continue;
         }
         let timed = gate::resolve(draft.canon(), draft.now(), &intent)
@@ -199,26 +199,26 @@ fn commit_intent(
 }
 
 fn refuse(round: &mut Round, intent: &Intent, code: Reason) {
-    reject(round, intent, &gate::Miss::Code(code));
+    reject(round, intent, &gate::GateRefusal::Code(code));
 }
 
-/// Journal the miss's word and tell a player its code and name.
-fn reject(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
+/// Journal the refusal's word and tell a player its code and name.
+fn reject(round: &mut Round, intent: &Intent, refusal: &gate::GateRefusal) {
     round.rejected.push(Rejected {
         id: intent.id.clone(),
-        reason: miss.named(),
+        reason: refusal.named(),
     });
-    report_player(round, intent, miss);
+    report_player(round, intent, refusal);
 }
 
-fn report_player(round: &mut Round, intent: &Intent, miss: &gate::Miss) {
+fn report_player(round: &mut Round, intent: &Intent, refusal: &gate::GateRefusal) {
     if intent.actor_kind != ActorKind::Player {
         return;
     }
     round.move_reports.push(MoveReport::Refused {
         actor_id: intent.actor_id.clone(),
-        code: miss.reason(),
-        missing: miss.missing().map(str::to_string),
+        code: refusal.reason(),
+        missing: refusal.missing().map(str::to_string),
     });
 }
 

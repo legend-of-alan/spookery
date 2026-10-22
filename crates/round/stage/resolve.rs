@@ -33,7 +33,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
 fn consider(round: &mut Round, draft: &Draft, intent: &Intent) -> Result<Resolution, Reason> {
     let rule = match gate(draft.canon(), draft.now(), intent) {
         Ok(rule) => rule.clone(),
-        Err(miss) => return Ok(refused(miss, None)),
+        Err(refusal) => return Ok(refused(refusal, None)),
     };
     if spookery_kernel::api::map::span(draft.canon(), draft.now(), intent, &rule) > 0 {
         return Ok(Resolution::Ready { rolled: None });
@@ -66,15 +66,17 @@ fn roll_check(
             None
         } else {
             match roll.partial_at.as_ref() {
-                Some(expr) => {
-                    Some(expr::show(draft.canon(), &frozen, &ctx, expr, &mut roller)?.value)
-                }
+                Some(expr) => Some(
+                    expr::eval_with_dice(draft.canon(), &frozen, &ctx, expr, &mut roller)?.value,
+                ),
                 None => None,
             }
         };
         let target = match opposed {
             Some(total) => total,
-            None => expr::show(draft.canon(), &frozen, &ctx, &roll.target, &mut roller)?.value,
+            None => {
+                expr::eval_with_dice(draft.canon(), &frozen, &ctx, &roll.target, &mut roller)?.value
+            }
         };
         Ok::<_, Reason>((target, partial_at))
     })?;
@@ -185,9 +187,9 @@ pub(crate) fn eval_roll_spec(
     roller: &mut Roller,
 ) -> Result<RollResult, Reason> {
     let ctx = Ctx { intent };
-    let target = expr::show(canon, now, &ctx, &spec.target, roller)?.value;
+    let target = expr::eval_with_dice(canon, now, &ctx, &spec.target, roller)?.value;
     let partial_at = match &spec.partial_at {
-        Some(expr) => Some(expr::show(canon, now, &ctx, expr, roller)?.value),
+        Some(expr) => Some(expr::eval_with_dice(canon, now, &ctx, expr, roller)?.value),
         None => None,
     };
     let key = held.key(rule_id, &intent.actor_id);
@@ -291,13 +293,13 @@ fn reclassify(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollRes
     }
 }
 
-fn refused(miss: gate::Miss, report: Option<MoveReport>) -> Resolution {
-    Resolution::Refused { miss, report }
+fn refused(refusal: gate::GateRefusal, report: Option<MoveReport>) -> Resolution {
+    Resolution::Refused { refusal, report }
 }
 
 fn refused_check(intent: &Intent, code: Reason) -> Resolution {
     refused(
-        gate::Miss::Code(code),
+        gate::GateRefusal::Code(code),
         Some(MoveReport::Refused {
             actor_id: intent.actor_id.clone(),
             code,

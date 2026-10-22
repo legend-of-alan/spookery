@@ -10,7 +10,7 @@ use spookery_kernel::api::map::ExitView;
 use spookery_kernel::api::model::{Message, Now, RunState};
 use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 use spookery_kernel::api::rules::{MoveReport, RollResult};
-use spookery_kernel::api::store::talk_log::TapeRecord;
+use spookery_kernel::api::store::tape::TapeRecord;
 use spookery_round::RoundOutput;
 
 pub fn player_say_line(tape: &TapeRecord) -> String {

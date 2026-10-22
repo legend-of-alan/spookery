@@ -1,6 +1,6 @@
 //! Move world time forward, and plan how many ticks a long absence runs.
 
-use spookery_kernel::api::canon::world_settings::Budget;
+use spookery_kernel::api::canon::tick_settings::Budget;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::pause::apply_pause_policy;
 use spookery_kernel::api::Reason;
@@ -14,12 +14,12 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.rev_before = draft.now().state_rev;
     round.tick_index = draft.now().tick_index + 1;
     round.world_id = draft.now().shard_id.clone();
-    draft.pin_loop(round.tick_index, world_before, &round.now_wall);
+    draft.set_tick_clock(round.tick_index, world_before, &round.now_wall);
     let minutes = minutes_for(round.humans, draft.budget());
     let world_after = world_before.saturating_add(minutes);
     let day_changed = world_before / 1440 != world_after / 1440;
     let hour_changed = world_before / 60 != world_after / 60;
-    draft.pin_loop(round.tick_index, world_after, &round.now_wall);
+    draft.set_tick_clock(round.tick_index, world_after, &round.now_wall);
     round.world_time_after = world_after;
     if day_changed {
         draft.reset_idle_acts()?;

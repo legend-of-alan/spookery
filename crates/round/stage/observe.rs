@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::EffectKind;
-use spookery_kernel::api::visibility::{self, Seat, Seen, Told};
+use spookery_kernel::api::visibility::{self, RecipientLine, Seat, ViewerChanges};
 use spookery_kernel::api::Reason;
 
 use crate::state::Round;
@@ -33,13 +33,13 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             &round.effects,
         );
         for text in delivery.lines {
-            lines.push(Told {
+            lines.push(RecipientLine {
                 to: id.clone(),
                 text,
             });
         }
         if !delivery.changes.is_empty() {
-            seen.push(Seen {
+            seen.push(ViewerChanges {
                 viewer: id,
                 changes: delivery.changes,
                 line: delivery.line,

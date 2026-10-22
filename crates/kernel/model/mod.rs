@@ -293,7 +293,7 @@ pub struct ActCounters {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub busy_until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub busy_for: Option<Pending>,
+    pub busy_for: Option<PendingAction>,
 }
 
 impl ActCounters {
@@ -311,7 +311,7 @@ impl ActCounters {
 /// Work that finishes when `busy_until` is reached. Travel keeps the destination.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Pending {
+pub struct PendingAction {
     pub rule: String,
     pub verb: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]

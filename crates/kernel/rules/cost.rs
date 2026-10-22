@@ -10,52 +10,76 @@ use crate::model::{self, Now};
 use crate::rule::Cost;
 use crate::rules::expr::{self, Ctx, Dice};
 
-/// What the actor cannot pay. The token is `CANT_AFFORD`; `what` names the gap.
+/// What the actor cannot pay. The token is `CANT_AFFORD`; `missing` names the shortfall.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Gap {
-    pub what: String,
+pub struct CostShortfall {
+    pub missing: String,
 }
 
-pub(crate) fn can_pay(canon: &Canon, now: &Now, intent: &Intent, cost: &Cost) -> Result<(), Gap> {
+pub(crate) fn can_pay(
+    canon: &Canon,
+    now: &Now,
+    intent: &Intent,
+    cost: &Cost,
+) -> Result<(), CostShortfall> {
     let who = &intent.actor_id;
     let ctx = Ctx { intent };
     for (key, expr) in &cost.meters {
         if expr.needs_dice() {
             continue;
         }
-        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| Gap { what: key.clone() })?;
+        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| CostShortfall {
+            missing: key.clone(),
+        })?;
         if amount < 0 {
-            return Err(Gap { what: key.clone() });
+            return Err(CostShortfall {
+                missing: key.clone(),
+            });
         }
         let Some(def) = canon.meters.get(key) else {
-            return Err(Gap { what: key.clone() });
+            return Err(CostShortfall {
+                missing: key.clone(),
+            });
         };
         let Some(live) = now
             .actors
             .get(who)
             .and_then(|actor| actor.meters().get(key))
         else {
-            return Err(Gap { what: key.clone() });
+            return Err(CostShortfall {
+                missing: key.clone(),
+            });
         };
-        let current = meter::current(def, live).map_err(|_| Gap { what: key.clone() })?;
+        let current = meter::current(def, live).map_err(|_| CostShortfall {
+            missing: key.clone(),
+        })?;
         if current < amount {
-            return Err(Gap { what: key.clone() });
+            return Err(CostShortfall {
+                missing: key.clone(),
+            });
         }
     }
     for (id, expr) in &cost.items {
         if expr.needs_dice() {
             continue;
         }
-        let count =
-            item_count(expr::eval(canon, now, &ctx, expr).map_err(|_| Gap { what: id.clone() })?)
-                .map_err(|_| Gap { what: id.clone() })?;
+        let count = item_count(
+            expr::eval(canon, now, &ctx, expr).map_err(|_| CostShortfall {
+                missing: id.clone(),
+            })?,
+        )
+        .map_err(|_| CostShortfall {
+            missing: id.clone(),
+        })?;
         let held = now
             .actors
             .get(who)
             .map(|actor| actor.count(id))
             .unwrap_or(0);
         if held < count {
-            return Err(Gap { what: id.clone() });
+            return Err(CostShortfall {
+                missing: id.clone(),
+            });
         }
     }
     Ok(())
@@ -75,7 +99,7 @@ pub fn pay(
     let who = &intent.actor_id;
     let ctx = Ctx { intent };
     for (key, expr) in &cost.meters {
-        let amount = expr::show(draft.canon(), draft.now(), &ctx, expr, dice)?.value;
+        let amount = expr::eval_with_dice(draft.canon(), draft.now(), &ctx, expr, dice)?.value;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
@@ -101,7 +125,8 @@ pub fn pay(
             .ok_or(Reason::UnknownKey)? = live;
     }
     for (id, expr) in &cost.items {
-        let count = item_count(expr::show(draft.canon(), draft.now(), &ctx, expr, dice)?.value)?;
+        let count =
+            item_count(expr::eval_with_dice(draft.canon(), draft.now(), &ctx, expr, dice)?.value)?;
         let before = i64::from(
             draft
                 .now()

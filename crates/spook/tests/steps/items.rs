@@ -55,7 +55,7 @@ fn play(
     pack: &Path,
     actor: &str,
     line: &str,
-) -> Result<spookery::host::MoveOutcome, spookery_kernel::api::rules::gate::Miss> {
+) -> Result<spookery::host::MoveOutcome, spookery_kernel::api::rules::gate::GateRefusal> {
     let mut world = spookery_round::resume(pack).unwrap_or_else(|err| {
         panic!(
             "open {line}: {}\n{}",

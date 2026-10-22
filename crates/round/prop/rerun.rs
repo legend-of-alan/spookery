@@ -39,7 +39,7 @@ fn running_a_round_again_matches_the_logged_effects() {
 }
 
 fn rerun(played: &Path) -> Result<(), TestCaseError> {
-    let records = journal::load_journal(played)
+    let records = journal::read_verified(played)
         .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
     let ticks: Vec<_> = records
         .into_iter()

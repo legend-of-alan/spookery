@@ -21,7 +21,7 @@ fn pack_of(world: &World) -> std::path::PathBuf {
 fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
     let act = now.actors.get_mut(actor).unwrap().act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(spookery_kernel::api::model::Pending {
+    act.busy_for = Some(spookery_kernel::api::model::PendingAction {
         rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
         target: via.to_string(),
@@ -220,7 +220,7 @@ fn two_arrivals(world: &mut World) {
                 act: {
                     let mut act = spookery_kernel::api::model::ActCounters::fresh();
                     act.busy_until = Some(EVENING + 5);
-                    act.busy_for = Some(spookery_kernel::api::model::Pending {
+                    act.busy_for = Some(spookery_kernel::api::model::PendingAction {
                         rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
                         target: "docks_street".to_string(),

@@ -31,54 +31,54 @@ impl Dice for NoDice {
     fn note(&mut self, _text: String) {}
 }
 
-pub struct Shown {
+pub struct EvalOutput {
     pub value: i64,
     pub text: Option<String>,
 }
 
 pub fn eval(canon: &Canon, now: &Now, ctx: &Ctx<'_>, expr: &Expr) -> Result<i64, Reason> {
-    Ok(show(canon, now, ctx, expr, &mut NoDice)?.value)
+    Ok(eval_with_dice(canon, now, ctx, expr, &mut NoDice)?.value)
 }
 
 /// Evaluate `expr`, drawing dice from `dice` and noting a line when any fall.
-pub fn show(
+pub fn eval_with_dice(
     canon: &Canon,
     now: &Now,
     ctx: &Ctx<'_>,
     expr: &Expr,
     dice: &mut dyn Dice,
-) -> Result<Shown, Reason> {
+) -> Result<EvalOutput, Reason> {
     dice.begin();
-    let piece = walk(canon, now, ctx, expr, dice)?;
-    let text = if piece.dice.is_empty() {
+    let step = eval_node(canon, now, ctx, expr, dice)?;
+    let text = if step.dice.is_empty() {
         None
     } else {
-        Some(format!("{} = {}", piece.dice.join("; "), piece.body))
+        Some(format!("{} = {}", step.dice.join("; "), step.body))
     };
     if let Some(text) = &text {
         dice.note(text.clone());
     }
-    Ok(Shown {
-        value: piece.value,
+    Ok(EvalOutput {
+        value: step.value,
         text,
     })
 }
 
-struct Piece {
+struct EvalStep {
     value: i64,
     body: String,
     dice: Vec<String>,
 }
 
-fn walk(
+fn eval_node(
     canon: &Canon,
     now: &Now,
     ctx: &Ctx<'_>,
     expr: &Expr,
     dice: &mut dyn Dice,
-) -> Result<Piece, Reason> {
+) -> Result<EvalStep, Reason> {
     match expr {
-        Expr::Num(n) => Ok(Piece {
+        Expr::Num(n) => Ok(EvalStep {
             value: *n,
             body: n.to_string(),
             dice: Vec::new(),
@@ -91,7 +91,7 @@ fn walk(
                 .map(u32::to_string)
                 .collect::<Vec<_>>()
                 .join(", ");
-            Ok(Piece {
+            Ok(EvalStep {
                 value,
                 body: value.to_string(),
                 dice: vec![format!("{} → {listed}", name_dice(*n, *sides, *keep))],
@@ -99,36 +99,36 @@ fn walk(
         }
         Expr::Meter { who, key, .. } => {
             let value = read_meter(canon, now, ctx, who, key)?;
-            Ok(Piece {
+            Ok(EvalStep {
                 value,
                 body: value.to_string(),
                 dice: Vec::new(),
             })
         }
         Expr::Neg(inner) => {
-            let inner = walk(canon, now, ctx, inner, dice)?;
+            let inner = eval_node(canon, now, ctx, inner, dice)?;
             let value = inner.value.checked_neg().ok_or(Reason::OutOfRange)?;
-            Ok(Piece {
+            Ok(EvalStep {
                 value,
                 body: negate_body(&inner.body),
                 dice: inner.dice,
             })
         }
         Expr::Bin { op, left, right } => {
-            let left = walk(canon, now, ctx, left, dice)?;
-            let right = walk(canon, now, ctx, right, dice)?;
+            let left = eval_node(canon, now, ctx, left, dice)?;
+            let right = eval_node(canon, now, ctx, right, dice)?;
             let value = arith(*op, left.value, right.value)?;
             let mut rolled = left.dice;
             rolled.extend(right.dice);
-            Ok(Piece {
+            Ok(EvalStep {
                 value,
                 body: format!("{} {} {}", left.body, name_op(*op), right.body),
                 dice: rolled,
             })
         }
         Expr::Call { fun, left, right } => {
-            let left = walk(canon, now, ctx, left, dice)?;
-            let right = walk(canon, now, ctx, right, dice)?;
+            let left = eval_node(canon, now, ctx, left, dice)?;
+            let right = eval_node(canon, now, ctx, right, dice)?;
             let value = match fun {
                 Fun::Min => left.value.min(right.value),
                 Fun::Max => left.value.max(right.value),
@@ -139,7 +139,7 @@ fn walk(
                 Fun::Min => "min",
                 Fun::Max => "max",
             };
-            Ok(Piece {
+            Ok(EvalStep {
                 value,
                 body: format!("{name}({}, {})", left.body, right.body),
                 dice: rolled,
@@ -193,7 +193,7 @@ fn read_meter(
     who: &Who,
     key: &str,
 ) -> Result<i64, Reason> {
-    let actor_id = actor_of(now, ctx, who)?;
+    let actor_id = resolve_who_id(now, ctx, who)?;
     let def = canon.meters.get(key).ok_or(Reason::UnknownKey)?;
     let live = now
         .actors
@@ -216,7 +216,7 @@ pub(crate) fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reaso
     Ok(id.to_string())
 }
 
-pub(crate) fn actor_of(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
+pub(crate) fn resolve_who_id(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
     match who {
         Who::Self_ => Ok(ctx.intent.actor_id.clone()),
         Who::Target => match &ctx.intent.target {
@@ -238,7 +238,7 @@ pub(crate) fn actor_of(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Re
 mod tests {
     use std::collections::BTreeMap;
 
-    use super::{show, Ctx, Dice};
+    use super::{eval_with_dice, Ctx, Dice};
     use crate::canon::Canon;
     use crate::error::Reason;
     use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
@@ -307,7 +307,7 @@ mod tests {
                 },
             )]),
             items: BTreeMap::new(),
-            budget: crate::canon::world_settings::Budget::defaults(),
+            budget: crate::canon::tick_settings::Budget::defaults(),
             checkpoint_every: 100,
         }
     }
@@ -357,9 +357,10 @@ mod tests {
             at: 0,
             notes: Vec::new(),
         };
-        let shown = show(&canon(), &now(), &Ctx { intent: &intent }, &expr, &mut dice).unwrap();
-        assert_eq!(shown.value, 12);
-        assert_eq!(shown.text.as_deref(), Some("2d6 → 4, 5 = 9 + 3"));
+        let evaluated =
+            eval_with_dice(&canon(), &now(), &Ctx { intent: &intent }, &expr, &mut dice).unwrap();
+        assert_eq!(evaluated.value, 12);
+        assert_eq!(evaluated.text.as_deref(), Some("2d6 → 4, 5 = 9 + 3"));
         assert_eq!(dice.notes, vec!["2d6 → 4, 5 = 9 + 3".to_string()]);
     }
 
@@ -372,8 +373,9 @@ mod tests {
             at: 0,
             notes: Vec::new(),
         };
-        let shown = show(&canon(), &now(), &Ctx { intent: &intent }, &expr, &mut dice).unwrap();
-        assert_eq!(shown.value, 18);
+        let evaluated =
+            eval_with_dice(&canon(), &now(), &Ctx { intent: &intent }, &expr, &mut dice).unwrap();
+        assert_eq!(evaluated.value, 18);
         assert!(matches!(
             expr,
             crate::rule::Expr::Dice {
@@ -387,13 +389,16 @@ mod tests {
     fn overflow_is_an_error() {
         let expr = parse_expr("9223372036854775807 + 1").unwrap();
         let intent = intent("ada", "ada");
-        let err = show(
+        let err = eval_with_dice(
             &canon(),
             &now(),
             &Ctx { intent: &intent },
             &expr,
             &mut super::NoDice,
         );
-        assert_eq!(err.map(|shown| shown.value), Err(Reason::OutOfRange));
+        assert_eq!(
+            err.map(|evaluated| evaluated.value),
+            Err(Reason::OutOfRange)
+        );
     }
 }

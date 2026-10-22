@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::world_settings::{load_world_settings, Budget};
+use crate::canon::tick_settings::{load_tick_settings, Budget};
 use crate::check::{load_checks, CheckDef};
 use crate::diagnostic::{
     coded, locate_nth, locate_row_field, parse_file, schema as schema_error, tag_diagnostic,
@@ -21,7 +21,7 @@ use crate::rule::{Cond, Cost, Owner, Rule, RuleTable};
 mod check;
 mod save;
 pub mod schema;
-pub mod world_settings;
+pub mod tick_settings;
 
 use check::{
     broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
@@ -463,7 +463,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         None => None,
     };
     let budget = match &tick_text {
-        Some(text) => match load_world_settings(text) {
+        Some(text) => match load_tick_settings(text) {
             Ok(budget) => Some(budget),
             Err(more) => {
                 diags.extend(more);

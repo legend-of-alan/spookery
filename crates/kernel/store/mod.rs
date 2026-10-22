@@ -9,7 +9,7 @@ pub(crate) mod journal;
 pub(crate) mod lock;
 pub(crate) mod records;
 pub mod recover;
-pub mod talk_log;
+pub mod tape;
 
 /// Rules version stamped on every save and every tick.
 /// A different version is refused. There is no migration.

@@ -6,7 +6,7 @@ use spookery_kernel::api::effect::{Effect, EffectKind};
 use spookery_kernel::api::expand::expand_outcome;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 use spookery_kernel::api::journal::Arrival;
-use spookery_kernel::api::model::Pending;
+use spookery_kernel::api::model::PendingAction;
 use spookery_kernel::api::rules::MoveReport;
 use spookery_kernel::api::Reason;
 
@@ -22,12 +22,18 @@ pub(crate) fn run(round: &mut Round, _draft: &mut Draft) -> Result<(), Reason> {
 
 /// Apply every journey whose minute has been reached, earliest first.
 pub(crate) fn finish(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    let due = spookery_kernel::api::map::take_due(draft, round.world_time_after)?;
-    for item in due {
-        if item.pending.arrive.is_some() {
-            arrive(round, draft, &item.actor_id, item.until, &item.pending)?;
+    let due_actions = spookery_kernel::api::map::take_due_actions(draft, round.world_time_after)?;
+    for due_action in due_actions {
+        if due_action.pending.arrive.is_some() {
+            arrive(
+                round,
+                draft,
+                &due_action.actor_id,
+                due_action.until,
+                &due_action.pending,
+            )?;
         } else {
-            resume(round, draft, &item.actor_id, &item.pending)?;
+            resume(round, draft, &due_action.actor_id, &due_action.pending)?;
         }
     }
     Ok(())
@@ -38,7 +44,7 @@ fn arrive(
     draft: &mut Draft,
     actor_id: &str,
     until: u64,
-    pending: &Pending,
+    pending: &PendingAction,
 ) -> Result<(), Reason> {
     let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     let from = actor.place().to_string();
@@ -70,7 +76,7 @@ fn resume(
     round: &mut Round,
     draft: &mut Draft,
     actor_id: &str,
-    pending: &Pending,
+    pending: &PendingAction,
 ) -> Result<(), Reason> {
     let kind = draft
         .now()
@@ -134,7 +140,12 @@ fn resume(
     Ok(())
 }
 
-fn arrival_intent(round: &Round, actor_id: &str, kind: ActorKind, pending: &Pending) -> Intent {
+fn arrival_intent(
+    round: &Round,
+    actor_id: &str,
+    kind: ActorKind,
+    pending: &PendingAction,
+) -> Intent {
     Intent {
         id: format!("arrival:{actor_id}"),
         tick_index: round.tick_index,

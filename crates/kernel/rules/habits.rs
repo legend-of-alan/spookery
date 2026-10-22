@@ -36,14 +36,14 @@ pub(crate) fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
     if actor.is_busy(now.world_time) || player_present_at(now, actor.place()) {
         return false;
     }
-    let tick = actor.act();
-    if tick.last_act_tick == now.tick_index {
+    let counters = actor.act();
+    if counters.last_act_tick == now.tick_index {
         return false;
     }
     if now.presence.humans == 0 {
-        u64::from(tick.idle_acts_today) < canon.budget.idle_acts_per_world_day
+        u64::from(counters.idle_acts_today) < canon.budget.idle_acts_per_world_day
     } else {
-        u64::from(tick.live_acts_this_hour) < canon.budget.live_acts_per_world_hour
+        u64::from(counters.live_acts_this_hour) < canon.budget.live_acts_per_world_hour
     }
 }
 

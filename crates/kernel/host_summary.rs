@@ -9,7 +9,7 @@ use crate::store::codec::emit_effect_payload;
 use crate::world::World;
 
 pub fn host_summary(world: &World) -> Result<String, Reason> {
-    let entries = journal::load_journal(world.root()).map_err(|fault| {
+    let entries = journal::read_verified(world.root()).map_err(|fault| {
         if fault.detail.contains("ILLEGAL_CLASS") {
             Reason::IllegalClass
         } else {

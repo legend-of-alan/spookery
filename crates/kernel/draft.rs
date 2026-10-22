@@ -5,7 +5,7 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::canon::world_settings::Budget;
+use crate::canon::tick_settings::Budget;
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::key::{ChangeRecord, StateKey, StateValue};
@@ -16,7 +16,7 @@ pub struct Draft {
     budget: Budget,
     pub(crate) state: Now,
     keys: BTreeSet<StateKey>,
-    pending: Vec<Noted>,
+    pending: Vec<PriorValue>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
@@ -52,7 +52,7 @@ impl Draft {
         &mut self.state
     }
 
-    pub fn pin_loop(&mut self, tick_index: u64, world_time: u64, last_tick_at: &str) {
+    pub fn set_tick_clock(&mut self, tick_index: u64, world_time: u64, last_tick_at: &str) {
         self.state.tick_index = tick_index;
         self.state.world_time = world_time;
         self.state.last_tick_at = last_tick_at.to_string();
@@ -103,16 +103,16 @@ impl Draft {
     pub fn stage_npc_counters(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
         let tick_index = self.state.tick_index;
         let (current_idle, current_live, current_last) = {
-            let tick = self
+            let counters = self
                 .state
                 .actors
                 .get(actor_id)
                 .ok_or(Reason::UnknownKey)?
                 .act();
             (
-                tick.idle_acts_today,
-                tick.live_acts_this_hour,
-                tick.last_act_tick,
+                counters.idle_acts_today,
+                counters.live_acts_this_hour,
+                counters.last_act_tick,
             )
         };
         let new_idle = current_idle.saturating_add(1);
@@ -128,17 +128,17 @@ impl Draft {
             keys.push(StateKey::TickLiveActs(actor_id.to_string()));
         }
         self.track_many(&keys)?;
-        let tick = self
+        let counters = self
             .state
             .actors
             .get_mut(actor_id)
             .ok_or(Reason::UnknownKey)?
             .act_mut();
-        tick.last_act_tick = tick_index;
+        counters.last_act_tick = tick_index;
         if humans == 0 {
-            tick.idle_acts_today = new_idle;
+            counters.idle_acts_today = new_idle;
         } else {
-            tick.live_acts_this_hour = new_live;
+            counters.live_acts_this_hour = new_live;
         }
         Ok(())
     }
@@ -149,7 +149,7 @@ impl Draft {
 
     /// Record `before` as this key's value from before the write that just landed.
     pub(crate) fn track_before(&mut self, key: StateKey, before: StateValue) -> Result<(), Reason> {
-        self.note(key, Some(before))
+        self.record_prior(key, Some(before))
     }
 
     pub(crate) fn track_many(&mut self, keys: &[StateKey]) -> Result<(), Reason> {
@@ -157,9 +157,9 @@ impl Draft {
         let mut added = Vec::new();
         for key in keys {
             self.admit(key, &mut added, max)?;
-            if !self.pending.iter().any(|noted| &noted.key == key) {
+            if !self.pending.iter().any(|prior| &prior.key == key) {
                 let before = self.read_value(key);
-                self.pending.push(Noted {
+                self.pending.push(PriorValue {
                     key: key.clone(),
                     before,
                 });
@@ -168,13 +168,13 @@ impl Draft {
         Ok(())
     }
 
-    fn note(&mut self, key: StateKey, before: Option<StateValue>) -> Result<(), Reason> {
+    fn record_prior(&mut self, key: StateKey, before: Option<StateValue>) -> Result<(), Reason> {
         let max = self.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         self.admit(&key, &mut added, max)?;
-        if !self.pending.iter().any(|noted| noted.key == key) {
+        if !self.pending.iter().any(|prior| prior.key == key) {
             let before = before.unwrap_or_else(|| self.read_value(&key));
-            self.pending.push(Noted { key, before });
+            self.pending.push(PriorValue { key, before });
         }
         Ok(())
     }
@@ -191,7 +191,7 @@ impl Draft {
         if self.keys.len() >= max {
             for key in added {
                 self.keys.remove(key);
-                self.pending.retain(|noted| &noted.key != key);
+                self.pending.retain(|prior| &prior.key != key);
             }
             return Err(Reason::Budget);
         }
@@ -204,14 +204,14 @@ impl Draft {
     pub fn take_changes(&mut self) -> Vec<ChangeRecord> {
         let pending = std::mem::take(&mut self.pending);
         let mut records = Vec::new();
-        for noted in pending {
-            let after = self.read_value(&noted.key);
-            if after == noted.before {
+        for prior in pending {
+            let after = self.read_value(&prior.key);
+            if after == prior.before {
                 continue;
             }
             records.push(ChangeRecord {
-                key: noted.key,
-                before: noted.before,
+                key: prior.key,
+                before: prior.before,
                 after,
             });
         }
@@ -376,7 +376,7 @@ impl Draft {
 }
 
 #[derive(Clone)]
-struct Noted {
+struct PriorValue {
     key: StateKey,
     before: StateValue,
 }
@@ -384,7 +384,7 @@ struct Noted {
 pub struct DraftPoint {
     state: Now,
     keys: BTreeSet<StateKey>,
-    pending: Vec<Noted>,
+    pending: Vec<PriorValue>,
     memories: Vec<MemoryLine>,
     memory_writes: u32,
 }

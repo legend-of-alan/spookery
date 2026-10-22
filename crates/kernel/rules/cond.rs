@@ -30,7 +30,7 @@ fn reason_of(cond: &Cond) -> Reason {
 fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Reason> {
     match cond {
         Cond::HasItem { who, id, count } => {
-            let actor = expr::actor_of(now, ctx, who)?;
+            let actor = expr::resolve_who_id(now, ctx, who)?;
             let id = expr::resolve_item_id(ctx.intent, id)?;
             let held = now
                 .actors
@@ -40,7 +40,7 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
             Ok(held >= *count)
         }
         Cond::Wielding { who, id } => {
-            let actor = expr::actor_of(now, ctx, who)?;
+            let actor = expr::resolve_who_id(now, ctx, who)?;
             let id = expr::resolve_item_id(ctx.intent, id)?;
             Ok(now
                 .actors
@@ -53,7 +53,7 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
             op,
             value,
         } => {
-            let actor = expr::actor_of(now, ctx, who)?;
+            let actor = expr::resolve_who_id(now, ctx, who)?;
             let def = canon.meters.get(key).ok_or(Reason::UnknownKey)?;
             let live = now
                 .actors
@@ -71,7 +71,7 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
                 let on = now.flags.iter().any(|flag| flag == key);
                 return Ok(on == *is);
             }
-            let actor = expr::actor_of(now, ctx, who)?;
+            let actor = expr::resolve_who_id(now, ctx, who)?;
             let on = now
                 .actors
                 .get(&actor)
@@ -79,14 +79,14 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
             Ok(on == *is)
         }
         Cond::At { who, place } => {
-            let actor = expr::actor_of(now, ctx, who)?;
+            let actor = expr::resolve_who_id(now, ctx, who)?;
             Ok(now
                 .actors
                 .get(&actor)
                 .is_some_and(|actor| actor.place() == place))
         }
         Cond::Knows { who, fact } => {
-            let actor = expr::actor_of(now, ctx, who)?;
+            let actor = expr::resolve_who_id(now, ctx, who)?;
             Ok(now
                 .actors
                 .get(&actor)

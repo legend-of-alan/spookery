@@ -9,7 +9,7 @@ use crate::rule::{EffectTemplate, LocationTo, Rule};
 use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::expr::Ctx;
-use crate::rules::gate::{self, Miss};
+use crate::rules::gate::{self, GateRefusal};
 
 pub(crate) fn named<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {
     canon
@@ -45,7 +45,7 @@ pub(crate) fn token(rule: &Rule, intent: &Intent) -> Option<String> {
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
-pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Miss> {
+pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), GateRefusal> {
     let Ok(rule) = gate::resolve(canon, now, intent) else {
         return Ok(());
     };
@@ -69,13 +69,13 @@ pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Mis
         } else {
             exit.locked_text.clone()
         };
-        return Err(Miss::Text {
+        return Err(GateRefusal::Text {
             code: Reason::NoExit,
             text,
         });
     }
-    if let Err(gap) = cost::can_pay(canon, now, intent, &exit.cost) {
-        return Err(Miss::CantAfford(gap.what));
+    if let Err(shortfall) = cost::can_pay(canon, now, intent, &exit.cost) {
+        return Err(GateRefusal::CantAfford(shortfall.missing));
     }
     Ok(())
 }

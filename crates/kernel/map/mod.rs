@@ -9,7 +9,7 @@ use crate::error::Reason;
 use crate::firewall::allows;
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::key::StateKey;
-use crate::model::{Now, Pending};
+use crate::model::{Now, PendingAction};
 use crate::rule::{Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
@@ -69,15 +69,15 @@ pub(crate) fn used_exit<'a>(
 }
 
 /// One journey whose minute has been reached. The actor is no longer busy.
-pub struct Due {
+pub struct DueAction {
     pub actor_id: String,
     pub until: u64,
-    pub pending: Pending,
+    pub pending: PendingAction,
 }
 
 /// Clear every journey that finishes at or before `end`, earliest first.
-pub fn take_due(draft: &mut Draft, end: u64) -> Result<Vec<Due>, Reason> {
-    let mut due: Vec<(u64, String)> = draft
+pub fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, Reason> {
+    let mut due_keys: Vec<(u64, String)> = draft
         .now()
         .actors
         .iter()
@@ -90,9 +90,9 @@ pub fn take_due(draft: &mut Draft, end: u64) -> Result<Vec<Due>, Reason> {
             Some((until, id.clone()))
         })
         .collect();
-    due.sort();
-    let mut out = Vec::new();
-    for (until, actor_id) in due {
+    due_keys.sort();
+    let mut due_actions = Vec::new();
+    for (until, actor_id) in due_keys {
         draft.track(StateKey::ActorBusy(actor_id.clone()))?;
         let pending = {
             let actor = draft
@@ -107,13 +107,13 @@ pub fn take_due(draft: &mut Draft, end: u64) -> Result<Vec<Due>, Reason> {
         let Some(pending) = pending else {
             continue;
         };
-        out.push(Due {
+        due_actions.push(DueAction {
             actor_id,
             until,
             pending,
         });
     }
-    Ok(out)
+    Ok(due_actions)
 }
 
 /// Pay the exit, then remember the finish minute. The move itself waits.
@@ -131,7 +131,7 @@ pub fn begin(
         cost::pay(draft, intent, cost, dice)?;
     }
     let until = world_time_before.saturating_add(minutes);
-    let pending = Pending {
+    let pending = PendingAction {
         rule: rule.id.clone(),
         verb: intent.move_name.clone(),
         target: match &intent.target {

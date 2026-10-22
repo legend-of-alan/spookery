@@ -218,7 +218,7 @@ fn stderr_names_the_record_and_illegal_class(world: &mut World) {
 #[then(expr = "each journal record parses back to the bytes that were written")]
 fn each_journal_record_parses_back(world: &mut World) {
     let pack = table::pack(world);
-    let entries = spookery_kernel::api::journal::load_journal(pack).unwrap_or_else(|fault| {
+    let entries = spookery_kernel::api::journal::read_verified(pack).unwrap_or_else(|fault| {
         panic!("{}: {}", fault.file, fault.detail);
     });
     let ticks = entries

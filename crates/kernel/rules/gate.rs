@@ -11,9 +11,9 @@ use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
 use crate::rules::perceive::perceive_at;
 
-/// A gate refusal. `Reason` stays fieldless. A cost gap keeps the missing name.
+/// A gate refusal. `Reason` stays fieldless. A cost shortfall keeps the missing name.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Miss {
+pub enum GateRefusal {
     Code(Reason),
     CantAfford(String),
     /// A refusal whose player text is not the token. `code` is still the token.
@@ -23,11 +23,11 @@ pub enum Miss {
     },
 }
 
-impl Miss {
+impl GateRefusal {
     pub fn reason(&self) -> Reason {
         match self {
-            Miss::Code(reason) | Miss::Text { code: reason, .. } => *reason,
-            Miss::CantAfford(_) => Reason::CantAfford,
+            GateRefusal::Code(reason) | GateRefusal::Text { code: reason, .. } => *reason,
+            GateRefusal::CantAfford(_) => Reason::CantAfford,
         }
     }
 
@@ -35,28 +35,30 @@ impl Miss {
         self.reason().token()
     }
 
-    /// Journal word. A gap is `CANT_AFFORD` plus the meter or item id.
+    /// Journal word. A shortfall is `CANT_AFFORD` plus the meter or item id.
     pub fn named(&self) -> String {
         match self {
-            Miss::CantAfford(what) => format!("CANT_AFFORD {what}"),
-            Miss::Code(reason) | Miss::Text { code: reason, .. } => {
+            GateRefusal::CantAfford(missing) => format!("CANT_AFFORD {missing}"),
+            GateRefusal::Code(reason) | GateRefusal::Text { code: reason, .. } => {
                 reason.jsonl_reason().to_string()
             }
         }
     }
 
-    /// The gap, or the sentence a locked exit shows.
+    /// The shortfall, or the sentence a locked exit shows.
     pub fn missing(&self) -> Option<&str> {
         match self {
-            Miss::CantAfford(what) | Miss::Text { text: what, .. } => Some(what.as_str()),
-            Miss::Code(_) => None,
+            GateRefusal::CantAfford(what) | GateRefusal::Text { text: what, .. } => {
+                Some(what.as_str())
+            }
+            GateRefusal::Code(_) => None,
         }
     }
 }
 
-impl From<Reason> for Miss {
+impl From<Reason> for GateRefusal {
     fn from(reason: Reason) -> Self {
-        Miss::Code(reason)
+        GateRefusal::Code(reason)
     }
 }
 
@@ -131,7 +133,7 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 }
 
 /// Gate every intent. A player-sourced habit skips its `if`. Cost is checked for every rule.
-pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, Miss> {
+pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, GateRefusal> {
     let rule = resolve(canon, now, intent)?;
     if let Some(actor) = now.actors.get(&intent.actor_id) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
@@ -166,8 +168,8 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
         cond::holds(canon, now, &Ctx { intent }, &rule.if_)?;
     }
     if let Some(cost) = &rule.cost {
-        if let Err(gap) = cost::can_pay(canon, now, intent, cost) {
-            return Err(Miss::CantAfford(gap.what));
+        if let Err(shortfall) = cost::can_pay(canon, now, intent, cost) {
+            return Err(GateRefusal::CantAfford(shortfall.missing));
         }
     }
     Ok(rule)

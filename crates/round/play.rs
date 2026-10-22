@@ -9,7 +9,7 @@ use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::lock::lock_world;
 use spookery_kernel::api::model::Presence;
 use spookery_kernel::api::rules::MoveReport;
-use spookery_kernel::api::visibility::{Seen, Told};
+use spookery_kernel::api::visibility::{RecipientLine, ViewerChanges};
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 
@@ -33,8 +33,8 @@ pub struct RoundOutput {
     pub reports: Vec<MoveReport>,
     pub dice: Vec<String>,
     pub summary: Vec<String>,
-    pub lines: Vec<Told>,
-    pub seen: Vec<Seen>,
+    pub lines: Vec<RecipientLine>,
+    pub seen: Vec<ViewerChanges>,
     pub effects: Vec<Effect>,
     /// Set when this round wrote the journal.
     pub outcome: Option<CommitOutcome>,

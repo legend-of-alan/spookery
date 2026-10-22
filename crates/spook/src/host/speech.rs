@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value};
 use spookery_kernel::api::model::ActorLive;
 use spookery_kernel::api::speech::Heard;
-use spookery_kernel::api::store::talk_log::{
+use spookery_kernel::api::store::tape::{
     append_record, read_session, read_tail, record_line, TapeRecord,
 };
 use spookery_kernel::api::world::World;
@@ -104,7 +104,7 @@ pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Resul
 }
 
 pub fn last_tape_seq(root: &std::path::Path) -> Result<u64, Reason> {
-    spookery_kernel::api::store::talk_log::session_end_seq(root)
+    spookery_kernel::api::store::tape::session_end_seq(root)
 }
 
 /// Stored records with `seq` greater than `since`, in file order, inside the tape window.

@@ -367,7 +367,10 @@ fn handle(
     Ok(())
 }
 
-fn narrate_for(lines: &[spookery_kernel::api::visibility::Told], viewer: &str) -> Vec<String> {
+fn narrate_for(
+    lines: &[spookery_kernel::api::visibility::RecipientLine],
+    viewer: &str,
+) -> Vec<String> {
     let mut out = Vec::new();
     for line in lines {
         if line.to == viewer && !out.contains(&line.text) {
@@ -612,11 +615,11 @@ fn on_mechanical(
                 print_host(world, &outputs);
             }
         }
-        Err(miss) => send_player(
+        Err(refusal) => send_player(
             world,
             seats,
             conn,
-            frames::player_refused(miss.token(), miss.missing()).into_bytes(),
+            frames::player_refused(refusal.token(), refusal.missing()).into_bytes(),
         )?,
     }
     Ok(PlayerReply::Done)

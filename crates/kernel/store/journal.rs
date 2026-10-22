@@ -97,7 +97,7 @@ pub fn read_entries(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
 }
 
 /// Read the bundles and check that each record's chain matches the one before it.
-pub fn load_journal(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
+pub fn read_verified(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
     let entries = read_entries(pack)?;
     check_chain(pack, &entries)?;
     Ok(entries)
