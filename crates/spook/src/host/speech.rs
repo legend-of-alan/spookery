@@ -12,7 +12,7 @@ use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 
 use super::frames;
-use super::input::split_token;
+use super::input::{split_token, verb_line};
 
 #[derive(Debug)]
 pub struct Spoken {
@@ -160,21 +160,7 @@ fn parse_line(
     seated: &str,
     actors: &BTreeMap<String, ActorLive>,
 ) -> Result<Speech, Reason> {
-    if line.is_empty() {
-        return Err(Reason::Schema);
-    }
-    let (first, rest) = split_token(line);
-    let (verb, rest) = if let Some(id) = first.strip_prefix("player:") {
-        if id.is_empty() || id != seated {
-            return Err(Reason::Schema);
-        }
-        if rest.is_empty() {
-            return Err(Reason::Schema);
-        }
-        split_token(rest)
-    } else {
-        (first, rest)
-    };
+    let (verb, rest) = verb_line(line, seated)?;
     if verb.is_empty() {
         return Err(Reason::Schema);
     }

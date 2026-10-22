@@ -28,15 +28,15 @@ pub enum SocketEnd {
 const MAX_PLAYER_SEATS: usize = 3;
 
 pub fn seat_player(world: &mut World, actor_id: &str) -> Result<String, Reason> {
-    if !is_live_pc(world, actor_id) {
-        return Err(Reason::Schema);
-    }
     let mut ids = world.now().presence.actors_present.clone();
     if ids.len() >= MAX_PLAYER_SEATS {
         return Err(Reason::SessionFull);
     }
     if ids.iter().any(|id| id == actor_id) {
         return Err(Reason::SeatTaken);
+    }
+    if !is_live_pc(world, actor_id) {
+        return Err(Reason::Schema);
     }
     ids.push(actor_id.to_string());
     commit_held(world, &ids)?;
@@ -161,17 +161,6 @@ impl PlayerSeats {
 
     fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-
-    fn is_full(&self) -> bool {
-        self.len() == MAX_PLAYER_SEATS
-    }
-
-    fn holds(&self, actor_id: &str) -> bool {
-        self.slots
-            .iter()
-            .flatten()
-            .any(|player| player.actor_id == actor_id)
     }
 
     fn actor_ids(&self) -> Vec<String> {
@@ -458,21 +447,7 @@ fn on_hello(
         return Ok(HelloReply::Refused(refused_line(Reason::NotInSpec)));
     }
     if let Some(id) = player_hello(line) {
-        if seats.players.is_full() {
-            return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
-        }
-        if seats.players.holds(id) {
-            return Ok(HelloReply::Refused(refused_line(Reason::SeatTaken)));
-        }
-        if !is_live_pc(world, id) {
-            return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
-        }
-        let mut ids = seats.players.actor_ids();
-        ids.push(id.to_string());
-        if let Err(code) = commit_held(world, &ids) {
-            return Ok(HelloReply::Refused(refused_line(code)));
-        }
-        let session_id = match world.mint_session() {
+        let session_id = match seat_player(world, id) {
             Ok(session_id) => session_id,
             Err(code) => return Ok(HelloReply::Refused(refused_line(code))),
         };

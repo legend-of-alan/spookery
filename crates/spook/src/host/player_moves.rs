@@ -144,31 +144,14 @@ fn queue_verb(
             Target::Place(place.to_string())
         }
     };
-    let intent = player_intent(world, actor_id, verb, target.clone())?;
+    let intent = player_intent(world, actor_id, verb, target)?;
     gate(world.canon(), world.now(), &intent)?;
-    let token = match &target {
-        Target::Empty => "",
-        Target::Actor(id) | Target::Place(id) => id.as_str(),
-        Target::Clock(_) => return Err(Reason::Schema.into()),
-    };
     let note = QueuedNote {
-        id: player_line_id(world, actor_id, &canonical_line(verb, token))?,
+        id: intent.id.clone(),
         actor_id: actor_id.to_string(),
         move_name: verb.to_string(),
     };
-    push_intent(
-        world,
-        IntentPush {
-            id: note.id.clone(),
-            actor_id,
-            actor_kind: ActorKind::Player,
-            move_name: verb,
-            target,
-            args: IntentArgs::default(),
-            rationale_code: String::new(),
-            tick_index: None,
-        },
-    )?;
+    world.queue(intent);
     Ok(note)
 }
 
@@ -203,10 +186,23 @@ fn player_intent(
         Target::Actor(id) | Target::Place(id) => id.as_str(),
         Target::Clock(_) => return Err(Reason::Schema),
     };
-    let id = player_line_id(world, actor_id, &input::canonical_line(verb, token))?;
+    let tick = world
+        .now()
+        .tick_index
+        .checked_add(1)
+        .ok_or(Reason::Schema)?;
+    let id = player_intent_id(
+        &world.now().shard_id,
+        tick,
+        actor_id,
+        &canonical_line(verb, token),
+    );
+    if world.queued_intents().iter().any(|intent| intent.id == id) {
+        return Err(Reason::Schema);
+    }
     Ok(Intent {
         id,
-        tick_index: world.now().tick_index,
+        tick_index: tick,
         actor_id: actor_id.to_string(),
         actor_kind: ActorKind::Player,
         source: Source::Player,
@@ -215,19 +211,6 @@ fn player_intent(
         args: IntentArgs::default(),
         rationale_code: String::new(),
     })
-}
-
-fn player_line_id(world: &World, actor_id: &str, canonical: &str) -> Result<String, Reason> {
-    let tick = world
-        .now()
-        .tick_index
-        .checked_add(1)
-        .ok_or(Reason::Schema)?;
-    let id = player_intent_id(&world.now().shard_id, tick, actor_id, canonical);
-    if world.queued_intents().iter().any(|intent| intent.id == id) {
-        return Err(Reason::Schema);
-    }
-    Ok(id)
 }
 
 impl QueuedNote {
