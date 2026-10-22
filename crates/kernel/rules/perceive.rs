@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::firewall::{allows, text_leaks_fact};
+use crate::firewall::allows;
 use crate::intent::ViewerId;
 use crate::map::ExitView;
 use crate::meter;
@@ -139,11 +139,6 @@ fn perceive_at_budget(
             .iter()
             .any(|fact| !allows(canon, now, &viewer, fact))
         {
-            continue;
-        }
-        // A place note stays in the save. Who can read it changes as actors move,
-        // so the drop is here and not in `apply`.
-        if text_leaks_fact(canon, now, &viewer, &message.text) {
             continue;
         }
         let mut copy = message.clone();

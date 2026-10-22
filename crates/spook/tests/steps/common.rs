@@ -107,17 +107,6 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
-        "hidden fact in a place body" => {
-            let path = pack.join("world/places/docks_shop.md");
-            let mut text = fs::read_to_string(&path).unwrap();
-            text.push_str("The lamp-oil ledger is short.\n");
-            fs::write(path, text).unwrap();
-        }
-        "hidden fact in a message" => replace_file(
-            &pack.join("cast/mira.md"),
-            "text: Back at dusk. Oil on the shelf.\n",
-            "text: The lamp-oil ledger is short.\n",
-        ),
         "exit to an unknown place" => replace_file(
             &pack.join("world/places/docks_shop.md"),
             "  - to: docks_street\n",

@@ -355,16 +355,6 @@ fn apply_memory(
             return Err(Reason::IllegalKnowledge);
         }
     }
-    if let Some(text) = &text {
-        let leaked = draft.canon().facts.iter().any(|(id, fact)| {
-            !fact.text.is_empty()
-                && text.contains(&fact.text)
-                && !allows(draft.canon(), draft.now(), &viewer, id)
-        });
-        if leaked {
-            return Err(Reason::IllegalKnowledge);
-        }
-    }
     draft.bump_memory()?;
     let mut fact_ids = fact_ids;
     fact_ids.sort();

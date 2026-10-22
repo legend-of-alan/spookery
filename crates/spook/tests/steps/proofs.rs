@@ -830,7 +830,7 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
-fn strip_bodies_and_hidden_string_lint() {
+fn strip_bodies() {
     let pack = support::temp_pack("strip");
     let mut files = Vec::new();
     markdown_files(&pack.join("cast"), &mut files);
@@ -860,40 +860,7 @@ fn strip_bodies_and_hidden_string_lint() {
         spookery_kernel::api::perceive(&open(&pack), "npc:aldric").unwrap()
     );
     assert!(!perceive.contains(LEDGER));
-
-    let fixture = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    assert!(spookery_kernel::api::lint::lint(&fixture)
-        .unwrap()
-        .is_empty());
-    let owner = support::temp_pack("lint-owner");
-    let mut body = fs::read_to_string(owner.join("cast/mira.md")).unwrap();
-    body.push_str(LEDGER);
-    body.push('\n');
-    fs::write(owner.join("cast/mira.md"), body).unwrap();
-    let hits = spookery_kernel::api::lint::lint(&owner).unwrap();
-    assert!(hits
-        .iter()
-        .any(|hit| hit.path == "cast/mira.md" && hit.text == LEDGER));
-    let place = support::temp_pack("lint-place");
-    let mut body = fs::read_to_string(place.join("world/places/docks_shop.md")).unwrap();
-    body.push_str(LEDGER);
-    body.push('\n');
-    fs::write(place.join("world/places/docks_shop.md"), body).unwrap();
-    let hits = spookery_kernel::api::lint::lint(&place).unwrap();
-    assert!(hits
-        .iter()
-        .any(|hit| hit.path == "world/places/docks_shop.md" && hit.text == LEDGER));
-    let folded = support::temp_pack("lint-case");
-    let mut body = fs::read_to_string(folded.join("cast/mira.md")).unwrap();
-    body.push_str("the lamp-oil ledger is short.\n");
-    fs::write(folded.join("cast/mira.md"), body).unwrap();
-    assert!(spookery_kernel::api::lint::lint(&folded)
-        .unwrap()
-        .is_empty());
     let _ = fs::remove_dir_all(&pack);
-    let _ = fs::remove_dir_all(&owner);
-    let _ = fs::remove_dir_all(&place);
-    let _ = fs::remove_dir_all(&folded);
 }
 
 fn player_waits(tick: &Value) -> Vec<String> {
@@ -1431,9 +1398,9 @@ fn an_npc_perceive_is_called(_world: &mut World) {
     tool_scope();
 }
 
-#[when(expr = "prose is stripped and a hidden sentence is repeated")]
+#[when(expr = "prose is stripped")]
 fn prose_is_stripped(_world: &mut World) {
-    strip_bodies_and_hidden_string_lint();
+    strip_bodies();
 }
 
 #[when(expr = "a queued wait meets a wake and the seat drops")]

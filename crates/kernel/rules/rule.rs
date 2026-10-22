@@ -341,13 +341,6 @@ impl EffectTemplate {
             _ => None,
         }
     }
-
-    pub(crate) fn note_text(&self) -> Option<&str> {
-        match self {
-            EffectTemplate::Note { text, .. } | EffectTemplate::Narrate { text, .. } => Some(text),
-            _ => None,
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

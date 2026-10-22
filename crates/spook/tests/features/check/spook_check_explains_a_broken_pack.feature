@@ -29,8 +29,6 @@ Feature: spook check explains a broken pack
       | old format tag                | rules/verbs.yaml             | SCHEMA              | no version          |
       | missing meters                | rules/meters.yaml            | NOT_IN_SPEC         | missing             |
       | pack_rev mismatch             | state/save.yaml              | PACK_REV_MISMATCH   | pack_rev            |
-      | hidden fact in a place body   | world/places/docks_shop.md   | HIDDEN_FACT_IN_BODY | hidden fact         |
-      | hidden fact in a message      | cast/mira.md                 | HIDDEN_FACT_IN_TEXT | hidden fact         |
       | exit to an unknown place      | world/places/docks_shop.md   | SCHEMA              | not a place         |
       | duplicate exit                | world/places/docks_shop.md   | SCHEMA              | listed twice        |
 

@@ -1,7 +1,6 @@
-//! One problem a loader or the hidden-fact lint can show.
+//! One problem a loader or pack check can show.
 //!
-//! `code` is a [`Reason`] token, `HIDDEN_FACT_IN_BODY` for a Markdown body,
-//! or `HIDDEN_FACT_IN_TEXT` for a message template.
+//! `code` is a [`Reason`] token, `TRIGGER_LEAK`, or `WARNING`.
 //! The struct is plain data so a later JSON printer can serialize it as it stands.
 
 use serde::Serialize;

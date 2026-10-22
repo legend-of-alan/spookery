@@ -221,41 +221,21 @@ pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>, P
             _ => {}
         }
     }
-    let hidden = hidden_lines(canon);
     let mut kinds = BTreeMap::new();
     let mut cast = BTreeMap::new();
     for (id, member) in &canon.cast {
         kinds.insert(id.clone(), member.kind);
-        if let Some(body) = clip_prose(&member.body, &hidden) {
-            cast.insert(id.clone(), body);
-        }
+        cast.insert(id.clone(), clip_prose(&member.body));
     }
     let mut places = BTreeMap::new();
     for (id, place) in &canon.places {
-        if let Some(body) = clip_prose(&place.body, &hidden) {
-            places.insert(id.clone(), body);
-        }
+        places.insert(id.clone(), clip_prose(&place.body));
     }
     (menu, kinds, Prose { places, cast })
 }
 
-fn hidden_lines(canon: &Canon) -> Vec<String> {
-    let mut lines: Vec<String> = canon
-        .facts
-        .values()
-        .filter(|fact| fact.hidden && !fact.text.is_empty())
-        .map(|fact| fact.text.clone())
-        .collect();
-    lines.sort();
-    lines.dedup();
-    lines
-}
-
-fn clip_prose(body: &str, hidden: &[String]) -> Option<String> {
-    if hidden.iter().any(|text| body.contains(text.as_str())) {
-        return None;
-    }
-    Some(body.chars().take(PROSE_BUDGET).collect())
+fn clip_prose(body: &str) -> String {
+    body.chars().take(PROSE_BUDGET).collect()
 }
 
 pub fn push_handled(buffer: &mut Vec<HandledSay>, say: HandledSay) {
@@ -963,20 +943,6 @@ mod tests {
             Ok(view)
         });
         assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
-    }
-
-    #[test]
-    fn a_body_that_quotes_a_hidden_fact_stays_out() {
-        let mut canon = docks();
-        let secret = canon.facts["fact_ledger_short"].text.clone();
-        assert!(canon.facts["fact_ledger_short"].hidden);
-        canon.cast.get_mut("mira").unwrap().body = format!("Mira wrote: {secret}");
-        canon.places.get_mut("docks_shop").unwrap().body = format!("The shelf says: {secret}");
-        let prompt = prompt_for(&canon, |viewer| {
-            Ok(shop(viewer, &["aldric", "mira", "pc_rowan"]))
-        });
-        assert!(!prompt.contains(&secret), "{prompt}");
-        assert!(prompt.contains("Aldric sweeps the shop"), "{prompt}");
     }
 
     #[test]

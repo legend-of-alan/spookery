@@ -292,8 +292,6 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         }
     }
     if let Some(canon) = &canon {
-        diags.extend(crate::lint::body_leaks(root, canon));
-        diags.extend(crate::lint::message_text_leaks(root, canon));
         diags.extend(crate::map::unreachable(canon));
         diags.extend(crate::map::teleport_in_verbs(canon));
         diags.extend(crate::lint::trigger_cycles(canon));

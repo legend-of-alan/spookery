@@ -165,17 +165,6 @@ fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: Stri
     world.pack = Some(pack);
 }
 
-#[given(expr = "the docks pack where Mira's door note names {string}")]
-fn the_docks_pack_where_miras_door_note_names(world: &mut World, sentence: String) {
-    let pack = crate::support::temp_pack("named-note");
-    rewrite_mira(
-        &pack,
-        "          text: Back at dusk. Oil on the shelf.\n",
-        &format!("          text: Back at dusk. {sentence}\n"),
-    );
-    world.pack = Some(pack);
-}
-
 #[then(expr = "the player resume lists the door message")]
 fn the_player_resume_lists_the_door_message(world: &mut World) {
     let resume = read_player_resume(world, "pc_rowan");

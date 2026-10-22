@@ -5,7 +5,7 @@
 //!
 //! Internal
 //! - `canon`: the loaded pack.
-//! - `diagnostic`: one problem a loader or the hidden-fact lint can show.
+//! - `diagnostic`: one problem a loader or pack check can show.
 //! - `draft`: the staged save a round writes before commit.
 //! - `error`: failure tokens. JSONL lowers `BUDGET` at the log edge.
 //! - `firewall`: whether one viewer may see a fact.
@@ -13,7 +13,7 @@
 //! - `hash`: Blake2s, as raw bytes or as hex.
 //! - `host_summary`: the host digest, and the player digest built from the view.
 //! - `intent`: who is asking, and the action they asked the round to take.
-//! - `lint`: hidden fact text that leaked into a Markdown body.
+//! - `lint`: change-rule cycle and reach checks.
 //! - `map`: exits and the journeys that follow them.
 //! - `model`: the live save and the keys a commit watches.
 //! - `pause`: pause plot clocks while the table is empty.

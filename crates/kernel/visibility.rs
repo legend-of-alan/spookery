@@ -4,7 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
-use crate::firewall::{allows, text_leaks_fact};
+use crate::firewall::allows;
 use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::Now;
 
@@ -224,27 +224,18 @@ fn narrations(canon: &Canon, now: &Now, effects: &[Effect], viewer: Option<&str>
             lines.push(text.clone());
             continue;
         };
-        if to.iter().any(|name| name == id) && narrate_allowed(canon, now, id, fact_ids, text) {
+        if to.iter().any(|name| name == id) && narrate_allowed(canon, now, id, fact_ids) {
             lines.push(text.clone());
         }
     }
     lines
 }
 
-fn narrate_allowed(
-    canon: &Canon,
-    now: &Now,
-    viewer: &str,
-    fact_ids: &[String],
-    text: &str,
-) -> bool {
+fn narrate_allowed(canon: &Canon, now: &Now, viewer: &str, fact_ids: &[String]) -> bool {
     let Some(seat) = now.viewer_of(viewer) else {
         return false;
     };
-    if fact_ids.iter().any(|fact| !allows(canon, now, &seat, fact)) {
-        return false;
-    }
-    !text_leaks_fact(canon, now, &seat, text)
+    fact_ids.iter().all(|fact| allows(canon, now, &seat, fact))
 }
 
 fn can_see(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> bool {
@@ -308,12 +299,8 @@ fn message_visible(canon: &Canon, now: &Now, viewer: &str, id: &str) -> bool {
     let Some(seat) = now.viewer_of(viewer) else {
         return false;
     };
-    if message
+    message
         .fact_ids
         .iter()
-        .any(|fact| !allows(canon, now, &seat, fact))
-    {
-        return false;
-    }
-    !text_leaks_fact(canon, now, &seat, &message.text)
+        .all(|fact| allows(canon, now, &seat, fact))
 }

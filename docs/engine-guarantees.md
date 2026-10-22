@@ -70,8 +70,7 @@ Tested in `features/replay/the_journal_verifies.feature`,
 ## Visibility
 
 A player sees a hidden fact only when that character knows it. Stripping prose
-does not reveal a hidden sentence. Check flags a hidden sentence copied into a
-place body or a note. Saying a hidden fact does not
+does not reveal a hidden sentence. Saying a hidden fact does not
 teach it. Roll faces
 go to the GM. Expression dice do too. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
 the player no roll line. Host status shows the host-only trace. The player's
@@ -79,7 +78,6 @@ resume leaves that trace out. The resume digest shows only notes the view shows.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/firewall/a_hidden_fact_stays_hidden.feature`,
-`features/check/spook_check_explains_a_broken_pack.feature`,
 `features/checks/the_player_sees_success_and_the_gm_sees_faces.feature`,
 `features/checks/an_npc_rolls_its_own_check.feature`,
 `features/digest/status_is_the_host_view.feature`, and
@@ -177,8 +175,8 @@ first one makes ineligible. `NO_EXIT` is a missing exit. `BUSY` is a move while
 busy.
 
 Check's codes for a broken pack are `SCHEMA`, `NOT_IN_SPEC`,
-`PACK_REV_MISMATCH`, `HIDDEN_FACT_IN_BODY`, `HIDDEN_FACT_IN_TEXT`,
-`TRIGGER_LEAK`, and `WARNING`. A warning alone does not fail the check.
+`PACK_REV_MISMATCH`, `TRIGGER_LEAK`, and `WARNING`. A warning alone does not
+fail the check.
 
 Tested in `features/rules/rules_live_with_their_owner.feature`,
 `features/items/items_are_real.feature`,

@@ -6,7 +6,6 @@ use crate::canon::{Canon, Exit};
 use crate::diagnostic::Diagnostic;
 use crate::draft::Draft;
 use crate::error::Reason;
-use crate::firewall::allows;
 use crate::intent::{Intent, IntentArgs, Source, Target};
 use crate::key::StateKey;
 use crate::model::{Now, PendingAction};
@@ -279,7 +278,7 @@ pub fn busy_line(now: &Now, actor_id: &str) -> Option<String> {
     Some(format!("on the {via} until {}", clock_face(until)))
 }
 
-/// Place prose with hidden fact text this actor cannot read removed.
+/// Place prose for this actor's current place.
 pub fn place_prose(canon: &Canon, now: &Now, actor_id: &str) -> String {
     let Some(actor) = now.actors.get(actor_id) else {
         return String::new();
@@ -287,19 +286,9 @@ pub fn place_prose(canon: &Canon, now: &Now, actor_id: &str) -> String {
     let Some(place) = canon.places.get(actor.place()) else {
         return String::new();
     };
-    let Some(viewer) = now.viewer_of(actor_id) else {
-        return String::new();
-    };
-    let mut body = place.body.clone();
-    for (id, fact) in &canon.facts {
-        if fact.text.is_empty() || allows(canon, now, &viewer, id) {
-            continue;
-        }
-        if body.contains(fact.text.as_str()) {
-            body = body.replace(fact.text.as_str(), "");
-        }
-    }
-    body.lines()
+    place
+        .body
+        .lines()
         .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()

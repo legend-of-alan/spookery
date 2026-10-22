@@ -33,11 +33,3 @@ pub(crate) fn allows(canon: &Canon, now: &Now, viewer: &ViewerId, fact_id: &str)
             .get(&fact.owner_id)
             .is_some_and(|cast| cast.facts.iter().any(|id| id == fact_id))
 }
-
-pub(crate) fn text_leaks_fact(canon: &Canon, now: &Now, viewer: &ViewerId, text: &str) -> bool {
-    canon.facts.iter().any(|(id, fact)| {
-        !fact.text.is_empty()
-            && text.contains(fact.text.as_str())
-            && !allows(canon, now, viewer, id)
-    })
-}
