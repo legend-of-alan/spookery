@@ -139,19 +139,19 @@ impl IntentDraft {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ModelObject {
+pub struct ModelActions {
     pub says: Vec<OutgoingSay>,
     pub intents: Vec<IntentDraft>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ActionKind {
+pub enum SceneScope {
     Actor { actor: String },
     Place { place: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Kept {
+pub struct KeptActions {
     pub says: Vec<OutgoingSay>,
     pub intent: Option<IntentDraft>,
 }
@@ -171,7 +171,7 @@ pub enum Wake {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TurnView {
-    pub rule: ActionKind,
+    pub scope: SceneScope,
     pub player: Option<Value>,
     pub npcs: Vec<Value>,
     pub place_body: String,
@@ -186,14 +186,14 @@ pub struct Prose {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Prepared {
+pub enum PreparedTurn {
     NoModel { says: Vec<OutgoingSay> },
     Model(TurnView),
 }
 
 /// Lines and queue that ride with the views. The prompt function does not take a canon.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct PromptSide {
+pub struct PromptContext {
     pub buffer: Vec<HandledSay>,
     pub new_lines: Vec<HandledSay>,
     pub queue: Vec<QueueRow>,
@@ -267,7 +267,7 @@ pub fn push_handled(buffer: &mut Vec<HandledSay>, say: HandledSay) {
 }
 
 /// `None` means the JSON is not the action object. That is an empty action list.
-pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelObject> {
+pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelActions> {
     let value: Value = serde_json::from_str(text).ok()?;
     let obj = value.as_object()?;
     if says_only {
@@ -283,13 +283,13 @@ pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelObject> {
     } else {
         parse_intents(obj.get("intents")?)?
     };
-    Some(ModelObject { says, intents })
+    Some(ModelActions { says, intents })
 }
 
-pub fn keep(object: ModelObject, rule: &ActionKind, menu: &[MenuRow]) -> Kept {
+pub fn keep_actions(actions: ModelActions, scope: &SceneScope, menu: &[MenuRow]) -> KeptActions {
     let mut says = Vec::new();
-    for say in object.says {
-        if !accept_say(&say, rule) {
+    for say in actions.says {
+        if !accept_say(&say, scope) {
             continue;
         }
         if says.len() == 2 {
@@ -298,7 +298,7 @@ pub fn keep(object: ModelObject, rule: &ActionKind, menu: &[MenuRow]) -> Kept {
         says.push(say);
     }
     let mut intent = None;
-    for item in object.intents {
+    for item in actions.intents {
         if !accept_intent(&item, menu) {
             continue;
         }
@@ -307,7 +307,7 @@ pub fn keep(object: ModelObject, rule: &ActionKind, menu: &[MenuRow]) -> Kept {
         }
         intent = Some(item);
     }
-    Kept { says, intent }
+    KeptActions { says, intent }
 }
 
 pub fn prepare(
@@ -315,7 +315,7 @@ pub fn prepare(
     wake: &Wake,
     present: &[String],
     perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
-) -> Prepared {
+) -> PreparedTurn {
     let (_, kinds, prose) = from_canon(canon);
     prepare_with(&kinds, &prose, wake, present, perceive)
 }
@@ -326,7 +326,7 @@ pub fn prepare_with(
     wake: &Wake,
     present: &[String],
     perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
-) -> Prepared {
+) -> PreparedTurn {
     match wake {
         Wake::Say {
             from,
@@ -351,16 +351,16 @@ pub fn prepare_with(
                 return absent();
             }
             match kinds.get(actor) {
-                Some(CastKind::Npc) => Prepared::Model(build_view(
-                    ActionKind::Actor {
+                Some(CastKind::Npc) => PreparedTurn::Model(build_view(
+                    SceneScope::Actor {
                         actor: actor.to_string(),
                     },
                     None,
                     vec![strip_npc(&view)],
                     prose,
                 )),
-                Some(CastKind::PcTemplate) => Prepared::Model(build_view(
-                    ActionKind::Actor {
+                Some(CastKind::PcTemplate) => PreparedTurn::Model(build_view(
+                    SceneScope::Actor {
                         actor: actor.to_string(),
                     },
                     Some(strip_player(&view)),
@@ -379,7 +379,7 @@ pub fn prepare_with(
             let speaker = speaker_id(from);
             let player = match perceive(&format!("player:{speaker}")) {
                 Ok(view) => view,
-                Err(_) => return Prepared::NoModel { says: Vec::new() },
+                Err(_) => return PreparedTurn::NoModel { says: Vec::new() },
             };
             let speaker_place = place_of(&player);
             let filter = if address == "place" {
@@ -391,8 +391,8 @@ pub fn prepare_with(
                 speaker_place
             };
             let npcs = npc_views(&player, kinds, &filter, perceive);
-            Prepared::Model(build_view(
-                ActionKind::Place { place: filter },
+            PreparedTurn::Model(build_view(
+                SceneScope::Place { place: filter },
                 Some(strip_player(&player)),
                 npcs,
                 prose,
@@ -405,17 +405,17 @@ pub fn prepare_with(
                 .map(String::as_str)
                 .collect();
             if pcs.len() != 1 {
-                return Prepared::NoModel { says: Vec::new() };
+                return PreparedTurn::NoModel { says: Vec::new() };
             }
             let speaker = pcs[0];
             let player = match perceive(&format!("player:{speaker}")) {
                 Ok(view) => view,
-                Err(_) => return Prepared::NoModel { says: Vec::new() },
+                Err(_) => return PreparedTurn::NoModel { says: Vec::new() },
             };
             let place = place_of(&player);
             let npcs = npc_views(&player, kinds, &place, perceive);
-            Prepared::Model(build_view(
-                ActionKind::Place { place },
+            PreparedTurn::Model(build_view(
+                SceneScope::Place { place },
                 Some(strip_player(&player)),
                 npcs,
                 prose,
@@ -426,7 +426,7 @@ pub fn prepare_with(
 
 pub fn render_prompt(
     menu: &[MenuRow],
-    side: &PromptSide,
+    context: &PromptContext,
     view: &TurnView,
     checks: &[Roll],
 ) -> String {
@@ -437,15 +437,15 @@ pub fn render_prompt(
     );
     map.insert(
         "buffer".to_string(),
-        Value::Array(side.buffer.iter().map(say_value).collect()),
+        Value::Array(context.buffer.iter().map(say_value).collect()),
     );
     map.insert(
         "lines".to_string(),
-        Value::Array(side.new_lines.iter().map(say_value).collect()),
+        Value::Array(context.new_lines.iter().map(say_value).collect()),
     );
     map.insert(
         "queue".to_string(),
-        Value::Array(side.queue.iter().map(queue_value).collect()),
+        Value::Array(context.queue.iter().map(queue_value).collect()),
     );
     let mut views = Map::new();
     if let Some(player) = &view.player {
@@ -472,8 +472,8 @@ pub fn render_prompt(
     serde_json::to_string(&Value::Object(map)).expect("prompt json")
 }
 
-fn absent() -> Prepared {
-    Prepared::NoModel {
+fn absent() -> PreparedTurn {
+    PreparedTurn::NoModel {
         says: vec![OutgoingSay::Table {
             text: "They are not here.".to_string(),
         }],
@@ -593,12 +593,12 @@ fn strip_npc(view: &Value) -> Value {
 }
 
 fn build_view(
-    rule: ActionKind,
+    scope: SceneScope,
     player: Option<Value>,
     npcs: Vec<Value>,
     prose: &Prose,
 ) -> TurnView {
-    let place = scene_place(&rule, &player, &npcs);
+    let place = scene_place(&scope, &player, &npcs);
     let place_body = prose.places.get(&place).cloned().unwrap_or_default();
     let mut cast_bodies = BTreeMap::new();
     if let Some(view) = &player {
@@ -608,7 +608,7 @@ fn build_view(
         include_view(&mut cast_bodies, prose, view);
     }
     TurnView {
-        rule,
+        scope,
         player,
         npcs,
         place_body,
@@ -616,10 +616,10 @@ fn build_view(
     }
 }
 
-fn scene_place(rule: &ActionKind, player: &Option<Value>, npcs: &[Value]) -> String {
-    match rule {
-        ActionKind::Place { place } => place.clone(),
-        ActionKind::Actor { .. } => player
+fn scene_place(scope: &SceneScope, player: &Option<Value>, npcs: &[Value]) -> String {
+    match scope {
+        SceneScope::Place { place } => place.clone(),
+        SceneScope::Actor { .. } => player
             .as_ref()
             .map(place_of)
             .filter(|place| !place.is_empty())
@@ -652,12 +652,12 @@ fn include_cast(bodies: &mut BTreeMap<String, String>, prose: &Prose, raw: &str)
     }
 }
 
-fn accept_say(say: &OutgoingSay, rule: &ActionKind) -> bool {
-    match rule {
-        ActionKind::Actor { actor } => {
+fn accept_say(say: &OutgoingSay, scope: &SceneScope) -> bool {
+    match scope {
+        SceneScope::Actor { actor } => {
             matches!(say, OutgoingSay::Actor { actor: id, .. } if id == actor)
         }
-        ActionKind::Place { place } => match say {
+        SceneScope::Place { place } => match say {
             OutgoingSay::Table { .. } => true,
             OutgoingSay::Place { place: named, .. } => named == place,
             OutgoingSay::Actor { .. } => false,
@@ -923,10 +923,10 @@ mod tests {
     ) -> String {
         let (menu, ..) = from_canon(canon);
         let prepared = prepare(canon, &table_wake(), &[], &mut perceive);
-        let Prepared::Model(view) = prepared else {
+        let PreparedTurn::Model(view) = prepared else {
             panic!("model was not called");
         };
-        render_prompt(&menu, &PromptSide::default(), &view, &[])
+        render_prompt(&menu, &PromptContext::default(), &view, &[])
     }
 
     /// Feature: The AI GM gets non-hidden prose
@@ -1024,10 +1024,10 @@ mod tests {
             }
             Err("no".into())
         });
-        let Prepared::Model(view) = prepared else {
+        let PreparedTurn::Model(view) = prepared else {
             panic!("model was not called");
         };
-        let prompt = render_prompt(&menu, &PromptSide::default(), &view, &[]);
+        let prompt = render_prompt(&menu, &PromptContext::default(), &view, &[]);
         assert!(!prompt.contains("KNOWN-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("KNOWN-BODY"), "{prompt}");
         assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
@@ -1041,7 +1041,7 @@ mod tests {
     #[test]
     fn address_rule_runs_before_the_cap() {
         let (menu, ..) = from_canon(&docks());
-        let object = ModelObject {
+        let actions = ModelActions {
             says: vec![
                 say("table", None, "rejected"),
                 say("actor", Some("mira"), "one"),
@@ -1054,9 +1054,9 @@ mod tests {
                 intent("grit", TargetDraft::Empty),
             ],
         };
-        let kept = keep(
-            object,
-            &ActionKind::Actor {
+        let kept = keep_actions(
+            actions,
+            &SceneScope::Actor {
                 actor: "mira".to_string(),
             },
             &menu,
@@ -1071,16 +1071,16 @@ mod tests {
     #[test]
     fn actor_wake_drops_a_table_say() {
         let (menu, ..) = from_canon(&docks());
-        let object = ModelObject {
+        let actions = ModelActions {
             says: vec![
                 say("table", None, "nope"),
                 say("actor", Some("mira"), "yes"),
             ],
             intents: vec![],
         };
-        let kept = keep(
-            object,
-            &ActionKind::Actor {
+        let kept = keep_actions(
+            actions,
+            &SceneScope::Actor {
                 actor: "mira".to_string(),
             },
             &menu,
@@ -1092,16 +1092,16 @@ mod tests {
     #[test]
     fn queued_wake_keeps_a_table_say_and_drops_an_actor_say() {
         let (menu, ..) = from_canon(&docks());
-        let object = ModelObject {
+        let actions = ModelActions {
             says: vec![
                 say("table", None, "here"),
                 say("actor", Some("mira"), "aside"),
             ],
             intents: vec![],
         };
-        let kept = keep(
-            object,
-            &ActionKind::Place {
+        let kept = keep_actions(
+            actions,
+            &SceneScope::Place {
                 place: "docks_shop".to_string(),
             },
             &menu,
@@ -1119,8 +1119,8 @@ mod tests {
             Err("called".into())
         });
         match prepared {
-            Prepared::NoModel { says } => assert!(says.is_empty()),
-            Prepared::Model(_) => panic!("model request"),
+            PreparedTurn::NoModel { says } => assert!(says.is_empty()),
+            PreparedTurn::Model(_) => panic!("model request"),
         }
         assert!(!called);
     }
@@ -1152,12 +1152,12 @@ mod tests {
             }))
         });
         match prepared {
-            Prepared::NoModel { says } => {
+            PreparedTurn::NoModel { says } => {
                 assert_eq!(says.len(), 1);
                 assert_eq!(says[0].text(), "They are not here.");
                 assert!(matches!(says[0], OutgoingSay::Table { .. }));
             }
-            Prepared::Model(_) => panic!("model request"),
+            PreparedTurn::Model(_) => panic!("model request"),
         }
         assert_eq!(calls, vec!["npc:mira".to_string()]);
     }

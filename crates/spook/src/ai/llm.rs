@@ -34,17 +34,17 @@ pub trait Model {
 }
 
 #[derive(Clone, Default)]
-pub struct Script {
-    inner: Arc<Mutex<ScriptInner>>,
+pub struct ScriptedModel {
+    inner: Arc<Mutex<ScriptedModelInner>>,
 }
 
 #[derive(Default)]
-struct ScriptInner {
+struct ScriptedModelInner {
     replies: VecDeque<Result<Option<String>, CompleteError>>,
     calls: Vec<CompletionRequest>,
 }
 
-impl Script {
+impl ScriptedModel {
     pub fn new() -> Self {
         Self::default()
     }
@@ -58,7 +58,7 @@ impl Script {
     }
 }
 
-impl Model for Script {
+impl Model for ScriptedModel {
     fn complete(&mut self, request: &CompletionRequest) -> Result<Option<String>, CompleteError> {
         let mut inner = self.inner.lock().expect("script");
         inner.calls.push(request.clone());

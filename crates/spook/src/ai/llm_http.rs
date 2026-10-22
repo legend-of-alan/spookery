@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 
 use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
-use crate::ai::HostError;
+use crate::ai::Error;
 
 pub struct Env {
     key: String,
@@ -69,14 +69,14 @@ pub struct HttpModel<C> {
     runtime: tokio::runtime::Runtime,
 }
 
-pub fn require_env() -> Result<Env, HostError> {
+pub fn require_env() -> Result<Env, Error> {
     let key = env_var("SPOOK_GM_KEY")?;
     let url = env_var("SPOOK_GM_URL")?;
     let model = env_var("SPOOK_GM_MODEL")?;
     Ok(Env::new(key, url, model))
 }
 
-fn env_var(name: &str) -> Result<String, HostError> {
+fn env_var(name: &str) -> Result<String, Error> {
     match std::env::var(name) {
         Ok(value) => Ok(value),
         Err(_) => Err(fail(format!("{name} is unset"))),
@@ -98,13 +98,13 @@ fn trim_url(url: &str) -> String {
 }
 
 impl HttpModel<WallClock> {
-    pub fn new(env: Env) -> Result<Self, HostError> {
+    pub fn new(env: Env) -> Result<Self, Error> {
         Self::with_limits(env, Limits::production(), WallClock)
     }
 }
 
 impl<C: Clock> HttpModel<C> {
-    pub fn with_limits(env: Env, limits: Limits, clock: C) -> Result<Self, HostError> {
+    pub fn with_limits(env: Env, limits: Limits, clock: C) -> Result<Self, Error> {
         // No reqwest total timeout. That timer is the wall clock. `clock.wait`
         // is the limit, and dropping the request closes the socket.
         let client = reqwest::Client::builder()
@@ -188,28 +188,28 @@ fn provider_detail(body: &str, key: &str) -> String {
     cut
 }
 
-struct Tried {
+struct AttemptOutcome {
     retry: bool,
     result: Result<Option<String>, CompleteError>,
 }
 
 impl<C: Clock> HttpModel<C> {
-    fn fail_transport(&self, err: &reqwest::Error) -> Tried {
+    fn fail_transport(&self, err: &reqwest::Error) -> AttemptOutcome {
         let class = class_of(err);
-        Tried {
+        AttemptOutcome {
             retry: should_retry(class),
             result: Err(failure_message(class, self.limits.total, &err.to_string())),
         }
     }
 
-    fn miss_deadline(&self) -> Tried {
-        Tried {
+    fn miss_deadline(&self) -> AttemptOutcome {
+        AttemptOutcome {
             retry: true,
             result: Err(failure_message(RetryClass::Timeout, self.limits.total, "")),
         }
     }
 
-    async fn read_attempt(&self, request: &CompletionRequest) -> Tried {
+    async fn read_attempt(&self, request: &CompletionRequest) -> AttemptOutcome {
         let body = chat_body(&self.env.model, &request.prompt, request.says_only);
         let url = format!("{}/chat/completions", self.env.url);
         let response = match self
@@ -229,7 +229,7 @@ impl<C: Clock> HttpModel<C> {
             let class = RetryClass::Status(code);
             let body = response.text().await.unwrap_or_default();
             let detail = provider_detail(&body, &self.env.key);
-            return Tried {
+            return AttemptOutcome {
                 retry: should_retry(class),
                 result: Err(failure_message(class, self.limits.total, &detail)),
             };
@@ -238,13 +238,13 @@ impl<C: Clock> HttpModel<C> {
             Ok(text) => text,
             Err(err) => return self.fail_transport(&err),
         };
-        Tried {
+        AttemptOutcome {
             retry: false,
             result: interpret_completion(&text),
         }
     }
 
-    async fn attempt(&self, request: &CompletionRequest) -> Tried {
+    async fn attempt(&self, request: &CompletionRequest) -> AttemptOutcome {
         // The block owns the request. Leaving it drops the socket before
         // `abandon`, so a test clock can see the close before this returns.
         {

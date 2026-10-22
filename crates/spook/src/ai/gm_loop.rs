@@ -10,21 +10,21 @@ use spookery_kernel::api::canon::{self, CastKind};
 use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
 use crate::ai::prompt::{
-    from_canon, keep, parse_actions, prepare_with, push_handled, render_prompt, HandledSay, Kept,
-    MenuRow, OutgoingSay, Prepared, PromptSide, Prose, Wake,
+    from_canon, keep_actions, parse_actions, prepare_with, push_handled, render_prompt, HandledSay,
+    KeptActions, MenuRow, OutgoingSay, PreparedTurn, PromptContext, Prose, SceneScope, Wake,
 };
-use crate::ai::HostError;
+use crate::ai::Error;
 use crate::gm_connection::{self, EventBody, Incoming, ToolCallResult};
 use crate::protocol::{CommitBody, GmSay, SessionStatus};
 
-pub struct Watch {
+pub struct TurnWatch {
     pub listening: AtomicBool,
     pub busy: AtomicBool,
     pub sit_seq: AtomicU64,
     pub high_water: AtomicU64,
 }
 
-impl Default for Watch {
+impl Default for TurnWatch {
     fn default() -> Self {
         Self {
             listening: AtomicBool::new(false),
@@ -35,20 +35,20 @@ impl Default for Watch {
     }
 }
 
-pub fn run_ai_gm<M: Model>(
+pub fn run_gm<M: Model>(
     pack: &Path,
     addr: &str,
     door: Option<&str>,
     model: &mut M,
-    watch: &Watch,
-) -> Result<(), HostError> {
+    watch: &TurnWatch,
+) -> Result<(), Error> {
     let (menu, kinds, prose) = {
         let canon = canon::load_canon(pack)
             .map_err(|err| fail(spookery_kernel::api::reason_of(err).to_string()))?;
         from_canon(&canon)
     };
     let rev = canon::pack_rev(pack).map_err(|err| fail(err.to_string()))?;
-    let mut seat = GmLoop::connect(addr, door)?;
+    let mut seat = GmSeat::connect(addr, door)?;
     let status = call_status(&mut seat, None)?;
     if status.pack_rev != rev {
         return Err(fail("PACK_REV_MISMATCH".to_string()));
@@ -63,7 +63,7 @@ pub fn run_ai_gm<M: Model>(
     let mut buffer = Vec::new();
     if !status.queued.is_empty() {
         watch.busy.store(true, Ordering::Release);
-        run_turn(TurnIn {
+        run_turn(TurnContext {
             seat: &mut seat,
             menu: &menu,
             kinds: &kinds,
@@ -81,7 +81,7 @@ pub fn run_ai_gm<M: Model>(
             return Ok(());
         };
         watch.busy.store(true, Ordering::Release);
-        run_turn(TurnIn {
+        run_turn(TurnContext {
             seat: &mut seat,
             menu: &menu,
             kinds: &kinds,
@@ -96,8 +96,8 @@ pub fn run_ai_gm<M: Model>(
     }
 }
 
-struct TurnIn<'a, M: Model> {
-    seat: &'a mut GmLoop,
+struct TurnContext<'a, M: Model> {
+    seat: &'a mut GmSeat,
     menu: &'a [MenuRow],
     kinds: &'a std::collections::BTreeMap<String, CastKind>,
     prose: &'a Prose,
@@ -105,11 +105,11 @@ struct TurnIn<'a, M: Model> {
     high: &'a mut u64,
     wake: Wake,
     model: &'a mut M,
-    watch: &'a Watch,
+    watch: &'a TurnWatch,
 }
 
-fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
-    let TurnIn {
+fn run_turn<M: Model>(turn: TurnContext<'_, M>) -> Result<(), Error> {
+    let TurnContext {
         seat,
         menu,
         kinds,
@@ -141,28 +141,28 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
     let mut submitted = Vec::new();
     let mut view = None;
     match prepared {
-        Prepared::NoModel { says } => {
+        PreparedTurn::NoModel { says } => {
             for say in says {
                 if let Some(handled) = submit_say(seat, &say)? {
                     submitted.push(handled);
                 }
             }
         }
-        Prepared::Model(turn_view) => {
-            let side = PromptSide {
+        PreparedTurn::Model(turn_view) => {
+            let context = PromptContext {
                 buffer: buffer.clone(),
                 new_lines: player_lines(&status, *high),
                 queue: status.queued.clone(),
                 checks: Vec::new(),
             };
-            let prompt = render_prompt(menu, &side, &turn_view, &[]);
+            let prompt = render_prompt(menu, &context, &turn_view, &[]);
             match model.complete(&CompletionRequest {
                 prompt,
                 says_only: false,
             }) {
                 Err(err) => report_model(err),
                 Ok(body) => {
-                    if let Some(kept) = kept_actions(body, false, &turn_view.rule, menu) {
+                    if let Some(kept) = kept_actions(body, false, &turn_view.scope, menu) {
                         for say in kept.says {
                             if let Some(handled) = submit_say(seat, &say)? {
                                 submitted.push(handled);
@@ -175,7 +175,7 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
                     }
                 }
             }
-            view = Some((turn_view, side));
+            view = Some((turn_view, context));
         }
     }
     let after = call_status(seat, None)?;
@@ -211,17 +211,17 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
         seat.wakes.push_back(Wake::Queued);
     }
     if !checks.is_empty() {
-        if let Some((turn_view, mut side)) = view {
-            side.buffer = buffer.clone();
-            side.checks = checks.clone();
-            let prompt = render_prompt(menu, &side, &turn_view, &checks);
+        if let Some((turn_view, mut context)) = view {
+            context.buffer = buffer.clone();
+            context.checks = checks.clone();
+            let prompt = render_prompt(menu, &context, &turn_view, &checks);
             match model.complete(&CompletionRequest {
                 prompt,
                 says_only: true,
             }) {
                 Err(err) => report_model(err),
                 Ok(body) => {
-                    if let Some(kept) = kept_actions(body, true, &turn_view.rule, menu) {
+                    if let Some(kept) = kept_actions(body, true, &turn_view.scope, menu) {
                         for say in kept.says {
                             if let Some(handled) = submit_say(seat, &say)? {
                                 push_handled(buffer, handled);
@@ -238,11 +238,11 @@ fn run_turn<M: Model>(turn: TurnIn<'_, M>) -> Result<(), HostError> {
 fn kept_actions(
     body: Option<String>,
     says_only: bool,
-    rule: &crate::ai::prompt::ActionKind,
+    scope: &SceneScope,
     menu: &[MenuRow],
-) -> Option<Kept> {
+) -> Option<KeptActions> {
     let Some(text) = body else {
-        return Some(Kept {
+        return Some(KeptActions {
             says: Vec::new(),
             intent: None,
         });
@@ -252,8 +252,8 @@ fn kept_actions(
         return None;
     }
     Some(match parse_actions(&text, says_only) {
-        Some(object) => keep(object, rule, menu),
-        None => Kept {
+        Some(actions) => keep_actions(actions, scope, menu),
+        None => KeptActions {
             says: Vec::new(),
             intent: None,
         },
@@ -265,7 +265,7 @@ fn report_model(err: CompleteError) {
     let _ = std::io::Write::flush(&mut std::io::stderr());
 }
 
-fn submit_say(seat: &mut GmLoop, say: &OutgoingSay) -> Result<Option<HandledSay>, HostError> {
+fn submit_say(seat: &mut GmSeat, say: &OutgoingSay) -> Result<Option<HandledSay>, Error> {
     let outcome = seat.call("say", say.arguments())?;
     if outcome.refused {
         return Ok(None);
@@ -274,10 +274,7 @@ fn submit_say(seat: &mut GmLoop, say: &OutgoingSay) -> Result<Option<HandledSay>
     Ok(Some(say.handled(Some(spoken.seq))))
 }
 
-fn perceive(
-    seat: &mut GmLoop,
-    viewer: &str,
-) -> Result<Result<serde_json::Value, String>, HostError> {
+fn perceive(seat: &mut GmSeat, viewer: &str) -> Result<Result<serde_json::Value, String>, Error> {
     let outcome = seat.call("perceive", json!({ "as": viewer }))?;
     if outcome.refused {
         let code = outcome
@@ -291,7 +288,7 @@ fn perceive(
     Ok(Ok(outcome.body))
 }
 
-fn call_status(seat: &mut GmLoop, since: Option<u64>) -> Result<SessionStatus, HostError> {
+fn call_status(seat: &mut GmSeat, since: Option<u64>) -> Result<SessionStatus, Error> {
     let arguments = match since {
         Some(since) => json!({ "since": since }),
         None => json!({}),
@@ -314,21 +311,21 @@ fn player_lines(status: &SessionStatus, high: u64) -> Vec<HandledSay> {
         .collect()
 }
 
-struct GmLoop {
+struct GmSeat {
     client: gm_connection::GmConnection,
     wakes: VecDeque<Wake>,
     /// Say events at or below this seq are not a wake. Starts closed.
     high_water: u64,
 }
 
-impl GmLoop {
-    fn connect(addr: &str, door: Option<&str>) -> Result<Self, HostError> {
+impl GmSeat {
+    fn connect(addr: &str, door: Option<&str>) -> Result<Self, Error> {
         let client = match door {
             Some(door) => gm_connection::GmConnection::connect_door(door),
             None => gm_connection::GmConnection::connect(addr),
         }
-        .map_err(host_err)?;
-        Ok(GmLoop {
+        .map_err(from_connection_err)?;
+        Ok(GmSeat {
             client,
             wakes: VecDeque::new(),
             high_water: u64::MAX,
@@ -339,14 +336,17 @@ impl GmLoop {
         self.high_water = seq;
     }
 
-    fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, HostError> {
-        let outcome = self.client.call(name, arguments).map_err(host_err)?;
+    fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, Error> {
+        let outcome = self
+            .client
+            .call(name, arguments)
+            .map_err(from_connection_err)?;
         let events = self.client.take_events();
         self.absorb(events);
         Ok(outcome)
     }
 
-    fn next_wake(&mut self) -> Result<Option<Wake>, HostError> {
+    fn next_wake(&mut self) -> Result<Option<Wake>, Error> {
         if let Some(wake) = self.wakes.pop_front() {
             return Ok(Some(wake));
         }
@@ -405,7 +405,7 @@ impl GmLoop {
     }
 }
 
-fn host_err(err: gm_connection::Error) -> HostError {
+fn from_connection_err(err: gm_connection::Error) -> Error {
     match err {
         gm_connection::Error::Io(err) => fail(err.to_string()),
         gm_connection::Error::Closed => fail("seat closed".to_string()),
