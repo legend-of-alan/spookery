@@ -29,8 +29,8 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             break;
         }
         round.changes.extend(changes.iter().cloned());
-        let hits = plan(draft, &rules, &changes);
-        if hits.is_empty() {
+        let matched_triggers = plan(draft, &rules, &changes);
+        if matched_triggers.is_empty() {
             break;
         }
         if depth >= max {
@@ -38,14 +38,14 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             break;
         }
         depth += 1;
-        for hit in hits {
-            fire(round, draft, hit.rule, &hit.subject);
+        for matched in matched_triggers {
+            fire(round, draft, matched.rule, &matched.subject);
         }
     }
     Ok(())
 }
 
-struct Hit<'a> {
+struct TriggerMatch<'a> {
     rule: &'a Rule,
     subject: String,
 }
@@ -68,8 +68,8 @@ fn change_rules(draft: &Draft) -> Vec<Rule> {
     rules
 }
 
-fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<Hit<'a>> {
-    let mut hits = Vec::new();
+fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<TriggerMatch<'a>> {
+    let mut matched_triggers = Vec::new();
     for rule in rules {
         let When::Change(watch) = &rule.when else {
             continue;
@@ -87,13 +87,13 @@ fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<H
         }
         subjects.sort();
         for subject in subjects {
-            hits.push(Hit { rule, subject });
+            matched_triggers.push(TriggerMatch { rule, subject });
         }
     }
-    hits
+    matched_triggers
 }
 
-struct Fired {
+struct TriggerExpansion {
     effects: Vec<Effect>,
     rolled: Option<RollResult>,
     resist: Vec<MoveReport>,
@@ -120,50 +120,51 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
         return;
     }
     let point = draft.savepoint();
-    let fired = {
+    let expanded = {
         let now = draft.now();
         let canon = draft.canon();
-        expand_hit(round, now, canon, rule, &intent, subject)
+        expand_trigger(round, now, canon, rule, &intent, subject)
     };
-    let Some(fired) = fired else {
+    let Some(expanded) = expanded else {
         draft.rollback(point);
         return;
     };
-    if fired.effects.len() > draft.budget().max_effects_per_intent as usize {
+    if expanded.effects.len() > draft.budget().max_effects_per_intent as usize {
         draft.rollback(point);
         return;
     }
-    for effect in &fired.effects {
+    for effect in &expanded.effects {
         if apply_effect(draft, &intent, effect.clone()).is_err() {
             draft.rollback(point);
             return;
         }
     }
-    if let Some(out) = fired.rolled {
+    if let Some(out) = expanded.rolled {
         round.move_reports.push(MoveReport::Rolled {
             actor_id: subject.to_string(),
             out,
         });
     }
-    round.move_reports.extend(fired.resist);
-    round.effects.extend(fired.effects);
+    round.move_reports.extend(expanded.resist);
+    round.effects.extend(expanded.effects);
     round.steps_run.push(rule.id.clone());
 }
 
-fn expand_hit(
+fn expand_trigger(
     round: &mut Round,
     now: &Now,
     canon: &Canon,
     rule: &Rule,
     intent: &Intent,
     subject: &str,
-) -> Option<Fired> {
-    super::resolve::with_dice(round, |held| {
-        let mut roller = held.roller(&rule.id, subject);
+) -> Option<TriggerExpansion> {
+    super::resolve::with_dice(round, |tracker| {
+        let mut roller = tracker.roller(&rule.id, subject);
         let mut rolled = None;
         let mut resist = Vec::new();
         let outcome = if let Some(spec) = &rule.roll {
-            let out = eval_roll_spec(canon, now, intent, spec, &rule.id, held, &mut roller).ok()?;
+            let out =
+                eval_roll_spec(canon, now, intent, spec, &rule.id, tracker, &mut roller).ok()?;
             let band = out.outcome;
             rolled = Some(out);
             Some(band)
@@ -179,13 +180,13 @@ fn expand_hit(
             &mut roller,
             |actor_id, check_id, target| {
                 let (band, report) =
-                    resist_outcome(canon, now, &rule.id, actor_id, check_id, target, held)?;
+                    resist_outcome(canon, now, &rule.id, actor_id, check_id, target, tracker)?;
                 resist.push(report);
                 Ok(band)
             },
         )
         .ok()?;
-        Some(Fired {
+        Some(TriggerExpansion {
             effects,
             rolled,
             resist,

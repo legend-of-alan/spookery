@@ -44,7 +44,7 @@ pub struct Round {
     pub resolutions: BTreeMap<String, Resolution>,
     pub frozen: Now,
     pub budget_stop: bool,
-    pub supply_from: Vec<Intent>,
+    pub opposing_candidates: Vec<Intent>,
 }
 
 /// How resolve left an intent for apply.
@@ -100,7 +100,7 @@ impl Round {
             resolutions: BTreeMap::new(),
             frozen: draft.now().clone(),
             budget_stop: false,
-            supply_from: Vec::new(),
+            opposing_candidates: Vec::new(),
         }
     }
 }

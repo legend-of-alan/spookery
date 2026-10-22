@@ -91,8 +91,8 @@ fn resume(
             .clone();
     let canon = draft.canon().clone();
     let snapshot = draft.now().clone();
-    let (effects, reports) = super::resolve::with_dice(round, |held| {
-        let mut roller = held.roller(&intent.move_name, actor_id);
+    let (effects, reports) = super::resolve::with_dice(round, |tracker| {
+        let mut roller = tracker.roller(&intent.move_name, actor_id);
         let mut reports = Vec::new();
         let outcome = match &roll_spec {
             Some(spec) => {
@@ -102,7 +102,7 @@ fn resume(
                     &intent,
                     spec,
                     &spec.check,
-                    held,
+                    tracker,
                     &mut roller,
                 )?;
                 let band = out.outcome;
@@ -122,7 +122,7 @@ fn resume(
             &mut roller,
             |who, check_id, target| {
                 let (band, report) =
-                    resist_outcome(&canon, &snapshot, check_id, who, check_id, target, held)?;
+                    resist_outcome(&canon, &snapshot, check_id, who, check_id, target, tracker)?;
                 reports.push(report);
                 Ok(band)
             },

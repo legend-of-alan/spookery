@@ -59,8 +59,8 @@ fn roll_check(
         Err(code) => return Ok(refused_check(intent, code)),
     };
     let frozen = round.frozen.clone();
-    let (target, partial_at) = with_dice(round, |held| {
-        let mut roller = held.roller(&intent.move_name, &intent.actor_id);
+    let (target, partial_at) = with_dice(round, |tracker| {
+        let mut roller = tracker.roller(&intent.move_name, &intent.actor_id);
         let ctx = Ctx { intent };
         let partial_at = if opposed.is_some() {
             None
@@ -105,7 +105,7 @@ fn supplied_target(
     };
     let named = named.clone();
     let opposing = round
-        .supply_from
+        .opposing_candidates
         .iter()
         .find(|other| {
             other.id != intent.id
@@ -183,7 +183,7 @@ pub(crate) fn eval_roll_spec(
     intent: &Intent,
     spec: &RollSpec,
     rule_id: &str,
-    held: &Held,
+    tracker: &RollTracker,
     roller: &mut Roller,
 ) -> Result<RollResult, Reason> {
     let ctx = Ctx { intent };
@@ -192,7 +192,7 @@ pub(crate) fn eval_roll_spec(
         Some(expr) => Some(expr::eval_with_dice(canon, now, &ctx, expr, roller)?.value),
         None => None,
     };
-    let key = held.key(rule_id, &intent.actor_id);
+    let key = tracker.key(rule_id, &intent.actor_id);
     roll_with_key(
         now,
         &canon.checks,
@@ -215,9 +215,9 @@ pub(crate) fn resist_outcome(
     actor_id: &str,
     check_id: &str,
     target: i64,
-    held: &Held,
+    tracker: &RollTracker,
 ) -> Result<(Outcome, MoveReport), Reason> {
-    let key = held.key(rule_id, actor_id);
+    let key = tracker.key(rule_id, actor_id);
     let out = roll_with_key(
         now,
         &canon.checks,
@@ -309,24 +309,24 @@ fn refused_check(intent: &Intent, code: Reason) -> Resolution {
 }
 
 /// Shared counter and dice lines. A roller and a resist roll can both use it.
-pub(crate) struct Held {
+pub(crate) struct RollTracker {
     counts: Rc<RefCell<BTreeMap<(String, String), u32>>>,
     notes: Rc<RefCell<Vec<String>>>,
     world_id: String,
     round_index: u64,
 }
 
-pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&Held) -> T) -> T {
+pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&RollTracker) -> T) -> T {
     let counts = Rc::new(RefCell::new(std::mem::take(&mut round.roll_counts)));
     let notes = Rc::new(RefCell::new(std::mem::take(&mut round.dice)));
-    let held = Held {
+    let tracker = RollTracker {
         counts: Rc::clone(&counts),
         notes: Rc::clone(&notes),
         world_id: round.world_id.clone(),
         round_index: round.tick_index,
     };
-    let out = body(&held);
-    drop(held);
+    let out = body(&tracker);
+    drop(tracker);
     round.roll_counts = Rc::try_unwrap(counts)
         .map(RefCell::into_inner)
         .unwrap_or_default();
@@ -336,7 +336,7 @@ pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&Held) -> T) -> 
     out
 }
 
-impl Held {
+impl RollTracker {
     pub(crate) fn key(&self, rule: &str, subject: &str) -> RollKey {
         alloc(
             &self.counts,

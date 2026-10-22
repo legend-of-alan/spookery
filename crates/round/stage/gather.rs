@@ -14,7 +14,7 @@ use crate::state::Round;
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     round.steps_run.push("gather".to_string());
     round.steps_run.push("session_status".to_string());
-    round.supply_from = match &round.recorded {
+    round.opposing_candidates = match &round.recorded {
         Some(recorded) => recorded.intents.clone(),
         None => round.queued.clone(),
     };
