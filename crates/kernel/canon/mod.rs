@@ -15,15 +15,20 @@ use crate::diagnostic::{
 use crate::error::Reason;
 use crate::format;
 use crate::hash::blake2s_hex;
-use crate::meter::{self, MeterDef, MeterLive};
-use crate::model::Now;
-use crate::rule::{Cond, Cost, EffectTemplate, Expr, Owner, ResistSpec, Rule, RuleTable, Who};
-use crate::store::codec::canonicalize;
-use crate::store::records::AddedMeter;
+use crate::meter::MeterDef;
+use crate::rule::{Cond, Cost, Owner, Rule, RuleTable};
 
+mod check;
+mod save;
 pub mod schema;
 pub mod world_settings;
 
+use check::{
+    broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
+    unknown_rule_items,
+};
+pub(crate) use save::pending_meters;
+pub use save::{check_save, migrate_save};
 use schema::RuleEntry;
 
 #[derive(Clone, Debug)]
@@ -330,21 +335,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         if !fact_ok {
             continue;
         }
-        let kind = match file.kind.as_str() {
-            "npc" => CastKind::Npc,
-            "pc_template" => CastKind::PcTemplate,
-            _ => {
-                diags.push(headed_schema_error(
-                    &rel,
-                    yaml,
-                    1,
-                    "kind:",
-                    "kind",
-                    &format!("kind is '{}', which is not npc or pc_template", file.kind),
-                    "set kind to npc or pc_template",
-                ));
-                continue;
-            }
+        // `load_cast` validates `file.kind` is `"npc"` or `"pc_template"`.
+        let kind = if file.kind == "npc" {
+            CastKind::Npc
+        } else {
+            CastKind::PcTemplate
         };
         if cast.contains_key(&file.id) {
             diags.push(
@@ -680,108 +675,20 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
     }
 }
 
-/// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
-fn broken_exits(
-    places: &BTreeMap<String, PlaceCanon>,
-    facts: &BTreeMap<String, FactCanon>,
-    items: &BTreeMap<String, ItemCanon>,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for place in places.values() {
-        for exit in &place.exits {
-            if !places.contains_key(&exit.to) {
-                diags.push(
-                    schema_error(
-                        &exit.file,
-                        &format!(
-                            "exit '{}' goes to '{}', which is not a place",
-                            exit.name, exit.to
-                        ),
-                        "set to: to a place id",
-                    )
-                    .with_path(format!("exits[{}].to", exit.index)),
-                );
-            }
-            if exit.hidden && exit.revealed_by.is_none() {
-                diags.push(
-                    schema_error(
-                        &exit.file,
-                        &format!("hidden exit '{}' has no revealed_by fact", exit.name),
-                        "set revealed_by to a fact id",
-                    )
-                    .with_path(format!("exits[{}].revealed_by", exit.index)),
-                );
-            }
-            if let Some(fact) = &exit.revealed_by {
-                if !facts.contains_key(fact) {
-                    diags.push(
-                        schema_error(
-                            &exit.file,
-                            &format!("exit '{}' reveals '{fact}', which is not a fact", exit.name),
-                            "use a fact id from this pack",
-                        )
-                        .with_path(format!("exits[{}].revealed_by", exit.index)),
-                    );
-                }
-            }
-            let mut named = Vec::new();
-            for (id, _) in &exit.cost.items {
-                if id != "target" {
-                    named.push(id.clone());
-                }
-            }
-            for cond in &exit.if_ {
-                exit_cond_items(cond, &mut named);
-            }
-            named.sort();
-            named.dedup();
-            for id in named {
-                if !items.contains_key(&id) {
-                    diags.push(
-                        schema_error(
-                            &exit.file,
-                            &format!("exit '{}' names unknown item '{id}'", exit.name),
-                            &format!("add world/items/{id}.md"),
-                        )
-                        .with_path(format!("exits[{}]", exit.index)),
-                    );
-                }
-            }
-        }
-    }
-    diags
-}
-
-fn exit_cond_items(cond: &Cond, ids: &mut Vec<String>) {
-    match cond {
-        Cond::HasItem { id, .. } if id != "target" => ids.push(id.clone()),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                exit_cond_items(cond, ids);
-            }
-        }
-        Cond::Not(inner) => exit_cond_items(inner, ids),
-        _ => {}
-    }
-}
-
 pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
     const FILE: &str = "rules/meters.yaml";
-    if let Some(diag) = tag_diagnostic(text, crate::format::METERS, FILE, 0) {
-        return Err(vec![diag]);
-    }
-    let file: MetersFile = parse_file(FILE, text, 0)?;
-    let mut diags = Vec::new();
-    if file.schema != crate::format::METERS {
-        diags.push(
-            schema_error(
+    let file = load_headed(FILE, text, format::METERS, 0, |file: MetersFile| {
+        if file.schema != format::METERS {
+            return Err(vec![schema_error(
                 FILE,
                 &format!("schema is '{}', which this file does not use", file.schema),
                 "write 'schema: meters' with no version suffix",
             )
-            .with_path("schema"),
-        );
-    }
+            .with_path("schema")]);
+        }
+        Ok(file)
+    })?;
+    let mut diags = Vec::new();
     let mut meters = BTreeMap::new();
     for (index, entry) in file.meters.into_iter().enumerate() {
         let path = format!("meters[{index}]");
@@ -876,694 +783,46 @@ fn meter_schema_error(
     diag
 }
 
-/// Meters the pack defines that at least one actor lacks, each at its `start`.
-pub(crate) fn pending_meters(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
-    canon
-        .meters
-        .iter()
-        .filter(|(id, _)| {
-            now.actors
-                .values()
-                .any(|actor| !actor.meters().contains_key(*id))
-        })
-        .map(|(id, def)| AddedMeter {
-            id: id.clone(),
-            start: def.start,
-        })
-        .collect()
-}
-
-/// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
-/// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
-/// It does not touch the disk.
-pub fn migrate_save(mut now: Now, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> Now {
-    for actor in now.actors.values_mut() {
-        let live = actor.meters_mut();
-        for meter in meters {
-            live.entry(meter.id.clone()).or_insert(MeterLive {
-                base: meter.start,
-                offset: 0,
-            });
-        }
-    }
-    now.pack_rev = pack_rev.to_string();
-    now.state_rev = state_rev;
-    canonicalize(&mut now);
-    now
-}
-
-/// Check the save against the pack without changing it. Refuse every meter,
-/// item and wielded slot the pack does not define, every meter the pack defines
-/// that an actor lacks, every meter outside its rules and every empty id or zero count.
-pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
-    let mut diags = Vec::new();
-    for (id, actor) in &now.actors {
-        for key in canon.meters.keys() {
-            if actor.meters().contains_key(key) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!("actor '{id}' lacks meter '{key}', which rules/meters.yaml defines"),
-                    "run spook migrate to add the meter",
-                )
-                .with_path(format!("actors.{id}.meters.{key}")),
-            );
-        }
-        for key in actor.meters().keys() {
-            if canon.meters.contains_key(key) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!(
-                        "actor '{id}' lists meter '{key}', which rules/meters.yaml does not define"
-                    ),
-                    "remove the meter or add it to the rules",
-                )
-                .with_path(format!("actors.{id}.meters.{key}")),
-            );
-        }
-        for (key, meter) in actor.meters() {
-            let Some(def) = canon.meters.get(key) else {
-                continue;
-            };
-            if meter::stored(def, meter.base, meter.offset) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    "state/save.yaml",
-                    &format!("actor '{id}' meter '{key}' is outside the rules"),
-                    "set base and offset so the stored pair fits the meter",
-                )
-                .with_path(format!("actors.{id}.meters.{key}")),
-            );
-        }
-    }
-    for (id, actor) in &now.actors {
-        for (item, count) in actor.inventory() {
-            if item.is_empty() {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{id}' lists an empty item id"),
-                        "give the item a non-empty id",
-                    )
-                    .with_path(format!("actors.{id}.inventory")),
-                );
-            }
-            if *count == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{id}' lists item '{item}' with a count of 0"),
-                        "omit an item the actor does not hold",
-                    )
-                    .with_path(format!("actors.{id}.inventory.{item}")),
-                );
-            }
-        }
-    }
-    for (place, live) in &now.places {
-        for (item, count) in &live.items {
-            if *count == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("place '{place}' lists item '{item}' with a count of 0"),
-                        "omit an item that is not there",
-                    )
-                    .with_path(format!("places.{place}.items.{item}")),
-                );
-            }
-        }
-    }
-    for (actor_id, actor) in &now.actors {
-        for item in actor.inventory().keys() {
-            if !canon.items.contains_key(item) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    item,
-                    &format!("actors.{actor_id}.inventory.{item}"),
-                ));
-            }
-        }
-        if let Some(wielded) = actor.wielded() {
-            if !canon.items.contains_key(wielded) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    wielded,
-                    &format!("actors.{actor_id}.wielded"),
-                ));
-            } else if !canon
-                .items
-                .get(wielded)
-                .is_some_and(|item| item.tags.iter().any(|tag| tag == "weapon"))
-            {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{actor_id}' wields '{wielded}', which is not a weapon"),
-                        "wield an item tagged weapon, or leave the slot empty",
-                    )
-                    .with_path(format!("actors.{actor_id}.wielded")),
-                );
-            } else if actor.count(wielded) == 0 {
-                diags.push(
-                    schema_error(
-                        "state/save.yaml",
-                        &format!("actor '{actor_id}' wields '{wielded}' without holding it"),
-                        "put the item in inventory or clear wielded",
-                    )
-                    .with_path(format!("actors.{actor_id}.wielded")),
-                );
-            }
-        }
-    }
-    for (place, live) in &now.places {
-        for item in live.items.keys() {
-            if !canon.items.contains_key(item) {
-                diags.push(unknown_item(
-                    "state/save.yaml",
-                    item,
-                    &format!("places.{place}.items.{item}"),
-                ));
-            }
-        }
-    }
-    if diags.is_empty() {
-        Ok(())
-    } else {
-        Err(diags)
-    }
-}
-
-fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
-    schema_error(
-        file,
-        &format!("unknown item '{id}'"),
-        &format!("add world/items/{id}.md"),
-    )
-    .with_path(path)
-}
-
-fn unknown_rule_items(rules: &RuleTable, items: &BTreeMap<String, ItemCanon>) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        let mut ids = Vec::new();
-        for cond in &rule.if_ {
-            cond_items(cond, &mut ids);
-        }
-        if let Some(cost) = &rule.cost {
-            for (id, _) in &cost.items {
-                if id != "target" {
-                    ids.push(id.clone());
-                }
-            }
-        }
-        for effect in rule
-            .do_
-            .iter()
-            .chain(rule.success.iter())
-            .chain(rule.partial.iter())
-            .chain(rule.failure.iter())
-        {
-            effect_items(effect, &mut ids);
-        }
-        ids.sort();
-        ids.dedup();
-        for id in ids {
-            if items.contains_key(&id) {
-                continue;
-            }
-            diags.push(unknown_item(
-                &rule.file,
-                &id,
-                &format!("rules[{}]", rule.index),
-            ));
-        }
-    }
-    diags
-}
-
-fn cond_items(cond: &Cond, ids: &mut Vec<String>) {
-    match cond {
-        Cond::HasItem { id, .. } | Cond::Wielding { id, .. } => {
-            if id != "target" {
-                ids.push(id.clone());
-            }
-        }
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                cond_items(cond, ids);
-            }
-        }
-        Cond::Not(inner) => cond_items(inner, ids),
-        _ => {}
-    }
-}
-
-fn effect_items(effect: &EffectTemplate, ids: &mut Vec<String>) {
-    match effect {
-        EffectTemplate::Item { id, resist, .. } => {
-            if id != "target" {
-                ids.push(id.clone());
-            }
-            resist_items(resist.as_ref(), ids);
-        }
-        EffectTemplate::Wield { id, .. } => {
-            if id != "target" {
-                ids.push(id.clone());
-            }
-        }
-        EffectTemplate::Meter { resist, .. }
-        | EffectTemplate::Flag { resist, .. }
-        | EffectTemplate::Narrate { resist, .. } => resist_items(resist.as_ref(), ids),
-        _ => {}
-    }
-}
-
-fn find_bare_resist(rules: &RuleTable) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        let after_do = scan_resist(&rule.do_, false, rule, &mut diags);
-        scan_resist(&rule.success, after_do, rule, &mut diags);
-        scan_resist(&rule.partial, after_do, rule, &mut diags);
-        scan_resist(&rule.failure, after_do, rule, &mut diags);
-    }
-    diags
-}
-
-fn scan_resist(
-    effects: &[EffectTemplate],
-    mut seen: bool,
-    rule: &Rule,
-    diags: &mut Vec<Diagnostic>,
-) -> bool {
-    for effect in effects {
-        match effect.resist() {
-            Some(ResistSpec::Same) if !seen => {
-                diags.push(
-                    schema_error(
-                        &rule.file,
-                        &format!(
-                            "rule '{}' uses resist: same before any resist roll",
-                            rule.local_id
-                        ),
-                        "put a resist roll before it, or name the check on this effect",
-                    )
-                    .with_path(format!("rules[{}]", rule.index)),
-                );
-            }
-            Some(ResistSpec::Roll { resisted, .. }) => {
-                seen = true;
-                scan_resist(resisted, true, rule, diags);
-            }
-            _ => {}
-        }
-    }
-    seen
-}
-
-fn resist_items(resist: Option<&ResistSpec>, ids: &mut Vec<String>) {
-    let Some(ResistSpec::Roll { resisted, .. }) = resist else {
-        return;
-    };
-    for effect in resisted {
-        effect_items(effect, ids);
-    }
-}
-
-fn reveal_problems(rules: &RuleTable, facts: &BTreeMap<String, FactCanon>) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        let mut effects = Vec::new();
-        collect_effects(&rule.do_, &mut effects);
-        collect_effects(&rule.success, &mut effects);
-        collect_effects(&rule.partial, &mut effects);
-        collect_effects(&rule.failure, &mut effects);
-        for effect in effects {
-            let EffectTemplate::Reveal { who, fact } = effect else {
-                continue;
-            };
-            if matches!(who, Who::World) {
-                diags.push(
-                    schema_error(
-                        &rule.file,
-                        &format!("rule '{}' reveals to the world", rule.local_id),
-                        "name the actor who learns the fact",
-                    )
-                    .with_path(format!("rules[{}]", rule.index)),
-                );
-            }
-            if !facts.contains_key(fact) {
-                diags.push(
-                    schema_error(
-                        &rule.file,
-                        &format!(
-                            "rule '{}' reveals '{fact}', which is not a fact",
-                            rule.local_id
-                        ),
-                        "name a fact from this pack",
-                    )
-                    .with_path(format!("rules[{}]", rule.index)),
-                );
-            }
-        }
-    }
-    diags
-}
-
-fn collect_effects<'a>(effects: &'a [EffectTemplate], out: &mut Vec<&'a EffectTemplate>) {
-    for effect in effects {
-        out.push(effect);
-        if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
-            collect_effects(resisted, out);
-        }
-    }
-}
-
-fn unknown_checks(rules: &RuleTable, checks: &BTreeMap<String, CheckDef>) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        let Some(roll) = &rule.roll else { continue };
-        if checks.contains_key(&roll.check) {
-            continue;
-        }
-        diags.push(
-            schema_error(
-                &rule.file,
-                &format!(
-                    "rule '{}' names check '{}', which is not a check in rules/checks.yaml",
-                    rule.local_id, roll.check
-                ),
-                "add the check or name one that exists",
-            )
-            .with_path(format!("rules[{}].roll.check", rule.index)),
-        );
-    }
-    diags
-}
-
-fn meter_keys(effect: &EffectTemplate) -> Option<&str> {
-    match effect {
-        EffectTemplate::Meter { key, .. } => Some(key),
-        _ => None,
-    }
-}
-
-fn unknown_exprs(
-    meters: &BTreeMap<String, MeterDef>,
-    cast: &BTreeMap<String, CastCanon>,
-    places: &BTreeMap<String, PlaceCanon>,
-    rules: &RuleTable,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for rule in rules.iter() {
-        let mut exprs = Vec::new();
-        push_rule_exprs(rule, &mut exprs);
-        for expr in exprs {
-            check_expr(
-                &rule.file,
-                &format!("rules[{}]", rule.index),
-                expr,
-                meters,
-                cast,
-                places,
-                &mut diags,
-            );
-        }
-    }
-    for place in places.values() {
-        for exit in &place.exits {
-            let mut exprs = Vec::new();
-            push_cost(&exit.cost, &mut exprs);
-            for cond in &exit.if_ {
-                push_cond(cond, &mut exprs);
-            }
-            for expr in exprs {
-                check_expr(
-                    &exit.file,
-                    &format!("exits[{}]", exit.index),
-                    expr,
-                    meters,
-                    cast,
-                    places,
-                    &mut diags,
-                );
-            }
-        }
-    }
-    diags
-}
-
-fn check_expr(
-    file: &str,
-    path: &str,
-    expr: &Expr,
-    meters: &BTreeMap<String, MeterDef>,
-    cast: &BTreeMap<String, CastCanon>,
-    places: &BTreeMap<String, PlaceCanon>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let mut reads = Vec::new();
-    expr.meters(&mut reads);
-    for (who, key, spot) in reads {
-        if matches!(who, Who::World) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression reads 'world.{key}', but the world has no meters"),
-                "read the meter from self, target, here, place:<id>, or a cast id",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
-            continue;
-        }
-        if !meters.contains_key(key) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression reads meter '{key}', which is not in rules/meters.yaml"),
-                "add the meter or name one that exists",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
-        }
-        if let Some(name) = unknown_who(who, cast, places) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression names '{name}', which is not a who"),
-                "use self, target, here, place:<id>, or a cast id",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
-        }
-    }
-}
-
-fn unknown_who(
-    who: &Who,
-    cast: &BTreeMap<String, CastCanon>,
-    places: &BTreeMap<String, PlaceCanon>,
-) -> Option<String> {
-    match who {
-        Who::Self_ | Who::Target | Who::Here | Who::World => None,
-        Who::Place(id) if places.contains_key(id) => None,
-        Who::Place(id) => Some(format!("place:{id}")),
-        Who::Actor(id) if cast.contains_key(id) => None,
-        Who::Actor(id) => Some(id.clone()),
-    }
-}
-
-fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
-    if let Some(roll) = &rule.roll {
-        exprs.push(&roll.target);
-        if let Some(band) = &roll.partial_at {
-            exprs.push(band);
-        }
-    }
-    if let Some(cost) = &rule.cost {
-        push_cost(cost, exprs);
-    }
-    for cond in &rule.if_ {
-        push_cond(cond, exprs);
-    }
-    for effect in rule
-        .do_
-        .iter()
-        .chain(&rule.success)
-        .chain(&rule.partial)
-        .chain(&rule.failure)
-    {
-        push_effect(effect, exprs);
-    }
-}
-
-fn push_cost<'a>(cost: &'a Cost, exprs: &mut Vec<&'a Expr>) {
-    for (_, expr) in cost.meters.iter().chain(cost.items.iter()) {
-        exprs.push(expr);
-    }
-}
-
-fn push_cond<'a>(cond: &'a Cond, exprs: &mut Vec<&'a Expr>) {
-    match cond {
-        Cond::Meter { value, .. } | Cond::Clock { value, .. } => exprs.push(value),
-        Cond::All(inner) | Cond::Any(inner) => {
-            for cond in inner {
-                push_cond(cond, exprs);
-            }
-        }
-        Cond::Not(inner) => push_cond(inner, exprs),
-        _ => {}
-    }
-}
-
-fn push_effect<'a>(effect: &'a EffectTemplate, exprs: &mut Vec<&'a Expr>) {
-    match effect {
-        EffectTemplate::Meter {
-            add, set, resist, ..
-        } => {
-            if let Some(expr) = add {
-                exprs.push(expr);
-            }
-            if let Some(expr) = set {
-                exprs.push(expr);
-            }
-            if let Some(spec) = resist {
-                push_resist(spec, exprs);
-            }
-        }
-        EffectTemplate::Flag { resist, .. }
-        | EffectTemplate::Narrate { resist, .. }
-        | EffectTemplate::Item { resist, .. } => {
-            if let Some(spec) = resist {
-                push_resist(spec, exprs);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn push_resist<'a>(spec: &'a ResistSpec, exprs: &mut Vec<&'a Expr>) {
-    if let ResistSpec::Roll {
-        target, resisted, ..
-    } = spec
-    {
-        exprs.push(target);
-        for effect in resisted {
-            push_effect(effect, exprs);
-        }
-    }
-}
-
-fn unknown_meters(
-    meters: &BTreeMap<String, MeterDef>,
-    checks: &BTreeMap<String, CheckDef>,
-    rules: &RuleTable,
-) -> Vec<Diagnostic> {
-    let mut diags = Vec::new();
-    for (id, check) in checks {
-        if meters.contains_key(&check.stat) {
-            continue;
-        }
-        diags.push(
-            schema_error(
-                "rules/checks.yaml",
-                &format!(
-                    "check '{id}' uses stat '{}', which is not in rules/meters.yaml",
-                    check.stat
-                ),
-                "add the meter or name one that exists",
-            )
-            .with_path(format!("checks.{id}.stat")),
-        );
-    }
-    for rule in rules.iter() {
-        for effect in rule
-            .do_
-            .iter()
-            .chain(&rule.success)
-            .chain(&rule.partial)
-            .chain(&rule.failure)
-        {
-            let Some(key) = meter_keys(effect) else {
-                continue;
-            };
-            if meters.contains_key(key) {
-                continue;
-            }
-            diags.push(
-                schema_error(
-                    &rule.file,
-                    &format!(
-                        "rule '{}' writes meter '{key}', which is not in rules/meters.yaml",
-                        rule.local_id
-                    ),
-                    "add the meter or name one that exists",
-                )
-                .with_path(format!("rules[{}].do", rule.index)),
-            );
-        }
-    }
-    diags
-}
-
 fn load_verbs(text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     const FILE: &str = "rules/verbs.yaml";
-    if let Some(diag) = tag_diagnostic(text, format::VERBS, FILE, 0) {
-        return Err(vec![diag]);
-    }
-    let file: schema::VerbsFile = parse_file(FILE, text, 0)?;
-    if file.schema != format::VERBS {
-        return Err(vec![schema_error(
-            FILE,
-            &format!("schema is '{}', which this file does not use", file.schema),
-            "write 'schema: verbs' with no version suffix",
-        )
-        .with_path("schema")]);
-    }
+    let file = load_headed(FILE, text, format::VERBS, 0, |file: schema::VerbsFile| {
+        if file.schema != format::VERBS {
+            return Err(vec![schema_error(
+                FILE,
+                &format!("schema is '{}', which this file does not use", file.schema),
+                "write 'schema: verbs' with no version suffix",
+            )
+            .with_path("schema")]);
+        }
+        Ok(file)
+    })?;
     schema::compile(FILE, file.rules, &Owner::Verb)
 }
 
 fn load_item(file: &str, yaml: &str) -> Result<ItemFile, Vec<Diagnostic>> {
-    if let Some(diag) = tag_diagnostic(yaml, format::ITEM, file, 1) {
-        return Err(vec![diag]);
-    }
-    let item: ItemFile = parse_file(file, yaml, 1)?;
-    if item.schema != format::ITEM {
-        return Err(vec![schema_error(
-            file,
-            &format!("schema is '{}', which this file does not use", item.schema),
-            "write 'schema: item' with no version suffix",
-        )]);
-    }
-    Ok(item)
+    load_headed(file, yaml, format::ITEM, 1, |item: ItemFile| {
+        if item.schema != format::ITEM {
+            return Err(vec![schema_error(
+                file,
+                &format!("schema is '{}', which this file does not use", item.schema),
+                "write 'schema: item' with no version suffix",
+            )]);
+        }
+        Ok(item)
+    })
 }
 
 fn load_story(file: &str, text: &str) -> Result<StoryFile, Vec<Diagnostic>> {
-    if let Some(diag) = tag_diagnostic(text, format::STORY, file, 0) {
-        return Err(vec![diag]);
-    }
-    let story: StoryFile = parse_file(file, text, 0)?;
-    if story.schema != format::STORY {
-        return Err(vec![schema_error(
-            file,
-            &format!("schema is '{}', which this file does not use", story.schema),
-            "write 'schema: story' with no version suffix",
-        )]);
-    }
-    Ok(story)
+    load_headed(file, text, format::STORY, 0, |story: StoryFile| {
+        if story.schema != format::STORY {
+            return Err(vec![schema_error(
+                file,
+                &format!("schema is '{}', which this file does not use", story.schema),
+                "write 'schema: story' with no version suffix",
+            )]);
+        }
+        Ok(story)
+    })
 }
 
 fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
@@ -1589,164 +848,146 @@ fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
 }
 
 fn load_pack(text: &str) -> Result<PackFile, Vec<Diagnostic>> {
-    load_headed(
-        "pack.yaml",
-        text,
-        crate::format::PACK,
-        0,
-        |file: PackFile| {
-            let mut diags = Vec::new();
-            if file.schema != crate::format::PACK {
-                diags.push(
-                    schema_error(
-                        "pack.yaml",
-                        &format!("schema is '{}', which this file does not use", file.schema),
-                        "write 'schema: pack' with no version suffix",
-                    )
-                    .with_path("schema"),
-                );
-            }
-            if file.id.is_empty() {
-                diags.push(
-                    schema_error("pack.yaml", "id is empty", "set id to a short pack id")
-                        .with_path("id"),
-                );
-            }
-            if diags.is_empty() {
-                Ok(file)
-            } else {
-                Err(diags)
-            }
-        },
-    )
+    load_headed("pack.yaml", text, format::PACK, 0, |file: PackFile| {
+        let mut diags = Vec::new();
+        if file.schema != format::PACK {
+            diags.push(
+                schema_error(
+                    "pack.yaml",
+                    &format!("schema is '{}', which this file does not use", file.schema),
+                    "write 'schema: pack' with no version suffix",
+                )
+                .with_path("schema"),
+            );
+        }
+        if file.id.is_empty() {
+            diags.push(
+                schema_error("pack.yaml", "id is empty", "set id to a short pack id")
+                    .with_path("id"),
+            );
+        }
+        if diags.is_empty() {
+            Ok(file)
+        } else {
+            Err(diags)
+        }
+    })
 }
 
 fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<Diagnostic>> {
-    load_headed(
-        file,
-        yaml,
-        crate::format::PLACE,
-        line_base,
-        |parsed: PlaceFile| {
-            let mut diags = Vec::new();
-            if parsed.schema != crate::format::PLACE {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "schema:",
-                    "schema",
-                    &format!(
-                        "schema is '{}', which this file does not use",
-                        parsed.schema
-                    ),
-                    "write 'schema: place' with no version suffix",
-                ));
-            }
-            if parsed.id.is_empty() {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "id:",
-                    "id",
-                    "id is empty",
-                    "set id to a short place id",
-                ));
-            }
-            if parsed.display_name.trim().is_empty() {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "display_name:",
-                    "display_name",
-                    "display_name is empty",
-                    "set display_name to the name players see",
-                ));
-            }
-            if diags.is_empty() {
-                Ok(parsed)
-            } else {
-                Err(diags)
-            }
-        },
-    )
+    load_headed(file, yaml, format::PLACE, line_base, |parsed: PlaceFile| {
+        let mut diags = Vec::new();
+        if parsed.schema != format::PLACE {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "schema:",
+                "schema",
+                &format!(
+                    "schema is '{}', which this file does not use",
+                    parsed.schema
+                ),
+                "write 'schema: place' with no version suffix",
+            ));
+        }
+        if parsed.id.is_empty() {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "id:",
+                "id",
+                "id is empty",
+                "set id to a short place id",
+            ));
+        }
+        if parsed.display_name.trim().is_empty() {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "display_name:",
+                "display_name",
+                "display_name is empty",
+                "set display_name to the name players see",
+            ));
+        }
+        if diags.is_empty() {
+            Ok(parsed)
+        } else {
+            Err(diags)
+        }
+    })
 }
 
 fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Diagnostic>> {
-    load_headed(
-        file,
-        yaml,
-        crate::format::CAST,
-        line_base,
-        |parsed: CastFile| {
-            let mut diags = Vec::new();
-            if parsed.schema != crate::format::CAST {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "schema:",
-                    "schema",
-                    &format!(
-                        "schema is '{}', which this file does not use",
-                        parsed.schema
-                    ),
-                    "write 'schema: cast' with no version suffix",
-                ));
-            }
-            if parsed.id.is_empty() {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "id:",
-                    "id",
-                    "id is empty",
-                    "set id to a short cast id",
-                ));
-            }
-            if parsed.id == crate::effect::WORLD {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "id:",
-                    "id",
-                    "id world is reserved",
-                    "rename this cast member",
-                ));
-            }
-            if parsed.display_name.trim().is_empty() {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "display_name:",
-                    "display_name",
-                    "display_name is empty",
-                    "set display_name to the name players see",
-                ));
-            }
-            if parsed.kind != "npc" && parsed.kind != "pc_template" {
-                diags.push(headed_schema_error(
-                    file,
-                    yaml,
-                    line_base,
-                    "kind:",
-                    "kind",
-                    &format!("kind is '{}', which is not npc or pc_template", parsed.kind),
-                    "set kind to npc or pc_template",
-                ));
-            }
-            if diags.is_empty() {
-                Ok(parsed)
-            } else {
-                Err(diags)
-            }
-        },
-    )
+    load_headed(file, yaml, format::CAST, line_base, |parsed: CastFile| {
+        let mut diags = Vec::new();
+        if parsed.schema != format::CAST {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "schema:",
+                "schema",
+                &format!(
+                    "schema is '{}', which this file does not use",
+                    parsed.schema
+                ),
+                "write 'schema: cast' with no version suffix",
+            ));
+        }
+        if parsed.id.is_empty() {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "id:",
+                "id",
+                "id is empty",
+                "set id to a short cast id",
+            ));
+        }
+        if parsed.id == crate::effect::WORLD {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "id:",
+                "id",
+                "id world is reserved",
+                "rename this cast member",
+            ));
+        }
+        if parsed.display_name.trim().is_empty() {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "display_name:",
+                "display_name",
+                "display_name is empty",
+                "set display_name to the name players see",
+            ));
+        }
+        if parsed.kind != "npc" && parsed.kind != "pc_template" {
+            diags.push(headed_schema_error(
+                file,
+                yaml,
+                line_base,
+                "kind:",
+                "kind",
+                &format!("kind is '{}', which is not npc or pc_template", parsed.kind),
+                "set kind to npc or pc_template",
+            ));
+        }
+        if diags.is_empty() {
+            Ok(parsed)
+        } else {
+            Err(diags)
+        }
+    })
 }
 
 fn load_headed<T: serde::de::DeserializeOwned>(
