@@ -80,6 +80,7 @@ pub(crate) fn migrate_entry(
 pub struct JournalFault {
     pub file: String,
     pub detail: String,
+    pub reason: Reason,
 }
 
 /// Parse every complete record. A torn last line is left unread. The chain is not checked.
@@ -395,16 +396,18 @@ fn refuse_old_layout(dir: &Path) -> Result<(), JournalFault> {
         let name = entry.file_name();
         let name = name.to_string_lossy();
         if name.starts_with("presence-") && name.ends_with(".json") {
-            return Err(fault(
+            return Err(fault_coded(
                 &entry.path(),
+                Reason::RulesRev,
                 "RULES_REV: presence records were written by older rules; start a fresh save",
             ));
         }
         if (name.starts_with("tick-") && name.ends_with(".jsonl"))
             || (name.starts_with("migrate-") && name.ends_with(".json"))
         {
-            return Err(fault(
+            return Err(fault_coded(
                 &entry.path(),
+                Reason::RulesRev,
                 "RULES_REV: one-file journal records were written by older rules; start a fresh save",
             ));
         }
@@ -523,14 +526,31 @@ fn read_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, JournalFa
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
     match serde_path_to_error::deserialize(&mut de) {
         Ok(value) => Ok(value),
-        Err(err) => Err(fault_name(name, &err.to_string())),
+        Err(err) => {
+            let detail = err.to_string();
+            let reason = if detail.contains("ILLEGAL_CLASS") {
+                Reason::IllegalClass
+            } else {
+                Reason::Schema
+            };
+            Err(JournalFault {
+                file: name.to_string(),
+                detail,
+                reason,
+            })
+        }
     }
 }
 
 fn fault(path: &Path, detail: &str) -> JournalFault {
+    fault_coded(path, Reason::Schema, detail)
+}
+
+fn fault_coded(path: &Path, reason: Reason, detail: &str) -> JournalFault {
     JournalFault {
         file: path.to_string_lossy().replace('\\', "/"),
         detail: detail.to_string(),
+        reason,
     }
 }
 
@@ -538,6 +558,7 @@ fn fault_name(name: &str, detail: &str) -> JournalFault {
     JournalFault {
         file: name.to_string(),
         detail: detail.to_string(),
+        reason: Reason::Schema,
     }
 }
 

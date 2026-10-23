@@ -9,7 +9,7 @@ use crate::rules::cond;
 use crate::rules::cost;
 use crate::rules::expr::Ctx;
 use crate::rules::habits::is_eligible;
-use crate::rules::perceive::perceive_at;
+use crate::rules::perceive::perceive_viewer;
 
 /// A gate refusal. `Reason` stays fieldless. A cost shortfall keeps the missing name.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -190,7 +190,7 @@ fn sees(canon: &Canon, now: &Now, intent: &Intent) -> bool {
     }
     let view = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)
         .ok()
-        .and_then(|viewer| perceive_at(canon, now, &viewer.token()).ok());
+        .and_then(|viewer| perceive_viewer(canon, now, &viewer).ok());
     let Some(view) = view else { return false };
     view.place == id
         || view.visible_actors.iter().any(|other| other == id)

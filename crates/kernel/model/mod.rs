@@ -320,8 +320,7 @@ pub struct PendingAction {
     pub arrive: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub via: Option<String>,
-    /// `player`, `kernel`, or `system`.
-    pub source: String,
+    pub source: crate::intent::Source,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

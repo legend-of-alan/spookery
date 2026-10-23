@@ -527,7 +527,7 @@ fn load_entries(pack: &Path) -> Result<Vec<JournalEntry>, ReplayError> {
 }
 
 fn journal_fault(fault: spookery_kernel::api::journal::JournalFault) -> ReplayError {
-    if fault.detail.contains("RULES_REV") {
+    if fault.reason == Reason::RulesRev {
         return ReplayError::Reason(Reason::RulesRev);
     }
     ReplayError::Diverged(diverge(
@@ -719,7 +719,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
     Ok(())
 }
 
-fn first_effect_difference(logged: &[Effect], replayed: &[Effect]) -> Option<String> {
+pub(crate) fn first_effect_difference(logged: &[Effect], replayed: &[Effect]) -> Option<String> {
     let count = logged.len().max(replayed.len());
     for index in 0..count {
         let left = logged.get(index);

@@ -4,7 +4,7 @@ use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::draft::Draft;
 use spookery_kernel::api::effect::{Effect, EffectKind};
 use spookery_kernel::api::expand::expand_outcome;
-use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Target, ViewerId};
 use spookery_kernel::api::journal::Arrival;
 use spookery_kernel::api::model::PendingAction;
 use spookery_kernel::api::rules::MoveReport;
@@ -151,11 +151,7 @@ fn arrival_intent(
         tick_index: round.tick_index,
         actor_id: actor_id.to_string(),
         actor_kind: kind,
-        source: match pending.source.as_str() {
-            "kernel" => Source::Kernel,
-            "system" => Source::System,
-            _ => Source::Player,
-        },
+        source: pending.source,
         move_name: pending.verb.clone(),
         target: if pending.target.is_empty() {
             Target::Empty

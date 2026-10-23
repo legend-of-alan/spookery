@@ -124,6 +124,20 @@ impl Canon {
             .unwrap_or_else(|| id.to_string())
     }
 
+    pub fn viewer_of(&self, token: &str) -> Option<crate::intent::ViewerId> {
+        if let Ok(viewer) = crate::intent::ViewerId::parse(token) {
+            if !viewer.actor_id().chars().any(char::is_whitespace) {
+                return Some(viewer);
+            }
+            return None;
+        }
+        let id = token.replace(' ', "_");
+        match self.cast.get(&id)?.kind {
+            CastKind::Npc => Some(crate::intent::ViewerId::Npc(id)),
+            CastKind::PcTemplate => Some(crate::intent::ViewerId::Player(id)),
+        }
+    }
+
     pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {
         let Some(fact) = self.facts.get(fact_id) else {
             return "";

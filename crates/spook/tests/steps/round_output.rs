@@ -191,6 +191,6 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
         target: via.to_string(),
         arrive: Some(arrive.to_string()),
         via: Some(via.to_string()),
-        source: "player".to_string(),
+        source: spookery_kernel::api::intent::Source::Player,
     });
 }

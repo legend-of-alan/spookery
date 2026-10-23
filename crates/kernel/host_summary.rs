@@ -8,13 +8,7 @@ use crate::perceive::View;
 use crate::world::World;
 
 pub fn host_summary(world: &World) -> Result<String, Reason> {
-    let entries = journal::read_verified(world.root()).map_err(|fault| {
-        if fault.detail.contains("ILLEGAL_CLASS") {
-            Reason::IllegalClass
-        } else {
-            Reason::Schema
-        }
-    })?;
+    let entries = journal::read_verified(world.root()).map_err(|fault| fault.reason)?;
     let mut effects = Vec::new();
     for entry in &entries {
         let JournalEntry::Tick(record) = entry else {

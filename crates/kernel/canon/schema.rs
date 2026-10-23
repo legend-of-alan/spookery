@@ -10,7 +10,7 @@ use serde_saphyr::Spanned;
 use crate::diagnostic::{schema, Diagnostic};
 use crate::rule::{
     parse_expr, stamp_expr, Arith, ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo,
-    NarrateTo, Op, Owner, ResistSpec, RollSpec, Rule, Spot, TargetKind, When, Who,
+    NarrateTo, Op, Owner, ResistSpec, RollSpec, Rule, Spot, TargetKind, WatchWho, When, Who,
 };
 
 #[derive(Debug)]
@@ -676,7 +676,12 @@ fn when_of(yaml: &WhenYaml) -> Result<When, String> {
 }
 
 fn change_of(yaml: &ChangeYaml) -> Result<When, String> {
-    let who = yaml.who.clone().unwrap_or_else(|| "any".to_string());
+    let who = match yaml.who.as_deref() {
+        None | Some("any") => WatchWho::Any,
+        Some("pc") => WatchWho::Pc,
+        Some("npc") => WatchWho::Npc,
+        Some(actor) => WatchWho::Actor(actor.to_string()),
+    };
     if let Some(place) = &yaml.arrive {
         return Ok(When::Change(ChangeWatch::Arrive {
             place: place.clone(),

@@ -113,20 +113,12 @@ fn gzip_path(plain: &Path) -> PathBuf {
     plain.with_file_name(name)
 }
 
-fn reason_for(detail: &str) -> Reason {
-    if detail.contains("RULES_REV") {
-        Reason::RulesRev
-    } else {
-        Reason::Schema
-    }
-}
-
 /// Memory files are a cache of the journal. The live bundle supplies lines since
 /// the last checkpoint. A line for a tick the live bundle does not have, and
 /// that the checkpoint does not cover, is dropped.
 fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
-    let records = journal::read_live(root).map_err(|fault| reason_for(&fault.detail))?;
-    let head = journal::read_head(root).map_err(|fault| reason_for(&fault.detail))?;
+    let records = journal::read_live(root).map_err(|fault| fault.reason)?;
+    let head = journal::read_head(root).map_err(|fault| fault.reason)?;
     let live_ticks: BTreeSet<u64> = records
         .iter()
         .filter_map(|entry| match entry {

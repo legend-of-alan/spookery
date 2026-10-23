@@ -8,7 +8,7 @@ use spookery_kernel::api::expand::expand_rule;
 use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use spookery_kernel::api::key::{ChangeRecord, StateKey, StateValue};
 use spookery_kernel::api::model::Now;
-use spookery_kernel::api::rule::{ChangeWatch, Op, Rule, When};
+use spookery_kernel::api::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use spookery_kernel::api::rules::cond;
 use spookery_kernel::api::rules::expr::Ctx;
 use spookery_kernel::api::rules::{MoveReport, RollResult};
@@ -302,15 +302,15 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
     }
 }
 
-fn who_ok(draft: &Draft, who: &str, actor_id: &str) -> bool {
+fn who_ok(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
     let Some(actor) = draft.now().actors.get(actor_id) else {
         return false;
     };
     match who {
-        "any" => true,
-        "pc" => actor.is_pc(),
-        "npc" => actor.is_npc(),
-        other => other == actor_id,
+        WatchWho::Any => true,
+        WatchWho::Pc => actor.is_pc(),
+        WatchWho::Npc => actor.is_npc(),
+        WatchWho::Actor(expected) => expected == actor_id,
     }
 }
 

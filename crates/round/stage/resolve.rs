@@ -265,22 +265,7 @@ fn roll_for(
 }
 
 pub(crate) fn next_key(round: &mut Round, rule: &str, subject: &str) -> RollKey {
-    let roll_index = {
-        let index = round
-            .roll_counts
-            .entry((rule.to_string(), subject.to_string()))
-            .or_insert(0);
-        let roll_index = *index;
-        *index += 1;
-        roll_index
-    };
-    RollKey {
-        world_id: round.world_id.clone(),
-        round_index: round.tick_index,
-        rule_id: rule.to_string(),
-        subject_id: subject.to_string(),
-        roll_index,
-    }
+    with_dice(round, |tracker| tracker.key(rule, subject))
 }
 
 fn reclassify(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollResult {

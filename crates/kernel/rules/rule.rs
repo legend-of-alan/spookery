@@ -123,9 +123,17 @@ impl TargetKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum WatchWho {
+    Any,
+    Pc,
+    Npc,
+    Actor(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChangeWatch {
-    Arrive { place: String, who: String },
-    Leave { place: String, who: String },
+    Arrive { place: String, who: WatchWho },
+    Leave { place: String, who: WatchWho },
     Meter { key: String, op: Op, bound: i64 },
     Flag { key: String, becomes: bool },
     Clock { id: String },

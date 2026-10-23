@@ -235,11 +235,7 @@ pub fn begin(
         },
         arrive: travel.as_ref().map(|(_, to, _)| to.clone()),
         via: travel.as_ref().map(|(_, _, name)| name.clone()),
-        source: match intent.source {
-            Source::Kernel => "kernel".to_string(),
-            Source::Player => "player".to_string(),
-            Source::System => "system".to_string(),
-        },
+        source: intent.source,
     };
     draft.track(StateKey::ActorBusy(intent.actor_id.clone()))?;
     let act = draft

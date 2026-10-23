@@ -16,15 +16,14 @@ use std::fs;
 use std::path::Path;
 
 use proptest::test_runner::{TestCaseError, TestRunner};
-use spookery_kernel::api::effect::Effect;
 use spookery_kernel::api::journal::{self, JournalEntry};
-use spookery_kernel::api::store::codec::emit_effect;
 use spookery_kernel::api::world::World;
 
 use super::play::{
     configure_runner, copy_docks, copy_pack, fail_msg, pick_rounds, play_rounds, TempPack,
 };
 use crate::play::{play_recorded, RecordedRound};
+use crate::replay::first_effect_difference;
 
 #[test]
 fn running_a_round_again_matches_the_logged_effects() {
@@ -73,37 +72,9 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
             },
         )
         .map_err(|err| fail_msg(format!("tick {} did not re-run: {err}", record.tick_index)))?;
-        if effects != record.effects {
-            return Err(fail_msg(effect_diff(
-                record.tick_index,
-                &record.effects,
-                &effects,
-            )));
+        if let Some(diff) = first_effect_difference(&record.effects, &effects) {
+            return Err(fail_msg(format!("tick {} {diff}", record.tick_index)));
         }
     }
     Ok(())
-}
-
-fn effect_diff(tick: u64, logged: &[Effect], again: &[Effect]) -> String {
-    let count = logged.len().max(again.len());
-    for index in 0..count {
-        let left = logged.get(index);
-        let right = again.get(index);
-        if left == right {
-            continue;
-        }
-        return format!(
-            "tick {tick} effect {index} differed: logged {} again {}",
-            effect_text(left),
-            effect_text(right)
-        );
-    }
-    format!("tick {tick} effects differed")
-}
-
-fn effect_text(effect: Option<&Effect>) -> String {
-    match effect {
-        Some(effect) => emit_effect(effect),
-        None => "none".to_string(),
-    }
 }

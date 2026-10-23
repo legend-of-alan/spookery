@@ -74,6 +74,10 @@ pub fn perceive_at(canon: &Canon, now: &Now, as_arg: &str) -> Result<View, Reaso
     perceive_at_budget(canon, now, as_arg, BUDGET_TOKENS)
 }
 
+pub(crate) fn perceive_viewer(canon: &Canon, now: &Now, viewer: &ViewerId) -> Result<View, Reason> {
+    perceive_viewer_budget(canon, now, viewer, BUDGET_TOKENS)
+}
+
 fn perceive_at_budget(
     canon: &Canon,
     now: &Now,
@@ -81,6 +85,15 @@ fn perceive_at_budget(
     budget_tokens: usize,
 ) -> Result<View, Reason> {
     let viewer = ViewerId::parse(as_arg)?;
+    perceive_viewer_budget(canon, now, &viewer, budget_tokens)
+}
+
+fn perceive_viewer_budget(
+    canon: &Canon,
+    now: &Now,
+    viewer: &ViewerId,
+    budget_tokens: usize,
+) -> Result<View, Reason> {
     let actor = now
         .actors
         .get(viewer.actor_id())
@@ -104,7 +117,7 @@ fn perceive_at_budget(
     let mut known_facts = Vec::new();
     let mut public_flags = Vec::new();
     for id in ids {
-        if !allows(canon, now, &viewer, &id) {
+        if !allows(canon, now, viewer, &id) {
             continue;
         }
         let text = canon
@@ -137,7 +150,7 @@ fn perceive_at_budget(
         if message
             .fact_ids
             .iter()
-            .any(|fact| !allows(canon, now, &viewer, fact))
+            .any(|fact| !allows(canon, now, viewer, fact))
         {
             continue;
         }
@@ -190,7 +203,7 @@ fn perceive_at_budget(
         })
         .collect();
 
-    let habits = match &viewer {
+    let habits = match viewer {
         ViewerId::Player(_) => Vec::new(),
         ViewerId::Npc(id) => habits_on(canon, now, id),
     };
