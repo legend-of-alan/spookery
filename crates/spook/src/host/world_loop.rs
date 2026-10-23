@@ -5,7 +5,7 @@ use std::io::{self, Write};
 use spookery_kernel::api::model::{ActorLive, Presence};
 use spookery_kernel::api::perceive::perceive;
 use spookery_kernel::api::world::World;
-use spookery_kernel::api::{host_lines, player_digest, Reason};
+use spookery_kernel::api::{host_lines, Reason};
 use spookery_round::RoundOutput;
 
 use super::frames;
@@ -510,7 +510,7 @@ fn welcome(world: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
 
 fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
     let view = perceive(world, &format!("player:{actor_id}"))?;
-    let mut out = frames::player_resume_line(&player_digest(&view)?);
+    let mut out = frames::player_resume_line(&view);
     out.push_str(&frames::player_perceive_line(&view));
     Ok(out)
 }

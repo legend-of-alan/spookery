@@ -1,6 +1,6 @@
 //! Listen, seat players, and run the world.
 
-pub(crate) mod frames;
+pub mod frames;
 mod gm_seat;
 mod gm_tools;
 pub mod idle_clock;

@@ -14,7 +14,7 @@
 pub mod ai;
 pub mod gm_connection;
 pub mod host;
-pub mod protocol;
+pub use spookery_protocol as protocol;
 pub mod terminal;
 
 pub use host::Error;

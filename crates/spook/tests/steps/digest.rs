@@ -22,12 +22,6 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
-/// The raw player digest after thirteen docks ticks: what `--raw` carries in the resume frame.
-pub(crate) const RESUME: &str = "\
-message note_mira_door Back at dusk. Oil on the shelf.
-clock assassination_debt 2 6 paused
-";
-
 #[when(expr = "thirteen ticks pass")]
 fn thirteen_ticks_pass(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
@@ -168,7 +162,30 @@ fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: Stri
 #[then(expr = "the player resume lists the door message")]
 fn the_player_resume_lists_the_door_message(world: &mut World) {
     let resume = read_player_resume(world, "pc_rowan");
-    assert_eq!(resume, RESUME);
+    assert_eq!(
+        resume,
+        serde_json::json!({
+            "kind": "resume",
+            "messages": [
+                {
+                    "id": "note_mira_door",
+                    "to": ["pc_rowan"],
+                    "place": "docks_shop",
+                    "fact_ids": [],
+                    "text": "Back at dusk. Oil on the shelf."
+                }
+            ],
+            "clocks": [
+                {
+                    "id": "assassination_debt",
+                    "value": 2,
+                    "max": 6,
+                    "paused": true
+                }
+            ]
+        })
+        .to_string()
+    );
     assert!(!resume.contains("effect location"));
     assert!(!resume.contains("lamp_oil"));
 }
@@ -200,7 +217,9 @@ fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
     let shard = spookery_round::resume(pack).unwrap();
     let view = spookery_kernel::api::perceive(&shard, &format!("player:{actor}")).unwrap();
-    spookery_kernel::api::player_digest(&view).unwrap()
+    spookery::host::frames::player_resume_line(&view)
+        .trim_end()
+        .to_string()
 }
 
 fn rewrite_mira(pack: &Path, from: &str, to: &str) {

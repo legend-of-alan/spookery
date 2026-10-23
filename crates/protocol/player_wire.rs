@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{Error, Outcome};
+use crate::{Error, Outcome};
 
 /// Names and prose for one place view. Boxed on the wire so the message stays small.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -35,7 +35,10 @@ pub enum PlayerMessage {
         outcome: Outcome,
     },
     Resume {
-        text: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        messages: Vec<WireMessage>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        clocks: Vec<WireClock>,
     },
     /// Help, look, and map. The text is already the lines to print.
     Lines {
@@ -117,6 +120,14 @@ pub struct WireMeter {
     pub id: String,
     pub value: i64,
     pub max: i64,
+}
+
+pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
+    if locked {
+        format!("{name} (locked) — {minutes} min")
+    } else {
+        format!("{name} — {minutes} min")
+    }
 }
 
 pub fn write_player(message: &PlayerMessage) -> String {

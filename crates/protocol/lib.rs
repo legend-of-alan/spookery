@@ -31,8 +31,8 @@ pub use gm_wire::{
     PerceiveArgs, QueueRow, Roll, SayArgs, SessionStatus, StatusArgs, StatusPause, StatusPresence,
 };
 pub use player_wire::{
-    read_player, read_player_hello, write_player, write_player_hello, PlayerMessage, ViewScene,
-    WireClock, WireExit, WireFact, WireItem, WireMessage, WireMeter,
+    exit_phrase, read_player, read_player_hello, write_player, write_player_hello, PlayerMessage,
+    ViewScene, WireClock, WireExit, WireFact, WireItem, WireMessage, WireMeter,
 };
 
 /// A line that is not one of the two message sets.

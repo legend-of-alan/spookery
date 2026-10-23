@@ -31,24 +31,22 @@ fn say_line(tape: &TapeRecord, replay: bool) -> String {
 }
 
 pub fn say_value(tape: &TapeRecord) -> Value {
-    GmSay::from(tape).to_value()
+    gm_say(tape).to_value()
 }
 
 pub fn say_event(tape: &TapeRecord) -> Vec<u8> {
-    crate::protocol::write_say_event(&GmSay::from(tape))
+    crate::protocol::write_say_event(&gm_say(tape))
 }
 
-impl From<&TapeRecord> for GmSay {
-    fn from(tape: &TapeRecord) -> Self {
-        Self {
-            seq: tape.seq,
-            from: tape.from.clone(),
-            address: tape.address.clone(),
-            place: tape.place.clone(),
-            actor: tape.actor.clone(),
-            recipients: tape.recipients.clone(),
-            text: tape.text.clone(),
-        }
+fn gm_say(tape: &TapeRecord) -> GmSay {
+    GmSay {
+        seq: tape.seq,
+        from: tape.from.clone(),
+        address: tape.address.clone(),
+        place: tape.place.clone(),
+        actor: tape.actor.clone(),
+        recipients: tape.recipients.clone(),
+        text: tape.text.clone(),
     }
 }
 
@@ -78,10 +76,20 @@ pub fn check_event(out: &RollResult) -> Vec<u8> {
     crate::protocol::write_check_event(&roll_of(out))
 }
 
-pub fn player_resume_line(text: &str) -> String {
-    crate::protocol::write_player(&PlayerMessage::Resume {
-        text: text.to_string(),
-    })
+pub fn player_resume_line(view: &View) -> String {
+    let actor_id = view
+        .viewer
+        .split_once(':')
+        .map(|(_, id)| id)
+        .unwrap_or(&view.viewer);
+    let messages = view
+        .messages
+        .iter()
+        .filter(|message| message.to.iter().any(|to| to == actor_id))
+        .map(wire_message)
+        .collect();
+    let clocks = view.clocks.iter().map(wire_clock).collect();
+    crate::protocol::write_player(&PlayerMessage::Resume { messages, clocks })
 }
 
 pub fn player_lines(text: &str) -> String {
@@ -161,7 +169,7 @@ pub fn session_status(
             })
             .collect(),
         last_seq,
-        events: events.map(|events| events.iter().map(GmSay::from).collect()),
+        events: events.map(|events| events.iter().map(gm_say).collect()),
     }
     .to_value()
 }

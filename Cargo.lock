@@ -2069,6 +2069,7 @@ dependencies = [
  "serde_json",
  "socket2",
  "spookery-kernel",
+ "spookery-protocol",
  "spookery-round",
  "tokio",
 ]
@@ -2084,6 +2085,14 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "serde_path_to_error",
+]
+
+[[package]]
+name = "spookery-protocol"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

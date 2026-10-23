@@ -1,6 +1,8 @@
 //! Readable text for one player frame.
 
-use crate::protocol::{Outcome, PlayerMessage, WireClock, WireExit, WireMeter};
+use crate::protocol::{
+    exit_phrase, Outcome, PlayerMessage, WireClock, WireExit, WireMessage, WireMeter,
+};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -17,7 +19,7 @@ pub fn render(message: &PlayerMessage) -> String {
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
             Outcome::Miss => "Your roll missed.".to_string(),
         },
-        PlayerMessage::Resume { text } => resume(text),
+        PlayerMessage::Resume { messages, clocks } => resume(messages, clocks),
         PlayerMessage::Lines { text } => text.clone(),
         PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
         PlayerMessage::View { .. } => view_text(message),
@@ -62,12 +64,12 @@ impl PlayerFormatter {
                 replay: true,
                 ..
             } => self.open_earlier(format!("{}: {text}", speaker(from))),
-            PlayerMessage::Resume { text } => {
+            PlayerMessage::Resume { messages, clocks } => {
                 if self.seen_resume {
                     return String::new();
                 }
                 self.seen_resume = true;
-                self.close_earlier(resume(text))
+                self.close_earlier(resume(messages, clocks))
             }
             _ => self.close_earlier(render(message)),
         }
@@ -91,43 +93,21 @@ impl PlayerFormatter {
     }
 }
 
-fn resume(text: &str) -> String {
-    let lines = text
-        .lines()
-        .map(str::trim)
-        .filter(|row| !row.is_empty())
-        .map(resume_row)
-        .collect::<Vec<_>>();
+fn resume(messages: &[WireMessage], clocks: &[WireClock]) -> String {
+    let mut lines = Vec::new();
+    for message in messages {
+        let text = message.text.trim();
+        if !text.is_empty() {
+            lines.push(text.to_string());
+        }
+    }
+    for clock in clocks {
+        lines.push(clock_line(clock));
+    }
     if lines.is_empty() {
         String::new()
     } else {
         format!("While you were away:\n{}", lines.join("\n"))
-    }
-}
-
-/// One player digest row as a sentence. A row this does not recognize is shown as it came.
-fn resume_row(row: &str) -> String {
-    let (kind, rest) = row.split_once(' ').unwrap_or((row, ""));
-    match kind {
-        "message" => match rest.split_once(' ') {
-            Some((_id, text)) if !text.trim().is_empty() => text.trim().to_string(),
-            _ => row.to_string(),
-        },
-        "clock" => match rest.split_whitespace().collect::<Vec<_>>()[..] {
-            [id, value, max, state @ ("paused" | "running")] => {
-                match (value.parse(), max.parse()) {
-                    (Ok(value), Ok(max)) => clock_line(&WireClock {
-                        id: id.to_string(),
-                        value,
-                        max,
-                        paused: state == "paused",
-                    }),
-                    _ => row.to_string(),
-                }
-            }
-            _ => row.to_string(),
-        },
-        _ => row.to_string(),
     }
 }
 
@@ -274,7 +254,7 @@ fn exit_section(exits: &[WireExit]) -> String {
     }
     let lines = exits
         .iter()
-        .map(|exit| spookery_kernel::api::map::exit_phrase(&exit.name, exit.minutes, exit.locked))
+        .map(|exit| exit_phrase(&exit.name, exit.minutes, exit.locked))
         .collect::<Vec<_>>()
         .join("\n");
     format!("Exits:\n{lines}")
@@ -404,16 +384,28 @@ mod tests {
         assert_readable(&miss);
     }
 
+    fn note(id: &str, text: &str) -> WireMessage {
+        WireMessage {
+            id: id.to_string(),
+            to: vec!["pc_rowan".to_string()],
+            place: Some("docks_shop".to_string()),
+            fact_ids: Vec::new(),
+            text: text.to_string(),
+        }
+    }
+
     #[test]
     fn a_resume_is_an_away_block() {
         let text = render(&PlayerMessage::Resume {
-            text: "the shop restocked\n".to_string(),
+            messages: vec![note("note_shop", "the shop restocked")],
+            clocks: Vec::new(),
         });
         assert_eq!(text, "While you were away:\nthe shop restocked");
         assert_readable(&text);
         assert_eq!(
             render(&PlayerMessage::Resume {
-                text: String::new(),
+                messages: Vec::new(),
+                clocks: Vec::new(),
             }),
             ""
         );
@@ -423,17 +415,20 @@ mod tests {
     fn a_later_resume_has_no_away_heading() {
         let mut formatter = PlayerFormatter::new();
         let first = formatter.show(&PlayerMessage::Resume {
-            text: "the shop restocked\n".to_string(),
+            messages: vec![note("note_shop", "the shop restocked")],
+            clocks: Vec::new(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
             formatter.show(&PlayerMessage::Resume {
-                text: String::new(),
+                messages: Vec::new(),
+                clocks: Vec::new(),
             }),
             ""
         );
         let later = formatter.show(&PlayerMessage::Resume {
-            text: "the yard stays watched\n".to_string(),
+            messages: vec![note("note_yard", "the yard stays watched")],
+            clocks: Vec::new(),
         });
         assert_eq!(later, "");
     }
@@ -457,7 +452,8 @@ mod tests {
         assert_eq!(second, "GM: evening");
         assert_eq!(
             formatter.show(&PlayerMessage::Resume {
-                text: String::new(),
+                messages: Vec::new(),
+                clocks: Vec::new(),
             }),
             ""
         );
@@ -470,12 +466,21 @@ mod tests {
     #[test]
     fn a_resume_turns_digest_rows_into_sentences() {
         let text = render(&PlayerMessage::Resume {
-            text: "\
-message note_mira_door Back at dusk. Oil on the shelf.
-clock assassination_debt 2 6 paused
-clock shop_day 1 1 running
-"
-            .to_string(),
+            messages: vec![note("note_mira_door", "Back at dusk. Oil on the shelf.")],
+            clocks: vec![
+                WireClock {
+                    id: "assassination_debt".to_string(),
+                    value: 2,
+                    max: 6,
+                    paused: true,
+                },
+                WireClock {
+                    id: "shop_day".to_string(),
+                    value: 1,
+                    max: 1,
+                    paused: false,
+                },
+            ],
         });
         assert_eq!(
             text,
@@ -489,17 +494,6 @@ Shop day: 1/1"
         assert!(!text.contains("assassination_debt"), "{text}");
         assert!(!text.contains("running"), "{text}");
         assert_readable(&text);
-    }
-
-    #[test]
-    fn a_resume_row_it_cannot_read_is_shown_as_it_came() {
-        let text = render(&PlayerMessage::Resume {
-            text: "clock broken two six paused\nmessage lonely_id\nweather fog\n".to_string(),
-        });
-        assert_eq!(
-            text,
-            "While you were away:\nclock broken two six paused\nmessage lonely_id\nweather fog"
-        );
     }
 
     #[test]

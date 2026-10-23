@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::protocol::{Error, Outcome};
+use crate::{Error, Outcome};
 
 /// The structured body of a tool-result line.
 pub fn read_tool_result(line: &str) -> Result<Value, Error> {
@@ -16,170 +16,153 @@ pub fn read_tool_result(line: &str) -> Result<Value, Error> {
         .unwrap_or(Value::Null))
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct StatusArgs {
+    #[serde(default)]
     pub since: Option<u64>,
 }
 
 pub fn read_status_args(arguments: Option<&Map<String, Value>>) -> Result<StatusArgs, Error> {
-    let Some(arguments) = arguments else {
-        return Ok(StatusArgs { since: None });
-    };
-    if arguments.is_empty() {
-        return Ok(StatusArgs { since: None });
+    match arguments {
+        None => Ok(StatusArgs::default()),
+        Some(arguments) => parse_args(arguments),
     }
-    if arguments.len() != 1 {
-        return Err(Error);
-    }
-    let Some(since) = arguments.get("since").and_then(Value::as_u64) else {
-        return Err(Error);
-    };
-    Ok(StatusArgs { since: Some(since) })
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PerceiveArgs {
+    #[serde(rename = "as", default)]
     pub as_viewer: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_focus")]
     pub focus: Option<String>,
+    #[serde(default)]
     pub budget_tokens: Option<u64>,
 }
 
-pub fn read_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<PerceiveArgs, Error> {
-    let empty = Map::new();
-    let arguments = arguments.unwrap_or(&empty);
-    let mut as_viewer = None;
-    let mut focus = None;
-    let mut budget_tokens = None;
-    for (key, value) in arguments {
-        match key.as_str() {
-            "as" => as_viewer = Some(value.as_str().ok_or(Error)?.to_string()),
-            "focus" => match value.as_str() {
-                Some(text @ ("place" | "actor")) => focus = Some(text.to_string()),
-                _ => return Err(Error),
-            },
-            "budget_tokens" => budget_tokens = Some(value.as_u64().ok_or(Error)?),
-            _ => return Err(Error),
-        }
+fn deserialize_focus<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let text = String::deserialize(deserializer)?;
+    match text.as_str() {
+        "place" | "actor" => Ok(Some(text)),
+        _ => Err(serde::de::Error::custom("focus")),
     }
-    Ok(PerceiveArgs {
-        as_viewer,
-        focus,
-        budget_tokens,
-    })
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+pub fn read_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<PerceiveArgs, Error> {
+    match arguments {
+        None => Ok(PerceiveArgs::default()),
+        Some(arguments) => parse_args(arguments),
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommitArgs {
     pub include_tick: bool,
+    #[serde(default)]
     pub session_id: Option<String>,
 }
 
 pub fn read_commit_args(arguments: Option<&Map<String, Value>>) -> Result<CommitArgs, Error> {
-    let arguments = arguments.ok_or(Error)?;
-    let mut include_tick = None;
-    let mut session_id = None;
-    for (key, value) in arguments {
-        match key.as_str() {
-            "include_tick" => include_tick = Some(value.as_bool().ok_or(Error)?),
-            "session_id" => session_id = Some(value.as_str().ok_or(Error)?.to_string()),
-            _ => return Err(Error),
-        }
-    }
-    Ok(CommitArgs {
-        include_tick: include_tick.ok_or(Error)?,
-        session_id,
-    })
+    parse_args(arguments.ok_or(Error)?)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SayArgs {
     pub address: String,
     pub text: String,
+    #[serde(default)]
     pub place: Option<String>,
+    #[serde(default)]
     pub actor: Option<String>,
 }
 
 pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs, Error> {
-    let arguments = arguments.ok_or(Error)?;
-    let mut address = None;
-    let mut place = None;
-    let mut actor = None;
-    let mut text = None;
-    for (key, value) in arguments {
-        match key.as_str() {
-            "from" => return Err(Error),
-            "address" => address = Some(value.as_str().ok_or(Error)?.to_string()),
-            "place" => place = optional_text(value)?,
-            "actor" => actor = optional_text(value)?,
-            "text" => text = Some(value.as_str().ok_or(Error)?.to_string()),
-            _ => return Err(Error),
-        }
-    }
-    Ok(SayArgs {
-        address: address.ok_or(Error)?,
-        text: text.ok_or(Error)?,
-        place,
-        actor,
-    })
+    parse_args(arguments.ok_or(Error)?)
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum CallTarget {
+    #[default]
     Empty,
     Place(String),
     Actor(String),
     Clock(String),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+impl<'de> Deserialize<'de> for CallTarget {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct WireTarget {
+            #[serde(default)]
+            place: Option<String>,
+            #[serde(default)]
+            actor: Option<String>,
+            #[serde(default)]
+            clock: Option<String>,
+        }
+        let wire = WireTarget::deserialize(deserializer)?;
+        match (wire.place, wire.actor, wire.clock) {
+            (None, None, None) => Ok(CallTarget::Empty),
+            (Some(id), None, None) => Ok(CallTarget::Place(id)),
+            (None, Some(id), None) => Ok(CallTarget::Actor(id)),
+            (None, None, Some(id)) => Ok(CallTarget::Clock(id)),
+            _ => Err(serde::de::Error::custom("target")),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IntentCall {
+    #[serde(default)]
     pub id: Option<String>,
+    #[serde(default)]
     pub tick_index: Option<u64>,
+    #[serde(default)]
     pub actor_id: Option<String>,
+    #[serde(default)]
     pub actor_kind: Option<String>,
+    #[serde(default)]
     pub source: Option<String>,
+    #[serde(rename = "move", default)]
     pub move_name: Option<String>,
+    #[serde(default)]
     pub target: CallTarget,
+    #[serde(rename = "args", default, deserialize_with = "deserialize_message_to")]
     pub message_to: Option<Vec<String>>,
+    #[serde(default)]
     pub rationale_code: String,
 }
 
-pub fn read_intent_args(arguments: Option<&Map<String, Value>>) -> Result<IntentCall, Error> {
-    let arguments = arguments.ok_or(Error)?;
-    let mut id = None;
-    let mut tick_index = None;
-    let mut actor_id = None;
-    let mut actor_kind = None;
-    let mut source = None;
-    let mut move_name = None;
-    let mut target = CallTarget::Empty;
-    let mut message_to = None;
-    let mut rationale_code = String::new();
-    for (key, value) in arguments {
-        match key.as_str() {
-            "id" => id = Some(value.as_str().ok_or(Error)?.to_string()),
-            "tick_index" => tick_index = Some(value.as_u64().ok_or(Error)?),
-            "actor_id" => actor_id = Some(value.as_str().ok_or(Error)?.to_string()),
-            "actor_kind" => actor_kind = Some(value.as_str().ok_or(Error)?.to_string()),
-            "source" => source = Some(value.as_str().ok_or(Error)?.to_string()),
-            "move" => move_name = Some(value.as_str().ok_or(Error)?.to_string()),
-            "target" => target = read_target(value)?,
-            "args" => message_to = read_message_to(value)?,
-            "rationale_code" => rationale_code = value.as_str().ok_or(Error)?.to_string(),
-            _ => return Err(Error),
-        }
+fn deserialize_message_to<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct WireArgs {
+        #[serde(default)]
+        to: Option<Vec<String>>,
     }
-    Ok(IntentCall {
-        id,
-        tick_index,
-        actor_id,
-        actor_kind,
-        source,
-        move_name,
-        target,
-        message_to,
-        rationale_code,
-    })
+    Ok(WireArgs::deserialize(deserializer)?.to)
+}
+
+pub fn read_intent_args(arguments: Option<&Map<String, Value>>) -> Result<IntentCall, Error> {
+    parse_args(arguments.ok_or(Error)?)
+}
+
+fn parse_args<T: serde::de::DeserializeOwned>(arguments: &Map<String, Value>) -> Result<T, Error> {
+    serde_json::from_value(Value::Object(arguments.clone())).map_err(|_| Error)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -308,23 +291,17 @@ pub fn write_say_event(say: &GmSay) -> Vec<u8> {
 }
 
 pub fn write_queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
-    event_line(serde_json::json!({
-        "kind": "queued",
-        "id": id,
-        "actor_id": actor_id,
-        "move": move_name,
-    }))
+    let body = EventBody::Queued(QueueRow {
+        id: id.to_string(),
+        actor_id: actor_id.to_string(),
+        move_name: move_name.to_string(),
+    });
+    event_line(serde_json::to_value(body).expect("queued event"))
 }
 
 pub fn write_check_event(roll: &Roll) -> Vec<u8> {
-    event_line(serde_json::json!({
-        "kind": "check",
-        "faces": roll.faces,
-        "stat": roll.stat,
-        "total": roll.total,
-        "target": roll.target,
-        "outcome": roll.outcome.as_str(),
-    }))
+    let body = EventBody::Check(roll.clone());
+    event_line(serde_json::to_value(body).expect("check event"))
 }
 
 pub fn queued_ack(id: &str) -> Value {
@@ -338,53 +315,6 @@ pub fn code_result(code: &str) -> Value {
 /// Sent after the GM seat is free. The client waits on this result.
 pub fn released_result() -> Value {
     serde_json::json!({ "released": true })
-}
-
-fn read_target(value: &Value) -> Result<CallTarget, Error> {
-    let object = value.as_object().ok_or(Error)?;
-    if object.is_empty() {
-        return Ok(CallTarget::Empty);
-    }
-    if object.len() != 1 {
-        return Err(Error);
-    }
-    if let Some(place) = object.get("place").and_then(Value::as_str) {
-        return Ok(CallTarget::Place(place.to_string()));
-    }
-    if let Some(actor) = object.get("actor").and_then(Value::as_str) {
-        return Ok(CallTarget::Actor(actor.to_string()));
-    }
-    if let Some(clock) = object.get("clock").and_then(Value::as_str) {
-        return Ok(CallTarget::Clock(clock.to_string()));
-    }
-    Err(Error)
-}
-
-fn read_message_to(value: &Value) -> Result<Option<Vec<String>>, Error> {
-    let object = value.as_object().ok_or(Error)?;
-    let mut message_to = None;
-    for (key, item) in object {
-        match key.as_str() {
-            "to" => {
-                let values = item.as_array().ok_or(Error)?;
-                let mut ids = Vec::new();
-                for value in values {
-                    ids.push(value.as_str().ok_or(Error)?.to_string());
-                }
-                message_to = Some(ids);
-            }
-            _ => return Err(Error),
-        }
-    }
-    Ok(message_to)
-}
-
-fn optional_text(value: &Value) -> Result<Option<String>, Error> {
-    match value {
-        Value::Null => Ok(None),
-        Value::String(text) => Ok(Some(text.clone())),
-        _ => Err(Error),
-    }
 }
 
 fn event_line(params: Value) -> Vec<u8> {
