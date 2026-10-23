@@ -5,7 +5,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::save::unknown_item;
 use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
 use crate::check::CheckDef;
-use crate::diagnostic::{schema as schema_error, Diagnostic};
+use crate::diagnostic::{coded, schema as schema_error, warning, Diagnostic};
+use crate::error::Reason;
 use crate::meter::MeterDef;
 use crate::rule::{
     ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo, NarrateTo, ResistSpec, Rule,
@@ -493,9 +494,8 @@ fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
             continue;
         }
         diags.push(
-            Diagnostic::new(
+            warning(
                 "world/places",
-                "WARNING",
                 &format!("place '{id}' has no path from {}", canon.start_place),
                 "add an exit that reaches it",
             )
@@ -517,9 +517,8 @@ fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
                     .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
         })
         .map(|rule| {
-            Diagnostic::new(
+            warning(
                 &rule.file,
-                "WARNING",
                 &format!("verb '{}' teleports", rule.local_id),
                 "teleport belongs on an author rule, not in verbs.yaml",
             )
@@ -564,9 +563,8 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
         .enumerate()
         .filter(|(index, _)| hit[*index])
         .map(|(_, rule)| {
-            Diagnostic::new(
+            warning(
                 &rule.file,
-                "WARNING",
                 &format!("rule '{}' is in a trigger cycle", rule.local_id),
                 "stop one rule in the cycle from setting the next watched value",
             )
@@ -593,9 +591,9 @@ fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnost
             continue;
         }
         diags.push(
-            Diagnostic::new(
+            coded(
                 &rule.file,
-                "TRIGGER_LEAK",
+                Reason::TriggerLeak,
                 &format!(
                     "rule '{}' leaks a change to a viewer who cannot see it",
                     rule.local_id

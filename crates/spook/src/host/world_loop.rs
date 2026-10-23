@@ -17,7 +17,7 @@ pub enum MoveOutcome {
         outputs: Vec<RoundOutput>,
     },
     Busy {
-        code: &'static str,
+        code: Reason,
         missing: Option<String>,
         outputs: Vec<RoundOutput>,
     },
@@ -54,7 +54,7 @@ fn handle_turn(
             if !gm_seated && refusal.reason() == Reason::Busy {
                 let outputs = commit_then_fast_forward(world).map_err(GateRefusal::from)?;
                 return Ok(MoveOutcome::Busy {
-                    code: refusal.token(),
+                    code: refusal.reason(),
                     missing: refusal.missing().map(str::to_string),
                     outputs,
                 });
@@ -656,7 +656,7 @@ fn on_mechanical(
                 world,
                 seats,
                 conn,
-                frames::player_refused(code, missing.as_deref()).into_bytes(),
+                frames::player_refused(code.token(), missing.as_deref()).into_bytes(),
             )?;
             if !outputs.is_empty() {
                 refresh_players(world, seats, &outputs)?;

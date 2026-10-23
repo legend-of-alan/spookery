@@ -1,12 +1,33 @@
 //! One problem a loader or pack check can show.
 //!
-//! `code` is a [`Reason`] token, `TRIGGER_LEAK`, or `WARNING`.
+//! `code` is an [`Error`](Severity::Error) [`Reason`] or a [`Warning`](Severity::Warning).
 //! The struct is plain data so a later JSON printer can serialize it as it stands.
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use serde_saphyr::Error as YamlError;
 
 use crate::error::Reason;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Severity {
+    Error(Reason),
+    Warning,
+}
+
+impl Severity {
+    pub fn token(self) -> &'static str {
+        match self {
+            Severity::Error(reason) => reason.token(),
+            Severity::Warning => "WARNING",
+        }
+    }
+}
+
+impl Serialize for Severity {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.token())
+    }
+}
 
 pub(crate) const PACK_SCHEMA: &str = "pack";
 pub(crate) const PLACE_SCHEMA: &str = "place";
@@ -62,22 +83,26 @@ pub struct Diagnostic {
     pub column: Option<u32>,
     /// Key path such as `rules[0].when`.
     pub path: Option<String>,
-    pub code: String,
+    pub code: Severity,
     pub message: String,
     pub hint: Option<String>,
 }
 
 impl Diagnostic {
-    pub fn new(file: &str, code: &str, problem: &str, hint: &str) -> Self {
+    pub fn new(file: &str, code: Severity, problem: &str, hint: &str) -> Self {
         Self {
             file: file.replace('\\', "/"),
             line: None,
             column: None,
             path: None,
-            code: code.to_string(),
+            code,
             message: format!("{problem}; {hint}"),
             hint: Some(hint.to_string()),
         }
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self.code, Severity::Error(_))
     }
 
     pub(crate) fn at_line(mut self, line: u32, column: Option<u32>) -> Self {
@@ -98,7 +123,7 @@ impl Diagnostic {
             (None, Some(path)) => format!("{}: {path}", self.file),
             (None, None) => self.file.clone(),
         };
-        format!("{head}: {} ({})", self.message, self.code)
+        format!("{head}: {} ({})", self.message, self.code.token())
     }
 }
 
@@ -109,16 +134,23 @@ pub fn reason_of(diagnostics: Vec<Diagnostic>) -> Reason {
 pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
     diagnostics
         .iter()
-        .find_map(|diag| Reason::from_token(&diag.code))
+        .find_map(|diag| match diag.code {
+            Severity::Error(reason) => Some(reason),
+            Severity::Warning => None,
+        })
         .unwrap_or(Reason::Schema)
 }
 
 pub(crate) fn schema(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Reason::Schema.token(), problem, hint)
+    coded(file, Reason::Schema, problem, hint)
 }
 
 pub(crate) fn coded(file: &str, code: Reason, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, code.token(), problem, hint)
+    Diagnostic::new(file, Severity::Error(code), problem, hint)
+}
+
+pub(crate) fn warning(file: &str, problem: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Severity::Warning, problem, hint)
 }
 
 /// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
@@ -349,7 +381,7 @@ mod tests {
         let err = parse_file::<Row>("rules/moves.yaml", text, 0).unwrap_err();
         let err = &err[0];
         assert!(err.message.contains("unknown field 'audiance'"), "{err:?}");
-        assert_eq!(err.code, "SCHEMA");
+        assert_eq!(err.code, Severity::Error(Reason::Schema));
         assert!(err.line.is_some(), "{err:?}");
         let spot = locate_row_field(&format!("schema: moves\n{text}"), "name:", 0, "audiance");
         assert_eq!(spot, Some((3, 1)));
@@ -365,6 +397,6 @@ mod tests {
         assert_eq!(diag.line, Some(3));
         assert!(diag.message.contains("old versioned tag"));
         assert!(diag.message.contains("no version"));
-        assert_eq!(diag.code, "SCHEMA");
+        assert_eq!(diag.code, Severity::Error(Reason::Schema));
     }
 }

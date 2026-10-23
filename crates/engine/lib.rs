@@ -29,7 +29,7 @@ pub(crate) use store::lock;
 
 pub use canon::{Owner, Rule, RuleTable, TargetKind, When};
 pub use check::Outcome;
-pub use diagnostic::{first_reason, reason_of, Diagnostic};
+pub use diagnostic::{first_reason, reason_of, Diagnostic, Severity};
 pub use error::Reason;
 pub use intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 pub use model::{ClockView, ExitView, ItemStack, KnownFact, MeterLive, MeterView, View};

@@ -386,7 +386,10 @@ mod tests {
 
         let zero = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\ntick_every_real_seconds: 0\n";
         let err = load_tick_settings(zero).unwrap_err();
-        assert_eq!(err[0].code, "SCHEMA");
+        assert_eq!(
+            err[0].code,
+            crate::diagnostic::Severity::Error(Reason::Schema)
+        );
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(
             err[0].message.contains("tick_every_real_seconds"),
@@ -396,7 +399,10 @@ mod tests {
 
         let minutes = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle_minutes_per_tick: 0\n";
         let err = load_tick_settings(minutes).unwrap_err();
-        assert_eq!(err[0].code, "SCHEMA");
+        assert_eq!(
+            err[0].code,
+            crate::diagnostic::Severity::Error(Reason::Schema)
+        );
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(err[0].message.contains("idle_minutes_per_tick"), "{err:?}");
 

@@ -218,7 +218,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                     eprintln!("{}", item.report_line());
                 }
             }
-            let errors = found.iter().any(|item| item.code != "WARNING");
+            let errors = found.iter().any(spookery_engine::Diagnostic::is_error);
             if !errors {
                 Ok(())
             } else {

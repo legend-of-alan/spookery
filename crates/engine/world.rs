@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crate::canon::tick_settings::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
-use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
+use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic, Severity};
 use crate::effect::{payload_json, Effect};
 use crate::error::Reason;
 use crate::intent::{player_intent_id, ActorKind, Intent, IntentArgs, Source, Target};
@@ -506,7 +506,7 @@ impl World {
         }
         let continues = journal_continues(root, &now);
         if continues {
-            problems.retain(|diag| diag.code != Reason::HandEdit.token());
+            problems.retain(|diag| diag.code != Severity::Error(Reason::HandEdit));
         }
         if !problems.is_empty() {
             return Err(reason_of(problems));
@@ -716,7 +716,7 @@ pub fn check_pack(root: &Path) -> Vec<Diagnostic> {
         let mut problems = save_problems(now, bytes);
         let migrating = migrate_continues(root, now);
         if migrating {
-            problems.retain(|diag| diag.code != Reason::HandEdit.token());
+            problems.retain(|diag| diag.code != Severity::Error(Reason::HandEdit));
         }
         if let Some(diag) = pack_rev_problem(root, now, bytes) {
             problems.insert(0, diag);
