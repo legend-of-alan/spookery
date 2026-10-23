@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::map::ExitView;
+pub use crate::map::{exit_phrase, ExitView};
 pub use crate::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use meter::MeterLive;
 

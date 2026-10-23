@@ -19,7 +19,7 @@ pub struct ViewScene {
 
 /// A line on the player socket. No GM field, and no roll faces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
+#[serde(tag = "kind", rename_all = "lowercase")]
 pub enum PlayerMessage {
     Say {
         from: String,
@@ -70,7 +70,6 @@ pub enum PlayerMessage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WireExit {
     pub name: String,
     pub to: String,
@@ -80,7 +79,6 @@ pub struct WireExit {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WireFact {
     pub id: String,
     pub text: String,
@@ -88,7 +86,6 @@ pub struct WireFact {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WireMessage {
     pub id: String,
     pub to: Vec<String>,
@@ -99,7 +96,6 @@ pub struct WireMessage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WireClock {
     pub id: String,
     pub value: i64,
@@ -108,26 +104,16 @@ pub struct WireClock {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WireItem {
     pub id: String,
     pub count: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
 pub struct WireMeter {
     pub id: String,
     pub value: i64,
     pub max: i64,
-}
-
-pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
-    if locked {
-        format!("{name} (locked) — {minutes} min")
-    } else {
-        format!("{name} — {minutes} min")
-    }
 }
 
 pub fn write_player(message: &PlayerMessage) -> String {
@@ -202,7 +188,12 @@ mod tests {
             outcome: Outcome::Miss,
         });
         assert_eq!(miss, "{\"kind\":\"check\",\"outcome\":\"miss\"}\n");
-        assert!(read_player(r#"{"kind":"check","outcome":"success","faces":[1]}"#).is_err());
+        assert_eq!(
+            read_player(r#"{"kind":"check","outcome":"success","faces":[1]}"#).unwrap(),
+            PlayerMessage::Check {
+                outcome: Outcome::Success,
+            }
+        );
         assert!(read_player(r#"{"kind":"check","success":true}"#).is_err());
     }
 

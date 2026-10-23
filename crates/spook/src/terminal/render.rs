@@ -1,8 +1,7 @@
 //! Readable text for one player frame.
 
-use crate::protocol::{
-    exit_phrase, Outcome, PlayerMessage, WireClock, WireExit, WireMessage, WireMeter,
-};
+use crate::protocol::{Outcome, PlayerMessage, WireClock, WireExit, WireMessage, WireMeter};
+use spookery_engine::model::exit_phrase;
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
