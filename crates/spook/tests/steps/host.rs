@@ -180,8 +180,8 @@ fn the_host_dialed_that_address(world: &mut World) {
 #[when(expr = "the host seat says good evening and calls an unknown tool")]
 fn the_host_seat_says(world: &mut World) {
     let mark = table::player_len(world);
-    let mut seat =
-        GmConnection::connect_door(&table::door_addr(world)).unwrap_or_else(|err| panic!("{err}"));
+    let mut seat = GmConnection::connect_door(table::door_addr(world).parse().unwrap())
+        .unwrap_or_else(|err| panic!("{err}"));
     let say = seat
         .call("say", json!({"address": "table", "text": "good evening"}))
         .unwrap_or_else(|err| panic!("{err}"));
@@ -423,11 +423,11 @@ fn with_host(
     let watch_bg = Arc::clone(&watch);
     let model_bg = model.clone();
     let pack_bg = pack.clone();
-    let addr = table::game_addr(world);
-    let door = table::door_addr(world);
+    let addr = table::game_addr(world).parse().unwrap();
+    let door = table::door_addr(world).parse().unwrap();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        run_gm(&pack_bg, &addr, Some(&door), &mut model, &watch_bg)
+        run_gm(&pack_bg, addr, Some(door), &mut model, &watch_bg)
     });
     wait_listening(&watch);
     body(world, &pack, port, &model, &watch);
@@ -453,11 +453,11 @@ fn start_after_gm(
     let watch_bg = Arc::clone(&watch);
     let model_bg = model.clone();
     let pack_bg = pack.to_path_buf();
-    let addr = table::game_addr(world);
-    let door = table::door_addr(world);
+    let addr = table::game_addr(world).parse().unwrap();
+    let door = table::door_addr(world).parse().unwrap();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        run_gm(&pack_bg, &addr, Some(&door), &mut model, &watch_bg)
+        run_gm(&pack_bg, addr, Some(door), &mut model, &watch_bg)
     });
     wait_listening(&watch);
     (handle, watch)
@@ -809,12 +809,12 @@ where
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
     let pack_bg = pack.to_path_buf();
-    let addr = table::game_addr(world);
-    let door = table::door_addr(world);
+    let addr = table::game_addr(world).parse().unwrap();
+    let door = table::door_addr(world).parse().unwrap();
     // The client owns a runtime. Build and drop it off the cucumber thread.
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);
-        run_gm(&pack_bg, &addr, Some(&door), &mut model, &watch_bg)
+        run_gm(&pack_bg, addr, Some(door), &mut model, &watch_bg)
     });
     (handle, watch)
 }

@@ -122,11 +122,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
         Command::Run { pack, mcp_http } => {
-            let http = match mcp_http {
-                Some(text) => Some(parse_loopback(&text)?),
-                None => None,
-            };
-            spookery::host::listen(&pack, addr, http)
+            spookery::host::listen(&pack, addr, door_addr(mcp_http)?)
         }
         Command::Play {
             pack,
@@ -142,18 +138,15 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
             pack,
             mcp_http,
             raw,
-        } => {
-            let door = door_addr(mcp_http)?;
-            from_terminal(spookery::terminal::run_gm(
-                &pack,
-                &addr.to_string(),
-                door.as_deref(),
-                raw,
-            ))
-        }
+        } => from_terminal(spookery::terminal::run_gm(
+            &pack,
+            addr,
+            door_addr(mcp_http)?,
+            raw,
+        )),
         Command::AiGm { pack, mcp_http } => {
             let door = door_addr(mcp_http)?;
-            if spookery::ai::sit(&pack, &addr.to_string(), door.as_deref()).is_err() {
+            if spookery::ai::sit(&pack, addr, door).is_err() {
                 std::process::exit(1);
             }
             Ok(())
@@ -268,11 +261,8 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, spookery::Error> {
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
-fn door_addr(mcp_http: Option<String>) -> Result<Option<String>, spookery::Error> {
-    match mcp_http {
-        Some(text) => Ok(Some(parse_loopback(&text)?.to_string())),
-        None => Ok(None),
-    }
+fn door_addr(mcp_http: Option<String>) -> Result<Option<SocketAddr>, spookery::Error> {
+    mcp_http.as_deref().map(parse_loopback).transpose()
 }
 
 #[cfg(test)]

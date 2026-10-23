@@ -568,7 +568,10 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 }
 
 fn try_gm(port: u16) -> Result<(), String> {
-    match spookery::gm_connection::GmConnection::connect_door(&format!("127.0.0.1:{port}")) {
+    match spookery::gm_connection::GmConnection::connect_door(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        port,
+    ))) {
         Ok(gm) => {
             drop(gm);
             Ok(())

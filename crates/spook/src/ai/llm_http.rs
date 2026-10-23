@@ -427,7 +427,7 @@ mod tests {
         let saved = save_settings();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         listener.set_nonblocking(true).unwrap();
-        let addr = listener.local_addr().unwrap().to_string();
+        let addr = listener.local_addr().unwrap();
         for missing in ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"] {
             clear_settings();
             for name in ["SPOOK_GM_KEY", "SPOOK_GM_URL", "SPOOK_GM_MODEL"] {
@@ -442,7 +442,7 @@ mod tests {
                     );
                 }
             }
-            let err = crate::ai::sit(std::path::Path::new("."), &addr, None).expect_err(missing);
+            let err = crate::ai::sit(std::path::Path::new("."), addr, None).expect_err(missing);
             assert!(
                 err.message.contains(&format!("{missing} is unset")),
                 "{}",

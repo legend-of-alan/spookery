@@ -1,6 +1,7 @@
 //! Sit the GM seat and turn model replies into tool calls.
 
 use std::collections::VecDeque;
+use std::net::SocketAddr;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -37,8 +38,8 @@ impl Default for TurnWatch {
 
 pub fn run_gm<M: Model>(
     pack: &Path,
-    addr: &str,
-    door: Option<&str>,
+    addr: SocketAddr,
+    door: Option<SocketAddr>,
     model: &mut M,
     watch: &TurnWatch,
 ) -> Result<(), Error> {
@@ -319,7 +320,7 @@ struct GmSeat {
 }
 
 impl GmSeat {
-    fn connect(addr: &str, door: Option<&str>) -> Result<Self, Error> {
+    fn connect(addr: SocketAddr, door: Option<SocketAddr>) -> Result<Self, Error> {
         let client = match door {
             Some(door) => gm_connection::GmConnection::connect_door(door),
             None => gm_connection::GmConnection::connect(addr),

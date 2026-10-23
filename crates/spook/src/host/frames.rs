@@ -1,15 +1,15 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus, StatusPause,
-    StatusPresence, ViewScene, WireClock, WireFact, WireItem, WireMessage, WireMeter,
+    CommitBody, GmSay, Outcome, OutgoingSay, PlayerMessage, QueueRow, Roll, SessionStatus,
+    StatusPause, StatusPresence, ViewScene, WireClock, WireFact, WireItem, WireMessage, WireMeter,
 };
 use serde_json::{Map, Value};
 use spookery_engine::model::{Message, Now, RunState};
 use spookery_engine::store::{record_line, TapeRecord};
 use spookery_engine::{
-    ClockView, ExitView, Intent, ItemStack, KnownFact, MeterView, MoveReport, Reason, RollResult,
-    RoundOutput, View, World,
+    ClockView, ExitView, Heard, Intent, ItemStack, KnownFact, MeterView, MoveReport, Reason,
+    RollResult, RoundOutput, View, World,
 };
 
 #[derive(Debug)]
@@ -23,8 +23,13 @@ pub struct Spoken {
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
 pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
-    let call = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
-    let stored = world.speak_gm(&call.address, call.place, call.actor, &call.text)?;
+    let say = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let heard = match &say {
+        OutgoingSay::Table { .. } => Heard::Table,
+        OutgoingSay::Place { place, .. } => Heard::Place(place),
+        OutgoingSay::Actor { actor, .. } => Heard::Actor(actor),
+    };
+    let stored = world.speak_gm(heard, say.text())?;
     Ok(spoken_from(&stored))
 }
 
@@ -130,11 +135,7 @@ pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
 }
 
 pub fn player_resume_line(view: &View) -> String {
-    let actor_id = view
-        .viewer
-        .split_once(':')
-        .map(|(_, id)| id)
-        .unwrap_or(&view.viewer);
+    let actor_id = view.viewer.actor_id();
     let messages = view
         .messages
         .iter()
@@ -229,7 +230,7 @@ pub fn session_status(
 
 fn player_view(view: &View) -> PlayerMessage {
     PlayerMessage::View {
-        viewer: view.viewer.clone(),
+        viewer: view.viewer.token(),
         place: view.place.clone(),
         scene: Box::new(ViewScene {
             place_name: view.place_name.clone(),

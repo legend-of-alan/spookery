@@ -5,6 +5,7 @@ mod llm;
 mod llm_http;
 mod prompt;
 
+use std::net::SocketAddr;
 use std::path::Path;
 
 pub use gm_loop::{run_gm, TurnWatch};
@@ -51,7 +52,7 @@ pub fn parse_tool_line(raw: &str) -> Result<ToolCallResult, Error> {
 /// Sit the GM seat on `addr` and call the model.
 ///
 /// A missing `SPOOK_GM_KEY`, `SPOOK_GM_URL`, or `SPOOK_GM_MODEL` is reported before the dial.
-pub fn sit(pack: &Path, addr: &str, door: Option<&str>) -> Result<(), Error> {
+pub fn sit(pack: &Path, addr: SocketAddr, door: Option<SocketAddr>) -> Result<(), Error> {
     let env = llm_http::require_env()?;
     let mut model = llm_http::HttpModel::new(env)?;
     run_gm(pack, addr, door, &mut model, &TurnWatch::default())

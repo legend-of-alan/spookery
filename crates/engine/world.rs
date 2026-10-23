@@ -302,33 +302,10 @@ impl World {
         if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
             return Err(Reason::Schema);
         }
-        if let Heard::Actor(actor) = heard {
-            if !self.now.actors.contains_key(actor) {
-                return Err(Reason::Schema);
-            }
-        }
-        let text = one_line(text)?.to_string();
         self.append_speech(&format!("player:{actor_id}"), Some(actor_id), heard, text)
     }
 
-    pub fn speak_gm(
-        &self,
-        address: &str,
-        place: Option<String>,
-        actor: Option<String>,
-        text: &str,
-    ) -> Result<TapeRecord, Reason> {
-        let text = one_line(text)?.to_string();
-        let heard = match (address, place.as_deref(), actor.as_deref()) {
-            ("table", None, None) => Heard::Table,
-            ("place", Some(place), None) if !place.is_empty() => Heard::Place(place),
-            ("actor", None, Some(actor))
-                if !actor.is_empty() && self.now.actors.contains_key(actor) =>
-            {
-                Heard::Actor(actor)
-            }
-            _ => return Err(Reason::Schema),
-        };
+    pub fn speak_gm(&self, heard: Heard<'_>, text: &str) -> Result<TapeRecord, Reason> {
         self.append_speech("gm", None, heard, text)
     }
 
@@ -337,8 +314,14 @@ impl World {
         from: &str,
         speaker: Option<&str>,
         heard: Heard<'_>,
-        text: String,
+        text: &str,
     ) -> Result<TapeRecord, Reason> {
+        let text = one_line(text)?.to_string();
+        if let Heard::Actor(actor) = heard {
+            if !self.now.actors.contains_key(actor) {
+                return Err(Reason::Schema);
+            }
+        }
         let (address, place, actor) = match heard {
             Heard::Table => ("table", None, None),
             Heard::Place(place) => ("place", Some(place.to_string()), None),

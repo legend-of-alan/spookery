@@ -16,7 +16,7 @@ const BUDGET_TOKENS: usize = 800;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
-    pub viewer: String,
+    pub viewer: ViewerId,
     pub place: String,
     pub place_name: String,
     pub prose: String,
@@ -213,7 +213,7 @@ fn perceive_viewer_budget(
     let status = crate::map::busy_line(now, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
-        viewer: viewer.token(),
+        viewer: viewer.clone(),
         place,
         place_name,
         prose,

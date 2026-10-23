@@ -394,8 +394,8 @@ pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
 }
 
 pub fn seat_gm(world: &mut World) {
-    let door = door_addr(world);
-    let gm = GmConnection::connect_door(&door).unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let door = door_addr(world).parse().unwrap();
+    let gm = GmConnection::connect_door(door).unwrap_or_else(|err| panic!("seat GM: {err}"));
     let opened = gm.opened_line().to_string();
     let live = live_mut(world);
     push_line(&live.gm_text, &opened);
@@ -690,8 +690,8 @@ pub fn live_presence(world: &mut World) -> (u32, Vec<String>) {
 
 fn status_body(world: &mut World) -> Value {
     if live_ref(world).gm.is_none() {
-        let door = door_addr(world);
-        let gm = GmConnection::connect_door(&door).unwrap_or_else(|err| panic!("status: {err}"));
+        let door = door_addr(world).parse().unwrap();
+        let gm = GmConnection::connect_door(door).unwrap_or_else(|err| panic!("status: {err}"));
         let live = live_mut(world);
         live.gm = Some(gm);
         live.gm_probe = true;

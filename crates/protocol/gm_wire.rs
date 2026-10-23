@@ -73,13 +73,13 @@ pub fn read_commit_args(arguments: Option<&Map<String, Value>>) -> Result<Commit
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SayArgs {
-    pub address: String,
-    pub text: String,
+struct SayArgs {
+    address: String,
+    text: String,
     #[serde(default)]
-    pub place: Option<String>,
+    place: Option<String>,
     #[serde(default)]
-    pub actor: Option<String>,
+    actor: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,7 +123,7 @@ impl TryFrom<SayArgs> for OutgoingSay {
     }
 }
 
-pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs, Error> {
+pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<OutgoingSay, Error> {
     parse_args(arguments.ok_or(Error)?)
 }
 

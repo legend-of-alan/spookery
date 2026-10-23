@@ -155,8 +155,9 @@ fn capture() -> BTreeMap<String, Example> {
     // with 405, so the header is the version the handshake returned.
     delete_session(table.door, &session, &negotiated);
 
-    let mut gm = GmConnection::connect_door(&format!("127.0.0.1:{}", table.door))
-        .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let mut gm =
+        GmConnection::connect_door(std::net::SocketAddr::from(([127, 0, 0, 1], table.door)))
+            .unwrap_or_else(|err| panic!("seat GM: {err}"));
 
     let status_args = serde_json::json!({});
     json(

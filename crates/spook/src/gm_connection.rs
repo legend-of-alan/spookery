@@ -111,13 +111,15 @@ pub struct GmConnection {
 
 impl GmConnection {
     /// Dial `http://127.0.0.1:<port + 1>/mcp` and finish the handshake.
-    pub fn connect(addr: &str) -> Result<Self, Error> {
-        dial(next_door_addr(addr)?)
+    pub fn connect(addr: std::net::SocketAddr) -> Result<Self, Error> {
+        let door =
+            crate::host::door_request(addr, None).map_err(|_| Error::Bad(addr.to_string()))?;
+        dial(door)
     }
 
-    /// Dial `http://127.0.0.1:<port>/mcp`. `addr` is the agent door, not the game port.
-    pub fn connect_door(addr: &str) -> Result<Self, Error> {
-        dial(door_addr(addr)?)
+    /// Dial `http://127.0.0.1:<port>/mcp`. `door` is the agent door, not the game port.
+    pub fn connect_door(door: std::net::SocketAddr) -> Result<Self, Error> {
+        dial(door)
     }
 }
 
@@ -400,21 +402,6 @@ fn result_line(id: u64, body: &Value) -> String {
     .to_string()
 }
 
-fn loopback_port(addr: &str) -> Result<u16, Error> {
-    addr.strip_prefix("127.0.0.1:")
-        .and_then(|text| text.parse::<u16>().ok())
-        .ok_or_else(|| Error::Bad(addr.to_string()))
-}
-
-fn next_door_addr(addr: &str) -> Result<std::net::SocketAddr, Error> {
-    crate::host::door_request(door_addr(addr)?, None).map_err(|_| Error::Bad(addr.to_string()))
-}
-
-fn door_addr(addr: &str) -> Result<std::net::SocketAddr, Error> {
-    let port = loopback_port(addr)?;
-    Ok(std::net::SocketAddr::from(([127, 0, 0, 1], port)))
-}
-
 async fn read_seat_refusal(url: &str) -> Option<Error> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -513,20 +500,6 @@ pub fn read_event(params: Option<&Value>) -> Incoming {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_agent_door_is_the_next_port() {
-        assert_eq!(
-            next_door_addr("127.0.0.1:9737").unwrap().to_string(),
-            "127.0.0.1:9738"
-        );
-        assert!(next_door_addr("127.0.0.1:65535").is_err());
-        assert!(next_door_addr("10.0.0.1:9").is_err());
-        assert_eq!(
-            door_addr("127.0.0.1:9801").unwrap().to_string(),
-            "127.0.0.1:9801"
-        );
-    }
 
     fn params_of(line: &str) -> Value {
         let value: Value = serde_json::from_str(line.trim_end()).unwrap();
