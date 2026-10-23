@@ -24,7 +24,7 @@ fn docks_rev() -> String {
 }
 
 fn migrate_state_revs(pack: &Path) -> Vec<u64> {
-    use spookery_engine::journal::{read_entries, JournalEntry};
+    use spookery_engine::testing::journal::{read_entries, JournalEntry};
     let entries = read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
     let mut revs = Vec::new();
     for entry in &entries {
@@ -52,7 +52,7 @@ fn one_round_has_committed(world: &mut World) {
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     assert!(
-        !spookery_engine::journal::list_tick_keys(&pack).is_empty(),
+        !spookery_engine::testing::journal::list_tick_keys(&pack).is_empty(),
         "no tick committed"
     );
 }
@@ -259,6 +259,6 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
-    assert!(spookery_engine::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::testing::journal::list_tick_keys(pack).is_empty());
     assert_eq!(migrate_state_revs(pack), [1]);
 }

@@ -211,7 +211,7 @@ fn replay_tail(world: &mut World) -> Result<bool, Reason> {
     }
     // Seats are this process. The journal records who was present so the round
     // replays, and the save leaves them out.
-    world.set_presence(Presence {
+    world.set_presence_inner(Presence {
         humans: 0,
         actors_present: Vec::new(),
     });

@@ -5,8 +5,8 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::journal::list_tick_keys;
 use spookery_engine::model::Presence;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::common::edit_save;
 use super::table;
@@ -163,7 +163,7 @@ fn location_moves(pack: &Path, actor: &str) -> Vec<(String, String)> {
 
 /// A round's journal record.
 fn read_round(pack: &Path, key: &str) -> Value {
-    let text = spookery_engine::journal::read_record_line(pack, key)
+    let text = spookery_engine::testing::journal::read_record_line(pack, key)
         .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{key}: {err}"))
 }

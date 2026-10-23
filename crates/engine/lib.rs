@@ -23,27 +23,44 @@ pub(crate) use rules::expand;
 pub(crate) use rules::perceive;
 pub(crate) use rules::rule;
 pub(crate) use store::commit;
-#[cfg(not(any(test, feature = "testing")))]
 pub(crate) use store::journal;
 pub(crate) use store::lock;
 
-pub use canon::{Owner, Rule, RuleTable, TargetKind, When};
 pub use check::Outcome;
 pub use diagnostic::{first_reason, reason_of, Diagnostic, Severity};
 pub use error::Reason;
 pub use intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-pub use model::{ClockView, ExitView, ItemStack, KnownFact, MeterLive, MeterView, View};
+pub use map::ExitView;
+pub use meter::MeterLive;
+pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{
-    from_journal, migrate_pack, plan_catchup, play_pack_once, verify_pack, verify_quick,
-    ReplayError, ReplayReport, RoundCause, RoundOutput, VerifyError, VerifyReport,
+    migrate_pack, plan_catchup, play_pack_once, verify_pack, verify_quick, RoundCause, RoundOutput,
 };
+pub use rule::{Owner, TargetKind, When};
 pub use rules::{GateRefusal, MoveReport, RollResult};
-pub use visibility::{RecipientLine, ViewerChanges};
+pub use visibility::RecipientLine;
 pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World, MAX_PLAYER_SEATS};
 
-#[cfg(any(test, feature = "testing"))]
-pub use canon::strip_body;
-#[cfg(any(test, feature = "testing"))]
-pub use rules::{faces, RollKey};
-#[cfg(any(test, feature = "testing"))]
-pub use store::journal;
+#[cfg(feature = "testing")]
+pub mod testing {
+    pub use crate::canon::strip_body;
+    pub use crate::round::replay::{from_journal, ReplayError, ReplayReport};
+    pub use crate::rules::roll::{faces, RollKey};
+
+    pub mod journal {
+        pub use crate::store::journal::*;
+    }
+
+    impl crate::World {
+        pub fn set_presence(&mut self, presence: crate::model::Presence) -> bool {
+            self.set_presence_inner(presence)
+        }
+
+        pub fn queue_wait(
+            &mut self,
+            actor_id: &str,
+        ) -> Result<crate::QueuedMove, crate::GateRefusal> {
+            self.queue_player_move(actor_id, "wait", None)
+        }
+    }
+}

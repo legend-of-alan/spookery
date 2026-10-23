@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
@@ -358,7 +358,7 @@ fn assert_one_rejection(world: &World, word: &str) {
     let keys = list_tick_keys(pack);
     let mut hits = 0;
     for key in &keys {
-        let line = spookery_engine::journal::read_record_line(pack, key)
+        let line = spookery_engine::testing::journal::read_record_line(pack, key)
             .unwrap_or_else(|err| panic!("{}: {}", key, err.detail));
         let round: Value = serde_json::from_str(&line).unwrap_or_else(|err| panic!("{key}: {err}"));
         let Some(rejected) = round["rejected"].as_array() else {

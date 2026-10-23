@@ -94,7 +94,7 @@ pub(crate) fn revealed(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) ->
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = now.viewer_of(actor_id) else {
+    let Some(viewer) = now.actor_viewer(actor_id) else {
         return false;
     };
     allows(canon, now, &viewer, fact)

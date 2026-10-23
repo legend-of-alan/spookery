@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
-use spookery_engine::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use spookery::host::{OUTBOUND_BYTES, OUTBOUND_FRAMES, REQUESTED_SEND_BUFFER};
 use spookery::protocol::{write_player, PlayerMessage};

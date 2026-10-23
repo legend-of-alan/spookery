@@ -5,9 +5,6 @@ use crate::error::Reason;
 pub(crate) mod codec;
 pub(crate) mod commit;
 pub(crate) mod durable;
-#[cfg(any(test, feature = "testing"))]
-pub mod journal;
-#[cfg(not(any(test, feature = "testing")))]
 pub(crate) mod journal;
 pub(crate) mod lock;
 pub(crate) mod records;

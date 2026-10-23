@@ -3,7 +3,7 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_engine::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -429,7 +429,7 @@ fn gm_stderr(world: &mut World) -> String {
 }
 
 fn tick_json(world: &mut World) -> serde_json::Value {
-    let text = spookery_engine::journal::read_record_line(table::pack(world), "tick-0001")
+    let text = spookery_engine::testing::journal::read_record_line(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }

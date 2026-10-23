@@ -168,7 +168,7 @@ fn play_with(
         .then(|| lock_world(world.root()))
         .transpose()?;
     if let Some(recorded) = &recorded {
-        world.set_presence(Presence {
+        world.set_presence_inner(Presence {
             humans: recorded.presence_humans,
             actors_present: recorded.actors_present.clone(),
         });

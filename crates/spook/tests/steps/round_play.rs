@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::MoveReport;
 use spookery_engine::RoundCause;
-use spookery_engine::{faces, MoveReport, RollKey};
 use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
 use super::steps_run::read_tick;
@@ -88,13 +89,13 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{stdout}{stderr}");
-    let report =
-        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
-    let line = spookery_engine::journal::read_record_line(pack, "tick-0001")
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err:?}"));
+    let line = spookery_engine::testing::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let tick: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
-        spookery_engine::journal::hash_now(&report.now_yaml),
+        spookery_engine::testing::journal::hash_now(&report.now_yaml),
         tick["now_hash"].as_str().unwrap()
     );
 }

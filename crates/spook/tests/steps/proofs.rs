@@ -8,11 +8,11 @@ use serde_json::{json, Value};
 use spookery::host::{
     call_gm_tool, commit_then_fast_forward, handle_player_move, on_scheduled_wake, MoveOutcome,
 };
-use spookery_engine::journal::list_tick_keys;
 use spookery_engine::model::{
     ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
 };
 use spookery_engine::store::emit_save;
+use spookery_engine::testing::journal::list_tick_keys;
 use spookery_engine::{play_pack_once, MeterLive, MoveReport, Outcome, World as Shard};
 
 use crate::support;
@@ -76,7 +76,7 @@ fn flags_of(now: &Now, id: &str) -> Vec<String> {
 }
 
 fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = spookery_engine::journal::read_record_line(pack, name)
+    let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}"))
 }
@@ -469,7 +469,7 @@ fn busy_skip() {
 }
 
 fn sealed_tick(pack: &Path, state_rev: u64) -> String {
-    use spookery_engine::journal::{genesis_hash, seal, JournalEntry, TickRecord};
+    use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, TickRecord};
     let entry = JournalEntry::Tick(TickRecord {
         tick_index: 1,
         rules_rev: 7,
@@ -804,7 +804,7 @@ fn strip_bodies() {
     assert!(!files.is_empty());
     for path in &files {
         let text = fs::read_to_string(path).unwrap();
-        let stripped = spookery_engine::canon::strip_body(&text).unwrap();
+        let stripped = spookery_engine::testing::strip_body(&text).unwrap();
         assert!(
             !stripped.contains("Mira keeps the shop"),
             "{}",
@@ -1085,7 +1085,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             .iter()
             .any(|name| name == "resolve_check"));
         assert!(
-            !spookery_engine::journal::read_record_line(&pack, "tick-0001")
+            !spookery_engine::testing::journal::read_record_line(&pack, "tick-0001")
                 .unwrap_or_else(|err| panic!("{}", err.detail))
                 .contains("faces")
         );
@@ -1194,7 +1194,7 @@ fn opposing_total_reused() {
         let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
-        let tick = spookery_engine::journal::read_record_line(&pack, "tick-0001")
+        let tick = spookery_engine::testing::journal::read_record_line(&pack, "tick-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
         assert!(!tick.contains("faces"));
         if opposed {
@@ -1264,7 +1264,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let rowan = rolled_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
-        !spookery_engine::journal::read_record_line(&held, "tick-0001")
+        !spookery_engine::testing::journal::read_record_line(&held, "tick-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail))
             .contains("faces")
     );

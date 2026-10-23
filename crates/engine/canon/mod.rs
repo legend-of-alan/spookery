@@ -16,14 +16,13 @@ use crate::diagnostic::{
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
-use crate::rule::{Cond, Cost};
+use crate::rule::{Cond, Cost, Owner, Rule, RuleTable};
 
 mod check;
 mod save;
 mod schema;
 pub(crate) mod tick_settings;
 
-pub use crate::rule::{Owner, Rule, RuleTable, TargetKind, When};
 pub(crate) use check::check_canon;
 use check::{
     broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
@@ -1095,8 +1094,8 @@ fn split_frontmatter<'a>(file: &str, text: &'a str) -> Result<(&'a str, &'a str)
     .at_line(1, Some(1))])
 }
 
-#[cfg(any(test, feature = "testing"))]
 /// Markdown with the body removed. Frontmatter stays. The trailing delimiter is kept.
+#[allow(dead_code)]
 pub fn strip_body(text: &str) -> Result<String, Reason> {
     let (yaml, _) = split_frontmatter("", text).map_err(|_| Reason::Schema)?;
     Ok(format!("---\n{yaml}\n---\n"))

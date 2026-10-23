@@ -7,9 +7,8 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::map::{exit_phrase, ExitView};
-pub use crate::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
-pub use meter::MeterLive;
+pub use crate::map::exit_phrase;
+use meter::MeterLive;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -38,7 +37,7 @@ pub struct Now {
 }
 
 impl Now {
-    pub fn viewer_of(&self, id: &str) -> Option<crate::intent::ViewerId> {
+    pub(crate) fn actor_viewer(&self, id: &str) -> Option<crate::intent::ViewerId> {
         let actor = self.actors.get(id)?;
         crate::intent::ViewerId::from_kind(actor.actor_kind(), id).ok()
     }

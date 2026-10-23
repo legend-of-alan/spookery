@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
-use spookery_engine::journal::list_tick_keys;
 use spookery_engine::model::Now;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -97,7 +97,7 @@ pub fn pack(world: &World) -> &Path {
 pub fn now_of(pack: &Path) -> Now {
     let start = Instant::now();
     loop {
-        match spookery_engine::from_journal(pack, None, None) {
+        match spookery_engine::testing::from_journal(pack, None, None) {
             Ok(report) => {
                 let text = std::str::from_utf8(&report.now_yaml)
                     .unwrap_or_else(|err| panic!("save text: {err}"));
@@ -114,7 +114,7 @@ pub fn now_of(pack: &Path) -> Now {
 
 /// The actors whose player `wait` is in that tick.
 pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
-    let text = spookery_engine::journal::read_record_line(pack, name)
+    let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     let tick: Value =
         serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));

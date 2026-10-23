@@ -85,7 +85,7 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
 
 #[when(expr = "one intent in a tick record is changed")]
 fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
-    let located = spookery_engine::journal::locate(table::pack(world), "tick-0001")
+    let located = spookery_engine::testing::journal::locate(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("locate tick: {}", err.detail));
     let path = located.path;
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read tick: {err}"));
@@ -218,7 +218,7 @@ fn stderr_names_the_record_and_illegal_class(world: &mut World) {
 #[then(expr = "each journal record parses back to the bytes that were written")]
 fn each_journal_record_parses_back(world: &mut World) {
     let pack = table::pack(world);
-    let entries = spookery_engine::journal::read_verified(pack).unwrap_or_else(|fault| {
+    let entries = spookery_engine::testing::journal::read_verified(pack).unwrap_or_else(|fault| {
         panic!("{}: {}", fault.file, fault.detail);
     });
     let ticks = entries
@@ -227,18 +227,18 @@ fn each_journal_record_parses_back(world: &mut World) {
         .count();
     assert!(ticks >= 3, "ticks {ticks}");
     for entry in &entries {
-        let located = spookery_engine::journal::locate(
+        let located = spookery_engine::testing::journal::locate(
             pack,
-            &spookery_engine::journal::format_record_key(entry),
+            &spookery_engine::testing::journal::format_record_key(entry),
         )
         .unwrap_or_else(|err| panic!("{}", err.detail));
-        let again = spookery_engine::journal::emit_entry(entry);
+        let again = spookery_engine::testing::journal::emit_entry(entry);
         assert_eq!(again.trim_end(), located.line.trim_end());
     }
 }
 
 fn edit_tick(world: &mut World, edit: impl FnOnce(&mut Value)) {
-    let located = spookery_engine::journal::locate(table::pack(world), "tick-0001")
+    let located = spookery_engine::testing::journal::locate(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap();
     let mut tick: Value = serde_json::from_str(&located.line).unwrap();
@@ -263,10 +263,10 @@ fn checkpoints_are_taken_every_n_ticks(world: &mut World, every: u64) {
 #[when(expr = "the live bundle gains a torn tail")]
 fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
     let pack = table::pack(world);
-    let path = spookery_engine::journal::find_live_bundle(pack)
+    let path = spookery_engine::testing::journal::find_live_bundle(pack)
         .unwrap_or_else(|| panic!("no live bundle"));
-    let entries =
-        spookery_engine::journal::read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
+    let entries = spookery_engine::testing::journal::read_entries(pack)
+        .unwrap_or_else(|err| panic!("{}", err.detail));
     let last = entries
         .iter()
         .rev()
@@ -286,7 +286,7 @@ fn the_table_is_opened_again(world: &mut World) {
 
 #[then(expr = "the torn tail is gone")]
 fn the_torn_tail_is_gone(world: &mut World) {
-    let path = spookery_engine::journal::find_live_bundle(table::pack(world))
+    let path = spookery_engine::testing::journal::find_live_bundle(table::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
     let text = fs::read_to_string(&path).unwrap();
     assert!(text.ends_with('\n'), "{text}");
@@ -295,11 +295,11 @@ fn the_torn_tail_is_gone(world: &mut World) {
 
 #[then(expr = "the opened state matches the last complete record")]
 fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
-    let report = spookery_engine::from_journal(table::pack(world), None, None)
+    let report = spookery_engine::testing::from_journal(table::pack(world), None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(report.state_rev, world.mark as u64);
     assert_eq!(
-        spookery_engine::journal::hash_now(&report.now_yaml),
+        spookery_engine::testing::journal::hash_now(&report.now_yaml),
         world.scratch
     );
 }
@@ -307,17 +307,17 @@ fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
 #[when(expr = "one record in a closed bundle is changed")]
 fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
     let pack = table::pack(world);
-    let bundles =
-        spookery_engine::journal::bundles(pack).unwrap_or_else(|err| panic!("{}", err.detail));
+    let bundles = spookery_engine::testing::journal::bundles(pack)
+        .unwrap_or_else(|err| panic!("{}", err.detail));
     let (name, path) = bundles
         .into_iter()
         .find(|(name, _)| name.ends_with(".gz"))
         .unwrap_or_else(|| panic!("no closed bundle"));
     let compressed = fs::read(&path).unwrap();
-    let plain = spookery_engine::journal::gunzip_bytes(&compressed)
+    let plain = spookery_engine::testing::journal::gunzip_bytes(&compressed)
         .unwrap_or_else(|err| panic!("gunzip: {err}"));
     let text = String::from_utf8(plain).unwrap_or_else(|err| panic!("{err}"));
-    let next = spookery_engine::journal::gzip_bytes(&change_payload(&text))
+    let next = spookery_engine::testing::journal::gzip_bytes(&change_payload(&text))
         .unwrap_or_else(|err| panic!("gzip: {err}"));
     fs::write(&path, next).unwrap();
     world.scratch = name;
@@ -326,7 +326,7 @@ fn one_record_in_a_closed_bundle_is_changed(world: &mut World) {
 #[when(expr = "one record in the live bundle is changed")]
 fn one_record_in_the_live_bundle_is_changed(world: &mut World) {
     let pack = table::pack(world);
-    let path = spookery_engine::journal::find_live_bundle(pack)
+    let path = spookery_engine::testing::journal::find_live_bundle(pack)
         .unwrap_or_else(|| panic!("no live bundle"));
     let name = path
         .file_name()
@@ -352,7 +352,7 @@ fn change_payload(text: &str) -> Vec<u8> {
 
 #[when(expr = "every closed bundle is made unreadable")]
 fn every_closed_bundle_is_made_unreadable(world: &mut World) {
-    let bundles = spookery_engine::journal::bundles(table::pack(world))
+    let bundles = spookery_engine::testing::journal::bundles(table::pack(world))
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let closed: Vec<_> = bundles
         .into_iter()
@@ -395,12 +395,15 @@ fn the_operator_rebuilds_the_snapshot(world: &mut World) {
 #[then(expr = "the save hash matches the latest checkpoint")]
 fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
     let pack = table::pack(world);
-    let entries =
-        spookery_engine::journal::read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
-    let mark = spookery_engine::journal::latest_checkpoint(&entries)
+    let entries = spookery_engine::testing::journal::read_entries(pack)
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
         .unwrap_or_else(|| panic!("no checkpoint"));
     let save = fs::read(pack.join("state/save.yaml")).unwrap();
-    assert_eq!(spookery_engine::journal::hash_now(&save), mark.state_hash);
+    assert_eq!(
+        spookery_engine::testing::journal::hash_now(&save),
+        mark.state_hash
+    );
 }
 
 #[then(expr = "the first tick lists only apply_effect and cast:mira\\/leave_door_note")]
@@ -449,9 +452,9 @@ fn the_save_is_kept(world: &mut World) {
 #[when(expr = "the checkpoint's save and snapshot are rolled back")]
 fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let entries = spookery_engine::journal::read_entries(&pack)
+    let entries = spookery_engine::testing::journal::read_entries(&pack)
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let mark = spookery_engine::journal::latest_checkpoint(&entries)
+    let mark = spookery_engine::testing::journal::latest_checkpoint(&entries)
         .unwrap_or_else(|| panic!("no checkpoint"));
     let snap = pack
         .join("state/checkpoints")
@@ -463,7 +466,7 @@ fn the_checkpoints_save_and_snapshot_are_rolled_back(world: &mut World) {
 
 #[then(expr = "the live bundle is {word}")]
 fn the_live_bundle_is(world: &mut World, expected: String) {
-    let path = spookery_engine::journal::find_live_bundle(table::pack(world))
+    let path = spookery_engine::testing::journal::find_live_bundle(table::pack(world))
         .unwrap_or_else(|| panic!("no live bundle"));
     let name = path
         .file_name()
@@ -495,7 +498,7 @@ fn the_plain_bundle_file_is_gone(world: &mut World) {
 }
 
 fn only_closed_bundle(world: &World) -> (String, std::path::PathBuf) {
-    let bundles = spookery_engine::journal::bundles(table::pack(world))
+    let bundles = spookery_engine::testing::journal::bundles(table::pack(world))
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let mut closed: Vec<_> = bundles
         .into_iter()
@@ -507,7 +510,7 @@ fn only_closed_bundle(world: &World) -> (String, std::path::PathBuf) {
 
 fn gunzip_closed(path: &std::path::Path) -> Vec<u8> {
     let compressed = fs::read(path).unwrap_or_else(|err| panic!("read gzip: {err}"));
-    spookery_engine::journal::gunzip_bytes(&compressed)
+    spookery_engine::testing::journal::gunzip_bytes(&compressed)
         .unwrap_or_else(|err| panic!("gunzip: {err}"))
 }
 
@@ -515,8 +518,8 @@ fn gunzip_closed(path: &std::path::Path) -> Vec<u8> {
 fn parallel_full_verification_matches_serial_replay(world: &mut World) {
     let pack = table::pack(world);
     let verified = spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("{err}"));
-    let serial =
-        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let serial = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(verified.state_rev, serial.state_rev);
     assert!(verified.applied > 0, "{verified:?}");
 }

@@ -15,7 +15,7 @@ use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
-use crate::from_journal;
+use crate::round::from_journal;
 use crate::round::play::{play, RoundCause};
 
 pub(crate) const CASES: u32 = 64;

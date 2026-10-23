@@ -5,15 +5,15 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::model::Now;
 use spookery_engine::store::{emit_save, load_save};
-use spookery_engine::{faces, RollKey};
+use spookery_engine::testing::{faces, RollKey};
 
 use super::table;
 use crate::support;
 use crate::World;
 
 fn read_now(pack: &Path) -> Now {
-    let report =
-        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     load_save(text).unwrap()
 }
@@ -68,7 +68,7 @@ fn play(
 }
 
 fn tick_text(pack: &Path) -> String {
-    spookery_engine::journal::read_record_line(pack, "tick-0001")
+    spookery_engine::testing::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
@@ -290,7 +290,7 @@ fn no_round_was_spent(world: &mut World) {
         world.scratch,
         "a round was spent"
     );
-    assert!(spookery_engine::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::testing::journal::list_tick_keys(pack).is_empty());
     assert_eq!(now.actors.get("pc_lark").unwrap().count("latch"), 1);
 }
 
@@ -299,7 +299,7 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(read_now(pack).tick_index, 0);
-    assert!(spookery_engine::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::testing::journal::list_tick_keys(pack).is_empty());
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]

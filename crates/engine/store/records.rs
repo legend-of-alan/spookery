@@ -144,7 +144,7 @@ impl JournalEntry {
         }
     }
 
-    #[cfg(any(test, feature = "testing"))]
+    #[allow(dead_code)]
     pub fn now_hash(&self) -> &str {
         match self {
             Self::Tick(record) => &record.now_hash,

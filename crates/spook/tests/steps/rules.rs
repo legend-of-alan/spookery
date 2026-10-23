@@ -5,9 +5,10 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::model::{Now, PlaceLive};
 use spookery_engine::store::{emit_save, load_save};
+use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::MoveReport;
 use spookery_engine::Reason;
 use spookery_engine::RoundCause;
-use spookery_engine::{faces, MoveReport, RollKey};
 
 use super::table;
 use crate::support::{copy_pack, spook, temp_pack};
@@ -61,7 +62,7 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
     let live = text.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
     fs::write(&path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
-    let hash = spookery_engine::journal::hash_now(live.as_bytes());
+    let hash = spookery_engine::testing::journal::hash_now(live.as_bytes());
     fs::write(
         journal.join("presence-0001.json"),
         format!(
@@ -121,7 +122,7 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let located = spookery_engine::journal::locate(&pack, "tick-0001")
+    let located = spookery_engine::testing::journal::locate(&pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
     let mut tick: Value = serde_json::from_str(&located.line).unwrap_or_else(|err| {
@@ -479,7 +480,12 @@ fn lark_attacks(world: &mut World) {
     let rolled = rolled.unwrap_or_else(|| panic!("Lark did not roll"));
     assert_eq!(rolled.total, 21, "{rolled:?}");
     assert_eq!(rolled.target, 22, "{rolled:?}");
-    world.scratch = rolled.outcome.as_str().to_string();
+    world.scratch = match rolled.outcome {
+        spookery_engine::Outcome::Success => "success",
+        spookery_engine::Outcome::Partial => "partial",
+        spookery_engine::Outcome::Miss => "miss",
+    }
+    .to_string();
 }
 
 #[then(expr = "the outcome is a miss")]
@@ -927,8 +933,8 @@ fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
 }
 
 fn read_now(pack: &Path) -> Now {
-    let report =
-        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     load_save(text).unwrap()
 }

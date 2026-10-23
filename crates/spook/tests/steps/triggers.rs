@@ -1320,18 +1320,18 @@ fn append(path: &Path, from: &str, to: &str) {
 }
 
 fn load(pack: &Path) -> Now {
-    let report =
-        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     load_save(text).unwrap()
 }
 
 fn latest(pack: &Path) -> Value {
-    let names = spookery_engine::journal::list_tick_keys(pack);
+    let names = spookery_engine::testing::journal::list_tick_keys(pack);
     let name = names
         .last()
         .unwrap_or_else(|| panic!("no tick was written"));
-    let text = spookery_engine::journal::read_record_line(pack, name)
+    let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }

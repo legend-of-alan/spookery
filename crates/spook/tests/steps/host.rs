@@ -492,8 +492,8 @@ fn wait_idle(watch: &TurnWatch, model: &ScriptedModel, calls: usize) {
 }
 
 fn world_time(pack: &Path) -> u64 {
-    let report =
-        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     spookery_engine::store::load_save(text).unwrap().world_time
 }
@@ -822,7 +822,7 @@ where
 fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     let start = Instant::now();
     while start.elapsed() < bound {
-        if let Ok(report) = spookery_engine::from_journal(pack, None, None) {
+        if let Ok(report) = spookery_engine::testing::from_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
                 if let Ok(now) = spookery_engine::store::load_save(text) {
                     if now.world_time == expected {

@@ -218,7 +218,7 @@ pub fn latest_checkpoint(entries: &[JournalEntry]) -> Option<&CheckpointRecord> 
 }
 
 /// Keys of every tick record, such as `tick-0001`, in order.
-#[cfg(any(test, feature = "testing"))]
+#[allow(dead_code)]
 pub fn list_tick_keys(pack: &Path) -> Vec<String> {
     let Ok(entries) = read_entries(pack) else {
         return Vec::new();
@@ -233,7 +233,7 @@ pub fn list_tick_keys(pack: &Path) -> Vec<String> {
 }
 
 /// The stored line for a record key such as `tick-0001` or `migrate-0002`, without a newline.
-#[cfg(any(test, feature = "testing"))]
+#[allow(dead_code)]
 pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> {
     let entries = read_entries(pack)?;
     let found = entries
@@ -248,7 +248,7 @@ pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> 
 /// Where a logical record lives, so a test can edit that line.
 pub struct Located {
     pub path: PathBuf,
-    #[cfg(any(test, feature = "testing"))]
+    #[allow(dead_code)]
     pub line: String,
 }
 
@@ -264,7 +264,6 @@ pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
             if format_record_key(&entry) == key {
                 return Ok(Located {
                     path,
-                    #[cfg(any(test, feature = "testing"))]
                     line: raw.to_string(),
                 });
             }
@@ -273,7 +272,7 @@ pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
     Err(fault_name(key, "the journal record is missing"))
 }
 
-#[cfg(any(test, feature = "testing"))]
+#[allow(dead_code)]
 pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, JournalFault> {
     bundle_files(&pack.join("state/journal"))
 }

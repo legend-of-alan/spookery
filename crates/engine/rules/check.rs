@@ -15,16 +15,6 @@ pub enum Outcome {
     Miss,
 }
 
-impl Outcome {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Success => "success",
-            Self::Partial => "partial",
-            Self::Miss => "miss",
-        }
-    }
-}
-
 /// `total` against `target`, with an optional lower band.
 /// `total >= target` is success. `partial_at <= total < target` is partial.
 /// Anything lower, and any binary roll, is a miss.

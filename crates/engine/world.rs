@@ -63,7 +63,7 @@ pub struct World {
 }
 
 impl World {
-    pub fn root(&self) -> &Path {
+    pub(crate) fn root(&self) -> &Path {
         &self.root
     }
 
@@ -85,7 +85,7 @@ impl World {
     }
 
     /// Remember who is seated. This does not write the save.
-    pub fn set_presence(&mut self, mut presence: Presence) -> bool {
+    pub(crate) fn set_presence_inner(&mut self, mut presence: Presence) -> bool {
         sort_unique(&mut presence.actors_present);
         if presence == self.now.presence {
             return false;
@@ -134,14 +134,14 @@ impl World {
         if self.now.presence.humans == 0 && self.now.presence.actors_present.is_empty() {
             return Ok(false);
         }
-        Ok(self.set_presence(Presence {
+        Ok(self.set_presence_inner(Presence {
             humans: 0,
             actors_present: Vec::new(),
         }))
     }
 
     fn commit_held(&mut self, ids: &[String]) -> Result<bool, Reason> {
-        Ok(self.set_presence(Presence {
+        Ok(self.set_presence_inner(Presence {
             humans: u32::try_from(ids.len()).map_err(|_| Reason::Schema)?,
             actors_present: ids.to_vec(),
         }))
@@ -186,10 +186,6 @@ impl World {
         };
         self.queue(intent);
         Ok(queued)
-    }
-
-    pub fn queue_wait(&mut self, actor_id: &str) -> Result<QueuedMove, GateRefusal> {
-        self.queue_player_move(actor_id, "wait", None)
     }
 
     fn player_intent(&self, actor_id: &str, verb: &str, target: Target) -> Result<Intent, Reason> {
@@ -402,16 +398,8 @@ impl World {
             outputs.push(self.play(crate::RoundCause::Flush, wall)?);
         }
         let already = u32::from(committed);
-        outputs.extend(self.advance_while_busy(wall, already)?);
+        outputs.extend(crate::round::advance_while_busy(self, wall, already)?);
         Ok(outputs)
-    }
-
-    pub fn advance_while_busy(
-        &mut self,
-        wall: &str,
-        already: u32,
-    ) -> Result<Vec<crate::RoundOutput>, Reason> {
-        crate::round::advance_while_busy(self, wall, already)
     }
 
     pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {

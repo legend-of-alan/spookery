@@ -6,9 +6,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_engine::journal::list_tick_keys;
 use spookery_engine::model::Now;
 use spookery_engine::store::{emit_save, load_save};
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::table;
 use crate::support::{self, temp_pack};

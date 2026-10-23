@@ -161,7 +161,7 @@ pub(crate) fn roll_with_key(
     key: &RollKey,
 ) -> Result<RollResult, Reason> {
     let actor = now.actors.get(spec.actor_id).ok_or(Reason::UnknownKey)?;
-    let viewer = now.viewer_of(spec.actor_id).ok_or(Reason::UnknownKey)?;
+    let viewer = now.actor_viewer(spec.actor_id).ok_or(Reason::UnknownKey)?;
     let check = checks.get(spec.check_id).ok_or(Reason::UnknownKey)?;
     roll(
         RollInput {

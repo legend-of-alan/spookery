@@ -1,7 +1,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use crate::World;
 
@@ -448,17 +448,17 @@ fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
 #[then(expr = "the tick now_hash matches the save")]
 fn the_tick_now_hash_matches_the_save(world: &mut World) {
     let pack = table::pack(world);
-    let tick = spookery_engine::journal::read_record_line(pack, "tick-0001")
+    let tick = spookery_engine::testing::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     let value: serde_json::Value =
         serde_json::from_str(&tick).unwrap_or_else(|err| panic!("{err}"));
     let expected = value["now_hash"]
         .as_str()
         .unwrap_or_else(|| panic!("now_hash\n{tick}"));
-    let report =
-        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(
-        spookery_engine::journal::hash_now(&report.now_yaml),
+        spookery_engine::testing::journal::hash_now(&report.now_yaml),
         expected
     );
 }

@@ -4,7 +4,7 @@ use std::fs;
 
 use cucumber::{then, when};
 use serde_json::Value;
-use spookery_engine::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::table;
 use crate::World;
@@ -212,7 +212,7 @@ fn latest_tick(world: &World) -> Value {
     let pack = table::pack(world);
     let keys = list_tick_keys(pack);
     let name = keys.last().unwrap_or_else(|| panic!("no tick"));
-    let text = spookery_engine::journal::read_record_line(pack, name)
+    let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"))
 }

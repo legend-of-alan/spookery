@@ -262,7 +262,7 @@ fn narrations(canon: &Canon, now: &Now, effects: &[Effect], viewer: Option<&str>
 }
 
 fn narrate_allowed(canon: &Canon, now: &Now, viewer: &str, fact_ids: &[String]) -> bool {
-    let Some(seat) = now.viewer_of(viewer) else {
+    let Some(seat) = now.actor_viewer(viewer) else {
         return false;
     };
     fact_ids.iter().all(|fact| allows(canon, now, &seat, fact))
@@ -326,7 +326,7 @@ fn message_visible(canon: &Canon, now: &Now, viewer: &str, id: &str) -> bool {
     if !in_room && !addressed {
         return false;
     }
-    let Some(seat) = now.viewer_of(viewer) else {
+    let Some(seat) = now.actor_viewer(viewer) else {
         return false;
     };
     message

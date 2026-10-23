@@ -3,8 +3,8 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::journal::list_tick_keys;
 use spookery_engine::model::Now;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::common::{add_trapdoor, edit_save, give_key, EVENING};
 use super::table;
@@ -32,7 +32,7 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
 }
 
 fn tick_file(pack: &Path, name: &str) -> Value {
-    let text = spookery_engine::journal::read_record_line(pack, name)
+    let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }
