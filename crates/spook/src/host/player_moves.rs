@@ -1,24 +1,13 @@
 //! Queue a player verb until the round commits it.
 
-use spookery_kernel::api::ids::player_intent_id;
-use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::api::model::ActorLive;
-use spookery_kernel::api::rule::{TargetKind, When};
-use spookery_kernel::api::rules::gate::{gate, verb_for, GateRefusal};
-use spookery_kernel::api::rules::MoveReport;
+use spookery_kernel::api::rules::gate::GateRefusal;
+pub use spookery_kernel::api::world::QueuedMove;
 use spookery_kernel::api::world::World;
 use spookery_kernel::api::Reason;
 use spookery_round::{advance_while_busy, play, RoundCause, RoundOutput};
 
 use super::frames;
 use super::idle_clock::wall_now;
-use super::input::{self, canonical_line};
-
-pub struct QueuedMove {
-    pub id: String,
-    pub actor_id: String,
-    pub move_name: String,
-}
 
 pub enum MoveOutcome {
     Queued(QueuedMove),
@@ -53,11 +42,10 @@ pub fn handle_player_move(
     line: &str,
     gm_seated: bool,
 ) -> Result<MoveOutcome, GateRefusal> {
-    let (verb, rest) = input::verb_line(line, actor_id)?;
-    let queued = match queue_verb(world, actor_id, verb, rest) {
+    let queued = match world.queue_player_move(actor_id, line) {
         Ok(queued) => queued,
         Err(refusal) => {
-            if !gm_seated && refusal.reason() == spookery_kernel::api::Reason::Busy {
+            if !gm_seated && refusal.reason() == Reason::Busy {
                 let outputs = commit_then_fast_forward(world).map_err(GateRefusal::from)?;
                 return Ok(MoveOutcome::Busy {
                     code: refusal.token(),
@@ -79,182 +67,16 @@ pub fn handle_player_move(
     })
 }
 
-pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
-    let mut out = String::new();
-    for report in reports {
-        if report.actor_id() != actor_id {
-            continue;
-        }
-        match report {
-            MoveReport::Rolled { out: rolled, .. } => {
-                out.push_str(&frames::player_check_line(rolled.outcome))
-            }
-            MoveReport::Refused { code, missing, .. } => {
-                out.push_str(&frames::player_refused(code.token(), missing.as_deref()))
-            }
-        }
-    }
-    out
-}
-
-pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
-    reports
-        .iter()
-        .filter_map(|report| match report {
-            MoveReport::Rolled { out, .. } => Some(frames::check_event(out)),
-            MoveReport::Refused { .. } => None,
-        })
-        .collect()
-}
-
-fn queue_verb(
-    world: &mut World,
-    actor_id: &str,
-    verb: &str,
-    rest: &str,
-) -> Result<QueuedMove, GateRefusal> {
-    if !world
-        .now()
-        .actors
-        .get(actor_id)
-        .is_some_and(ActorLive::is_pc)
-    {
-        return Err(Reason::Schema.into());
-    }
-    let kind = verb_target(world, actor_id, verb, rest).ok_or(Reason::NotInSpec)?;
-    let target = match kind {
-        TargetKind::None => {
-            if !rest.is_empty() {
-                return Err(Reason::Schema.into());
-            }
-            Target::Empty
-        }
-        TargetKind::Actor | TargetKind::Item => {
-            let (named, extra) = input::split_token(rest);
-            if named.is_empty() || !extra.is_empty() {
-                return Err(Reason::Schema.into());
-            }
-            Target::Actor(named.to_string())
-        }
-        TargetKind::Place | TargetKind::Exit => {
-            let (place, extra) = input::split_token(rest);
-            if place.is_empty() || !extra.is_empty() {
-                return Err(Reason::Schema.into());
-            }
-            Target::Place(place.to_string())
-        }
-    };
-    let intent = player_intent(world, actor_id, verb, target)?;
-    gate(world.canon(), world.now(), &intent)?;
-    let queued = QueuedMove {
-        id: intent.id.clone(),
-        actor_id: actor_id.to_string(),
-        move_name: verb.to_string(),
-    };
-    world.queue(intent);
-    Ok(queued)
-}
-
 pub fn queue_wait(world: &mut World, actor_id: &str) -> Result<QueuedMove, GateRefusal> {
-    queue_verb(world, actor_id, "wait", "")
+    world.queue_wait(actor_id)
 }
 
-fn verb_target(world: &World, actor_id: &str, verb: &str, rest: &str) -> Option<TargetKind> {
-    let place = world.now().actors.get(actor_id)?.place();
-    let (token, _) = input::split_token(rest);
-    let hint = (!token.is_empty()).then_some(token);
-    let wielded = world
-        .now()
-        .actors
-        .get(actor_id)
-        .and_then(|actor| actor.wielded());
-    let rule = verb_for(world.canon(), Some(place), verb, hint, wielded)?;
-    match &rule.when {
-        When::Verb { target, .. } => Some(*target),
-        _ => None,
-    }
+pub fn player_queued_line(queued: &QueuedMove) -> String {
+    frames::player_queued_line(&queued.id)
 }
 
-fn player_intent(
-    world: &World,
-    actor_id: &str,
-    verb: &str,
-    target: Target,
-) -> Result<Intent, Reason> {
-    let token = match &target {
-        Target::Empty => "",
-        Target::Actor(id) | Target::Place(id) => id.as_str(),
-        Target::Clock(_) => return Err(Reason::Schema),
-    };
-    let tick = world
-        .now()
-        .tick_index
-        .checked_add(1)
-        .ok_or(Reason::Schema)?;
-    let id = player_intent_id(
-        &world.now().shard_id,
-        tick,
-        actor_id,
-        &canonical_line(verb, token),
-    );
-    if world.queued_intents().iter().any(|intent| intent.id == id) {
-        return Err(Reason::Schema);
-    }
-    Ok(Intent {
-        id,
-        tick_index: tick,
-        actor_id: actor_id.to_string(),
-        actor_kind: ActorKind::Player,
-        source: Source::Player,
-        move_name: verb.to_string(),
-        target,
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    })
-}
-
-impl QueuedMove {
-    pub fn player_line(&self) -> String {
-        frames::player_queued_line(&self.id)
-    }
-
-    pub fn gm_frame(&self) -> Vec<u8> {
-        frames::queued_event(&self.id, &self.actor_id, &self.move_name)
-    }
-}
-
-pub(super) struct IntentPush<'a> {
-    pub id: String,
-    pub actor_id: &'a str,
-    pub actor_kind: ActorKind,
-    pub move_name: &'a str,
-    pub target: Target,
-    pub args: IntentArgs,
-    pub rationale_code: String,
-    pub tick_index: Option<u64>,
-}
-
-pub(super) fn push_intent(world: &mut World, intent: IntentPush<'_>) -> Result<(), Reason> {
-    let tick_index = match intent.tick_index {
-        Some(tick_index) => tick_index,
-        None => world
-            .now()
-            .tick_index
-            .checked_add(1)
-            .ok_or(Reason::Schema)?,
-    };
-    world.queue(Intent {
-        id: intent.id,
-        tick_index,
-        actor_id: intent.actor_id.to_string(),
-        actor_kind: intent.actor_kind,
-        source: Source::Player,
-        move_name: intent.move_name.to_string(),
-        target: intent.target,
-        args: intent.args,
-        rationale_code: intent.rationale_code,
-    });
-    Ok(())
+pub fn gm_queued_frame(queued: &QueuedMove) -> Vec<u8> {
+    frames::queued_event(&queued.id, &queued.actor_id, &queued.move_name)
 }
 
 pub(super) fn mint_intent_id() -> Result<String, Reason> {

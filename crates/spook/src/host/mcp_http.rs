@@ -18,7 +18,7 @@ use tokio::sync::oneshot;
 
 use super::gm_seat::GmSeatHandler;
 use super::limits::GM_BODY_CAP;
-use super::world_loop::{SocketEnd, WorldMsg};
+use super::world_loop::WorldMsg;
 
 // HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
@@ -106,15 +106,7 @@ impl SessionManager for SeatSessions {
         let closed = self.inner.close_session(id).await;
         if let Some(conn) = conn {
             let (ack_tx, ack_rx) = oneshot::channel();
-            if self
-                .tx
-                .send(WorldMsg::Fault {
-                    conn,
-                    end: SocketEnd::Close,
-                    ack: ack_tx,
-                })
-                .is_ok()
-            {
+            if self.tx.send(WorldMsg::Fault { conn, ack: ack_tx }).is_ok() {
                 let _ = ack_rx.await;
             }
         }
@@ -184,7 +176,7 @@ mod tests {
                         reply,
                     } => {
                         if seat.is_some() {
-                            let _ = reply.send(Err("{\"code\":\"SESSION_FULL\"}".to_string()));
+                            let _ = reply.send(Err(spookery_kernel::api::Reason::SessionFull));
                         } else {
                             seat = Some(conn);
                             kept.push((out, cancel));

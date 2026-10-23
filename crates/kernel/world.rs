@@ -8,13 +8,51 @@ use crate::canon::tick_settings::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic};
 use crate::error::Reason;
-use crate::intent::Intent;
+use crate::ids::player_intent_id;
+use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use crate::journal::{self, JournalEntry};
-use crate::model::{sort_unique, Now, Presence};
+use crate::model::{sort_unique, ActorLive, Now, Presence};
+use crate::rule::{TargetKind, When};
+use crate::rules::gate::{gate, resolve, verb_for, GateRefusal};
+use crate::speech::Heard;
 use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
+use crate::store::tape::{append_record, read_session, read_tail, session_end_seq, TapeRecord};
 
 use crate::draft::Draft;
+
+/// Engine cap. A pack may define more PCs than this.
+pub const MAX_PLAYER_SEATS: usize = 3;
+
+/// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
+const SAY_TEXT_CAP: usize = 4 * 1024;
+
+/// `say` is speech. A verb is a turn. A habit name is `NOT_IN_SPEC`.
+pub enum PlayerLine {
+    Speech,
+    Turn,
+    Help,
+    Map,
+    Look,
+}
+
+pub struct QueuedMove {
+    pub id: String,
+    pub actor_id: String,
+    pub move_name: String,
+}
+
+pub struct GmIntentSpec<'a> {
+    pub id: Option<String>,
+    pub tick_index: Option<u64>,
+    pub actor_id: Option<String>,
+    pub actor_kind: Option<&'a str>,
+    pub source: Option<&'a str>,
+    pub move_name: Option<String>,
+    pub target: Target,
+    pub message_to: Option<Vec<String>>,
+    pub rationale_code: String,
+}
 
 pub struct World {
     pub(crate) root: PathBuf,
@@ -63,10 +101,389 @@ impl World {
     }
 
     /// The next seat id. Ids start at 1 and are not reused in this process.
-    pub fn mint_session(&mut self) -> Result<String, Reason> {
+    fn mint_session(&mut self) -> Result<String, Reason> {
         let id = format!("s{}", self.next_session);
         self.next_session = self.next_session.checked_add(1).ok_or(Reason::Schema)?;
         Ok(id)
+    }
+
+    pub fn seat_player(&mut self, actor_id: &str) -> Result<String, Reason> {
+        let mut ids = self.now.presence.actors_present.clone();
+        if ids.len() >= MAX_PLAYER_SEATS {
+            return Err(Reason::SessionFull);
+        }
+        if ids.iter().any(|id| id == actor_id) {
+            return Err(Reason::SeatTaken);
+        }
+        if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
+            return Err(Reason::Schema);
+        }
+        ids.push(actor_id.to_string());
+        self.commit_held(&ids)?;
+        self.mint_session()
+    }
+
+    pub fn release_player_seat(
+        &mut self,
+        session_id: &str,
+        actor_id: &str,
+    ) -> Result<bool, Reason> {
+        if session_id.is_empty() {
+            return Err(Reason::Schema);
+        }
+        let mut ids = self.now.presence.actors_present.clone();
+        ids.retain(|id| id != actor_id);
+        self.commit_held(&ids)
+    }
+
+    pub fn clear_crashed(&mut self) -> Result<bool, Reason> {
+        if self.now.presence.humans == 0 && self.now.presence.actors_present.is_empty() {
+            return Ok(false);
+        }
+        Ok(self.set_presence(Presence {
+            humans: 0,
+            actors_present: Vec::new(),
+        }))
+    }
+
+    fn commit_held(&mut self, ids: &[String]) -> Result<bool, Reason> {
+        Ok(self.set_presence(Presence {
+            humans: u32::try_from(ids.len()).map_err(|_| Reason::Schema)?,
+            actors_present: ids.to_vec(),
+        }))
+    }
+
+    pub fn parse_player_input(&self, line: &str, seated: &str) -> Result<PlayerLine, Reason> {
+        let (verb, rest) = verb_line(line, seated)?;
+        if verb.is_empty() {
+            return Err(Reason::Schema);
+        }
+        if verb == "say" {
+            return Ok(PlayerLine::Speech);
+        }
+        if rest.is_empty() && matches!(verb, "help" | "map" | "look") {
+            return Ok(match verb {
+                "help" => PlayerLine::Help,
+                "map" => PlayerLine::Map,
+                _ => PlayerLine::Look,
+            });
+        }
+        if self.canon.rules.is_verb(verb) {
+            Ok(PlayerLine::Turn)
+        } else {
+            Err(Reason::NotInSpec)
+        }
+    }
+
+    pub fn queue_player_move(
+        &mut self,
+        actor_id: &str,
+        line: &str,
+    ) -> Result<QueuedMove, GateRefusal> {
+        let (verb, rest) = verb_line(line, actor_id)?;
+        self.queue_verb(actor_id, verb, rest)
+    }
+
+    pub fn queue_wait(&mut self, actor_id: &str) -> Result<QueuedMove, GateRefusal> {
+        self.queue_verb(actor_id, "wait", "")
+    }
+
+    fn queue_verb(
+        &mut self,
+        actor_id: &str,
+        verb: &str,
+        rest: &str,
+    ) -> Result<QueuedMove, GateRefusal> {
+        if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
+            return Err(Reason::Schema.into());
+        }
+        let kind = self
+            .verb_target(actor_id, verb, rest)
+            .ok_or(Reason::NotInSpec)?;
+        let target = match kind {
+            TargetKind::None => {
+                if !rest.is_empty() {
+                    return Err(Reason::Schema.into());
+                }
+                Target::Empty
+            }
+            TargetKind::Actor | TargetKind::Item => {
+                let (named, extra) = split_token(rest);
+                if named.is_empty() || !extra.is_empty() {
+                    return Err(Reason::Schema.into());
+                }
+                Target::Actor(named.to_string())
+            }
+            TargetKind::Place | TargetKind::Exit => {
+                let (place, extra) = split_token(rest);
+                if place.is_empty() || !extra.is_empty() {
+                    return Err(Reason::Schema.into());
+                }
+                Target::Place(place.to_string())
+            }
+        };
+        let intent = self.player_intent(actor_id, verb, target)?;
+        gate(&self.canon, &self.now, &intent)?;
+        let queued = QueuedMove {
+            id: intent.id.clone(),
+            actor_id: actor_id.to_string(),
+            move_name: verb.to_string(),
+        };
+        self.queue(intent);
+        Ok(queued)
+    }
+
+    fn verb_target(&self, actor_id: &str, verb: &str, rest: &str) -> Option<TargetKind> {
+        let actor = self.now.actors.get(actor_id)?;
+        let (token, _) = split_token(rest);
+        let hint = (!token.is_empty()).then_some(token);
+        let rule = verb_for(
+            &self.canon,
+            Some(actor.place()),
+            verb,
+            hint,
+            actor.wielded(),
+        )?;
+        match &rule.when {
+            When::Verb { target, .. } => Some(*target),
+            _ => None,
+        }
+    }
+
+    fn player_intent(&self, actor_id: &str, verb: &str, target: Target) -> Result<Intent, Reason> {
+        let token = match &target {
+            Target::Empty => "",
+            Target::Actor(id) | Target::Place(id) => id.as_str(),
+            Target::Clock(_) => return Err(Reason::Schema),
+        };
+        let tick = self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?;
+        let id = player_intent_id(
+            &self.now.shard_id,
+            tick,
+            actor_id,
+            &canonical_line(verb, token),
+        );
+        if self.queue.iter().any(|intent| intent.id == id) {
+            return Err(Reason::Schema);
+        }
+        Ok(Intent {
+            id,
+            tick_index: tick,
+            actor_id: actor_id.to_string(),
+            actor_kind: ActorKind::Player,
+            source: Source::Player,
+            move_name: verb.to_string(),
+            target,
+            args: IntentArgs::default(),
+            rationale_code: String::new(),
+        })
+    }
+
+    pub fn queue_gm_intent(
+        &mut self,
+        spec: GmIntentSpec<'_>,
+        mint_id: impl FnOnce() -> Result<String, Reason>,
+    ) -> Result<QueuedMove, Reason> {
+        if spec.source != Some("player") {
+            return Err(Reason::Schema);
+        }
+        let actor_id = spec.actor_id.ok_or(Reason::Schema)?;
+        let actor_kind = match spec.actor_kind {
+            Some("npc") => ActorKind::Npc,
+            Some("player") => ActorKind::Player,
+            _ => return Err(Reason::Schema),
+        };
+        let move_name = spec.move_name.ok_or(Reason::Schema)?;
+        let matches_kind = match actor_kind {
+            ActorKind::Player => self.now.actors.get(&actor_id).is_some_and(ActorLive::is_pc),
+            ActorKind::Npc => self
+                .now
+                .actors
+                .get(&actor_id)
+                .is_some_and(ActorLive::is_npc),
+            ActorKind::System => false,
+        };
+        if !matches_kind {
+            return Err(Reason::Schema);
+        }
+        let args = IntentArgs {
+            message_to: spec.message_to,
+        };
+        let probe = Intent {
+            id: "probe".to_string(),
+            tick_index: self.now.tick_index,
+            actor_id: actor_id.clone(),
+            actor_kind,
+            source: Source::Player,
+            move_name: move_name.clone(),
+            target: spec.target.clone(),
+            args: args.clone(),
+            rationale_code: String::new(),
+        };
+        resolve(&self.canon, &self.now, &probe)?;
+        let id = match spec.id {
+            Some(id) if !id.is_empty() => id,
+            Some(_) => return Err(Reason::Schema),
+            None => mint_id()?,
+        };
+        if self.queue.iter().any(|intent| intent.id == id) {
+            return Err(Reason::Schema);
+        }
+        let tick_index = match spec.tick_index {
+            Some(tick_index) => tick_index,
+            None => self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?,
+        };
+        self.queue(Intent {
+            id: id.clone(),
+            tick_index,
+            actor_id: actor_id.clone(),
+            actor_kind,
+            source: Source::Player,
+            move_name: move_name.clone(),
+            target: spec.target,
+            args,
+            rationale_code: spec.rationale_code,
+        });
+        Ok(QueuedMove {
+            id,
+            actor_id,
+            move_name,
+        })
+    }
+
+    pub fn speak_player(&self, actor_id: &str, line: &str) -> Result<TapeRecord, Reason> {
+        let (verb, rest) = verb_line(line, actor_id)?;
+        if verb.is_empty() {
+            return Err(Reason::Schema);
+        }
+        if verb != "say" {
+            return Err(Reason::NotInSpec);
+        }
+        if rest.is_empty() {
+            return Err(Reason::Schema);
+        }
+        if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
+            return Err(Reason::Schema);
+        }
+        let speaker_place = self
+            .now
+            .actors
+            .get(actor_id)
+            .ok_or(Reason::Schema)?
+            .place()
+            .to_string();
+        let (target, text) = split_token(rest);
+        let (address, place, actor, heard, text) = if !text.is_empty() && target == "place" {
+            (
+                "place",
+                Some(speaker_place.clone()),
+                None,
+                Heard::Place(&speaker_place),
+                one_line(text)?.to_string(),
+            )
+        } else if !text.is_empty() && self.now.actors.contains_key(target) {
+            (
+                "actor",
+                None,
+                Some(target.to_string()),
+                Heard::Actor(target),
+                one_line(text)?.to_string(),
+            )
+        } else {
+            (
+                "table",
+                None,
+                None,
+                Heard::Table,
+                one_line(rest)?.to_string(),
+            )
+        };
+        let recipients = crate::speech::recipients(&self.now, Some(actor_id), heard);
+        self.append_speech(
+            &format!("player:{actor_id}"),
+            address,
+            place,
+            actor,
+            recipients,
+            text,
+        )
+    }
+
+    pub fn speak_gm(
+        &self,
+        address: &str,
+        place: Option<String>,
+        actor: Option<String>,
+        text: &str,
+    ) -> Result<TapeRecord, Reason> {
+        let text = one_line(text)?.to_string();
+        let (place, actor, heard) = match address {
+            "table" => {
+                if place.is_some() || actor.is_some() {
+                    return Err(Reason::Schema);
+                }
+                (None, None, Heard::Table)
+            }
+            "place" => {
+                let place = place.ok_or(Reason::Schema)?;
+                if place.is_empty() || actor.is_some() {
+                    return Err(Reason::Schema);
+                }
+                (Some(place), None, Heard::Table)
+            }
+            "actor" => {
+                let actor = actor.ok_or(Reason::Schema)?;
+                if actor.is_empty() || place.is_some() || !self.now.actors.contains_key(&actor) {
+                    return Err(Reason::Schema);
+                }
+                (None, Some(actor), Heard::Table)
+            }
+            _ => return Err(Reason::Schema),
+        };
+        let _ = heard;
+        let heard = match (place.as_deref(), actor.as_deref()) {
+            (Some(place), None) => Heard::Place(place),
+            (None, Some(actor)) => Heard::Actor(actor),
+            _ => Heard::Table,
+        };
+        let recipients = crate::speech::recipients(&self.now, None, heard);
+        self.append_speech("gm", address, place, actor, recipients, text)
+    }
+
+    fn append_speech(
+        &self,
+        from: &str,
+        address: &str,
+        place: Option<String>,
+        actor: Option<String>,
+        recipients: Vec<String>,
+        text: String,
+    ) -> Result<TapeRecord, Reason> {
+        let tick_index = self.now.tick_index;
+        let world_time = self.now.world_time;
+        append_record(&self.root, |seq| TapeRecord {
+            seq,
+            from: from.to_string(),
+            address: address.to_string(),
+            place,
+            actor,
+            recipients,
+            text,
+            tick_index,
+            world_time,
+        })
+    }
+
+    pub fn player_scrollback(&self, actor_id: &str) -> Result<Vec<TapeRecord>, Reason> {
+        read_tail(&self.root, actor_id, 256)
+    }
+
+    pub fn tape_after(&self, since: u64) -> Result<Vec<TapeRecord>, Reason> {
+        read_session(&self.root, since, None)
+    }
+
+    pub fn last_tape_seq(&self) -> Result<u64, Reason> {
+        session_end_seq(&self.root)
     }
 
     pub fn budget(&self) -> &Budget {
@@ -154,6 +571,42 @@ pub fn session_status(now: &Now) -> SessionStatus {
         humans: now.presence.humans,
         actors_present: now.presence.actors_present.clone(),
     }
+}
+
+pub fn verb_line<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
+    if line.is_empty() {
+        return Err(Reason::Schema);
+    }
+    let (first, rest) = split_token(line);
+    if let Some(id) = first.strip_prefix("player:") {
+        if id.is_empty() || id != seated || rest.is_empty() {
+            return Err(Reason::Schema);
+        }
+        return Ok(split_token(rest));
+    }
+    Ok((first, rest))
+}
+
+pub fn split_token(line: &str) -> (&str, &str) {
+    match line.split_once(' ') {
+        Some((token, rest)) => (token, rest),
+        None => (line, ""),
+    }
+}
+
+fn canonical_line(verb: &str, token: &str) -> String {
+    if token.is_empty() {
+        verb.to_string()
+    } else {
+        format!("{verb} {token}")
+    }
+}
+
+fn one_line(text: &str) -> Result<&str, Reason> {
+    if text.is_empty() || text.contains('\n') || text.chars().count() > SAY_TEXT_CAP {
+        return Err(Reason::Schema);
+    }
+    Ok(text)
 }
 
 /// Hash of the newest migrate past the checkpoint, or the save's own hash.

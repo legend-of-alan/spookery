@@ -8,9 +8,11 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use spookery_kernel::api::canon::{Canon, CastKind};
+use spookery_kernel::api::canon::Canon;
+use spookery_kernel::api::intent::ViewerId;
 use spookery_kernel::api::rule::{TargetKind, When};
 
+use crate::ai::OutgoingSay;
 use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
 use crate::protocol::{CommitBody, PlayerMessage, SessionStatus};
 
@@ -189,12 +191,12 @@ impl GmSession {
     }
 
     fn on_look(&mut self, actor: &str) {
-        let Some((id, kind)) = self.resolve(actor) else {
+        let Some(viewer) = self.resolve(actor) else {
             eprintln!("{}", refusal("UNKNOWN_KEY"));
             let _ = io::stderr().flush();
             return;
         };
-        let as_viewer = format!("{kind}:{id}");
+        let as_viewer = viewer.token();
         let Some(outcome) = self.call_tool("perceive", json!({ "as": as_viewer })) else {
             return;
         };
@@ -209,8 +211,8 @@ impl GmSession {
         });
     }
 
-    fn on_say(&mut self, address: Address) {
-        let arguments = say_arguments(&address);
+    fn on_say(&mut self, address: OutgoingSay) {
+        let arguments = address.arguments();
         let Some(outcome) = self.call_tool("say", arguments) else {
             return;
         };
@@ -218,10 +220,15 @@ impl GmSession {
     }
 
     fn on_queue(&mut self, actor: &str, move_name: &str, target: Option<&str>) {
-        let Some((id, kind)) = self.resolve(actor) else {
+        let Some(viewer) = self.resolve(actor) else {
             eprintln!("{}", refusal("UNKNOWN_KEY"));
             let _ = io::stderr().flush();
             return;
+        };
+        let id = viewer.actor_id().to_string();
+        let kind = match viewer {
+            ViewerId::Player(_) => "player",
+            ViewerId::Npc(_) => "npc",
         };
         let target = target_value(&self.canon, move_name, target);
         let shown = format!("{} queued: {move_name}", actor_name(&id));
@@ -399,23 +406,13 @@ impl GmSession {
         let _ = io::stderr().flush();
     }
 
-    fn resolve(&mut self, token: &str) -> Option<(String, String)> {
-        if let Some(id) = prefixed(token, "player:") {
-            return Some((id, "player".to_string()));
-        }
-        if let Some(id) = prefixed(token, "npc:") {
-            return Some((id, "npc".to_string()));
+    fn resolve(&mut self, token: &str) -> Option<ViewerId> {
+        if let Some(viewer) = self.canon.viewer_of(token) {
+            return Some(viewer);
         }
         let id = token.replace(' ', "_");
-        if let Some(cast) = self.canon.cast.get(&id) {
-            let kind = match cast.kind {
-                CastKind::Npc => "npc",
-                CastKind::PcTemplate => "player",
-            };
-            return Some((id, kind.to_string()));
-        }
         if self.present_ids().iter().any(|actor| actor == &id) {
-            return Some((id, "player".to_string()));
+            return Some(ViewerId::Player(id));
         }
         None
     }
@@ -441,26 +438,6 @@ impl GmSession {
             });
         self.show_ready();
         ids
-    }
-}
-
-fn prefixed(token: &str, prefix: &str) -> Option<String> {
-    let id = token.strip_prefix(prefix)?;
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        return None;
-    }
-    Some(id.to_string())
-}
-
-fn say_arguments(address: &Address) -> Value {
-    match address {
-        Address::Table { text } => json!({ "address": "table", "text": text }),
-        Address::Place { place, text } => {
-            json!({ "address": "place", "place": place, "text": text })
-        }
-        Address::Actor { actor, text } => {
-            json!({ "address": "actor", "actor": bare_id(actor), "text": text })
-        }
     }
 }
 
@@ -630,7 +607,7 @@ pub enum Command {
     Look {
         actor: String,
     },
-    Say(Address),
+    Say(OutgoingSay),
     Queue {
         actor: String,
         move_name: String,
@@ -639,13 +616,6 @@ pub enum Command {
     Commit,
     Help,
     Quit,
-}
-
-#[derive(Debug)]
-pub enum Address {
-    Table { text: String },
-    Place { place: String, text: String },
-    Actor { actor: String, text: String },
 }
 
 pub enum Parsed {
@@ -689,22 +659,23 @@ fn parse_say(rest: &str) -> Parsed {
         if place.is_empty() || text.is_empty() {
             return Parsed::Unknown;
         }
-        return Parsed::Command(Command::Say(Address::Place {
+        return Parsed::Command(Command::Say(OutgoingSay::Place {
             place: place.to_string(),
             text: text.to_string(),
         }));
     }
     if let Some(rest) = rest.strip_prefix('#') {
         let (actor, text) = split_word(rest.trim());
+        let actor = bare_id(actor);
         if actor.is_empty() || text.is_empty() {
             return Parsed::Unknown;
         }
-        return Parsed::Command(Command::Say(Address::Actor {
+        return Parsed::Command(Command::Say(OutgoingSay::Actor {
             actor: actor.to_string(),
             text: text.to_string(),
         }));
     }
-    Parsed::Command(Command::Say(Address::Table {
+    Parsed::Command(Command::Say(OutgoingSay::Table {
         text: rest.to_string(),
     }))
 }
@@ -847,18 +818,18 @@ mod tests {
             other => panic!("{other:?}"),
         }
         match command("say good evening") {
-            Command::Say(Address::Table { text }) => assert_eq!(text, "good evening"),
+            Command::Say(OutgoingSay::Table { text }) => assert_eq!(text, "good evening"),
             other => panic!("{other:?}"),
         }
         match command("say @docks_shop the lamp is lit") {
-            Command::Say(Address::Place { place, text }) => {
+            Command::Say(OutgoingSay::Place { place, text }) => {
                 assert_eq!(place, "docks_shop");
                 assert_eq!(text, "the lamp is lit");
             }
             other => panic!("{other:?}"),
         }
         match command("say #mira come in") {
-            Command::Say(Address::Actor { actor, text }) => {
+            Command::Say(OutgoingSay::Actor { actor, text }) => {
                 assert_eq!(actor, "mira");
                 assert_eq!(text, "come in");
             }

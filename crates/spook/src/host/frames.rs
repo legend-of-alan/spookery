@@ -76,6 +76,34 @@ pub fn check_event(out: &RollResult) -> Vec<u8> {
     crate::protocol::write_check_event(&roll_of(out))
 }
 
+pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
+    let mut out = String::new();
+    for report in reports {
+        if report.actor_id() != actor_id {
+            continue;
+        }
+        match report {
+            MoveReport::Rolled { out: rolled, .. } => {
+                out.push_str(&player_check_line(rolled.outcome))
+            }
+            MoveReport::Refused { code, missing, .. } => {
+                out.push_str(&player_refused(code.token(), missing.as_deref()))
+            }
+        }
+    }
+    out
+}
+
+pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
+    reports
+        .iter()
+        .filter_map(|report| match report {
+            MoveReport::Rolled { out, .. } => Some(check_event(out)),
+            MoveReport::Refused { .. } => None,
+        })
+        .collect()
+}
+
 pub fn player_resume_line(view: &View) -> String {
     let actor_id = view
         .viewer

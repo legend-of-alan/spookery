@@ -1,12 +1,9 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_kernel::api::intent::Intent;
-use spookery_kernel::api::intent::{ActorKind, IntentArgs, Source, Target};
-use spookery_kernel::api::model::ActorLive;
+use spookery_kernel::api::intent::Target;
 use spookery_kernel::api::perceive::perceive_budget;
-use spookery_kernel::api::rules::gate::resolve;
-use spookery_kernel::api::world::World;
+use spookery_kernel::api::world::{GmIntentSpec, World};
 use spookery_kernel::api::Reason;
 use spookery_round::RoundOutput;
 
@@ -360,10 +357,10 @@ fn session_status_tool(
 ) -> Result<Value, Reason> {
     let since = status_since(arguments)?;
     let events = match since {
-        Some(since) => Some(speech::tape_after(world.root(), since)?),
+        Some(since) => Some(world.tape_after(since)?),
         None => None,
     };
-    let last_seq = speech::last_tape_seq(world.root())?;
+    let last_seq = world.last_tape_seq()?;
     Ok(frames::session_status(
         world.now(),
         world.queued_intents(),
@@ -387,93 +384,20 @@ fn queue_tool_intent(
     arguments: Option<Map<String, Value>>,
 ) -> Result<QueuedMove, Reason> {
     let call = crate::protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
-    let id = call.id;
-    let tick_index = call.tick_index;
-    let actor_id = call.actor_id;
-    let actor_kind = call.actor_kind.as_deref().map(parse_kind).transpose()?;
-    let source = call.source;
-    let move_name = call.move_name;
-    let target = kernel_target(call.target);
-    let args = IntentArgs {
-        message_to: call.message_to,
-    };
-    let rationale = call.rationale_code;
-    if source.as_deref() != Some("player") {
-        return Err(Reason::Schema);
-    }
-    let actor_id = actor_id.ok_or(Reason::Schema)?;
-    let actor_kind = actor_kind.ok_or(Reason::Schema)?;
-    let move_name = move_name.ok_or(Reason::Schema)?;
-    match actor_kind {
-        ActorKind::Player => {
-            if !world
-                .now()
-                .actors
-                .get(&actor_id)
-                .is_some_and(ActorLive::is_pc)
-            {
-                return Err(Reason::Schema);
-            }
-        }
-        ActorKind::Npc => {
-            if !world
-                .now()
-                .actors
-                .get(&actor_id)
-                .is_some_and(ActorLive::is_npc)
-            {
-                return Err(Reason::Schema);
-            }
-        }
-        ActorKind::System => return Err(Reason::Schema),
-    }
-    let probe = Intent {
-        id: "probe".to_string(),
-        tick_index: world.now().tick_index,
-        actor_id: actor_id.clone(),
-        actor_kind,
-        source: Source::Player,
-        move_name: move_name.clone(),
-        target: target.clone(),
-        args: args.clone(),
-        rationale_code: String::new(),
-    };
-    resolve(world.canon(), world.now(), &probe)?;
-    let id = match id {
-        Some(id) if !id.is_empty() => id,
-        Some(_) => return Err(Reason::Schema),
-        None => player_moves::mint_intent_id()?,
-    };
-    if world.queued_intents().iter().any(|intent| intent.id == id) {
-        return Err(Reason::Schema);
-    }
-    player_moves::push_intent(
-        world,
-        player_moves::IntentPush {
-            id: id.clone(),
-            actor_id: &actor_id,
-            actor_kind,
-            move_name: &move_name,
-            target,
-            args,
-            rationale_code: rationale,
-            tick_index,
+    world.queue_gm_intent(
+        GmIntentSpec {
+            id: call.id,
+            tick_index: call.tick_index,
+            actor_id: call.actor_id,
+            actor_kind: call.actor_kind.as_deref(),
+            source: call.source.as_deref(),
+            move_name: call.move_name,
+            target: kernel_target(call.target),
+            message_to: call.message_to,
+            rationale_code: call.rationale_code,
         },
-    )?;
-    Ok(QueuedMove {
-        id,
-        actor_id,
-        move_name,
-    })
-}
-
-fn parse_kind(text: &str) -> Result<ActorKind, Reason> {
-    match text {
-        "npc" => Ok(ActorKind::Npc),
-        "player" => Ok(ActorKind::Player),
-        "system" => Ok(ActorKind::System),
-        _ => Err(Reason::Schema),
-    }
+        player_moves::mint_intent_id,
+    )
 }
 
 fn kernel_target(target: crate::protocol::CallTarget) -> Target {

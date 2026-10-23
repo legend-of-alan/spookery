@@ -65,13 +65,12 @@ pub fn run_player(
 }
 
 fn parse_player_as(token: &str) -> Result<String, Error> {
-    let Some(id) = token.strip_prefix("player:") else {
+    if !token.starts_with("player:") {
         return Err(Error::Reason(Reason::NotInSpec));
-    };
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        return Err(Error::Reason(Reason::Schema));
     }
-    Ok(id.to_string())
+    crate::protocol::read_player_hello(token)
+        .map(str::to_string)
+        .ok_or(Error::Reason(Reason::Schema))
 }
 
 fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error> {

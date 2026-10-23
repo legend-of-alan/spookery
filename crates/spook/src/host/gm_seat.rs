@@ -10,6 +10,7 @@ use rmcp::model::{
 };
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
+use spookery_kernel::api::Reason;
 
 use super::gm_tools;
 use super::world_loop::WorldMsg;
@@ -154,27 +155,13 @@ impl GmSeatHandler {
                 });
                 Ok(())
             }
-            Err(line) => Err(refusal_error(&line)),
+            Err(code) => Err(refusal_error(code)),
         }
     }
 }
 
-fn refusal_error(line: &str) -> McpError {
-    let code = serde_json::from_str::<serde_json::Value>(line.trim())
-        .ok()
-        .and_then(|value| {
-            value
-                .get("code")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| "SESSION_FULL".to_string());
-    let sentence = match code.as_str() {
-        "SESSION_FULL" => format!("The table is full. [{code}]"),
-        "LINE_TOO_LONG" => format!("That line is too long. [{code}]"),
-        _ => format!("The table refused that. [{code}]"),
-    };
-    McpError::internal_error(sentence, None)
+fn refusal_error(code: Reason) -> McpError {
+    McpError::internal_error(crate::terminal::refusal(code.token()), None)
 }
 
 async fn emit_event(peer: &Peer<RoleServer>, frame: &[u8]) {

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 use spookery::host::{
     call_gm_tool, commit_then_fast_forward, handle_player_move, on_scheduled_wake, queue_wait,
-    release_player_seat, seat_player, MoveOutcome, SocketEnd,
+    release_player_seat, seat_player, MoveOutcome,
 };
 use spookery_kernel::api::apply::apply_effect;
 use spookery_kernel::api::check::Outcome;
@@ -884,7 +884,7 @@ fn queued_line_survives_a_dropped_seat() {
     assert_eq!(shard.queued_intents()[0].id, queued.id);
     assert_eq!(shard.now().world_time, 1080);
     assert!(list_tick_keys(&held).is_empty());
-    assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
+    assert!(release_player_seat(&mut shard, &session, "pc_rowan").unwrap());
     assert_eq!(shard.now().presence.humans, 0);
     assert!(!on_scheduled_wake(&mut shard, false, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
@@ -901,7 +901,7 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let MoveOutcome::Queued(queued) = outcome else {
         panic!("queued wait committed");
     };
-    assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
+    assert!(release_player_seat(&mut shard, &session, "pc_rowan").unwrap());
     assert_eq!(shard.now().world_time, 1080);
     assert_eq!(shard.now().tick_index, 0);
     assert_eq!(shard.queued_intents().len(), 1);
@@ -922,7 +922,7 @@ fn early_wake_does_not_tick_again() {
     commit_then_fast_forward(&mut shard).unwrap();
     let committed = shard.now().clone();
     assert_eq!(committed.world_time, 1085);
-    assert!(release_player_seat(&mut shard, &session, "pc_rowan", SocketEnd::Close).unwrap());
+    assert!(release_player_seat(&mut shard, &session, "pc_rowan").unwrap());
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
     assert_eq!(shard.now().world_time, committed.world_time);
     assert_eq!(shard.now().tick_index, committed.tick_index);

@@ -478,13 +478,7 @@ fn seat_drop_and_reseat() -> [String; 3] {
         spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("World::open: {err}"));
     let rowan = spookery::host::seat_player(&mut shard, "pc_rowan").unwrap();
     let wren = spookery::host::seat_player(&mut shard, "pc_wren").unwrap();
-    assert!(spookery::host::release_player_seat(
-        &mut shard,
-        &rowan,
-        "pc_rowan",
-        spookery::host::SocketEnd::Close,
-    )
-    .unwrap());
+    assert!(spookery::host::release_player_seat(&mut shard, &rowan, "pc_rowan").unwrap());
     let again = spookery::host::seat_player(&mut shard, "pc_rowan").unwrap();
     let _ = fs::remove_dir_all(&pack);
     [rowan, wren, again]

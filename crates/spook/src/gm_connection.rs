@@ -112,20 +112,21 @@ pub struct GmConnection {
 impl GmConnection {
     /// Dial `http://127.0.0.1:<port + 1>/mcp` and finish the handshake.
     pub fn connect(addr: &str) -> Result<Self, Error> {
-        dial(http_url(addr)?)
+        dial(next_door_addr(addr)?)
     }
 
     /// Dial `http://127.0.0.1:<port>/mcp`. `addr` is the agent door, not the game port.
     pub fn connect_door(addr: &str) -> Result<Self, Error> {
-        dial(door_url(addr)?)
+        dial(door_addr(addr)?)
     }
 }
 
-fn dial(url: String) -> Result<GmConnection, Error> {
+fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
+    let url = format!("http://{door}/mcp");
     let (commands, commands_rx) = tokio::sync::mpsc::channel(4);
     let (events, incoming) = mpsc::channel();
     let (ready_tx, ready_rx) = mpsc::channel();
-    let worker = thread::spawn(move || worker(url, commands_rx, events, ready_tx));
+    let worker = thread::spawn(move || worker(door, url, commands_rx, events, ready_tx));
     let (opened, worker) = park(move || match ready_rx.recv() {
         Ok(Ok(opened)) => Ok((opened, worker)),
         Ok(Err(err)) => {
@@ -276,6 +277,7 @@ where
 }
 
 fn worker(
+    door: std::net::SocketAddr,
     url: String,
     mut commands: tokio::sync::mpsc::Receiver<Command>,
     events: mpsc::Sender<Incoming>,
@@ -325,12 +327,8 @@ fn worker(
         // rmcp keeps no read on the agent port once a tool call's stream
         // ends, so a killed `spook run` never looks closed. A plain connection
         // with a pending read sees that close the way the TCP client did.
-        let watch_url = url.clone();
         tokio::spawn(async move {
-            let Some(addr) = agent_addr(&watch_url) else {
-                return;
-            };
-            let Ok(mut socket) = tokio::net::TcpStream::connect(addr).await else {
+            let Ok(mut socket) = tokio::net::TcpStream::connect(door).await else {
                 let _ = watch_events.send(Incoming::Eof);
                 return;
             };
@@ -402,28 +400,23 @@ fn result_line(id: u64, body: &Value) -> String {
     .to_string()
 }
 
-fn agent_addr(url: &str) -> Option<std::net::SocketAddr> {
-    let host = url.strip_prefix("http://")?.split('/').next()?;
-    host.parse().ok()
-}
-
 fn loopback_port(addr: &str) -> Result<u16, Error> {
     addr.strip_prefix("127.0.0.1:")
         .and_then(|text| text.parse::<u16>().ok())
         .ok_or_else(|| Error::Bad(addr.to_string()))
 }
 
-fn http_url(addr: &str) -> Result<String, Error> {
+fn next_door_addr(addr: &str) -> Result<std::net::SocketAddr, Error> {
     let port = loopback_port(addr)?;
     let http = port
         .checked_add(1)
         .ok_or_else(|| Error::Bad(addr.to_string()))?;
-    Ok(format!("http://127.0.0.1:{http}/mcp"))
+    Ok(std::net::SocketAddr::from(([127, 0, 0, 1], http)))
 }
 
-fn door_url(addr: &str) -> Result<String, Error> {
+fn door_addr(addr: &str) -> Result<std::net::SocketAddr, Error> {
     let port = loopback_port(addr)?;
-    Ok(format!("http://127.0.0.1:{port}/mcp"))
+    Ok(std::net::SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
 async fn read_seat_refusal(url: &str) -> Option<Error> {
@@ -528,14 +521,14 @@ mod tests {
     #[test]
     fn the_agent_door_is_the_next_port() {
         assert_eq!(
-            http_url("127.0.0.1:9737").unwrap(),
-            "http://127.0.0.1:9738/mcp"
+            next_door_addr("127.0.0.1:9737").unwrap().to_string(),
+            "127.0.0.1:9738"
         );
-        assert!(http_url("127.0.0.1:65535").is_err());
-        assert!(http_url("10.0.0.1:9").is_err());
+        assert!(next_door_addr("127.0.0.1:65535").is_err());
+        assert!(next_door_addr("10.0.0.1:9").is_err());
         assert_eq!(
-            door_url("127.0.0.1:9801").unwrap(),
-            "http://127.0.0.1:9801/mcp"
+            door_addr("127.0.0.1:9801").unwrap().to_string(),
+            "127.0.0.1:9801"
         );
     }
 

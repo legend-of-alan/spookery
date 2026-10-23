@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use spookery_kernel::api::canon::{Canon, CastKind};
 use spookery_kernel::api::rule::{Owner, TargetKind, When};
@@ -11,7 +12,7 @@ use crate::protocol::{QueueRow, Roll};
 /// Characters. The same budget `perceive` uses when it trims this prose.
 const PROSE_BUDGET: usize = 800;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct MenuRow {
     pub name: String,
     pub audience: String,
@@ -19,17 +20,21 @@ pub struct MenuRow {
     pub on: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HandledSay {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
     pub from: String,
     pub address: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub place: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub actor: Option<String>,
     pub text: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "address", rename_all = "lowercase")]
 pub enum OutgoingSay {
     Table { text: String },
     Place { place: String, text: String },
@@ -46,21 +51,7 @@ impl OutgoingSay {
     }
 
     pub fn arguments(&self) -> Value {
-        match self {
-            OutgoingSay::Table { text } => {
-                obj([("address", json_str("table")), ("text", json_str(text))])
-            }
-            OutgoingSay::Place { place, text } => obj([
-                ("address", json_str("place")),
-                ("place", json_str(place)),
-                ("text", json_str(text)),
-            ]),
-            OutgoingSay::Actor { actor, text } => obj([
-                ("address", json_str("actor")),
-                ("actor", json_str(actor)),
-                ("text", json_str(text)),
-            ]),
-        }
+        serde_json::to_value(self).expect("say arguments")
     }
 
     pub fn handled(&self, seq: Option<u64>) -> HandledSay {
@@ -248,21 +239,40 @@ pub fn push_handled(buffer: &mut Vec<HandledSay>, say: HandledSay) {
 
 /// `None` means the JSON is not the action object. That is an empty action list.
 pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelActions> {
-    let value: Value = serde_json::from_str(text).ok()?;
-    let obj = value.as_object()?;
     if says_only {
-        if obj.len() != 1 || !obj.contains_key("says") {
-            return None;
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct SaysOnly {
+            says: Vec<SayJson>,
         }
-    } else if obj.len() != 2 || !obj.contains_key("says") || !obj.contains_key("intents") {
-        return None;
+        let parsed: SaysOnly = serde_json::from_str(text).ok()?;
+        let says = parsed
+            .says
+            .into_iter()
+            .map(SayJson::into_say)
+            .collect::<Option<Vec<_>>>()?;
+        return Some(ModelActions {
+            says,
+            intents: Vec::new(),
+        });
     }
-    let says = parse_says(obj.get("says")?)?;
-    let intents = if says_only {
-        Vec::new()
-    } else {
-        parse_intents(obj.get("intents")?)?
-    };
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct FullActions {
+        says: Vec<SayJson>,
+        intents: Vec<IntentJson>,
+    }
+    let parsed: FullActions = serde_json::from_str(text).ok()?;
+    let says = parsed
+        .says
+        .into_iter()
+        .map(SayJson::into_say)
+        .collect::<Option<Vec<_>>>()?;
+    let intents = parsed
+        .intents
+        .into_iter()
+        .map(IntentJson::into_intent)
+        .collect::<Option<Vec<_>>>()?;
     Some(ModelActions { says, intents })
 }
 
@@ -410,46 +420,47 @@ pub fn render_prompt(
     view: &TurnView,
     checks: &[Roll],
 ) -> String {
-    let mut map = Map::new();
-    map.insert(
-        "menu".to_string(),
-        Value::Array(menu.iter().map(menu_value).collect()),
-    );
-    map.insert(
-        "buffer".to_string(),
-        Value::Array(context.buffer.iter().map(say_value).collect()),
-    );
-    map.insert(
-        "lines".to_string(),
-        Value::Array(context.new_lines.iter().map(say_value).collect()),
-    );
-    map.insert(
-        "queue".to_string(),
-        Value::Array(context.queue.iter().map(queue_value).collect()),
-    );
-    let mut views = Map::new();
-    if let Some(player) = &view.player {
-        views.insert("player".to_string(), player.clone());
+    #[derive(Serialize)]
+    struct CastBody<'a> {
+        id: &'a str,
+        body: &'a str,
     }
-    views.insert("npcs".to_string(), Value::Array(view.npcs.clone()));
-    views.insert("place_body".to_string(), json_str(&view.place_body));
-    views.insert(
-        "cast".to_string(),
-        Value::Array(
-            view.cast_bodies
+    #[derive(Serialize)]
+    struct Views<'a> {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        player: Option<&'a Value>,
+        npcs: &'a [Value],
+        place_body: &'a str,
+        cast: Vec<CastBody<'a>>,
+    }
+    #[derive(Serialize)]
+    struct Prompt<'a> {
+        menu: &'a [MenuRow],
+        buffer: &'a [HandledSay],
+        lines: &'a [HandledSay],
+        queue: &'a [QueueRow],
+        views: Views<'a>,
+        #[serde(skip_serializing_if = "<[_]>::is_empty")]
+        checks: &'a [Roll],
+    }
+    let prompt = Prompt {
+        menu,
+        buffer: &context.buffer,
+        lines: &context.new_lines,
+        queue: &context.queue,
+        views: Views {
+            player: view.player.as_ref(),
+            npcs: &view.npcs,
+            place_body: &view.place_body,
+            cast: view
+                .cast_bodies
                 .iter()
-                .map(|(id, body)| obj([("id", json_str(id)), ("body", json_str(body))]))
+                .map(|(id, body)| CastBody { id, body })
                 .collect(),
-        ),
-    );
-    map.insert("views".to_string(), Value::Object(views));
-    if !checks.is_empty() {
-        map.insert(
-            "checks".to_string(),
-            Value::Array(checks.iter().map(roll_value).collect()),
-        );
-    }
-    serde_json::to_string(&Value::Object(map)).expect("prompt json")
+        },
+        checks,
+    };
+    serde_json::to_string(&prompt).expect("prompt json")
 }
 
 fn absent() -> PreparedTurn {
@@ -657,101 +668,74 @@ fn accept_intent(intent: &IntentDraft, menu: &[MenuRow]) -> bool {
     )
 }
 
-fn parse_says(value: &Value) -> Option<Vec<OutgoingSay>> {
-    let mut out = Vec::new();
-    for item in value.as_array()? {
-        out.push(parse_say(item)?);
-    }
-    Some(out)
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SayJson {
+    address: String,
+    text: String,
+    #[serde(default)]
+    place: Option<String>,
+    #[serde(default)]
+    actor: Option<String>,
 }
 
-fn parse_say(value: &Value) -> Option<OutgoingSay> {
-    let obj = value.as_object()?;
-    let address = obj.get("address")?.as_str()?;
-    let text = obj.get("text")?.as_str()?.to_string();
-    match address {
-        "table" => {
-            if obj.len() != 2 {
-                return None;
-            }
-            Some(OutgoingSay::Table { text })
+impl SayJson {
+    fn into_say(self) -> Option<OutgoingSay> {
+        match (self.address.as_str(), self.place, self.actor) {
+            ("table", None, None) => Some(OutgoingSay::Table { text: self.text }),
+            ("place", Some(place), None) if !place.is_empty() => Some(OutgoingSay::Place {
+                place,
+                text: self.text,
+            }),
+            ("actor", None, Some(actor)) if !actor.is_empty() => Some(OutgoingSay::Actor {
+                actor,
+                text: self.text,
+            }),
+            _ => None,
         }
-        "place" => {
-            if obj.len() != 3 {
-                return None;
-            }
-            let place = obj.get("place")?.as_str()?.to_string();
-            if place.is_empty() {
-                return None;
-            }
-            Some(OutgoingSay::Place { place, text })
-        }
-        "actor" => {
-            if obj.len() != 3 {
-                return None;
-            }
-            let actor = obj.get("actor")?.as_str()?.to_string();
-            if actor.is_empty() {
-                return None;
-            }
-            Some(OutgoingSay::Actor { actor, text })
-        }
-        _ => None,
     }
 }
 
-fn parse_intents(value: &Value) -> Option<Vec<IntentDraft>> {
-    let mut out = Vec::new();
-    for item in value.as_array()? {
-        out.push(parse_intent(item)?);
-    }
-    Some(out)
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TargetJson {
+    #[serde(default)]
+    place: Option<String>,
+    #[serde(default)]
+    actor: Option<String>,
 }
 
-fn parse_intent(value: &Value) -> Option<IntentDraft> {
-    let obj = value.as_object()?;
-    if obj.len() != 4 {
-        return None;
-    }
-    let actor_id = obj.get("actor_id")?.as_str()?.to_string();
-    let actor_kind = obj.get("actor_kind")?.as_str()?;
-    if actor_kind != "npc" && actor_kind != "player" {
-        return None;
-    }
-    let move_name = obj.get("move")?.as_str()?.to_string();
-    let target = parse_target(obj.get("target")?)?;
-    if actor_id.is_empty() || move_name.is_empty() {
-        return None;
-    }
-    Some(IntentDraft {
-        actor_id,
-        actor_kind: actor_kind.to_string(),
-        move_name,
-        target,
-    })
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IntentJson {
+    actor_id: String,
+    actor_kind: String,
+    #[serde(rename = "move")]
+    move_name: String,
+    target: TargetJson,
 }
 
-fn parse_target(value: &Value) -> Option<TargetDraft> {
-    let obj = value.as_object()?;
-    if obj.is_empty() {
-        return Some(TargetDraft::Empty);
-    }
-    if obj.len() != 1 {
-        return None;
-    }
-    if let Some(place) = obj.get("place").and_then(Value::as_str) {
-        if place.is_empty() {
+impl IntentJson {
+    fn into_intent(self) -> Option<IntentDraft> {
+        if self.actor_id.is_empty() || self.move_name.is_empty() {
             return None;
         }
-        return Some(TargetDraft::Place(place.to_string()));
-    }
-    if let Some(actor) = obj.get("actor").and_then(Value::as_str) {
-        if actor.is_empty() {
+        if self.actor_kind != "npc" && self.actor_kind != "player" {
             return None;
         }
-        return Some(TargetDraft::Actor(actor.to_string()));
+        let target = match (self.target.place, self.target.actor) {
+            (None, None) => TargetDraft::Empty,
+            (Some(place), None) if !place.is_empty() => TargetDraft::Place(place),
+            (None, Some(actor)) if !actor.is_empty() => TargetDraft::Actor(actor),
+            _ => return None,
+        };
+        Some(IntentDraft {
+            actor_id: self.actor_id,
+            actor_kind: self.actor_kind,
+            move_name: self.move_name,
+            target,
+        })
     }
-    None
 }
 
 fn visible_has(view: &Value, id: &str) -> bool {
@@ -772,53 +756,6 @@ fn speaker_id(from: &str) -> String {
         .filter(|id| !id.is_empty())
         .unwrap_or("")
         .to_string()
-}
-
-fn menu_value(row: &MenuRow) -> Value {
-    obj([
-        ("name", json_str(&row.name)),
-        ("audience", json_str(&row.audience)),
-        ("token", json_str(&row.token)),
-        ("on", json_str(&row.on)),
-    ])
-}
-
-fn say_value(say: &HandledSay) -> Value {
-    let mut map = Map::new();
-    if let Some(seq) = say.seq {
-        map.insert("seq".to_string(), Value::from(seq));
-    }
-    map.insert("from".to_string(), json_str(&say.from));
-    map.insert("address".to_string(), json_str(&say.address));
-    if let Some(place) = &say.place {
-        map.insert("place".to_string(), json_str(place));
-    }
-    if let Some(actor) = &say.actor {
-        map.insert("actor".to_string(), json_str(actor));
-    }
-    map.insert("text".to_string(), json_str(&say.text));
-    Value::Object(map)
-}
-
-fn queue_value(item: &QueueRow) -> Value {
-    obj([
-        ("id", json_str(&item.id)),
-        ("actor_id", json_str(&item.actor_id)),
-        ("move", json_str(&item.move_name)),
-    ])
-}
-
-fn roll_value(roll: &Roll) -> Value {
-    obj([
-        (
-            "faces",
-            Value::Array(roll.faces.iter().copied().map(Value::from).collect()),
-        ),
-        ("stat", Value::from(roll.stat)),
-        ("total", Value::from(roll.total)),
-        ("target", Value::from(roll.target)),
-        ("outcome", json_str(roll.outcome.as_str())),
-    ])
 }
 
 fn obj<const N: usize>(entries: [(&str, Value); N]) -> Value {
