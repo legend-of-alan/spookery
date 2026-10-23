@@ -2,27 +2,64 @@
 
 use std::io::{self, Write};
 
-use spookery_kernel::api::perceive::perceive;
-use spookery_kernel::api::world::{PlayerLine, World, MAX_PLAYER_SEATS};
-use spookery_kernel::api::{host_lines, Reason};
-use spookery_round::RoundOutput;
+use spookery_engine::{
+    GateRefusal, PlayerLine, QueuedMove, Reason, RecipientLine, RoundOutput, World,
+    MAX_PLAYER_SEATS,
+};
 
-use super::frames;
-use super::idle_clock;
+use super::frames::{self, speak};
+use super::idle_clock::{self, wall_now};
 use super::limits::{CancelTx, OutTx};
-use super::player_moves;
-use super::speech::speak;
 
-pub fn seat_player(world: &mut World, actor_id: &str) -> Result<String, Reason> {
-    world.seat_player(actor_id)
+pub enum MoveOutcome {
+    Queued(QueuedMove),
+    Committed {
+        advanced: bool,
+        outputs: Vec<RoundOutput>,
+    },
+    Busy {
+        code: &'static str,
+        missing: Option<String>,
+        outputs: Vec<RoundOutput>,
+    },
 }
 
-pub fn release_player_seat(
+/// Commit a queued round, then fast-forward while every seated PC is busy.
+/// An empty queue only fast-forwards.
+pub fn commit_then_fast_forward(world: &mut World) -> Result<Vec<RoundOutput>, Reason> {
+    let wall = wall_now()?;
+    world.commit_then_fast_forward(&wall)
+}
+
+pub fn handle_player_move(
     world: &mut World,
-    session_id: &str,
     actor_id: &str,
-) -> Result<bool, Reason> {
-    world.release_player_seat(session_id, actor_id)
+    line: &str,
+    gm_seated: bool,
+) -> Result<MoveOutcome, GateRefusal> {
+    let queued = match world.queue_player_move(actor_id, line) {
+        Ok(queued) => queued,
+        Err(refusal) => {
+            if !gm_seated && refusal.reason() == Reason::Busy {
+                let outputs = commit_then_fast_forward(world).map_err(GateRefusal::from)?;
+                return Ok(MoveOutcome::Busy {
+                    code: refusal.token(),
+                    missing: refusal.missing().map(str::to_string),
+                    outputs,
+                });
+            }
+            return Err(refusal);
+        }
+    };
+    if gm_seated {
+        return Ok(MoveOutcome::Queued(queued));
+    }
+    let before = world.now().world_time;
+    let outputs = commit_then_fast_forward(world)?;
+    Ok(MoveOutcome::Committed {
+        advanced: world.now().world_time != before,
+        outputs,
+    })
 }
 
 pub(super) fn run_world_loop(
@@ -53,16 +90,7 @@ pub(super) fn run_world_loop(
 }
 
 pub(super) fn print_host(world: &World, outputs: &[RoundOutput]) {
-    // Each output is one committed round, and the batch ends at this tick.
-    let start = world.now().tick_index + 1 - outputs.len() as u64;
-    let mut effects = Vec::new();
-    for (offset, output) in outputs.iter().enumerate() {
-        let tick = start + offset as u64;
-        for effect in &output.effects {
-            effects.push((tick, effect));
-        }
-    }
-    let text = host_lines(world, &effects);
+    let text = world.host_lines(outputs);
     if !text.is_empty() {
         print!("{text}");
         let _ = io::stdout().flush();
@@ -301,10 +329,7 @@ fn handle(
     Ok(())
 }
 
-fn narrate_for(
-    lines: &[spookery_kernel::api::visibility::RecipientLine],
-    viewer: &str,
-) -> Vec<String> {
+fn narrate_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
     let mut out = Vec::new();
     for line in lines {
         if line.to == viewer && !out.contains(&line.text) {
@@ -435,15 +460,15 @@ fn player_hello(line: &str) -> Option<&str> {
 
 fn welcome(world: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
     let mut out = String::new();
-    for line in super::speech::player_scrollback(world, actor_id)? {
-        out.push_str(&line);
+    for stored in world.player_scrollback(actor_id)? {
+        out.push_str(&frames::player_replay_line(&stored));
     }
     out.push_str(&player_refresh(world, actor_id)?);
     Ok(out.into_bytes())
 }
 
 fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
-    let view = perceive(world, &format!("player:{actor_id}"))?;
+    let view = world.perceive(&format!("player:{actor_id}"))?;
     let mut out = frames::player_resume_line(&view);
     out.push_str(&frames::player_perceive_line(&view));
     Ok(out)
@@ -489,18 +514,17 @@ fn on_player(
             }
         },
         Ok(PlayerLine::Help) => {
-            let text = spookery_kernel::api::map::help_lines(world.canon(), world.now(), &actor_id);
+            let text = world.help_lines(&actor_id);
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
             Ok(PlayerReply::Done)
         }
         Ok(PlayerLine::Look) => {
-            let text = spookery_kernel::api::map::look_lines(world.canon(), world.now(), &actor_id);
+            let text = world.look_lines(&actor_id);
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
             Ok(PlayerReply::Done)
         }
         Ok(PlayerLine::Map) => {
-            let text =
-                spookery_kernel::api::map::player_lines(world.canon(), world.now(), &actor_id);
+            let text = world.player_lines(&actor_id);
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
             Ok(PlayerReply::Done)
         }
@@ -521,24 +545,27 @@ fn on_mechanical(
     line: &str,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match player_moves::handle_player_move(world, actor_id, line, gm_seated) {
-        Ok(player_moves::MoveOutcome::Queued(queued)) => {
-            send_gm(seats, player_moves::gm_queued_frame(&queued));
+    match handle_player_move(world, actor_id, line, gm_seated) {
+        Ok(MoveOutcome::Queued(queued)) => {
+            send_gm(
+                seats,
+                frames::queued_event(&queued.id, &queued.actor_id, &queued.move_name),
+            );
             send_player(
                 world,
                 seats,
                 conn,
-                player_moves::player_queued_line(&queued).into_bytes(),
+                frames::player_queued_line(&queued.id).into_bytes(),
             )?;
         }
-        Ok(player_moves::MoveOutcome::Committed { advanced, outputs }) => {
+        Ok(MoveOutcome::Committed { advanced, outputs }) => {
             if advanced {
                 bump_sleep(restart);
             }
             print_host(world, &outputs);
             refresh_players(world, seats, &outputs)?;
         }
-        Ok(player_moves::MoveOutcome::Busy {
+        Ok(MoveOutcome::Busy {
             code,
             missing,
             outputs,

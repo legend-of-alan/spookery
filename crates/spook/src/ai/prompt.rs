@@ -3,10 +3,11 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-use spookery_kernel::api::canon::{Canon, CastKind};
-use spookery_kernel::api::rule::{Owner, TargetKind, When};
+use serde_json::Value;
+use spookery_engine::canon::{Canon, CastKind};
+use spookery_engine::{Owner, TargetKind, When};
 
+pub use crate::protocol::OutgoingSay;
 use crate::protocol::{QueueRow, Roll};
 
 /// Characters. The same budget `perceive` uses when it trims this prose.
@@ -33,30 +34,10 @@ pub struct HandledSay {
     pub text: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(tag = "address", rename_all = "lowercase")]
-pub enum OutgoingSay {
-    Table { text: String },
-    Place { place: String, text: String },
-    Actor { actor: String, text: String },
-}
-
-impl OutgoingSay {
-    pub fn text(&self) -> &str {
-        match self {
-            OutgoingSay::Table { text }
-            | OutgoingSay::Place { text, .. }
-            | OutgoingSay::Actor { text, .. } => text,
-        }
-    }
-
-    pub fn arguments(&self) -> Value {
-        serde_json::to_value(self).expect("say arguments")
-    }
-
-    pub fn handled(&self, seq: Option<u64>) -> HandledSay {
-        match self {
-            OutgoingSay::Table { text } => HandledSay {
+impl HandledSay {
+    pub fn from_outgoing(say: &OutgoingSay, seq: Option<u64>) -> Self {
+        match say {
+            OutgoingSay::Table { text } => Self {
                 seq,
                 from: "gm".to_string(),
                 address: "table".to_string(),
@@ -64,7 +45,7 @@ impl OutgoingSay {
                 actor: None,
                 text: text.clone(),
             },
-            OutgoingSay::Place { place, text } => HandledSay {
+            OutgoingSay::Place { place, text } => Self {
                 seq,
                 from: "gm".to_string(),
                 address: "place".to_string(),
@@ -72,7 +53,7 @@ impl OutgoingSay {
                 actor: None,
                 text: text.clone(),
             },
-            OutgoingSay::Actor { actor, text } => HandledSay {
+            OutgoingSay::Actor { actor, text } => Self {
                 seq,
                 from: "gm".to_string(),
                 address: "actor".to_string(),
@@ -115,17 +96,17 @@ pub struct IntentDraft {
 impl IntentDraft {
     pub fn arguments(&self) -> Value {
         let target = match &self.target {
-            TargetDraft::Empty => Value::Object(Map::new()),
-            TargetDraft::Place(place) => obj([("place", json_str(place))]),
-            TargetDraft::Actor(actor) => obj([("actor", json_str(actor))]),
+            TargetDraft::Empty => serde_json::json!({}),
+            TargetDraft::Place(place) => serde_json::json!({ "place": place }),
+            TargetDraft::Actor(actor) => serde_json::json!({ "actor": actor }),
         };
-        obj([
-            ("actor_id", json_str(&self.actor_id)),
-            ("actor_kind", json_str(&self.actor_kind)),
-            ("source", json_str("player")),
-            ("move", json_str(&self.move_name)),
-            ("target", target),
-        ])
+        serde_json::json!({
+            "actor_id": self.actor_id,
+            "actor_kind": self.actor_kind,
+            "source": "player",
+            "move": self.move_name,
+            "target": target,
+        })
     }
 }
 
@@ -243,37 +224,30 @@ pub fn parse_actions(text: &str, says_only: bool) -> Option<ModelActions> {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct SaysOnly {
-            says: Vec<SayJson>,
+            says: Vec<OutgoingSay>,
         }
         let parsed: SaysOnly = serde_json::from_str(text).ok()?;
-        let says = parsed
-            .says
-            .into_iter()
-            .map(SayJson::into_say)
-            .collect::<Option<Vec<_>>>()?;
         return Some(ModelActions {
-            says,
+            says: parsed.says,
             intents: Vec::new(),
         });
     }
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
     struct FullActions {
-        says: Vec<SayJson>,
+        says: Vec<OutgoingSay>,
         intents: Vec<IntentJson>,
     }
     let parsed: FullActions = serde_json::from_str(text).ok()?;
-    let says = parsed
-        .says
-        .into_iter()
-        .map(SayJson::into_say)
-        .collect::<Option<Vec<_>>>()?;
     let intents = parsed
         .intents
         .into_iter()
         .map(IntentJson::into_intent)
         .collect::<Option<Vec<_>>>()?;
-    Some(ModelActions { says, intents })
+    Some(ModelActions {
+        says: parsed.says,
+        intents,
+    })
 }
 
 pub fn keep_actions(actions: ModelActions, scope: &SceneScope, menu: &[MenuRow]) -> KeptActions {
@@ -500,34 +474,14 @@ fn npc_views(
 }
 
 fn strip_player(view: &Value) -> Value {
-    obj([
-        ("viewer", view.get("viewer").cloned().unwrap_or(Value::Null)),
-        ("place", view.get("place").cloned().unwrap_or(Value::Null)),
-        (
-            "visible_actors",
-            view.get("visible_actors")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-        (
-            "clocks",
-            view.get("clocks")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-        (
-            "items",
-            view.get("items")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-        (
-            "habits",
-            view.get("habits")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-    ])
+    serde_json::json!({
+        "viewer": view.get("viewer").cloned().unwrap_or(Value::Null),
+        "place": view.get("place").cloned().unwrap_or(Value::Null),
+        "visible_actors": view.get("visible_actors").cloned().unwrap_or(Value::Array(Vec::new())),
+        "clocks": view.get("clocks").cloned().unwrap_or(Value::Array(Vec::new())),
+        "items": view.get("items").cloned().unwrap_or(Value::Array(Vec::new())),
+        "habits": view.get("habits").cloned().unwrap_or(Value::Array(Vec::new())),
+    })
 }
 
 fn strip_npc(view: &Value) -> Value {
@@ -538,49 +492,24 @@ fn strip_npc(view: &Value) -> Value {
             facts
                 .iter()
                 .map(|fact| {
-                    obj([
-                        ("id", fact.get("id").cloned().unwrap_or(Value::Null)),
-                        ("text", fact.get("text").cloned().unwrap_or(Value::Null)),
-                    ])
+                    serde_json::json!({
+                        "id": fact.get("id").cloned().unwrap_or(Value::Null),
+                        "text": fact.get("text").cloned().unwrap_or(Value::Null),
+                    })
                 })
-                .collect()
+                .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    obj([
-        ("viewer", view.get("viewer").cloned().unwrap_or(Value::Null)),
-        ("place", view.get("place").cloned().unwrap_or(Value::Null)),
-        (
-            "visible_actors",
-            view.get("visible_actors")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-        ("facts", Value::Array(facts)),
-        (
-            "messages",
-            view.get("messages")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-        (
-            "clocks",
-            view.get("clocks")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-        (
-            "items",
-            view.get("items")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-        (
-            "habits",
-            view.get("habits")
-                .cloned()
-                .unwrap_or(Value::Array(Vec::new())),
-        ),
-    ])
+    serde_json::json!({
+        "viewer": view.get("viewer").cloned().unwrap_or(Value::Null),
+        "place": view.get("place").cloned().unwrap_or(Value::Null),
+        "visible_actors": view.get("visible_actors").cloned().unwrap_or(Value::Array(Vec::new())),
+        "facts": facts,
+        "messages": view.get("messages").cloned().unwrap_or(Value::Array(Vec::new())),
+        "clocks": view.get("clocks").cloned().unwrap_or(Value::Array(Vec::new())),
+        "items": view.get("items").cloned().unwrap_or(Value::Array(Vec::new())),
+        "habits": view.get("habits").cloned().unwrap_or(Value::Array(Vec::new())),
+    })
 }
 
 fn build_view(
@@ -670,34 +599,6 @@ fn accept_intent(intent: &IntentDraft, menu: &[MenuRow]) -> bool {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SayJson {
-    address: String,
-    text: String,
-    #[serde(default)]
-    place: Option<String>,
-    #[serde(default)]
-    actor: Option<String>,
-}
-
-impl SayJson {
-    fn into_say(self) -> Option<OutgoingSay> {
-        match (self.address.as_str(), self.place, self.actor) {
-            ("table", None, None) => Some(OutgoingSay::Table { text: self.text }),
-            ("place", Some(place), None) if !place.is_empty() => Some(OutgoingSay::Place {
-                place,
-                text: self.text,
-            }),
-            ("actor", None, Some(actor)) if !actor.is_empty() => Some(OutgoingSay::Actor {
-                actor,
-                text: self.text,
-            }),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
 struct TargetJson {
     #[serde(default)]
     place: Option<String>,
@@ -758,23 +659,11 @@ fn speaker_id(from: &str) -> String {
         .to_string()
 }
 
-fn obj<const N: usize>(entries: [(&str, Value); N]) -> Value {
-    let mut map = Map::new();
-    for (key, value) in entries {
-        map.insert(key.to_string(), value);
-    }
-    Value::Object(map)
-}
-
-fn json_str(text: &str) -> Value {
-    Value::String(text.to_string())
-}
-
 #[cfg(test)]
 mod tests {
     use std::path::PathBuf;
 
-    use spookery_kernel::api::canon::{load_canon, CastKind};
+    use spookery_engine::canon::{load_canon, CastKind};
 
     use super::*;
 

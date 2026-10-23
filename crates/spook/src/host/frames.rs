@@ -4,14 +4,44 @@ use crate::protocol::{
     CommitBody, GmSay, Outcome, PlayerMessage, QueueRow, Roll, SessionStatus, StatusPause,
     StatusPresence, ViewScene, WireClock, WireFact, WireItem, WireMessage, WireMeter,
 };
-use serde_json::Value;
-use spookery_kernel::api::intent::Intent;
-use spookery_kernel::api::map::ExitView;
-use spookery_kernel::api::model::{Message, Now, RunState};
-use spookery_kernel::api::perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
-use spookery_kernel::api::rules::{MoveReport, RollResult};
-use spookery_kernel::api::store::tape::TapeRecord;
-use spookery_round::RoundOutput;
+use serde_json::{Map, Value};
+use spookery_engine::model::{Message, Now, RunState};
+use spookery_engine::store::{record_line, TapeRecord};
+use spookery_engine::{
+    ClockView, ExitView, Intent, ItemStack, KnownFact, MeterView, MoveReport, Reason, RollResult,
+    RoundOutput, View, World,
+};
+
+#[derive(Debug)]
+pub struct Spoken {
+    pub tape: String,
+    pub player_event: String,
+    pub gm_event: Vec<u8>,
+    pub tool: Value,
+    pub recipients: Vec<String>,
+}
+
+pub fn speak(world: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
+    let stored = world.speak_player(actor_id, line)?;
+    Ok(spoken_from(&stored))
+}
+
+/// GM `say`. `from` is the seat. A supplied `from` appends nothing.
+pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
+    let call = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
+    let stored = world.speak_gm(&call.address, call.place, call.actor, &call.text)?;
+    Ok(spoken_from(&stored))
+}
+
+fn spoken_from(stored: &TapeRecord) -> Spoken {
+    Spoken {
+        tape: record_line(stored),
+        player_event: player_say_line(stored),
+        gm_event: say_event(stored),
+        tool: say_value(stored),
+        recipients: stored.recipients.clone(),
+    }
+}
 
 pub fn player_say_line(tape: &TapeRecord) -> String {
     say_line(tape, false)
@@ -58,17 +88,17 @@ pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
     crate::protocol::write_queued_event(id, actor_id, move_name)
 }
 
-pub fn player_check_line(outcome: spookery_kernel::api::check::Outcome) -> String {
+pub fn player_check_line(outcome: spookery_engine::Outcome) -> String {
     crate::protocol::write_player(&PlayerMessage::Check {
         outcome: wire_outcome(outcome),
     })
 }
 
-fn wire_outcome(outcome: spookery_kernel::api::check::Outcome) -> Outcome {
+fn wire_outcome(outcome: spookery_engine::Outcome) -> Outcome {
     match outcome {
-        spookery_kernel::api::check::Outcome::Success => Outcome::Success,
-        spookery_kernel::api::check::Outcome::Partial => Outcome::Partial,
-        spookery_kernel::api::check::Outcome::Miss => Outcome::Miss,
+        spookery_engine::Outcome::Success => Outcome::Success,
+        spookery_engine::Outcome::Partial => Outcome::Partial,
+        spookery_engine::Outcome::Miss => Outcome::Miss,
     }
 }
 

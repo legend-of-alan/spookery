@@ -5,7 +5,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{json, Value};
-use spookery_kernel::api::canon::{self, CastKind};
+use spookery_engine::canon::{self, CastKind};
 
 use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
@@ -44,7 +44,7 @@ pub fn run_gm<M: Model>(
 ) -> Result<(), Error> {
     let (menu, kinds, prose) = {
         let canon = canon::load_canon(pack)
-            .map_err(|err| fail(spookery_kernel::api::reason_of(err).to_string()))?;
+            .map_err(|err| fail(spookery_engine::reason_of(err).to_string()))?;
         from_canon(&canon)
     };
     let rev = canon::pack_rev(pack).map_err(|err| fail(err.to_string()))?;
@@ -271,7 +271,7 @@ fn submit_say(seat: &mut GmSeat, say: &OutgoingSay) -> Result<Option<HandledSay>
         return Ok(None);
     }
     let spoken: GmSay = serde_json::from_value(outcome.body).map_err(|_| fail(outcome.raw))?;
-    Ok(Some(say.handled(Some(spoken.seq))))
+    Ok(Some(HandledSay::from_outgoing(say, Some(spoken.seq))))
 }
 
 fn perceive(seat: &mut GmSeat, viewer: &str) -> Result<Result<serde_json::Value, String>, Error> {

@@ -5,7 +5,7 @@ use std::net::TcpStream;
 use std::path::Path;
 
 use crate::protocol::PlayerMessage;
-use spookery_kernel::api::Reason;
+use spookery_engine::Reason;
 
 use super::render;
 use super::Error;
@@ -18,7 +18,7 @@ pub fn run_player(
 ) -> Result<(), Error> {
     let actor = match as_player {
         Some(token) => parse_player_as(token)?,
-        None => spookery_kernel::api::canon::load_start_pc(pack).map_err(Error::Reason)?,
+        None => spookery_engine::canon::load_start_pc(pack).map_err(Error::Reason)?,
     };
     let mut stream = TcpStream::connect(addr).map_err(Error::Io)?;
     stream.set_nodelay(true).map_err(Error::Io)?;

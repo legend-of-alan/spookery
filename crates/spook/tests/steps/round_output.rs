@@ -2,8 +2,8 @@ use std::fs;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Now;
+use spookery_engine::journal::list_tick_keys;
+use spookery_engine::model::Now;
 
 use super::common::edit_save;
 use super::table;
@@ -93,7 +93,7 @@ fn the_commit_reply_lists_one_check(world: &mut World, actor: String) {
     assert_eq!(checks.len(), 1, "checks\n{}", world.stdout);
     let pack = table::pack(world).to_path_buf();
     let found = list_tick_keys(&pack).iter().any(|key| {
-        let text = spookery_kernel::api::journal::read_record_line(&pack, key)
+        let text = spookery_engine::journal::read_record_line(&pack, key)
             .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
         text.contains(&format!("\"actor_id\":\"{actor}\"")) && text.contains("\"move\":\"grit\"")
     });
@@ -185,12 +185,12 @@ fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
         .unwrap_or_else(|| panic!("no {actor}"))
         .act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(spookery_kernel::api::model::PendingAction {
+    act.busy_for = Some(spookery_engine::model::PendingAction {
         rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
         target: via.to_string(),
         arrive: Some(arrive.to_string()),
         via: Some(via.to_string()),
-        source: spookery_kernel::api::intent::Source::Player,
+        source: spookery_engine::Source::Player,
     });
 }

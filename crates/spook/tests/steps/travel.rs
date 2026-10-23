@@ -3,8 +3,8 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Now;
+use spookery_engine::journal::list_tick_keys;
+use spookery_engine::model::Now;
 
 use super::common::{add_trapdoor, edit_save, give_key, EVENING};
 use super::table;
@@ -21,18 +21,18 @@ fn pack_of(world: &World) -> std::path::PathBuf {
 fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
     let act = now.actors.get_mut(actor).unwrap().act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(spookery_kernel::api::model::PendingAction {
+    act.busy_for = Some(spookery_engine::model::PendingAction {
         rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
         target: via.to_string(),
         arrive: Some(arrive.to_string()),
         via: Some(via.to_string()),
-        source: spookery_kernel::api::intent::Source::Player,
+        source: spookery_engine::Source::Player,
     });
 }
 
 fn tick_file(pack: &Path, name: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+    let text = spookery_engine::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }
@@ -154,7 +154,7 @@ fn a_place_rule_teleports(world: &mut World) {
     edit_save(&pack, |now| {
         now.places.insert(
             "cellar".to_string(),
-            spookery_kernel::api::model::PlaceLive {
+            spookery_engine::model::PlaceLive {
                 items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
@@ -209,7 +209,7 @@ fn two_arrivals(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_kernel::api::model::ActorLive::Pc {
+            spookery_engine::model::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -218,15 +218,15 @@ fn two_arrivals(world: &mut World) {
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
                 act: {
-                    let mut act = spookery_kernel::api::model::ActCounters::fresh();
+                    let mut act = spookery_engine::model::ActCounters::fresh();
                     act.busy_until = Some(EVENING + 5);
-                    act.busy_for = Some(spookery_kernel::api::model::PendingAction {
+                    act.busy_for = Some(spookery_engine::model::PendingAction {
                         rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
                         target: "docks_street".to_string(),
                         arrive: Some("docks_street".to_string()),
                         via: Some("docks_street".to_string()),
-                        source: spookery_kernel::api::intent::Source::Player,
+                        source: spookery_engine::Source::Player,
                     });
                     act
                 },
@@ -306,16 +306,18 @@ fn the_next_tick_accepts_a_move(world: &mut World) {
 )]
 fn ticks_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
-    let mut seated_world = spookery_kernel::api::World::open(&seated).unwrap();
-    seated_world.set_presence(spookery_kernel::api::model::Presence {
+    let mut seated_world = spookery_engine::World::open(&seated).unwrap();
+    seated_world.set_presence(spookery_engine::model::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });
     let wall = seated_world.now().last_tick_at.clone();
-    spookery_round::play(&mut seated_world, spookery_round::RoundCause::Manual, &wall).unwrap();
+    seated_world
+        .play(spookery_engine::RoundCause::Manual, &wall)
+        .unwrap();
     drop(seated_world);
     let idle = temp_pack("idle-length");
-    spookery_round::play_pack_once(&idle).unwrap();
+    spookery_engine::play_pack_once(&idle).unwrap();
     let seated_tick = tick_file(&seated, "tick-0001");
     let idle_tick = tick_file(&idle, "tick-0001");
     assert_eq!(
@@ -347,7 +349,7 @@ fn both_busy_without_a_gm(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_kernel::api::model::ActorLive::Pc {
+            spookery_engine::model::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -355,7 +357,7 @@ fn both_busy_without_a_gm(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: spookery_kernel::api::model::ActCounters::fresh(),
+                act: spookery_engine::model::ActCounters::fresh(),
             },
         );
         set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");

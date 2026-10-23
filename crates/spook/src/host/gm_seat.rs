@@ -10,7 +10,7 @@ use rmcp::model::{
 };
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
-use spookery_kernel::api::Reason;
+use spookery_engine::Reason;
 
 use super::gm_tools;
 use super::world_loop::WorldMsg;

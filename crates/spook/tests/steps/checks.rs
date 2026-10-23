@@ -104,7 +104,7 @@ fn the_player_sees_a_check_success(world: &mut World) {
 
 #[then(expr = "the tick log resolves the check without faces")]
 fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
-    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
+    let text = spookery_engine::journal::read_record_line(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     assert!(text.contains("resolve_check"), "{text}");
     assert!(!text.contains("faces"), "{text}");
@@ -197,7 +197,7 @@ fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
     insert_brace_habit(&pack);
     support::stamp_pack_rev(&pack);
     let before = snapshot_of(&pack);
-    spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     world.scratch = before.display().to_string();
 }
 
@@ -287,9 +287,9 @@ fn replaying_the_tick_reproduces_the_save(world: &mut World) {
     let start = PathBuf::from(&world.scratch);
     let before = fs::read(played.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    let report = spookery_round::from_journal(played, Some(&start), None)
+    let report = spookery_engine::from_journal(played, Some(&start), None)
         .unwrap_or_else(|err| panic!("replay: {err}"));
-    let entries = spookery_kernel::api::journal::read_entries(played)
+    let entries = spookery_engine::journal::read_entries(played)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let expected = entries
         .iter()
@@ -298,7 +298,7 @@ fn replaying_the_tick_reproduces_the_save(world: &mut World) {
         .unwrap_or_else(|| panic!("no tick was written"))
         .now_hash();
     assert_eq!(
-        spookery_kernel::api::journal::hash_now(&report.now_yaml),
+        spookery_engine::journal::hash_now(&report.now_yaml),
         expected
     );
     assert_eq!(
@@ -372,8 +372,8 @@ fn snapshot_of(pack: &Path) -> PathBuf {
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let mut flags = match table::now_of(table::pack(world)).actors.get(id) {
-        Some(spookery_kernel::api::model::ActorLive::Npc { flags, .. })
-        | Some(spookery_kernel::api::model::ActorLive::Pc { flags, .. }) => flags.clone(),
+        Some(spookery_engine::model::ActorLive::Npc { flags, .. })
+        | Some(spookery_engine::model::ActorLive::Pc { flags, .. }) => flags.clone(),
         _ => panic!("{id} missing"),
     };
     flags.sort();
@@ -381,7 +381,7 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 }
 
 fn tick_json(world: &World) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
+    let text = spookery_engine::journal::read_record_line(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
 }

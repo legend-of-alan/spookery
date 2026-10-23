@@ -407,11 +407,7 @@ fn loopback_port(addr: &str) -> Result<u16, Error> {
 }
 
 fn next_door_addr(addr: &str) -> Result<std::net::SocketAddr, Error> {
-    let port = loopback_port(addr)?;
-    let http = port
-        .checked_add(1)
-        .ok_or_else(|| Error::Bad(addr.to_string()))?;
-    Ok(std::net::SocketAddr::from(([127, 0, 0, 1], http)))
+    crate::host::door_request(door_addr(addr)?, None).map_err(|_| Error::Bad(addr.to_string()))
 }
 
 fn door_addr(addr: &str) -> Result<std::net::SocketAddr, Error> {

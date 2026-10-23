@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_kernel::api::{check_pack, Diagnostic};
+use spookery_engine::{check_pack, Diagnostic};
 
 const EFFECTS: &[&str] = &[
     "- meter:",

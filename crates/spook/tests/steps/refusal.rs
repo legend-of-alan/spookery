@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::journal::list_tick_keys;
 
 use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
@@ -128,7 +128,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
 
@@ -296,7 +296,7 @@ rules:
 ",
     );
     edit_save(&pack, |_| {});
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
@@ -358,7 +358,7 @@ fn assert_one_rejection(world: &World, word: &str) {
     let keys = list_tick_keys(pack);
     let mut hits = 0;
     for key in &keys {
-        let line = spookery_kernel::api::journal::read_record_line(pack, key)
+        let line = spookery_engine::journal::read_record_line(pack, key)
             .unwrap_or_else(|err| panic!("{}: {}", key, err.detail));
         let round: Value = serde_json::from_str(&line).unwrap_or_else(|err| panic!("{key}: {err}"));
         let Some(rejected) = round["rejected"].as_array() else {

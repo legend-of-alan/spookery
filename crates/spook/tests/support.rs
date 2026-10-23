@@ -150,7 +150,7 @@ pub fn pack_arg(pack: &Path) -> String {
         .to_string()
 }
 
-pub fn place_of(now: &mut spookery_kernel::api::model::Now, actor: &str, place: &str) {
+pub fn place_of(now: &mut spookery_engine::model::Now, actor: &str, place: &str) {
     let from = now.actors.get(actor).unwrap().place().to_string();
     if from == place {
         return;
@@ -168,16 +168,15 @@ pub fn place_of(now: &mut spookery_kernel::api::model::Now, actor: &str, place: 
 /// Set the save's `pack_rev` to the pack as it is now, after a step edits the pack.
 pub fn stamp_pack_rev(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_kernel::api::store::codec::load_save(
+    let mut now = spookery_engine::store::load_save(
         &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
     )
     .unwrap_or_else(|err| panic!("load now: {err:?}"));
     now.pack_rev =
-        spookery_kernel::api::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
+        spookery_engine::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
     fs::write(
         &now_path,
-        spookery_kernel::api::store::codec::emit_save(&now)
-            .unwrap_or_else(|err| panic!("emit: {err}")),
+        spookery_engine::store::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}")),
     )
     .unwrap_or_else(|err| panic!("write now: {err}"));
 }

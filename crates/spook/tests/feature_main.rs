@@ -40,7 +40,7 @@ pub struct World {
     pub live: Option<table::Live>,
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
-    pub seated: Vec<(PathBuf, spookery_kernel::api::model::Presence)>,
+    pub seated: Vec<(PathBuf, spookery_engine::model::Presence)>,
     pub holder: Option<Holder>,
 }
 

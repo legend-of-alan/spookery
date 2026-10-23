@@ -6,22 +6,14 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 use spookery::host::{
-    call_gm_tool, commit_then_fast_forward, handle_player_move, on_scheduled_wake, queue_wait,
-    release_player_seat, seat_player, MoveOutcome,
+    call_gm_tool, commit_then_fast_forward, handle_player_move, on_scheduled_wake, MoveOutcome,
 };
-use spookery_kernel::api::apply::apply_effect;
-use spookery_kernel::api::check::Outcome;
-use spookery_kernel::api::draft::Draft;
-use spookery_kernel::api::effect::{Effect, EffectKind};
-use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::meter::MeterLive;
-use spookery_kernel::api::model::{
+use spookery_engine::journal::list_tick_keys;
+use spookery_engine::model::{
     ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
 };
-use spookery_kernel::api::rules::MoveReport;
-use spookery_kernel::api::store::codec::emit_save;
-use spookery_round::{catch_up, play, play_pack_once};
+use spookery_engine::store::emit_save;
+use spookery_engine::{play_pack_once, MeterLive, MoveReport, Outcome, World as Shard};
 
 use crate::support;
 use crate::World;
@@ -41,12 +33,12 @@ fn meters(grit: i64) -> BTreeMap<String, MeterLive> {
     ])
 }
 
-fn open(pack: &Path) -> spookery_kernel::api::world::World {
-    spookery_kernel::api::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
+fn open(pack: &Path) -> Shard {
+    Shard::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
 }
 
 fn now_of(pack: &Path) -> Now {
-    spookery_round::resume(pack)
+    Shard::resume(pack)
         .unwrap_or_else(|err| panic!("resume: {err}"))
         .now()
         .clone()
@@ -63,9 +55,8 @@ fn write_text(path: &Path, text: &str) {
 fn stamp_pack_rev(pack: &Path) {
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
-            .unwrap();
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
+        spookery_engine::store::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
     fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
@@ -85,7 +76,7 @@ fn flags_of(now: &Now, id: &str) -> Vec<String> {
 }
 
 fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+    let text = spookery_engine::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}"))
 }
@@ -141,8 +132,8 @@ fn door_message() -> Message {
     }
 }
 
-fn seat_rowan(world: &mut spookery_kernel::api::world::World) {
-    world.set_presence(spookery_kernel::api::model::Presence {
+fn seat_rowan(world: &mut Shard) {
+    world.set_presence(spookery_engine::model::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
@@ -239,7 +230,8 @@ fn player_in_the_shop() {
     let mut shard = open(&pack);
     seat_rowan(&mut shard);
     let wall = shard.now().last_tick_at.clone();
-    play(&mut shard, spookery_round::RoundCause::Manual, &wall)
+    shard
+        .play(spookery_engine::RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
@@ -274,7 +266,9 @@ fn gm_restocks() {
         Some(args.as_object().unwrap().clone()),
     );
     assert!(queued.value.get("code").is_none(), "{}", queued.value);
-    play(&mut shard, spookery_round::RoundCause::Manual, &wall).unwrap();
+    shard
+        .play(spookery_engine::RoundCause::Manual, &wall)
+        .unwrap();
     assert_eq!(lamp_oil(shard.now()), 8);
     assert_eq!(shard.now().messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
@@ -306,7 +300,9 @@ fn claimed_note_sorts_first() {
         );
         assert!(queued.value.get("code").is_none(), "{}", queued.value);
     }
-    play(&mut shard, spookery_round::RoundCause::Manual, &wall).unwrap();
+    shard
+        .play(spookery_engine::RoundCause::Manual, &wall)
+        .unwrap();
     let log = tick_value(&pack, "tick-0001");
     let moves: Vec<&str> = log["intents"]
         .as_array()
@@ -379,7 +375,7 @@ Rowan.
         })
         .unwrap_or_else(|err| panic!("copy {name}: {err}"));
     }
-    let rev = spookery_kernel::api::canon::pack_rev(&pack).unwrap();
+    let rev = spookery_engine::canon::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
         "gate".to_string(),
@@ -408,7 +404,7 @@ Rowan.
         schema: "now".to_string(),
         shard_id: "ex".to_string(),
         pack_rev: rev,
-        rules_rev: spookery_kernel::api::store::RULES_REV,
+        rules_rev: spookery_engine::store::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -431,8 +427,10 @@ Rowan.
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
     let wall = shard.now().last_tick_at.clone();
-    catch_up(&mut shard, &wall, hours).unwrap_or_else(|err| panic!("catch-up: {err}"));
-    let saved = spookery_round::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
+    shard
+        .catch_up(&wall, hours)
+        .unwrap_or_else(|err| panic!("catch-up: {err}"));
+    let saved = Shard::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
     let now = saved.now();
     assert_eq!(now.state_rev, ticks, "{hours} hours");
     assert_eq!(now.tick_index, ticks);
@@ -470,36 +468,8 @@ fn busy_skip() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn mira_intent() -> Intent {
-    Intent {
-        id: "drop-txn".to_string(),
-        tick_index: 1,
-        actor_id: "mira".to_string(),
-        actor_kind: ActorKind::Npc,
-        source: Source::Kernel,
-        move_name: "restock_lamp_oil".to_string(),
-        target: Target::Place("docks_shop".to_string()),
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    }
-}
-
-fn stock_effect(delta: i64) -> Effect {
-    Effect {
-        class: EffectKind::Item {
-            actor_id: None,
-            place: Some("docks_shop".to_string()),
-            id: "lamp_oil".to_string(),
-            delta,
-            max: None,
-        },
-        as_viewer: ViewerId::Npc("mira".to_string()),
-        intent_id: "drop-txn".to_string(),
-    }
-}
-
 fn sealed_tick(pack: &Path, state_rev: u64) -> String {
-    use spookery_kernel::api::journal::{genesis_hash, seal, JournalEntry, TickRecord};
+    use spookery_engine::journal::{genesis_hash, seal, JournalEntry, TickRecord};
     let entry = JournalEntry::Tick(TickRecord {
         tick_index: 1,
         rules_rev: 7,
@@ -518,7 +488,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
         fast_forward: false,
         dice: Vec::new(),
         steps_run: Vec::new(),
-        memories: vec![spookery_kernel::api::model::MemoryLine {
+        memories: vec![spookery_engine::model::MemoryLine {
             tick_index: 1,
             actor_id: "mira".to_string(),
             intent_id: String::new(),
@@ -538,15 +508,14 @@ fn an_open_transaction_writes_nothing() {
     let dropped = support::temp_pack("drop");
     let now_path = dropped.join("state/save.yaml");
     let before = fs::read(&now_path).unwrap();
-    let shard = open(&dropped);
+    let mut shard = open(&dropped);
     let state_rev = shard.now().state_rev;
     let oil = lamp_oil(shard.now());
-    let delta = if oil > 0 { -1 } else { 1 };
-    let expected = if oil > 0 { oil - 1 } else { oil + 1 };
-    let mut draft = Draft::begin(&shard);
-    apply_effect(&mut draft, &mira_intent(), stock_effect(delta)).unwrap();
-    assert_eq!(lamp_oil(draft.now()), expected);
-    drop(draft);
+    shard.seat_player("pc_rowan").unwrap();
+    shard
+        .queue_player_move("pc_rowan", "take lamp_oil")
+        .unwrap();
+    assert_eq!(shard.queued_intents().len(), 1);
     drop(shard);
     assert!(!dropped.join("state/.txn").exists());
     assert_eq!(fs::read(&now_path).unwrap(), before);
@@ -569,8 +538,7 @@ fn an_incomplete_transaction_is_discarded() {
     assert_eq!(
         lamp_oil(opened.now()),
         lamp_oil(
-            &spookery_kernel::api::store::codec::load_save(std::str::from_utf8(&before).unwrap())
-                .unwrap()
+            &spookery_engine::store::load_save(std::str::from_utf8(&before).unwrap()).unwrap()
         )
     );
     assert!(!txn.exists());
@@ -723,7 +691,7 @@ rules:
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
     }
-    let rev = spookery_kernel::api::canon::pack_rev(&pack).unwrap();
+    let rev = spookery_engine::canon::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
         "yard".to_string(),
@@ -737,7 +705,7 @@ rules:
         schema: "now".to_string(),
         shard_id: "crowd".to_string(),
         pack_rev: rev,
-        rules_rev: spookery_kernel::api::store::RULES_REV,
+        rules_rev: spookery_engine::store::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -781,10 +749,8 @@ fn tool_scope() {
     let pack = support::temp_pack("scope");
     let before = snapshot(&pack);
     let shard = open(&pack);
-    let call = |as_viewer: &str, budget: usize| {
-        spookery_kernel::api::perceive::perceive_budget(&shard, as_viewer, budget)
-    };
-    let kernel = spookery_kernel::api::perceive(&shard, "npc:mira").unwrap();
+    let call = |as_viewer: &str, budget: usize| shard.perceive_budget(as_viewer, budget);
+    let kernel = shard.perceive("npc:mira").unwrap();
     assert_eq!(call("npc:mira", 800).unwrap(), kernel);
     let capped = call("npc:mira", 0).unwrap();
     assert!(kernel.known_facts.iter().any(|fact| !fact.body.is_empty()));
@@ -804,7 +770,7 @@ fn tool_scope() {
         .unknown_mentioned
         .iter()
         .any(|id| id == "fact_room_lamp"));
-    let unscoped = spookery_kernel::api::Reason::UnscopedPerceive;
+    let unscoped = spookery_engine::Reason::UnscopedPerceive;
     assert_eq!(call("gm", 800).unwrap_err(), unscoped);
     drop(shard);
     assert_eq!(snapshot(&pack), before);
@@ -838,7 +804,7 @@ fn strip_bodies() {
     assert!(!files.is_empty());
     for path in &files {
         let text = fs::read_to_string(path).unwrap();
-        let stripped = spookery_kernel::api::canon::strip_body(&text).unwrap();
+        let stripped = spookery_engine::canon::strip_body(&text).unwrap();
         assert!(
             !stripped.contains("Mira keeps the shop"),
             "{}",
@@ -855,10 +821,7 @@ fn strip_bodies() {
     stamp_pack_rev(&pack);
     open(&pack);
     play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
-    let perceive = format!(
-        "{:?}",
-        spookery_kernel::api::perceive(&open(&pack), "npc:aldric").unwrap()
-    );
+    let perceive = format!("{:?}", open(&pack).perceive("npc:aldric").unwrap());
     assert!(!perceive.contains(LEDGER));
     let _ = fs::remove_dir_all(&pack);
 }
@@ -876,15 +839,15 @@ fn player_waits(tick: &Value) -> Vec<String> {
 fn queued_line_survives_a_dropped_seat() {
     let held = support::temp_pack("held");
     let mut shard = open(&held);
-    let session = seat_player(&mut shard, "pc_rowan").unwrap();
+    let session = shard.seat_player("pc_rowan").unwrap();
     assert!(!on_scheduled_wake(&mut shard, true, false).unwrap());
-    let queued = queue_wait(&mut shard, "pc_rowan").unwrap();
+    let queued = shard.queue_wait("pc_rowan").unwrap();
     assert!(!on_scheduled_wake(&mut shard, true, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
     assert_eq!(shard.queued_intents()[0].id, queued.id);
     assert_eq!(shard.now().world_time, 1080);
     assert!(list_tick_keys(&held).is_empty());
-    assert!(release_player_seat(&mut shard, &session, "pc_rowan").unwrap());
+    assert!(shard.release_player_seat(&session, "pc_rowan").unwrap());
     assert_eq!(shard.now().presence.humans, 0);
     assert!(!on_scheduled_wake(&mut shard, false, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
@@ -896,17 +859,17 @@ fn queued_line_survives_a_dropped_seat() {
 fn a_reseated_player_keeps_the_queued_wait() {
     let dropped = support::temp_pack("drop-queue");
     let mut shard = open(&dropped);
-    let session = seat_player(&mut shard, "pc_rowan").unwrap();
+    let session = shard.seat_player("pc_rowan").unwrap();
     let outcome = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
     let MoveOutcome::Queued(queued) = outcome else {
         panic!("queued wait committed");
     };
-    assert!(release_player_seat(&mut shard, &session, "pc_rowan").unwrap());
+    assert!(shard.release_player_seat(&session, "pc_rowan").unwrap());
     assert_eq!(shard.now().world_time, 1080);
     assert_eq!(shard.now().tick_index, 0);
     assert_eq!(shard.queued_intents().len(), 1);
     assert!(list_tick_keys(&dropped).is_empty());
-    seat_player(&mut shard, "pc_rowan").unwrap();
+    shard.seat_player("pc_rowan").unwrap();
     assert_eq!(shard.now().world_time, 1080);
     assert_eq!(shard.now().tick_index, 0);
     assert_eq!(shard.queued_intents()[0].id, queued.id);
@@ -917,12 +880,12 @@ fn a_reseated_player_keeps_the_queued_wait() {
 fn early_wake_does_not_tick_again() {
     let early = support::temp_pack("early-wake");
     let mut shard = open(&early);
-    let session = seat_player(&mut shard, "pc_rowan").unwrap();
-    queue_wait(&mut shard, "pc_rowan").unwrap();
+    let session = shard.seat_player("pc_rowan").unwrap();
+    shard.queue_wait("pc_rowan").unwrap();
     commit_then_fast_forward(&mut shard).unwrap();
     let committed = shard.now().clone();
     assert_eq!(committed.world_time, 1085);
-    assert!(release_player_seat(&mut shard, &session, "pc_rowan").unwrap());
+    assert!(shard.release_player_seat(&session, "pc_rowan").unwrap());
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
     assert_eq!(shard.now().world_time, committed.world_time);
     assert_eq!(shard.now().tick_index, committed.tick_index);
@@ -1009,7 +972,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     let pack = support::temp_pack("idle-off-play");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
-    seat_player(&mut shard, "pc_rowan").unwrap();
+    shard.seat_player("pc_rowan").unwrap();
     let played = handle_player_move(&mut shard, "pc_rowan", "wait", false).unwrap();
     let MoveOutcome::Committed { advanced, .. } = played else {
         panic!("wait stayed queued");
@@ -1019,10 +982,11 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     assert_eq!(shard.now().tick_index, 1);
     drop(shard);
     assert_eq!(list_tick_keys(&pack), vec!["tick-0001".to_string()]);
-    let mut again = spookery_round::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
-    seat_player(&mut again, "pc_rowan").unwrap();
+    let mut again = Shard::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
+    again.seat_player("pc_rowan").unwrap();
     let wall = again.now().last_tick_at.clone();
-    play(&mut again, spookery_round::RoundCause::Manual, &wall)
+    again
+        .play(spookery_engine::RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.tick_index, 2);
@@ -1038,7 +1002,7 @@ fn idle_off_commit_round_still_commits() {
     let pack = support::temp_pack("idle-off-commit");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
-    seat_player(&mut shard, "pc_rowan").unwrap();
+    shard.seat_player("pc_rowan").unwrap();
     let queued = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
     let MoveOutcome::Queued(_) = queued else {
         panic!("wait committed with a GM seated");
@@ -1061,7 +1025,7 @@ fn idle_off_commit_round_still_commits() {
 fn a_due_wake_applies_the_queued_wait() {
     let due = support::temp_pack("due-wake");
     let mut shard = open(&due);
-    let note = queue_wait(&mut shard, "pc_rowan").unwrap();
+    let note = shard.queue_wait("pc_rowan").unwrap();
     assert_eq!(shard.now().last_tick_at, "2026-01-01T00:00:00Z");
     assert!(on_scheduled_wake(&mut shard, false, false).unwrap());
     assert_eq!(shard.now().tick_index, 12);
@@ -1089,7 +1053,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
 
 fn play_mark(pack: &Path, line: &str) -> Now {
     let mut shard = open(pack);
-    seat_player(&mut shard, "pc_rowan").unwrap();
+    shard.seat_player("pc_rowan").unwrap();
     let played = handle_player_move(&mut shard, "pc_rowan", line, false).unwrap();
     let MoveOutcome::Committed { .. } = played else {
         panic!("{line} stayed queued");
@@ -1121,7 +1085,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             .iter()
             .any(|name| name == "resolve_check"));
         assert!(
-            !spookery_kernel::api::journal::read_record_line(&pack, "tick-0001")
+            !spookery_engine::journal::read_record_line(&pack, "tick-0001")
                 .unwrap_or_else(|err| panic!("{}", err.detail))
                 .contains("faces")
         );
@@ -1166,8 +1130,7 @@ Nell keeps a guard up.
     );
     let now_path = pack.join("state/save.yaml");
     let mut now =
-        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
-            .unwrap();
+        spookery_engine::store::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     now.actors.insert(
         "pc_nell".to_string(),
         ActorLive::Pc {
@@ -1185,7 +1148,7 @@ Nell keeps a guard up.
     fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_kernel::api::rules::RollResult {
+fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::RollResult {
     reports
         .iter()
         .find_map(|report| match report {
@@ -1207,7 +1170,7 @@ fn opposing_total_reused() {
         insert_nell(&pack);
         stamp_pack_rev(&pack);
         let mut shard = open(&pack);
-        seat_player(&mut shard, "pc_rowan").unwrap();
+        shard.seat_player("pc_rowan").unwrap();
         if opposed {
             let args = json!({
                 "actor_id": "pc_nell",
@@ -1231,7 +1194,7 @@ fn opposing_total_reused() {
         let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
-        let tick = spookery_kernel::api::journal::read_record_line(&pack, "tick-0001")
+        let tick = spookery_engine::journal::read_record_line(&pack, "tick-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
         assert!(!tick.contains("faces"));
         if opposed {
@@ -1279,7 +1242,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);
     let mut shard = open(&held);
-    seat_player(&mut shard, "pc_rowan").unwrap();
+    shard.seat_player("pc_rowan").unwrap();
     let args = json!({
         "actor_id": "pc_nell",
         "actor_kind": "player",
@@ -1301,7 +1264,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let rowan = rolled_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
-        !spookery_kernel::api::journal::read_record_line(&held, "tick-0001")
+        !spookery_engine::journal::read_record_line(&held, "tick-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail))
             .contains("faces")
     );

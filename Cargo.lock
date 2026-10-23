@@ -2068,14 +2068,13 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "socket2",
- "spookery-kernel",
+ "spookery-engine",
  "spookery-protocol",
- "spookery-round",
  "tokio",
 ]
 
 [[package]]
-name = "spookery-kernel"
+name = "spookery-engine"
 version = "0.0.0"
 dependencies = [
  "blake2",
@@ -2093,14 +2092,6 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "spookery-round"
-version = "0.0.0"
-dependencies = [
- "proptest",
- "spookery-kernel",
 ]
 
 [[package]]

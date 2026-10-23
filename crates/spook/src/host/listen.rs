@@ -8,7 +8,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
 
-use spookery_kernel::api::Reason;
+use spookery_engine::Reason;
 
 use super::mcp_http;
 use super::world_loop::{self, HelloReply, PlayerReply, WorldMsg};
@@ -24,7 +24,7 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Re
     http_listener.set_nonblocking(true).map_err(Error::Io)?;
     let game_addr = listener.local_addr().map_err(Error::Io)?;
     let door_addr = http_listener.local_addr().map_err(Error::Io)?;
-    let mut world = spookery_round::resume(pack).map_err(Error::Reason)?;
+    let mut world = spookery_engine::World::resume(pack).map_err(Error::Reason)?;
     if world.clear_crashed().map_err(Error::Reason)? {
         world_loop::print_host(&world, &[]);
     }
@@ -119,7 +119,10 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Re
 
 /// The agent door to bind. A fixed game port keeps the next port. Port 0, on
 /// the game address or on `--mcp-http`, asks the OS for a port of its own.
-fn door_request(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAddr, Error> {
+pub(crate) fn door_request(
+    game: SocketAddr,
+    mcp_addr: Option<SocketAddr>,
+) -> Result<SocketAddr, Error> {
     if let Some(door) = mcp_addr {
         return Ok(door);
     }

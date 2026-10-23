@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::journal::list_tick_keys;
 
 use super::table;
 use crate::support;
@@ -201,7 +201,7 @@ fn commit_line(world: &mut World, line: &str) {
     table::wait_tick_count(table::pack(world), before + 1);
 }
 
-fn tonic_of(now: &spookery_kernel::api::model::Now) -> u32 {
+fn tonic_of(now: &spookery_engine::model::Now) -> u32 {
     now.actors.get("pc_lark").unwrap().count("tonic")
 }
 
@@ -213,7 +213,7 @@ fn finished(pack: &Path) -> bool {
 }
 
 fn lane_cost(pack: &Path) -> u64 {
-    let canon = spookery_kernel::api::canon::load_canon(pack)
+    let canon = spookery_engine::canon::load_canon(pack)
         .unwrap_or_else(|err| panic!("load canon: {err:?}"));
     canon
         .places
@@ -240,7 +240,7 @@ fn ticks(pack: &Path) -> Vec<Value> {
     list_tick_keys(pack)
         .into_iter()
         .map(|name| {
-            let text = spookery_kernel::api::journal::read_record_line(pack, &name)
+            let text = spookery_engine::journal::read_record_line(pack, &name)
                 .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
             serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
         })

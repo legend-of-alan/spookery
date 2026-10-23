@@ -238,7 +238,7 @@ fn play_and_host_and_a_stub(world: &mut World) {
     let mut body = fs::read_to_string(&aldric).unwrap();
     body.push_str("\nCASTBODYONLY-FIXTURE\n");
     fs::write(&aldric, body).unwrap();
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     let (stub_port, posts) = stub_server();
     let pack_arg = pack_arg(&pack);
     table::listen(world, &pack);
@@ -493,11 +493,9 @@ fn wait_idle(watch: &TurnWatch, model: &ScriptedModel, calls: usize) {
 
 fn world_time(pack: &Path) -> u64 {
     let report =
-        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
-    spookery_kernel::api::store::codec::load_save(text)
-        .unwrap()
-        .world_time
+    spookery_engine::store::load_save(text).unwrap().world_time
 }
 
 fn tape_text(pack: &Path) -> String {
@@ -824,9 +822,9 @@ where
 fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     let start = Instant::now();
     while start.elapsed() < bound {
-        if let Ok(report) = spookery_round::from_journal(pack, None, None) {
+        if let Ok(report) = spookery_engine::from_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
-                if let Ok(now) = spookery_kernel::api::store::codec::load_save(text) {
+                if let Ok(now) = spookery_engine::store::load_save(text) {
                     if now.world_time == expected {
                         return true;
                     }

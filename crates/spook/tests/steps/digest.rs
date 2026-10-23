@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::perceive::ItemStack;
+use spookery_engine::ItemStack;
 
 use crate::support::spook;
 use crate::World;
@@ -205,8 +205,8 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
 #[then(expr = "the perceive view for {string} does not list {string}")]
 fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
-    let shard = spookery_round::resume(pack).unwrap();
-    let view = spookery_kernel::api::perceive(&shard, &format!("player:{actor}")).unwrap();
+    let shard = spookery_engine::World::resume(pack).unwrap();
+    let view = shard.perceive(&format!("player:{actor}")).unwrap();
     assert!(
         view.messages.iter().all(|message| message.id != note),
         "view listed {note}"
@@ -215,8 +215,8 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
 
 fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
-    let shard = spookery_round::resume(pack).unwrap();
-    let view = spookery_kernel::api::perceive(&shard, &format!("player:{actor}")).unwrap();
+    let shard = spookery_engine::World::resume(pack).unwrap();
+    let view = shard.perceive(&format!("player:{actor}")).unwrap();
     spookery::host::frames::player_resume_line(&view)
         .trim_end()
         .to_string()
@@ -234,8 +234,8 @@ fn rewrite_mira(pack: &Path, from: &str, to: &str) {
 #[then(expr = "the shop lists the oil and the rooms do not")]
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
-    let shard = spookery_round::resume(pack).unwrap();
-    let shop = spookery_kernel::api::perceive(&shard, "player:pc_rowan").unwrap();
+    let shard = spookery_engine::World::resume(pack).unwrap();
+    let shop = shard.perceive("player:pc_rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(
         shop.items,
@@ -244,11 +244,7 @@ fn the_shop_lists_the_oil(world: &mut World) {
             count: 4,
         }]
     );
-    let mut away = shard.now().clone();
-    *away.actors.get_mut("pc_rowan").unwrap().place_mut() = "mira_rooms".to_string();
-    let rooms =
-        spookery_kernel::api::perceive::perceive_at(shard.canon(), &away, "player:pc_rowan")
-            .unwrap();
+    let rooms = shard.perceive("npc:mira").unwrap();
     assert_eq!(rooms.place, "mira_rooms");
     assert!(rooms.items.iter().all(|item| item.id != "lamp_oil"));
 }

@@ -44,11 +44,10 @@ docs/                  guarantees, first-pack guide, pack reference, expressions
 packs/                 sample packs (oneshot-docks is the official fixture)
 .grok/skills/          the author-pack skill
 crates/
-  kernel/              spookery-kernel: world model, rules, legality
-  round/               spookery-round: settles a round of intents
+  protocol/            spookery-protocol: player and GM wire codecs
+  engine/              spookery-engine: world model, rules, rounds, and journal
   spook/               package and binary spook, library spookery
     src/host/          world loop, seats and the idle clock
-    src/protocol/      shared wire lines
     src/terminal/      spook play and spook gm
     src/ai/            spook ai-gm
     tests/features/    BDD scenarios

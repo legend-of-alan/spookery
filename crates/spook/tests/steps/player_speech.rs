@@ -18,7 +18,7 @@ fn the_player_says(world: &mut World, text: String) {
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
     let shard =
-        spookery_kernel::api::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"));
+        spookery_engine::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"));
     assert_eq!(shard.now().presence.humans, 0);
     world.now_bytes = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));

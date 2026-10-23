@@ -6,9 +6,9 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Now;
-use spookery_kernel::api::store::codec::{emit_save, load_save};
+use spookery_engine::journal::list_tick_keys;
+use spookery_engine::model::Now;
+use spookery_engine::store::{emit_save, load_save};
 
 use super::table;
 use crate::support::{self, temp_pack};
@@ -20,7 +20,7 @@ pub(crate) fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let path = pack.join("state/save.yaml");
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     edit(&mut now);
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
     fs::write(&path, emit_save(&now).unwrap()).unwrap();
 }
 

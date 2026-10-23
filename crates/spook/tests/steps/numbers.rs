@@ -4,7 +4,7 @@ use std::fs;
 
 use cucumber::{then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::journal::list_tick_keys;
 
 use super::table;
 use crate::World;
@@ -39,7 +39,7 @@ fn miras_habit_adds(world: &mut World, add: String) {
 #[when(expr = "one round plays")]
 fn one_round_plays(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    spookery_round::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
+    spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
 }
 
 #[when(expr = "the pack's hit requires grit of at least {string}")]
@@ -212,7 +212,7 @@ fn latest_tick(world: &World) -> Value {
     let pack = table::pack(world);
     let keys = list_tick_keys(pack);
     let name = keys.last().unwrap_or_else(|| panic!("no tick"));
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+    let text = spookery_engine::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"))
 }

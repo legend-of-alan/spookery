@@ -1,7 +1,7 @@
 use std::fs;
 
 use cucumber::{given, then};
-use spookery_kernel::api::store::codec::{emit_save, load_save};
+use spookery_engine::store::{emit_save, load_save};
 
 use super::table;
 use crate::World;

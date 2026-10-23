@@ -2,8 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::model::Presence;
-use spookery_kernel::api::World as Shard;
+use spookery_engine::model::Presence;
+use spookery_engine::World as Shard;
 
 use crate::support::stamp_pack_rev;
 use crate::World;
@@ -27,7 +27,7 @@ fn lark_has_a_hidden_meter(world: &mut World) {
     );
     fs::write(pack.join("rules/meters.yaml"), meters).unwrap();
     stamp_pack_rev(pack);
-    spookery_round::migrate_pack(pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(pack).unwrap_or_else(|err| panic!("migrate: {err}"));
 }
 
 #[given(expr = "a round that changes a hidden fact")]
@@ -231,10 +231,10 @@ fn copy_sample(label: &str) -> PathBuf {
     crate::support::copy_pack("sample-d20", label)
 }
 
-fn edit_now(pack: &Path, edit: impl FnOnce(&mut spookery_kernel::api::model::Now)) {
+fn edit_now(pack: &Path, edit: impl FnOnce(&mut spookery_engine::model::Now)) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    let mut now = spookery_kernel::api::store::codec::load_save(&text).unwrap_or_else(|diags| {
+    let mut now = spookery_engine::store::load_save(&text).unwrap_or_else(|diags| {
         panic!(
             "load save:\n{}",
             diags
@@ -245,7 +245,7 @@ fn edit_now(pack: &Path, edit: impl FnOnce(&mut spookery_kernel::api::model::Now
         )
     });
     edit(&mut now);
-    let emitted = spookery_kernel::api::store::codec::emit_save(&now).unwrap();
+    let emitted = spookery_engine::store::emit_save(&now).unwrap();
     fs::write(path, emitted).unwrap();
 }
 
@@ -253,7 +253,7 @@ fn seat(pack: &Path) -> Shard {
     let mut world = match Shard::open(pack) {
         Ok(world) => world,
         Err(err) => {
-            let report = spookery_kernel::api::check_pack(pack)
+            let report = spookery_engine::check_pack(pack)
                 .iter()
                 .map(|diag| diag.report_line())
                 .collect::<Vec<_>>()
@@ -268,7 +268,7 @@ fn seat(pack: &Path) -> Shard {
     world
 }
 
-fn play(world: &mut Shard, line: &str) -> spookery_round::RoundOutput {
+fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
     match spookery::host::handle_player_move(world, "pc_lark", line, false) {
         Ok(spookery::host::MoveOutcome::Committed { outputs, .. }) => {
             outputs.into_iter().next().unwrap()
@@ -278,7 +278,7 @@ fn play(world: &mut Shard, line: &str) -> spookery_round::RoundOutput {
     }
 }
 
-fn change_line(output: &spookery_round::RoundOutput) -> String {
+fn change_line(output: &spookery_engine::RoundOutput) -> String {
     output
         .seen
         .iter()
@@ -288,7 +288,8 @@ fn change_line(output: &spookery_round::RoundOutput) -> String {
 }
 
 fn shown_text(world: &Shard) -> String {
-    let view = spookery_kernel::api::perceive(world, "player:pc_lark")
+    let view = world
+        .perceive("player:pc_lark")
         .unwrap_or_else(|err| panic!("perceive: {}", err.token()));
     view.meters
         .iter()

@@ -2,7 +2,7 @@
 
 use std::io;
 
-use spookery_kernel::api::Reason;
+use spookery_engine::Reason;
 
 mod gm_view;
 mod player_view;

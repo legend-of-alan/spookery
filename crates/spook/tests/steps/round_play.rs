@@ -3,9 +3,9 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
-use spookery_kernel::api::rules::{roll, MoveReport, RollInput, RollKey};
-use spookery_round::RoundCause;
+use spookery_engine::RoundCause;
+use spookery_engine::{faces, MoveReport, RollKey};
+use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
 use super::steps_run::read_tick;
 use crate::support::{self, copy_dir};
@@ -75,7 +75,7 @@ fn a_played_d20_fight(world: &mut World) {
         Target::Actor("npc_briar".to_string()),
     )];
     let (now, _rolls, _tick) = play_queued(&pack, intents);
-    world.now_bytes = spookery_kernel::api::store::codec::emit_save(&now)
+    world.now_bytes = spookery_engine::store::emit_save(&now)
         .unwrap()
         .into_bytes();
     world.pack = Some(pack);
@@ -89,12 +89,12 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "{stdout}{stderr}");
     let report =
-        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
-    let line = spookery_kernel::api::journal::read_record_line(pack, "tick-0001")
+        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err:?}"));
+    let line = spookery_engine::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let tick: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
-        spookery_kernel::api::journal::hash_now(&report.now_yaml),
+        spookery_engine::journal::hash_now(&report.now_yaml),
         tick["now_hash"].as_str().unwrap()
     );
 }
@@ -214,7 +214,7 @@ fn those_waits_are_played(world: &mut World) {
     second.source = Source::Kernel;
     let (now, _rolls, tick) = play_queued(&pack, vec![first, second]);
     world.scratch = tick.to_string();
-    world.now_bytes = spookery_kernel::api::store::codec::emit_save(&now)
+    world.now_bytes = spookery_engine::store::emit_save(&now)
         .unwrap()
         .into_bytes();
 }
@@ -237,10 +237,8 @@ fn only_the_first_wait_lands(world: &mut World) {
             .any(|item| item["id"] == "wait-2" && item["reason"] == "INELIGIBLE"),
         "{tick}"
     );
-    let now = spookery_kernel::api::store::codec::load_save(
-        std::str::from_utf8(&world.now_bytes).unwrap(),
-    )
-    .unwrap();
+    let now =
+        spookery_engine::store::load_save(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
     assert_eq!(
         now.actors
             .get("mira")
@@ -403,30 +401,17 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 }
 
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
-    let world = spookery_round::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let world = spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let actor = world
         .now()
         .actors
         .get(actor_id)
-        .unwrap_or_else(|| panic!("missing {actor_id}"))
-        .clone();
-    let kind = if actor.is_pc() {
-        ActorKind::Player
-    } else {
-        ActorKind::Npc
-    };
-    let viewer = ViewerId::from_kind(kind, actor_id).unwrap();
-    let check = world.canon().checks.get("strike").unwrap().clone();
-    let out = roll(
-        RollInput {
-            check: &check,
-            defs: &world.canon().meters,
-            actor_id,
-            actor: &actor,
-            viewer: &viewer,
-            target: 0,
-            partial_at: None,
-        },
+        .unwrap_or_else(|| panic!("missing {actor_id}"));
+    let check = world.canon().checks.get("strike").unwrap();
+    let def = world.canon().meters.get(&check.stat).unwrap();
+    let live = actor.meters().get(&check.stat).unwrap();
+    let stat = (live.base + live.offset).clamp(def.min, def.max);
+    let rolled = faces(
         &RollKey {
             world_id: world.now().shard_id.clone(),
             round_index: world.now().tick_index,
@@ -434,15 +419,17 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
             subject_id: actor_id.to_string(),
             roll_index,
         },
+        check.dice_count,
+        check.dice_sides,
     )
     .unwrap_or_else(|err| panic!("roll: {err}"));
-    let faces = out
-        .faces
+    let total = rolled.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
+    let faces = rolled
         .iter()
         .map(|face| face.to_string())
         .collect::<Vec<_>>()
         .join(",");
-    (faces, out.total)
+    (faces, total)
 }
 
 fn lark_pack() -> PathBuf {
@@ -480,7 +467,7 @@ fn lark_pack() -> PathBuf {
 ",
     );
     support::stamp_pack_rev(&pack);
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
 }
 
@@ -520,13 +507,15 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
 fn play_queued(
     pack: &Path,
     intents: Vec<Intent>,
-) -> (spookery_kernel::api::model::Now, Vec<MoveReport>, Value) {
-    let mut world = spookery_round::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
+) -> (spookery_engine::model::Now, Vec<MoveReport>, Value) {
+    let mut world =
+        spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = world.now().last_tick_at.clone();
     for intent in intents {
         world.queue(intent);
     }
-    let output = spookery_round::play(&mut world, RoundCause::Manual, &wall)
+    let output = world
+        .play(RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = read_tick(pack, "tick-0001");
     let now = world.now().clone();

@@ -82,6 +82,47 @@ pub struct SayArgs {
     pub actor: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "address", rename_all = "lowercase", try_from = "SayArgs")]
+pub enum OutgoingSay {
+    Table { text: String },
+    Place { place: String, text: String },
+    Actor { actor: String, text: String },
+}
+
+impl OutgoingSay {
+    pub fn text(&self) -> &str {
+        match self {
+            OutgoingSay::Table { text }
+            | OutgoingSay::Place { text, .. }
+            | OutgoingSay::Actor { text, .. } => text,
+        }
+    }
+
+    pub fn arguments(&self) -> Value {
+        serde_json::to_value(self).expect("say arguments")
+    }
+}
+
+impl TryFrom<SayArgs> for OutgoingSay {
+    type Error = &'static str;
+
+    fn try_from(args: SayArgs) -> Result<Self, Self::Error> {
+        match (args.address.as_str(), args.place, args.actor) {
+            ("table", None, None) => Ok(OutgoingSay::Table { text: args.text }),
+            ("place", Some(place), None) if !place.is_empty() => Ok(OutgoingSay::Place {
+                place,
+                text: args.text,
+            }),
+            ("actor", None, Some(actor)) if !actor.is_empty() => Ok(OutgoingSay::Actor {
+                actor,
+                text: args.text,
+            }),
+            _ => Err("say"),
+        }
+    }
+}
+
 pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs, Error> {
     parse_args(arguments.ok_or(Error)?)
 }

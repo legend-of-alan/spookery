@@ -1,15 +1,10 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_kernel::api::intent::Target;
-use spookery_kernel::api::perceive::perceive_budget;
-use spookery_kernel::api::world::{GmIntentSpec, World};
-use spookery_kernel::api::Reason;
-use spookery_round::RoundOutput;
+use spookery_engine::{GmIntentSpec, QueuedMove, Reason, RoundOutput, Target, World};
 
 use super::frames;
-use super::player_moves::{self, QueuedMove};
-use super::speech;
+use super::world_loop::commit_then_fast_forward;
 
 pub struct GmToolReply {
     pub value: Value,
@@ -134,7 +129,7 @@ fn run_perceive(world: &mut World, arguments: Option<Map<String, Value>>) -> GmT
 }
 
 fn run_say(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match speech::speak_tool(world, arguments) {
+    match frames::speak_tool(world, arguments) {
         Ok(spoken) => {
             let mut done = GmToolReply::new(spoken.tool);
             // Same object as the tool result, after that response. Ahead of it, the client stalls.
@@ -303,7 +298,7 @@ fn commit_tool(
     }
     let before = world.now().world_time;
     let committed = !world.queued_intents().is_empty();
-    let outputs = player_moves::commit_then_fast_forward(world)?;
+    let outputs = commit_then_fast_forward(world)?;
     let mut done = if committed {
         let output = &outputs[0];
         let outcome = output
@@ -347,7 +342,7 @@ fn perceive_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result
         crate::protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
     let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
-    let view = perceive_budget(world, &as_arg, budget)?;
+    let view = world.perceive_budget(&as_arg, budget)?;
     Ok(frames::perceive_value(&view))
 }
 
@@ -396,7 +391,7 @@ fn queue_tool_intent(
             message_to: call.message_to,
             rationale_code: call.rationale_code,
         },
-        player_moves::mint_intent_id,
+        mint_intent_id,
     )
 }
 
@@ -407,4 +402,54 @@ fn kernel_target(target: crate::protocol::CallTarget) -> Target {
         crate::protocol::CallTarget::Actor(id) => Target::Actor(id),
         crate::protocol::CallTarget::Clock(id) => Target::Clock(id),
     }
+}
+
+fn mint_intent_id() -> Result<String, Reason> {
+    let mut bytes = [0u8; 16];
+    if !fill_random(&mut bytes) {
+        return Err(Reason::Schema);
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Ok(format!(
+        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+        bytes[0],
+        bytes[1],
+        bytes[2],
+        bytes[3],
+        bytes[4],
+        bytes[5],
+        bytes[6],
+        bytes[7],
+        bytes[8],
+        bytes[9],
+        bytes[10],
+        bytes[11],
+        bytes[12],
+        bytes[13],
+        bytes[14],
+        bytes[15]
+    ))
+}
+
+#[cfg(windows)]
+fn fill_random(buf: &mut [u8]) -> bool {
+    #[link(name = "advapi32")]
+    extern "system" {
+        fn SystemFunction036(buf: *mut u8, len: u32) -> u8;
+    }
+    unsafe { SystemFunction036(buf.as_mut_ptr(), buf.len() as u32) != 0 }
+}
+
+#[cfg(unix)]
+fn fill_random(buf: &mut [u8]) -> bool {
+    use std::io::Read;
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut file| file.read_exact(buf))
+        .is_ok()
+}
+
+#[cfg(not(any(windows, unix)))]
+fn fill_random(_buf: &mut [u8]) -> bool {
+    false
 }

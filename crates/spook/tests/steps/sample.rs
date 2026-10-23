@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::meter;
 
 use crate::support::{self, text_of};
 use crate::World;
@@ -156,25 +155,10 @@ fn take_tonic(pack: &Path) {
 
 fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let now = table::now_of(pack);
-    let canon = spookery_kernel::api::canon::load_canon(pack).unwrap_or_else(|err| {
-        panic!(
-            "load canon: {}",
-            spookery_kernel::api::reason_of(err).token()
-        )
-    });
-    let actor = now
-        .actors
-        .get(actor_id)
-        .unwrap_or_else(|| panic!("{actor_id} missing"));
-    let def = canon
-        .meters
-        .get("hp")
-        .unwrap_or_else(|| panic!("no hp meter"));
-    let live = actor
-        .meters()
-        .get("hp")
-        .unwrap_or_else(|| panic!("{actor_id} has no hp"));
-    meter::current(def, live).unwrap_or_else(|err| panic!("hp: {}", err.token()))
+    let canon = spookery_engine::canon::load_canon(pack)
+        .unwrap_or_else(|err| panic!("load canon: {}", spookery_engine::reason_of(err).token()));
+    now.meter_value(&canon, actor_id, "hp")
+        .unwrap_or_else(|err| panic!("hp: {}", err.token()))
 }
 
 fn wait_hp(world: &mut World, actor_id: &str, expected: i64) {

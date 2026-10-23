@@ -3,10 +3,9 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::meter;
-use spookery_kernel::api::model::Now;
-use spookery_kernel::api::rules::{faces, RollKey};
-use spookery_kernel::api::store::codec::{emit_save, load_save};
+use spookery_engine::model::Now;
+use spookery_engine::store::{emit_save, load_save};
+use spookery_engine::{faces, RollKey};
 
 use super::table;
 use crate::support;
@@ -14,7 +13,7 @@ use crate::World;
 
 fn read_now(pack: &Path) -> Now {
     let report =
-        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     load_save(text).unwrap()
 }
@@ -22,7 +21,7 @@ fn read_now(pack: &Path) -> Now {
 fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let mut now = read_now(pack);
     edit(&mut now);
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
     fs::write(pack.join("state/save.yaml"), emit_save(&now).unwrap()).unwrap();
 }
 
@@ -34,10 +33,8 @@ fn quiet(now: &mut Now) {
 
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = read_now(pack);
-    let canon = spookery_kernel::api::canon::load_canon(pack).unwrap();
-    let def = canon.meters.get("hp").unwrap();
-    let live = now.actors.get(actor).unwrap().meters().get("hp").unwrap();
-    meter::current(def, live).unwrap()
+    let canon = spookery_engine::canon::load_canon(pack).unwrap();
+    now.meter_value(&canon, actor, "hp").unwrap()
 }
 
 fn count(pack: &Path, actor: &str, item: &str) -> u32 {
@@ -55,12 +52,12 @@ fn play(
     pack: &Path,
     actor: &str,
     line: &str,
-) -> Result<spookery::host::MoveOutcome, spookery_kernel::api::rules::gate::GateRefusal> {
-    let mut world = spookery_round::resume(pack).unwrap_or_else(|err| {
+) -> Result<spookery::host::MoveOutcome, spookery_engine::GateRefusal> {
+    let mut world = spookery_engine::World::resume(pack).unwrap_or_else(|err| {
         panic!(
             "open {line}: {}\n{}",
             err.token(),
-            spookery_kernel::api::check_pack(pack)
+            spookery_engine::check_pack(pack)
                 .iter()
                 .map(|diag| diag.report_line())
                 .collect::<Vec<_>>()
@@ -71,7 +68,7 @@ fn play(
 }
 
 fn tick_text(pack: &Path) -> String {
-    spookery_kernel::api::journal::read_record_line(pack, "tick-0001")
+    spookery_engine::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
@@ -293,7 +290,7 @@ fn no_round_was_spent(world: &mut World) {
         world.scratch,
         "a round was spent"
     );
-    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::journal::list_tick_keys(pack).is_empty());
     assert_eq!(now.actors.get("pc_lark").unwrap().count("latch"), 1);
 }
 
@@ -302,7 +299,7 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(read_now(pack).tick_index, 0);
-    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::journal::list_tick_keys(pack).is_empty());
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]
@@ -594,13 +591,13 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
             .base = 10;
         now.actors.get_mut("pc_nell").unwrap().meters_mut().insert(
             "constitution".to_string(),
-            spookery_kernel::api::meter::MeterLive {
+            spookery_engine::MeterLive {
                 base: stat,
                 offset: 0,
             },
         );
     });
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
     world.scratch = stat.to_string();
 }
@@ -615,9 +612,7 @@ fn lark_hits_with_the_dagger(world: &mut World) {
     };
     let output = &outputs[0];
     let nell = output.reports.iter().find_map(|report| match report {
-        spookery_kernel::api::rules::MoveReport::Rolled { actor_id, out }
-            if actor_id == "pc_nell" =>
-        {
+        spookery_engine::MoveReport::Rolled { actor_id, out } if actor_id == "pc_nell" => {
             Some(out.clone())
         }
         _ => None,
@@ -655,5 +650,5 @@ fn the_poison_fades(world: &mut World, text: String) {
 #[then(expr = "spook verify reproduces both rolls")]
 fn verify_reproduces_both_rolls(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    spookery_round::verify_pack(pack, None).unwrap_or_else(|err| panic!("{err:?}"));
+    spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("{err:?}"));
 }

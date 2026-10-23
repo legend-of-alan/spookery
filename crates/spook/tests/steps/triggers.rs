@@ -3,11 +3,11 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::api::meter::MeterLive;
-use spookery_kernel::api::model::{Clock, Now};
-use spookery_kernel::api::store::codec::{emit_save, load_save};
-use spookery_round::RoundCause;
+use spookery_engine::model::{Clock, Now};
+use spookery_engine::store::{emit_save, load_save};
+use spookery_engine::MeterLive;
+use spookery_engine::RoundCause;
+use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
 use super::steps_run::read_steps_run;
 use crate::support::{self, temp_pack};
@@ -573,7 +573,7 @@ Under the street.
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
-            spookery_kernel::api::model::PlaceLive {
+            spookery_engine::model::PlaceLive {
                 items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
@@ -607,8 +607,8 @@ fn nell_knows_the_trapdoor(world: &mut World) {
 #[then(expr = "pc_nell can see the trapdoor")]
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let world_now = spookery_round::resume(pack).unwrap();
-    let exits = spookery_kernel::api::map::visible(world_now.canon(), world_now.now(), "pc_nell");
+    let world_now = spookery_engine::World::resume(pack).unwrap();
+    let exits = world_now.perceive("player:pc_nell").unwrap().exits;
     assert!(
         exits.iter().any(|exit| exit.name == "trapdoor"),
         "trapdoor stayed hidden: {exits:?}"
@@ -952,20 +952,22 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         now.presence.actors_present.clear();
     });
     let mut kernel =
-        spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+        spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
-    let quiet =
-        spookery_round::play(&mut kernel, RoundCause::Manual, &wall).unwrap_or_else(|err| {
+    let quiet = kernel
+        .play(RoundCause::Manual, &wall)
+        .unwrap_or_else(|err| {
             panic!("quiet: {err}");
         });
-    kernel.set_presence(spookery_kernel::api::model::Presence {
+    kernel.set_presence(spookery_engine::model::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
     kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
-    let back = spookery_round::play(&mut kernel, RoundCause::Manual, &wall)
+    let back = kernel
+        .play(RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("back: {err}"));
     world.told = quiet
         .lines
@@ -1129,7 +1131,7 @@ rules:
         now.presence.humans = 1;
         now.presence.actors_present = vec!["pc_rowan".to_string()];
     });
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
 }
 
@@ -1221,23 +1223,16 @@ fn edit_save(world: &mut World, pack: &Path, edit: impl FnOnce(&mut Now)) {
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     edit(&mut now);
     remember_presence(world, pack, now.presence.clone());
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn remember_presence(
-    world: &mut World,
-    pack: &Path,
-    presence: spookery_kernel::api::model::Presence,
-) {
+fn remember_presence(world: &mut World, pack: &Path, presence: spookery_engine::model::Presence) {
     world.seated.retain(|(path, _)| path != pack);
     world.seated.push((pack.to_path_buf(), presence));
 }
 
-fn remembered_presence(
-    world: &World,
-    pack: &Path,
-) -> Option<spookery_kernel::api::model::Presence> {
+fn remembered_presence(world: &World, pack: &Path) -> Option<spookery_engine::model::Presence> {
     world
         .seated
         .iter()
@@ -1247,7 +1242,7 @@ fn remembered_presence(
 
 struct Played {
     now: Now,
-    rolls: Vec<spookery_kernel::api::rules::MoveReport>,
+    rolls: Vec<spookery_engine::MoveReport>,
     tick: Value,
     summary: Vec<String>,
     seen: Vec<(String, Vec<String>)>,
@@ -1258,14 +1253,14 @@ fn play(
     world: &mut World,
     pack: &Path,
     intents: Vec<Intent>,
-) -> (Now, Vec<spookery_kernel::api::rules::MoveReport>, Value) {
+) -> (Now, Vec<spookery_engine::MoveReport>, Value) {
     let played = play_view(world, pack, intents);
     (played.now, played.rolls, played.tick)
 }
 
 fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played {
-    let mut round = spookery_round::resume(pack).unwrap_or_else(|err| {
-        let report = spookery_kernel::api::check_pack(pack)
+    let mut round = spookery_engine::World::resume(pack).unwrap_or_else(|err| {
+        let report = spookery_engine::check_pack(pack)
             .iter()
             .map(|diag| diag.report_line())
             .collect::<Vec<_>>()
@@ -1279,7 +1274,8 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
     for intent in intents {
         round.queue(intent);
     }
-    let output = spookery_round::play(&mut round, RoundCause::Manual, &wall)
+    let output = round
+        .play(RoundCause::Manual, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = latest(pack);
     let told = output
@@ -1325,17 +1321,17 @@ fn append(path: &Path, from: &str, to: &str) {
 
 fn load(pack: &Path) -> Now {
     let report =
-        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+        spookery_engine::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     load_save(text).unwrap()
 }
 
 fn latest(pack: &Path) -> Value {
-    let names = spookery_kernel::api::journal::list_tick_keys(pack);
+    let names = spookery_engine::journal::list_tick_keys(pack);
     let name = names
         .last()
         .unwrap_or_else(|| panic!("no tick was written"));
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+    let text = spookery_engine::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }

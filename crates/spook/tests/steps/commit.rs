@@ -20,11 +20,11 @@ fn state_tree(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn docks_rev() -> String {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    spookery_kernel::api::canon::pack_rev(&root).unwrap()
+    spookery_engine::canon::pack_rev(&root).unwrap()
 }
 
 fn migrate_state_revs(pack: &Path) -> Vec<u64> {
-    use spookery_kernel::api::journal::{read_entries, JournalEntry};
+    use spookery_engine::journal::{read_entries, JournalEntry};
     let entries = read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
     let mut revs = Vec::new();
     for entry in &entries {
@@ -52,7 +52,7 @@ fn one_round_has_committed(world: &mut World) {
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     assert!(
-        !spookery_kernel::api::journal::list_tick_keys(&pack).is_empty(),
+        !spookery_engine::journal::list_tick_keys(&pack).is_empty(),
         "no tick committed"
     );
 }
@@ -250,7 +250,7 @@ fn the_journal_has_two_migrate_records(world: &mut World) {
 #[then(expr = "migrate keeps the hand edit")]
 fn migrate_keeps_the_hand_edit(world: &mut World) {
     let pack = table::pack(world);
-    let rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
+    let rev = spookery_engine::canon::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_rev());
     let now = table::now_of(pack);
     assert_eq!(now.pack_rev, rev);
@@ -259,6 +259,6 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.tick_index, 0);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
-    assert!(spookery_kernel::api::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::journal::list_tick_keys(pack).is_empty());
     assert_eq!(migrate_state_revs(pack), [1]);
 }

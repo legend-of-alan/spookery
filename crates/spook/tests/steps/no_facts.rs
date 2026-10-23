@@ -5,8 +5,8 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Presence;
+use spookery_engine::journal::list_tick_keys;
+use spookery_engine::model::Presence;
 
 use super::common::edit_save;
 use super::table;
@@ -75,11 +75,10 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
             .known_facts_mut()
             .clear();
     });
-    let opened =
-        spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let view =
-        spookery_kernel::api::perceive::perceive_at(opened.canon(), opened.now(), "npc:mira")
-            .unwrap_or_else(|err| panic!("perceive: {err}"));
+    let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let view = opened
+        .perceive("npc:mira")
+        .unwrap_or_else(|err| panic!("perceive: {err}"));
     assert!(
         view.known_facts.is_empty(),
         "Mira still sees {:?}",
@@ -94,7 +93,7 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
 #[when(expr = "a docks round plays")]
 fn a_docks_round_plays(world: &mut World) {
     let pack = table::pack(world);
-    spookery_round::play_pack_once(pack).unwrap_or_else(|err| panic!("round: {err}"));
+    spookery_engine::play_pack_once(pack).unwrap_or_else(|err| panic!("round: {err}"));
 }
 
 #[then(expr = "Mira's habit fires")]
@@ -117,7 +116,8 @@ fn miras_habit_fires(world: &mut World) {
 
 fn play(world: &mut World, actor: &str, line: &str) {
     let pack = table::pack(world);
-    let mut opened = spookery_round::resume(pack).unwrap_or_else(|err| panic!("resume: {err}"));
+    let mut opened =
+        spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("resume: {err}"));
     opened.set_presence(Presence {
         humans: 1,
         actors_present: vec![actor.to_string()],
@@ -163,7 +163,7 @@ fn location_moves(pack: &Path, actor: &str) -> Vec<(String, String)> {
 
 /// A round's journal record.
 fn read_round(pack: &Path, key: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(pack, key)
+    let text = spookery_engine::journal::read_record_line(pack, key)
         .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{key}: {err}"))
 }
