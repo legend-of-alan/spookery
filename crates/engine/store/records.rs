@@ -82,7 +82,7 @@ pub struct Arrival {
 /// that has not been stamped omits it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TickRecord {
+pub struct TickRecord<E = Effect> {
     pub tick_index: u64,
     #[serde(default)]
     pub rules_rev: u64,
@@ -97,7 +97,7 @@ pub struct TickRecord {
     pub last_tick_at: String,
     pub intents: Vec<Intent>,
     pub rejected: Vec<Rejected>,
-    pub effects: Vec<Effect>,
+    pub effects: Vec<E>,
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,
     /// Dice lines from this round. Empty when the round rolled none.

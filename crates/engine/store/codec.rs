@@ -175,27 +175,10 @@ mod tests {
     use super::*;
     use std::fs;
 
-    fn effect_reason(message: &str) -> Reason {
-        if message.contains("ILLEGAL_CLASS") {
-            Reason::IllegalClass
-        } else {
-            Reason::Schema
-        }
-    }
-
-    fn parse_tick_effects(text: &str) -> Result<(u64, Vec<Effect>), Reason> {
-        #[derive(Deserialize)]
-        struct EffectsOnly {
-            tick_index: u64,
-            effects: Vec<Effect>,
-        }
-        let parsed: EffectsOnly =
-            serde_json::from_str(text.trim()).map_err(|err| effect_reason(&err.to_string()))?;
-        Ok((parsed.tick_index, parsed.effects))
-    }
-
     fn parse_effect(text: &str) -> Result<Effect, Reason> {
-        serde_json::from_str(text).map_err(|err| effect_reason(&err.to_string()))
+        let record: crate::effect::EffectRecord =
+            serde_json::from_str(text).map_err(|_| Reason::Schema)?;
+        Effect::try_from(record)
     }
 
     #[test]
@@ -466,11 +449,12 @@ messages: []
 
     #[test]
     fn effect_payload_object_keeps_declaration_order_and_a_negative_delta() {
-        let text = r#"{"tick_index":1,"effects":[{"class":"item","as":"npc:n","intent_id":"i","place":"p","id":"s","delta":-1}]}"#;
-        let (tick_index, effects) = parse_tick_effects(text).unwrap();
-        assert_eq!(tick_index, 1);
+        let effect = parse_effect(
+            r#"{"class":"item","as":"npc:n","intent_id":"i","place":"p","id":"s","delta":-1}"#,
+        )
+        .unwrap();
         assert_eq!(
-            crate::effect::payload_json(&effects[0]),
+            crate::effect::payload_json(&effect),
             r#"{"place":"p","id":"s","delta":-1}"#
         );
     }

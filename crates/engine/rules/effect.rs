@@ -1,15 +1,14 @@
 //! One effect: its class, and the fields that class carries.
 
-use std::fmt;
-
 use serde::{Deserialize, Serialize};
 
+use crate::error::Reason;
 use crate::intent::ViewerId;
 use crate::meter::MeterWrite;
 
 /// One effect. JSON is `class`, `as`, `intent_id`, then the fields of `class`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(try_from = "EffectRecord", into = "EffectRecord")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(into = "EffectRecord")]
 pub struct Effect {
     pub class: EffectKind,
     pub as_viewer: ViewerId,
@@ -106,37 +105,6 @@ impl EffectKind {
             EffectKind::Message { .. } => "message",
             EffectKind::Narrate { .. } => "narrate",
             EffectKind::Reveal { .. } => "reveal",
-        }
-    }
-}
-
-pub(crate) struct RecordFault {
-    illegal_class: bool,
-    field: &'static str,
-}
-
-impl RecordFault {
-    fn class() -> Self {
-        Self {
-            illegal_class: true,
-            field: "class",
-        }
-    }
-
-    fn field(field: &'static str) -> Self {
-        Self {
-            illegal_class: false,
-            field,
-        }
-    }
-}
-
-impl fmt::Display for RecordFault {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.illegal_class {
-            f.write_str("ILLEGAL_CLASS")
-        } else {
-            f.write_str(self.field)
         }
     }
 }
@@ -394,7 +362,7 @@ impl From<Effect> for EffectRecord {
 }
 
 impl TryFrom<EffectRecord> for Effect {
-    type Error = RecordFault;
+    type Error = Reason;
 
     fn try_from(record: EffectRecord) -> Result<Self, Self::Error> {
         let (class, as_viewer, intent_id) = match record {
@@ -439,7 +407,7 @@ impl TryFrom<EffectRecord> for Effect {
                 max,
             } => {
                 if actor_id.is_some() == place.is_some() {
-                    return Err(RecordFault::field("actor_id"));
+                    return Err(Reason::Schema);
                 }
                 (
                     EffectKind::Item {
@@ -549,7 +517,7 @@ impl TryFrom<EffectRecord> for Effect {
                 actor_id,
                 fact,
             } => (EffectKind::Reveal { actor_id, fact }, as_viewer, intent_id),
-            EffectRecord::Illegal => return Err(RecordFault::class()),
+            EffectRecord::Illegal => return Err(Reason::IllegalClass),
         };
         Ok(Effect {
             class,
@@ -559,13 +527,13 @@ impl TryFrom<EffectRecord> for Effect {
     }
 }
 
-fn meter_write(write: WriteKind, delta: Option<i64>) -> Result<MeterWrite, RecordFault> {
+fn meter_write(write: WriteKind, delta: Option<i64>) -> Result<MeterWrite, Reason> {
     match (write, delta) {
         (WriteKind::Snap, None) => Ok(MeterWrite::Snap),
         (WriteKind::Base, Some(delta)) => Ok(MeterWrite::Base(delta)),
         (WriteKind::Offset, Some(delta)) => Ok(MeterWrite::Offset(delta)),
         (WriteKind::Snap, Some(_)) | (WriteKind::Base | WriteKind::Offset, None) => {
-            Err(RecordFault::field("delta"))
+            Err(Reason::Schema)
         }
     }
 }

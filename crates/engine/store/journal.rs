@@ -524,27 +524,45 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
 }
 
 pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {
-    read_json(name, text)
+    let raw: TickRecord<crate::effect::EffectRecord> = read_json(name, text)?;
+    let effects = raw
+        .effects
+        .into_iter()
+        .map(crate::effect::Effect::try_from)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|reason| fault_coded(Path::new(name), reason, reason.token()))?;
+    Ok(TickRecord {
+        tick_index: raw.tick_index,
+        rules_rev: raw.rules_rev,
+        state_rev_before: raw.state_rev_before,
+        state_rev_after: raw.state_rev_after,
+        world_time_before: raw.world_time_before,
+        world_time_after: raw.world_time_after,
+        presence_humans: raw.presence_humans,
+        actors_present: raw.actors_present,
+        seed: raw.seed,
+        last_tick_at: raw.last_tick_at,
+        intents: raw.intents,
+        rejected: raw.rejected,
+        effects,
+        arrivals: raw.arrivals,
+        fast_forward: raw.fast_forward,
+        dice: raw.dice,
+        steps_run: raw.steps_run,
+        memories: raw.memories,
+        now_hash: raw.now_hash,
+        prev: raw.prev,
+        chain: raw.chain,
+    })
 }
 
 fn read_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, JournalFault> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
-    match serde_path_to_error::deserialize(&mut de) {
-        Ok(value) => Ok(value),
-        Err(err) => {
-            let detail = err.to_string();
-            let reason = if detail.contains("ILLEGAL_CLASS") {
-                Reason::IllegalClass
-            } else {
-                Reason::Schema
-            };
-            Err(JournalFault {
-                file: name.to_string(),
-                detail,
-                reason,
-            })
-        }
-    }
+    serde_path_to_error::deserialize(&mut de).map_err(|err| JournalFault {
+        file: name.to_string(),
+        detail: err.to_string(),
+        reason: Reason::Schema,
+    })
 }
 
 fn fault(path: &Path, detail: &str) -> JournalFault {
