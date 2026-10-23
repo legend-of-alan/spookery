@@ -1,7 +1,7 @@
 //! Publish one round: the journal record, then the save.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::Path;
 
@@ -13,7 +13,8 @@ use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
-use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
+pub use crate::store::durable::atomic_publish;
+use crate::store::durable::{fsync_dir, fsync_file};
 use crate::store::recover::close_finished;
 use crate::world::World;
 
@@ -240,24 +241,6 @@ pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
         )?;
     }
     let _ = close_finished(&world.root);
-    Ok(())
-}
-
-/// Write `bytes` to a temp file, flush it, and rename it over `target`.
-pub fn atomic_publish(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
-    }
-    let tmp = tmp_path(target);
-    {
-        let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
-        file.write_all(bytes).map_err(|_| Reason::CommitConflict)?;
-    }
-    fsync_file(&tmp)?;
-    rename(&tmp, target)?;
-    if let Some(parent) = target.parent() {
-        fsync_dir(parent)?;
-    }
     Ok(())
 }
 

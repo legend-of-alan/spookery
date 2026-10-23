@@ -140,7 +140,7 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
             return Err(Reason::Busy.into());
         }
     }
-    crate::rules::exit::admit(canon, now, intent)?;
+    crate::map::admit(canon, now, intent)?;
     if intent.source == Source::Player && !sees(canon, now, intent) {
         return Err(Reason::NotInSpec.into());
     }

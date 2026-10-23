@@ -15,7 +15,6 @@
 //! - `intent`: who is asking, and the action they asked the round to take.
 //! - `map`: exits and the journeys that follow them.
 //! - `model`: the live save and the keys a commit watches.
-//! - `pause`: pause plot clocks while the table is empty.
 //! - `rules`: conditions, costs, gates, rolls, and effects.
 //! - `speech`: who hears a say. The host writes the tape.
 //! - `store`: the save, the journal, and the rules version stamped on both.
@@ -35,7 +34,6 @@ pub(crate) mod host_summary;
 pub(crate) mod intent;
 pub(crate) mod map;
 pub(crate) mod model;
-pub(crate) mod pause;
 pub(crate) mod rules;
 pub(crate) mod speech;
 pub(crate) mod store;

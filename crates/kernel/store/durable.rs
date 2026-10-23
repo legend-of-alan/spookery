@@ -1,9 +1,28 @@
 //! Flush a file or a directory, and rename into place.
 
-use std::fs::OpenOptions;
+use std::fs::{self, File, OpenOptions};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use crate::error::Reason;
+
+/// Write `bytes` to a temp file, flush it, and rename it over `target`.
+pub fn atomic_publish(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
+    }
+    let tmp = tmp_path(target);
+    {
+        let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
+        file.write_all(bytes).map_err(|_| Reason::CommitConflict)?;
+    }
+    fsync_file(&tmp)?;
+    rename(&tmp, target)?;
+    if let Some(parent) = target.parent() {
+        fsync_dir(parent)?;
+    }
+    Ok(())
+}
 
 pub(crate) fn tmp_path(target: &Path) -> PathBuf {
     let mut name = target.file_name().unwrap_or_default().to_os_string();

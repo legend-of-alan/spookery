@@ -72,10 +72,6 @@ pub mod model {
     pub use crate::model::*;
 }
 
-pub mod pause {
-    pub use crate::pause::*;
-}
-
 pub mod perceive {
     pub use crate::perceive::*;
 }

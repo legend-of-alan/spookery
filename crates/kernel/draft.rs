@@ -5,11 +5,11 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::canon::tick_settings::Budget;
+use crate::canon::tick_settings::{Budget, PausePolicy};
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::key::{ChangeRecord, StateKey, StateValue};
-use crate::model::{MemoryLine, Now, PauseView};
+use crate::model::{MemoryLine, Now, RunState};
 
 pub struct Draft {
     canon: Arc<Canon>,
@@ -58,8 +58,40 @@ impl Draft {
         self.state.last_tick_at = last_tick_at.to_string();
     }
 
-    pub(crate) fn set_pause_view(&mut self, pause: PauseView) {
-        self.state.pause = pause;
+    pub fn apply_pause_policy(&mut self) -> Result<(), Reason> {
+        let humans = self.state.presence.humans;
+        let policies = self.budget.pause;
+        let clock_ids: Vec<String> = self.state.clocks.keys().cloned().collect();
+        for clock_id in clock_ids {
+            let Some(clock) = self.state.clocks.get(&clock_id) else {
+                continue;
+            };
+            if !clock.requires_presence {
+                continue;
+            }
+            let paused = humans == 0 && policies.named_plot_clocks == PausePolicy::PauseWhenEmpty;
+            if humans > 0 {
+                self.set_clock_paused(&clock_id, false)?;
+            } else if paused {
+                self.set_clock_paused(&clock_id, true)?;
+            }
+        }
+        self.state.pause.named_plot_clocks = match policies.named_plot_clocks {
+            PausePolicy::PauseWhenEmpty if humans == 0 => RunState::Paused,
+            PausePolicy::PauseWhenEmpty | PausePolicy::AlwaysRun => RunState::Running,
+        };
+        Ok(())
+    }
+
+    fn set_clock_paused(&mut self, clock_id: &str, paused: bool) -> Result<(), Reason> {
+        let current = self.state.clocks.get(clock_id).map(|clock| clock.paused);
+        if current != Some(paused) {
+            self.track(StateKey::ClockPaused(clock_id.to_string()))?;
+        }
+        if let Some(clock) = self.state.clocks.get_mut(clock_id) {
+            clock.paused = paused;
+        }
+        Ok(())
     }
 
     pub fn reset_idle_acts(&mut self) -> Result<(), Reason> {

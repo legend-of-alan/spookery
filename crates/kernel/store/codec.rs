@@ -1,6 +1,6 @@
 //! Read and write the save.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_saphyr::SerializerOptions;
 
 use crate::diagnostic::{coded, locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};
@@ -166,31 +166,8 @@ pub fn emit_effect(effect: &Effect) -> String {
     serde_json::to_string(effect).expect("effect json")
 }
 
-/// Payload fields only, in declaration order. Absent options are omitted.
-pub(crate) fn emit_effect_payload(effect: &Effect) -> String {
-    crate::effect::payload_json(effect)
-}
-
 pub(crate) fn emit_memory_line(line: &MemoryLine) -> String {
-    let json = MemoryLineJson {
-        tick_index: line.tick_index,
-        actor_id: &line.actor_id,
-        intent_id: &line.intent_id,
-        fact_ids: &line.fact_ids,
-        tags: &line.tags,
-        text: line.text.as_deref(),
-    };
-    serde_json::to_string(&json).expect("memory line")
-}
-
-#[derive(Serialize)]
-struct MemoryLineJson<'a> {
-    tick_index: u64,
-    actor_id: &'a str,
-    intent_id: &'a str,
-    fact_ids: &'a [String],
-    tags: &'a [String],
-    text: Option<&'a str>,
+    serde_json::to_string(line).expect("memory line")
 }
 
 #[cfg(test)]
@@ -493,7 +470,7 @@ messages: []
         let (tick_index, effects) = parse_tick_effects(text).unwrap();
         assert_eq!(tick_index, 1);
         assert_eq!(
-            super::emit_effect_payload(&effects[0]),
+            crate::effect::payload_json(&effects[0]),
             r#"{"place":"p","id":"s","delta":-1}"#
         );
     }

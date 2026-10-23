@@ -1,15 +1,14 @@
 //! Finish a commit a crash left half done, or roll it back.
 
 use std::collections::BTreeSet;
-use std::fs::{self, File, OpenOptions};
-use std::io::Write;
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 
 use crate::error::Reason;
 use crate::journal::{self, JournalEntry};
 use crate::model::MemoryLine;
 use crate::store::codec::emit_memory_line;
-use crate::store::durable::{fsync_dir, fsync_file, rename, tmp_path};
+use crate::store::durable::{atomic_publish, fsync_dir, fsync_file, rename, tmp_path};
 
 /// Run before reading a pack that a crash may have left mid-commit.
 pub fn recover(root: &Path) -> Result<(), Reason> {
@@ -198,7 +197,7 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
         if body.is_empty() && !path.is_file() {
             continue;
         }
-        atomic_write(&path, body.as_bytes())?;
+        atomic_publish(&path, body.as_bytes())?;
     }
     Ok(())
 }
@@ -244,23 +243,6 @@ fn memory_tick(line: &str) -> Option<u64> {
     serde_json::from_str::<MemoryTick>(line)
         .ok()
         .map(|row| row.tick_index)
-}
-
-fn atomic_write(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
-    let tmp = tmp_path(target);
-    if let Some(parent) = tmp.parent() {
-        fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
-    }
-    {
-        let mut file = File::create(&tmp).map_err(|_| Reason::CommitConflict)?;
-        file.write_all(bytes).map_err(|_| Reason::CommitConflict)?;
-        file.sync_all().map_err(|_| Reason::CommitConflict)?;
-    }
-    fs::rename(&tmp, target).map_err(|_| Reason::CommitConflict)?;
-    if let Some(parent) = target.parent() {
-        fsync_dir(parent)?;
-    }
-    Ok(())
 }
 
 fn delete_tmp(dir: &Path) {

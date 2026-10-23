@@ -1,11 +1,10 @@
 //! The host digest, and the player digest built from the view.
 
-use crate::effect::Effect;
+use crate::effect::{payload_json, Effect};
 use crate::error::Reason;
 use crate::intent::ViewerId;
 use crate::journal::{self, JournalEntry};
 use crate::perceive::View;
-use crate::store::codec::emit_effect_payload;
 use crate::world::World;
 
 pub fn host_summary(world: &World) -> Result<String, Reason> {
@@ -35,7 +34,7 @@ pub fn host_lines(world: &World, effects: &[(u64, &Effect)]) -> String {
         rows.push(format!(
             "effect {} {tick_index} {}",
             effect.class_name(),
-            emit_effect_payload(effect)
+            payload_json(effect)
         ));
     }
     for (id, clock) in &world.now().clocks {

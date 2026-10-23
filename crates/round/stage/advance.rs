@@ -2,7 +2,6 @@
 
 use spookery_kernel::api::canon::tick_settings::Budget;
 use spookery_kernel::api::draft::Draft;
-use spookery_kernel::api::pause::apply_pause_policy;
 use spookery_kernel::api::Reason;
 
 use crate::state::Round;
@@ -27,7 +26,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     if hour_changed {
         draft.reset_live_acts()?;
     }
-    apply_pause_policy(draft)
+    draft.apply_pause_policy()
 }
 
 pub fn minutes_for(humans: u32, budget: &Budget) -> u64 {

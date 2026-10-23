@@ -5,7 +5,6 @@ pub(crate) mod check;
 pub mod cond;
 pub mod cost;
 pub(crate) mod effect;
-pub(crate) mod exit;
 pub(crate) mod expand;
 pub mod expr;
 pub mod gate;

@@ -169,8 +169,7 @@ where
                         .get(&intent.actor_id)
                         .map(|actor| actor.place())
                         .ok_or(Reason::UnknownKey)?;
-                    let exit =
-                        crate::rules::exit::named(canon, from, &name).ok_or(Reason::NoExit)?;
+                    let exit = crate::map::named(canon, from, &name).ok_or(Reason::NoExit)?;
                     exit.to.clone()
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),
