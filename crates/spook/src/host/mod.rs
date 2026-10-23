@@ -9,7 +9,6 @@ mod listen;
 mod mcp_http;
 mod world_loop;
 
-pub use frames::speak;
 pub use gm_tools::call_gm_tool;
 pub use idle_clock::on_scheduled_wake;
 pub use limits::{OUTBOUND_BYTES, OUTBOUND_FRAMES, REQUESTED_SEND_BUFFER};

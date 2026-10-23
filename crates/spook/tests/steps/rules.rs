@@ -682,7 +682,7 @@ fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let mut opened = open_pack(&pack);
     let mut codes = Vec::new();
     for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
-        match opened.queue_player_move("pc_rowan", move_name) {
+        match opened.queue_player_move("pc_rowan", move_name, None) {
             Err(miss) if miss.reason() == Reason::NotInSpec => {
                 codes.push(miss.token());
             }

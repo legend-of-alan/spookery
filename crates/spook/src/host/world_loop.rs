@@ -3,11 +3,10 @@
 use std::io::{self, Write};
 
 use spookery_engine::{
-    GateRefusal, PlayerLine, QueuedMove, Reason, RecipientLine, RoundOutput, World,
-    MAX_PLAYER_SEATS,
+    GateRefusal, Heard, QueuedMove, Reason, RecipientLine, RoundOutput, World, MAX_PLAYER_SEATS,
 };
 
-use super::frames::{self, speak};
+use super::frames;
 use super::idle_clock::{self, wall_now};
 use super::limits::{CancelTx, OutTx};
 
@@ -37,7 +36,19 @@ pub fn handle_player_move(
     line: &str,
     gm_seated: bool,
 ) -> Result<MoveOutcome, GateRefusal> {
-    let queued = match world.queue_player_move(actor_id, line) {
+    let (verb, rest) = verb_line(line, actor_id)?;
+    let (verb, target) = parse_turn(verb, rest)?;
+    handle_turn(world, actor_id, verb, target, gm_seated)
+}
+
+fn handle_turn(
+    world: &mut World,
+    actor_id: &str,
+    verb: &str,
+    target: Option<&str>,
+    gm_seated: bool,
+) -> Result<MoveOutcome, GateRefusal> {
+    let queued = match world.queue_player_move(actor_id, verb, target) {
         Ok(queued) => queued,
         Err(refusal) => {
             if !gm_seated && refusal.reason() == Reason::Busy {
@@ -474,6 +485,89 @@ fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
     Ok(out)
 }
 
+enum PlayerCommand<'w, 'l> {
+    Speech(Heard<'w>, &'l str),
+    Lines(String),
+    Turn(&'l str, Option<&'l str>),
+}
+
+fn parse_player_command<'w, 'l: 'w>(
+    world: &'w World,
+    seated: &str,
+    line: &'l str,
+) -> Result<PlayerCommand<'w, 'l>, Reason> {
+    let (verb, rest) = verb_line(line, seated)?;
+    if verb.is_empty() {
+        return Err(Reason::Schema);
+    }
+    if verb == "say" {
+        if rest.is_empty() {
+            return Err(Reason::Schema);
+        }
+        let place = world
+            .now()
+            .actors
+            .get(seated)
+            .filter(|actor| actor.is_pc())
+            .ok_or(Reason::Schema)?
+            .place();
+        let (target, text) = split_token(rest);
+        let (heard, text) = if !text.is_empty() && target == "place" {
+            (Heard::Place(place), text)
+        } else if !text.is_empty() && world.now().actors.contains_key(target) {
+            (Heard::Actor(target), text)
+        } else {
+            (Heard::Table, rest)
+        };
+        return Ok(PlayerCommand::Speech(heard, text));
+    }
+    if rest.is_empty() {
+        match verb {
+            "help" => return Ok(PlayerCommand::Lines(world.help_lines(seated))),
+            "map" => return Ok(PlayerCommand::Lines(world.player_lines(seated))),
+            "look" => return Ok(PlayerCommand::Lines(world.look_lines(seated))),
+            _ => {}
+        }
+    }
+    if !world.canon().rules.is_verb(verb) {
+        return Err(Reason::NotInSpec);
+    }
+    let (verb, target) = parse_turn(verb, rest)?;
+    Ok(PlayerCommand::Turn(verb, target))
+}
+
+fn parse_turn<'a>(verb: &'a str, rest: &'a str) -> Result<(&'a str, Option<&'a str>), Reason> {
+    if rest.is_empty() {
+        return Ok((verb, None));
+    }
+    let (target, extra) = split_token(rest);
+    if target.is_empty() || !extra.is_empty() {
+        return Err(Reason::Schema);
+    }
+    Ok((verb, Some(target)))
+}
+
+fn verb_line<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
+    if line.is_empty() {
+        return Err(Reason::Schema);
+    }
+    let (first, rest) = split_token(line);
+    if let Some(id) = first.strip_prefix("player:") {
+        if id.is_empty() || id != seated || rest.is_empty() {
+            return Err(Reason::Schema);
+        }
+        return Ok(split_token(rest));
+    }
+    Ok((first, rest))
+}
+
+fn split_token(line: &str) -> (&str, &str) {
+    match line.split_once(' ') {
+        Some((token, rest)) => (token, rest),
+        None => (line, ""),
+    }
+}
+
 fn on_player(
     world: &mut World,
     seats: &mut Seats,
@@ -481,7 +575,7 @@ fn on_player(
     conn: u64,
     line: &str,
 ) -> Result<PlayerReply, Reason> {
-    if is_close(line) {
+    if split_token(line) == ("close", "") {
         if drop_conn(world, seats, conn)? {
             print_host(world, &[]);
         }
@@ -494,46 +588,33 @@ fn on_player(
     else {
         return Ok(PlayerReply::Hangup);
     };
-    match world.parse_player_input(line, &actor_id) {
-        Ok(PlayerLine::Speech) => match speak(world, &actor_id, line) {
-            Ok(spoken) => {
-                println!("{}", spoken.tape);
-                let _ = io::stdout().flush();
-                send_gm(seats, spoken.gm_event);
-                send_recipients(
-                    world,
-                    seats,
-                    &spoken.recipients,
-                    spoken.player_event.into_bytes(),
-                )?;
-                Ok(PlayerReply::Done)
+    match parse_player_command(world, &actor_id, line) {
+        Ok(PlayerCommand::Speech(heard, text)) => {
+            match world.speak_player(&actor_id, heard, text) {
+                Ok(stored) => {
+                    let spoken = frames::spoken_from(&stored);
+                    println!("{}", spoken.tape);
+                    let _ = io::stdout().flush();
+                    send_gm(seats, spoken.gm_event);
+                    send_recipients(
+                        world,
+                        seats,
+                        &spoken.recipients,
+                        spoken.player_event.into_bytes(),
+                    )?;
+                }
+                Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
             }
-            Err(code) => {
-                send_player(world, seats, conn, refused_line(code).into_bytes())?;
-                Ok(PlayerReply::Done)
-            }
-        },
-        Ok(PlayerLine::Help) => {
-            let text = world.help_lines(&actor_id);
+        }
+        Ok(PlayerCommand::Lines(text)) => {
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
-            Ok(PlayerReply::Done)
         }
-        Ok(PlayerLine::Look) => {
-            let text = world.look_lines(&actor_id);
-            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
-            Ok(PlayerReply::Done)
+        Ok(PlayerCommand::Turn(verb, target)) => {
+            on_mechanical(world, seats, restart, conn, &actor_id, verb, target)?;
         }
-        Ok(PlayerLine::Map) => {
-            let text = world.player_lines(&actor_id);
-            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
-            Ok(PlayerReply::Done)
-        }
-        Ok(PlayerLine::Turn) => on_mechanical(world, seats, restart, conn, &actor_id, line),
-        Err(code) => {
-            send_player(world, seats, conn, refused_line(code).into_bytes())?;
-            Ok(PlayerReply::Done)
-        }
+        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
     }
+    Ok(PlayerReply::Done)
 }
 
 fn on_mechanical(
@@ -542,10 +623,11 @@ fn on_mechanical(
     restart: &tokio::sync::watch::Sender<u64>,
     conn: u64,
     actor_id: &str,
-    line: &str,
+    verb: &str,
+    target: Option<&str>,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match handle_player_move(world, actor_id, line, gm_seated) {
+    match handle_turn(world, actor_id, verb, target, gm_seated) {
         Ok(MoveOutcome::Queued(queued)) => {
             send_gm(
                 seats,
@@ -638,13 +720,6 @@ fn send_recipients(
         }
     }
     Ok(())
-}
-
-fn is_close(line: &str) -> bool {
-    match line.split_once(' ') {
-        Some((token, rest)) => token == "close" && rest.is_empty(),
-        None => line == "close",
-    }
 }
 
 fn drop_conn(world: &mut World, seats: &mut Seats, conn: u64) -> Result<bool, Reason> {

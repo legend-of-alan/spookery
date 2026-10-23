@@ -21,11 +21,6 @@ pub struct Spoken {
     pub recipients: Vec<String>,
 }
 
-pub fn speak(world: &World, actor_id: &str, line: &str) -> Result<Spoken, Reason> {
-    let stored = world.speak_player(actor_id, line)?;
-    Ok(spoken_from(&stored))
-}
-
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
 pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
     let call = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
@@ -33,7 +28,7 @@ pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Resul
     Ok(spoken_from(&stored))
 }
 
-fn spoken_from(stored: &TapeRecord) -> Spoken {
+pub(super) fn spoken_from(stored: &TapeRecord) -> Spoken {
     Spoken {
         tape: record_line(stored),
         player_event: player_say_line(stored),

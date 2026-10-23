@@ -513,7 +513,7 @@ fn an_open_transaction_writes_nothing() {
     let oil = lamp_oil(shard.now());
     shard.seat_player("pc_rowan").unwrap();
     shard
-        .queue_player_move("pc_rowan", "take lamp_oil")
+        .queue_player_move("pc_rowan", "take", Some("lamp_oil"))
         .unwrap();
     assert_eq!(shard.queued_intents().len(), 1);
     drop(shard);

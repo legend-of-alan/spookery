@@ -39,7 +39,7 @@ pub use round::{
 };
 pub use rules::{GateRefusal, MoveReport, RollResult};
 pub use visibility::{RecipientLine, ViewerChanges};
-pub use world::{check_pack, GmIntentSpec, PlayerLine, QueuedMove, World, MAX_PLAYER_SEATS};
+pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World, MAX_PLAYER_SEATS};
 
 #[cfg(any(test, feature = "testing"))]
 pub use canon::strip_body;

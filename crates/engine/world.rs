@@ -27,13 +27,11 @@ pub const MAX_PLAYER_SEATS: usize = 3;
 /// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
 const SAY_TEXT_CAP: usize = 4 * 1024;
 
-/// `say` is speech. A verb is a turn. A habit name is `NOT_IN_SPEC`.
-pub enum PlayerLine {
-    Speech,
-    Turn,
-    Help,
-    Map,
-    Look,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Heard<'a> {
+    Table,
+    Place(&'a str),
+    Actor(&'a str),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,12 +60,6 @@ pub struct World {
     pub(crate) queue: Vec<Intent>,
     next_session: u64,
     warning: Option<&'static str>,
-}
-
-enum Heard<'a> {
-    Table,
-    Place(&'a str),
-    Actor(&'a str),
 }
 
 impl World {
@@ -155,74 +147,35 @@ impl World {
         }))
     }
 
-    pub fn parse_player_input(&self, line: &str, seated: &str) -> Result<PlayerLine, Reason> {
-        let (verb, rest) = verb_line(line, seated)?;
-        if verb.is_empty() {
-            return Err(Reason::Schema);
-        }
-        if verb == "say" {
-            return Ok(PlayerLine::Speech);
-        }
-        if rest.is_empty() && matches!(verb, "help" | "map" | "look") {
-            return Ok(match verb {
-                "help" => PlayerLine::Help,
-                "map" => PlayerLine::Map,
-                _ => PlayerLine::Look,
-            });
-        }
-        if self.canon.rules.is_verb(verb) {
-            Ok(PlayerLine::Turn)
-        } else {
-            Err(Reason::NotInSpec)
-        }
-    }
-
     pub fn queue_player_move(
         &mut self,
         actor_id: &str,
-        line: &str,
-    ) -> Result<QueuedMove, GateRefusal> {
-        let (verb, rest) = verb_line(line, actor_id)?;
-        self.queue_verb(actor_id, verb, rest)
-    }
-
-    pub fn queue_wait(&mut self, actor_id: &str) -> Result<QueuedMove, GateRefusal> {
-        self.queue_verb(actor_id, "wait", "")
-    }
-
-    fn queue_verb(
-        &mut self,
-        actor_id: &str,
         verb: &str,
-        rest: &str,
+        target: Option<&str>,
     ) -> Result<QueuedMove, GateRefusal> {
-        if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
-            return Err(Reason::Schema.into());
-        }
-        let kind = self
-            .verb_target(actor_id, verb, rest)
-            .ok_or(Reason::NotInSpec)?;
-        let target = match kind {
-            TargetKind::None => {
-                if !rest.is_empty() {
-                    return Err(Reason::Schema.into());
-                }
-                Target::Empty
-            }
-            TargetKind::Actor | TargetKind::Item => {
-                let (named, extra) = split_token(rest);
-                if named.is_empty() || !extra.is_empty() {
-                    return Err(Reason::Schema.into());
-                }
-                Target::Actor(named.to_string())
-            }
-            TargetKind::Place | TargetKind::Exit => {
-                let (place, extra) = split_token(rest);
-                if place.is_empty() || !extra.is_empty() {
-                    return Err(Reason::Schema.into());
-                }
-                Target::Place(place.to_string())
-            }
+        let actor = self
+            .now
+            .actors
+            .get(actor_id)
+            .filter(|actor| actor.is_pc())
+            .ok_or(Reason::Schema)?;
+        let target = target.filter(|token| !token.is_empty());
+        let rule = verb_for(
+            &self.canon,
+            Some(actor.place()),
+            verb,
+            target,
+            actor.wielded(),
+        )
+        .ok_or(Reason::NotInSpec)?;
+        let When::Verb { target: kind, .. } = &rule.when else {
+            return Err(Reason::NotInSpec.into());
+        };
+        let target = match (kind, target) {
+            (TargetKind::None, None) => Target::Empty,
+            (TargetKind::Actor | TargetKind::Item, Some(id)) => Target::Actor(id.to_string()),
+            (TargetKind::Place | TargetKind::Exit, Some(id)) => Target::Place(id.to_string()),
+            _ => return Err(Reason::Schema.into()),
         };
         let intent = self.player_intent(actor_id, verb, target)?;
         gate(&self.canon, &self.now, &intent)?;
@@ -235,21 +188,8 @@ impl World {
         Ok(queued)
     }
 
-    fn verb_target(&self, actor_id: &str, verb: &str, rest: &str) -> Option<TargetKind> {
-        let actor = self.now.actors.get(actor_id)?;
-        let (token, _) = split_token(rest);
-        let hint = (!token.is_empty()).then_some(token);
-        let rule = verb_for(
-            &self.canon,
-            Some(actor.place()),
-            verb,
-            hint,
-            actor.wielded(),
-        )?;
-        match &rule.when {
-            When::Verb { target, .. } => Some(*target),
-            _ => None,
-        }
+    pub fn queue_wait(&mut self, actor_id: &str) -> Result<QueuedMove, GateRefusal> {
+        self.queue_player_move(actor_id, "wait", None)
     }
 
     fn player_intent(&self, actor_id: &str, verb: &str, target: Target) -> Result<Intent, Reason> {
@@ -353,35 +293,21 @@ impl World {
         })
     }
 
-    pub fn speak_player(&self, actor_id: &str, line: &str) -> Result<TapeRecord, Reason> {
-        let (verb, rest) = verb_line(line, actor_id)?;
-        if verb.is_empty() {
-            return Err(Reason::Schema);
-        }
-        if verb != "say" {
-            return Err(Reason::NotInSpec);
-        }
-        if rest.is_empty() {
-            return Err(Reason::Schema);
-        }
+    pub fn speak_player(
+        &self,
+        actor_id: &str,
+        heard: Heard<'_>,
+        text: &str,
+    ) -> Result<TapeRecord, Reason> {
         if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
             return Err(Reason::Schema);
         }
-        let speaker_place = self
-            .now
-            .actors
-            .get(actor_id)
-            .ok_or(Reason::Schema)?
-            .place()
-            .to_string();
-        let (target, text) = split_token(rest);
-        let (heard, text) = if !text.is_empty() && target == "place" {
-            (Heard::Place(&speaker_place), one_line(text)?.to_string())
-        } else if !text.is_empty() && self.now.actors.contains_key(target) {
-            (Heard::Actor(target), one_line(text)?.to_string())
-        } else {
-            (Heard::Table, one_line(rest)?.to_string())
-        };
+        if let Heard::Actor(actor) = heard {
+            if !self.now.actors.contains_key(actor) {
+                return Err(Reason::Schema);
+            }
+        }
+        let text = one_line(text)?.to_string();
         self.append_speech(&format!("player:{actor_id}"), Some(actor_id), heard, text)
     }
 
@@ -668,27 +594,6 @@ fn speech_recipients(now: &Now, speaker: Option<&str>, heard: Heard<'_>) -> Vec<
         ids.insert(speaker.to_string());
     }
     ids.into_iter().collect()
-}
-
-pub(crate) fn verb_line<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
-    if line.is_empty() {
-        return Err(Reason::Schema);
-    }
-    let (first, rest) = split_token(line);
-    if let Some(id) = first.strip_prefix("player:") {
-        if id.is_empty() || id != seated || rest.is_empty() {
-            return Err(Reason::Schema);
-        }
-        return Ok(split_token(rest));
-    }
-    Ok((first, rest))
-}
-
-pub(crate) fn split_token(line: &str) -> (&str, &str) {
-    match line.split_once(' ') {
-        Some((token, rest)) => (token, rest),
-        None => (line, ""),
-    }
 }
 
 fn canonical_line(verb: &str, token: &str) -> String {
