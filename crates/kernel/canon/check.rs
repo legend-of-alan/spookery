@@ -1,13 +1,16 @@
-//! Cross-file validation of rules, exits, checks, meters, items, and facts.
+//! Cross-file validation of rules, exits, checks, meters, items, facts, and triggers.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::save::unknown_item;
-use crate::canon::{CastCanon, FactCanon, ItemCanon, PlaceCanon};
+use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
 use crate::check::CheckDef;
 use crate::diagnostic::{schema as schema_error, Diagnostic};
 use crate::meter::MeterDef;
-use crate::rule::{Cond, Cost, EffectTemplate, Expr, ResistSpec, Rule, RuleTable, Who};
+use crate::rule::{
+    ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo, NarrateTo, ResistSpec, Rule,
+    RuleTable, When, Who,
+};
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
 pub(super) fn broken_exits(
@@ -111,15 +114,14 @@ pub(super) fn unknown_rule_items(
                 }
             }
         }
-        for effect in rule
-            .do_
-            .iter()
-            .chain(rule.success.iter())
-            .chain(rule.partial.iter())
-            .chain(rule.failure.iter())
-        {
-            effect_items(effect, &mut ids);
-        }
+        rule.visit_effects(|effect| match effect {
+            EffectTemplate::Item { id, .. } | EffectTemplate::Wield { id, .. }
+                if id != "target" =>
+            {
+                ids.push(id.clone());
+            }
+            _ => {}
+        });
         ids.sort();
         ids.dedup();
         for id in ids {
@@ -149,26 +151,6 @@ fn cond_items(cond: &Cond, ids: &mut Vec<String>) {
             }
         }
         Cond::Not(inner) => cond_items(inner, ids),
-        _ => {}
-    }
-}
-
-fn effect_items(effect: &EffectTemplate, ids: &mut Vec<String>) {
-    match effect {
-        EffectTemplate::Item { id, resist, .. } => {
-            if id != "target" {
-                ids.push(id.clone());
-            }
-            resist_items(resist.as_ref(), ids);
-        }
-        EffectTemplate::Wield { id, .. } => {
-            if id != "target" {
-                ids.push(id.clone());
-            }
-        }
-        EffectTemplate::Meter { resist, .. }
-        | EffectTemplate::Flag { resist, .. }
-        | EffectTemplate::Narrate { resist, .. } => resist_items(resist.as_ref(), ids),
         _ => {}
     }
 }
@@ -215,29 +197,15 @@ fn scan_resist(
     seen
 }
 
-fn resist_items(resist: Option<&ResistSpec>, ids: &mut Vec<String>) {
-    let Some(ResistSpec::Roll { resisted, .. }) = resist else {
-        return;
-    };
-    for effect in resisted {
-        effect_items(effect, ids);
-    }
-}
-
 pub(super) fn reveal_problems(
     rules: &RuleTable,
     facts: &BTreeMap<String, FactCanon>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
-        let mut effects = Vec::new();
-        collect_effects(&rule.do_, &mut effects);
-        collect_effects(&rule.success, &mut effects);
-        collect_effects(&rule.partial, &mut effects);
-        collect_effects(&rule.failure, &mut effects);
-        for effect in effects {
+        rule.visit_effects(|effect| {
             let EffectTemplate::Reveal { who, fact } = effect else {
-                continue;
+                return;
             };
             if matches!(who, Who::World) {
                 diags.push(
@@ -262,18 +230,9 @@ pub(super) fn reveal_problems(
                     .with_path(format!("rules[{}]", rule.index)),
                 );
             }
-        }
+        });
     }
     diags
-}
-
-fn collect_effects<'a>(effects: &'a [EffectTemplate], out: &mut Vec<&'a EffectTemplate>) {
-    for effect in effects {
-        out.push(effect);
-        if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
-            collect_effects(resisted, out);
-        }
-    }
 }
 
 pub(super) fn unknown_checks(
@@ -299,13 +258,6 @@ pub(super) fn unknown_checks(
         );
     }
     diags
-}
-
-fn meter_keys(effect: &EffectTemplate) -> Option<&str> {
-    match effect {
-        EffectTemplate::Meter { key, .. } => Some(key),
-        _ => None,
-    }
 }
 
 pub(super) fn unknown_exprs(
@@ -432,15 +384,19 @@ fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
     for cond in &rule.if_ {
         push_cond(cond, exprs);
     }
-    for effect in rule
-        .do_
-        .iter()
-        .chain(&rule.success)
-        .chain(&rule.partial)
-        .chain(&rule.failure)
-    {
-        push_effect(effect, exprs);
-    }
+    rule.visit_effects(|effect| {
+        if let EffectTemplate::Meter { add, set, .. } = effect {
+            if let Some(expr) = add {
+                exprs.push(expr);
+            }
+            if let Some(expr) = set {
+                exprs.push(expr);
+            }
+        }
+        if let Some(ResistSpec::Roll { target, .. }) = effect.resist() {
+            exprs.push(target);
+        }
+    });
 }
 
 fn push_cost<'a>(cost: &'a Cost, exprs: &mut Vec<&'a Expr>) {
@@ -459,44 +415,6 @@ fn push_cond<'a>(cond: &'a Cond, exprs: &mut Vec<&'a Expr>) {
         }
         Cond::Not(inner) => push_cond(inner, exprs),
         _ => {}
-    }
-}
-
-fn push_effect<'a>(effect: &'a EffectTemplate, exprs: &mut Vec<&'a Expr>) {
-    match effect {
-        EffectTemplate::Meter {
-            add, set, resist, ..
-        } => {
-            if let Some(expr) = add {
-                exprs.push(expr);
-            }
-            if let Some(expr) = set {
-                exprs.push(expr);
-            }
-            if let Some(spec) = resist {
-                push_resist(spec, exprs);
-            }
-        }
-        EffectTemplate::Flag { resist, .. }
-        | EffectTemplate::Narrate { resist, .. }
-        | EffectTemplate::Item { resist, .. } => {
-            if let Some(spec) = resist {
-                push_resist(spec, exprs);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn push_resist<'a>(spec: &'a ResistSpec, exprs: &mut Vec<&'a Expr>) {
-    if let ResistSpec::Roll {
-        target, resisted, ..
-    } = spec
-    {
-        exprs.push(target);
-        for effect in resisted {
-            push_effect(effect, exprs);
-        }
     }
 }
 
@@ -523,17 +441,11 @@ pub(super) fn unknown_meters(
         );
     }
     for rule in rules.iter() {
-        for effect in rule
-            .do_
-            .iter()
-            .chain(&rule.success)
-            .chain(&rule.partial)
-            .chain(&rule.failure)
-        {
-            let Some(key) = meter_keys(effect) else {
+        for effect in rule.top_effects() {
+            let EffectTemplate::Meter { key, .. } = effect else {
                 continue;
             };
-            if meters.contains_key(key) {
+            if meters.contains_key(key.as_str()) {
                 continue;
             }
             diags.push(
@@ -550,4 +462,338 @@ pub(super) fn unknown_meters(
         }
     }
     diags
+}
+
+/// Static warnings and trigger-reach errors on a loaded `Canon`.
+pub(crate) fn check_canon(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnostic> {
+    let mut diags = unreachable(canon);
+    diags.extend(teleport_in_verbs(canon));
+    diags.extend(trigger_cycles(canon));
+    diags.extend(trigger_leaks(canon, now));
+    diags
+}
+
+/// Places no exit path reaches from the start, including hidden and locked exits.
+fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
+    let mut seen = BTreeSet::new();
+    let mut queue = vec![canon.start_place.clone()];
+    while let Some(place) = queue.pop() {
+        if !seen.insert(place.clone()) {
+            continue;
+        }
+        if let Some(node) = canon.places.get(&place) {
+            for exit in &node.exits {
+                queue.push(exit.to.clone());
+            }
+        }
+    }
+    let mut diags = Vec::new();
+    for id in canon.places.keys() {
+        if seen.contains(id) {
+            continue;
+        }
+        diags.push(
+            Diagnostic::new(
+                "world/places",
+                "WARNING",
+                &format!("place '{id}' has no path from {}", canon.start_place),
+                "add an exit that reaches it",
+            )
+            .with_path(id.clone()),
+        );
+    }
+    diags
+}
+
+/// `teleport: true` in the shared verbs file is a warning. Author rules may teleport.
+fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
+    canon
+        .rules
+        .iter()
+        .filter(|rule| {
+            rule.file.replace('\\', "/").ends_with("rules/verbs.yaml")
+                && rule
+                    .top_effects()
+                    .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
+        })
+        .map(|rule| {
+            Diagnostic::new(
+                &rule.file,
+                "WARNING",
+                &format!("verb '{}' teleports", rule.local_id),
+                "teleport belongs on an author rule, not in verbs.yaml",
+            )
+            .with_path(format!("rules[{}]", rule.index))
+        })
+        .collect()
+}
+
+/// Change rules that set each other's watched values.
+fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
+    let rules: Vec<&Rule> = canon
+        .rules
+        .iter()
+        .filter(|rule| matches!(rule.when, When::Change(_)))
+        .collect();
+    let written: Vec<Vec<Mark>> = rules
+        .iter()
+        .map(|rule| {
+            let mut marks = Vec::new();
+            rule.visit_effects(|effect| marks_of(effect, &mut marks));
+            marks
+        })
+        .collect();
+    let mut next = vec![Vec::new(); rules.len()];
+    for (from, marks) in written.iter().enumerate() {
+        for (to, rule) in rules.iter().enumerate() {
+            if from == to {
+                continue;
+            }
+            let When::Change(watch) = &rule.when else {
+                continue;
+            };
+            if marks.iter().any(|mark| sets_watch(watch, rule, mark)) {
+                next[from].push(to);
+            }
+        }
+    }
+    let mut hit = vec![false; rules.len()];
+    mark_cycles(&next, &mut hit);
+    rules
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| hit[*index])
+        .map(|(_, rule)| {
+            Diagnostic::new(
+                &rule.file,
+                "WARNING",
+                &format!("rule '{}' is in a trigger cycle", rule.local_id),
+                "stop one rule in the cycle from setting the next watched value",
+            )
+            .with_path(format!("rules[{}]", rule.index))
+        })
+        .collect()
+}
+
+/// Narrate and note on a change rule that can reach a viewer who cannot see the change.
+fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for rule in canon.rules.iter() {
+        let When::Change(watch) = &rule.when else {
+            continue;
+        };
+        let sight = sight_of(canon, now, watch);
+        let mut leak = false;
+        rule.visit_effects(|effect| {
+            if reach_of(effect).is_some_and(|reach| too_wide(&sight, &reach)) {
+                leak = true;
+            }
+        });
+        if !leak {
+            continue;
+        }
+        diags.push(
+            Diagnostic::new(
+                &rule.file,
+                "TRIGGER_LEAK",
+                &format!(
+                    "rule '{}' leaks a change to a viewer who cannot see it",
+                    rule.local_id
+                ),
+                "address that output to self, or to here when the room can see the change",
+            )
+            .with_path(format!("rules[{}]", rule.index)),
+        );
+    }
+    diags
+}
+
+#[derive(Clone)]
+enum Mark {
+    Flag { key: String, value: bool },
+    Meter(String),
+    Item { id: String, gained: bool },
+    Clock(String),
+    Arrive(String),
+    Knows(String),
+}
+
+enum Reach {
+    Subject,
+    Room,
+    Named(Vec<String>),
+    Wider,
+}
+
+enum Sight {
+    Subject,
+    Room,
+    Owners(Vec<String>),
+    Everyone,
+}
+
+fn marks_of(effect: &EffectTemplate, out: &mut Vec<Mark>) {
+    match effect {
+        EffectTemplate::Flag { key, value, .. } => {
+            out.push(Mark::Flag {
+                key: key.clone(),
+                value: *value,
+            });
+        }
+        EffectTemplate::Meter { key, .. } => out.push(Mark::Meter(key.clone())),
+        EffectTemplate::Item { id, add, .. } => {
+            if *add > 0 {
+                out.push(Mark::Item {
+                    id: id.clone(),
+                    gained: true,
+                });
+            } else if *add < 0 {
+                out.push(Mark::Item {
+                    id: id.clone(),
+                    gained: false,
+                });
+            }
+        }
+        EffectTemplate::Clock { id, add, .. } if add.is_some() => {
+            out.push(Mark::Clock(id.clone()));
+        }
+        EffectTemplate::Location {
+            to: LocationTo::Place(id),
+            ..
+        } => out.push(Mark::Arrive(id.clone())),
+        EffectTemplate::Reveal { fact, .. } => out.push(Mark::Knows(fact.clone())),
+        EffectTemplate::Memory { fact_ids, .. } => {
+            for fact in fact_ids {
+                out.push(Mark::Knows(fact.clone()));
+            }
+        }
+        _ => {}
+    }
+}
+
+fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Mark) -> bool {
+    match (watch, mark) {
+        (
+            ChangeWatch::Flag { key, becomes },
+            Mark::Flag {
+                key: written,
+                value,
+            },
+        ) => key == written && becomes == value,
+        (ChangeWatch::Meter { key, .. }, Mark::Meter(written)) => key == written,
+        (
+            ChangeWatch::Item { id, gained },
+            Mark::Item {
+                id: written,
+                gained: up,
+            },
+        ) => id == written && gained == up,
+        (ChangeWatch::Clock { id }, Mark::Clock(written)) => id == written,
+        (ChangeWatch::Arrive { place, .. }, Mark::Arrive(dest)) => {
+            rule.watched_place(place) == dest
+        }
+        (ChangeWatch::Knows { fact }, Mark::Knows(written)) => fact == written,
+        _ => false,
+    }
+}
+
+fn sight_of(canon: &Canon, now: Option<&crate::model::Now>, watch: &ChangeWatch) -> Sight {
+    match watch {
+        ChangeWatch::Knows { .. } => Sight::Subject,
+        ChangeWatch::Clock { id } => Sight::Owners(
+            now.and_then(|now| now.clocks.get(id))
+                .map(|clock| clock.owners.clone())
+                .unwrap_or_default(),
+        ),
+        ChangeWatch::Flag { key, .. } if flag_is_public(canon, key) => Sight::Everyone,
+        ChangeWatch::Arrive { .. }
+        | ChangeWatch::Leave { .. }
+        | ChangeWatch::Meter { .. }
+        | ChangeWatch::Flag { .. }
+        | ChangeWatch::Item { .. } => Sight::Room,
+    }
+}
+
+fn flag_is_public(canon: &Canon, key: &str) -> bool {
+    let mut world = false;
+    let mut actor = false;
+    for rule in canon.rules.iter() {
+        rule.visit_effects(|effect| {
+            if let EffectTemplate::Flag { who, key: flag, .. } = effect {
+                if flag == key {
+                    if matches!(who, Who::World) {
+                        world = true;
+                    } else {
+                        actor = true;
+                    }
+                }
+            }
+        });
+    }
+    world && !actor
+}
+
+fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
+    match effect {
+        EffectTemplate::Narrate { to, .. } => Some(match to {
+            NarrateTo::Self_ => Reach::Subject,
+            NarrateTo::Here => Reach::Room,
+            NarrateTo::Actors(ids) => Reach::Named(ids.clone()),
+        }),
+        EffectTemplate::Note { to, place, .. } => {
+            if place.is_some() {
+                Some(Reach::Wider)
+            } else {
+                Some(Reach::Named(to.clone()))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn too_wide(sight: &Sight, reach: &Reach) -> bool {
+    match sight {
+        Sight::Everyone => false,
+        Sight::Subject => !matches!(reach, Reach::Subject),
+        Sight::Room => !matches!(reach, Reach::Subject | Reach::Room),
+        Sight::Owners(owners) => match reach {
+            Reach::Subject => false,
+            Reach::Named(ids) => ids.iter().any(|id| !owners.iter().any(|owner| owner == id)),
+            Reach::Room | Reach::Wider => true,
+        },
+    }
+}
+
+fn mark_cycles(next: &[Vec<usize>], hit: &mut [bool]) {
+    let mut color = vec![0u8; next.len()];
+    let mut stack = Vec::new();
+    for start in 0..next.len() {
+        if color[start] == 0 {
+            walk_cycle(start, next, &mut color, &mut stack, hit);
+        }
+    }
+}
+
+fn walk_cycle(
+    node: usize,
+    next: &[Vec<usize>],
+    color: &mut [u8],
+    stack: &mut Vec<usize>,
+    hit: &mut [bool],
+) {
+    color[node] = 1;
+    stack.push(node);
+    for &to in &next[node] {
+        if color[to] == 1 {
+            if let Some(at) = stack.iter().position(|item| *item == to) {
+                for item in &stack[at..] {
+                    hit[*item] = true;
+                }
+            }
+        } else if color[to] == 0 {
+            walk_cycle(to, next, color, stack, hit);
+        }
+    }
+    stack.pop();
+    color[node] = 2;
 }

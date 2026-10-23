@@ -42,18 +42,7 @@ pub fn load_save(text: &str) -> Result<Now, Vec<Diagnostic>> {
         }
     }
     let now: Now = parse_file(FILE, text, 0)?;
-    let mut diags = Vec::new();
-    if now.schema != crate::format::NOW {
-        diags.push(
-            schema(
-                FILE,
-                &format!("schema is '{}', which this file does not use", now.schema),
-                "write 'schema: now' with no version suffix",
-            )
-            .with_path("schema"),
-        );
-    }
-    diags.extend(occupancy_problems(&now));
+    let diags = occupancy_problems(&now);
     if diags.is_empty() {
         Ok(now)
     } else {

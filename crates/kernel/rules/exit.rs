@@ -20,13 +20,7 @@ pub(crate) fn named<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a 
 
 /// The exit a `location via` effect names, if this rule travels.
 pub(crate) fn token(rule: &Rule, intent: &Intent) -> Option<String> {
-    for effect in rule
-        .do_
-        .iter()
-        .chain(rule.success.iter())
-        .chain(rule.partial.iter())
-        .chain(rule.failure.iter())
-    {
+    for effect in rule.top_effects() {
         if let EffectTemplate::Location {
             to: LocationTo::Via(via),
             teleport: false,

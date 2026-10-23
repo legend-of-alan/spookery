@@ -29,6 +29,29 @@ impl Rule {
         }
         place
     }
+
+    pub fn top_effects(&self) -> impl Iterator<Item = &EffectTemplate> {
+        self.do_
+            .iter()
+            .chain(&self.success)
+            .chain(&self.partial)
+            .chain(&self.failure)
+    }
+
+    pub fn visit_effects<'a>(&'a self, mut visit: impl FnMut(&'a EffectTemplate)) {
+        fn walk<'a>(effects: &'a [EffectTemplate], visit: &mut impl FnMut(&'a EffectTemplate)) {
+            for effect in effects {
+                visit(effect);
+                if let Some(ResistSpec::Roll { resisted, .. }) = effect.resist() {
+                    walk(resisted, visit);
+                }
+            }
+        }
+        walk(&self.do_, &mut visit);
+        walk(&self.success, &mut visit);
+        walk(&self.partial, &mut visit);
+        walk(&self.failure, &mut visit);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

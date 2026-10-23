@@ -1,6 +1,5 @@
 //! The human player reads a socket and prints each frame.
 
-use std::fs;
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::path::Path;
@@ -19,7 +18,7 @@ pub fn run_player(
 ) -> Result<(), Error> {
     let actor = match as_player {
         Some(token) => parse_player_as(token)?,
-        None => start_pc(pack)?,
+        None => spookery_kernel::api::canon::load_start_pc(pack).map_err(Error::Reason)?,
     };
     let mut stream = TcpStream::connect(addr).map_err(Error::Io)?;
     stream.set_nodelay(true).map_err(Error::Io)?;
@@ -73,36 +72,6 @@ fn parse_player_as(token: &str) -> Result<String, Error> {
         return Err(Error::Reason(Reason::Schema));
     }
     Ok(id.to_string())
-}
-
-fn start_pc(pack: &Path) -> Result<String, Error> {
-    let id = match spookery_kernel::api::canon::load_canon(pack) {
-        Ok(canon) => canon.start_pc,
-        Err(errors) => match spookery_kernel::api::first_reason(&errors) {
-            Reason::NotInSpec => pack_pc_line(pack)?,
-            code => return Err(Error::Reason(code)),
-        },
-    };
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        return Err(Error::Reason(Reason::Schema));
-    }
-    Ok(id)
-}
-
-fn pack_pc_line(pack: &Path) -> Result<String, Error> {
-    let text =
-        fs::read_to_string(pack.join("pack.yaml")).map_err(|_| Error::Reason(Reason::NotInSpec))?;
-    for line in text.lines() {
-        let Some(rest) = line.trim().strip_prefix("pc:") else {
-            continue;
-        };
-        let mut id = rest.trim();
-        if id.len() >= 2 && id.starts_with('"') && id.ends_with('"') {
-            id = &id[1..id.len() - 1];
-        }
-        return Ok(id.to_string());
-    }
-    Err(Error::Reason(Reason::Schema))
 }
 
 fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error> {

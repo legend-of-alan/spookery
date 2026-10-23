@@ -7,10 +7,10 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::canon::tick_settings::{load_tick_settings, Budget};
-use crate::check::{load_checks, CheckDef};
+use crate::check::CheckDef;
 use crate::diagnostic::{
-    coded, locate_nth, locate_row_field, parse_file, schema as schema_error, tag_diagnostic,
-    with_spot, Diagnostic,
+    coded, first_reason, load_headed, locate_nth, locate_row_field, reason_of,
+    schema as schema_error, with_spot, Diagnostic,
 };
 use crate::error::Reason;
 use crate::format;
@@ -23,6 +23,7 @@ mod save;
 pub mod schema;
 pub mod tick_settings;
 
+pub(crate) use check::check_canon;
 use check::{
     broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
     unknown_rule_items,
@@ -677,17 +678,7 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
 
 pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
     const FILE: &str = "rules/meters.yaml";
-    let file = load_headed(FILE, text, format::METERS, 0, |file: MetersFile| {
-        if file.schema != format::METERS {
-            return Err(vec![schema_error(
-                FILE,
-                &format!("schema is '{}', which this file does not use", file.schema),
-                "write 'schema: meters' with no version suffix",
-            )
-            .with_path("schema")]);
-        }
-        Ok(file)
-    })?;
+    let file: MetersFile = load_headed(FILE, text, format::METERS, 0)?;
     let mut diags = Vec::new();
     let mut meters = BTreeMap::new();
     for (index, entry) in file.meters.into_iter().enumerate() {
@@ -783,46 +774,114 @@ fn meter_schema_error(
     diag
 }
 
+pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
+    const CHECKS_FILE: &str = "rules/checks.yaml";
+    let file: ChecksFile = load_headed(CHECKS_FILE, text, format::CHECKS, 0)?;
+    let mut diags = Vec::new();
+    let mut checks = BTreeMap::new();
+    for (index, entry) in file.checks.into_iter().enumerate() {
+        let path = format!("checks[{index}]");
+        let mut bad = false;
+        if entry.id.is_empty() {
+            diags.push(check_schema_error(
+                text,
+                index,
+                "id:",
+                &format!("{path}.id"),
+                "a check id is empty",
+                "set id to a short name",
+            ));
+            bad = true;
+        }
+        if entry.dice.count == 0 {
+            diags.push(check_schema_error(
+                text,
+                index,
+                "count:",
+                &format!("{path}.dice.count"),
+                &format!("check '{}' rolls zero dice", entry.id),
+                "set dice.count to 1 or more",
+            ));
+            bad = true;
+        }
+        if entry.dice.sides == 0 {
+            diags.push(check_schema_error(
+                text,
+                index,
+                "sides:",
+                &format!("{path}.dice.sides"),
+                &format!("check '{}' has a die with zero sides", entry.id),
+                "set dice.sides to 2 or more",
+            ));
+            bad = true;
+        }
+        if entry.stat.is_empty() {
+            diags.push(check_schema_error(
+                text,
+                index,
+                "stat:",
+                &format!("{path}.stat"),
+                &format!("check '{}' names no meter", entry.id),
+                "set stat to a meter id from rules/meters.yaml",
+            ));
+            bad = true;
+        }
+        if !bad && checks.contains_key(&entry.id) {
+            diags.push(check_schema_error(
+                text,
+                index,
+                "id:",
+                &format!("{path}.id"),
+                &format!("check '{}' is listed twice", entry.id),
+                "keep one check",
+            ));
+            bad = true;
+        }
+        if !bad {
+            checks.insert(
+                entry.id,
+                CheckDef {
+                    dice_count: entry.dice.count,
+                    dice_sides: entry.dice.sides,
+                    stat: entry.stat,
+                },
+            );
+        }
+    }
+    if diags.is_empty() {
+        Ok(checks)
+    } else {
+        Err(diags)
+    }
+}
+
+fn check_schema_error(
+    text: &str,
+    index: usize,
+    field: &str,
+    path: &str,
+    problem: &str,
+    hint: &str,
+) -> Diagnostic {
+    let mut diag = schema_error("rules/checks.yaml", problem, hint).with_path(path);
+    if let Some((line, column)) = locate_row_field(text, "id:", index, field) {
+        diag = diag.at_line(line, Some(column));
+    }
+    diag
+}
+
 fn load_verbs(text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
     const FILE: &str = "rules/verbs.yaml";
-    let file = load_headed(FILE, text, format::VERBS, 0, |file: schema::VerbsFile| {
-        if file.schema != format::VERBS {
-            return Err(vec![schema_error(
-                FILE,
-                &format!("schema is '{}', which this file does not use", file.schema),
-                "write 'schema: verbs' with no version suffix",
-            )
-            .with_path("schema")]);
-        }
-        Ok(file)
-    })?;
+    let file: schema::VerbsFile = load_headed(FILE, text, format::VERBS, 0)?;
     schema::compile(FILE, file.rules, &Owner::Verb)
 }
 
 fn load_item(file: &str, yaml: &str) -> Result<ItemFile, Vec<Diagnostic>> {
-    load_headed(file, yaml, format::ITEM, 1, |item: ItemFile| {
-        if item.schema != format::ITEM {
-            return Err(vec![schema_error(
-                file,
-                &format!("schema is '{}', which this file does not use", item.schema),
-                "write 'schema: item' with no version suffix",
-            )]);
-        }
-        Ok(item)
-    })
+    load_headed(file, yaml, format::ITEM, 1)
 }
 
 fn load_story(file: &str, text: &str) -> Result<StoryFile, Vec<Diagnostic>> {
-    load_headed(file, text, format::STORY, 0, |story: StoryFile| {
-        if story.schema != format::STORY {
-            return Err(vec![schema_error(
-                file,
-                &format!("schema is '{}', which this file does not use", story.schema),
-                "write 'schema: story' with no version suffix",
-            )]);
-        }
-        Ok(story)
-    })
+    load_headed(file, text, format::STORY, 0)
 }
 
 fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
@@ -847,160 +906,120 @@ fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
     })
 }
 
+pub fn load_start_pc(root: &Path) -> Result<String, Reason> {
+    let id = match load_canon(root) {
+        Ok(canon) => canon.start_pc,
+        Err(errors) => match first_reason(&errors) {
+            Reason::NotInSpec => {
+                let text = read_text(root, "pack.yaml").map_err(reason_of)?;
+                load_pack(&text).map_err(reason_of)?.start.pc
+            }
+            code => return Err(code),
+        },
+    };
+    if id.is_empty() || id.chars().any(char::is_whitespace) {
+        return Err(Reason::Schema);
+    }
+    Ok(id)
+}
+
 fn load_pack(text: &str) -> Result<PackFile, Vec<Diagnostic>> {
-    load_headed("pack.yaml", text, format::PACK, 0, |file: PackFile| {
-        let mut diags = Vec::new();
-        if file.schema != format::PACK {
-            diags.push(
-                schema_error(
-                    "pack.yaml",
-                    &format!("schema is '{}', which this file does not use", file.schema),
-                    "write 'schema: pack' with no version suffix",
-                )
-                .with_path("schema"),
-            );
-        }
-        if file.id.is_empty() {
-            diags.push(
-                schema_error("pack.yaml", "id is empty", "set id to a short pack id")
-                    .with_path("id"),
-            );
-        }
-        if diags.is_empty() {
-            Ok(file)
-        } else {
-            Err(diags)
-        }
-    })
+    let file: PackFile = load_headed("pack.yaml", text, format::PACK, 0)?;
+    if file.id.is_empty() {
+        return Err(vec![schema_error(
+            "pack.yaml",
+            "id is empty",
+            "set id to a short pack id",
+        )
+        .with_path("id")]);
+    }
+    Ok(file)
 }
 
 fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<Diagnostic>> {
-    load_headed(file, yaml, format::PLACE, line_base, |parsed: PlaceFile| {
-        let mut diags = Vec::new();
-        if parsed.schema != format::PLACE {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "schema:",
-                "schema",
-                &format!(
-                    "schema is '{}', which this file does not use",
-                    parsed.schema
-                ),
-                "write 'schema: place' with no version suffix",
-            ));
-        }
-        if parsed.id.is_empty() {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "id:",
-                "id",
-                "id is empty",
-                "set id to a short place id",
-            ));
-        }
-        if parsed.display_name.trim().is_empty() {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "display_name:",
-                "display_name",
-                "display_name is empty",
-                "set display_name to the name players see",
-            ));
-        }
-        if diags.is_empty() {
-            Ok(parsed)
-        } else {
-            Err(diags)
-        }
-    })
+    let parsed: PlaceFile = load_headed(file, yaml, format::PLACE, line_base)?;
+    let mut diags = Vec::new();
+    if parsed.id.is_empty() {
+        diags.push(headed_schema_error(
+            file,
+            yaml,
+            line_base,
+            "id:",
+            "id",
+            "id is empty",
+            "set id to a short place id",
+        ));
+    }
+    if parsed.display_name.trim().is_empty() {
+        diags.push(headed_schema_error(
+            file,
+            yaml,
+            line_base,
+            "display_name:",
+            "display_name",
+            "display_name is empty",
+            "set display_name to the name players see",
+        ));
+    }
+    if diags.is_empty() {
+        Ok(parsed)
+    } else {
+        Err(diags)
+    }
 }
 
 fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Diagnostic>> {
-    load_headed(file, yaml, format::CAST, line_base, |parsed: CastFile| {
-        let mut diags = Vec::new();
-        if parsed.schema != format::CAST {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "schema:",
-                "schema",
-                &format!(
-                    "schema is '{}', which this file does not use",
-                    parsed.schema
-                ),
-                "write 'schema: cast' with no version suffix",
-            ));
-        }
-        if parsed.id.is_empty() {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "id:",
-                "id",
-                "id is empty",
-                "set id to a short cast id",
-            ));
-        }
-        if parsed.id == crate::effect::WORLD {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "id:",
-                "id",
-                "id world is reserved",
-                "rename this cast member",
-            ));
-        }
-        if parsed.display_name.trim().is_empty() {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "display_name:",
-                "display_name",
-                "display_name is empty",
-                "set display_name to the name players see",
-            ));
-        }
-        if parsed.kind != "npc" && parsed.kind != "pc_template" {
-            diags.push(headed_schema_error(
-                file,
-                yaml,
-                line_base,
-                "kind:",
-                "kind",
-                &format!("kind is '{}', which is not npc or pc_template", parsed.kind),
-                "set kind to npc or pc_template",
-            ));
-        }
-        if diags.is_empty() {
-            Ok(parsed)
-        } else {
-            Err(diags)
-        }
-    })
-}
-
-fn load_headed<T: serde::de::DeserializeOwned>(
-    file: &str,
-    text: &str,
-    expected: &str,
-    line_base: u32,
-    check: impl FnOnce(T) -> Result<T, Vec<Diagnostic>>,
-) -> Result<T, Vec<Diagnostic>> {
-    if let Some(diag) = tag_diagnostic(text, expected, file, line_base) {
-        return Err(vec![diag]);
+    let parsed: CastFile = load_headed(file, yaml, format::CAST, line_base)?;
+    let mut diags = Vec::new();
+    if parsed.id.is_empty() {
+        diags.push(headed_schema_error(
+            file,
+            yaml,
+            line_base,
+            "id:",
+            "id",
+            "id is empty",
+            "set id to a short cast id",
+        ));
     }
-    check(parse_file(file, text, line_base)?)
+    if parsed.id == crate::effect::WORLD {
+        diags.push(headed_schema_error(
+            file,
+            yaml,
+            line_base,
+            "id:",
+            "id",
+            "id world is reserved",
+            "rename this cast member",
+        ));
+    }
+    if parsed.display_name.trim().is_empty() {
+        diags.push(headed_schema_error(
+            file,
+            yaml,
+            line_base,
+            "display_name:",
+            "display_name",
+            "display_name is empty",
+            "set display_name to the name players see",
+        ));
+    }
+    if parsed.kind != "npc" && parsed.kind != "pc_template" {
+        diags.push(headed_schema_error(
+            file,
+            yaml,
+            line_base,
+            "kind:",
+            "kind",
+            &format!("kind is '{}', which is not npc or pc_template", parsed.kind),
+            "set kind to npc or pc_template",
+        ));
+    }
+    if diags.is_empty() {
+        Ok(parsed)
+    } else {
+        Err(diags)
+    }
 }
 
 fn headed_schema_error(
@@ -1078,10 +1097,17 @@ fn split_frontmatter<'a>(file: &str, text: &'a str) -> Result<(&'a str, &'a str)
     .at_line(1, Some(1))])
 }
 
+/// Markdown with the body removed. Frontmatter stays. The trailing delimiter is kept.
+pub fn strip_body(text: &str) -> Result<String, Reason> {
+    let (yaml, _) = split_frontmatter("", text).map_err(|_| Reason::Schema)?;
+    Ok(format!("---\n{yaml}\n---\n"))
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PackFile {
-    schema: String,
+    #[serde(rename = "schema")]
+    _schema: String,
     id: String,
     title: String,
     system: String,
@@ -1100,7 +1126,8 @@ struct PackStart {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PlaceFile {
-    schema: String,
+    #[serde(rename = "schema")]
+    _schema: String,
     id: String,
     display_name: String,
     facts: Vec<FactFile>,
@@ -1138,7 +1165,8 @@ struct FactFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct CastFile {
-    schema: String,
+    #[serde(rename = "schema")]
+    _schema: String,
     id: String,
     kind: String,
     display_name: String,
@@ -1152,7 +1180,8 @@ struct CastFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ItemFile {
-    schema: String,
+    #[serde(rename = "schema")]
+    _schema: String,
     id: String,
     #[serde(default)]
     name: String,
@@ -1165,7 +1194,8 @@ struct ItemFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct StoryFile {
-    schema: String,
+    #[serde(rename = "schema")]
+    _schema: String,
     id: String,
     #[serde(default)]
     rules: Vec<RuleEntry>,
@@ -1174,7 +1204,8 @@ struct StoryFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MetersFile {
-    schema: String,
+    #[serde(rename = "schema")]
+    _schema: String,
     meters: Vec<MeterEntryFile>,
 }
 
@@ -1188,6 +1219,29 @@ struct MeterEntryFile {
     start: i64,
     #[serde(default)]
     hidden: bool,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChecksFile {
+    #[serde(rename = "schema")]
+    _schema: String,
+    checks: Vec<CheckEntryFile>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckEntryFile {
+    id: String,
+    dice: CheckDiceFile,
+    stat: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckDiceFile {
+    count: u32,
+    sides: u32,
 }
 
 #[cfg(test)]
@@ -1311,5 +1365,60 @@ meters:
             concat!("meters/", "v0"),
             "meters: []\n",
         );
+    }
+
+    #[test]
+    fn load_checks_rejects_an_unknown_tag_and_the_old_versioned_tag() {
+        rejects(
+            |text| load_checks(text).map(|_| ()),
+            "checks",
+            concat!("checks/", "v0"),
+            "checks: []\n",
+        );
+    }
+
+    #[test]
+    fn a_check_refusal_names_the_fix() {
+        let duplicate = "\
+schema: checks
+checks:
+  - id: grit
+    dice:
+      count: 2
+      sides: 6
+    stat: grit
+  - id: grit
+    dice:
+      count: 1
+      sides: 6
+    stat: grit
+";
+        let err = load_checks(duplicate).unwrap_err();
+        assert!(
+            err.iter().any(|diag| {
+                diag.message.contains("listed twice")
+                    && diag.path.as_deref() == Some("checks[1].id")
+                    && diag.line.is_some()
+            }),
+            "{err:?}"
+        );
+        let zero = "\
+schema: checks
+checks:
+  - id: grit
+    dice:
+      count: 0
+      sides: 0
+    stat: grit
+";
+        let err = load_checks(zero).unwrap_err();
+        assert!(err.iter().any(|diag| diag.message.contains("zero dice")));
+        assert!(err.iter().any(|diag| diag.message.contains("zero sides")));
+    }
+
+    #[test]
+    fn strip_body_rejects_a_missing_fence() {
+        assert_eq!(strip_body("no fence\n"), Err(Reason::Schema));
+        assert_eq!(strip_body("---\nno closer\n"), Err(Reason::Schema));
     }
 }

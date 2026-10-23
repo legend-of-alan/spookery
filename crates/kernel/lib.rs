@@ -13,7 +13,6 @@
 //! - `hash`: Blake2s, as raw bytes or as hex.
 //! - `host_summary`: the host digest, and the player digest built from the view.
 //! - `intent`: who is asking, and the action they asked the round to take.
-//! - `lint`: change-rule cycle and reach checks.
 //! - `map`: exits and the journeys that follow them.
 //! - `model`: the live save and the keys a commit watches.
 //! - `pause`: pause plot clocks while the table is empty.
@@ -34,7 +33,6 @@ pub(crate) mod format;
 pub(crate) mod hash;
 pub(crate) mod host_summary;
 pub(crate) mod intent;
-pub(crate) mod lint;
 pub(crate) mod map;
 pub(crate) mod model;
 pub(crate) mod pause;

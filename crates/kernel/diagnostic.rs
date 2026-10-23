@@ -237,6 +237,18 @@ pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     serde_saphyr::from_str(text).map_err(|err| vec![yaml_diagnostic(file, &err, line_base)])
 }
 
+pub(crate) fn load_headed<T: serde::de::DeserializeOwned>(
+    file: &str,
+    text: &str,
+    expected: &str,
+    line_base: u32,
+) -> Result<T, Vec<Diagnostic>> {
+    if let Some(diag) = tag_diagnostic(text, expected, file, line_base) {
+        return Err(vec![diag]);
+    }
+    parse_file(file, text, line_base)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

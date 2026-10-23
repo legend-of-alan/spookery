@@ -67,7 +67,8 @@ pub(crate) fn replaced_moves_file() -> Diagnostic {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct VerbsFile {
-    pub schema: String,
+    #[serde(rename = "schema")]
+    pub _schema: String,
     #[serde(default)]
     pub rules: Vec<RuleEntry>,
 }
@@ -1183,13 +1184,4 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
         .parse::<i64>()
         .map_err(|_| format!("crosses '{text}' needs an operator and a number"))?;
     Ok((op, bound))
-}
-
-pub(crate) fn uses_teleport(rule: &Rule) -> bool {
-    rule.do_
-        .iter()
-        .chain(&rule.success)
-        .chain(&rule.partial)
-        .chain(&rule.failure)
-        .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
 }

@@ -2,7 +2,7 @@
 
 use serde::Deserialize;
 
-use crate::diagnostic::{locate_nth, parse_file, schema, tag_diagnostic, Diagnostic};
+use crate::diagnostic::{load_headed, locate_nth, schema, Diagnostic};
 
 const TICK_FILE: &str = "rules/tick.yaml";
 
@@ -67,21 +67,8 @@ impl Budget {
 }
 
 pub(crate) fn load_tick_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    if let Some(diag) = tag_diagnostic(text, crate::format::TICK, TICK_FILE, 0) {
-        return Err(vec![diag]);
-    }
-    let file: TickFile = parse_file(TICK_FILE, text, 0)?;
+    let file: TickFile = load_headed(TICK_FILE, text, crate::format::TICK, 0)?;
     let mut diags = Vec::new();
-    if file.schema != crate::format::TICK {
-        diags.push(
-            schema(
-                TICK_FILE,
-                &format!("schema is '{}', which this file does not use", file.schema),
-                "write 'schema: tick' with no version suffix",
-            )
-            .with_path("schema"),
-        );
-    }
     let defaults = Budget::defaults();
     let max_intents_applied = take(
         text,
@@ -283,7 +270,8 @@ fn take_idle(text: &str, value: Option<String>, diags: &mut Vec<Diagnostic>) -> 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct TickFile {
-    schema: String,
+    #[serde(rename = "schema")]
+    _schema: String,
     max_intents_applied: Option<i64>,
     max_npcs_acting: Option<i64>,
     max_effects_per_intent: Option<i64>,

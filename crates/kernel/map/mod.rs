@@ -3,7 +3,6 @@
 use std::collections::BTreeSet;
 
 use crate::canon::{Canon, Exit};
-use crate::diagnostic::Diagnostic;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::intent::{Intent, IntentArgs, Source, Target};
@@ -155,59 +154,6 @@ pub fn begin(
     act.busy_until = Some(until);
     act.busy_for = Some(pending);
     Ok(())
-}
-
-/// Places no exit path reaches from the start, including hidden and locked exits.
-pub fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
-    let mut seen = std::collections::BTreeSet::new();
-    let mut queue = vec![canon.start_place.clone()];
-    while let Some(place) = queue.pop() {
-        if !seen.insert(place.clone()) {
-            continue;
-        }
-        if let Some(node) = canon.places.get(&place) {
-            for exit in &node.exits {
-                queue.push(exit.to.clone());
-            }
-        }
-    }
-    let mut diags = Vec::new();
-    for id in canon.places.keys() {
-        if seen.contains(id) {
-            continue;
-        }
-        diags.push(
-            Diagnostic::new(
-                "world/places",
-                "WARNING",
-                &format!("place '{id}' has no path from {}", canon.start_place),
-                "add an exit that reaches it",
-            )
-            .with_path(id.clone()),
-        );
-    }
-    diags
-}
-
-/// `teleport: true` in the shared verbs file is a warning. Author rules may teleport.
-pub(crate) fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
-    canon
-        .rules
-        .iter()
-        .filter(|rule| {
-            rule.file.replace('\\', "/").ends_with("rules/verbs.yaml")
-                && crate::canon::schema::uses_teleport(rule)
-        })
-        .map(|rule| {
-            Diagnostic::new(
-                &rule.file,
-                "WARNING",
-                &format!("verb '{}' teleports", rule.local_id),
-                "teleport belongs on an author rule, not in verbs.yaml",
-            )
-            .with_path(format!("rules[{}]", rule.index))
-        })
-        .collect()
 }
 
 pub fn player_lines(canon: &Canon, now: &Now, actor_id: &str) -> String {

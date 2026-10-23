@@ -838,7 +838,7 @@ fn strip_bodies() {
     assert!(!files.is_empty());
     for path in &files {
         let text = fs::read_to_string(path).unwrap();
-        let stripped = spookery_kernel::api::lint::strip_body(&text).unwrap();
+        let stripped = spookery_kernel::api::canon::strip_body(&text).unwrap();
         assert!(
             !stripped.contains("Mira keeps the shop"),
             "{}",

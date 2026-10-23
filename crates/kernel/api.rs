@@ -56,10 +56,6 @@ pub mod key {
     pub use crate::key::*;
 }
 
-pub mod lint {
-    pub use crate::lint::*;
-}
-
 pub mod lock {
     pub use crate::lock::*;
 }
