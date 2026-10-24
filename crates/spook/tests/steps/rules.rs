@@ -125,7 +125,8 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     let located = spookery_engine::testing::journal::locate(&pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
-    let mut tick: Value = serde_json::from_str(&located.line).unwrap_or_else(|err| {
+    let line = text.lines().next().unwrap();
+    let mut tick: Value = serde_json::from_str(line).unwrap_or_else(|err| {
         panic!("json: {err}\n{text}");
     });
     let effects = tick["effects"]
@@ -138,7 +139,7 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
         .unwrap_or_else(|| panic!("no tick_index\n{text}"));
     world.scratch = format!("tick {index}");
     let encoded = serde_json::to_string(&tick).unwrap_or_else(|err| panic!("encode: {err}"));
-    let rewritten = text.replacen(&located.line, &encoded, 1);
+    let rewritten = text.replacen(line, &encoded, 1);
     assert_ne!(rewritten, text);
     fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write tick: {err}"));
 }

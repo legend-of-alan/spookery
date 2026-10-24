@@ -248,8 +248,6 @@ pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> 
 /// Where a logical record lives, so a test can edit that line.
 pub struct Located {
     pub path: PathBuf,
-    #[allow(dead_code)]
-    pub line: String,
 }
 
 pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
@@ -262,10 +260,7 @@ pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
             }
             let entry = parse_line(&file_name, raw)?;
             if format_record_key(&entry) == key {
-                return Ok(Located {
-                    path,
-                    line: raw.to_string(),
-                });
+                return Ok(Located { path });
             }
         }
     }
