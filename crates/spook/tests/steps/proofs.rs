@@ -860,7 +860,7 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let dropped = support::temp_pack("drop-queue");
     let mut shard = open(&dropped);
     let session = shard.seat_player("pc_rowan").unwrap();
-    let outcome = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
+    let outcome = handle_player_move(&mut shard, "pc_rowan", "wait", None, true).unwrap();
     let MoveOutcome::Queued(queued) = outcome else {
         panic!("queued wait committed");
     };
@@ -973,7 +973,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     shard.seat_player("pc_rowan").unwrap();
-    let played = handle_player_move(&mut shard, "pc_rowan", "wait", false).unwrap();
+    let played = handle_player_move(&mut shard, "pc_rowan", "wait", None, false).unwrap();
     let MoveOutcome::Committed { advanced, .. } = played else {
         panic!("wait stayed queued");
     };
@@ -1003,7 +1003,7 @@ fn idle_off_commit_round_still_commits() {
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     shard.seat_player("pc_rowan").unwrap();
-    let queued = handle_player_move(&mut shard, "pc_rowan", "wait", true).unwrap();
+    let queued = handle_player_move(&mut shard, "pc_rowan", "wait", None, true).unwrap();
     let MoveOutcome::Queued(_) = queued else {
         panic!("wait committed with a GM seated");
     };
@@ -1051,12 +1051,12 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
     super::common::edit_save(pack, |now| support::place_of(now, "mira", "docks_shop"));
 }
 
-fn play_mark(pack: &Path, line: &str) -> Now {
+fn play_mark(pack: &Path) -> Now {
     let mut shard = open(pack);
     shard.seat_player("pc_rowan").unwrap();
-    let played = handle_player_move(&mut shard, "pc_rowan", line, false).unwrap();
+    let played = handle_player_move(&mut shard, "pc_rowan", "mark", Some("mira"), false).unwrap();
     let MoveOutcome::Committed { .. } = played else {
-        panic!("{line} stayed queued");
+        panic!("mark mira stayed queued");
     };
     shard.now().clone()
 }
@@ -1071,7 +1071,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags(&pack, "    - marked\n");
         stamp_pack_rev(&pack);
-        let now = play_mark(&pack, "mark mira");
+        let now = play_mark(&pack);
         assert_eq!(now.world_time, 1085);
         assert_eq!(
             flags_of(&now, "mira"),
@@ -1101,7 +1101,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
         patch_mira_flags(&pack, "    - marked\n    - missed\n");
         stamp_pack_rev(&pack);
-        let now = play_mark(&pack, "mark mira");
+        let now = play_mark(&pack);
         assert_eq!(flags_of(&now, "mira"), vec![flag.to_string()], "{label}");
         assert_eq!(now.world_time, 1085);
         let _ = fs::remove_dir_all(&pack);
@@ -1185,7 +1185,8 @@ fn opposing_total_reused() {
             );
             assert!(queued.value.get("code").is_none(), "{}", queued.value);
         }
-        let mark = handle_player_move(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
+        let mark =
+            handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true).unwrap();
         let MoveOutcome::Queued(_) = mark else {
             panic!("mark committed while a gm seat was requested");
         };
@@ -1254,7 +1255,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
         "intent",
         Some(args.as_object().unwrap().clone()),
     );
-    let queued = handle_player_move(&mut shard, "pc_rowan", "mark pc_nell", true).unwrap();
+    let queued = handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true).unwrap();
     let MoveOutcome::Queued(_) = queued else {
         panic!("held mark committed before the round");
     };

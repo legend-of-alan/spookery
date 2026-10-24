@@ -122,7 +122,10 @@ fn play(world: &mut World, actor: &str, line: &str) {
         humans: 1,
         actors_present: vec![actor.to_string()],
     });
-    spookery::host::handle_player_move(&mut opened, actor, line, false)
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)));
+    spookery::host::handle_player_move(&mut opened, actor, verb, target, false)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
 }
 

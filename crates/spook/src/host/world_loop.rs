@@ -33,17 +33,6 @@ pub fn commit_then_fast_forward(world: &mut World) -> Result<Vec<RoundOutput>, R
 pub fn handle_player_move(
     world: &mut World,
     actor_id: &str,
-    line: &str,
-    gm_seated: bool,
-) -> Result<MoveOutcome, GateRefusal> {
-    let (verb, rest) = verb_line(line, actor_id)?;
-    let (verb, target) = parse_turn(verb, rest)?;
-    handle_turn(world, actor_id, verb, target, gm_seated)
-}
-
-fn handle_turn(
-    world: &mut World,
-    actor_id: &str,
     verb: &str,
     target: Option<&str>,
     gm_seated: bool,
@@ -487,7 +476,9 @@ fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
 
 enum PlayerCommand<'w, 'l> {
     Speech(Heard<'w>, &'l str),
-    Lines(String),
+    Help,
+    Map,
+    Look,
     Turn(&'l str, Option<&'l str>),
 }
 
@@ -522,29 +513,18 @@ fn parse_player_command<'w, 'l: 'w>(
         return Ok(PlayerCommand::Speech(heard, text));
     }
     if rest.is_empty() {
-        match verb {
-            "help" => return Ok(PlayerCommand::Lines(world.help_lines(seated))),
-            "map" => return Ok(PlayerCommand::Lines(world.player_lines(seated))),
-            "look" => return Ok(PlayerCommand::Lines(world.look_lines(seated))),
-            _ => {}
-        }
-    }
-    if !world.canon().rules.is_verb(verb) {
-        return Err(Reason::NotInSpec);
-    }
-    let (verb, target) = parse_turn(verb, rest)?;
-    Ok(PlayerCommand::Turn(verb, target))
-}
-
-fn parse_turn<'a>(verb: &'a str, rest: &'a str) -> Result<(&'a str, Option<&'a str>), Reason> {
-    if rest.is_empty() {
-        return Ok((verb, None));
+        return Ok(match verb {
+            "help" => PlayerCommand::Help,
+            "map" => PlayerCommand::Map,
+            "look" => PlayerCommand::Look,
+            _ => PlayerCommand::Turn(verb, None),
+        });
     }
     let (target, extra) = split_token(rest);
     if target.is_empty() || !extra.is_empty() {
         return Err(Reason::Schema);
     }
-    Ok((verb, Some(target)))
+    Ok(PlayerCommand::Turn(verb, Some(target)))
 }
 
 fn verb_line<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
@@ -606,7 +586,16 @@ fn on_player(
                 Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
             }
         }
-        Ok(PlayerCommand::Lines(text)) => {
+        Ok(PlayerCommand::Help) => {
+            let text = world.help_lines(&actor_id);
+            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
+        }
+        Ok(PlayerCommand::Map) => {
+            let text = world.player_lines(&actor_id);
+            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
+        }
+        Ok(PlayerCommand::Look) => {
+            let text = world.look_lines(&actor_id);
             send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
         }
         Ok(PlayerCommand::Turn(verb, target)) => {
@@ -627,7 +616,7 @@ fn on_mechanical(
     target: Option<&str>,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match handle_turn(world, actor_id, verb, target, gm_seated) {
+    match handle_player_move(world, actor_id, verb, target, gm_seated) {
         Ok(MoveOutcome::Queued(queued)) => {
             send_gm(
                 seats,

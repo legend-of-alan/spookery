@@ -3,6 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
+use spookery::host::{handle_player_move, MoveOutcome};
 use spookery_engine::model::{Now, PlaceLive};
 use spookery_engine::store::{emit_save, load_save};
 use spookery_engine::testing::{faces, RollKey};
@@ -290,7 +291,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
         humans: 1,
         actors_present: Vec::new(),
     });
-    spookery::host::handle_player_move(&mut opened, "pc_rowan", "travel ferry_dock", false)
+    handle_player_move(&mut opened, "pc_rowan", "travel", Some("ferry_dock"), false)
         .unwrap_or_else(|err| panic!("travel {}", err.token()));
 }
 
@@ -465,13 +466,12 @@ fn lark_attacks(world: &mut World) {
     });
     let mut opened = open_pack(&pack);
     let reports =
-        match spookery::host::handle_player_move(&mut opened, "pc_lark", "attack npc_briar", false)
-        {
-            Ok(spookery::host::MoveOutcome::Committed { outputs, .. }) => {
+        match handle_player_move(&mut opened, "pc_lark", "attack", Some("npc_briar"), false) {
+            Ok(MoveOutcome::Committed { outputs, .. }) => {
                 outputs.into_iter().next().unwrap().reports
             }
-            Ok(spookery::host::MoveOutcome::Queued(_)) => panic!("attack queued"),
-            Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("attack was busy"),
+            Ok(MoveOutcome::Queued(_)) => panic!("attack queued"),
+            Ok(MoveOutcome::Busy { .. }) => panic!("attack was busy"),
             Err(err) => panic!("attack {}", err.token()),
         };
     let rolled = reports.into_iter().find_map(|report| match report {
@@ -639,11 +639,10 @@ fn steady_costs_five_grit(world: &mut World) {
 fn the_sitter_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    world.scratch =
-        match spookery::host::handle_player_move(&mut opened, "pc_rowan", "steady", false) {
-            Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
-            Ok(_) => "queued".to_string(),
-        };
+    world.scratch = match handle_player_move(&mut opened, "pc_rowan", "steady", None, false) {
+        Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
+        Ok(_) => "queued".to_string(),
+    };
 }
 
 #[then(expr = "the refusal is CANT_AFFORD naming grit and world_time stays 1080")]
@@ -767,20 +766,19 @@ A small bottle.
 fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    world.scratch =
-        match spookery::host::handle_player_move(&mut opened, "pc_rowan", "use tonic", true) {
-            Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
-            Ok(spookery::host::MoveOutcome::Queued(queued)) => {
-                let intent = opened
-                    .queued_intents()
-                    .iter()
-                    .find(|intent| intent.id == queued.id)
-                    .unwrap();
-                format!("{:?} {}", intent.target, intent.move_name)
-            }
-            Ok(spookery::host::MoveOutcome::Committed { .. }) => "committed".to_string(),
-            Err(err) => err.token().to_string(),
-        };
+    world.scratch = match handle_player_move(&mut opened, "pc_rowan", "use", Some("tonic"), true) {
+        Ok(MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
+        Ok(MoveOutcome::Queued(queued)) => {
+            let intent = opened
+                .queued_intents()
+                .iter()
+                .find(|intent| intent.id == queued.id)
+                .unwrap();
+            format!("{:?} {}", intent.target, intent.move_name)
+        }
+        Ok(MoveOutcome::Committed { .. }) => "committed".to_string(),
+        Err(err) => err.token().to_string(),
+    };
 }
 
 #[then(expr = "the queued target is that actor and the save is unchanged")]

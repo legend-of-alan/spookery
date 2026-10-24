@@ -417,12 +417,6 @@ impl RuleTable {
         self.rules.iter().find(|rule| rule.id == id)
     }
 
-    pub fn is_verb(&self, name: &str) -> bool {
-        self.rules
-            .iter()
-            .any(|rule| matches!(&rule.when, When::Verb { verb, .. } if verb == name))
-    }
-
     pub fn verb(&self, name: &str) -> Option<&Rule> {
         self.rules.iter().find(|rule| {
             matches!(&rule.owner, Owner::Verb)
