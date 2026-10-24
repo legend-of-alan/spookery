@@ -44,11 +44,15 @@ pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World, MAX_PLAYER_S
 #[cfg(feature = "testing")]
 pub mod testing {
     pub use crate::canon::strip_body;
-    pub use crate::round::replay::{from_journal, ReplayError, ReplayReport};
+    pub use crate::round::replay::from_journal;
     pub use crate::rules::roll::{faces, RollKey};
 
     pub mod journal {
-        pub use crate::store::journal::*;
+        pub use crate::store::journal::{
+            bundles, emit_entry, find_live_bundle, format_record_key, genesis_hash, gunzip_bytes,
+            gzip_bytes, hash_now, latest_checkpoint, list_tick_keys, locate, read_entries,
+            read_record_line, read_verified, seal, JournalEntry, TickRecord,
+        };
     }
 
     impl crate::World {

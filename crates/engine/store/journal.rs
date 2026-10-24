@@ -19,33 +19,32 @@ use serde::de::DeserializeOwned;
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 
-pub use super::records::{
-    AddedMeter, Arrival, CheckpointRecord, JournalEntry, MigrateRecord, Rejected, TickRecord,
-};
+pub(crate) use super::records::{AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Rejected};
 use super::records::{CheckpointKind, MigrateKind};
+pub use super::records::{JournalEntry, TickRecord};
 
 pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
 }
 
-pub fn base_rel() -> &'static str {
+pub(crate) fn base_rel() -> &'static str {
     "journal/base.yaml"
 }
 
-pub fn head_rel() -> &'static str {
+pub(crate) fn head_rel() -> &'static str {
     "journal/head.json"
 }
 
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct BundleHead {
+pub(crate) struct BundleHead {
     pub state_rev: u64,
     pub tick_index: u64,
     pub state_hash: String,
     pub chain: String,
 }
 
-pub fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault> {
+pub(crate) fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault> {
     let path = pack.join("state").join(head_rel());
     if !path.is_file() {
         return Ok(None);
@@ -104,7 +103,7 @@ pub fn read_verified(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
     Ok(entries)
 }
 
-pub fn check_chain(pack: &Path, entries: &[JournalEntry]) -> Result<(), JournalFault> {
+pub(crate) fn check_chain(pack: &Path, entries: &[JournalEntry]) -> Result<(), JournalFault> {
     if entries.is_empty() {
         return Ok(());
     }
@@ -129,7 +128,7 @@ pub fn check_chain(pack: &Path, entries: &[JournalEntry]) -> Result<(), JournalF
 }
 
 /// Blake2s of `prev` and the record bytes with `chain` omitted.
-pub fn chain_hash(prev: &str, body: &str) -> String {
+pub(crate) fn chain_hash(prev: &str, body: &str) -> String {
     let mut bytes = Vec::with_capacity(prev.len() + 1 + body.len());
     bytes.extend(prev.as_bytes());
     bytes.push(0);
@@ -137,7 +136,7 @@ pub fn chain_hash(prev: &str, body: &str) -> String {
     hash_now(&bytes)
 }
 
-pub fn checkpoint_entry(tick_index: u64, state_rev: u64, state_hash: &str) -> JournalEntry {
+pub(crate) fn checkpoint_entry(tick_index: u64, state_rev: u64, state_hash: &str) -> JournalEntry {
     JournalEntry::Checkpoint(CheckpointRecord {
         kind: CheckpointKind::Checkpoint,
         tick_index,
@@ -149,7 +148,7 @@ pub fn checkpoint_entry(tick_index: u64, state_rev: u64, state_hash: &str) -> Jo
 }
 
 /// Chain field of one sealed line.
-pub fn sealed_chain(line: &str) -> Result<String, JournalFault> {
+pub(crate) fn sealed_chain(line: &str) -> Result<String, JournalFault> {
     let entry = parse_line("bundle", line.trim_end())?;
     Ok(entry.chain().to_string())
 }
@@ -166,7 +165,7 @@ pub fn seal(entry: &JournalEntry, prev: &str) -> String {
 }
 
 /// Chain of the last live record, or of the checkpoint head when the live bundle is empty.
-pub fn read_chain_tip(pack: &Path) -> Result<String, JournalFault> {
+pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, JournalFault> {
     if let Some(path) = find_live_bundle(pack) {
         let name = path
             .file_name()
@@ -184,7 +183,7 @@ pub fn read_chain_tip(pack: &Path) -> Result<String, JournalFault> {
 }
 
 /// Records in the plain live bundle. Closed bundles stay unread.
-pub fn read_live(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
+pub(crate) fn read_live(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
     let dir = pack.join("state/journal");
     if dir.is_dir() {
         refuse_old_layout(&dir)?;
@@ -273,7 +272,9 @@ pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, JournalFault> {
 }
 
 /// Records in each bundle, in file order. A torn tail is not included.
-pub fn bundle_entries(pack: &Path) -> Result<Vec<(String, Vec<JournalEntry>)>, JournalFault> {
+pub(crate) fn bundle_entries(
+    pack: &Path,
+) -> Result<Vec<(String, Vec<JournalEntry>)>, JournalFault> {
     let dir = pack.join("state/journal");
     if !dir.is_dir() {
         return Ok(Vec::new());
@@ -323,7 +324,7 @@ pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
 /// Next append lands here. The file may not exist yet.
 /// A plain bundle that already ends in a published checkpoint is skipped, so a
 /// failed gzip cannot take the next round.
-pub fn next_bundle_path(pack: &Path) -> PathBuf {
+pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
     let dir = pack.join("state/journal");
     let files = bundle_files(&dir).unwrap_or_default();
     match files.last() {
