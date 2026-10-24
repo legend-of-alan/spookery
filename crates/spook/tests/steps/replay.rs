@@ -92,8 +92,8 @@ fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
             .unwrap_or_else(|| panic!("no intents"));
         assert!(!intents.is_empty());
         intents[0]["move"] = Value::String("not_a_real_move".to_string());
-        let rev = tick["state_rev_after"].as_u64().unwrap_or(1);
-        let index = tick["tick_index"].as_u64().unwrap_or(1);
+        let rev = tick["state_rev_after"].as_u64().unwrap();
+        let index = tick["tick_index"].as_u64().unwrap();
         scratch = format!("state_rev {rev} tick {index}");
     });
     world.scratch = scratch;
@@ -165,8 +165,8 @@ fn one_effect_class_is_need(world: &mut World) {
         } else {
             effects[0]["class"] = Value::String("need".to_string());
         }
-        let rev = tick["state_rev_after"].as_u64().unwrap_or(1);
-        let index = tick["tick_index"].as_u64().unwrap_or(1);
+        let rev = tick["state_rev_after"].as_u64().unwrap();
+        let index = tick["tick_index"].as_u64().unwrap();
         scratch = format!("state_rev {rev} tick {index}");
     });
     world.scratch = scratch;
@@ -218,16 +218,15 @@ fn each_journal_record_parses_back(world: &mut World) {
         .count();
     assert!(ticks >= 3, "ticks {ticks}");
     for entry in &entries {
-        let located = spookery_engine::testing::journal::locate(
-            pack,
-            &spookery_engine::testing::journal::format_record_key(entry),
-        )
-        .unwrap_or_else(|err| panic!("{}", err.detail));
+        let key = spookery_engine::testing::journal::format_record_key(entry);
+        let located = spookery_engine::testing::journal::locate(pack, &key)
+            .unwrap_or_else(|err| panic!("{}", err.detail));
         let again = spookery_engine::testing::journal::emit_entry(entry);
-        assert!(fs::read_to_string(located.path)
-            .unwrap()
-            .lines()
-            .any(|line| line == again.trim_end()));
+        let text = fs::read_to_string(located.path).unwrap();
+        assert!(
+            text.lines().any(|line| line == again.trim_end()),
+            "{key}: {again}"
+        );
     }
 }
 
@@ -235,7 +234,10 @@ fn edit_tick(world: &mut World, edit: impl FnOnce(&mut Value)) {
     let located = spookery_engine::testing::journal::locate(table::pack(world), "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap();
-    let line = text.lines().next().unwrap();
+    let line = text
+        .lines()
+        .find(|l| serde_json::from_str::<Value>(l).unwrap()["tick_index"] == 1)
+        .unwrap();
     let mut tick: Value = serde_json::from_str(line).unwrap();
     edit(&mut tick);
     let next = serde_json::to_string(&tick).unwrap();

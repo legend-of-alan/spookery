@@ -16,6 +16,11 @@ use crate::World;
 
 pub(crate) const EVENING: u64 = 21 * 60 + 30;
 
+pub(crate) fn split_move(line: &str) -> (&str, Option<&str>) {
+    line.split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)))
+}
+
 pub(crate) fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
     let path = pack.join("state/save.yaml");
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
