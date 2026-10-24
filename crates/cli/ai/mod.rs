@@ -1,21 +1,14 @@
 //! The model client and the GM loop that calls it.
 
 mod gm_loop;
-mod llm;
 mod llm_http;
-mod prompt;
 
 use std::net::SocketAddr;
 use std::path::Path;
 
-pub use crate::protocol::{CastKind, MenuRow, OutgoingSay, PackSummary};
 pub use gm_loop::{run_gm, TurnWatch};
-pub use llm::{CompleteError, CompletionRequest, Model, ScriptedModel};
 pub use llm_http::{Clock, Env, HttpModel, Limits, WallClock};
-pub use prompt::{
-    keep_actions, parse_actions, prepare_with, render_prompt, HandledSay, KeptActions,
-    ModelActions, PreparedTurn, PromptContext, SceneScope, TurnView, Wake,
-};
+pub use spookery_agent::*;
 
 use crate::gm_connection::ToolCallResult;
 

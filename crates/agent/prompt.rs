@@ -660,7 +660,8 @@ mod tests {
         let mut pack = docks();
         let mira = pack.cast["mira"].trim().to_string();
         let place = pack.places["docks_shop"].trim().to_string();
-        pack.cast.insert("bram".to_string(), "BRAM-ABSENT".to_string());
+        pack.cast
+            .insert("bram".to_string(), "BRAM-ABSENT".to_string());
         assert!(!mira.is_empty(), "mira has cast prose");
         assert!(!place.is_empty(), "the shop has place prose");
         let prompt = prompt_for(&pack, |viewer| {
@@ -690,7 +691,8 @@ mod tests {
     #[test]
     fn a_long_cast_body_is_cut_at_the_budget() {
         let mut pack = docks();
-        pack.cast.insert("aldric".to_string(), "Z".repeat(PROSE_BUDGET + 1));
+        pack.cast
+            .insert("aldric".to_string(), "Z".repeat(PROSE_BUDGET + 1));
         let prompt = prompt_for(&pack, |viewer| Ok(shop(viewer, &["aldric", "pc_rowan"])));
         assert!(prompt.contains(&"Z".repeat(PROSE_BUDGET)), "{prompt}");
         assert!(!prompt.contains(&"Z".repeat(PROSE_BUDGET + 1)), "{prompt}");
@@ -699,7 +701,8 @@ mod tests {
     #[test]
     fn prompt_omits_dropped_strings_and_keeps_fact_text() {
         let mut pack = docks();
-        pack.cast.insert("mira".to_string(), "MIRA-PROSE-SENTINEL".to_string());
+        pack.cast
+            .insert("mira".to_string(), "MIRA-PROSE-SENTINEL".to_string());
         let mut calls = 0;
         let prepared = prepare_with(&pack, &table_wake(), &[], &mut |viewer| {
             calls += 1;
