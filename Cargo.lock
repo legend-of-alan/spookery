@@ -2058,19 +2058,17 @@ dependencies = [
 name = "spook"
 version = "0.0.0"
 dependencies = [
- "axum",
  "clap",
  "cucumber",
- "futures-core",
  "reqwest 0.12.28",
  "rmcp",
- "serde",
  "serde-saphyr",
  "serde_json",
  "socket2",
  "spookery-cli",
  "spookery-engine",
  "spookery-protocol",
+ "spookery-server",
  "tokio",
 ]
 
@@ -2122,8 +2120,15 @@ dependencies = [
 name = "spookery-server"
 version = "0.0.0"
 dependencies = [
+ "axum",
+ "futures-core",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "socket2",
  "spookery-engine",
  "spookery-protocol",
+ "tokio",
 ]
 
 [[package]]

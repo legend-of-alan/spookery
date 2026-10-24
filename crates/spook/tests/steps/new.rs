@@ -319,7 +319,7 @@ fn fresh_path(label: &str) -> PathBuf {
 }
 
 fn template_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates/starter")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../server/templates/starter")
 }
 
 fn relative_files(root: &Path) -> Vec<(String, Vec<u8>)> {

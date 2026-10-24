@@ -12,6 +12,7 @@ pub(crate) mod recover;
 pub(crate) mod tape;
 
 pub use codec::{emit_save, load_save};
+pub use lock::{lock_serve, LockGuard};
 pub use tape::{record_line, TapeRecord};
 
 /// Rules version stamped on every save and every tick.

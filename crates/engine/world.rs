@@ -61,7 +61,7 @@ pub struct World {
 }
 
 impl World {
-    pub(crate) fn root(&self) -> &Path {
+    pub fn root(&self) -> &Path {
         &self.root
     }
 
@@ -191,8 +191,14 @@ impl World {
         missing: Reason,
     ) -> Result<Target, Reason> {
         let token = target.filter(|t| !t.is_empty());
-        let rule = verb_for(&self.canon, Some(actor.place()), verb, token, actor.wielded())
-            .ok_or(missing)?;
+        let rule = verb_for(
+            &self.canon,
+            Some(actor.place()),
+            verb,
+            token,
+            actor.wielded(),
+        )
+        .ok_or(missing)?;
         let When::Verb { target: kind, .. } = &rule.when else {
             return Err(missing);
         };
@@ -242,12 +248,20 @@ impl World {
             .actor_id
             .filter(|id| !id.is_empty() && !id.contains(':'))
             .ok_or(Reason::Schema)?;
-        let move_name = spec.move_name.filter(|m| !m.is_empty()).ok_or(Reason::Schema)?;
+        let move_name = spec
+            .move_name
+            .filter(|m| !m.is_empty())
+            .ok_or(Reason::Schema)?;
         let actor = self.now.actors.get(&actor_id).ok_or(Reason::UnknownKey)?;
         let actor_kind = actor.actor_kind();
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let is_habit = actor_kind == ActorKind::Npc
-            && self.canon.rules.habits_of(&actor_id).iter().any(|r| r.local_id == move_name);
+            && self
+                .canon
+                .rules
+                .habits_of(&actor_id)
+                .iter()
+                .any(|r| r.local_id == move_name);
         let target = match (is_habit, token) {
             (true, None) => Target::Empty,
             (true, Some(_)) => return Err(Reason::Schema),
@@ -268,7 +282,9 @@ impl World {
             Some(tick) => tick,
             None => self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?,
         };
-        let args = IntentArgs { message_to: spec.message_to };
+        let args = IntentArgs {
+            message_to: spec.message_to,
+        };
         self.queue(Intent {
             id: id.clone(),
             tick_index,
@@ -280,7 +296,11 @@ impl World {
             args,
             rationale_code: spec.rationale_code,
         });
-        Ok(QueuedMove { id, actor_id, move_name })
+        Ok(QueuedMove {
+            id,
+            actor_id,
+            move_name,
+        })
     }
 
     pub fn speak_player(

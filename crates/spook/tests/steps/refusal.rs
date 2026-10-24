@@ -25,7 +25,14 @@ fn play_joins_the_sample_table(world: &mut World) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr, "--as", "player:pc_lark"]));
+    world.play = Some(support::spawn(&[
+        "play",
+        &pack_arg,
+        "--addr",
+        &addr,
+        "--as",
+        "player:pc_lark",
+    ]));
     wait_play(world, "Gate Yard");
 }
 
@@ -199,7 +206,14 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
     table::seat_gm(world);
     let addr = table::game_addr(world);
     let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr, "--as", "player:pc_lark"]));
+    world.play = Some(support::spawn(&[
+        "play",
+        &pack_arg,
+        "--addr",
+        &addr,
+        "--as",
+        "player:pc_lark",
+    ]));
     wait_play(world, "You are in");
 }
 
@@ -231,9 +245,7 @@ fn lark_queues(world: &mut World, line: String) {
 
 #[when(expr = "the GM sends Lark's strike on {word}")]
 fn the_gm_sends_larks_strike(world: &mut World, target: String) {
-    let args = format!(
-        r#"{{"actor_id":"pc_lark","move":"strike","target":"{target}"}}"#
-    );
+    let args = format!(r#"{{"actor_id":"pc_lark","move":"strike","target":"{target}"}}"#);
     let text = table::gm_call(world, 4, "intent", &args);
     assert!(text.contains("\"queued\""), "{text}");
 }

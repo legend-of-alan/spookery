@@ -69,7 +69,14 @@ fn play_joins_the_sample_table(world: &mut World) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr, "--as", "player:pc_lark"]));
+    world.play = Some(support::spawn(&[
+        "play",
+        &pack_arg,
+        "--addr",
+        &addr,
+        "--as",
+        "player:pc_lark",
+    ]));
     wait_play(world, "Gate Yard");
 }
 

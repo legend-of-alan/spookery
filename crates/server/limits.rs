@@ -35,7 +35,7 @@ pub const OUTBOUND_BYTES: usize = 64 * 1024;
 /// Send buffer the player socket asks for. The OS may grant more.
 pub const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
 
-const HELLO_LIMIT: Duration = Duration::from_secs(10);
+pub const HELLO_LIMIT: Duration = Duration::from_secs(10);
 
 /// Millitokens per line. Refill uses this scale so the bucket stays integer.
 const SCALE: u128 = 1000;
@@ -139,17 +139,6 @@ pub(super) async fn send_last(tx: &OutTx, frame: Vec<u8>) {
     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
     if tx.enqueue(Outbound::Last(frame, ack_tx)) {
         let _ = ack_rx.await;
-    }
-}
-
-/// Tests set `SPOOK_HELLO_TIMEOUT_MS`. Any other value is the 10 second limit.
-pub(super) fn hello_timeout() -> Duration {
-    match std::env::var("SPOOK_HELLO_TIMEOUT_MS") {
-        Ok(text) => match text.parse::<u64>() {
-            Ok(ms) if ms > 0 => Duration::from_millis(ms),
-            _ => HELLO_LIMIT,
-        },
-        Err(_) => HELLO_LIMIT,
     }
 }
 

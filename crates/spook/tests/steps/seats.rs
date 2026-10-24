@@ -35,7 +35,11 @@ fn a_socket_sends_an_empty_hello(world: &mut World) {
 fn the_hello_is_refused_with_and_lists_the_three_docks_pcs(world: &mut World, code: String) {
     the_hello_is_refused_with(world, code);
     for id in DOCKS_PCS {
-        assert!(world.scratch.contains(id), "missing {id} in {}", world.scratch);
+        assert!(
+            world.scratch.contains(id),
+            "missing {id} in {}",
+            world.scratch
+        );
     }
 }
 

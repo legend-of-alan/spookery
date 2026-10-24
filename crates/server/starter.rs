@@ -7,42 +7,42 @@ use std::path::Path;
 /// Files of the starter pack, in write order. `pack_rev` is filled in after
 /// these bytes are on disk. The hash is not stored in this source.
 const FILES: &[(&str, &str)] = &[
-    ("pack.yaml", include_str!("../templates/starter/pack.yaml")),
+    ("pack.yaml", include_str!("templates/starter/pack.yaml")),
     (
         "world/places/yard.md",
-        include_str!("../templates/starter/world/places/yard.md"),
+        include_str!("templates/starter/world/places/yard.md"),
     ),
     (
         "world/places/lane.md",
-        include_str!("../templates/starter/world/places/lane.md"),
+        include_str!("templates/starter/world/places/lane.md"),
     ),
     (
         "cast/keeper.md",
-        include_str!("../templates/starter/cast/keeper.md"),
+        include_str!("templates/starter/cast/keeper.md"),
     ),
     (
         "cast/pc-ada.md",
-        include_str!("../templates/starter/cast/pc-ada.md"),
+        include_str!("templates/starter/cast/pc-ada.md"),
     ),
     (
         "rules/verbs.yaml",
-        include_str!("../templates/starter/rules/verbs.yaml"),
+        include_str!("templates/starter/rules/verbs.yaml"),
     ),
     (
         "rules/checks.yaml",
-        include_str!("../templates/starter/rules/checks.yaml"),
+        include_str!("templates/starter/rules/checks.yaml"),
     ),
     (
         "rules/meters.yaml",
-        include_str!("../templates/starter/rules/meters.yaml"),
+        include_str!("templates/starter/rules/meters.yaml"),
     ),
     (
         "rules/tick.yaml",
-        include_str!("../templates/starter/rules/tick.yaml"),
+        include_str!("templates/starter/rules/tick.yaml"),
     ),
     (
         "state/save.yaml",
-        include_str!("../templates/starter/state/save.yaml"),
+        include_str!("templates/starter/state/save.yaml"),
     ),
 ];
 

@@ -1,9 +1,8 @@
 //! Bind the game port and the agent door.
 
-use std::io;
+use std::io::{self, Write};
 use std::net::{SocketAddr, TcpListener};
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
@@ -13,25 +12,99 @@ use spookery_engine::Reason;
 use super::mcp_http;
 use super::world_loop::{self, HelloReply, PlayerReply, WorldMsg};
 
+#[derive(Debug)]
 pub enum Error {
     Reason(Reason),
     Io(io::Error),
 }
 
-pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<(), Error> {
-    let listener = TcpListener::bind(addr).map_err(Error::Io)?;
-    let http_listener = TcpListener::bind(door_request(addr, mcp_addr)?).map_err(Error::Io)?;
-    http_listener.set_nonblocking(true).map_err(Error::Io)?;
-    let game_addr = listener.local_addr().map_err(Error::Io)?;
-    let door_addr = http_listener.local_addr().map_err(Error::Io)?;
-    let mut world = spookery_engine::World::resume(pack).map_err(Error::Reason)?;
-    if world.clear_crashed().map_err(Error::Reason)? {
-        world_loop::print_host(&world, &[]);
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Reason(code) => write!(f, "{code}"),
+            Self::Io(err) => write!(f, "{err}"),
+        }
     }
-    report_bound(game_addr, door_addr)?;
+}
+
+pub struct Config {
+    pub addr: SocketAddr,
+    pub door: Option<SocketAddr>,
+    pub hello_timeout: Duration,
+    pub out: Box<dyn Write + Send>,
+    pub err: Box<dyn Write + Send>,
+}
+
+impl Config {
+    pub fn new(addr: SocketAddr) -> Self {
+        Self {
+            addr,
+            door: None,
+            hello_timeout: super::limits::HELLO_LIMIT,
+            out: Box::new(io::sink()),
+            err: Box::new(io::sink()),
+        }
+    }
+}
+
+pub struct Handle {
+    game: SocketAddr,
+    door: SocketAddr,
+    tx: Sender<WorldMsg>,
+    join: Option<std::thread::JoinHandle<Result<(), Error>>>,
+}
+
+impl Handle {
+    pub fn game_addr(&self) -> SocketAddr {
+        self.game
+    }
+
+    pub fn door_addr(&self) -> SocketAddr {
+        self.door
+    }
+
+    pub fn stop(&self) {
+        let _ = self.tx.send(WorldMsg::Stop);
+    }
+
+    pub fn join(mut self) -> Result<(), Error> {
+        self.join
+            .take()
+            .expect("world thread")
+            .join()
+            .unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
+    }
+}
+
+impl Drop for Handle {
+    fn drop(&mut self) {
+        self.stop();
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+}
+
+fn bind_nonblocking(addr: SocketAddr) -> Result<(TcpListener, SocketAddr), Error> {
+    let listener = TcpListener::bind(addr).map_err(Error::Io)?;
+    listener.set_nonblocking(true).map_err(Error::Io)?;
+    let bound = listener.local_addr().map_err(Error::Io)?;
+    Ok((listener, bound))
+}
+
+/// Serve `world` on its own private Tokio runtime until stopped.
+pub fn serve(mut world: spookery_engine::World, mut config: Config) -> Result<Handle, Error> {
+    let guard = spookery_engine::store::lock_serve(world.root()).map_err(Error::Reason)?;
+    let (listener, game) = bind_nonblocking(config.addr)?;
+    let (http_listener, door) = bind_nonblocking(door_request(config.addr, config.door)?)?;
+    if world.clear_crashed().map_err(Error::Reason)? {
+        world_loop::write_host(&mut *config.out, &world, &[]);
+    }
+    report_bound(&mut *config.out, game, door)?;
     // Keepalive stays the pack interval. The idle switch does not change it.
     let keepalive_secs = world.budget().tick_every_real_seconds;
     let arm_idle_timer = world.budget().idle_ticking;
+    let hello_timeout = config.hello_timeout;
     let (tx, rx) = std::sync::mpsc::channel();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -39,44 +112,28 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Re
         .build()
         .map_err(Error::Io)?;
     let handle = runtime.handle().clone();
-    let started = Arc::new(AtomicBool::new(false));
-    let flag = Arc::clone(&started);
-    let tx_accept = tx.clone();
-    let accept_handle = handle.clone();
+    let (listener, http_listener) = {
+        let _entered = handle.enter();
+        (
+            tokio::net::TcpListener::from_std(listener).map_err(Error::Io)?,
+            tokio::net::TcpListener::from_std(http_listener).map_err(Error::Io)?,
+        )
+    };
     let next_conn = Arc::new(AtomicU64::new(1));
+    let tx_accept = tx.clone();
     let ids = Arc::clone(&next_conn);
-    std::thread::spawn(move || {
-        flag.store(true, Ordering::Release);
-        while let Ok((stream, _)) = listener.accept() {
-            if tune(&stream, keepalive_secs).is_err() || stream.set_nonblocking(true).is_err() {
+    handle.spawn(async move {
+        while let Ok((stream, _)) = listener.accept().await {
+            if tune(&stream, keepalive_secs).is_err() {
                 continue;
             }
             let id = ids.fetch_add(1, Ordering::Relaxed);
             let tx_conn = tx_accept.clone();
-            let stream = {
-                let _entered = accept_handle.enter();
-                match tokio::net::TcpStream::from_std(stream) {
-                    Ok(stream) => stream,
-                    Err(_) => continue,
-                }
-            };
-            accept_handle.spawn(async move {
-                connection(stream, tx_conn, id).await;
-            });
+            tokio::spawn(connection(stream, tx_conn, id, hello_timeout));
         }
     });
-    while !started.load(Ordering::Acquire) {
-        std::thread::yield_now();
-    }
-    let listener = {
-        let _entered = handle.enter();
-        tokio::net::TcpListener::from_std(http_listener).map_err(Error::Io)?
-    };
     let tx_http = tx.clone();
-    let ids = Arc::clone(&next_conn);
-    handle.spawn(async move {
-        mcp_http::serve(listener, tx_http, ids).await;
-    });
+    handle.spawn(mcp_http::serve(http_listener, tx_http, next_conn));
     let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
     if arm_idle_timer {
         let tx_timer = tx.clone();
@@ -100,29 +157,22 @@ pub fn listen(pack: &Path, addr: SocketAddr, mcp_addr: Option<SocketAddr>) -> Re
     } else {
         drop(restart_rx);
     }
-    let tx_stdin = tx.clone();
-    std::thread::spawn(move || {
-        for line in io::stdin().lines() {
-            match line {
-                Ok(line) => {
-                    if tx_stdin.send(WorldMsg::Stdin(line)).is_err() {
-                        return;
-                    }
-                }
-                Err(_) => break,
-            }
-        }
-        let _ = tx_stdin.send(WorldMsg::StdinEof);
+    let join = std::thread::spawn(move || {
+        let _guard = guard;
+        let _runtime = runtime;
+        world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
     });
-    world_loop::run_world_loop(world, rx, &restart_tx)
+    Ok(Handle {
+        game,
+        door,
+        tx,
+        join: Some(join),
+    })
 }
 
 /// The agent door to bind. A fixed game port keeps the next port. Port 0, on
 /// the game address or on `--mcp-http`, asks the OS for a port of its own.
-pub(crate) fn door_request(
-    game: SocketAddr,
-    mcp_addr: Option<SocketAddr>,
-) -> Result<SocketAddr, Error> {
+pub fn door_request(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<SocketAddr, Error> {
     if let Some(door) = mcp_addr {
         return Ok(door);
     }
@@ -136,17 +186,18 @@ pub(crate) fn door_request(
     Ok(SocketAddr::new(game.ip(), port))
 }
 
-fn report_bound(game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
+fn report_bound(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
     let line = serde_json::json!({
         "kind": "listening",
         "game": game.to_string(),
         "door": door.to_string(),
     });
-    println!("{line}");
-    io::Write::flush(&mut io::stdout()).map_err(Error::Io)
+    writeln!(out, "{line}")
+        .and_then(|()| out.flush())
+        .map_err(Error::Io)
 }
 
-fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
+fn tune(stream: &tokio::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
     stream.set_nodelay(true)?;
     let keepalive = socket2::TcpKeepalive::new()
         .with_time(Duration::from_secs(keepalive_secs))
@@ -155,20 +206,21 @@ fn tune(stream: &std::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
     socket2::SockRef::from(stream).set_tcp_keepalive(&keepalive)
 }
 
-async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<WorldMsg>, conn: u64) {
+async fn connection(
+    mut stream: tokio::net::TcpStream,
+    tx: Sender<WorldMsg>,
+    conn: u64,
+    hello_timeout: Duration,
+) {
     let line = {
         let read = async {
             let mut reader = super::limits::ByteReader::new(&mut stream);
             super::limits::read_capped_line(&mut reader, super::limits::PLAYER_LINE_CAP).await
         };
-        match tokio::time::timeout(super::limits::hello_timeout(), read).await {
+        match tokio::time::timeout(hello_timeout, read).await {
             Err(_) => return,
             Ok(Ok(Some(line))) => line,
-            Ok(Ok(None)) => {
-                report_fault(&tx, conn).await;
-                return;
-            }
-            Ok(Err(super::limits::LineReadError::Io)) => {
+            Ok(Ok(None)) | Ok(Err(super::limits::LineReadError::Io)) => {
                 report_fault(&tx, conn).await;
                 return;
             }
@@ -196,9 +248,8 @@ async fn connection(mut stream: tokio::net::TcpStream, tx: Sender<WorldMsg>, con
     {
         return;
     }
-    let reply = match reply_rx.await {
-        Ok(reply) => reply,
-        Err(_) => return,
+    let Ok(reply) = reply_rx.await else {
+        return;
     };
     match reply {
         HelloReply::Refused(line) => {
@@ -272,7 +323,7 @@ async fn player_session(
                     Ok(PlayerReply::Hangup) | Err(_) => break,
                 }
             }
-            Ok(None) => {
+            Ok(None) | Err(super::limits::LineReadError::Io) => {
                 report_fault(&tx, conn).await;
                 break;
             }
@@ -287,10 +338,6 @@ async fn player_session(
                     report_fault(&tx, conn).await;
                     break;
                 }
-            }
-            Err(super::limits::LineReadError::Io) => {
-                report_fault(&tx, conn).await;
-                break;
             }
         }
     }
@@ -310,13 +357,6 @@ pub(super) async fn report_fault(tx: &Sender<WorldMsg>, conn: u64) {
     let _ = ack_rx.await;
 }
 
-async fn write_bytes(stream: &mut tokio::net::TcpStream, bytes: &[u8]) -> io::Result<()> {
-    use tokio::io::AsyncWriteExt;
-    stream.write_all(bytes).await?;
-    stream.flush().await?;
-    Ok(())
-}
-
 /// How long a refused socket waits for its client to hang up.
 const REFUSE_DRAIN: Duration = Duration::from_secs(2);
 
@@ -332,10 +372,10 @@ const REFUSE_DRAIN_BYTES: usize = 64 * 1024;
 /// for at most `REFUSE_DRAIN` and `REFUSE_DRAIN_BYTES`.
 async fn refuse(stream: &mut tokio::net::TcpStream, line: &[u8]) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    if write_bytes(stream, line).await.is_err() {
-        return;
-    }
-    if stream.shutdown().await.is_err() {
+    if stream.write_all(line).await.is_err()
+        || stream.flush().await.is_err()
+        || stream.shutdown().await.is_err()
+    {
         return;
     }
     let drain = async {

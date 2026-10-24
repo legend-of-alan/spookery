@@ -127,9 +127,22 @@ impl Canon {
             .collect();
         let kinds = self.cast.iter().map(|(k, m)| (k.clone(), m.kind)).collect();
         let clip = |s: &str| s.chars().take(800).collect();
-        let places = self.places.iter().map(|(k, p)| (k.clone(), clip(&p.body))).collect();
-        let cast = self.cast.iter().map(|(k, m)| (k.clone(), clip(&m.body))).collect();
-        PackSummary { menu, kinds, places, cast }
+        let places = self
+            .places
+            .iter()
+            .map(|(k, p)| (k.clone(), clip(&p.body)))
+            .collect();
+        let cast = self
+            .cast
+            .iter()
+            .map(|(k, m)| (k.clone(), clip(&m.body)))
+            .collect();
+        PackSummary {
+            menu,
+            kinds,
+            places,
+            cast,
+        }
     }
 
     pub fn profile(&self, actor_id: &str) -> Option<&TickProfile> {

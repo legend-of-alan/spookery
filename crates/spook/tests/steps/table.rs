@@ -73,7 +73,7 @@ pub fn files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
-            } else {
+            } else if path.file_name().is_none_or(|n| n != ".serve.lock") {
                 let bytes =
                     fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
                 out.push((path, bytes));
@@ -210,6 +210,7 @@ pub fn listen_flags(
     flags: &[&str],
     env: &[(&str, &str)],
 ) -> (u16, u16) {
+    drop(world.live.take());
     let listening = take_report(spawn_table(pack, flags, env));
     let ports = (listening.game.port(), listening.door.port());
     install(world, pack, listening);

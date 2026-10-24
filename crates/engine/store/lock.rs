@@ -67,33 +67,32 @@ impl Drop for LockGuard {
 }
 
 pub fn lock_world(root: &Path) -> Result<LockGuard, Reason> {
-    let path = root.join("state/.tick.lock");
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(&path)
-        .map_err(|_| Reason::CommitConflict)?;
-    if !try_lock_exclusive(&file) {
-        return Err(Reason::CommitConflict);
-    }
-    Ok(LockGuard { file })
+    lock_nonblocking(&root.join("state/.tick.lock"))
+}
+
+pub fn lock_serve(root: &Path) -> Result<LockGuard, Reason> {
+    lock_nonblocking(&root.join("state/.serve.lock"))
+}
+
+fn lock_nonblocking(path: &Path) -> Result<LockGuard, Reason> {
+    lock_with(path, try_lock_exclusive)
 }
 
 pub(crate) fn lock_session(root: &Path) -> Result<LockGuard, Reason> {
-    let path = root.join("state/.session.lock");
+    lock_with(&root.join("state/.session.lock"), lock_exclusive)
+}
+
+fn lock_with(path: &Path, acquire: fn(&File) -> bool) -> Result<LockGuard, Reason> {
     let file = OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(&path)
+        .open(path)
         .map_err(|_| Reason::CommitConflict)?;
-    if !lock_exclusive(&file) {
-        return Err(Reason::CommitConflict);
-    }
-    Ok(LockGuard { file })
+    acquire(&file)
+        .then_some(LockGuard { file })
+        .ok_or(Reason::CommitConflict)
 }
 
 #[cfg(unix)]

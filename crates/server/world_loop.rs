@@ -1,6 +1,6 @@
 //! The table loop: seat players, read lines, and answer the GM.
 
-use std::io::{self, Write};
+use std::io::Write;
 
 use spookery_engine::{
     GateRefusal, Heard, QueuedMove, Reason, RecipientLine, RoundOutput, World, MAX_PLAYER_SEATS,
@@ -66,34 +66,33 @@ pub(super) fn run_world_loop(
     mut world: World,
     rx: std::sync::mpsc::Receiver<WorldMsg>,
     restart: &tokio::sync::watch::Sender<u64>,
-) -> ! {
+    out: &mut dyn Write,
+    err: &mut dyn Write,
+) -> Result<(), super::listen::Error> {
     let mut seats = Seats::default();
     debug_seats(&seats, &world);
     loop {
-        let msg = match rx.recv() {
-            Ok(msg) => msg,
-            Err(_) => {
-                eprintln!("{}", Reason::NotInSpec);
-                std::process::exit(1);
-            }
-        };
-        let handled = handle(&mut world, &mut seats, restart, msg);
+        let msg = rx
+            .recv()
+            .map_err(|_| super::listen::Error::Reason(Reason::NotInSpec))?;
+        if matches!(msg, WorldMsg::Stop) {
+            return shutdown(&mut world, &mut seats, out).map_err(super::listen::Error::Reason);
+        }
+        let handled = handle(&mut world, &mut seats, restart, out, msg);
         if let Some(warning) = world.take_warning() {
-            eprintln!("{warning}");
+            let _ = writeln!(err, "{warning}");
+            let _ = err.flush();
         }
-        if let Err(code) = handled {
-            eprintln!("{code}");
-            std::process::exit(1);
-        }
+        handled.map_err(super::listen::Error::Reason)?;
         debug_seats(&seats, &world);
     }
 }
 
-pub(super) fn print_host(world: &World, outputs: &[RoundOutput]) {
+pub(super) fn write_host(out: &mut dyn Write, world: &World, outputs: &[RoundOutput]) {
     let text = world.host_lines(outputs);
     if !text.is_empty() {
-        print!("{text}");
-        let _ = io::stdout().flush();
+        let _ = out.write_all(text.as_bytes());
+        let _ = out.flush();
     }
 }
 
@@ -224,8 +223,7 @@ pub(super) enum WorldMsg {
         reply: tokio::sync::oneshot::Sender<Result<(), Reason>>,
     },
     Wake,
-    Stdin(String),
-    StdinEof,
+    Stop,
 }
 
 pub(super) enum HelloReply {
@@ -242,25 +240,26 @@ fn handle(
     world: &mut World,
     seats: &mut Seats,
     restart: &tokio::sync::watch::Sender<u64>,
+    out: &mut dyn Write,
     msg: WorldMsg,
 ) -> Result<(), Reason> {
     match msg {
         WorldMsg::Hello {
             conn,
             line,
-            out,
+            out: out_tx,
             cancel,
             reply,
         } => {
-            let answer = on_hello(world, seats, conn, &line, out, cancel)?;
+            let answer = on_hello(world, seats, conn, &line, out_tx, cancel, out)?;
             let _ = reply.send(answer);
         }
         WorldMsg::Claim {
             conn,
-            out,
+            out: out_tx,
             cancel,
             reply,
-        } => match seat_gm(seats, conn, out, cancel) {
+        } => match seat_gm(seats, conn, out_tx, cancel) {
             Ok(()) => {
                 if reply.send(Ok(())).is_ok() {
                     send_gm(seats, frames::pack_event(world));
@@ -273,10 +272,10 @@ fn handle(
             }
         },
         WorldMsg::Player { conn, line, reply } => {
-            let answer = on_player(world, seats, restart, conn, &line)?;
+            let answer = on_player(world, seats, restart, conn, &line, out)?;
             let _ = reply.send(answer);
         }
-        WorldMsg::Fault { conn, ack } => on_fault(world, seats, conn, ack)?,
+        WorldMsg::Fault { conn, ack } => on_fault(world, seats, conn, ack, out)?,
         WorldMsg::Tool {
             conn,
             name,
@@ -289,24 +288,24 @@ fn handle(
             }
             let mut done = super::gm_tools::call_gm_tool(world, &name, arguments);
             if let Some(code) = &done.refused {
-                println!("refused {name} {}", code.token());
-                let _ = io::stdout().flush();
+                let _ = writeln!(out, "refused {name} {}", code.token());
+                let _ = out.flush();
             }
             let outputs = std::mem::take(&mut done.outputs);
             let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
             if done.ticked {
-                refresh_players(world, seats, &outputs)?;
-                print_host(world, &outputs);
+                refresh_players(world, seats, &outputs, out)?;
+                write_host(out, world, &outputs);
             }
             if let Some(tape) = &done.tape {
-                println!("{tape}");
-                let _ = io::stdout().flush();
+                let _ = writeln!(out, "{tape}");
+                let _ = out.flush();
             }
             if let Some(frame) = done.gm_event {
                 send_gm(seats, frame);
             }
             if let Some((recipients, line)) = &done.player_line {
-                send_recipients(world, seats, recipients, line.clone())?;
+                send_recipients(world, seats, recipients, line.clone(), out)?;
             }
             let mut after = done.after;
             after.extend(frames::gm_check_frames(&reports));
@@ -328,9 +327,7 @@ fn handle(
                 bump_sleep(restart);
             }
         }
-        WorldMsg::Stdin(line) if line == "stop" => shutdown(world, seats),
-        WorldMsg::Stdin(_) => eprintln!("{}", Reason::NotInSpec),
-        WorldMsg::StdinEof => shutdown(world, seats),
+        WorldMsg::Stop => {}
     }
     Ok(())
 }
@@ -354,6 +351,7 @@ fn refresh_players(
     world: &mut World,
     seats: &mut Seats,
     outputs: &[RoundOutput],
+    out: &mut dyn Write,
 ) -> Result<(), Reason> {
     let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
     let mut failed = Vec::new();
@@ -382,25 +380,20 @@ fn refresh_players(
     }
     for conn in failed {
         if drop_conn(world, seats, conn)? {
-            print_host(world, &[]);
+            write_host(out, world, &[]);
         }
     }
     Ok(())
 }
 
-fn shutdown(world: &mut World, seats: &mut Seats) -> ! {
+fn shutdown(world: &mut World, seats: &mut Seats, out: &mut dyn Write) -> Result<(), Reason> {
     for conn in seats.players.conns() {
-        match drop_conn(world, seats, conn) {
-            Ok(true) => print_host(world, &[]),
-            Ok(false) => {}
-            Err(code) => {
-                eprintln!("{code}");
-                std::process::exit(1);
-            }
+        if drop_conn(world, seats, conn)? {
+            write_host(out, world, &[]);
         }
     }
     seats.gm = None;
-    std::process::exit(0);
+    Ok(())
 }
 
 fn on_hello(
@@ -408,8 +401,9 @@ fn on_hello(
     seats: &mut Seats,
     conn: u64,
     line: &str,
-    out: OutTx,
+    out_tx: OutTx,
     cancel: CancelTx,
+    out: &mut dyn Write,
 ) -> Result<HelloReply, Reason> {
     if line == "gm" {
         return Ok(HelloReply::Refused(refused_line(Reason::NotInSpec)));
@@ -432,34 +426,25 @@ fn on_hello(
             Ok(session_id) => session_id,
             Err(code) => return Ok(HelloReply::Refused(refused_line(code))),
         };
-        let bytes = match welcome(world, id) {
-            Ok(bytes) => bytes,
-            Err(code) => {
-                if world.release_player_seat(&session_id, id)? {
-                    print_host(world, &[]);
-                }
-                return Ok(HelloReply::Refused(refused_line(code)));
+        let res = welcome(world, id).and_then(|bytes| {
+            if !super::limits::try_frame(&out_tx, bytes) {
+                return Err(Reason::Schema);
             }
-        };
-        if !super::limits::try_frame(&out, bytes) {
+            seats.players.sit(HeldPlayer {
+                conn,
+                actor_id: id.to_string(),
+                session_id: session_id.clone(),
+                out: out_tx,
+                cancel,
+            })
+        });
+        if let Err(code) = res {
             if world.release_player_seat(&session_id, id)? {
-                print_host(world, &[]);
-            }
-            return Ok(HelloReply::Refused(refused_line(Reason::Schema)));
-        }
-        if let Err(code) = seats.players.sit(HeldPlayer {
-            conn,
-            actor_id: id.to_string(),
-            session_id: session_id.clone(),
-            out,
-            cancel,
-        }) {
-            if world.release_player_seat(&session_id, id)? {
-                print_host(world, &[]);
+                write_host(out, world, &[]);
             }
             return Ok(HelloReply::Refused(refused_line(code)));
         }
-        print_host(world, &[]);
+        write_host(out, world, &[]);
         return Ok(HelloReply::Player);
     }
     Ok(HelloReply::Refused(refused_line(Reason::Schema)))
@@ -495,9 +480,7 @@ fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
 
 enum PlayerCommand<'w, 'l> {
     Speech(Heard<'w>, &'l str),
-    Help,
-    Map,
-    Look,
+    Lines(String),
     Turn(&'l str, Option<&'l str>),
 }
 
@@ -533,9 +516,9 @@ fn parse_player_command<'w, 'l: 'w>(
     }
     if rest.is_empty() {
         return Ok(match verb {
-            "help" => PlayerCommand::Help,
-            "map" => PlayerCommand::Map,
-            "look" => PlayerCommand::Look,
+            "help" => PlayerCommand::Lines(world.help_lines(seated)),
+            "map" => PlayerCommand::Lines(world.player_lines(seated)),
+            "look" => PlayerCommand::Lines(world.look_lines(seated)),
             _ => PlayerCommand::Turn(verb, None),
         });
     }
@@ -573,10 +556,11 @@ fn on_player(
     restart: &tokio::sync::watch::Sender<u64>,
     conn: u64,
     line: &str,
+    out: &mut dyn Write,
 ) -> Result<PlayerReply, Reason> {
     if split_token(line) == ("close", "") {
         if drop_conn(world, seats, conn)? {
-            print_host(world, &[]);
+            write_host(out, world, &[]);
         }
         return Ok(PlayerReply::Hangup);
     }
@@ -592,35 +576,33 @@ fn on_player(
             match world.speak_player(&actor_id, heard, text) {
                 Ok(stored) => {
                     let spoken = frames::spoken_from(&stored);
-                    println!("{}", spoken.tape);
-                    let _ = io::stdout().flush();
+                    let _ = writeln!(out, "{}", spoken.tape);
+                    let _ = out.flush();
                     send_gm(seats, spoken.gm_event);
                     send_recipients(
                         world,
                         seats,
                         &spoken.recipients,
                         spoken.player_event.into_bytes(),
+                        out,
                     )?;
                 }
-                Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
+                Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out)?,
             }
         }
-        Ok(PlayerCommand::Help) => {
-            let text = world.help_lines(&actor_id);
-            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
-        }
-        Ok(PlayerCommand::Map) => {
-            let text = world.player_lines(&actor_id);
-            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
-        }
-        Ok(PlayerCommand::Look) => {
-            let text = world.look_lines(&actor_id);
-            send_player(world, seats, conn, frames::player_lines(&text).into_bytes())?;
+        Ok(PlayerCommand::Lines(text)) => {
+            send_player(
+                world,
+                seats,
+                conn,
+                frames::player_lines(&text).into_bytes(),
+                out,
+            )?;
         }
         Ok(PlayerCommand::Turn(verb, target)) => {
-            on_mechanical(world, seats, restart, conn, &actor_id, verb, target)?;
+            on_mechanical(world, seats, restart, conn, &actor_id, (verb, target), out)?;
         }
-        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes())?,
+        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out)?,
     }
     Ok(PlayerReply::Done)
 }
@@ -631,8 +613,8 @@ fn on_mechanical(
     restart: &tokio::sync::watch::Sender<u64>,
     conn: u64,
     actor_id: &str,
-    verb: &str,
-    target: Option<&str>,
+    (verb, target): (&str, Option<&str>),
+    out: &mut dyn Write,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
     match handle_player_move(world, actor_id, verb, target, gm_seated) {
@@ -646,14 +628,15 @@ fn on_mechanical(
                 seats,
                 conn,
                 frames::player_queued_line(&queued.id).into_bytes(),
+                out,
             )?;
         }
         Ok(MoveOutcome::Committed { advanced, outputs }) => {
             if advanced {
                 bump_sleep(restart);
             }
-            print_host(world, &outputs);
-            refresh_players(world, seats, &outputs)?;
+            write_host(out, world, &outputs);
+            refresh_players(world, seats, &outputs, out)?;
         }
         Ok(MoveOutcome::Busy {
             code,
@@ -665,10 +648,11 @@ fn on_mechanical(
                 seats,
                 conn,
                 frames::player_refused(code.token(), missing.as_deref()).into_bytes(),
+                out,
             )?;
             if !outputs.is_empty() {
-                refresh_players(world, seats, &outputs)?;
-                print_host(world, &outputs);
+                refresh_players(world, seats, &outputs, out)?;
+                write_host(out, world, &outputs);
             }
         }
         Err(refusal) => send_player(
@@ -676,6 +660,7 @@ fn on_mechanical(
             seats,
             conn,
             frames::player_refused(refusal.token(), refusal.missing()).into_bytes(),
+            out,
         )?,
     }
     Ok(PlayerReply::Done)
@@ -687,13 +672,14 @@ fn send_player(
     seats: &mut Seats,
     conn: u64,
     bytes: Vec<u8>,
+    out: &mut dyn Write,
 ) -> Result<(), Reason> {
     let failed = match seats.players.by_conn(conn) {
         Some(player) => !super::limits::try_frame(&player.out, bytes),
         None => false,
     };
     if failed && drop_conn(world, seats, conn)? {
-        print_host(world, &[]);
+        write_host(out, world, &[]);
     }
     Ok(())
 }
@@ -713,6 +699,7 @@ fn send_recipients(
     seats: &mut Seats,
     recipients: &[String],
     line: Vec<u8>,
+    out: &mut dyn Write,
 ) -> Result<(), Reason> {
     let mut failed = Vec::new();
     for player in seats.players.slots.iter().flatten() {
@@ -724,7 +711,7 @@ fn send_recipients(
     }
     for conn in failed {
         if drop_conn(world, seats, conn)? {
-            print_host(world, &[]);
+            write_host(out, world, &[]);
         }
     }
     Ok(())
@@ -742,24 +729,16 @@ fn on_fault(
     seats: &mut Seats,
     conn: u64,
     ack: tokio::sync::oneshot::Sender<()>,
+    out: &mut dyn Write,
 ) -> Result<(), Reason> {
-    let result = if seats.players.by_conn(conn).is_some() {
-        match drop_conn(world, seats, conn) {
-            Ok(true) => {
-                print_host(world, &[]);
-                Ok(())
-            }
-            Ok(false) => Ok(()),
-            Err(code) => Err(code),
-        }
+    let res = drop_conn(world, seats, conn);
+    if matches!(res, Ok(true)) {
+        write_host(out, world, &[]);
     } else if seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
         seats.gm = None;
-        Ok(())
-    } else {
-        Ok(())
-    };
+    }
     let _ = ack.send(());
-    result
+    res.map(|_| ())
 }
 
 fn refused_line(code: Reason) -> String {
