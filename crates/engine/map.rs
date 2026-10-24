@@ -14,6 +14,7 @@ use crate::rules::cost;
 use crate::rules::expr::{Ctx, Dice};
 use crate::rules::gate::{self, GateRefusal};
 use crate::visibility::allows;
+pub use spookery_protocol::exit_phrase;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExitView {
@@ -332,14 +333,6 @@ pub fn place_prose(canon: &Canon, now: &Now, actor_id: &str) -> String {
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
-    if locked {
-        format!("{name} (locked) — {minutes} min")
-    } else {
-        format!("{name} — {minutes} min")
-    }
 }
 
 /// Minutes from midnight as `21:40`.

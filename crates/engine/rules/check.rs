@@ -7,13 +7,7 @@ pub struct CheckDef {
     pub stat: String,
 }
 
-/// One roll's band. A row without `partial_at` is `Success` or `Miss`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Outcome {
-    Success,
-    Partial,
-    Miss,
-}
+pub use spookery_protocol::Outcome;
 
 /// `total` against `target`, with an optional lower band.
 /// `total >= target` is success. `partial_at <= total < target` is partial.

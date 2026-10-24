@@ -16,7 +16,8 @@ use crate::diagnostic::{
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
-use crate::rule::{Cond, Cost, Owner, Rule, RuleTable};
+use crate::rule::{Cond, Cost, Owner, Rule, RuleTable, TargetKind, When};
+pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
 mod check;
 mod save;
@@ -88,12 +89,6 @@ pub struct PlaceCanon {
     pub exits: Vec<Exit>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CastKind {
-    Npc,
-    PcTemplate,
-}
-
 #[derive(Clone, Debug)]
 pub struct CastCanon {
     pub kind: CastKind,
@@ -112,6 +107,31 @@ pub struct TickProfile {
 }
 
 impl Canon {
+    pub fn pack_summary(&self) -> PackSummary {
+        let menu = self
+            .rules
+            .iter()
+            .filter_map(|rule| match &rule.when {
+                When::Verb { verb, target } if matches!(rule.owner, Owner::Verb) => {
+                    Some((verb.clone(), "verb", target.word()))
+                }
+                When::Habit => Some((rule.local_id.clone(), "habit", TargetKind::None.word())),
+                _ => None,
+            })
+            .map(|(name, audience, token)| MenuRow {
+                name,
+                audience: audience.to_string(),
+                token: token.to_string(),
+                on: "self".to_string(),
+            })
+            .collect();
+        let kinds = self.cast.iter().map(|(k, m)| (k.clone(), m.kind)).collect();
+        let clip = |s: &str| s.chars().take(800).collect();
+        let places = self.places.iter().map(|(k, p)| (k.clone(), clip(&p.body))).collect();
+        let cast = self.cast.iter().map(|(k, m)| (k.clone(), clip(&m.body))).collect();
+        PackSummary { menu, kinds, places, cast }
+    }
+
     pub fn profile(&self, actor_id: &str) -> Option<&TickProfile> {
         self.cast.get(actor_id).and_then(|cast| cast.tick.as_ref())
     }

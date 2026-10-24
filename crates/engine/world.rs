@@ -14,7 +14,7 @@ use crate::intent::{player_intent_id, ActorKind, Intent, IntentArgs, Source, Tar
 use crate::journal::{self, JournalEntry};
 use crate::model::{sort_unique, ActorLive, Now, Presence};
 use crate::rule::{TargetKind, When};
-use crate::rules::gate::{gate, resolve, verb_for, GateRefusal};
+use crate::rules::gate::{gate, verb_for, GateRefusal};
 use crate::store::codec::{emit_save, load_save};
 use crate::store::recover::recover;
 use crate::store::tape::{append_record, read_session, read_tail, session_end_seq, TapeRecord};
@@ -41,14 +41,12 @@ pub struct QueuedMove {
     pub move_name: String,
 }
 
-pub struct GmIntentSpec<'a> {
+pub struct GmIntentSpec {
     pub id: Option<String>,
     pub tick_index: Option<u64>,
     pub actor_id: Option<String>,
-    pub actor_kind: Option<&'a str>,
-    pub source: Option<&'a str>,
     pub move_name: Option<String>,
-    pub target: Target,
+    pub target: Option<String>,
     pub message_to: Option<Vec<String>>,
     pub rationale_code: String,
 }
@@ -69,6 +67,20 @@ impl World {
 
     pub fn canon(&self) -> &Canon {
         &self.canon
+    }
+
+    pub fn pack_summary(&self) -> spookery_protocol::PackSummary {
+        self.canon.pack_summary()
+    }
+
+    pub fn free_pcs(&self) -> Vec<String> {
+        let present = &self.now.presence.actors_present;
+        self.now
+            .actors
+            .iter()
+            .filter(|(id, a)| a.is_pc() && !present.contains(id))
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     pub fn now(&self) -> &Now {
@@ -159,24 +171,7 @@ impl World {
             .get(actor_id)
             .filter(|actor| actor.is_pc())
             .ok_or(Reason::Schema)?;
-        let target = target.filter(|token| !token.is_empty());
-        let rule = verb_for(
-            &self.canon,
-            Some(actor.place()),
-            verb,
-            target,
-            actor.wielded(),
-        )
-        .ok_or(Reason::NotInSpec)?;
-        let When::Verb { target: kind, .. } = &rule.when else {
-            return Err(Reason::NotInSpec.into());
-        };
-        let target = match (kind, target) {
-            (TargetKind::None, None) => Target::Empty,
-            (TargetKind::Actor | TargetKind::Item, Some(id)) => Target::Actor(id.to_string()),
-            (TargetKind::Place | TargetKind::Exit, Some(id)) => Target::Place(id.to_string()),
-            _ => return Err(Reason::Schema.into()),
-        };
+        let target = self.verb_target(actor, verb, target, Reason::NotInSpec)?;
         let intent = self.player_intent(actor_id, verb, target)?;
         gate(&self.canon, &self.now, &intent)?;
         let queued = QueuedMove {
@@ -186,6 +181,27 @@ impl World {
         };
         self.queue(intent);
         Ok(queued)
+    }
+
+    fn verb_target(
+        &self,
+        actor: &ActorLive,
+        verb: &str,
+        target: Option<&str>,
+        missing: Reason,
+    ) -> Result<Target, Reason> {
+        let token = target.filter(|t| !t.is_empty());
+        let rule = verb_for(&self.canon, Some(actor.place()), verb, token, actor.wielded())
+            .ok_or(missing)?;
+        let When::Verb { target: kind, .. } = &rule.when else {
+            return Err(missing);
+        };
+        match (kind, token) {
+            (TargetKind::None, None) => Ok(Target::Empty),
+            (TargetKind::Actor | TargetKind::Item, Some(id)) => Ok(Target::Actor(id.to_string())),
+            (TargetKind::Place | TargetKind::Exit, Some(id)) => Ok(Target::Place(id.to_string())),
+            _ => Err(Reason::Schema),
+        }
     }
 
     fn player_intent(&self, actor_id: &str, verb: &str, target: Target) -> Result<Intent, Reason> {
@@ -219,46 +235,27 @@ impl World {
 
     pub fn queue_gm_intent(
         &mut self,
-        spec: GmIntentSpec<'_>,
+        spec: GmIntentSpec,
         mint_id: impl FnOnce() -> Result<String, Reason>,
     ) -> Result<QueuedMove, Reason> {
-        if spec.source != Some("player") {
-            return Err(Reason::Schema);
-        }
-        let actor_id = spec.actor_id.ok_or(Reason::Schema)?;
-        let actor_kind = match spec.actor_kind {
-            Some("npc") => ActorKind::Npc,
-            Some("player") => ActorKind::Player,
-            _ => return Err(Reason::Schema),
+        let actor_id = spec
+            .actor_id
+            .filter(|id| !id.is_empty() && !id.contains(':'))
+            .ok_or(Reason::Schema)?;
+        let move_name = spec.move_name.filter(|m| !m.is_empty()).ok_or(Reason::Schema)?;
+        let actor = self.now.actors.get(&actor_id).ok_or(Reason::UnknownKey)?;
+        let actor_kind = actor.actor_kind();
+        let token = spec.target.as_deref().filter(|t| !t.is_empty());
+        let is_habit = actor_kind == ActorKind::Npc
+            && self.canon.rules.habits_of(&actor_id).iter().any(|r| r.local_id == move_name);
+        let target = match (is_habit, token) {
+            (true, None) => Target::Empty,
+            (true, Some(_)) => return Err(Reason::Schema),
+            (false, _) if actor_kind == ActorKind::Npc => {
+                self.verb_target(actor, &move_name, token, Reason::UnknownMove)?
+            }
+            (false, _) => self.verb_target(actor, &move_name, token, Reason::NotInSpec)?,
         };
-        let move_name = spec.move_name.ok_or(Reason::Schema)?;
-        let matches_kind = match actor_kind {
-            ActorKind::Player => self.now.actors.get(&actor_id).is_some_and(ActorLive::is_pc),
-            ActorKind::Npc => self
-                .now
-                .actors
-                .get(&actor_id)
-                .is_some_and(ActorLive::is_npc),
-            ActorKind::System => false,
-        };
-        if !matches_kind {
-            return Err(Reason::Schema);
-        }
-        let args = IntentArgs {
-            message_to: spec.message_to,
-        };
-        let probe = Intent {
-            id: "probe".to_string(),
-            tick_index: self.now.tick_index,
-            actor_id: actor_id.clone(),
-            actor_kind,
-            source: Source::Player,
-            move_name: move_name.clone(),
-            target: spec.target.clone(),
-            args: args.clone(),
-            rationale_code: String::new(),
-        };
-        resolve(&self.canon, &self.now, &probe)?;
         let id = match spec.id {
             Some(id) if !id.is_empty() => id,
             Some(_) => return Err(Reason::Schema),
@@ -268,9 +265,10 @@ impl World {
             return Err(Reason::Schema);
         }
         let tick_index = match spec.tick_index {
-            Some(tick_index) => tick_index,
+            Some(tick) => tick,
             None => self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?,
         };
+        let args = IntentArgs { message_to: spec.message_to };
         self.queue(Intent {
             id: id.clone(),
             tick_index,
@@ -278,15 +276,11 @@ impl World {
             actor_kind,
             source: Source::Player,
             move_name: move_name.clone(),
-            target: spec.target,
+            target,
             args,
             rationale_code: spec.rationale_code,
         });
-        Ok(QueuedMove {
-            id,
-            actor_id,
-            move_name,
-        })
+        Ok(QueuedMove { id, actor_id, move_name })
     }
 
     pub fn speak_player(

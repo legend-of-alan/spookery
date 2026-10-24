@@ -116,6 +116,14 @@ pub struct WireMeter {
     pub max: i64,
 }
 
+pub fn exit_phrase(name: &str, minutes: u64, locked: bool) -> String {
+    if locked {
+        format!("{name} (locked) — {minutes} min")
+    } else {
+        format!("{name} — {minutes} min")
+    }
+}
+
 pub fn write_player(message: &PlayerMessage) -> String {
     let mut line = serde_json::to_string(message).expect("player line");
     line.push('\n');

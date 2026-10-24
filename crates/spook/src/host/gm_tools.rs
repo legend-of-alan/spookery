@@ -1,7 +1,7 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_engine::{GmIntentSpec, QueuedMove, Reason, RoundOutput, Target, World};
+use spookery_engine::{GmIntentSpec, QueuedMove, Reason, RoundOutput, World};
 
 use super::frames;
 use super::world_loop::commit_then_fast_forward;
@@ -49,7 +49,7 @@ pub(super) struct GmTool {
     run: fn(&mut World, Option<Map<String, Value>>) -> GmToolReply,
 }
 
-const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to player:<id> or npc:<id>. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
+const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
 
 impl GmTool {
     pub(super) fn description(&self) -> String {
@@ -72,7 +72,7 @@ pub(super) const GM_LIST: &[GmTool] = &[
     },
     GmTool {
         name: "intent",
-        about: "intent requires actor_id, actor_kind, source, and move. source stays player. A habit row is legal when actor_kind is npc.",
+        about: "intent requires actor_id and move. A habit row is legal when actor_id is an npc.",
         schema: intent_schema,
         run: run_intent,
     },
@@ -264,16 +264,14 @@ fn intent_schema() -> Map<String, Value> {
         "type": "object",
         "properties": {
             "actor_id": { "type": "string" },
-            "actor_kind": { "type": "string", "enum": ["npc", "player"] },
-            "source": { "type": "string", "const": "player" },
             "move": { "type": "string" },
             "id": { "type": "string" },
             "tick_index": { "type": "integer", "minimum": 0 },
-            "target": { "type": "object" },
+            "target": { "type": "string" },
             "args": { "type": "object" },
             "rationale_code": { "type": "string" }
         },
-        "required": ["actor_id", "actor_kind", "source", "move"],
+        "required": ["actor_id", "move"],
         "additionalProperties": false
     }))
 }
@@ -384,24 +382,13 @@ fn queue_tool_intent(
             id: call.id,
             tick_index: call.tick_index,
             actor_id: call.actor_id,
-            actor_kind: call.actor_kind.as_deref(),
-            source: call.source.as_deref(),
             move_name: call.move_name,
-            target: kernel_target(call.target),
+            target: call.target,
             message_to: call.message_to,
             rationale_code: call.rationale_code,
         },
         mint_intent_id,
     )
-}
-
-fn kernel_target(target: crate::protocol::CallTarget) -> Target {
-    match target {
-        crate::protocol::CallTarget::Empty => Target::Empty,
-        crate::protocol::CallTarget::Place(id) => Target::Place(id),
-        crate::protocol::CallTarget::Actor(id) => Target::Actor(id),
-        crate::protocol::CallTarget::Clock(id) => Target::Clock(id),
-    }
 }
 
 fn mint_intent_id() -> Result<String, Reason> {

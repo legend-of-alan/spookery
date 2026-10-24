@@ -10,7 +10,7 @@ mod render;
 
 pub use gm_view::{actor_name, run_gm};
 pub use player_view::run_player;
-pub(crate) use render::refusal;
+pub(crate) use crate::protocol::refusal;
 
 pub enum Error {
     Reason(Reason),

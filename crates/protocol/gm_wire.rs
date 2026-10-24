@@ -127,41 +127,6 @@ pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<OutgoingS
     parse_args(arguments.ok_or(Error)?)
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub enum CallTarget {
-    #[default]
-    Empty,
-    Place(String),
-    Actor(String),
-    Clock(String),
-}
-
-impl<'de> Deserialize<'de> for CallTarget {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct WireTarget {
-            #[serde(default)]
-            place: Option<String>,
-            #[serde(default)]
-            actor: Option<String>,
-            #[serde(default)]
-            clock: Option<String>,
-        }
-        let wire = WireTarget::deserialize(deserializer)?;
-        match (wire.place, wire.actor, wire.clock) {
-            (None, None, None) => Ok(CallTarget::Empty),
-            (Some(id), None, None) => Ok(CallTarget::Place(id)),
-            (None, Some(id), None) => Ok(CallTarget::Actor(id)),
-            (None, None, Some(id)) => Ok(CallTarget::Clock(id)),
-            _ => Err(serde::de::Error::custom("target")),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct IntentCall {
@@ -171,14 +136,10 @@ pub struct IntentCall {
     pub tick_index: Option<u64>,
     #[serde(default)]
     pub actor_id: Option<String>,
-    #[serde(default)]
-    pub actor_kind: Option<String>,
-    #[serde(default)]
-    pub source: Option<String>,
     #[serde(rename = "move", default)]
     pub move_name: Option<String>,
     #[serde(default)]
-    pub target: CallTarget,
+    pub target: Option<String>,
     #[serde(rename = "args", default, deserialize_with = "deserialize_message_to")]
     pub message_to: Option<Vec<String>>,
     #[serde(default)]
@@ -287,6 +248,29 @@ pub struct GmSay {
     pub text: String,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CastKind {
+    Npc,
+    PcTemplate,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MenuRow {
+    pub name: String,
+    pub audience: String,
+    pub token: String,
+    pub on: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PackSummary {
+    pub menu: Vec<MenuRow>,
+    pub kinds: std::collections::BTreeMap<String, CastKind>,
+    pub places: std::collections::BTreeMap<String, String>,
+    pub cast: std::collections::BTreeMap<String, String>,
+}
+
 /// A `spook/event` body. `kind` is the serde tag, not a stored field.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
@@ -294,6 +278,7 @@ pub enum EventBody {
     Say(GmSay),
     Queued(QueueRow),
     Check(Roll),
+    Pack(PackSummary),
 }
 
 impl GmSay {
@@ -321,7 +306,9 @@ where
         .into_iter()
         .map(|event| match event {
             EventBody::Say(say) => Ok(say),
-            EventBody::Queued(_) | EventBody::Check(_) => Err(serde::de::Error::custom("say")),
+            EventBody::Queued(_) | EventBody::Check(_) | EventBody::Pack(_) => {
+                Err(serde::de::Error::custom("say"))
+            }
         })
         .collect::<Result<Vec<_>, _>>()
         .map(Some)
@@ -329,6 +316,11 @@ where
 
 pub fn write_say_event(say: &GmSay) -> Vec<u8> {
     event_line(say.to_value())
+}
+
+pub fn write_pack_event(pack: &PackSummary) -> Vec<u8> {
+    let body = EventBody::Pack(pack.clone());
+    event_line(serde_json::to_value(body).expect("pack event"))
 }
 
 pub fn write_queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {

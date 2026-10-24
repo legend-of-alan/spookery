@@ -88,18 +88,12 @@ pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
     crate::protocol::write_queued_event(id, actor_id, move_name)
 }
 
-pub fn player_check_line(outcome: spookery_engine::Outcome) -> String {
-    crate::protocol::write_player(&PlayerMessage::Check {
-        outcome: wire_outcome(outcome),
-    })
+pub fn pack_event(world: &World) -> Vec<u8> {
+    crate::protocol::write_pack_event(&world.pack_summary())
 }
 
-fn wire_outcome(outcome: spookery_engine::Outcome) -> Outcome {
-    match outcome {
-        spookery_engine::Outcome::Success => Outcome::Success,
-        spookery_engine::Outcome::Partial => Outcome::Partial,
-        spookery_engine::Outcome::Miss => Outcome::Miss,
-    }
+pub fn player_check_line(outcome: Outcome) -> String {
+    crate::protocol::write_player(&PlayerMessage::Check { outcome })
 }
 
 pub fn check_event(out: &RollResult) -> Vec<u8> {
@@ -308,7 +302,7 @@ fn roll_of(out: &RollResult) -> Roll {
         stat: out.stat,
         total: out.total,
         target: out.target,
-        outcome: wire_outcome(out.outcome),
+        outcome: out.outcome,
     }
 }
 

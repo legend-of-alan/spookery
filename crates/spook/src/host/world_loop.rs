@@ -260,12 +260,13 @@ fn handle(
             out,
             cancel,
             reply,
-        } => {
-            let answer = seat_gm(seats, conn, out, cancel);
-            if reply.send(answer).is_err() && seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
-                seats.gm = None;
+        } => match seat_gm(seats, conn, out, cancel) {
+            Ok(()) if reply.send(Ok(())).is_ok() => send_gm(seats, frames::pack_event(world)),
+            Ok(()) => seats.gm = None,
+            Err(code) => {
+                let _ = reply.send(Err(code));
             }
-        }
+        },
         WorldMsg::Player { conn, line, reply } => {
             let answer = on_player(world, seats, restart, conn, &line)?;
             let _ = reply.send(answer);
@@ -408,6 +409,19 @@ fn on_hello(
     if line == "gm" {
         return Ok(HelloReply::Refused(refused_line(Reason::NotInSpec)));
     }
+    if line.is_empty() || line == "player:" {
+        if seats.players.len() >= MAX_PLAYER_SEATS {
+            return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
+        }
+        let free = world.free_pcs();
+        if free.is_empty() {
+            return Ok(HelloReply::Refused(refused_line(Reason::SeatTaken)));
+        }
+        return Ok(HelloReply::Refused(frames::player_refused(
+            Reason::ChoosePc.token(),
+            Some(&free.join(", ")),
+        )));
+    }
     if let Some(id) = player_hello(line) {
         let session_id = match world.seat_player(id) {
             Ok(session_id) => session_id,
@@ -468,7 +482,7 @@ fn welcome(world: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
 }
 
 fn player_refresh(world: &World, actor_id: &str) -> Result<String, Reason> {
-    let view = world.perceive(&format!("player:{actor_id}"))?;
+    let view = world.perceive(actor_id)?;
     let mut out = frames::player_resume_line(&view);
     out.push_str(&frames::player_perceive_line(&view));
     Ok(out)

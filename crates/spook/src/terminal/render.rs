@@ -1,7 +1,8 @@
 //! Readable text for one player frame.
 
-use crate::protocol::{Outcome, PlayerMessage, WireClock, WireExit, WireMessage, WireMeter};
-use spookery_engine::model::exit_phrase;
+use crate::protocol::{
+    exit_phrase, named_refusal, Outcome, PlayerMessage, WireClock, WireExit, WireMessage, WireMeter,
+};
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
 pub fn render(message: &PlayerMessage) -> String {
@@ -108,54 +109,6 @@ fn resume(messages: &[WireMessage], clocks: &[WireClock]) -> String {
     } else {
         format!("While you were away:\n{}", lines.join("\n"))
     }
-}
-
-pub(crate) fn refusal(code: &str) -> String {
-    named_refusal(code, None)
-}
-
-fn named_refusal(code: &str, missing: Option<&str>) -> String {
-    let sentence = match code {
-        "ILLEGAL_CLASS" => "That action is not allowed.",
-        "ILLEGAL_KNOWLEDGE" => "You cannot know that.",
-        "OUT_OF_RANGE" => "That is out of range.",
-        "BUDGET" => "That does not fit.",
-        "PAUSED_CLOCK" => "That clock is paused.",
-        "UNKNOWN_KEY" => "That is not in the world.",
-        "VIEWER_MISMATCH" => "That is not your view.",
-        "KERNEL_ON_PLAYER" => "The table cannot do that for you.",
-        "INELIGIBLE" => "You cannot do that right now.",
-        "NO_PROFILE" => "There is no profile for that.",
-        "ACTOR_MISMATCH" => "That action is not yours.",
-        "TABLE_EMPTY" => "Nobody is seated.",
-        "PACK_REV_MISMATCH" => "The save does not match this pack.",
-        "UNKNOWN_MOVE" => "That is not a move.",
-        "UNSCOPED_PERCEIVE" => "You cannot see that.",
-        "COMMIT_CONFLICT" => "The table was already writing. Try again.",
-        "HAND_EDIT" => "The save was edited by hand.",
-        "SCHEMA" => "That line is not valid.",
-        "NOT_IN_SPEC" => "The table does not understand that. Type help.",
-        "SESSION_FULL" => "The table is full.",
-        "SEAT_TAKEN" => "That character is already taken.",
-        "MISSING_ITEM" => "You do not have that.",
-        "NOT_A_WEAPON" => "That is not a weapon.",
-        "LINE_TOO_LONG" => "That line is too long.",
-        "NO_EXIT" => {
-            return match missing {
-                Some(text) if !text.is_empty() => format!("{text} [{code}]"),
-                _ => format!("There is no exit that way. [{code}]"),
-            };
-        }
-        "BUSY" => return format!("You are busy. [{code}]"),
-        "CANT_AFFORD" => {
-            return match missing {
-                Some(what) if !what.is_empty() => format!("You cannot afford {what}. [{code}]"),
-                _ => format!("You cannot afford that. [{code}]"),
-            };
-        }
-        _ => return format!("The table refused that. [{code}]"),
-    };
-    format!("{sentence} [{code}]")
 }
 
 fn view_text(message: &PlayerMessage) -> String {

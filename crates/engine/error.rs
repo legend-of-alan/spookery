@@ -27,6 +27,7 @@ pub enum Reason {
     NotInSpec,
     SessionFull,
     SeatTaken,
+    ChoosePc,
     MissingItem,
     LineTooLong,
     CantAfford,
@@ -61,6 +62,7 @@ impl Reason {
             Reason::NotInSpec => "NOT_IN_SPEC",
             Reason::SessionFull => "SESSION_FULL",
             Reason::SeatTaken => "SEAT_TAKEN",
+            Reason::ChoosePc => "CHOOSE_PC",
             Reason::MissingItem => "MISSING_ITEM",
             Reason::LineTooLong => "LINE_TOO_LONG",
             Reason::CantAfford => "CANT_AFFORD",
@@ -95,7 +97,7 @@ impl std::error::Error for Reason {}
 mod tests {
     use super::Reason;
 
-    const ALL: [Reason; 29] = [
+    const ALL: [Reason; 30] = [
         Reason::IllegalClass,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
@@ -119,6 +121,7 @@ mod tests {
         Reason::NotInSpec,
         Reason::SessionFull,
         Reason::SeatTaken,
+        Reason::ChoosePc,
         Reason::MissingItem,
         Reason::LineTooLong,
         Reason::CantAfford,
@@ -153,6 +156,7 @@ mod tests {
             | Reason::NotInSpec
             | Reason::SessionFull
             | Reason::SeatTaken
+            | Reason::ChoosePc
             | Reason::MissingItem
             | Reason::LineTooLong
             | Reason::CantAfford

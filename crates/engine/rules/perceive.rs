@@ -80,7 +80,14 @@ fn perceive_at_budget(
     as_arg: &str,
     budget_tokens: usize,
 ) -> Result<View, Reason> {
-    let viewer = ViewerId::parse(as_arg)?;
+    if as_arg.is_empty()
+        || as_arg == "gm"
+        || as_arg.contains(':')
+        || as_arg.chars().any(char::is_whitespace)
+    {
+        return Err(Reason::UnscopedPerceive);
+    }
+    let viewer = now.actor_viewer(as_arg).ok_or(Reason::UnknownKey)?;
     perceive_viewer_budget(canon, now, &viewer, budget_tokens)
 }
 
