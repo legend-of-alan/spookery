@@ -19,12 +19,12 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4.6.7", features = ["derive"] }
 futures-core = "0.3"
-reqwest = { version = "0.12", features = ["json"] }
-rmcp = { version = "3.5.1", default-features = false, features = ["server", "client", "transport-streamable-http-server", "transport-streamable-http-client-reqwest"] }
+rmcp = { version = "3.5.1", default-features = false, features = ["server", "transport-streamable-http-server"] }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 socket2 = { version = "0.6", features = ["all"] }
+spookery-cli = { path = "../cli" }
 spookery-engine = { path = "../engine" }
 spookery-protocol = { path = "../protocol" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util", "io-std", "sync"] }

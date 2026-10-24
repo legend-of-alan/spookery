@@ -2068,7 +2068,30 @@ dependencies = [
  "serde-saphyr",
  "serde_json",
  "socket2",
+ "spookery-cli",
  "spookery-engine",
+ "spookery-protocol",
+ "tokio",
+]
+
+[[package]]
+name = "spookery-agent"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "spookery-protocol",
+]
+
+[[package]]
+name = "spookery-cli"
+version = "0.0.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "spookery-agent",
  "spookery-protocol",
  "tokio",
 ]
@@ -2093,6 +2116,14 @@ version = "0.0.0"
 dependencies = [
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "spookery-server"
+version = "0.0.0"
+dependencies = [
+ "spookery-engine",
+ "spookery-protocol",
 ]
 
 [[package]]

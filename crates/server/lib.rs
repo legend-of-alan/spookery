@@ -1,0 +1,1 @@
+//! The Spookery table server.
