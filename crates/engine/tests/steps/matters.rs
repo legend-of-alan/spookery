@@ -269,9 +269,11 @@ fn seat(pack: &Path) -> Shard {
 }
 
 fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
-    let (verb, target) = super::common::split_move(line);
-    match spookery::host::handle_player_move(world, "pc_lark", verb, target, false) {
-        Ok(spookery::host::MoveOutcome::Committed { outputs, .. }) => {
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)));
+    match spookery_engine::handle_player_move(world, "pc_lark", verb, target, false) {
+        Ok(spookery_engine::MoveOutcome::Committed { outputs, .. }) => {
             outputs.into_iter().next().unwrap()
         }
         Ok(_) => panic!("{line} did not commit"),

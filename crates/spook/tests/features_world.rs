@@ -17,9 +17,6 @@ mod steps_run;
 #[path = "steps/rounds.rs"]
 mod rounds;
 
-#[path = "steps/round_play.rs"]
-mod round_play;
-
 #[path = "steps/replay.rs"]
 mod replay;
 
@@ -58,9 +55,6 @@ mod sample;
 
 #[path = "steps/showcase.rs"]
 mod showcase;
-
-#[path = "steps/no_facts.rs"]
-mod no_facts;
 
 #[path = "steps/readme.rs"]
 mod readme;

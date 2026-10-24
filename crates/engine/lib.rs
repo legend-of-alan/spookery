@@ -39,7 +39,10 @@ pub use round::{
 pub use rule::{Owner, TargetKind, When};
 pub use rules::{GateRefusal, MoveReport, RollResult};
 pub use visibility::RecipientLine;
-pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World, MAX_PLAYER_SEATS};
+pub use world::{
+    check_pack, handle_player_move, GmIntentSpec, Heard, MoveOutcome, QueuedMove, World,
+    MAX_PLAYER_SEATS,
+};
 
 #[cfg(feature = "testing")]
 pub mod testing {

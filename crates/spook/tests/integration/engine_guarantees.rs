@@ -30,8 +30,9 @@ fn cited_feature_files_exist() {
 
     let mut missing = Vec::new();
     for cite in &cited {
-        let path = root.join("crates/spook/tests").join(cite);
-        if !path.is_file() {
+        let in_spook = root.join("crates/spook/tests").join(cite).is_file();
+        let in_engine = root.join("crates/engine/tests").join(cite).is_file();
+        if !in_spook && !in_engine {
             missing.push(cite.clone());
         }
     }

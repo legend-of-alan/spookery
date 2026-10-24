@@ -5,16 +5,18 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::model::Presence;
+use spookery_engine::model::{Now, Presence};
+use spookery_engine::store::{emit_save, load_save};
 use spookery_engine::testing::journal::list_tick_keys;
 
-use super::common::edit_save;
-use super::table;
 use crate::support;
 use crate::World;
 
-/// Panics if the host refuses the line. `lark types` in `items.rs` stores the
-/// refusal instead, for scenarios that expect one.
+#[given(expr = "a copy of the sample-d20 pack")]
+fn a_copy_of_the_sample_d20_pack(world: &mut World) {
+    world.pack = Some(support::copy_pack("sample-d20", "sample"));
+}
+
 #[when(expr = "Lark plays {string}")]
 fn lark_plays(world: &mut World, line: String) {
     play(world, "pc_lark", &line);
@@ -22,7 +24,7 @@ fn lark_plays(world: &mut World, line: String) {
 
 #[then(expr = "the journal commits two location effects for Lark")]
 fn two_location_effects_for_lark(world: &mut World) {
-    let moves = location_moves(table::pack(world), "pc_lark");
+    let moves = location_moves(pack(world), "pc_lark");
     assert_eq!(
         moves,
         vec![
@@ -35,7 +37,7 @@ fn two_location_effects_for_lark(world: &mut World) {
 
 #[then(expr = "Lark is in the Gate Yard")]
 fn lark_is_in_the_gate_yard(world: &mut World) {
-    assert_eq!(place_of(table::pack(world), "pc_lark"), "gate_yard");
+    assert_eq!(place_of(pack(world), "pc_lark"), "gate_yard");
 }
 
 #[when(expr = "Nell waits")]
@@ -45,7 +47,7 @@ fn nell_waits(world: &mut World) {
 
 #[then(expr = "the wait commits with nothing rejected")]
 fn the_wait_commits_with_nothing_rejected(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = pack(world);
     let mut found = false;
     for key in list_tick_keys(pack) {
         let round = read_round(pack, &key);
@@ -92,20 +94,20 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
 
 #[when(expr = "a docks round plays")]
 fn a_docks_round_plays(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = pack(world);
     spookery_engine::play_pack_once(pack).unwrap_or_else(|err| panic!("round: {err}"));
 }
 
 #[then(expr = "Mira's habit fires")]
 fn miras_habit_fires(world: &mut World) {
-    let pack = table::pack(world);
+    let pack = pack(world);
     let fired = list_tick_keys(pack).iter().any(|key| {
         read_round(pack, key)["steps_run"]
             .as_array()
             .is_some_and(|steps| steps.iter().any(|step| step == "cast:mira/leave_door_note"))
     });
     assert!(fired, "leave_door_note did not run");
-    let now = table::now_of(pack);
+    let now = now_of(pack);
     assert!(
         now.messages
             .iter()
@@ -114,16 +116,35 @@ fn miras_habit_fires(world: &mut World) {
     );
 }
 
+fn pack(world: &World) -> &Path {
+    world.pack.as_deref().unwrap()
+}
+
+fn now_of(pack: &Path) -> Now {
+    let report = spookery_engine::testing::from_journal(pack, None, None).unwrap();
+    load_save(std::str::from_utf8(&report.now_yaml).unwrap()).unwrap()
+}
+
+fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
+    let path = pack.join("state/save.yaml");
+    let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
+    edit(&mut now);
+    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
+    fs::write(&path, emit_save(&now).unwrap()).unwrap();
+}
+
 fn play(world: &mut World, actor: &str, line: &str) {
-    let pack = table::pack(world);
+    let pack = pack(world);
     let mut opened =
         spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("resume: {err}"));
     opened.set_presence(Presence {
         humans: 1,
         actors_present: vec![actor.to_string()],
     });
-    let (verb, target) = super::common::split_move(line);
-    spookery::host::handle_player_move(&mut opened, actor, verb, target, false)
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)));
+    spookery_engine::handle_player_move(&mut opened, actor, verb, target, false)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
 }
 
@@ -139,7 +160,7 @@ fn strip_room_facts(pack: &Path) {
 }
 
 fn place_of(pack: &Path, actor: &str) -> String {
-    table::now_of(pack)
+    now_of(pack)
         .actors
         .get(actor)
         .unwrap_or_else(|| panic!("{actor} missing"))
@@ -162,7 +183,6 @@ fn location_moves(pack: &Path, actor: &str) -> Vec<(String, String)> {
     moves
 }
 
-/// A round's journal record.
 fn read_round(pack: &Path, key: &str) -> Value {
     let text = spookery_engine::testing::journal::read_record_line(pack, key)
         .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));

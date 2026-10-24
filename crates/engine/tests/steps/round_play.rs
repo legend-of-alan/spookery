@@ -85,10 +85,7 @@ fn a_played_d20_fight(world: &mut World) {
 #[then(expr = "spook verify passes and re-derives every roll")]
 fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let output = support::spook(&["verify", &pack.to_string_lossy()]);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(output.status.success(), "{stdout}{stderr}");
+    spookery_engine::verify_pack(pack, None).expect("verify");
     let report = spookery_engine::testing::from_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err:?}"));
     let line = spookery_engine::testing::journal::read_record_line(pack, "tick-0001")

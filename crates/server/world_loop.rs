@@ -2,26 +2,14 @@
 
 use std::io::Write;
 
+pub use spookery_engine::MoveOutcome;
 use spookery_engine::{
-    GateRefusal, Heard, QueuedMove, Reason, RecipientLine, RoundOutput, World, MAX_PLAYER_SEATS,
+    GateRefusal, Heard, Reason, RecipientLine, RoundOutput, World, MAX_PLAYER_SEATS,
 };
 
 use super::frames;
 use super::idle_clock::{self, wall_now};
 use super::limits::{CancelTx, OutTx};
-
-pub enum MoveOutcome {
-    Queued(QueuedMove),
-    Committed {
-        advanced: bool,
-        outputs: Vec<RoundOutput>,
-    },
-    Busy {
-        code: Reason,
-        missing: Option<String>,
-        outputs: Vec<RoundOutput>,
-    },
-}
 
 /// Commit a queued round, then fast-forward while every seated PC is busy.
 /// An empty queue only fast-forwards.

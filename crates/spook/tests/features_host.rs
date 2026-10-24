@@ -23,9 +23,6 @@ mod player_speech;
 #[path = "steps/seats.rs"]
 mod seats;
 
-#[path = "steps/matters.rs"]
-mod matters;
-
 #[path = "steps/place.rs"]
 mod place;
 

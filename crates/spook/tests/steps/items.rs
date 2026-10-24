@@ -64,7 +64,9 @@ fn play(
                 .join("\n")
         )
     });
-    let (verb, target) = super::common::split_move(line);
+    let (verb, target) = line
+        .split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)));
     spookery::host::handle_player_move(&mut world, actor, verb, target, false)
 }
 
