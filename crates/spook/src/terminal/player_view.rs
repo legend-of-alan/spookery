@@ -5,20 +5,46 @@ use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 
 use crate::protocol::PlayerMessage;
-use spookery_engine::Reason;
 
 use super::render;
 use super::Error;
 
 pub fn run_player(
-    pack: &Path,
+    _pack: &Path,
     as_player: Option<&str>,
     addr: SocketAddr,
     raw: bool,
 ) -> Result<(), Error> {
+    let mut formatter = render::PlayerFormatter::new();
     let actor = match as_player {
         Some(token) => parse_player_as(token)?,
-        None => spookery_engine::canon::load_start_pc(pack).map_err(Error::Reason)?,
+        None => {
+            let mut probe = TcpStream::connect(addr).map_err(Error::Io)?;
+            probe.set_nodelay(true).map_err(Error::Io)?;
+            probe.write_all(b"\n").map_err(Error::Io)?;
+            probe.flush().map_err(Error::Io)?;
+            let Some(line) = read_line(&mut BufReader::new(probe))? else {
+                return Err(Error::Reason("NOT_IN_SPEC"));
+            };
+            match crate::protocol::read_player(&line) {
+                Ok(PlayerMessage::Refused { code, missing }) if code == "CHOOSE_PC" => {
+                    let pcs: Vec<&str> = missing.as_deref().unwrap_or("").split(", ").filter(|s| !s.is_empty()).collect();
+                    if pcs.len() == 1 {
+                        pcs[0].to_string()
+                    } else {
+                        println!("{}", crate::protocol::named_refusal(&code, missing.as_deref()));
+                        let _ = io::stdout().flush();
+                        let Some(chosen) = io::stdin().lines().next() else { return Ok(()); };
+                        let chosen = chosen.map_err(Error::Io)?;
+                        crate::protocol::read_player_hello(chosen.trim()).unwrap_or(chosen.trim()).to_string()
+                    }
+                }
+                _ => {
+                    write_frame(&mut formatter, &line, raw);
+                    std::process::exit(1);
+                }
+            }
+        }
     };
     let mut stream = TcpStream::connect(addr).map_err(Error::Io)?;
     stream.set_nodelay(true).map_err(Error::Io)?;
@@ -27,10 +53,9 @@ pub fn run_player(
         .map_err(Error::Io)?;
     stream.flush().map_err(Error::Io)?;
     let mut reader = BufReader::new(stream);
-    let mut formatter = render::PlayerFormatter::new();
     loop {
         let Some(line) = read_line(&mut reader)? else {
-            eprintln!("{}", Reason::NotInSpec);
+            eprintln!("NOT_IN_SPEC");
             std::process::exit(1);
         };
         match write_frame(&mut formatter, &line, raw) {
@@ -66,11 +91,11 @@ pub fn run_player(
 
 fn parse_player_as(token: &str) -> Result<String, Error> {
     if !token.starts_with("player:") {
-        return Err(Error::Reason(Reason::NotInSpec));
+        return Err(Error::Reason("NOT_IN_SPEC"));
     }
     crate::protocol::read_player_hello(token)
         .map(str::to_string)
-        .ok_or(Error::Reason(Reason::Schema))
+        .ok_or(Error::Reason("SCHEMA"))
 }
 
 fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error> {

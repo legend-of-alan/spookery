@@ -336,18 +336,8 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
 
 fn sit_play(world: &mut World, addr: &str, as_player: Option<&str>) {
     let pack_arg = support::pack_arg(table::pack(world));
-    let mut args = vec![
-        "play".to_string(),
-        pack_arg,
-        "--addr".to_string(),
-        addr.to_string(),
-    ];
-    if let Some(id) = as_player {
-        args.push("--as".to_string());
-        args.push(format!("player:{id}"));
-    }
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let mut play = support::spawn(&refs);
+    let as_arg = format!("player:{}", as_player.unwrap_or("pc_rowan"));
+    let mut play = support::spawn(&["play", &pack_arg, "--addr", addr, "--as", &as_arg]);
     wait_proc(&mut play, "You are in");
     if world.play.is_none() {
         world.play = Some(play);

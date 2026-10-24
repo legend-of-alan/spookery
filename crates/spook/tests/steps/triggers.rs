@@ -608,7 +608,7 @@ fn nell_knows_the_trapdoor(world: &mut World) {
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let world_now = spookery_engine::World::resume(pack).unwrap();
-    let exits = world_now.perceive("player:pc_nell").unwrap().exits;
+    let exits = world_now.perceive("pc_nell").unwrap().exits;
     assert!(
         exits.iter().any(|exit| exit.name == "trapdoor"),
         "trapdoor stayed hidden: {exits:?}"

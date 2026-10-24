@@ -61,7 +61,7 @@ fn another_play_joins_that_table(world: &mut World) {
     let port = table::live_mut(world).port;
     let addr = format!("127.0.0.1:{port}");
     let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["play", &pack, "--addr", &addr]);
+    let output = support::spook(&["play", &pack, "--addr", &addr, "--as", "player:pc_rowan"]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();

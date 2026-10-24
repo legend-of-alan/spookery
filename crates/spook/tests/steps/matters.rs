@@ -290,7 +290,7 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
 
 fn shown_text(world: &Shard) -> String {
     let view = world
-        .perceive("player:pc_lark")
+        .perceive("pc_lark")
         .unwrap_or_else(|err| panic!("perceive: {}", err.token()));
     view.meters
         .iter()

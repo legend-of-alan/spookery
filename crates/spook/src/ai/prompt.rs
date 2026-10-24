@@ -4,22 +4,12 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use spookery_engine::canon::{Canon, CastKind};
-use spookery_engine::{Owner, TargetKind, When};
 
-pub use crate::protocol::OutgoingSay;
+pub use crate::protocol::{CastKind, MenuRow, OutgoingSay, PackSummary};
 use crate::protocol::{QueueRow, Roll};
 
 /// Characters. The same budget `perceive` uses when it trims this prose.
 const PROSE_BUDGET: usize = 800;
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-pub struct MenuRow {
-    pub name: String,
-    pub audience: String,
-    pub token: String,
-    pub on: String,
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct HandledSay {
@@ -79,34 +69,22 @@ impl From<crate::protocol::GmSay> for HandledSay {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TargetDraft {
-    Empty,
-    Place(String),
-    Actor(String),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct IntentDraft {
     pub actor_id: String,
-    pub actor_kind: String,
     pub move_name: String,
-    pub target: TargetDraft,
+    pub target: Option<String>,
 }
 
 impl IntentDraft {
     pub fn arguments(&self) -> Value {
-        let target = match &self.target {
-            TargetDraft::Empty => serde_json::json!({}),
-            TargetDraft::Place(place) => serde_json::json!({ "place": place }),
-            TargetDraft::Actor(actor) => serde_json::json!({ "actor": actor }),
-        };
-        serde_json::json!({
+        let mut body = serde_json::json!({
             "actor_id": self.actor_id,
-            "actor_kind": self.actor_kind,
-            "source": "player",
             "move": self.move_name,
-            "target": target,
-        })
+        });
+        if let Some(target) = &self.target {
+            body["target"] = serde_json::json!(target);
+        }
+        body
     }
 }
 
@@ -150,13 +128,6 @@ pub struct TurnView {
     pub cast_bodies: BTreeMap<String, String>,
 }
 
-/// Markdown bodies copied out of the canon. The prompt never holds the canon.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Prose {
-    pub places: BTreeMap<String, String>,
-    pub cast: BTreeMap<String, String>,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum PreparedTurn {
     NoModel { says: Vec<OutgoingSay> },
@@ -170,44 +141,6 @@ pub struct PromptContext {
     pub new_lines: Vec<HandledSay>,
     pub queue: Vec<QueueRow>,
     pub checks: Vec<Roll>,
-}
-
-pub fn from_canon(canon: &Canon) -> (Vec<MenuRow>, BTreeMap<String, CastKind>, Prose) {
-    let mut menu = Vec::new();
-    for rule in canon.rules.iter() {
-        match &rule.when {
-            When::Verb { verb, target } if matches!(rule.owner, Owner::Verb) => {
-                menu.push(MenuRow {
-                    name: verb.clone(),
-                    audience: "verb".to_string(),
-                    token: target.word().to_string(),
-                    on: "self".to_string(),
-                });
-            }
-            When::Habit => menu.push(MenuRow {
-                name: rule.local_id.clone(),
-                audience: "habit".to_string(),
-                token: TargetKind::None.word().to_string(),
-                on: "self".to_string(),
-            }),
-            _ => {}
-        }
-    }
-    let mut kinds = BTreeMap::new();
-    let mut cast = BTreeMap::new();
-    for (id, member) in &canon.cast {
-        kinds.insert(id.clone(), member.kind);
-        cast.insert(id.clone(), clip_prose(&member.body));
-    }
-    let mut places = BTreeMap::new();
-    for (id, place) in &canon.places {
-        places.insert(id.clone(), clip_prose(&place.body));
-    }
-    (menu, kinds, Prose { places, cast })
-}
-
-fn clip_prose(body: &str) -> String {
-    body.chars().take(PROSE_BUDGET).collect()
 }
 
 pub fn push_handled(buffer: &mut Vec<HandledSay>, say: HandledSay) {
@@ -274,19 +207,8 @@ pub fn keep_actions(actions: ModelActions, scope: &SceneScope, menu: &[MenuRow])
     KeptActions { says, intent }
 }
 
-pub fn prepare(
-    canon: &Canon,
-    wake: &Wake,
-    present: &[String],
-    perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
-) -> PreparedTurn {
-    let (_, kinds, prose) = from_canon(canon);
-    prepare_with(&kinds, &prose, wake, present, perceive)
-}
-
 pub fn prepare_with(
-    kinds: &BTreeMap<String, CastKind>,
-    prose: &Prose,
+    pack: &PackSummary,
     wake: &Wake,
     present: &[String],
     perceive: &mut dyn FnMut(&str) -> Result<Value, String>,
@@ -302,36 +224,32 @@ pub fn prepare_with(
                 return absent();
             };
             let speaker = speaker_id(from);
-            let as_viewer = match kinds.get(actor) {
-                Some(CastKind::Npc) => format!("npc:{actor}"),
-                Some(CastKind::PcTemplate) => format!("player:{actor}"),
-                None => return absent(),
+            let Some(&kind) = pack.kinds.get(actor) else {
+                return absent();
             };
-            let view = match perceive(&as_viewer) {
-                Ok(view) => view,
-                Err(_) => return absent(),
+            let Ok(view) = perceive(actor) else {
+                return absent();
             };
             if !visible_has(&view, &speaker) {
                 return absent();
             }
-            match kinds.get(actor) {
-                Some(CastKind::Npc) => PreparedTurn::Model(build_view(
+            match kind {
+                CastKind::Npc => PreparedTurn::Model(build_view(
                     SceneScope::Actor {
                         actor: actor.to_string(),
                     },
                     None,
                     vec![strip_npc(&view)],
-                    prose,
+                    pack,
                 )),
-                Some(CastKind::PcTemplate) => PreparedTurn::Model(build_view(
+                CastKind::PcTemplate => PreparedTurn::Model(build_view(
                     SceneScope::Actor {
                         actor: actor.to_string(),
                     },
                     Some(strip_player(&view)),
                     Vec::new(),
-                    prose,
+                    pack,
                 )),
-                None => absent(),
             }
         }
         Wake::Say {
@@ -341,9 +259,8 @@ pub fn prepare_with(
             ..
         } => {
             let speaker = speaker_id(from);
-            let player = match perceive(&format!("player:{speaker}")) {
-                Ok(view) => view,
-                Err(_) => return PreparedTurn::NoModel { says: Vec::new() },
+            let Ok(player) = perceive(&speaker) else {
+                return PreparedTurn::NoModel { says: Vec::new() };
             };
             let speaker_place = place_of(&player);
             let filter = if address == "place" {
@@ -354,35 +271,34 @@ pub fn prepare_with(
             } else {
                 speaker_place
             };
-            let npcs = npc_views(&player, kinds, &filter, perceive);
+            let npcs = npc_views(&player, &pack.kinds, &filter, perceive);
             PreparedTurn::Model(build_view(
                 SceneScope::Place { place: filter },
                 Some(strip_player(&player)),
                 npcs,
-                prose,
+                pack,
             ))
         }
         Wake::Queued => {
             let pcs: Vec<&str> = present
                 .iter()
-                .filter(|id| kinds.get(id.as_str()) == Some(&CastKind::PcTemplate))
+                .filter(|id| pack.kinds.get(id.as_str()) == Some(&CastKind::PcTemplate))
                 .map(String::as_str)
                 .collect();
             if pcs.len() != 1 {
                 return PreparedTurn::NoModel { says: Vec::new() };
             }
             let speaker = pcs[0];
-            let player = match perceive(&format!("player:{speaker}")) {
-                Ok(view) => view,
-                Err(_) => return PreparedTurn::NoModel { says: Vec::new() },
+            let Ok(player) = perceive(speaker) else {
+                return PreparedTurn::NoModel { says: Vec::new() };
             };
             let place = place_of(&player);
-            let npcs = npc_views(&player, kinds, &place, perceive);
+            let npcs = npc_views(&player, &pack.kinds, &place, perceive);
             PreparedTurn::Model(build_view(
                 SceneScope::Place { place },
                 Some(strip_player(&player)),
                 npcs,
-                prose,
+                pack,
             ))
         }
     }
@@ -462,7 +378,7 @@ fn npc_views(
         if kinds.get(id) != Some(&CastKind::Npc) {
             continue;
         }
-        let Ok(view) = perceive(&format!("npc:{id}")) else {
+        let Ok(view) = perceive(id) else {
             continue;
         };
         if view.get("place").and_then(Value::as_str) != Some(place) {
@@ -516,16 +432,16 @@ fn build_view(
     scope: SceneScope,
     player: Option<Value>,
     npcs: Vec<Value>,
-    prose: &Prose,
+    pack: &PackSummary,
 ) -> TurnView {
     let place = scene_place(&scope, &player, &npcs);
-    let place_body = prose.places.get(&place).cloned().unwrap_or_default();
+    let place_body = pack.places.get(&place).cloned().unwrap_or_default();
     let mut cast_bodies = BTreeMap::new();
     if let Some(view) = &player {
-        include_view(&mut cast_bodies, prose, view);
+        include_view(&mut cast_bodies, pack, view);
     }
     for view in &npcs {
-        include_view(&mut cast_bodies, prose, view);
+        include_view(&mut cast_bodies, pack, view);
     }
     TurnView {
         scope,
@@ -548,27 +464,27 @@ fn scene_place(scope: &SceneScope, player: &Option<Value>, npcs: &[Value]) -> St
     }
 }
 
-fn include_view(bodies: &mut BTreeMap<String, String>, prose: &Prose, view: &Value) {
+fn include_view(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, view: &Value) {
     if let Some(viewer) = view.get("viewer").and_then(Value::as_str) {
-        include_cast(bodies, prose, viewer);
+        include_cast(bodies, pack, viewer);
     }
     let Some(actors) = view.get("visible_actors").and_then(Value::as_array) else {
         return;
     };
     for actor in actors {
         if let Some(id) = actor.as_str() {
-            include_cast(bodies, prose, id);
+            include_cast(bodies, pack, id);
         }
     }
 }
 
-fn include_cast(bodies: &mut BTreeMap<String, String>, prose: &Prose, raw: &str) {
+fn include_cast(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, raw: &str) {
     let id = raw.split_once(':').map(|(_, id)| id).unwrap_or(raw);
     if id.is_empty() {
         return;
     }
-    if let Some(body) = prose.cast.get(id) {
-        bodies.insert(id.to_string(), body.clone());
+    if let Some(body) = pack.cast.get(id) {
+        bodies.insert(id.to_string(), body.chars().take(PROSE_BUDGET).collect());
     }
 }
 
@@ -589,31 +505,21 @@ fn accept_intent(intent: &IntentDraft, menu: &[MenuRow]) -> bool {
     let Some(row) = menu.iter().find(|row| row.name == intent.move_name) else {
         return false;
     };
-    matches!(
-        (row.token.as_str(), &intent.target),
-        ("none", TargetDraft::Empty)
-            | ("place", TargetDraft::Place(_))
-            | ("actor", TargetDraft::Actor(_))
-    )
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TargetJson {
-    #[serde(default)]
-    place: Option<String>,
-    #[serde(default)]
-    actor: Option<String>,
+    if row.token == "none" {
+        intent.target.is_none()
+    } else {
+        intent.target.is_some()
+    }
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct IntentJson {
     actor_id: String,
-    actor_kind: String,
     #[serde(rename = "move")]
     move_name: String,
-    target: TargetJson,
+    #[serde(default)]
+    target: Option<String>,
 }
 
 impl IntentJson {
@@ -621,18 +527,9 @@ impl IntentJson {
         if self.actor_id.is_empty() || self.move_name.is_empty() {
             return None;
         }
-        if self.actor_kind != "npc" && self.actor_kind != "player" {
-            return None;
-        }
-        let target = match (self.target.place, self.target.actor) {
-            (None, None) => TargetDraft::Empty,
-            (Some(place), None) if !place.is_empty() => TargetDraft::Place(place),
-            (None, Some(actor)) if !actor.is_empty() => TargetDraft::Actor(actor),
-            _ => return None,
-        };
+        let target = self.target.filter(|t| !t.is_empty());
         Some(IntentDraft {
             actor_id: self.actor_id,
-            actor_kind: self.actor_kind,
             move_name: self.move_name,
             target,
         })
@@ -661,15 +558,36 @@ fn speaker_id(from: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use spookery_engine::canon::{load_canon, CastKind};
-
     use super::*;
 
-    fn docks() -> Canon {
-        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-        load_canon(&path).expect("docks canon")
+    fn docks() -> PackSummary {
+        let row = |n: &str, a: &str, t: &str| MenuRow {
+            name: n.into(),
+            audience: a.into(),
+            token: t.into(),
+            on: "self".into(),
+        };
+        PackSummary {
+            menu: vec![
+                row("wait", "verb", "none"),
+                row("grit", "verb", "none"),
+                row("travel", "verb", "exit"),
+                row("restock_lamp_oil", "habit", "none"),
+            ],
+            kinds: BTreeMap::from([
+                ("aldric".into(), CastKind::Npc),
+                ("bram".into(), CastKind::Npc),
+                ("mira".into(), CastKind::Npc),
+                ("pc_rowan".into(), CastKind::PcTemplate),
+            ]),
+            places: BTreeMap::from([("docks_shop".into(), "The shop smells of tar.".into())]),
+            cast: BTreeMap::from([
+                ("aldric".into(), "Aldric keeps the counter.".into()),
+                ("bram".into(), "Bram watches the pier.".into()),
+                ("mira".into(), "Mira tends the lamp oil.".into()),
+                ("pc_rowan".into(), "Rowan came in from the rain.".into()),
+            ]),
+        }
     }
 
     fn say(address: &str, actor: Option<&str>, text: &str) -> OutgoingSay {
@@ -689,12 +607,11 @@ mod tests {
         }
     }
 
-    fn intent(move_name: &str, target: TargetDraft) -> IntentDraft {
+    fn intent(move_name: &str, target: Option<&str>) -> IntentDraft {
         IntentDraft {
             actor_id: "mira".to_string(),
-            actor_kind: "npc".to_string(),
             move_name: move_name.to_string(),
-            target,
+            target: target.map(str::to_string),
         }
     }
 
@@ -724,15 +641,14 @@ mod tests {
     }
 
     fn prompt_for(
-        canon: &Canon,
+        pack: &PackSummary,
         mut perceive: impl FnMut(&str) -> Result<Value, String>,
     ) -> String {
-        let (menu, ..) = from_canon(canon);
-        let prepared = prepare(canon, &table_wake(), &[], &mut perceive);
+        let prepared = prepare_with(pack, &table_wake(), &[], &mut perceive);
         let PreparedTurn::Model(view) = prepared else {
             panic!("model was not called");
         };
-        render_prompt(&menu, &PromptContext::default(), &view, &[])
+        render_prompt(&pack.menu, &PromptContext::default(), &view, &[])
     }
 
     /// Feature: The AI GM gets non-hidden prose
@@ -741,13 +657,13 @@ mod tests {
     ///   Then the prompt contains mira's cast body
     #[test]
     fn cast_prose_reaches_the_prompt() {
-        let mut canon = docks();
-        let mira = canon.cast["mira"].body.trim().to_string();
-        let place = canon.places["docks_shop"].body.trim().to_string();
-        canon.cast.get_mut("bram").unwrap().body = "BRAM-ABSENT".to_string();
+        let mut pack = docks();
+        let mira = pack.cast["mira"].trim().to_string();
+        let place = pack.places["docks_shop"].trim().to_string();
+        pack.cast.insert("bram".to_string(), "BRAM-ABSENT".to_string());
         assert!(!mira.is_empty(), "mira has cast prose");
         assert!(!place.is_empty(), "the shop has place prose");
-        let prompt = prompt_for(&canon, |viewer| {
+        let prompt = prompt_for(&pack, |viewer| {
             Ok(shop(viewer, &["aldric", "mira", "pc_rowan"]))
         });
         assert!(prompt.contains(&mira), "{prompt}");
@@ -760,8 +676,8 @@ mod tests {
     ///   Then the prompt does not contain "BODY-SENTINEL"
     #[test]
     fn hidden_facts_never_reach_the_prompt() {
-        let canon = docks();
-        let prompt = prompt_for(&canon, |viewer| {
+        let pack = docks();
+        let prompt = prompt_for(&pack, |viewer| {
             let mut view = shop(viewer, &["aldric", "mira", "pc_rowan"]);
             view["known_facts"] = serde_json::json!([
                 {"id": "fact_ledger_short", "text": "The lamp-oil ledger is short.", "body": "BODY-SENTINEL"}
@@ -773,22 +689,21 @@ mod tests {
 
     #[test]
     fn a_long_cast_body_is_cut_at_the_budget() {
-        let mut canon = docks();
-        canon.cast.get_mut("aldric").unwrap().body = "Z".repeat(PROSE_BUDGET + 1);
-        let prompt = prompt_for(&canon, |viewer| Ok(shop(viewer, &["aldric", "pc_rowan"])));
+        let mut pack = docks();
+        pack.cast.insert("aldric".to_string(), "Z".repeat(PROSE_BUDGET + 1));
+        let prompt = prompt_for(&pack, |viewer| Ok(shop(viewer, &["aldric", "pc_rowan"])));
         assert!(prompt.contains(&"Z".repeat(PROSE_BUDGET)), "{prompt}");
         assert!(!prompt.contains(&"Z".repeat(PROSE_BUDGET + 1)), "{prompt}");
     }
 
     #[test]
     fn prompt_omits_dropped_strings_and_keeps_fact_text() {
-        let mut canon = docks();
-        canon.cast.get_mut("mira").unwrap().body = "MIRA-PROSE-SENTINEL".to_string();
-        let (menu, ..) = from_canon(&canon);
+        let mut pack = docks();
+        pack.cast.insert("mira".to_string(), "MIRA-PROSE-SENTINEL".to_string());
         let mut calls = 0;
-        let prepared = prepare(&canon, &table_wake(), &[], &mut |viewer| {
+        let prepared = prepare_with(&pack, &table_wake(), &[], &mut |viewer| {
             calls += 1;
-            if viewer == "player:pc_rowan" {
+            if viewer == "pc_rowan" {
                 return Ok(serde_json::json!({
                     "viewer": "player:pc_rowan",
                     "place": "docks_shop",
@@ -801,7 +716,7 @@ mod tests {
                     "habits": []
                 }));
             }
-            if viewer == "npc:aldric" {
+            if viewer == "aldric" {
                 return Ok(serde_json::json!({
                     "viewer": "npc:aldric",
                     "place": "docks_shop",
@@ -819,7 +734,7 @@ mod tests {
         let PreparedTurn::Model(view) = prepared else {
             panic!("model was not called");
         };
-        let prompt = render_prompt(&menu, &PromptContext::default(), &view, &[]);
+        let prompt = render_prompt(&pack.menu, &PromptContext::default(), &view, &[]);
         assert!(!prompt.contains("KNOWN-SENTINEL"), "{prompt}");
         assert!(!prompt.contains("KNOWN-BODY"), "{prompt}");
         assert!(!prompt.contains("BODY-SENTINEL"), "{prompt}");
@@ -832,7 +747,7 @@ mod tests {
 
     #[test]
     fn address_rule_runs_before_the_cap() {
-        let (menu, ..) = from_canon(&docks());
+        let menu = docks().menu;
         let actions = ModelActions {
             says: vec![
                 say("table", None, "rejected"),
@@ -841,9 +756,9 @@ mod tests {
                 say("actor", Some("mira"), "three"),
             ],
             intents: vec![
-                intent("not_a_move", TargetDraft::Empty),
-                intent("wait", TargetDraft::Empty),
-                intent("grit", TargetDraft::Empty),
+                intent("not_a_move", None),
+                intent("wait", None),
+                intent("grit", None),
             ],
         };
         let kept = keep_actions(
@@ -862,7 +777,7 @@ mod tests {
 
     #[test]
     fn actor_wake_drops_a_table_say() {
-        let (menu, ..) = from_canon(&docks());
+        let menu = docks().menu;
         let actions = ModelActions {
             says: vec![
                 say("table", None, "nope"),
@@ -883,7 +798,7 @@ mod tests {
 
     #[test]
     fn queued_wake_keeps_a_table_say_and_drops_an_actor_say() {
-        let (menu, ..) = from_canon(&docks());
+        let menu = docks().menu;
         let actions = ModelActions {
             says: vec![
                 say("table", None, "here"),
@@ -904,9 +819,9 @@ mod tests {
 
     #[test]
     fn sit_with_no_pc_skips_the_model() {
-        let canon = docks();
+        let pack = docks();
         let mut called = false;
-        let prepared = prepare(&canon, &Wake::Queued, &[], &mut |_| {
+        let prepared = prepare_with(&pack, &Wake::Queued, &[], &mut |_| {
             called = true;
             Err("called".into())
         });
@@ -919,7 +834,7 @@ mod tests {
 
     #[test]
     fn different_places_say_they_are_not_here() {
-        let canon = docks();
+        let pack = docks();
         let wake = Wake::Say {
             from: "player:pc_rowan".to_string(),
             seq: 4,
@@ -929,7 +844,7 @@ mod tests {
             text: "good evening".to_string(),
         };
         let mut calls = Vec::new();
-        let prepared = prepare(&canon, &wake, &[], &mut |viewer| {
+        let prepared = prepare_with(&pack, &wake, &[], &mut |viewer| {
             calls.push(viewer.to_string());
             Ok(serde_json::json!({
                 "viewer": viewer,
@@ -951,30 +866,7 @@ mod tests {
             }
             PreparedTurn::Model(_) => panic!("model request"),
         }
-        assert_eq!(calls, vec!["npc:mira".to_string()]);
-    }
-
-    #[test]
-    fn menu_rows_keep_player_and_habit_and_kinds() {
-        let mut canon = docks();
-        canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
-        let (menu, kinds, prose) = from_canon(&canon);
-        assert!(menu.iter().all(|row| row.audience != "system"));
-        assert!(menu.iter().any(|row| row.name == "travel"
-            && row.audience == "verb"
-            && row.token == "exit"
-            && row.on == "self"));
-        assert!(menu
-            .iter()
-            .any(|row| row.name == "restock_lamp_oil" && row.audience == "habit"));
-        assert_eq!(kinds.get("mira"), Some(&CastKind::Npc));
-        assert_eq!(kinds.get("pc_rowan"), Some(&CastKind::PcTemplate));
-        let rendered = format!("{menu:?}{kinds:?}");
-        assert!(!rendered.contains("CAST-BODY-SENTINEL"));
-        assert_eq!(
-            prose.cast.get("mira").map(String::as_str),
-            Some("CAST-BODY-SENTINEL")
-        );
+        assert_eq!(calls, vec!["mira".to_string()]);
     }
 
     #[test]

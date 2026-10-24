@@ -332,13 +332,11 @@ async fn exercise_http(port: u16) {
 async fn exercise(running: &impl ToolClient) {
     for (name, arguments) in [
         ("session_status", None),
-        ("perceive", Some(json!({"as": "player:pc_rowan"}))),
+        ("perceive", Some(json!({"as": "pc_rowan"}))),
         (
             "intent",
             Some(json!({
                 "actor_id": "pc_rowan",
-                "actor_kind": "player",
-                "source": "player",
                 "move": "wait"
             })),
         ),

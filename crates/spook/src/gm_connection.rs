@@ -112,8 +112,7 @@ pub struct GmConnection {
 impl GmConnection {
     /// Dial `http://127.0.0.1:<port + 1>/mcp` and finish the handshake.
     pub fn connect(addr: std::net::SocketAddr) -> Result<Self, Error> {
-        let door =
-            crate::host::door_request(addr, None).map_err(|_| Error::Bad(addr.to_string()))?;
+        let door = door_for(addr)?;
         dial(door)
     }
 
@@ -121,6 +120,13 @@ impl GmConnection {
     pub fn connect_door(door: std::net::SocketAddr) -> Result<Self, Error> {
         dial(door)
     }
+}
+
+fn door_for(addr: std::net::SocketAddr) -> Result<std::net::SocketAddr, Error> {
+    addr.port()
+        .checked_add(1)
+        .map(|p| std::net::SocketAddr::new(addr.ip(), p))
+        .ok_or_else(|| Error::Bad(addr.to_string()))
 }
 
 fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {

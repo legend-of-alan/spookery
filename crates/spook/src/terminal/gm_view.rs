@@ -9,13 +9,12 @@ use std::thread;
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use spookery_engine::canon::Canon;
-use spookery_engine::{TargetKind, ViewerId, When};
 
 use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
 use crate::protocol::{CommitBody, OutgoingSay, PlayerMessage, SessionStatus};
 
-use super::render::{self, humanize, refusal};
+use super::refusal;
+use super::render::{self, humanize};
 
 const HELP: &str = "\
 Commands:
@@ -40,7 +39,7 @@ Commands:
 An unknown command prints this list and sends nothing.";
 
 pub fn run_gm(
-    pack: &Path,
+    _pack: &Path,
     addr: SocketAddr,
     door: Option<SocketAddr>,
     raw: bool,
@@ -64,17 +63,8 @@ pub fn run_gm(
             std::process::exit(1);
         }
     };
-    let canon = match spookery_engine::canon::load_canon(pack) {
-        Ok(canon) => canon,
-        Err(errors) => {
-            eprintln!("{}", spookery_engine::first_reason(&errors));
-            let _ = io::stderr().flush();
-            std::process::exit(1);
-        }
-    };
     let mut session = GmSession {
         client,
-        canon,
         raw,
         printed_checks: PrintedChecks::default(),
     };
@@ -120,7 +110,6 @@ pub fn run_gm(
 
 struct GmSession {
     client: GmConnection,
-    canon: Canon,
     raw: bool,
     printed_checks: PrintedChecks,
 }
@@ -195,13 +184,8 @@ impl GmSession {
     }
 
     fn on_look(&mut self, actor: &str) {
-        let Some(viewer) = self.resolve(actor) else {
-            eprintln!("{}", refusal("UNKNOWN_KEY"));
-            let _ = io::stderr().flush();
-            return;
-        };
-        let as_viewer = viewer.token();
-        let Some(outcome) = self.call_tool("perceive", json!({ "as": as_viewer })) else {
+        let id = bare_id(actor);
+        let Some(outcome) = self.call_tool("perceive", json!({ "as": id })) else {
             return;
         };
         self.after_result(&outcome, |_session, outcome| {
@@ -224,25 +208,15 @@ impl GmSession {
     }
 
     fn on_queue(&mut self, actor: &str, move_name: &str, target: Option<&str>) {
-        let Some(viewer) = self.resolve(actor) else {
-            eprintln!("{}", refusal("UNKNOWN_KEY"));
-            let _ = io::stderr().flush();
-            return;
-        };
-        let id = viewer.actor_id().to_string();
-        let kind = match viewer {
-            ViewerId::Player(_) => "player",
-            ViewerId::Npc(_) => "npc",
-        };
-        let target = target_value(&self.canon, move_name, target);
-        let shown = format!("{} queued: {move_name}", actor_name(&id));
-        let arguments = json!({
+        let id = bare_id(actor);
+        let shown = format!("{} queued: {move_name}", actor_name(id));
+        let mut arguments = json!({
             "actor_id": id,
-            "actor_kind": kind,
-            "source": "player",
             "move": move_name,
-            "target": target,
         });
+        if let Some(t) = target {
+            arguments["target"] = json!(t);
+        }
         let Some(outcome) = self.call_tool("intent", arguments) else {
             return;
         };
@@ -384,6 +358,9 @@ impl GmSession {
             emit(&event.raw);
             return;
         }
+        if matches!(event.body, EventBody::Pack(_)) {
+            return;
+        }
         let line = render_event(&event.body);
         if matches!(event.body, EventBody::Check(_)) && self.printed_checks.skip(&line) {
             return;
@@ -409,40 +386,6 @@ impl GmSession {
         }
         let _ = io::stderr().flush();
     }
-
-    fn resolve(&mut self, token: &str) -> Option<ViewerId> {
-        if let Some(viewer) = self.canon.viewer_of(token) {
-            return Some(viewer);
-        }
-        let id = token.replace(' ', "_");
-        if self.present_ids().iter().any(|actor| actor == &id) {
-            return Some(ViewerId::Player(id));
-        }
-        None
-    }
-
-    fn present_ids(&mut self) -> Vec<String> {
-        let Some(outcome) = self.call_tool("session_status", json!({})) else {
-            return Vec::new();
-        };
-        self.show_early();
-        if outcome.refused {
-            self.show_tool_refusal(&outcome);
-            self.show_ready();
-            return Vec::new();
-        }
-        if self.raw {
-            emit(&outcome.raw);
-        }
-        let ids = read_status(&outcome.body)
-            .map(|status| seated_ids(&status))
-            .unwrap_or_else(|| {
-                unread();
-                Vec::new()
-            });
-        self.show_ready();
-        ids
-    }
 }
 
 fn bare_id(token: &str) -> &str {
@@ -450,21 +393,6 @@ fn bare_id(token: &str) -> &str {
         .strip_prefix("player:")
         .or_else(|| token.strip_prefix("npc:"))
         .unwrap_or(token)
-}
-
-fn target_value(canon: &Canon, move_name: &str, target: Option<&str>) -> Value {
-    let Some(target) = target else {
-        return json!({});
-    };
-    let kind = canon.rules.iter().find_map(|rule| match &rule.when {
-        When::Verb { verb, target } if verb == move_name => Some(*target),
-        When::Habit if rule.local_id == move_name => Some(TargetKind::None),
-        _ => None,
-    });
-    match kind {
-        Some(TargetKind::Actor) | Some(TargetKind::Item) => json!({ "actor": target }),
-        _ => json!({ "place": target }),
-    }
 }
 
 fn exit_refused(code: &str, raw: &str, raw_mode: bool) -> ! {
@@ -584,6 +512,7 @@ pub fn render_event(body: &EventBody) -> String {
             roll.target,
             roll.outcome.as_str(),
         ),
+        EventBody::Pack(_) => String::new(),
     }
 }
 

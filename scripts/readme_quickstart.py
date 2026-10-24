@@ -139,8 +139,10 @@ def main() -> None:
             play = spawn(["spook", "play", pack, "--addr", game])
         else:
             play = spawn(parse_spook_args(play_line))
-        wait_text(play.out, "You are in", 30, "play did not show a place", play, host, gm)
         assert play.proc.stdin is not None
+        play.proc.stdin.write("pc_lark\n")
+        play.proc.stdin.flush()
+        wait_text(play.out, "You are in", 30, "play did not show a place", play, host, gm)
         for line in lines:
             before = "".join(play.out).count("You are in")
             play.proc.stdin.write(line + "\n")

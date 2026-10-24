@@ -6,13 +6,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use serde_json::{json, Value};
-use spookery_engine::canon::{self, CastKind};
 
 use crate::ai::fail;
 use crate::ai::llm::{CompleteError, CompletionRequest, Model};
 use crate::ai::prompt::{
-    from_canon, keep_actions, parse_actions, prepare_with, push_handled, render_prompt, HandledSay,
-    KeptActions, MenuRow, OutgoingSay, PreparedTurn, PromptContext, Prose, SceneScope, Wake,
+    keep_actions, parse_actions, prepare_with, push_handled, render_prompt, HandledSay,
+    KeptActions, MenuRow, OutgoingSay, PackSummary, PreparedTurn, PromptContext, SceneScope, Wake,
 };
 use crate::ai::Error;
 use crate::gm_connection::{self, EventBody, Incoming, ToolCallResult};
@@ -37,23 +36,15 @@ impl Default for TurnWatch {
 }
 
 pub fn run_gm<M: Model>(
-    pack: &Path,
+    _pack: &Path,
     addr: SocketAddr,
     door: Option<SocketAddr>,
     model: &mut M,
     watch: &TurnWatch,
 ) -> Result<(), Error> {
-    let (menu, kinds, prose) = {
-        let canon = canon::load_canon(pack)
-            .map_err(|err| fail(spookery_engine::reason_of(err).to_string()))?;
-        from_canon(&canon)
-    };
-    let rev = canon::pack_rev(pack).map_err(|err| fail(err.to_string()))?;
     let mut seat = GmSeat::connect(addr, door)?;
     let status = call_status(&mut seat, None)?;
-    if status.pack_rev != rev {
-        return Err(fail("PACK_REV_MISMATCH".to_string()));
-    }
+    let pack = seat.recv_pack()?;
     eprintln!("listening");
     let _ = std::io::Write::flush(&mut std::io::stderr());
     let mut high = status.last_seq;
@@ -66,9 +57,7 @@ pub fn run_gm<M: Model>(
         watch.busy.store(true, Ordering::Release);
         run_turn(TurnContext {
             seat: &mut seat,
-            menu: &menu,
-            kinds: &kinds,
-            prose: &prose,
+            pack: &pack,
             buffer: &mut buffer,
             high: &mut high,
             wake: Wake::Queued,
@@ -84,9 +73,7 @@ pub fn run_gm<M: Model>(
         watch.busy.store(true, Ordering::Release);
         run_turn(TurnContext {
             seat: &mut seat,
-            menu: &menu,
-            kinds: &kinds,
-            prose: &prose,
+            pack: &pack,
             buffer: &mut buffer,
             high: &mut high,
             wake,
@@ -99,9 +86,7 @@ pub fn run_gm<M: Model>(
 
 struct TurnContext<'a, M: Model> {
     seat: &'a mut GmSeat,
-    menu: &'a [MenuRow],
-    kinds: &'a std::collections::BTreeMap<String, CastKind>,
-    prose: &'a Prose,
+    pack: &'a PackSummary,
     buffer: &'a mut Vec<HandledSay>,
     high: &'a mut u64,
     wake: Wake,
@@ -112,9 +97,7 @@ struct TurnContext<'a, M: Model> {
 fn run_turn<M: Model>(turn: TurnContext<'_, M>) -> Result<(), Error> {
     let TurnContext {
         seat,
-        menu,
-        kinds,
-        prose,
+        pack,
         buffer,
         high,
         wake,
@@ -124,8 +107,7 @@ fn run_turn<M: Model>(turn: TurnContext<'_, M>) -> Result<(), Error> {
     let status = call_status(seat, Some(*high))?;
     let mut seat_err = None;
     let prepared = prepare_with(
-        kinds,
-        prose,
+        pack,
         &wake,
         &status.presence.actors_present,
         &mut |viewer| match perceive(seat, viewer) {
@@ -156,14 +138,14 @@ fn run_turn<M: Model>(turn: TurnContext<'_, M>) -> Result<(), Error> {
                 queue: status.queued.clone(),
                 checks: Vec::new(),
             };
-            let prompt = render_prompt(menu, &context, &turn_view, &[]);
+            let prompt = render_prompt(&pack.menu, &context, &turn_view, &[]);
             match model.complete(&CompletionRequest {
                 prompt,
                 says_only: false,
             }) {
                 Err(err) => report_model(err),
                 Ok(body) => {
-                    if let Some(kept) = kept_actions(body, false, &turn_view.scope, menu) {
+                    if let Some(kept) = kept_actions(body, false, &turn_view.scope, &pack.menu) {
                         for say in kept.says {
                             if let Some(handled) = submit_say(seat, &say)? {
                                 submitted.push(handled);
@@ -215,14 +197,14 @@ fn run_turn<M: Model>(turn: TurnContext<'_, M>) -> Result<(), Error> {
         if let Some((turn_view, mut context)) = view {
             context.buffer = buffer.clone();
             context.checks = checks.clone();
-            let prompt = render_prompt(menu, &context, &turn_view, &checks);
+            let prompt = render_prompt(&pack.menu, &context, &turn_view, &checks);
             match model.complete(&CompletionRequest {
                 prompt,
                 says_only: true,
             }) {
                 Err(err) => report_model(err),
                 Ok(body) => {
-                    if let Some(kept) = kept_actions(body, true, &turn_view.scope, menu) {
+                    if let Some(kept) = kept_actions(body, true, &turn_view.scope, &pack.menu) {
                         for say in kept.says {
                             if let Some(handled) = submit_say(seat, &say)? {
                                 push_handled(buffer, handled);
@@ -315,6 +297,7 @@ fn player_lines(status: &SessionStatus, high: u64) -> Vec<HandledSay> {
 struct GmSeat {
     client: gm_connection::GmConnection,
     wakes: VecDeque<Wake>,
+    pack: Option<PackSummary>,
     /// Say events at or below this seq are not a wake. Starts closed.
     high_water: u64,
 }
@@ -329,12 +312,26 @@ impl GmSeat {
         Ok(GmSeat {
             client,
             wakes: VecDeque::new(),
+            pack: None,
             high_water: u64::MAX,
         })
     }
 
     fn set_high_water(&mut self, seq: u64) {
         self.high_water = seq;
+    }
+
+    fn recv_pack(&mut self) -> Result<PackSummary, Error> {
+        while self.pack.is_none() {
+            match self.client.next_incoming() {
+                Incoming::Event(e) => self.absorb(vec![e]),
+                Incoming::Result { raw, .. }
+                | Incoming::Bad(raw)
+                | Incoming::Refused { raw, .. } => return Err(fail(raw)),
+                Incoming::Eof => return Err(fail("seat closed".to_string())),
+            }
+        }
+        Ok(self.pack.take().unwrap())
     }
 
     fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, Error> {
@@ -384,7 +381,7 @@ impl GmSeat {
         }
     }
 
-    fn classify(&self, body: EventBody) -> Option<Wake> {
+    fn classify(&mut self, body: EventBody) -> Option<Wake> {
         match body {
             EventBody::Say(say) => {
                 if say.from.starts_with("player:") && say.seq > self.high_water {
@@ -402,6 +399,10 @@ impl GmSeat {
             }
             EventBody::Queued(_) => Some(Wake::Queued),
             EventBody::Check(_) => None,
+            EventBody::Pack(pack) => {
+                self.pack = Some(pack);
+                None
+            }
         }
     }
 }

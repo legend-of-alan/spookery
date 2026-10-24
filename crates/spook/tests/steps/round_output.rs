@@ -159,12 +159,10 @@ const STATUS_LINE: &str = "clock shop_day 1 1 running";
 
 fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&str>) {
     let target = match place {
-        Some(place) => format!(r#","target":{{"place":"{place}"}}"#),
+        Some(place) => format!(r#","target":"{place}""#),
         None => String::new(),
     };
-    let args = format!(
-        r#"{{"actor_id":"{actor}","actor_kind":"player","source":"player","move":"{move_name}"{target}}}"#
-    );
+    let args = format!(r#"{{"actor_id":"{actor}","move":"{move_name}"{target}}}"#);
     let text = table::gm_call(world, 4, "intent", &args);
     assert!(
         text.contains("\"queued\""),

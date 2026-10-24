@@ -261,8 +261,13 @@ fn handle(
             cancel,
             reply,
         } => match seat_gm(seats, conn, out, cancel) {
-            Ok(()) if reply.send(Ok(())).is_ok() => send_gm(seats, frames::pack_event(world)),
-            Ok(()) => seats.gm = None,
+            Ok(()) => {
+                if reply.send(Ok(())).is_ok() {
+                    send_gm(seats, frames::pack_event(world));
+                } else {
+                    seats.gm = None;
+                }
+            }
             Err(code) => {
                 let _ = reply.send(Err(code));
             }

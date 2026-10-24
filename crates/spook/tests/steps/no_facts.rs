@@ -77,7 +77,7 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     });
     let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
-        .perceive("npc:mira")
+        .perceive("mira")
         .unwrap_or_else(|err| panic!("perceive: {err}"));
     assert!(
         view.known_facts.is_empty(),

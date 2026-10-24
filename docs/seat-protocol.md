@@ -526,7 +526,7 @@ After the two says above, `since` 0 returns them:
 
 #### perceive
 
-`as` is required. It is `player:<id>` or `npc:<id>`. A missing `as`, or `as` set to `gm`, is `UNSCOPED_PERCEIVE`. `focus` may be `place` or `actor`. `budget_tokens` may be a non-negative integer. The default budget is 800.
+`as` is required. It is an actor id (or `player:<id>` or `npc:<id>`). A missing `as`, or `as` set to `gm`, is `UNSCOPED_PERCEIVE`. `focus` may be `place` or `actor`. `budget_tokens` may be a non-negative integer. The default budget is 800.
 
 The result is the same object as the player `perceive` line above.
 
@@ -539,7 +539,7 @@ The result is the same object as the player `perceive` line above.
   "params": {
     "name": "perceive",
     "arguments": {
-      "as": "player:pc_rowan"
+      "as": "pc_rowan"
     }
   }
 }
@@ -569,7 +569,7 @@ An empty argument object:
 
 #### intent
 
-`actor_id`, `actor_kind`, `source`, and `move` are required. `actor_kind` is `player` or `npc`. `source` is `player`. Any other source is `SCHEMA`. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is an object: empty, or one of `place`, `actor`, or `clock`. `args` may carry `to`, a list of actor ids. `tick_index` and `rationale_code` may be sent.
+`actor_id` and `move` are required. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is a string or an object (`place`, `actor`, or `clock`). `args` may carry `to`, a list of actor ids. `tick_index` and `rationale_code` may be sent.
 
 The call queues the move. It does not emit `spook/event` and it does not write a player line. The result is the queue id.
 
@@ -583,8 +583,6 @@ The call queues the move. It does not emit `spook/event` and it does not write a
     "name": "intent",
     "arguments": {
       "actor_id": "pc_rowan",
-      "actor_kind": "player",
-      "source": "player",
       "move": "wait",
       "id": "gm-wait"
     }
@@ -761,6 +759,96 @@ An unknown tool:
 ### Events
 
 The seat pushes `spook/event` notifications. A generic client may ignore them and poll `session_status` with `since` instead. The GM seat is not rate-limited.
+
+On seat open, the pack menu, cast kinds, and prose:
+
+<!-- example: pack-event -->
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "spook/event",
+  "params": {
+    "kind": "pack",
+    "menu": [
+      {
+        "name": "leave_door_note",
+        "audience": "habit",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "restock_lamp_oil",
+        "audience": "habit",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "wait",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "travel",
+        "audience": "verb",
+        "token": "exit",
+        "on": "self"
+      },
+      {
+        "name": "grit",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "take",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "drop",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "wield",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "unwield",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      }
+    ],
+    "kinds": {
+      "aldric": "npc",
+      "bram": "npc",
+      "mira": "npc",
+      "pc_harbormouse": "pc_template",
+      "pc_rowan": "pc_template",
+      "pc_wren": "pc_template"
+    },
+    "places": {
+      "docks_shop": "The shop faces the water. Tins sit in a row.\n",
+      "docks_street": "The street runs between the shop and the rooms.\n",
+      "mira_rooms": "A lamp burns past the shop's back stair.\n"
+    },
+    "cast": {
+      "aldric": "Aldric sweeps the shop and does not keep the books.\n",
+      "bram": "Bram walks the night watch between the street and the shop.\n",
+      "mira": "Mira keeps the shop neat and the tin out of sight.\n",
+      "pc_harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
+      "pc_rowan": "Rowan keeps the shop and walks the street.\n",
+      "pc_wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
+    }
+  }
+}
+```
 
 A player say:
 

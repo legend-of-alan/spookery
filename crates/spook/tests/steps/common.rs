@@ -146,7 +146,7 @@ pub(crate) fn join_play(world: &mut World, raw: bool) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let pack_arg = support::pack_arg(&pack);
-    let mut args = vec!["play".to_string(), pack_arg, "--addr".to_string(), addr];
+    let mut args = vec!["play".into(), pack_arg, "--addr".into(), addr, "--as".into(), "player:pc_rowan".into()];
     if raw {
         args.push("--raw".to_string());
     }

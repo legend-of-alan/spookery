@@ -84,3 +84,13 @@ Feature: One GM seat and up to three player seats
 
   Scenario: A reseated player never reuses a held session id
     When two players sit, one drops, and that PC sits again
+
+  Scenario: An empty hello is refused with the free PCs
+    Given a docks table
+    When a socket sends an empty hello
+    Then the hello is refused with "CHOOSE_PC" and lists the three docks PCs
+
+  Scenario: spook play with one free PC seats it without a prompt
+    Given a one-player docks table
+    When play joins that one-player table with no --as
+    Then play received the first perceive

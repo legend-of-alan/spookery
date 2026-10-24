@@ -25,6 +25,29 @@ fn a_socket_sends_gm_on_the_game_port(world: &mut World) {
     world.scratch = table::second_hello(world, "gm");
 }
 
+#[when(expr = "a socket sends an empty hello")]
+fn a_socket_sends_an_empty_hello(world: &mut World) {
+    listen_pack(world);
+    world.scratch = table::second_hello(world, "");
+}
+
+#[then(expr = "the hello is refused with {string} and lists the three docks PCs")]
+fn the_hello_is_refused_with_and_lists_the_three_docks_pcs(world: &mut World, code: String) {
+    the_hello_is_refused_with(world, code);
+    for id in DOCKS_PCS {
+        assert!(world.scratch.contains(id), "missing {id} in {}", world.scratch);
+    }
+}
+
+#[when(expr = "play joins that one-player table with no --as")]
+fn play_joins_that_one_player_table_with_no_as(world: &mut World) {
+    the_player_leaves(world);
+    let pack = crate::support::pack_arg(table::pack(world));
+    let addr = table::game_addr(world);
+    world.play = Some(crate::support::spawn(&["play", &pack, "--addr", &addr]));
+    super::common::wait_play(world, "You are in");
+}
+
 #[then(expr = "save.yaml is unchanged since the table opened")]
 fn now_unchanged_since_open(world: &mut World) {
     let opened = table::live_mut(world).opened_now.clone();

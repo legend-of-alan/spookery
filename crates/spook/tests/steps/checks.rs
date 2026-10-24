@@ -315,9 +315,7 @@ fn listen_both(world: &mut World, pack: &Path) {
 }
 
 fn queue_mira(world: &mut World, move_name: &str) {
-    let args = format!(
-        r#"{{"actor_id":"mira","actor_kind":"npc","source":"player","move":"{move_name}"}}"#
-    );
+    let args = format!(r#"{{"actor_id":"mira","move":"{move_name}"}}"#);
     let text = table::gm_call(world, 4, "intent", &args);
     assert!(text.contains("\"queued\""), "{text}");
     assert!(!text.contains("UNKNOWN_KEY"), "{text}");

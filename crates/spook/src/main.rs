@@ -240,7 +240,10 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
 
 fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), spookery::Error> {
     result.map_err(|err| match err {
-        spookery::terminal::Error::Reason(code) => spookery::Error::Reason(code),
+        spookery::terminal::Error::Reason(code) => {
+            eprintln!("{code}");
+            std::process::exit(1);
+        }
         spookery::terminal::Error::Io(err) => spookery::Error::Io(err),
     })
 }

@@ -256,8 +256,6 @@ fn gm_restocks() {
     let wall = shard.now().last_tick_at.clone();
     let args = json!({
         "actor_id": "mira",
-        "actor_kind": "npc",
-        "source": "player",
         "move": "restock_lamp_oil"
     });
     let queued = call_gm_tool(
@@ -289,8 +287,6 @@ fn claimed_note_sorts_first() {
     for (actor, move_name) in [("bram", "wait"), ("mira", "leave_door_note")] {
         let args = json!({
             "actor_id": actor,
-            "actor_kind": "npc",
-            "source": "player",
             "move": move_name
         });
         let queued = call_gm_tool(
@@ -750,9 +746,9 @@ fn tool_scope() {
     let before = snapshot(&pack);
     let shard = open(&pack);
     let call = |as_viewer: &str, budget: usize| shard.perceive_budget(as_viewer, budget);
-    let kernel = shard.perceive("npc:mira").unwrap();
-    assert_eq!(call("npc:mira", 800).unwrap(), kernel);
-    let capped = call("npc:mira", 0).unwrap();
+    let kernel = shard.perceive("mira").unwrap();
+    assert_eq!(call("mira", 800).unwrap(), kernel);
+    let capped = call("mira", 0).unwrap();
     assert!(kernel.known_facts.iter().any(|fact| !fact.body.is_empty()));
     assert_eq!(capped.known_facts.len(), kernel.known_facts.len());
     assert!(capped.known_facts.iter().all(|fact| fact.body.is_empty()));
@@ -821,7 +817,7 @@ fn strip_bodies() {
     stamp_pack_rev(&pack);
     open(&pack);
     play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
-    let perceive = format!("{:?}", open(&pack).perceive("npc:aldric").unwrap());
+    let perceive = format!("{:?}", open(&pack).perceive("aldric").unwrap());
     assert!(!perceive.contains(LEDGER));
     let _ = fs::remove_dir_all(&pack);
 }
@@ -1174,8 +1170,6 @@ fn opposing_total_reused() {
         if opposed {
             let args = json!({
                 "actor_id": "pc_nell",
-                "actor_kind": "player",
-                "source": "player",
                 "move": "defend"
             });
             let queued = call_gm_tool(
@@ -1246,8 +1240,6 @@ fn a_held_knife_still_runs_the_opposed_row() {
     shard.seat_player("pc_rowan").unwrap();
     let args = json!({
         "actor_id": "pc_nell",
-        "actor_kind": "player",
-        "source": "player",
         "move": "defend"
     });
     call_gm_tool(

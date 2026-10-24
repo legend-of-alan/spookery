@@ -9,9 +9,9 @@ use serde::Deserialize;
 use crate::canon::tick_settings::load_tick_settings;
 use crate::check::CheckDef;
 use crate::diagnostic::{
-    coded, first_reason, load_headed, locate_nth, locate_row_field, reason_of,
-    schema as schema_error, with_spot, Diagnostic, CAST_SCHEMA, CHECKS_SCHEMA, ITEM_SCHEMA,
-    METERS_SCHEMA, PACK_SCHEMA, PLACE_SCHEMA, STORY_SCHEMA, VERBS_SCHEMA,
+    coded, load_headed, locate_nth, locate_row_field, schema as schema_error, with_spot,
+    Diagnostic, CAST_SCHEMA, CHECKS_SCHEMA, ITEM_SCHEMA, METERS_SCHEMA, PACK_SCHEMA, PLACE_SCHEMA,
+    STORY_SCHEMA, VERBS_SCHEMA,
 };
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
@@ -142,20 +142,6 @@ impl Canon {
             .map(|cast| cast.display_name.clone())
             .filter(|name| !name.is_empty())
             .unwrap_or_else(|| id.to_string())
-    }
-
-    pub fn viewer_of(&self, token: &str) -> Option<crate::intent::ViewerId> {
-        if let Ok(viewer) = crate::intent::ViewerId::parse(token) {
-            if !viewer.actor_id().chars().any(char::is_whitespace) {
-                return Some(viewer);
-            }
-            return None;
-        }
-        let id = token.replace(' ', "_");
-        match self.cast.get(&id)?.kind {
-            CastKind::Npc => Some(crate::intent::ViewerId::Npc(id)),
-            CastKind::PcTemplate => Some(crate::intent::ViewerId::Player(id)),
-        }
     }
 
     pub(crate) fn body_of_fact(&self, fact_id: &str) -> &str {
@@ -923,23 +909,6 @@ fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
     })
 }
 
-pub fn load_start_pc(root: &Path) -> Result<String, Reason> {
-    let id = match load_canon(root) {
-        Ok(canon) => canon.start_pc,
-        Err(errors) => match first_reason(&errors) {
-            Reason::NotInSpec => {
-                let text = read_text(root, "pack.yaml").map_err(reason_of)?;
-                load_pack(&text).map_err(reason_of)?.start.pc
-            }
-            code => return Err(code),
-        },
-    };
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        return Err(Reason::Schema);
-    }
-    Ok(id)
-}
-
 fn load_pack(text: &str) -> Result<PackFile, Vec<Diagnostic>> {
     let file: PackFile = load_headed("pack.yaml", text, PACK_SCHEMA, 0)?;
     if file.id.is_empty() {
@@ -1438,5 +1407,30 @@ checks:
     fn strip_body_rejects_a_missing_fence() {
         assert_eq!(strip_body("no fence\n"), Err(Reason::Schema));
         assert_eq!(strip_body("---\nno closer\n"), Err(Reason::Schema));
+    }
+
+    #[test]
+    fn menu_rows_keep_player_and_habit_and_kinds() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
+        let mut canon = load_canon(&root).expect("docks canon");
+        canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
+        let summary = canon.pack_summary();
+        assert!(summary.menu.iter().all(|row| row.audience != "system"));
+        assert!(summary.menu.iter().any(|row| row.name == "travel"
+            && row.audience == "verb"
+            && row.token == "exit"
+            && row.on == "self"));
+        assert!(summary
+            .menu
+            .iter()
+            .any(|row| row.name == "restock_lamp_oil" && row.audience == "habit"));
+        assert_eq!(summary.kinds.get("mira"), Some(&CastKind::Npc));
+        assert_eq!(summary.kinds.get("pc_rowan"), Some(&CastKind::PcTemplate));
+        let rendered = format!("{:?}{:?}", summary.menu, summary.kinds);
+        assert!(!rendered.contains("CAST-BODY-SENTINEL"));
+        assert_eq!(
+            summary.cast.get("mira").map(String::as_str),
+            Some("CAST-BODY-SENTINEL")
+        );
     }
 }

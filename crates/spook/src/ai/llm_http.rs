@@ -331,12 +331,11 @@ fn act_parameters(says_only: bool) -> Value {
                 "items": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["actor_id", "actor_kind", "move", "target"],
+                    "required": ["actor_id", "move"],
                     "properties": {
                         "actor_id": { "type": "string" },
-                        "actor_kind": { "type": "string", "enum": ["npc", "player"] },
                         "move": { "type": "string" },
-                        "target": { "type": "object" }
+                        "target": { "type": "string" }
                     }
                 }
             }

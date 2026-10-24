@@ -8,12 +8,13 @@ mod prompt;
 use std::net::SocketAddr;
 use std::path::Path;
 
+pub use crate::protocol::{CastKind, MenuRow, OutgoingSay, PackSummary};
 pub use gm_loop::{run_gm, TurnWatch};
 pub use llm::{CompleteError, CompletionRequest, Model, ScriptedModel};
 pub use llm_http::{Clock, Env, HttpModel, Limits, WallClock};
 pub use prompt::{
-    from_canon, keep_actions, parse_actions, prepare, render_prompt, HandledSay, KeptActions,
-    MenuRow, ModelActions, OutgoingSay, PreparedTurn, PromptContext, SceneScope, TurnView, Wake,
+    keep_actions, parse_actions, prepare_with, render_prompt, HandledSay, KeptActions,
+    ModelActions, PreparedTurn, PromptContext, SceneScope, TurnView, Wake,
 };
 
 use crate::gm_connection::ToolCallResult;
