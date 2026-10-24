@@ -131,7 +131,7 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
         } => from_terminal(spookery::terminal::run_player(
             &pack,
             as_player.as_deref(),
-            &addr.to_string(),
+            addr,
             raw,
         )),
         Command::Gm {

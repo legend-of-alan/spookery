@@ -1,7 +1,7 @@
 //! The human player reads a socket and prints each frame.
 
 use std::io::{self, BufRead, BufReader, Write};
-use std::net::TcpStream;
+use std::net::{SocketAddr, TcpStream};
 use std::path::Path;
 
 use crate::protocol::PlayerMessage;
@@ -13,7 +13,7 @@ use super::Error;
 pub fn run_player(
     pack: &Path,
     as_player: Option<&str>,
-    addr: &str,
+    addr: SocketAddr,
     raw: bool,
 ) -> Result<(), Error> {
     let actor = match as_player {
