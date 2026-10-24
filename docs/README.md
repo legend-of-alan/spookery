@@ -46,9 +46,9 @@ packs/                 sample packs (oneshot-docks is the official fixture)
 crates/
   protocol/            spookery-protocol: player and GM wire codecs
   engine/              spookery-engine: world model, rules, rounds, and journal
+  agent/               spookery-agent: model GM turn state machine
+  cli/                 spookery-cli: spook play, spook gm, and spook ai-gm
+  server/              spookery-server: world loop, seats, idle clock, and MCP door
   spook/               package and binary spook, library spookery
-    src/host/          world loop, seats and the idle clock
-    src/terminal/      spook play and spook gm
-    src/ai/            spook ai-gm
     tests/features/    BDD scenarios
 ```

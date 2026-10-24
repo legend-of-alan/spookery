@@ -28,15 +28,27 @@ pub fn run_player(
             };
             match crate::protocol::read_player(&line) {
                 Ok(PlayerMessage::Refused { code, missing }) if code == "CHOOSE_PC" => {
-                    let pcs: Vec<&str> = missing.as_deref().unwrap_or("").split(", ").filter(|s| !s.is_empty()).collect();
+                    let pcs: Vec<&str> = missing
+                        .as_deref()
+                        .unwrap_or("")
+                        .split(", ")
+                        .filter(|s| !s.is_empty())
+                        .collect();
                     if pcs.len() == 1 {
                         pcs[0].to_string()
                     } else {
-                        println!("{}", crate::protocol::named_refusal(&code, missing.as_deref()));
+                        println!(
+                            "{}",
+                            crate::protocol::named_refusal(&code, missing.as_deref())
+                        );
                         let _ = io::stdout().flush();
-                        let Some(chosen) = io::stdin().lines().next() else { return Ok(()); };
+                        let Some(chosen) = io::stdin().lines().next() else {
+                            return Ok(());
+                        };
                         let chosen = chosen.map_err(Error::Io)?;
-                        crate::protocol::read_player_hello(chosen.trim()).unwrap_or(chosen.trim()).to_string()
+                        crate::protocol::read_player_hello(chosen.trim())
+                            .unwrap_or(chosen.trim())
+                            .to_string()
                     }
                 }
                 _ => {

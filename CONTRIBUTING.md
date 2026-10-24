@@ -8,10 +8,10 @@ Title letters, sizes, and labels are below, under Issues and PRs. Build and play
 
 A contributor license agreement (CLA) and a developer certificate of origin (DCO) are deferred.
 
-Feature scenarios live under `crates/spook/tests/features`. Two programs run them:
+Feature scenarios live under `crates/engine/tests/features` and `crates/spook/tests/features`. Two programs per crate run them:
 
 ```sh
-cargo test -p spook --test features_host --test features_world
+cargo test --workspace --test features_host --test features_world
 ```
 
 The README scenario runs `scripts/readme_quickstart.py`, so `cargo test` needs Python 3.8 or newer on `PATH` as `python` or `python3` (on Windows, `py -3` also works).
