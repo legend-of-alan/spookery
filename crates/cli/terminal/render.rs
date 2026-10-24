@@ -449,57 +449,6 @@ Shop day: 1/1"
     }
 
     #[test]
-    fn a_refusal_is_a_sentence_with_the_code() {
-        let full = render(&PlayerMessage::Refused {
-            code: "SESSION_FULL".to_string(),
-            missing: None,
-        });
-        assert_eq!(full, "The table is full. [SESSION_FULL]");
-        assert_readable(&full);
-        let taken = render(&PlayerMessage::Refused {
-            code: "SEAT_TAKEN".to_string(),
-            missing: None,
-        });
-        assert_eq!(taken, "That character is already taken. [SEAT_TAKEN]");
-        assert_readable(&taken);
-        let long = render(&PlayerMessage::Refused {
-            code: "LINE_TOO_LONG".to_string(),
-            missing: None,
-        });
-        assert_eq!(long, "That line is too long. [LINE_TOO_LONG]");
-        assert_readable(&long);
-
-        let unknown = render(&PlayerMessage::Refused {
-            code: "NEW_CODE".to_string(),
-            missing: None,
-        });
-        assert_eq!(unknown, "The table refused that. [NEW_CODE]");
-        assert_readable(&unknown);
-
-        let afford = render(&PlayerMessage::Refused {
-            code: "CANT_AFFORD".to_string(),
-            missing: Some("grit".to_string()),
-        });
-        assert_eq!(afford, "You cannot afford grit. [CANT_AFFORD]");
-        assert_readable(&afford);
-        let wire = serde_json::to_string(&PlayerMessage::Refused {
-            code: "CANT_AFFORD".to_string(),
-            missing: Some("grit".to_string()),
-        })
-        .unwrap();
-        assert_eq!(
-            wire,
-            r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#
-        );
-        let bare = serde_json::to_string(&PlayerMessage::Refused {
-            code: "SCHEMA".to_string(),
-            missing: None,
-        })
-        .unwrap();
-        assert_eq!(bare, r#"{"kind":"refused","code":"SCHEMA"}"#);
-    }
-
-    #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
         let text = render(&PlayerMessage::View {
             viewer: "player:pc_rowan".to_string(),

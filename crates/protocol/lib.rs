@@ -95,3 +95,27 @@ impl std::fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refusal_is_a_sentence_with_the_code() {
+        assert_eq!(refusal("SESSION_FULL"), "The table is full. [SESSION_FULL]");
+        assert!(refusal("SEAT_TAKEN") == "That character is already taken. [SEAT_TAKEN]");
+        assert!(refusal("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
+        assert_eq!(refusal("NEW_CODE"), "The table refused that. [NEW_CODE]");
+        assert_eq!(refusal("CHOOSE_PC"), "Choose a character. [CHOOSE_PC]");
+        assert!(named_refusal("CHOOSE_PC", Some("pc")) == "Choose a character: pc. [CHOOSE_PC]");
+        assert!(named_refusal("CANT_AFFORD", Some("g")) == "You cannot afford g. [CANT_AFFORD]");
+        for raw in [
+            r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#,
+            r#"{"kind":"refused","code":"SCHEMA"}"#,
+        ] {
+            let msg = read_player(raw).unwrap();
+            assert!(matches!(msg, PlayerMessage::Refused { .. }));
+            assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
+        }
+    }
+}

@@ -390,4 +390,32 @@ mod tests {
             "{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{\"kind\":\"say\",\"seq\":3,\"from\":\"gm\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[],\"text\":\"evening\"}}\n"
         );
     }
+
+    #[test]
+    fn gm_frames_ignore_unknown_fields_and_round_trip() {
+        fn rt<T: Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug>(s: &str) {
+            let v: T = serde_json::from_str(s).unwrap();
+            let back: T = serde_json::from_value(serde_json::to_value(&v).unwrap()).unwrap();
+            assert_eq!(back, v);
+        }
+        rt::<SessionStatus>(
+            r#"{"presence":{"humans":1,"actors_present":["pc_rowan"],"x":1},"pause":{"named_plot_clocks":"running","x":1},"world_time":10,"tick_index":1,"state_rev":2,"pack_rev":"p","last_tick_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"x":1}"#,
+        );
+        rt::<CommitBody>(
+            r#"{"state_rev":3,"diff_summary":["d"],"log_path":null,"checks":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,
+        );
+        for raw in [
+            r#"{"kind":"say","seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","x":1}"#,
+            r#"{"kind":"queued","id":"q1","actor_id":"pc_rowan","move":"wait","x":1}"#,
+            r#"{"kind":"check","faces":[6,6],"stat":0,"total":12,"target":10,"outcome":"success","x":1}"#,
+            r#"{"kind":"pack","menu":[],"kinds":{},"places":{},"cast":{},"x":1}"#,
+        ] {
+            rt::<EventBody>(raw);
+        }
+        let m = serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t"}"#).unwrap();
+        let c = read_intent_args(Some(&m)).unwrap();
+        assert_eq!(c.actor_id.as_deref(), Some("a"));
+        assert_eq!(c.move_name.as_deref(), Some("m"));
+        assert_eq!(c.target.as_deref(), Some("t"));
+    }
 }

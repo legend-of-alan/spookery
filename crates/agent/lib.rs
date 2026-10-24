@@ -349,3 +349,72 @@ fn player_lines(status: &SessionStatus, high: u64) -> Vec<HandledSay> {
         .map(HandledSay::from)
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const Q_ST: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"tick_index":0,"state_rev":1,"pack_rev":"p","last_tick_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
+    const E_ST: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"tick_index":0,"state_rev":1,"pack_rev":"p","last_tick_at":"","queued":[],"last_seq":1}"#;
+    const VIEW: &str = r#"{"viewer":"player:pc","place":"docks","visible_actors":["pc"]}"#;
+    const COMMIT: &str = r#"{"state_rev":2,"diff_summary":[],"log_path":null,"checks":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
+    const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;
+
+    fn ok(a: &mut Agent, s: &str) -> AgentStep {
+        let in_msg = AgentInput::ToolResult {
+            body: serde_json::from_str(s).unwrap(),
+            refused: false,
+            raw: String::new(),
+        };
+        a.feed(in_msg).unwrap()
+    }
+
+    fn model(a: &mut Agent, s: &str) -> AgentStep {
+        a.feed(AgentInput::ModelReply(Ok(Some(s.into())))).unwrap()
+    }
+
+    fn sit_queued(since: &AgentStep) -> Agent {
+        let mut a = Agent::new_gm();
+        let p = r#"{"kind":"pack","menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}"#;
+        let pack = serde_json::from_str(p).unwrap();
+        a.feed(AgentInput::GmEvent(pack)).unwrap();
+        assert_eq!(&ok(&mut a, Q_ST), since);
+        prep(&mut a, Q_ST);
+        a
+    }
+
+    fn prep(a: &mut Agent, s: &str) {
+        assert_eq!(ok(a, s), tool("perceive", json!({"as": "pc"})));
+        assert!(matches!(ok(a, VIEW), AgentStep::CallModel { request: r, .. } if !r.says_only));
+    }
+
+    #[test]
+    fn gm_turns_handle_queue_says_epilogue_and_transport_warnings() {
+        let st = tool("session_status", json!({}));
+        let since = tool("session_status", json!({"since": 1}));
+        let cm = tool("commit_round", json!({"include_tick": true}));
+        let say = tool("say", json!({"address": "table", "text": "ok"}));
+
+        let mut a = sit_queued(&since);
+        assert_eq!(model(&mut a, r#"{"says":[],"intents":[]}"#), st);
+        assert_eq!(ok(&mut a, Q_ST), cm);
+        assert_eq!(ok(&mut a, COMMIT), st);
+        assert!(matches!(ok(&mut a, E_ST), AgentStep::CallModel { request: r, .. } if r.says_only));
+        assert!(model(&mut a, r#"{"says":[{"address":"table","text":"ok"}]}"#) == say);
+        assert_eq!(ok(&mut a, SAY), AgentStep::Idle);
+
+        let ev = AgentInput::GmEvent(serde_json::from_str(SAY).unwrap());
+        assert_eq!(a.feed(ev).unwrap(), since);
+        prep(&mut a, E_ST);
+        let full = r#"{"says":[{"address":"table","text":"ok"}],"intents":[]}"#;
+        assert_eq!(model(&mut a, full), say);
+        assert_eq!(ok(&mut a, SAY), st);
+        assert_eq!(ok(&mut a, E_ST), AgentStep::Idle);
+
+        let mut a = sit_queued(&since);
+        let err = AgentInput::ModelReply(Err(CompleteError::Transport("boom".into())));
+        assert_eq!(a.feed(err).unwrap(), st);
+        assert_eq!(a.warning.as_deref(), Some("boom"));
+        assert_eq!(ok(&mut a, Q_ST), cm);
+    }
+}
