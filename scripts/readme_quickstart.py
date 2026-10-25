@@ -136,7 +136,7 @@ def main() -> None:
         )
         wait_text(gm.err, "listening", 30, "the stub GM did not sit", gm, host)
         if scratch is not None:
-            play = spawn(["spook", "play", pack, "--addr", game])
+            play = spawn(["spook", "play", "--addr", game])
         else:
             play = spawn(parse_spook_args(play_line))
         assert play.proc.stdin is not None
@@ -301,10 +301,13 @@ def spawn(args: list[str], env: dict[str, str] | None = None) -> Pipe:
 
 
 def parse_spook_args(line: str) -> list[str]:
-    match = re.match(r"spook\s+(\S+)\s+(.+)$", expand(line.strip()))
+    match = re.match(r"spook\s+(\S+)(?:\s+(.+))?$", expand(line.strip()))
     if not match:
         raise SystemExit(f"not a spook command: {line}")
-    return ["spook", match.group(1), match.group(2).strip()]
+    args = ["spook", match.group(1)]
+    if match.group(2):
+        args.append(match.group(2).strip())
+    return args
 
 
 def wait_listening(host: Pipe) -> tuple[str, str]:

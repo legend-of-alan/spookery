@@ -335,9 +335,8 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
 }
 
 fn sit_play(world: &mut World, addr: &str, as_player: Option<&str>) {
-    let pack_arg = support::pack_arg(table::pack(world));
     let as_arg = format!("player:{}", as_player.unwrap_or("pc_rowan"));
-    let mut play = support::spawn(&["play", &pack_arg, "--addr", addr, "--as", &as_arg]);
+    let mut play = support::spawn(&["play", "--addr", addr, "--as", &as_arg]);
     wait_proc(&mut play, "You are in");
     if world.play.is_none() {
         world.play = Some(play);

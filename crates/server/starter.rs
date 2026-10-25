@@ -182,7 +182,7 @@ fn restamp(dir: &Path) -> Result<(), StarterError> {
 
 fn next_steps(dir: &Path) -> String {
     let path = dir.display();
-    format!("Wrote {path}\nspook check {path}\nspook run {path}\nspook play {path}\n")
+    format!("Wrote {path}\nspook check {path}\nspook run {path}\nspook play\n")
 }
 
 #[cfg(test)]

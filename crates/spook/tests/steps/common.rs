@@ -133,10 +133,8 @@ pub(crate) fn join_play(world: &mut World, raw: bool) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     let mut args = vec![
         "play".into(),
-        pack_arg,
         "--addr".into(),
         addr,
         "--as".into(),
@@ -301,10 +299,8 @@ fn play_joins_the_sample_table(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     world.play = Some(support::spawn(&[
         "play",
-        &pack_arg,
         "--addr",
         &addr,
         "--as",

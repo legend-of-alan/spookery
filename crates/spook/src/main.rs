@@ -31,10 +31,8 @@ enum Command {
     /// Sit the player seat.
     #[cfg(feature = "client")]
     Play {
-        /// Pack directory.
-        pack: PathBuf,
-        /// Actor to sit, as `player:<id>`.
-        #[arg(long = "as", value_name = "player:<id>")]
+        /// Actor to sit. A pack id, or `player:<id>`.
+        #[arg(long = "as", value_name = "ID")]
         as_player: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
@@ -151,11 +149,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             handle.join().map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play {
-            pack: _,
-            as_player,
-            raw,
-        } => from_terminal(spookery::terminal::run_player(
+        Command::Play { as_player, raw } => from_terminal(spookery::terminal::run_player(
             as_player.as_deref(),
             addr,
             raw,
@@ -327,8 +321,11 @@ mod tests {
             "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "verify", "new",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
-                let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
-                    .unwrap();
+                let mut args = vec!["spook", command, "--addr", addr];
+                if command != "play" {
+                    args.push("no-such-pack");
+                }
+                let cli = Cli::try_parse_from(args).unwrap();
                 assert_eq!(
                     dispatch(cli).unwrap_err(),
                     "NOT_IN_SPEC",
@@ -380,20 +377,15 @@ mod tests {
             };
             assert_eq!(text.as_deref(), Some("127.0.0.1:9801"));
         }
-        let play = Cli::try_parse_from(["spook", "play", "pack", "--as", "player:rowan"]).unwrap();
+        let play = Cli::try_parse_from(["spook", "play", "--as", "pc_rowan"]).unwrap();
         match play.command {
-            Command::Play {
-                as_player,
-                pack,
-                raw,
-            } => {
-                assert_eq!(as_player.as_deref(), Some("player:rowan"));
-                assert_eq!(pack, Path::new("pack"));
+            Command::Play { as_player, raw } => {
+                assert_eq!(as_player.as_deref(), Some("pc_rowan"));
                 assert!(!raw);
             }
             _ => panic!("play"),
         }
-        let raw = Cli::try_parse_from(["spook", "play", "--raw", "pack"]).unwrap();
+        let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
         assert!(matches!(raw.command, Command::Play { raw: true, .. }));
         let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
         assert!(matches!(host.command, Command::AiGm { .. }));

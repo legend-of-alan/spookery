@@ -157,7 +157,7 @@ spook run /tmp/mypack
 ```
 
 ```sh
-spook play /tmp/mypack
+spook play
 ```
 
 You sit `pc_ada`. The first picture is the yard. `travel lane` leaves for the lane and commits a tick, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.

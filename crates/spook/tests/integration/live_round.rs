@@ -54,14 +54,7 @@ fn a_live_model_plays_one_round() {
     wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
 
     let sit = world_time(&pack);
-    let mut player = crate::support::spawn(&[
-        "--addr",
-        &addr,
-        "play",
-        &pack_text,
-        "--as",
-        "player:pc_rowan",
-    ]);
+    let mut player = crate::support::spawn(&["--addr", &addr, "play", "--as", "player:pc_rowan"]);
     wait_text(
         &player,
         &player.stdout,

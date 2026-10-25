@@ -50,9 +50,8 @@ fn the_hello_reply_does_not_contain(world: &mut World, needle: String) {
 #[when(expr = "play joins that one-player table with no --as")]
 fn play_joins_that_one_player_table_with_no_as(world: &mut World) {
     the_player_leaves(world);
-    let pack = crate::support::pack_arg(table::pack(world));
     let addr = table::game_addr(world);
-    world.play = Some(crate::support::spawn(&["play", &pack, "--addr", &addr]));
+    world.play = Some(crate::support::spawn(&["play", "--addr", &addr]));
     super::common::wait_play(world, "You are in");
 }
 
@@ -412,11 +411,10 @@ fn three_play_clients_sit_on_a_free_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let pack_arg = crate::support::pack_arg(&pack);
     for id in DOCKS_PCS {
         let as_arg = format!("player:{id}");
         world.plays.push(crate::support::spawn(&[
-            "play", &pack_arg, "--addr", &addr, "--as", &as_arg,
+            "play", "--addr", &addr, "--as", &as_arg,
         ]));
     }
 }

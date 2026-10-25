@@ -61,7 +61,7 @@ spook run /tmp/yard
 ```
 
 ```sh
-spook play /tmp/yard
+spook play
 ```
 
 ```sh
@@ -85,7 +85,7 @@ spook run $env:TEMP\yard
 ```
 
 ```powershell
-spook play $env:TEMP\yard
+spook play
 ```
 
 ```powershell
@@ -380,7 +380,7 @@ CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest
 
 `--addr` sets the loopback address. The default is `127.0.0.1:9737`. Passing `127.0.0.1` alone means that same port. Any other host is refused before the pack opens. The agent door is the next port, `127.0.0.1:9738`.
 
-`--as player:<id>` sits that character. A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
+`--as <id>` sits that character. `pc_rowan` and `player:pc_rowan` are the same seat. A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
 
 `spook status` prints the host digest and does not write the pack. `spook tick` and `spook migrate` write `state/`. Stop `spook run` before those two, because the server keeps the save in memory.
 

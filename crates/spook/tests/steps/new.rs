@@ -26,7 +26,7 @@ fn stdout_names_the_next_commands(world: &mut World) {
         format!("Wrote {text}"),
         format!("spook check {text}"),
         format!("spook run {text}"),
-        format!("spook play {text}"),
+        "spook play\n".to_string(),
     ] {
         assert!(
             world.stdout.contains(&line),
@@ -127,8 +127,7 @@ fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
+    world.play = Some(support::spawn(&["play", "--addr", &addr]));
     wait_play(world, "You are in Yard.");
 }
 

@@ -183,10 +183,8 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     world.play = Some(support::spawn(&[
         "play",
-        &pack_arg,
         "--addr",
         &addr,
         "--as",
