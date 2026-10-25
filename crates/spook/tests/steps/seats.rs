@@ -25,22 +25,26 @@ fn a_socket_sends_gm_on_the_game_port(world: &mut World) {
     world.scratch = table::second_hello(world, "gm");
 }
 
-#[when(expr = "a socket sends an empty hello")]
-fn a_socket_sends_an_empty_hello(world: &mut World) {
-    listen_pack(world);
-    world.scratch = table::second_hello(world, "");
+#[when(regex = r"^a socket sends (an empty hello|player:)$")]
+fn a_socket_sends_hello(world: &mut World, which: String) {
+    if world.live.is_none() {
+        listen_pack(world);
+    }
+    world.scratch = table::second_hello(world, if which == "player:" { "player:" } else { "" });
 }
 
-#[then(expr = "the hello is refused with {string} and lists the three docks PCs")]
-fn the_hello_is_refused_with_and_lists_the_three_docks_pcs(world: &mut World, code: String) {
+#[then(expr = "the hello is refused with {string} and the missing list is {string}")]
+fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: String) {
     the_hello_is_refused_with(world, code);
-    for id in DOCKS_PCS {
-        assert!(
-            world.scratch.contains(id),
-            "missing {id} in {}",
-            world.scratch
-        );
-    }
+    let frame: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
+    let raw = frame["missing"].as_str().unwrap_or("");
+    assert!(serde_json::from_str::<Vec<String>>(raw).is_ok(), "{raw}");
+    assert_eq!(raw, missing);
+}
+
+#[then(expr = "the hello reply does not contain {string}")]
+fn the_hello_reply_does_not_contain(world: &mut World, needle: String) {
+    assert!(!world.scratch.contains(&needle), "{}", world.scratch);
 }
 
 #[when(expr = "play joins that one-player table with no --as")]

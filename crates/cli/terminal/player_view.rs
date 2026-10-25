@@ -30,10 +30,8 @@ pub fn run_player(
                 Ok(PlayerMessage::Refused { code, missing }) if code == "CHOOSE_PC" => {
                     let pcs: Vec<&str> = missing
                         .as_deref()
-                        .unwrap_or("")
-                        .split(", ")
-                        .filter(|s| !s.is_empty())
-                        .collect();
+                        .and_then(|raw| serde_json::from_str(raw).ok())
+                        .unwrap_or_default();
                     if pcs.len() == 1 {
                         pcs[0].to_string()
                     } else {

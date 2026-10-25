@@ -107,7 +107,7 @@ mod tests {
         assert!(refusal("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
         assert_eq!(refusal("NEW_CODE"), "The table refused that. [NEW_CODE]");
         assert_eq!(refusal("CHOOSE_PC"), "Choose a character. [CHOOSE_PC]");
-        assert!(named_refusal("CHOOSE_PC", Some("pc")) == "Choose a character: pc. [CHOOSE_PC]");
+        assert!(named_refusal("CHOOSE_PC", Some("[]")) == "Choose a character: []. [CHOOSE_PC]");
         assert!(named_refusal("CANT_AFFORD", Some("g")) == "You cannot afford g. [CANT_AFFORD]");
         for raw in [
             r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#,

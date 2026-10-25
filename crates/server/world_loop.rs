@@ -362,17 +362,14 @@ fn on_hello(
     if line == "gm" {
         return Ok(HelloReply::Refused(refused_line(Reason::NotInSpec)));
     }
-    if line.is_empty() || line == "player:" {
+    if line.is_empty() {
         if seats.players.len() >= MAX_PLAYER_SEATS {
             return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
-        let free = world.free_pcs();
-        if free.is_empty() {
-            return Ok(HelloReply::Refused(refused_line(Reason::SeatTaken)));
-        }
+        let free = serde_json::to_string(&world.free_pcs()).expect("pcs");
         return Ok(HelloReply::Refused(frames::player_refused(
             Reason::ChoosePc.token(),
-            Some(&free.join(", ")),
+            Some(&free),
         )));
     }
     if let Some(id) = player_hello(line) {
