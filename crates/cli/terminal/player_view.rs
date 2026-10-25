@@ -8,11 +8,7 @@ use crate::protocol::PlayerMessage;
 use super::render;
 use super::Error;
 
-pub fn run_player(
-    as_player: Option<&str>,
-    addr: SocketAddr,
-    raw: bool,
-) -> Result<(), Error> {
+pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
     let mut formatter = render::PlayerFormatter::new();
     let actor = match as_player {
         Some(token) => parse_player_as(token)?,
