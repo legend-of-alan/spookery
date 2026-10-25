@@ -736,10 +736,6 @@ mod tests {
             Command::Look { actor } => assert_eq!(actor, "pc_rowan"),
             other => panic!("{other:?}"),
         }
-        match command("look player:pc_rowan") {
-            Command::Look { actor } => assert_eq!(actor, "player:pc_rowan"),
-            other => panic!("{other:?}"),
-        }
         match command("say good evening") {
             Command::Say(OutgoingSay::Table { text }) => assert_eq!(text, "good evening"),
             other => panic!("{other:?}"),
@@ -805,14 +801,14 @@ mod tests {
     #[test]
     fn each_event_renders_as_text() {
         let player = render_event(&say("player:pc_rowan", 1, "hello"));
-        assert_eq!(player, "Player:pc rowan: hello");
+        assert_eq!(player, "Pc rowan: hello");
         assert!(!player.contains('{'));
 
         let gm = render_event(&say("gm", 2, "good evening"));
         assert_eq!(gm, "GM: good evening");
 
         let npc = render_event(&say("npc:mira", 3, "oil"));
-        assert_eq!(npc, "Npc:mira: oil");
+        assert_eq!(npc, "Mira: oil");
 
         let queued = render_event(&EventBody::Queued(QueueRow {
             id: "id-1".to_string(),

@@ -243,9 +243,13 @@ fn is_self(id: &str, viewer: &str) -> bool {
     }
 }
 
-/// `docks_shop` becomes "Docks shop".
+/// `docks_shop` becomes "Docks shop". A `player:` or `npc:` prefix is not part of the name.
 pub(crate) fn humanize(id: &str) -> String {
-    let spaced = id.replace('_', " ");
+    let bare = id
+        .strip_prefix("player:")
+        .or_else(|| id.strip_prefix("npc:"))
+        .unwrap_or(id);
+    let spaced = bare.replace('_', " ");
     let mut chars = spaced.chars();
     let Some(first) = chars.next() else {
         return spaced;
@@ -268,8 +272,8 @@ mod tests {
 
     #[test]
     fn a_player_prefix_is_not_part_of_the_name() {
-        assert_eq!(humanize("player:pc_rowan"), "Player:pc rowan");
-        assert_eq!(humanize("npc:mira"), "Npc:mira");
+        assert_eq!(humanize("player:pc_rowan"), "Pc rowan");
+        assert_eq!(humanize("npc:mira"), "Mira");
         assert_eq!(humanize("docks_shop"), "Docks shop");
         assert_eq!(humanize("pc_rowan"), "Pc rowan");
         assert_eq!(humanize("mira"), "Mira");
@@ -283,7 +287,7 @@ mod tests {
             text: "the lamp is lit".to_string(),
             replay: false,
         });
-        assert_eq!(mira, "Npc:mira: the lamp is lit");
+        assert_eq!(mira, "Mira: the lamp is lit");
         assert_readable(&mira);
 
         let gm = render(&PlayerMessage::Say {
