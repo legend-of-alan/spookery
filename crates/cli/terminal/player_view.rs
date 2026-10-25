@@ -11,7 +11,7 @@ use super::Error;
 pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
     let mut formatter = render::PlayerFormatter::new();
     let actor = match as_player {
-        Some(token) => parse_player_as(token)?,
+        Some(token) => player_id(token)?,
         None => {
             let mut probe = TcpStream::connect(addr).map_err(Error::Io)?;
             probe.set_nodelay(true).map_err(Error::Io)?;
@@ -22,23 +22,25 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
             };
             match crate::protocol::read_player(&line) {
                 Ok(PlayerMessage::Refused { code, missing }) if code == "CHOOSE_PC" => {
-                    let pcs: Vec<&str> = missing
+                    let pcs: Vec<String> = missing
                         .as_deref()
                         .and_then(|raw| serde_json::from_str(raw).ok())
                         .unwrap_or_default();
-                    if pcs.len() == 1 {
-                        pcs[0].to_string()
-                    } else {
-                        println!(
-                            "{}",
-                            crate::protocol::named_refusal(&code, missing.as_deref())
-                        );
-                        let _ = io::stdout().flush();
-                        let Some(chosen) = io::stdin().lines().next() else {
-                            return Ok(());
-                        };
-                        let chosen = chosen.map_err(Error::Io)?;
-                        chosen.trim().to_string()
+                    match pcs.as_slice() {
+                        [] => {
+                            eprintln!("No free characters");
+                            let _ = io::stderr().flush();
+                            std::process::exit(1);
+                        }
+                        [only] => only.clone(),
+                        many => {
+                            println!("{}", many.join("\n"));
+                            let _ = io::stdout().flush();
+                            let Some(chosen) = io::stdin().lines().next() else {
+                                return Ok(());
+                            };
+                            player_id(&chosen.map_err(Error::Io)?)?
+                        }
                     }
                 }
                 _ => {
@@ -91,13 +93,13 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
     Ok(())
 }
 
-fn parse_player_as(token: &str) -> Result<String, Error> {
-    if !token.starts_with("player:") {
-        return Err(Error::Reason("NOT_IN_SPEC"));
+fn player_id(token: &str) -> Result<String, Error> {
+    let token = token.trim();
+    let id = token.strip_prefix("player:").unwrap_or(token);
+    if id.is_empty() || id.chars().any(char::is_whitespace) {
+        return Err(Error::Reason("SCHEMA"));
     }
-    crate::protocol::read_player_hello(token)
-        .map(str::to_string)
-        .ok_or(Error::Reason("SCHEMA"))
+    Ok(id.to_string())
 }
 
 fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error> {
@@ -191,4 +193,19 @@ fn is_perceive(line: &str) -> bool {
         crate::protocol::read_player(line),
         Ok(PlayerMessage::View { .. })
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::player_id;
+
+    #[test]
+    fn a_bare_id_and_a_player_prefix_are_one_id() {
+        let bare = player_id("pc_rowan").ok();
+        assert_eq!(bare.as_deref(), Some("pc_rowan"));
+        assert_eq!(player_id("player:pc_rowan").ok(), bare);
+        assert_eq!(player_id("  player:pc_rowan").ok(), bare);
+        assert!(player_id("player:").is_err());
+        assert!(player_id("").is_err());
+    }
 }
