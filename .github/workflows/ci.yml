@@ -62,6 +62,7 @@ jobs:
         run: cargo build --workspace --locked
 
       - name: dependency-and-feature-checks
+        if: runner.os == 'Linux'
         shell: bash
         run: |
           ! cargo tree -e normal -p spookery-cli --locked | grep -E 'spookery-engine|spookery-server'
