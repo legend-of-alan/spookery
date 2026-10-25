@@ -1,10 +1,7 @@
+use spookery_engine::testing::temp_pack;
 use spookery_engine::{Reason, World};
 use spookery_server::{Config, Error};
 use std::{fs, io::*, net::*};
-
-#[path = "../../spook/tests/support.rs"]
-#[allow(dead_code)]
-mod support;
 
 fn step(c: &mut BufReader<TcpStream>, cmd: &str) {
     c.get_mut().write_all(cmd.as_bytes()).unwrap();
@@ -17,8 +14,8 @@ fn step(c: &mut BufReader<TcpStream>, cmd: &str) {
 
 #[test]
 fn two_worlds_serve_on_port_zero_and_stop_independently() {
-    let first_dir = support::temp_pack("2w-1");
-    let second_dir = support::temp_pack("2w-2");
+    let first_dir = temp_pack("2w-1");
+    let second_dir = temp_pack("2w-2");
     let loopback_0: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let world1 = World::resume(&first_dir).unwrap();
     let first = spookery_server::serve(world1, Config::new(loopback_0)).unwrap();

@@ -1,7 +1,8 @@
 //! Readable text for one player frame.
 
 use crate::protocol::{
-    exit_phrase, named_refusal, Outcome, PlayerMessage, WireClock, WireExit, WireMessage, WireMeter,
+    exit_phrase, named_refusal, Missing, Outcome, PlayerMessage, WireClock, WireExit, WireMessage,
+    WireMeter,
 };
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
@@ -21,7 +22,9 @@ pub fn render(message: &PlayerMessage) -> String {
         },
         PlayerMessage::Resume { messages, clocks } => resume(messages, clocks),
         PlayerMessage::Lines { text } => text.clone(),
-        PlayerMessage::Refused { code, missing } => named_refusal(code, missing.as_deref()),
+        PlayerMessage::Refused { code, missing } => {
+            named_refusal(code, missing.as_ref().and_then(Missing::as_str))
+        }
         PlayerMessage::View { .. } => view_text(message),
     }
 }

@@ -32,8 +32,8 @@ pub use gm_wire::{
     StatusArgs, StatusPause, StatusPresence,
 };
 pub use player_wire::{
-    exit_phrase, read_player, read_player_hello, write_player, write_player_hello, PlayerMessage,
-    ViewScene, WireClock, WireExit, WireFact, WireItem, WireMessage, WireMeter,
+    exit_phrase, read_player, read_player_hello, write_player, write_player_hello, Missing,
+    PlayerMessage, ViewScene, WireClock, WireExit, WireFact, WireItem, WireMessage, WireMeter,
 };
 
 pub fn refusal(code: &str) -> String {
@@ -111,6 +111,7 @@ mod tests {
         assert!(named_refusal("CANT_AFFORD", Some("g")) == "You cannot afford g. [CANT_AFFORD]");
         for raw in [
             r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#,
+            r#"{"kind":"refused","code":"CHOOSE_PC","missing":["pc_rowan"]}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
         ] {
             let msg = read_player(raw).unwrap();

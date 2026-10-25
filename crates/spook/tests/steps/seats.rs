@@ -37,9 +37,9 @@ fn a_socket_sends_hello(world: &mut World, which: String) {
 fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: String) {
     the_hello_is_refused_with(world, code);
     let frame: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
-    let raw = frame["missing"].as_str().unwrap_or("");
-    assert!(serde_json::from_str::<Vec<String>>(raw).is_ok(), "{raw}");
-    assert_eq!(raw, missing);
+    let expected: Vec<String> = serde_json::from_str(&missing).unwrap();
+    let got: Vec<String> = serde_json::from_value(frame["missing"].clone()).unwrap();
+    assert_eq!(got, expected);
 }
 
 #[then(expr = "the hello reply does not contain {string}")]

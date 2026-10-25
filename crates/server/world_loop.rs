@@ -366,10 +366,11 @@ fn on_hello(
         if seats.players.len() >= MAX_PLAYER_SEATS {
             return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
-        let free = serde_json::to_string(&world.free_pcs()).map_err(|_| Reason::Schema)?;
-        return Ok(HelloReply::Refused(frames::player_refused(
-            Reason::ChoosePc.token(),
-            Some(&free),
+        return Ok(HelloReply::Refused(crate::protocol::write_player(
+            &crate::protocol::PlayerMessage::Refused {
+                code: Reason::ChoosePc.token().to_string(),
+                missing: Some(crate::protocol::Missing::Many(world.free_pcs())),
+            },
         )));
     }
     if let Some(id) = player_hello(line) {

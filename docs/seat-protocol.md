@@ -175,14 +175,17 @@ An id that is not a live PC:
 }
 ```
 
-An empty line, after Rowan is sat. `missing` is the free PCs as a JSON array string:
+An empty line, after Rowan is sat. `missing` is the free PCs:
 
 <!-- example: player-choose-pc -->
 ```json
 {
   "kind": "refused",
   "code": "CHOOSE_PC",
-  "missing": "[\"pc_harbormouse\",\"pc_wren\"]"
+  "missing": [
+    "pc_harbormouse",
+    "pc_wren"
+  ]
 }
 ```
 

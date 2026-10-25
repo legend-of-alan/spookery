@@ -149,7 +149,7 @@ pub fn player_lines(text: &str) -> String {
 pub fn player_refused(code: &str, missing: Option<&str>) -> String {
     crate::protocol::write_player(&PlayerMessage::Refused {
         code: code.to_string(),
-        missing: missing.map(str::to_string),
+        missing: missing.map(|text| crate::protocol::Missing::One(text.to_string())),
     })
 }
 

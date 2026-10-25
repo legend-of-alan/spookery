@@ -5,8 +5,9 @@ use cucumber::{given, then, when};
 use spookery_engine::model::Presence;
 use spookery_engine::World as Shard;
 
-use crate::support::stamp_pack_rev;
 use crate::World;
+use spookery_engine::testing as support;
+use spookery_engine::testing::stamp_pack_rev;
 
 const SECRET_ID: &str = "fact_sealed_name";
 const SECRET_TEXT: &str = "the sealed name";
@@ -15,7 +16,7 @@ const SECRET_TEXT: &str = "the sealed name";
 fn sample_d20_with_lark_facing_briar(world: &mut World, player: String, facing: String) {
     assert_eq!(player, "lark");
     assert_eq!(facing, "briar");
-    world.pack = Some(crate::support::copy_pack("sample-d20", "matters"));
+    world.pack = Some(support::copy_pack("sample-d20", "matters"));
 }
 
 #[given(expr = "lark has a hidden meter")]
@@ -54,7 +55,7 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
 #[when(expr = "lark's might is raised and the seeded strike succeeds")]
 fn larks_might_is_raised(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    crate::support::edit_save(&pack, |now| {
+    support::edit_save(&pack, |now| {
         let might = now
             .actors
             .get_mut("pc_lark")
@@ -123,7 +124,7 @@ fn lark_drops_the_tonic(world: &mut World) {
 #[given(expr = "a tonic is on the ground")]
 fn a_tonic_is_on_the_ground(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    crate::support::edit_save(&pack, |now| {
+    support::edit_save(&pack, |now| {
         now.places
             .get_mut("gate_yard")
             .unwrap()
@@ -243,7 +244,7 @@ fn seat(pack: &Path) -> Shard {
 }
 
 fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
-    let (verb, target) = crate::support::split_move(line);
+    let (verb, target) = support::split_move(line);
     let wall = world.now().last_tick_at.clone();
     match spookery_engine::handle_player_move(world, "pc_lark", verb, target, false, &wall) {
         Ok(spookery_engine::MoveOutcome::Committed { outputs, .. }) => {

@@ -3,7 +3,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::feature_paths::{ENGINE_HOST, ENGINE_WORLD, HOST, WORLD};
+use spookery_engine::testing::{ENGINE_HOST, ENGINE_WORLD};
+
+use crate::feature_paths::{HOST, WORLD};
 
 #[test]
 fn every_feature_folder_runs_in_one_program() {

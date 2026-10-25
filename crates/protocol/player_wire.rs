@@ -47,7 +47,7 @@ pub enum PlayerMessage {
     Refused {
         code: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        missing: Option<String>,
+        missing: Option<Missing>,
     },
     #[serde(rename = "perceive")]
     View {
@@ -67,6 +67,22 @@ pub enum PlayerMessage {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         exits: Vec<WireExit>,
     },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Missing {
+    One(String),
+    Many(Vec<String>),
+}
+
+impl Missing {
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::One(text) => Some(text),
+            Self::Many(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

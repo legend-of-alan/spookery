@@ -31,19 +31,3 @@ pub const WORLD: &[&str] = &[
     "tests/features/sample",
     "tests/features/wake",
 ];
-
-#[allow(dead_code)]
-pub const ENGINE_HOST: &[&str] = &["tests/features/seats"];
-
-#[allow(dead_code)]
-pub const ENGINE_WORLD: &[&str] = &[
-    "tests/features/catchup",
-    "tests/features/clocks",
-    "tests/features/commit",
-    "tests/features/firewall",
-    "tests/features/perceive",
-    "tests/features/round",
-    "tests/features/rows",
-    "tests/features/sample",
-    "tests/features/stock",
-];

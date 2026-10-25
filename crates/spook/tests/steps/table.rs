@@ -43,7 +43,6 @@ pub fn live_mut(world: &mut World) -> &mut Live {
     world
         .live
         .as_mut()
-        .and_then(|live| live.downcast_mut::<Live>())
         .unwrap_or_else(|| panic!("no table is listening"))
 }
 
@@ -51,7 +50,6 @@ fn live_ref(world: &World) -> &Live {
     world
         .live
         .as_ref()
-        .and_then(|live| live.downcast_ref::<Live>())
         .unwrap_or_else(|| panic!("no table is listening"))
 }
 
@@ -78,7 +76,10 @@ pub fn files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
 }
 
 pub fn pack(world: &World) -> &Path {
-    world.pack()
+    world
+        .pack
+        .as_deref()
+        .unwrap_or_else(|| panic!("no docks table"))
 }
 
 /// Replay the journal to the current state. `save.yaml` is the last checkpoint.
@@ -276,7 +277,7 @@ fn install(world: &mut World, pack: &Path, listening: Listening) {
     let opened_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     drop(world.live.take());
-    world.live = Some(Box::new(Live {
+    world.live = Some(Live {
         port: listening.game.port(),
         player_write: None,
         player_text: Arc::new(Mutex::new(String::new())),
@@ -290,7 +291,7 @@ fn install(world: &mut World, pack: &Path, listening: Listening) {
         seated_now: opened_now,
         seated_rev: 0,
         server: Some(listening.server),
-    }));
+    });
 }
 
 fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {

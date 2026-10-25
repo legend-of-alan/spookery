@@ -14,10 +14,10 @@ use spookery_engine::{
     World as Shard,
 };
 
-use crate::support::{
-    self, insert_nell, now_of, open, read_tick as tick_value, save_now, stamp_pack_rev,
-};
 use crate::World;
+use spookery_engine::testing::{
+    self as support, insert_nell, now_of, open, read_tick as tick_value, save_now, stamp_pack_rev,
+};
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 

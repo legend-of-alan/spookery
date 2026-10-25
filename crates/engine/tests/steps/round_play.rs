@@ -8,8 +8,8 @@ use spookery_engine::MoveReport;
 use spookery_engine::RoundCause;
 use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
-use crate::support::{self, read_tick};
 use crate::World;
+use spookery_engine::testing::{self as support, read_tick};
 
 #[given(expr = "a round where Lark rolls grit")]
 fn a_round_where_lark_rolls_grit(world: &mut World) {

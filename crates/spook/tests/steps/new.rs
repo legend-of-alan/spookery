@@ -314,7 +314,9 @@ fn run_new(world: &mut World, pack: &Path) {
 }
 
 fn fresh_path(label: &str) -> PathBuf {
-    crate::support::vacant_path(&format!("new-{label}"))
+    let dir = crate::support::fresh_dir(&format!("new-{label}"));
+    fs::remove_dir(&dir).unwrap();
+    dir
 }
 
 fn template_dir() -> PathBuf {

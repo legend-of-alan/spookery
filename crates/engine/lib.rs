@@ -46,9 +46,26 @@ pub use world::{
 
 #[cfg(feature = "testing")]
 pub mod testing {
+    use std::fs;
+    use std::path::{Path, PathBuf};
+
     pub use crate::canon::strip_body;
     pub use crate::round::replay::from_journal;
     pub use crate::rules::roll::{faces, RollKey};
+
+    pub const ENGINE_HOST: &[&str] = &["tests/features/seats"];
+
+    pub const ENGINE_WORLD: &[&str] = &[
+        "tests/features/catchup",
+        "tests/features/clocks",
+        "tests/features/commit",
+        "tests/features/firewall",
+        "tests/features/perceive",
+        "tests/features/round",
+        "tests/features/rows",
+        "tests/features/sample",
+        "tests/features/stock",
+    ];
 
     pub mod journal {
         pub use crate::store::journal::{
@@ -69,5 +86,152 @@ pub mod testing {
         ) -> Result<crate::QueuedMove, crate::GateRefusal> {
             self.queue_player_move(actor_id, "wait", None)
         }
+    }
+
+    pub fn copy_dir(from: &Path, to: &Path) {
+        fs::create_dir_all(to).unwrap();
+        for entry in fs::read_dir(from).unwrap() {
+            let entry = entry.unwrap();
+            let dest = to.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                copy_dir(&entry.path(), &dest);
+            } else {
+                fs::copy(entry.path(), &dest).unwrap();
+            }
+        }
+    }
+
+    pub fn fresh_dir(label: &str) -> PathBuf {
+        let thread: String = format!("{:?}", std::thread::current().id())
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .collect();
+        for n in 0..64 {
+            let dir = std::env::temp_dir().join(format!(
+                "spook-{label}-{}-{thread}-{}-{n}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
+            if fs::create_dir(&dir).is_ok() {
+                return dir;
+            }
+        }
+        panic!("no fresh dir for {label}");
+    }
+
+    pub fn temp_pack(label: &str) -> PathBuf {
+        copy_pack("oneshot-docks", label)
+    }
+
+    pub fn copy_pack(name: &str, label: &str) -> PathBuf {
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let pack = fresh_dir(label);
+        copy_dir(&manifest.join("../../packs").join(name), &pack);
+        pack
+    }
+
+    pub fn place_of(now: &mut crate::model::Now, actor: &str, place: &str) {
+        let from = now.actors.get(actor).unwrap().place().to_string();
+        if from == place {
+            return;
+        }
+        if let Some(live) = now.places.get_mut(&from) {
+            live.actors.retain(|id| id != actor);
+        }
+        let actors = &mut now.places.get_mut(place).unwrap().actors;
+        actors.push(actor.to_string());
+        actors.sort();
+        actors.dedup();
+        *now.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
+    }
+
+    pub fn open(pack: &Path) -> crate::World {
+        crate::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
+    }
+
+    pub fn now_of(pack: &Path) -> crate::model::Now {
+        let report = from_journal(pack, None, None).unwrap();
+        crate::store::load_save(std::str::from_utf8(&report.now_yaml).unwrap()).unwrap()
+    }
+
+    pub fn save_now(pack: &Path, now: &crate::model::Now) {
+        fs::write(
+            pack.join("state/save.yaml"),
+            crate::store::emit_save(now).unwrap(),
+        )
+        .unwrap();
+    }
+
+    pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::Now)) {
+        let mut now =
+            crate::store::load_save(&fs::read_to_string(pack.join("state/save.yaml")).unwrap())
+                .unwrap();
+        edit(&mut now);
+        now.pack_rev = crate::canon::pack_rev(pack).unwrap();
+        save_now(pack, &now);
+    }
+
+    pub fn stamp_pack_rev(pack: &Path) {
+        edit_save(pack, |_| {});
+    }
+
+    pub fn split_move(line: &str) -> (&str, Option<&str>) {
+        line.split_once(' ')
+            .map_or((line, None), |(v, t)| (v, Some(t)))
+    }
+
+    pub fn append(path: &Path, extra: &str) {
+        let mut text = fs::read_to_string(path).unwrap();
+        assert!(!text.contains(extra.trim()), "already present in {path:?}");
+        if !text.ends_with('\n') && !extra.starts_with('\n') {
+            text.push('\n');
+        }
+        text.push_str(extra);
+        fs::write(path, text).unwrap();
+    }
+
+    pub fn insert_nell(pack: &Path) {
+        let cast = pack.join("cast/pc-nell.md");
+        if let Some(parent) = cast.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(
+            cast,
+            "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n  flags:\n    - marked\n    - missed\n    - guarded\n---\nNell keeps a guard up.\n",
+        )
+        .unwrap();
+        edit_save(pack, |now| {
+            now.actors.insert(
+                "pc_nell".to_string(),
+                crate::model::ActorLive::Pc {
+                    place: "docks_shop".to_string(),
+                    flags: Vec::new(),
+                    meters: std::collections::BTreeMap::from([
+                        (
+                            "grit".to_string(),
+                            crate::MeterLive {
+                                base: 100,
+                                offset: 0,
+                            },
+                        ),
+                        ("rest".to_string(), crate::MeterLive { base: 3, offset: 0 }),
+                    ]),
+                    inventory: std::collections::BTreeMap::new(),
+                    wielded: None,
+                    known_facts: Vec::new(),
+                    visited: vec!["docks_shop".to_string()],
+                    act: crate::model::ActCounters::fresh(),
+                },
+            );
+        });
+    }
+
+    pub fn read_tick(pack: &Path, key: &str) -> serde_json::Value {
+        let text = journal::read_record_line(pack, key)
+            .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
+        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}\n{text}"))
     }
 }

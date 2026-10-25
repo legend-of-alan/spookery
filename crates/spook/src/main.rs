@@ -321,11 +321,11 @@ mod tests {
             "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "verify", "new",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
-                let mut args = vec!["spook", command, "--addr", addr];
-                if command != "play" {
-                    args.push("no-such-pack");
-                }
-                let cli = Cli::try_parse_from(args).unwrap();
+                let cli = Cli::try_parse_from(["spook", command, "--addr", addr])
+                    .or_else(|_| {
+                        Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
+                    })
+                    .unwrap();
                 assert_eq!(
                     dispatch(cli).unwrap_err(),
                     "NOT_IN_SPEC",

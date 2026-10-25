@@ -3,7 +3,7 @@
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
 
-use crate::protocol::PlayerMessage;
+use crate::protocol::{Missing, PlayerMessage};
 
 use super::render;
 use super::Error;
@@ -22,10 +22,10 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
             };
             match crate::protocol::read_player(&line) {
                 Ok(PlayerMessage::Refused { code, missing }) if code == "CHOOSE_PC" => {
-                    let pcs: Vec<String> = missing
-                        .as_deref()
-                        .and_then(|raw| serde_json::from_str(raw).ok())
-                        .unwrap_or_default();
+                    let pcs = match missing {
+                        Some(Missing::Many(pcs)) => pcs,
+                        _ => Vec::new(),
+                    };
                     match pcs.as_slice() {
                         [] => {
                             eprintln!("No free characters");
@@ -34,7 +34,7 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
                         }
                         [only] => only.clone(),
                         many => {
-                            println!("{}", many.join("\n"));
+                            println!("Choose a character:\n{}", many.join("\n"));
                             let _ = io::stdout().flush();
                             let Some(chosen) = io::stdin().lines().next() else {
                                 return Ok(());
@@ -96,10 +96,9 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
 fn player_id(token: &str) -> Result<String, Error> {
     let token = token.trim();
     let id = token.strip_prefix("player:").unwrap_or(token);
-    if id.is_empty() || id.chars().any(char::is_whitespace) {
-        return Err(Error::Reason("SCHEMA"));
-    }
-    Ok(id.to_string())
+    crate::protocol::read_player_hello(&format!("player:{id}"))
+        .map(str::to_string)
+        .ok_or(Error::Reason("SCHEMA"))
 }
 
 fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error> {
