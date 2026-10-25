@@ -4,7 +4,7 @@ Feature: A human GM runs a round
     Given a docks table
     When play and a human GM share a free loopback port
     And the player says hello to the GM
-    Then the GM shows "Pc rowan: hello"
+    Then the GM shows "Player:pc rowan: hello"
     When the GM says "good evening"
     Then play shows "GM: good evening"
     When the GM queues Mira's restock and commits
@@ -31,7 +31,7 @@ Feature: A human GM runs a round
     Given a docks table
     When play and a human GM share a free loopback port
     And the player says hello to the GM
-    Then the GM shows "Pc rowan: hello"
+    Then the GM shows "Player:pc rowan: hello"
     And the GM shows no protocol JSON
 
   Scenario: Raw frames are JSON lines
