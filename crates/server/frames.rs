@@ -1,7 +1,7 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, GmSay, Outcome, OutgoingSay, PlayerMessage, QueueRow, Roll, SessionStatus,
+    CommitBody, GmSay, Missing, Outcome, OutgoingSay, PlayerMessage, QueueRow, Roll, SessionStatus,
     StatusPause, StatusPresence, ViewScene, WireClock, WireFact, WireItem, WireMessage, WireMeter,
 };
 use serde_json::{Map, Value};
@@ -110,9 +110,10 @@ pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
             MoveReport::Rolled { out: rolled, .. } => {
                 out.push_str(&player_check_line(rolled.outcome))
             }
-            MoveReport::Refused { code, missing, .. } => {
-                out.push_str(&player_refused(code.token(), missing.as_deref()))
-            }
+            MoveReport::Refused { code, missing, .. } => out.push_str(&player_refused(
+                code.token(),
+                missing.as_ref().map(|text| Missing::One(text.clone())),
+            )),
         }
     }
     out
@@ -146,10 +147,10 @@ pub fn player_lines(text: &str) -> String {
     })
 }
 
-pub fn player_refused(code: &str, missing: Option<&str>) -> String {
+pub fn player_refused(code: &str, missing: Option<Missing>) -> String {
     crate::protocol::write_player(&PlayerMessage::Refused {
         code: code.to_string(),
-        missing: missing.map(|text| crate::protocol::Missing::One(text.to_string())),
+        missing,
     })
 }
 

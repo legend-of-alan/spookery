@@ -40,7 +40,10 @@ pub fn refusal(code: &str) -> String {
     named_refusal(code, None)
 }
 
-pub fn named_refusal(code: &str, missing: Option<&str>) -> String {
+pub fn named_refusal(code: &str, missing: Option<&Missing>) -> String {
+    let named = missing
+        .and_then(Missing::as_str)
+        .filter(|text| !text.is_empty());
     let sentence = match code {
         "ILLEGAL_CLASS" => "That action is not allowed.",
         "ILLEGAL_KNOWLEDGE" => "You cannot know that.",
@@ -66,16 +69,18 @@ pub fn named_refusal(code: &str, missing: Option<&str>) -> String {
         "MISSING_ITEM" => "You do not have that.",
         "NOT_A_WEAPON" => "That is not a weapon.",
         "LINE_TOO_LONG" => "That line is too long.",
-        "CHOOSE_PC" => match missing.filter(|w| !w.is_empty()) {
-            Some(who) => return format!("Choose a character: {who}. [{code}]"),
-            None => "Choose a character.",
+        "CHOOSE_PC" => match missing {
+            Some(Missing::Many(pcs)) if !pcs.is_empty() => {
+                return format!("Choose a character: {}. [{code}]", pcs.join(", "));
+            }
+            _ => "Choose a character.",
         },
-        "NO_EXIT" => match missing.filter(|t| !t.is_empty()) {
+        "NO_EXIT" => match named {
             Some(text) => return format!("{text} [{code}]"),
             None => "There is no exit that way.",
         },
         "BUSY" => "You are busy.",
-        "CANT_AFFORD" => match missing.filter(|w| !w.is_empty()) {
+        "CANT_AFFORD" => match named {
             Some(what) => return format!("You cannot afford {what}. [{code}]"),
             None => "You cannot afford that.",
         },
@@ -107,8 +112,14 @@ mod tests {
         assert!(refusal("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
         assert_eq!(refusal("NEW_CODE"), "The table refused that. [NEW_CODE]");
         assert_eq!(refusal("CHOOSE_PC"), "Choose a character. [CHOOSE_PC]");
-        assert!(named_refusal("CHOOSE_PC", Some("[]")) == "Choose a character: []. [CHOOSE_PC]");
-        assert!(named_refusal("CANT_AFFORD", Some("g")) == "You cannot afford g. [CANT_AFFORD]");
+        assert_eq!(
+            named_refusal("CHOOSE_PC", Some(&Missing::Many(vec!["pc_rowan".into()]))),
+            "Choose a character: pc_rowan. [CHOOSE_PC]"
+        );
+        assert_eq!(
+            named_refusal("CANT_AFFORD", Some(&Missing::One("g".into()))),
+            "You cannot afford g. [CANT_AFFORD]"
+        );
         for raw in [
             r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#,
             r#"{"kind":"refused","code":"CHOOSE_PC","missing":["pc_rowan"]}"#,

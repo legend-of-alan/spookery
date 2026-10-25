@@ -89,14 +89,17 @@ pub mod testing {
     }
 
     pub fn copy_dir(from: &Path, to: &Path) {
-        fs::create_dir_all(to).unwrap();
-        for entry in fs::read_dir(from).unwrap() {
+        fs::create_dir_all(to).unwrap_or_else(|err| panic!("mkdir {}: {err}", to.display()));
+        for entry in
+            fs::read_dir(from).unwrap_or_else(|err| panic!("read {}: {err}", from.display()))
+        {
             let entry = entry.unwrap();
             let dest = to.join(entry.file_name());
             if entry.file_type().unwrap().is_dir() {
                 copy_dir(&entry.path(), &dest);
             } else {
-                fs::copy(entry.path(), &dest).unwrap();
+                fs::copy(entry.path(), &dest)
+                    .unwrap_or_else(|err| panic!("copy {}: {err}", entry.path().display()));
             }
         }
     }
@@ -149,28 +152,35 @@ pub mod testing {
     }
 
     pub fn open(pack: &Path) -> crate::World {
-        crate::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
+        crate::World::open(pack)
+            .unwrap_or_else(|err| panic!("World::open {}: {err}", pack.display()))
     }
 
     pub fn now_of(pack: &Path) -> crate::model::Now {
-        let report = from_journal(pack, None, None).unwrap();
-        crate::store::load_save(std::str::from_utf8(&report.now_yaml).unwrap()).unwrap()
+        let report = from_journal(pack, None, None)
+            .unwrap_or_else(|err| panic!("from_journal {}: {err}", pack.display()));
+        let yaml = std::str::from_utf8(&report.now_yaml)
+            .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));
+        crate::store::load_save(yaml)
+            .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()))
     }
 
     pub fn save_now(pack: &Path, now: &crate::model::Now) {
-        fs::write(
-            pack.join("state/save.yaml"),
-            crate::store::emit_save(now).unwrap(),
-        )
-        .unwrap();
+        let path = pack.join("state/save.yaml");
+        let bytes = crate::store::emit_save(now)
+            .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
+        fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
     pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::Now)) {
-        let mut now =
-            crate::store::load_save(&fs::read_to_string(pack.join("state/save.yaml")).unwrap())
-                .unwrap();
+        let path = pack.join("state/save.yaml");
+        let text = fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let mut now = crate::store::load_save(&text)
+            .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
         edit(&mut now);
-        now.pack_rev = crate::canon::pack_rev(pack).unwrap();
+        now.pack_rev = crate::canon::pack_rev(pack)
+            .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
         save_now(pack, &now);
     }
 
@@ -184,25 +194,27 @@ pub mod testing {
     }
 
     pub fn append(path: &Path, extra: &str) {
-        let mut text = fs::read_to_string(path).unwrap();
+        let mut text =
+            fs::read_to_string(path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
         assert!(!text.contains(extra.trim()), "already present in {path:?}");
         if !text.ends_with('\n') && !extra.starts_with('\n') {
             text.push('\n');
         }
         text.push_str(extra);
-        fs::write(path, text).unwrap();
+        fs::write(path, text).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
     pub fn insert_nell(pack: &Path) {
         let cast = pack.join("cast/pc-nell.md");
         if let Some(parent) = cast.parent() {
-            fs::create_dir_all(parent).unwrap();
+            fs::create_dir_all(parent)
+                .unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
         }
         fs::write(
-            cast,
+            &cast,
             "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n  flags:\n    - marked\n    - missed\n    - guarded\n---\nNell keeps a guard up.\n",
         )
-        .unwrap();
+        .unwrap_or_else(|err| panic!("write {}: {err}", cast.display()));
         edit_save(pack, |now| {
             now.actors.insert(
                 "pc_nell".to_string(),
@@ -231,7 +243,8 @@ pub mod testing {
 
     pub fn read_tick(pack: &Path, key: &str) -> serde_json::Value {
         let text = journal::read_record_line(pack, key)
-            .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
-        serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}\n{text}"))
+            .unwrap_or_else(|err| panic!("{} {key}: {}", pack.display(), err.detail));
+        serde_json::from_str(text.trim_end())
+            .unwrap_or_else(|err| panic!("{} {key}: {err}\n{text}", pack.display()))
     }
 }
