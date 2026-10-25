@@ -53,7 +53,7 @@ enum Command {
         raw: bool,
     },
     /// Sit the GM seat and call the model.
-    #[cfg(feature = "ai")]
+    #[cfg(feature = "client")]
     #[command(name = "ai-gm")]
     AiGm {
         /// Pack directory.
@@ -171,7 +171,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             door_addr(mcp_http)?,
             raw,
         )),
-        #[cfg(feature = "ai")]
+        #[cfg(feature = "client")]
         Command::AiGm { pack, mcp_http } => {
             let door = door_addr(mcp_http)?;
             if spookery::ai::sit(&pack, addr, door).is_err() {
@@ -284,7 +284,7 @@ fn door_addr(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_http.as_deref().map(parse_loopback).transpose()
 }
 
-#[cfg(all(test, feature = "server", feature = "client", feature = "ai"))]
+#[cfg(all(test, feature = "server", feature = "client"))]
 mod tests {
     use std::path::Path;
 

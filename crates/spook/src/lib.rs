@@ -1,6 +1,6 @@
 //! The table: seats, wires, and the two terminals.
 
-#[cfg(feature = "ai")]
+#[cfg(feature = "client")]
 pub use spookery_cli::ai;
 #[cfg(feature = "client")]
 pub use spookery_cli::{gm_connection, terminal};

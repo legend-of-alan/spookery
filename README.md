@@ -360,7 +360,7 @@ From the repository root:
 cargo build --release --locked
 ```
 
-The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`. `spook` enables the `server`, `client`, and `ai` Cargo features by default; pass `--no-default-features --features <server|client|ai>` to build one slice.
+The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`. `spook` enables the `server` and `client` Cargo features by default; pass `--no-default-features --features <server|client>` to build one slice.
 
 Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools.
 
