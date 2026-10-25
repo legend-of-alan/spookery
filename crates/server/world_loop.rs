@@ -328,7 +328,7 @@ fn refresh_players(
                 }
                 out.into_bytes()
             }
-            Err(code) => player_refused(code, None).into_bytes(),
+            Err(code) => refused_line(code).into_bytes(),
         };
         if !super::limits::try_frame(&player.out, bytes) {
             failed.push(player.conn);
@@ -362,24 +362,21 @@ fn on_hello(
     out: &mut dyn Write,
 ) -> Result<HelloReply, Reason> {
     if line == "gm" {
-        return Ok(HelloReply::Refused(player_refused(Reason::NotInSpec, None)));
+        return Ok(HelloReply::Refused(refused_line(Reason::NotInSpec)));
     }
     if line.is_empty() {
         if seats.players.len() >= MAX_PLAYER_SEATS {
-            return Ok(HelloReply::Refused(player_refused(
-                Reason::SessionFull,
-                None,
-            )));
+            return Ok(HelloReply::Refused(refused_line(Reason::SessionFull)));
         }
-        return Ok(HelloReply::Refused(player_refused(
-            Reason::ChoosePc,
+        return Ok(HelloReply::Refused(frames::player_refused(
+            Reason::ChoosePc.token(),
             Some(Missing::Many(world.free_pcs())),
         )));
     }
     if let Some(id) = player_hello(line) {
         let session_id = match world.seat_player(id) {
             Ok(session_id) => session_id,
-            Err(code) => return Ok(HelloReply::Refused(player_refused(code, None))),
+            Err(code) => return Ok(HelloReply::Refused(refused_line(code))),
         };
         let res = welcome(world, id).and_then(|bytes| {
             if !super::limits::try_frame(&out_tx, bytes) {
@@ -397,12 +394,12 @@ fn on_hello(
             if world.release_player_seat(&session_id, id)? {
                 write_host(out, world, &[]);
             }
-            return Ok(HelloReply::Refused(player_refused(code, None)));
+            return Ok(HelloReply::Refused(refused_line(code)));
         }
         write_host(out, world, &[]);
         return Ok(HelloReply::Player);
     }
-    Ok(HelloReply::Refused(player_refused(Reason::Schema, None)))
+    Ok(HelloReply::Refused(refused_line(Reason::Schema)))
 }
 
 fn seat_gm(seats: &mut Seats, conn: u64, out: OutTx, cancel: CancelTx) -> Result<(), Reason> {
@@ -542,13 +539,7 @@ fn on_player(
                         out,
                     )?;
                 }
-                Err(code) => send_player(
-                    world,
-                    seats,
-                    conn,
-                    player_refused(code, None).into_bytes(),
-                    out,
-                )?,
+                Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out)?,
             }
         }
         Ok(PlayerCommand::Lines(text)) => {
@@ -563,13 +554,7 @@ fn on_player(
         Ok(PlayerCommand::Turn(verb, target)) => {
             on_mechanical(world, seats, restart, conn, &actor_id, (verb, target), out)?;
         }
-        Err(code) => send_player(
-            world,
-            seats,
-            conn,
-            player_refused(code, None).into_bytes(),
-            out,
-        )?,
+        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out)?,
     }
     Ok(PlayerReply::Done)
 }
@@ -621,7 +606,7 @@ fn on_mechanical(
                 world,
                 seats,
                 conn,
-                player_refused(code, missing.map(Missing::One)).into_bytes(),
+                frames::player_refused(code.token(), missing.map(Missing::One)).into_bytes(),
                 out,
             )?;
             if !outputs.is_empty() {
@@ -633,8 +618,8 @@ fn on_mechanical(
             world,
             seats,
             conn,
-            player_refused(
-                refusal.reason(),
+            frames::player_refused(
+                refusal.token(),
                 refusal.missing().map(|text| Missing::One(text.to_string())),
             )
             .into_bytes(),
@@ -719,8 +704,8 @@ fn on_fault(
     res.map(|_| ())
 }
 
-fn player_refused(code: Reason, missing: Option<Missing>) -> String {
-    frames::player_refused(code.token(), missing)
+fn refused_line(code: Reason) -> String {
+    frames::player_refused(code.token(), None)
 }
 
 fn debug_seats(seats: &Seats, world: &World) {
