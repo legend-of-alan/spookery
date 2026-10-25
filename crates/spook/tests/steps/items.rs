@@ -67,7 +67,8 @@ fn play(
     let (verb, target) = line
         .split_once(' ')
         .map_or((line, None), |(v, t)| (v, Some(t)));
-    spookery::host::handle_player_move(&mut world, actor, verb, target, false)
+    let wall = spookery::host::idle_clock::wall_now().unwrap();
+    spookery_engine::handle_player_move(&mut world, actor, verb, target, false, &wall)
 }
 
 fn tick_text(pack: &Path) -> String {

@@ -3,9 +3,7 @@
 use std::io::Write;
 
 pub use spookery_engine::MoveOutcome;
-use spookery_engine::{
-    GateRefusal, Heard, Reason, RecipientLine, RoundOutput, World, MAX_PLAYER_SEATS,
-};
+use spookery_engine::{Heard, Reason, RecipientLine, RoundOutput, World, MAX_PLAYER_SEATS};
 
 use super::frames;
 use super::idle_clock::{self, wall_now};
@@ -16,38 +14,6 @@ use super::limits::{CancelTx, OutTx};
 pub fn commit_then_fast_forward(world: &mut World) -> Result<Vec<RoundOutput>, Reason> {
     let wall = wall_now()?;
     world.commit_then_fast_forward(&wall)
-}
-
-pub fn handle_player_move(
-    world: &mut World,
-    actor_id: &str,
-    verb: &str,
-    target: Option<&str>,
-    gm_seated: bool,
-) -> Result<MoveOutcome, GateRefusal> {
-    let queued = match world.queue_player_move(actor_id, verb, target) {
-        Ok(queued) => queued,
-        Err(refusal) => {
-            if !gm_seated && refusal.reason() == Reason::Busy {
-                let outputs = commit_then_fast_forward(world).map_err(GateRefusal::from)?;
-                return Ok(MoveOutcome::Busy {
-                    code: refusal.reason(),
-                    missing: refusal.missing().map(str::to_string),
-                    outputs,
-                });
-            }
-            return Err(refusal);
-        }
-    };
-    if gm_seated {
-        return Ok(MoveOutcome::Queued(queued));
-    }
-    let before = world.now().world_time;
-    let outputs = commit_then_fast_forward(world)?;
-    Ok(MoveOutcome::Committed {
-        advanced: world.now().world_time != before,
-        outputs,
-    })
 }
 
 pub(super) fn run_world_loop(
@@ -605,7 +571,14 @@ fn on_mechanical(
     out: &mut dyn Write,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match handle_player_move(world, actor_id, verb, target, gm_seated) {
+    match spookery_engine::handle_player_move(
+        world,
+        actor_id,
+        verb,
+        target,
+        gm_seated,
+        &wall_now()?,
+    ) {
         Ok(MoveOutcome::Queued(queued)) => {
             send_gm(
                 seats,

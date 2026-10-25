@@ -144,7 +144,8 @@ fn play(world: &mut World, actor: &str, line: &str) {
     let (verb, target) = line
         .split_once(' ')
         .map_or((line, None), |(v, t)| (v, Some(t)));
-    spookery_engine::handle_player_move(&mut opened, actor, verb, target, false)
+    let wall = opened.now().last_tick_at.clone();
+    spookery_engine::handle_player_move(&mut opened, actor, verb, target, false, &wall)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
 }
 

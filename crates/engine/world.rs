@@ -60,13 +60,13 @@ pub fn handle_player_move(
     verb: &str,
     target: Option<&str>,
     gm_seated: bool,
+    wall: &str,
 ) -> Result<MoveOutcome, GateRefusal> {
     let queued = match world.queue_player_move(actor_id, verb, target) {
         Ok(queued) => queued,
         Err(refusal) => {
             if !gm_seated && refusal.reason() == Reason::Busy {
-                let wall = world.now().last_tick_at.clone();
-                let outputs = world.commit_then_fast_forward(&wall)?;
+                let outputs = world.commit_then_fast_forward(wall)?;
                 return Ok(MoveOutcome::Busy {
                     code: refusal.reason(),
                     missing: refusal.missing().map(str::to_string),
@@ -80,8 +80,7 @@ pub fn handle_player_move(
         return Ok(MoveOutcome::Queued(queued));
     }
     let before = world.now().world_time;
-    let wall = world.now().last_tick_at.clone();
-    let outputs = world.commit_then_fast_forward(&wall)?;
+    let outputs = world.commit_then_fast_forward(wall)?;
     Ok(MoveOutcome::Committed {
         advanced: world.now().world_time != before,
         outputs,

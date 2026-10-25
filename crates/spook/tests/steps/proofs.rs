@@ -4,9 +4,9 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{json, Value};
-use spookery::host::{
-    call_gm_tool, commit_then_fast_forward, handle_player_move, on_scheduled_wake, MoveOutcome,
-};
+use spookery::host::idle_clock::wall_now;
+use spookery::host::{call_gm_tool, commit_then_fast_forward, on_scheduled_wake, MoveOutcome};
+use spookery_engine::handle_player_move;
 use spookery_engine::model::Now;
 use spookery_engine::store::emit_save;
 use spookery_engine::testing::journal::list_tick_keys;
@@ -78,7 +78,8 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let dropped = support::temp_pack("drop-queue");
     let mut shard = open(&dropped);
     let session = shard.seat_player("pc_rowan").unwrap();
-    let outcome = handle_player_move(&mut shard, "pc_rowan", "wait", None, true).unwrap();
+    let wall = wall_now().unwrap();
+    let outcome = handle_player_move(&mut shard, "pc_rowan", "wait", None, true, &wall).unwrap();
     let MoveOutcome::Queued(queued) = outcome else {
         panic!("queued wait committed");
     };
@@ -191,7 +192,8 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     shard.seat_player("pc_rowan").unwrap();
-    let played = handle_player_move(&mut shard, "pc_rowan", "wait", None, false).unwrap();
+    let wall = wall_now().unwrap();
+    let played = handle_player_move(&mut shard, "pc_rowan", "wait", None, false, &wall).unwrap();
     let MoveOutcome::Committed { advanced, .. } = played else {
         panic!("wait stayed queued");
     };
@@ -221,7 +223,8 @@ fn idle_off_commit_round_still_commits() {
     write_idle(&pack, "off");
     let mut shard = open(&pack);
     shard.seat_player("pc_rowan").unwrap();
-    let queued = handle_player_move(&mut shard, "pc_rowan", "wait", None, true).unwrap();
+    let wall = wall_now().unwrap();
+    let queued = handle_player_move(&mut shard, "pc_rowan", "wait", None, true, &wall).unwrap();
     let MoveOutcome::Queued(_) = queued else {
         panic!("wait committed with a GM seated");
     };

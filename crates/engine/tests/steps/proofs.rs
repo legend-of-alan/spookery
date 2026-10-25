@@ -834,7 +834,9 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
 fn play_mark(pack: &Path) -> Now {
     let mut shard = open(pack);
     shard.seat_player("pc_rowan").unwrap();
-    let played = handle_player_move(&mut shard, "pc_rowan", "mark", Some("mira"), false).unwrap();
+    let wall = shard.now().last_tick_at.clone();
+    let played =
+        handle_player_move(&mut shard, "pc_rowan", "mark", Some("mira"), false, &wall).unwrap();
     let MoveOutcome::Committed { .. } = played else {
         panic!("mark mira stayed queued");
     };
@@ -953,13 +955,13 @@ fn opposing_total_reused() {
         if opposed {
             queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
         }
-        let mark =
-            handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true).unwrap();
+        let wall = shard.now().last_tick_at.clone();
+        let mark = handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall)
+            .unwrap();
         let MoveOutcome::Queued(_) = mark else {
             panic!("mark committed while a gm seat was requested");
         };
         assert_eq!(shard.now().world_time, 1080);
-        let wall = shard.now().last_tick_at.clone();
         let outputs = shard.commit_then_fast_forward(&wall).unwrap();
         let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
@@ -1014,12 +1016,13 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let mut shard = open(&held);
     shard.seat_player("pc_rowan").unwrap();
     queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
-    let queued = handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true).unwrap();
+    let wall = shard.now().last_tick_at.clone();
+    let queued =
+        handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall).unwrap();
     let MoveOutcome::Queued(_) = queued else {
         panic!("held mark committed before the round");
     };
     let before = shard.now().world_time;
-    let wall = shard.now().last_tick_at.clone();
     let outputs = shard.commit_then_fast_forward(&wall).unwrap();
     assert_ne!(shard.now().world_time, before);
     let rowan = rolled_stat(&outputs[0].reports, 1);

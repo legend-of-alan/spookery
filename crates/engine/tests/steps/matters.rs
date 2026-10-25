@@ -272,7 +272,8 @@ fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = line
         .split_once(' ')
         .map_or((line, None), |(v, t)| (v, Some(t)));
-    match spookery_engine::handle_player_move(world, "pc_lark", verb, target, false) {
+    let wall = world.now().last_tick_at.clone();
+    match spookery_engine::handle_player_move(world, "pc_lark", verb, target, false, &wall) {
         Ok(spookery_engine::MoveOutcome::Committed { outputs, .. }) => {
             outputs.into_iter().next().unwrap()
         }
