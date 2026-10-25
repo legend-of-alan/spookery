@@ -419,7 +419,5 @@ fn gm_stderr(world: &mut World) -> String {
 }
 
 fn tick_json(world: &mut World) -> serde_json::Value {
-    let text = spookery_engine::testing::journal::read_record_line(table::pack(world), "tick-0001")
-        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
+    crate::support::read_tick(table::pack(world), "tick-0001")
 }

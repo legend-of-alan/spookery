@@ -14,23 +14,6 @@ use super::table;
 use crate::support::{self, text_of};
 use crate::World;
 
-#[when(expr = "play joins the sample table")]
-fn play_joins_the_sample_table(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&[
-        "play",
-        &pack_arg,
-        "--addr",
-        &addr,
-        "--as",
-        "player:pc_lark",
-    ]));
-    wait_play(world, "Gate Yard");
-}
-
 #[then(expr = "play's error shows {string} once")]
 fn play_error_shows_once(world: &mut World, text: String) {
     let start = Instant::now();
@@ -109,7 +92,7 @@ fn the_player_sees_no_refused_frame(world: &mut World) {
 fn push_and_shove_cost_grit(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "grit-gap");
     add_grit(&pack);
-    append(
+    crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
 \n  - id: push
@@ -177,7 +160,7 @@ fn one_effect_is_over_budget(world: &mut World) {
     );
     assert_ne!(text, next, "the effect budget was not lowered");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write tick: {err}"));
-    append(
+    crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
 \n  - id: tap
@@ -289,7 +272,7 @@ rules:
 ",
     );
     fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
-    append(
+    crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
 \n  - id: sap
@@ -338,7 +321,7 @@ fn replace_oden_rules(text: &str, rules: &str) -> String {
 }
 
 fn add_grit(pack: &Path) {
-    append(
+    crate::support::append(
         &pack.join("rules/meters.yaml"),
         "\
 \n  - id: grit
@@ -348,16 +331,6 @@ fn add_grit(pack: &Path) {
     start: 1
 ",
     );
-}
-
-fn append(path: &Path, extra: &str) {
-    let mut text = fs::read_to_string(path).unwrap_or_else(|err| panic!("read {path:?}: {err}"));
-    assert!(!text.contains(extra.trim()), "already present in {path:?}");
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    text.push_str(extra);
-    fs::write(path, text).unwrap_or_else(|err| panic!("write {path:?}: {err}"));
 }
 
 fn assert_one_rejection(world: &World, word: &str) {

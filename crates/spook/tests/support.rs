@@ -71,10 +71,12 @@ pub fn copy_pack(name: &str, label: &str) -> PathBuf {
 }
 
 pub fn spook(args: &[&str]) -> std::process::Output {
-    Command::new(option_env!("CARGO_BIN_EXE_spook").unwrap())
-        .args(args)
-        .output()
-        .unwrap_or_else(|err| panic!("spawn spook: {err}"))
+    Command::new(
+        option_env!("CARGO_BIN_EXE_spook").unwrap_or_else(|| panic!("CARGO_BIN_EXE_spook")),
+    )
+    .args(args)
+    .output()
+    .unwrap_or_else(|err| panic!("spawn spook: {err}"))
 }
 
 #[derive(Debug)]
@@ -97,7 +99,9 @@ pub fn spawn(args: &[&str]) -> Proc {
 }
 
 pub fn spawn_env(args: &[&str], env: &[(&str, &str)]) -> Proc {
-    let mut command = Command::new(option_env!("CARGO_BIN_EXE_spook").unwrap());
+    let mut command = Command::new(
+        option_env!("CARGO_BIN_EXE_spook").unwrap_or_else(|| panic!("CARGO_BIN_EXE_spook")),
+    );
     command.args(args);
     for (key, value) in env {
         command.env(key, value);
@@ -165,20 +169,92 @@ pub fn place_of(now: &mut spookery_engine::model::Now, actor: &str, place: &str)
     *now.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
 }
 
-/// Set the save's `pack_rev` to the pack as it is now, after a step edits the pack.
-pub fn stamp_pack_rev(pack: &Path) {
-    let now_path = pack.join("state/save.yaml");
-    let mut now = spookery_engine::store::load_save(
-        &fs::read_to_string(&now_path).unwrap_or_else(|err| panic!("read now: {err}")),
-    )
-    .unwrap_or_else(|err| panic!("load now: {err:?}"));
-    now.pack_rev =
-        spookery_engine::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
+pub fn open(pack: &Path) -> spookery_engine::World {
+    spookery_engine::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
+}
+
+pub fn now_of(pack: &Path) -> spookery_engine::model::Now {
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("from_journal: {err}"));
+    spookery_engine::store::load_save(std::str::from_utf8(&report.now_yaml).unwrap())
+        .unwrap_or_else(|err| panic!("load now: {err:?}"))
+}
+
+pub fn save_now(pack: &Path, now: &spookery_engine::model::Now) {
     fs::write(
-        &now_path,
-        spookery_engine::store::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}")),
+        pack.join("state/save.yaml"),
+        spookery_engine::store::emit_save(now).unwrap_or_else(|err| panic!("emit: {err}")),
     )
     .unwrap_or_else(|err| panic!("write now: {err}"));
+}
+
+pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut spookery_engine::model::Now)) {
+    let mut now = now_of(pack);
+    edit(&mut now);
+    now.pack_rev =
+        spookery_engine::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
+    save_now(pack, &now);
+}
+
+/// Set the save's `pack_rev` to the pack as it is now, after a step edits the pack.
+pub fn stamp_pack_rev(pack: &Path) {
+    edit_save(pack, |_| {});
+}
+
+pub fn split_move(line: &str) -> (&str, Option<&str>) {
+    line.split_once(' ')
+        .map_or((line, None), |(v, t)| (v, Some(t)))
+}
+
+pub fn append(path: &Path, extra: &str) {
+    let mut text = fs::read_to_string(path).unwrap();
+    if !text.ends_with('\n') && !extra.starts_with('\n') {
+        text.push('\n');
+    }
+    text.push_str(extra);
+    fs::write(path, text).unwrap();
+}
+
+pub fn insert_nell(pack: &Path) {
+    let cast = pack.join("cast/pc-nell.md");
+    if let Some(parent) = cast.parent() {
+        fs::create_dir_all(parent).unwrap();
+    }
+    fs::write(
+        cast,
+        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n  flags:\n    - marked\n    - missed\n    - guarded\n---\nNell keeps a guard up.\n",
+    )
+    .unwrap();
+    let mut now = spookery_engine::store::load_save(
+        &fs::read_to_string(pack.join("state/save.yaml")).unwrap(),
+    )
+    .unwrap();
+    now.actors.insert(
+        "pc_nell".to_string(),
+        spookery_engine::model::ActorLive::Pc {
+            place: "docks_shop".to_string(),
+            flags: Vec::new(),
+            meters: std::collections::BTreeMap::from([
+                (
+                    "grit".to_string(),
+                    spookery_engine::MeterLive {
+                        base: 100,
+                        offset: 0,
+                    },
+                ),
+                (
+                    "rest".to_string(),
+                    spookery_engine::MeterLive { base: 3, offset: 0 },
+                ),
+            ]),
+            inventory: std::collections::BTreeMap::new(),
+            wielded: None,
+            known_facts: Vec::new(),
+            visited: vec!["docks_shop".to_string()],
+            act: spookery_engine::model::ActCounters::fresh(),
+        },
+    );
+    save_now(pack, &now);
 }
 
 /// The workspace root, two folders above the `spook` crate.

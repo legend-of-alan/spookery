@@ -2,10 +2,9 @@ use std::fs;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::model::Now;
 use spookery_engine::testing::journal::list_tick_keys;
 
-use super::common::edit_save;
+use super::common::{edit_save, set_busy};
 use super::table;
 use crate::support::{self, temp_pack};
 use crate::World;
@@ -174,21 +173,4 @@ fn commit_body(world: &World) -> Value {
     let value: Value = serde_json::from_str(&world.stdout)
         .unwrap_or_else(|err| panic!("commit reply: {err}\n{}", world.stdout));
     value["result"]["structuredContent"].clone()
-}
-
-fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
-    let act = now
-        .actors
-        .get_mut(actor)
-        .unwrap_or_else(|| panic!("no {actor}"))
-        .act_mut();
-    act.busy_until = Some(until);
-    act.busy_for = Some(spookery_engine::model::PendingAction {
-        rule: "verb:travel".to_string(),
-        verb: "travel".to_string(),
-        target: via.to_string(),
-        arrive: Some(arrive.to_string()),
-        via: Some(via.to_string()),
-        source: spookery_engine::Source::Player,
-    });
 }

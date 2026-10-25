@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use cucumber::{given, then, when};
 use spookery_engine::model::Presence;
@@ -15,12 +15,12 @@ const SECRET_TEXT: &str = "the sealed name";
 fn sample_d20_with_lark_facing_briar(world: &mut World, player: String, facing: String) {
     assert_eq!(player, "lark");
     assert_eq!(facing, "briar");
-    world.pack = Some(copy_sample("matters"));
+    world.pack = Some(crate::support::copy_pack("sample-d20", "matters"));
 }
 
 #[given(expr = "lark has a hidden meter")]
 fn lark_has_a_hidden_meter(world: &mut World) {
-    let pack = pack(world);
+    let pack = world.pack();
     let mut meters = fs::read_to_string(pack.join("rules/meters.yaml")).unwrap();
     meters.push_str(
         "  - id: omen\n    min: 0\n    base_cap: 5\n    max: 5\n    start: 1\n    hidden: true\n",
@@ -32,7 +32,7 @@ fn lark_has_a_hidden_meter(world: &mut World) {
 
 #[given(expr = "a round that changes a hidden fact")]
 fn a_round_that_changes_a_hidden_fact(world: &mut World) {
-    let pack = pack(world).to_path_buf();
+    let pack = world.pack().to_path_buf();
     let mut cast = fs::read_to_string(pack.join("cast/briar.md")).unwrap();
     let from = "facts: []\n";
     assert!(cast.contains(from), "{cast}");
@@ -53,8 +53,8 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
 
 #[when(expr = "lark's might is raised and the seeded strike succeeds")]
 fn larks_might_is_raised(world: &mut World) {
-    let pack = pack(world).to_path_buf();
-    edit_now(&pack, |now| {
+    let pack = world.pack().to_path_buf();
+    crate::support::edit_save(&pack, |now| {
         let might = now
             .actors
             .get_mut("pc_lark")
@@ -72,7 +72,7 @@ fn larks_might_is_raised(world: &mut World) {
 
 #[when(expr = "lark uses a tonic")]
 fn lark_uses_a_tonic(world: &mut World) {
-    let pack = pack(world).to_path_buf();
+    let pack = world.pack().to_path_buf();
     let mut shard = seat(&pack);
     let output = play(&mut shard, "use tonic");
     world.stdout = change_line(&output);
@@ -80,7 +80,7 @@ fn lark_uses_a_tonic(world: &mut World) {
 
 #[when(expr = "lark uses her tonic while someone out of sight gains one")]
 fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
-    let pack = pack(world).to_path_buf();
+    let pack = world.pack().to_path_buf();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push('\n');
     verbs.push_str(
@@ -114,7 +114,7 @@ fn the_line_skips_the_unseen_gain(world: &mut World) {
 
 #[when(expr = "lark drops the tonic")]
 fn lark_drops_the_tonic(world: &mut World) {
-    let pack = pack(world).to_path_buf();
+    let pack = world.pack().to_path_buf();
     let mut shard = seat(&pack);
     let output = play(&mut shard, "drop tonic");
     world.stdout = change_line(&output);
@@ -122,8 +122,8 @@ fn lark_drops_the_tonic(world: &mut World) {
 
 #[given(expr = "a tonic is on the ground")]
 fn a_tonic_is_on_the_ground(world: &mut World) {
-    let pack = pack(world).to_path_buf();
-    edit_now(&pack, |now| {
+    let pack = world.pack().to_path_buf();
+    crate::support::edit_save(&pack, |now| {
         now.places
             .get_mut("gate_yard")
             .unwrap()
@@ -134,7 +134,7 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
 
 #[when(expr = "lark takes the tonic")]
 fn lark_takes_the_tonic(world: &mut World) {
-    let pack = pack(world).to_path_buf();
+    let pack = world.pack().to_path_buf();
     let mut shard = seat(&pack);
     let output = play(&mut shard, "take tonic");
     world.stdout = change_line(&output);
@@ -142,7 +142,7 @@ fn lark_takes_the_tonic(world: &mut World) {
 
 #[when(expr = "lark looks at their view")]
 fn lark_looks_at_their_view(world: &mut World) {
-    let pack = pack(world).to_path_buf();
+    let pack = world.pack().to_path_buf();
     let shard = seat(&pack);
     world.stdout = shown_text(&shard);
 }
@@ -223,32 +223,6 @@ fn one_line(text: &str) -> &str {
     text
 }
 
-fn pack(world: &World) -> &Path {
-    world.pack.as_deref().unwrap_or_else(|| panic!("no pack"))
-}
-
-fn copy_sample(label: &str) -> PathBuf {
-    crate::support::copy_pack("sample-d20", label)
-}
-
-fn edit_now(pack: &Path, edit: impl FnOnce(&mut spookery_engine::model::Now)) {
-    let path = pack.join("state/save.yaml");
-    let text = fs::read_to_string(&path).unwrap();
-    let mut now = spookery_engine::store::load_save(&text).unwrap_or_else(|diags| {
-        panic!(
-            "load save:\n{}",
-            diags
-                .iter()
-                .map(|diag| diag.report_line())
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    });
-    edit(&mut now);
-    let emitted = spookery_engine::store::emit_save(&now).unwrap();
-    fs::write(path, emitted).unwrap();
-}
-
 fn seat(pack: &Path) -> Shard {
     let mut world = match Shard::open(pack) {
         Ok(world) => world,
@@ -269,9 +243,7 @@ fn seat(pack: &Path) -> Shard {
 }
 
 fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
-    let (verb, target) = line
-        .split_once(' ')
-        .map_or((line, None), |(v, t)| (v, Some(t)));
+    let (verb, target) = crate::support::split_move(line);
     let wall = world.now().last_tick_at.clone();
     match spookery_engine::handle_player_move(world, "pc_lark", verb, target, false, &wall) {
         Ok(spookery_engine::MoveOutcome::Committed { outputs, .. }) => {

@@ -7,42 +7,11 @@ use serde_json::{json, Value};
 use spookery::host::idle_clock::wall_now;
 use spookery::host::{call_gm_tool, commit_then_fast_forward, on_scheduled_wake, MoveOutcome};
 use spookery_engine::handle_player_move;
-use spookery_engine::model::Now;
-use spookery_engine::store::emit_save;
 use spookery_engine::testing::journal::list_tick_keys;
 use spookery_engine::World as Shard;
 
-use crate::support;
+use crate::support::{self, now_of, open, read_tick as tick_value, save_now, stamp_pack_rev};
 use crate::World;
-
-fn open(pack: &Path) -> Shard {
-    Shard::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
-}
-
-fn now_of(pack: &Path) -> Now {
-    Shard::resume(pack)
-        .unwrap_or_else(|err| panic!("resume: {err}"))
-        .now()
-        .clone()
-}
-
-fn stamp_pack_rev(pack: &Path) {
-    let now_path = pack.join("state/save.yaml");
-    let mut now =
-        spookery_engine::store::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
-    fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
-}
-
-fn save_now(pack: &Path, now: &Now) {
-    fs::write(pack.join("state/save.yaml"), emit_save(now).unwrap()).unwrap();
-}
-
-fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = spookery_engine::testing::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}"))
-}
 
 fn player_waits(tick: &Value) -> Vec<String> {
     tick["intents"]

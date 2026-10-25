@@ -158,15 +158,15 @@ tick:
 Lark watches the street from a dry doorway.
 ";
     fs::write(pack.join("cast/pc-lark.md"), cast).unwrap_or_else(|err| panic!("cast: {err}"));
-    let mut now = read_now(&pack);
-    let mut actor = now
-        .actors
-        .get("pc_rowan")
-        .unwrap_or_else(|| panic!("pc_rowan"))
-        .clone();
-    *actor.place_mut() = "docks_street".to_string();
-    now.actors.insert("pc_lark".to_string(), actor);
-    store_now(&pack, now);
+    crate::support::edit_save(&pack, |now| {
+        let mut actor = now
+            .actors
+            .get("pc_rowan")
+            .unwrap_or_else(|| panic!("pc_rowan"))
+            .clone();
+        *actor.place_mut() = "docks_street".to_string();
+        now.actors.insert("pc_lark".to_string(), actor);
+    });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);
 }
@@ -209,10 +209,10 @@ fn a_one_player_docks_table(world: &mut World) {
         .unwrap_or_else(|err| panic!("remove harbormouse: {err}"));
     fs::remove_file(pack.join("cast/pc-wren.md"))
         .unwrap_or_else(|err| panic!("remove wren: {err}"));
-    let mut now = read_now(&pack);
-    now.actors.remove("pc_harbormouse");
-    now.actors.remove("pc_wren");
-    store_now(&pack, now);
+    crate::support::edit_save(&pack, |now| {
+        now.actors.remove("pc_harbormouse");
+        now.actors.remove("pc_wren");
+    });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
@@ -252,13 +252,13 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
         "facts:\n  - id: fact_wren_channel\n    text: The tide chart marks a private channel.\n    hidden: true\n",
     );
     fs::write(&path, text).unwrap_or_else(|err| panic!("write cast: {err}"));
-    let mut now = read_now(&pack);
-    now.actors
-        .get_mut("pc_wren")
-        .unwrap_or_else(|| panic!("pc_wren"))
-        .known_facts_mut()
-        .push(HIDDEN_FACT.to_string());
-    store_now(&pack, now);
+    crate::support::edit_save(&pack, |now| {
+        now.actors
+            .get_mut("pc_wren")
+            .unwrap_or_else(|| panic!("pc_wren"))
+            .known_facts_mut()
+            .push(HIDDEN_FACT.to_string());
+    });
     spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
 }
@@ -364,12 +364,12 @@ fn each_wait_committed_its_own_tick(world: &mut World) {
 #[given(expr = "a docks table with two PCs in the shop")]
 fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     let pack = crate::support::temp_pack("two-shop");
-    let mut now = read_now(&pack);
-    *now.actors
-        .get_mut("pc_harbormouse")
-        .unwrap_or_else(|| panic!("pc_harbormouse"))
-        .place_mut() = "docks_shop".to_string();
-    store_now(&pack, now);
+    crate::support::edit_save(&pack, |now| {
+        *now.actors
+            .get_mut("pc_harbormouse")
+            .unwrap_or_else(|| panic!("pc_harbormouse"))
+            .place_mut() = "docks_shop".to_string();
+    });
     table::listen(world, &pack);
     seat_three(world, &pack);
     world.pack = Some(pack);
@@ -438,19 +438,6 @@ fn seat_three(world: &mut World, pack: &std::path::Path) {
     for id in ["pc_rowan", "pc_harbormouse", "pc_wren"] {
         table::seat_actor(world, pack, id);
     }
-}
-
-fn read_now(pack: &std::path::Path) -> spookery_engine::model::Now {
-    let text = fs::read_to_string(pack.join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    spookery_engine::store::load_save(&text).unwrap_or_else(|err| panic!("load now: {err:?}"))
-}
-
-fn store_now(pack: &std::path::Path, mut now: spookery_engine::model::Now) {
-    now.pack_rev =
-        spookery_engine::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
-    let text = spookery_engine::store::emit_save(&now).unwrap_or_else(|err| panic!("emit: {err}"));
-    fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {

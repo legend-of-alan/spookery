@@ -252,17 +252,6 @@ fn newcomer_is_told_full(world: &mut World) {
     );
 }
 
-#[allow(dead_code)]
-fn holder_ref(
-    world: &World,
-) -> &rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig> {
-    world
-        .holder
-        .as_ref()
-        .and_then(|h| h.downcast_ref())
-        .unwrap_or_else(|| panic!("no holder"))
-}
-
 #[when(expr = "the GM over HTTP leaves")]
 fn holder_leaves(world: &mut World) {
     let holder = world

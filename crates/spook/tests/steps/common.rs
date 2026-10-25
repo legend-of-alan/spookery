@@ -7,7 +7,6 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use spookery_engine::model::Now;
-use spookery_engine::store::{emit_save, load_save};
 use spookery_engine::testing::journal::list_tick_keys;
 
 use super::table;
@@ -16,13 +15,7 @@ use crate::World;
 
 pub(crate) const EVENING: u64 = 21 * 60 + 30;
 
-pub(crate) fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
-    let path = pack.join("state/save.yaml");
-    let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    edit(&mut now);
-    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
-    fs::write(&path, emit_save(&now).unwrap()).unwrap();
-}
+pub(crate) use crate::support::edit_save;
 
 pub(crate) fn give_key(now: &mut Now) {
     now.actors
@@ -202,6 +195,23 @@ pub(crate) fn play_stdout(world: &mut World) -> String {
     text
 }
 
+pub(crate) fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
+    let act = now
+        .actors
+        .get_mut(actor)
+        .unwrap_or_else(|| panic!("no {actor}"))
+        .act_mut();
+    act.busy_until = Some(until);
+    act.busy_for = Some(spookery_engine::model::PendingAction {
+        rule: "verb:travel".to_string(),
+        verb: "travel".to_string(),
+        target: via.to_string(),
+        arrive: Some(arrive.to_string()),
+        via: Some(via.to_string()),
+        source: spookery_engine::Source::Player,
+    });
+}
+
 #[given(expr = "a docks table")]
 fn a_docks_table(world: &mut World) {
     let pack = crate::support::temp_pack("status");
@@ -284,6 +294,23 @@ fn the_report_says(world: &mut World, text: String) {
 #[when(expr = "play joins the table on a free loopback address")]
 fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
     join_play(world, false);
+}
+
+#[when(expr = "play joins the sample table")]
+fn play_joins_the_sample_table(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
+    let pack_arg = support::pack_arg(&pack);
+    world.play = Some(support::spawn(&[
+        "play",
+        &pack_arg,
+        "--addr",
+        &addr,
+        "--as",
+        "player:pc_lark",
+    ]));
+    wait_play(world, "Gate Yard");
 }
 
 #[when(expr = "play types {string}")]

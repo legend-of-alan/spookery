@@ -379,9 +379,7 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 }
 
 fn tick_json(world: &World) -> Value {
-    let text = spookery_engine::testing::journal::read_record_line(table::pack(world), "tick-0001")
-        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
+    crate::support::read_tick(table::pack(world), "tick-0001")
 }
 
 fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {

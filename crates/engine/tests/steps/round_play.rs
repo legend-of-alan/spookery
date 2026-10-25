@@ -8,14 +8,14 @@ use spookery_engine::MoveReport;
 use spookery_engine::RoundCause;
 use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
-use crate::support::read_tick;
-use crate::support::{self, copy_dir};
+use crate::support::{self, read_tick};
 use crate::World;
 
 #[given(expr = "a round where Lark rolls grit")]
 fn a_round_where_lark_rolls_grit(world: &mut World) {
     let clean = lark_pack();
-    let played = copy_tree(&clean, "lark-alone");
+    let played = support::fresh_dir("lark-alone");
+    support::copy_dir(&clean, &played);
     let (faces, total) = lark_roll(&played, false);
     let _ = fs::remove_dir_all(played);
     world.scratch = format!("{faces}|{total}");
@@ -100,7 +100,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
 #[given(expr = "a docks row overreach that adds {int} lamp oil and then removes {int}")]
 fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
     let pack = support::copy_pack("oneshot-docks", "rollback");
-    append(
+    support::append(
         &pack.join("rules/verbs.yaml"),
         &format!(
             "
@@ -127,7 +127,7 @@ fn a_docks_row_overreach(world: &mut World, add: i64, remove: i64) {
 #[given(expr = "a docks row spilled that rolls grit and then removes {int} lamp oil")]
 fn a_docks_row_spilled(world: &mut World, remove: i64) {
     let pack = support::copy_pack("oneshot-docks", "spilled");
-    append(
+    support::append(
         &pack.join("rules/verbs.yaml"),
         &format!(
             "
@@ -314,7 +314,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     let next = text.replacen("max_effects_per_intent: 4", "max_effects_per_intent: 1", 1);
     assert_ne!(next, text, "cap was not lowered");
     fs::write(&tick_path, next).unwrap();
-    append(
+    support::append(
         &pack.join("rules/verbs.yaml"),
         "
   - id: two_stock
@@ -432,7 +432,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
 
 fn lark_pack() -> PathBuf {
     let pack = support::copy_pack("sample-d20", "lark-grit");
-    append(
+    support::append(
         &pack.join("rules/meters.yaml"),
         "
   - id: grit
@@ -442,7 +442,7 @@ fn lark_pack() -> PathBuf {
     start: 1
 ",
     );
-    append(
+    support::append(
         &pack.join("rules/checks.yaml"),
         "
   - id: grit
@@ -452,7 +452,7 @@ fn lark_pack() -> PathBuf {
     stat: grit
 ",
     );
-    append(
+    support::append(
         &pack.join("rules/verbs.yaml"),
         "
   - id: grit
@@ -541,16 +541,4 @@ fn quiet_mira(pack: &Path) {
     assert_ne!(text, next, "mira was already ineligible");
     fs::write(&path, next).unwrap();
     support::stamp_pack_rev(pack);
-}
-
-fn append(path: &Path, extra: &str) {
-    let mut text = fs::read_to_string(path).unwrap();
-    text.push_str(extra);
-    fs::write(path, text).unwrap();
-}
-
-fn copy_tree(from: &Path, label: &str) -> PathBuf {
-    let pack = crate::support::fresh_dir(label);
-    copy_dir(from, &pack);
-    pack
 }

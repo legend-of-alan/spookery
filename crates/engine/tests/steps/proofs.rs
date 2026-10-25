@@ -4,7 +4,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
 use spookery_engine::model::{
     ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
 };
@@ -15,7 +14,9 @@ use spookery_engine::{
     World as Shard,
 };
 
-use crate::support::{self, stamp_pack_rev};
+use crate::support::{
+    self, insert_nell, now_of, open, read_tick as tick_value, save_now, stamp_pack_rev,
+};
 use crate::World;
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
@@ -31,17 +32,6 @@ fn meters(grit: i64) -> BTreeMap<String, MeterLive> {
         ),
         ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
     ])
-}
-
-fn open(pack: &Path) -> Shard {
-    Shard::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"))
-}
-
-fn now_of(pack: &Path) -> Now {
-    Shard::resume(pack)
-        .unwrap_or_else(|err| panic!("resume: {err}"))
-        .now()
-        .clone()
 }
 
 fn write_text(path: &Path, text: &str) {
@@ -65,12 +55,6 @@ fn flags_of(now: &Now, id: &str) -> Vec<String> {
         Some(ActorLive::Npc { flags, .. } | ActorLive::Pc { flags, .. }) => flags.clone(),
         None => panic!("{id} missing"),
     }
-}
-
-fn tick_value(pack: &Path, name: &str) -> Value {
-    let text = spookery_engine::testing::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("json {name}: {err}"))
 }
 
 fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
@@ -129,10 +113,6 @@ fn seat_rowan(world: &mut Shard) {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
-}
-
-fn save_now(pack: &Path, now: &Now) {
-    fs::write(pack.join("state/save.yaml"), emit_save(now).unwrap()).unwrap();
 }
 
 fn evening_note() {
@@ -888,45 +868,6 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
         assert_eq!(now.world_time, 1085);
         let _ = fs::remove_dir_all(&pack);
     }
-}
-
-fn insert_nell(pack: &Path) {
-    write_text(
-        &pack.join("cast/pc-nell.md"),
-        "\
----
-schema: cast
-id: pc_nell
-kind: pc_template
-display_name: Nell
-facts: []
-tick:
-  eligible: false
-  flags:
-    - marked
-    - missed
-    - guarded
----
-Nell keeps a guard up.
-",
-    );
-    let now_path = pack.join("state/save.yaml");
-    let mut now =
-        spookery_engine::store::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
-    now.actors.insert(
-        "pc_nell".to_string(),
-        ActorLive::Pc {
-            place: "docks_shop".to_string(),
-            flags: Vec::new(),
-            meters: meters(100),
-            inventory: BTreeMap::new(),
-            wielded: None,
-            known_facts: Vec::new(),
-            visited: vec!["docks_shop".to_string()],
-            act: ActCounters::fresh(),
-        },
-    );
-    fs::write(&now_path, emit_save(&now).unwrap()).unwrap();
 }
 
 fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::RollResult {

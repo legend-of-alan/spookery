@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use spookery_engine::model::ActorLive;
@@ -8,6 +7,7 @@ use spookery_engine::model::ActorLive;
 use crate::support;
 use crate::World;
 
+use super::common::wait_play;
 use super::table;
 
 #[when(expr = "the operator runs spook new in a fresh directory")]
@@ -336,32 +336,4 @@ fn relative_files(root: &Path) -> Vec<(String, Vec<u8>)> {
             (rel, bytes)
         })
         .collect()
-}
-
-fn wait_play(world: &mut World, needle: &str) {
-    let start = Instant::now();
-    loop {
-        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-        let stdout = support::text_of(&play.stdout);
-        if stdout.contains(needle) {
-            world.stdout = stdout;
-            return;
-        }
-        if let Some(status) = world
-            .play
-            .as_mut()
-            .unwrap()
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = support::text_of(&world.play.as_ref().unwrap().stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = support::text_of(&world.play.as_ref().unwrap().stderr);
-            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }
