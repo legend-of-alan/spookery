@@ -184,8 +184,7 @@ impl GmSession {
     }
 
     fn on_look(&mut self, actor: &str) {
-        let id = bare_id(actor);
-        let Some(outcome) = self.call_tool("perceive", json!({ "as": id })) else {
+        let Some(outcome) = self.call_tool("perceive", json!({ "as": actor })) else {
             return;
         };
         self.after_result(&outcome, |_session, outcome| {
@@ -208,10 +207,9 @@ impl GmSession {
     }
 
     fn on_queue(&mut self, actor: &str, move_name: &str, target: Option<&str>) {
-        let id = bare_id(actor);
-        let shown = format!("{} queued: {move_name}", actor_name(id));
+        let shown = format!("{} queued: {move_name}", actor_name(actor));
         let mut arguments = json!({
-            "actor_id": id,
+            "actor_id": actor,
             "move": move_name,
         });
         if let Some(t) = target {
@@ -386,13 +384,6 @@ impl GmSession {
         }
         let _ = io::stderr().flush();
     }
-}
-
-fn bare_id(token: &str) -> &str {
-    token
-        .strip_prefix("player:")
-        .or_else(|| token.strip_prefix("npc:"))
-        .unwrap_or(token)
 }
 
 fn exit_refused(code: &str, raw: &str, raw_mode: bool) -> ! {
@@ -599,7 +590,6 @@ fn parse_say(rest: &str) -> Parsed {
     }
     if let Some(rest) = rest.strip_prefix('#') {
         let (actor, text) = split_word(rest.trim());
-        let actor = bare_id(actor);
         if actor.is_empty() || text.is_empty() {
             return Parsed::Unknown;
         }
@@ -815,14 +805,14 @@ mod tests {
     #[test]
     fn each_event_renders_as_text() {
         let player = render_event(&say("player:pc_rowan", 1, "hello"));
-        assert_eq!(player, "Pc rowan: hello");
+        assert_eq!(player, "Player:pc rowan: hello");
         assert!(!player.contains('{'));
 
         let gm = render_event(&say("gm", 2, "good evening"));
         assert_eq!(gm, "GM: good evening");
 
         let npc = render_event(&say("npc:mira", 3, "oil"));
-        assert_eq!(npc, "Mira: oil");
+        assert_eq!(npc, "Npc:mira: oil");
 
         let queued = render_event(&EventBody::Queued(QueueRow {
             id: "id-1".to_string(),

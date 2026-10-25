@@ -2,7 +2,6 @@
 
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::path::Path;
 
 use crate::protocol::PlayerMessage;
 
@@ -10,7 +9,6 @@ use super::render;
 use super::Error;
 
 pub fn run_player(
-    _pack: &Path,
     as_player: Option<&str>,
     addr: SocketAddr,
     raw: bool,
@@ -44,9 +42,7 @@ pub fn run_player(
                             return Ok(());
                         };
                         let chosen = chosen.map_err(Error::Io)?;
-                        crate::protocol::read_player_hello(chosen.trim())
-                            .unwrap_or(chosen.trim())
-                            .to_string()
+                        chosen.trim().to_string()
                     }
                 }
                 _ => {

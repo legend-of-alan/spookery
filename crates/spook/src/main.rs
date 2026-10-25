@@ -152,11 +152,10 @@ fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "client")]
         Command::Play {
-            pack,
+            pack: _,
             as_player,
             raw,
         } => from_terminal(spookery::terminal::run_player(
-            &pack,
             as_player.as_deref(),
             addr,
             raw,
