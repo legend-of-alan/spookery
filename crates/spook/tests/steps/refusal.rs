@@ -14,11 +14,6 @@ use super::table;
 use crate::support::{self, text_of};
 use crate::World;
 
-#[given(expr = "a copy of the sample-d20 pack")]
-fn a_copy_of_the_sample_d20_pack(world: &mut World) {
-    world.pack = Some(support::copy_pack("sample-d20", "refused-round"));
-}
-
 #[when(expr = "play joins the sample table")]
 fn play_joins_the_sample_table(world: &mut World) {
     let pack = table::pack(world).to_path_buf();

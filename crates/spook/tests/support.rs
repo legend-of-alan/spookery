@@ -71,7 +71,7 @@ pub fn copy_pack(name: &str, label: &str) -> PathBuf {
 }
 
 pub fn spook(args: &[&str]) -> std::process::Output {
-    Command::new(env!("CARGO_BIN_EXE_spook"))
+    Command::new(option_env!("CARGO_BIN_EXE_spook").unwrap())
         .args(args)
         .output()
         .unwrap_or_else(|err| panic!("spawn spook: {err}"))
@@ -97,7 +97,7 @@ pub fn spawn(args: &[&str]) -> Proc {
 }
 
 pub fn spawn_env(args: &[&str], env: &[(&str, &str)]) -> Proc {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
+    let mut command = Command::new(option_env!("CARGO_BIN_EXE_spook").unwrap());
     command.args(args);
     for (key, value) in env {
         command.env(key, value);
@@ -206,4 +206,10 @@ pub fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
             out.push(path);
         }
     }
+}
+
+pub fn read_tick(pack: &Path, key: &str) -> serde_json::Value {
+    let text = spookery_engine::testing::journal::read_record_line(pack, key)
+        .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
+    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{key}: {err}\n{text}"))
 }

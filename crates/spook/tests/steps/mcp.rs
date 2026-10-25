@@ -221,7 +221,7 @@ fn gm_holds_over_http(world: &mut World) {
         assert_sat(&status, "session_status");
         running
     });
-    world.holder = Some(crate::Holder(holder));
+    world.holder = Some(Box::new(holder));
 }
 
 #[when(expr = "another GM tries to sit over HTTP")]
@@ -252,15 +252,28 @@ fn newcomer_is_told_full(world: &mut World) {
     );
 }
 
+#[allow(dead_code)]
+fn holder_ref(
+    world: &World,
+) -> &rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig> {
+    world
+        .holder
+        .as_ref()
+        .and_then(|h| h.downcast_ref())
+        .unwrap_or_else(|| panic!("no holder"))
+}
+
 #[when(expr = "the GM over HTTP leaves")]
 fn holder_leaves(world: &mut World) {
-    let running = world
+    let holder = world
         .holder
         .take()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
+    let running = holder
+        .downcast::<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>()
+        .unwrap_or_else(|_| panic!("no holder"));
     block_on(async move {
         running
-            .0
             .cancel()
             .await
             .unwrap_or_else(|err| panic!("close GM session: {err}"));

@@ -89,20 +89,14 @@ Feature: One GM seat and up to three player seats
     Given a docks table
     When a socket sends an empty hello
     Then the hello is refused with "CHOOSE_PC" and the missing list is '["pc_harbormouse","pc_rowan","pc_wren"]'
-
-  Scenario: A player: hello is refused with SCHEMA
-    Given a docks table
     When a socket sends player:
     Then the hello is refused with "SCHEMA"
     And the hello reply does not contain "CHOOSE_PC"
 
-  Scenario: An empty hello with no free PC is CHOOSE_PC
+  Scenario: spook play with one free PC seats it without a prompt
     Given a one-player docks table
     When a socket sends an empty hello
     Then the hello is refused with "CHOOSE_PC" and the missing list is "[]"
     And the hello reply does not contain "SEAT_TAKEN"
-
-  Scenario: spook play with one free PC seats it without a prompt
-    Given a one-player docks table
     When play joins that one-player table with no --as
     Then play received the first perceive

@@ -19,3 +19,6 @@ socket2 = { version = "0.6", features = ["all"] }
 spookery-engine = { path = "../engine" }
 spookery-protocol = { path = "../protocol" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util", "sync"] }
+
+[dev-dependencies]
+spookery-engine = { path = "../engine", features = ["testing"] }

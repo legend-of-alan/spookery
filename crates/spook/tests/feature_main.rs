@@ -5,18 +5,8 @@ use std::process::Child;
 use cucumber::writer::Stats;
 use cucumber::World as _;
 
-/// An HTTP GM held across steps. Dropped with the scenario.
-pub struct Holder(
-    pub rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
-);
-
-impl std::fmt::Debug for Holder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Holder").finish_non_exhaustive()
-    }
-}
-
-#[derive(Debug, Default, cucumber::World)]
+#[derive(Default, cucumber::World)]
+#[allow(dead_code)]
 pub struct World {
     pub pack: Option<PathBuf>,
     pub scratch: String,
@@ -37,11 +27,29 @@ pub struct World {
     pub summary: Vec<String>,
     pub seen: Vec<(String, Vec<String>)>,
     pub told: Vec<(String, String)>,
-    pub live: Option<table::Live>,
+    pub live: Option<Box<dyn std::any::Any + Send>>,
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_engine::model::Presence)>,
-    pub holder: Option<Holder>,
+    pub holder: Option<Box<dyn std::any::Any + Send>>,
+}
+
+impl std::fmt::Debug for World {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("World").finish_non_exhaustive()
+    }
+}
+
+impl World {
+    #[allow(dead_code)]
+    pub fn pack(&self) -> &std::path::Path {
+        self.pack.as_deref().unwrap_or_else(|| panic!("no docks table"))
+    }
+}
+
+#[cucumber::given(expr = "a copy of the sample-d20 pack")]
+fn a_copy_of_the_sample_d20_pack(world: &mut World) {
+    world.pack = Some(support::copy_pack("sample-d20", "sample"));
 }
 
 fn scenario_limit() -> usize {

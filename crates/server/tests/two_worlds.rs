@@ -1,17 +1,10 @@
 use spookery_engine::{Reason, World};
 use spookery_server::{Config, Error};
-use std::{fs, io::*, net::*, path::Path};
+use std::{fs, io::*, net::*};
 
-fn copy_dir(from: &Path, to: &Path) {
-    let _ = fs::remove_dir_all(to);
-    fs::create_dir_all(to).unwrap();
-    for e in fs::read_dir(from).unwrap().flatten() {
-        match (e.path(), to.join(e.file_name())) {
-            (p, dst) if p.is_dir() => copy_dir(&p, &dst),
-            (p, dst) => _ = fs::copy(p, dst).unwrap(),
-        }
-    }
-}
+#[path = "../../spook/tests/support.rs"]
+#[allow(dead_code)]
+mod support;
 
 fn step(c: &mut BufReader<TcpStream>, cmd: &str) {
     c.get_mut().write_all(cmd.as_bytes()).unwrap();
@@ -24,11 +17,8 @@ fn step(c: &mut BufReader<TcpStream>, cmd: &str) {
 
 #[test]
 fn two_worlds_serve_on_port_zero_and_stop_independently() {
-    let docks = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    let first_dir = std::env::temp_dir().join(format!("spook-2w-1-{}", std::process::id()));
-    let second_dir = std::env::temp_dir().join(format!("spook-2w-2-{}", std::process::id()));
-    copy_dir(&docks, &first_dir);
-    copy_dir(&docks, &second_dir);
+    let first_dir = support::temp_pack("2w-1");
+    let second_dir = support::temp_pack("2w-2");
     let loopback_0: SocketAddr = "127.0.0.1:0".parse().unwrap();
     let world1 = World::resume(&first_dir).unwrap();
     let first = spookery_server::serve(world1, Config::new(loopback_0)).unwrap();

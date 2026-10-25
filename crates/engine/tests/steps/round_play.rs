@@ -8,7 +8,7 @@ use spookery_engine::MoveReport;
 use spookery_engine::RoundCause;
 use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
-use super::steps_run::read_tick;
+use crate::support::read_tick;
 use crate::support::{self, copy_dir};
 use crate::World;
 

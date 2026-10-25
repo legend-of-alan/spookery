@@ -12,11 +12,6 @@ use spookery_engine::testing::journal::list_tick_keys;
 use crate::support;
 use crate::World;
 
-#[given(expr = "a copy of the sample-d20 pack")]
-fn a_copy_of_the_sample_d20_pack(world: &mut World) {
-    world.pack = Some(support::copy_pack("sample-d20", "sample"));
-}
-
 #[when(expr = "Lark plays {string}")]
 fn lark_plays(world: &mut World, line: String) {
     play(world, "pc_lark", &line);

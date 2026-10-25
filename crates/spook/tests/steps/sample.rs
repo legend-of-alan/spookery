@@ -9,11 +9,6 @@ use crate::World;
 
 use super::table;
 
-#[given(expr = "a copy of the sample-d20 pack")]
-fn a_copy_of_the_sample_d20_pack(world: &mut World) {
-    world.pack = Some(copy_sample("sample"));
-}
-
 #[given(expr = "a sample-d20 table")]
 fn a_sample_d20_table(world: &mut World) {
     sit(world, None, true);
