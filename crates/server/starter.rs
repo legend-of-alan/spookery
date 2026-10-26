@@ -167,14 +167,14 @@ fn starter_dirs() -> Vec<std::path::PathBuf> {
 }
 
 fn restamp(dir: &Path) -> Result<(), StarterError> {
-    let rev = spookery_engine::canon::pack_rev(dir)
+    let rev = spookery_engine::pack_rev(dir)
         .map_err(|_| StarterError::Message("the starter canon could not be hashed".to_string()))?;
     let path = dir.join("state/save.yaml");
     let text = fs::read_to_string(&path).map_err(StarterError::Io)?;
-    let mut now = spookery_engine::store::load_save(&text)
+    let mut now = spookery_engine::load_save(&text)
         .map_err(|_| StarterError::Message("the starter save could not be read".to_string()))?;
     now.pack_rev = rev;
-    let emitted = spookery_engine::store::emit_save(&now)
+    let emitted = spookery_engine::emit_save(&now)
         .map_err(|_| StarterError::Message("the starter save could not be written".to_string()))?;
     fs::write(path, emitted).map_err(StarterError::Io)?;
     Ok(())

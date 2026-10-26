@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
-use spookery_engine::model::ActorLive;
+use spookery_engine::testing::ActorLive;
 
 use crate::support;
 use crate::World;

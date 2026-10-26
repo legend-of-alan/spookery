@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
-use spookery_engine::model::Now;
 use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::Now;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -92,7 +92,7 @@ pub fn now_of(pack: &Path) -> Now {
             Ok(report) => {
                 let text = std::str::from_utf8(&report.now_yaml)
                     .unwrap_or_else(|err| panic!("save text: {err}"));
-                return spookery_engine::store::load_save(text)
+                return spookery_engine::load_save(text)
                     .unwrap_or_else(|err| panic!("load now: {err:?}"));
             }
             Err(err) if start.elapsed() > Duration::from_secs(2) => {

@@ -94,7 +94,7 @@ fn bind_nonblocking(addr: SocketAddr) -> Result<(TcpListener, SocketAddr), Error
 
 /// Serve `world` on its own private Tokio runtime until stopped.
 pub fn serve(mut world: spookery_engine::World, mut config: Config) -> Result<Handle, Error> {
-    let guard = spookery_engine::store::lock_serve(world.root()).map_err(Error::Reason)?;
+    let guard = spookery_engine::lock_serve(world.root()).map_err(Error::Reason)?;
     let (listener, game) = bind_nonblocking(config.addr)?;
     let (http_listener, door) = bind_nonblocking(door_request(config.addr, config.door)?)?;
     if world.clear_crashed().map_err(Error::Reason)? {

@@ -7,7 +7,6 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-pub use crate::map::exit_phrase;
 use meter::MeterLive;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

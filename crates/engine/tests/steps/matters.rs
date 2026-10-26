@@ -2,12 +2,10 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::model::Presence;
+use spookery_engine::testing::{self as support, stamp_pack_rev, Presence};
 use spookery_engine::World as Shard;
 
 use crate::World;
-use spookery_engine::testing as support;
-use spookery_engine::testing::stamp_pack_rev;
 
 const SECRET_ID: &str = "fact_sealed_name";
 const SECRET_TEXT: &str = "the sealed name";
