@@ -462,10 +462,11 @@ The request is one chat-completions POST. The JSON body carries one user message
 - [docs/engine-guarantees.md](docs/engine-guarantees.md) states what the engine promises. The feature files test them. Where the doc and the feature files disagree, the feature files win.
 - [docs/README.md](docs/README.md) has the principles, glossary and repo layout.
 - [LICENSE](LICENSE)
+- [LICENSE-MIT](LICENSE-MIT)
 - [CONTRIBUTING.md](CONTRIBUTING.md) has issue and PR conventions and maintainer notes.
 
 ## License
 
-The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. Documentation, schemas, and packs are CC BY 4.0.
+The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. The exception is the `spookery-protocol` crate, which is MIT, so a game client can reuse the wire codec freely. Documentation, schemas, and packs are CC BY 4.0.
 
-The terms are in [LICENSE](LICENSE) and [LICENSE-CC-BY-4.0](LICENSE-CC-BY-4.0).
+The terms are in [LICENSE](LICENSE), [LICENSE-MIT](LICENSE-MIT) and [LICENSE-CC-BY-4.0](LICENSE-CC-BY-4.0).
