@@ -135,7 +135,24 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             }
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
-            stop_on_signal(world, config)
+            use std::sync::atomic::{AtomicBool, Ordering};
+            // The first Ctrl+C or SIGTERM wakes this thread to stop the host. A second
+            // one exits at once.
+            static SIGNALED: AtomicBool = AtomicBool::new(false);
+            let main = std::thread::current();
+            ctrlc::set_handler(move || {
+                if SIGNALED.swap(true, Ordering::SeqCst) {
+                    std::process::exit(130);
+                }
+                main.unpark();
+            })
+            .map_err(|e| e.to_string())?;
+            let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
+            while !SIGNALED.load(Ordering::SeqCst) {
+                std::thread::park();
+            }
+            handle.stop();
+            handle.join().map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
         Command::Play { as_player, raw } => from_terminal(spookery::terminal::run_player(
@@ -258,50 +275,6 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
 
 fn door_addr(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_http.as_deref().map(parse_loopback).transpose()
-}
-
-/// Serve until Ctrl+C (or SIGTERM on unix), then `stop` and `join`. A second
-/// Ctrl+C exits at once.
-#[cfg(feature = "server")]
-fn stop_on_signal(
-    world: spookery_engine::World,
-    config: spookery_server::Config,
-) -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| err.to_string())?;
-    let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
-    // `ctrl_c` installs its handler on first poll. Do that before `serve` prints
-    // its address, or a Ctrl+C right after startup kills the host outright.
-    let early = runtime.block_on(std::future::poll_fn(|cx| {
-        std::task::Poll::Ready(std::future::Future::poll(ctrl_c.as_mut(), cx))
-    }));
-    if let std::task::Poll::Ready(result) = early {
-        return result.map_err(|err| err.to_string());
-    }
-    #[cfg(unix)]
-    let mut term = {
-        let _entered = runtime.enter();
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .map_err(|err| err.to_string())?
-    };
-    let handle = spookery_server::serve(world, config).map_err(|err| err.to_string())?;
-    runtime.block_on(async move {
-        #[cfg(unix)]
-        tokio::select! {
-            _ = ctrl_c => {}
-            _ = term.recv() => {}
-        }
-        #[cfg(not(unix))]
-        let _ = ctrl_c.await;
-        handle.stop();
-        let join = tokio::task::spawn_blocking(move || handle.join());
-        tokio::select! {
-            joined = join => joined.map_err(|err| err.to_string())?.map_err(|err| err.to_string()),
-            _ = tokio::signal::ctrl_c() => std::process::exit(130),
-        }
-    })
 }
 
 #[cfg(all(test, feature = "server", feature = "client"))]
