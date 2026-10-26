@@ -8,7 +8,7 @@ Start with the [README](../README.md) to build and play. This page points at eve
 | [Write your first pack](first-pack.md) | A walkthrough that starts from `spook new` and makes your first edits. |
 | [Pack reference](pack-reference.md) | Every pack field, for people and agents writing packs. |
 | [Expressions](spec.md) | The small number language pack fields use, like `2d6` or `self.might`. |
-| [Seat protocol](seat-protocol.md) | The wire format, for anyone writing a player client or a GM. |
+| [Seat protocol](seat-protocol.md) | The seat protocol, for anyone writing a player client or a GM. |
 | [CONTRIBUTING](../CONTRIBUTING.md) | Issue rules, running the tests, and pointing a coding agent at the table. |
 
 Further down this page you'll find the [glossary](#glossary), [host options](#at-the-table), [GM setup](#game-master), [what the model sees](#privacy) and the [license](#license).
@@ -54,7 +54,7 @@ docs/                  guarantees, first-pack guide, pack reference, expressions
 packs/                 sample-d20 is the starter. oneshot-docks is the multi-PC fixture
 .grok/skills/          the author-pack skill
 crates/
-  protocol/            spookery-protocol: player and GM wire codecs
+  protocol/            spookery-protocol: player and GM message types
   engine/              spookery-engine: world model, rules, rounds, and journal
   agent/               spookery-agent: model GM turn state machine
   cli/                 spookery-cli: spook play, spook gm, and spook ai-gm
