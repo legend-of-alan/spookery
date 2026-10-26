@@ -13,4 +13,6 @@ pub use player_view::run_player;
 pub enum Error {
     Reason(&'static str),
     Io(io::Error),
+    /// The view already printed this failure.
+    Printed,
 }

@@ -30,7 +30,7 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
                         [] => {
                             eprintln!("No free characters");
                             let _ = io::stderr().flush();
-                            std::process::exit(1);
+                            return Err(Error::Printed);
                         }
                         [only] => only.clone(),
                         many => {
@@ -45,7 +45,7 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
                 }
                 _ => {
                     write_frame(&mut formatter, &line, raw);
-                    std::process::exit(1);
+                    return Err(Error::Printed);
                 }
             }
         }
@@ -60,10 +60,10 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
     loop {
         let Some(line) = read_line(&mut reader)? else {
             eprintln!("NOT_IN_SPEC");
-            std::process::exit(1);
+            return Err(Error::Printed);
         };
         match write_frame(&mut formatter, &line, raw) {
-            FrameEffect::Refuse => std::process::exit(1),
+            FrameEffect::Refuse => return Err(Error::Printed),
             FrameEffect::View => break,
             FrameEffect::Continue => {}
         }
@@ -83,6 +83,7 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
                 eprintln!("{code}");
                 std::process::exit(1);
             }
+            Err(Error::Printed) => {}
         }
     });
     for input in io::stdin().lines() {

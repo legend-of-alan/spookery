@@ -111,7 +111,10 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     if let Err(exit) = dispatch(cli) {
-        eprintln!("{exit}");
+        // A printed terminal failure is an empty string. It already showed.
+        if !exit.is_empty() {
+            eprintln!("{exit}");
+        }
         std::process::exit(1);
     }
 }
@@ -247,6 +250,7 @@ fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), St
     result.map_err(|err| match err {
         spookery::terminal::Error::Reason(code) => code.to_string(),
         spookery::terminal::Error::Io(err) => err.to_string(),
+        spookery::terminal::Error::Printed => String::new(),
     })
 }
 
@@ -272,6 +276,14 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+
+    #[test]
+    fn a_printed_terminal_error_adds_no_second_line() {
+        assert_eq!(
+            from_terminal(Err(spookery::terminal::Error::Printed)).unwrap_err(),
+            ""
+        );
+    }
 
     #[test]
     fn the_default_address_is_loopback_9737() {
