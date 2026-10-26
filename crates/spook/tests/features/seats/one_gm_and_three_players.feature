@@ -59,6 +59,12 @@ Feature: One GM seat and up to three player seats
     When three players sit
     Then only that PC's perceive shows the hidden fact
 
+  Scenario: Saying a hidden fact does not teach it
+    Given a docks table where one PC knows a hidden fact
+    When three players sit
+    And that PC says the hidden fact and another PC waits
+    Then only that PC's perceive shows the hidden fact
+
   Scenario: With a GM two players commit in one round
     Given a docks table with a GM and two seated players
     When both players wait

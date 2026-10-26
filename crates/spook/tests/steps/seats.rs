@@ -272,6 +272,21 @@ fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
     }
 }
 
+#[when(expr = "that PC says the hidden fact and another PC waits")]
+fn that_pc_says_the_hidden_fact(world: &mut World) {
+    let marks = ["pc_rowan", "pc_harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
+    let say = "say The tide chart marks a private channel.";
+    table::actor_send(world, "pc_wren", say, "\"kind\":\"say\"");
+    table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"perceive\"");
+    for (id, mark) in marks {
+        let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"perceive\"");
+        assert!(
+            heard.contains("private channel"),
+            "{id} did not hear it\n{heard}"
+        );
+    }
+}
+
 #[given(expr = "a docks table with a GM and two seated players")]
 fn a_docks_table_with_a_gm_and_two_seated_players(world: &mut World) {
     let pack = crate::support::temp_pack("two-queue");
