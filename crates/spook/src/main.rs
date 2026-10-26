@@ -136,24 +136,12 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
             let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
-            // Ctrl+C, or SIGTERM on unix, stops the host.
+            // Ctrl+C stops the host.
             tokio::runtime::Builder::new_current_thread()
                 .enable_all()
                 .build()
                 .map_err(|e| e.to_string())?
-                .block_on(async {
-                    #[cfg(unix)]
-                    {
-                        use tokio::signal::unix::{signal, SignalKind};
-                        let mut term = signal(SignalKind::terminate())?;
-                        tokio::select! {
-                            done = tokio::signal::ctrl_c() => done,
-                            _ = term.recv() => Ok(()),
-                        }
-                    }
-                    #[cfg(not(unix))]
-                    tokio::signal::ctrl_c().await
-                })
+                .block_on(tokio::signal::ctrl_c())
                 .map_err(|e| e.to_string())?;
             handle.stop();
             handle.join().map_err(|e| e.to_string())

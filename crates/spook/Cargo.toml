@@ -28,7 +28,7 @@ spookery-cli = { path = "../cli", optional = true }
 spookery-engine = { path = "../engine", optional = true }
 spookery-protocol = { path = "../protocol" }
 spookery-server = { path = "../server", optional = true }
-tokio = { version = "1", features = ["macros", "rt", "signal"], optional = true }
+tokio = { version = "1", features = ["rt", "signal"], optional = true }
 
 [dev-dependencies]
 cucumber = "=0.23.0"
