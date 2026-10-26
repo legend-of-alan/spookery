@@ -343,15 +343,6 @@ fn refresh_players(
 }
 
 fn shutdown(world: &mut World, seats: &mut Seats, out: &mut dyn Write) -> Result<(), Reason> {
-    // The testing feature is off in shipped binaries. Tests set the path so a
-    // second interrupt can land while `join` is still blocked.
-    #[cfg(feature = "testing")]
-    if let Ok(path) = std::env::var("SPOOK_SHUTDOWN_HOLD") {
-        let _ = std::fs::write(path, b"held\n");
-        loop {
-            std::thread::park();
-        }
-    }
     for conn in seats.players.conns() {
         if drop_conn(world, seats, conn)? {
             write_host(out, world, &[]);

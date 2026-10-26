@@ -122,12 +122,9 @@ def main() -> None:
         apply_bin()
         stub, stub_port = start_stub()
         if scratch is not None:
-            host = spawn(
-                ["spook", "run", str(scratch), "--addr", "127.0.0.1:0"],
-                new_group=True,
-            )
+            host = spawn(["spook", "run", str(scratch), "--addr", "127.0.0.1:0"])
         else:
-            host = spawn(parse_spook_args(run_line), new_group=True)
+            host = spawn(parse_spook_args(run_line))
         game, door = wait_listening(host)
         env = os.environ.copy()
         env["SPOOK_GM_KEY"] = "stub"
@@ -158,13 +155,14 @@ def main() -> None:
             else:
                 dump(f"the line did not finish: {line}", None, play, host, gm)
         wait_text(play.out, ending, 45, "the session did not reach the ending", play, host, gm)
-        interrupt(host.proc)
-        try:
-            code = host.proc.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            dump("the host did not exit after SIGINT", None, host, gm, play)
-        if code != 0:
-            dump("the host exited", code, host, gm, play)
+        if os.name == "nt":
+            # Windows has no SIGINT for one process. The save is atomic, so kill it.
+            host.proc.terminate()
+            host.proc.wait(timeout=20)
+        else:
+            host.proc.send_signal(signal.SIGINT)
+            if (code := host.proc.wait(timeout=20)) != 0:
+                dump("the host exited", code, host, gm, play)
         print("--- play ---")
         print("".join(play.out), end="")
         if scratch is not None:
@@ -290,12 +288,7 @@ def start_stub() -> tuple[ThreadingHTTPServer, int]:
     return server, server.server_address[1]
 
 
-def spawn(
-    args: list[str], env: dict[str, str] | None = None, *, new_group: bool = False
-) -> Pipe:
-    creationflags = 0
-    if new_group and sys.platform == "win32":
-        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
+def spawn(args: list[str], env: dict[str, str] | None = None) -> Pipe:
     proc = subprocess.Popen(
         args,
         cwd=ROOT,
@@ -306,17 +299,8 @@ def spawn(
         text=True,
         encoding="utf-8",
         errors="replace",
-        creationflags=creationflags,
     )
     return Pipe(proc)
-
-
-def interrupt(proc: subprocess.Popen) -> None:
-    if sys.platform == "win32":
-        # Ctrl+C cannot be aimed at one process group. Ctrl+Break can.
-        proc.send_signal(signal.CTRL_BREAK_EVENT)
-    else:
-        proc.send_signal(signal.SIGINT)
 
 
 def parse_spook_args(line: str) -> list[str]:

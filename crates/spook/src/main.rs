@@ -260,8 +260,8 @@ fn door_addr(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_http.as_deref().map(parse_loopback).transpose()
 }
 
-/// Wait for Ctrl+C or SIGTERM, then `stop` and `join`. A second interrupt exits
-/// at once, because the handler stays installed and would otherwise swallow it.
+/// Serve until Ctrl+C (or SIGTERM on unix), then `stop` and `join`. A second
+/// Ctrl+C exits at once.
 #[cfg(feature = "server")]
 fn stop_on_signal(
     world: spookery_engine::World,
@@ -271,72 +271,37 @@ fn stop_on_signal(
         .enable_all()
         .build()
         .map_err(|err| err.to_string())?;
-    // Register before `serve` so the server runtime is not built inside this one.
-    let mut stops = {
+    let mut ctrl_c = std::pin::pin!(tokio::signal::ctrl_c());
+    // `ctrl_c` installs its handler on first poll. Do that before `serve` prints
+    // its address, or a Ctrl+C right after startup kills the host outright.
+    let early = runtime.block_on(std::future::poll_fn(|cx| {
+        std::task::Poll::Ready(std::future::Future::poll(ctrl_c.as_mut(), cx))
+    }));
+    if let std::task::Poll::Ready(result) = early {
+        return result.map_err(|err| err.to_string());
+    }
+    #[cfg(unix)]
+    let mut term = {
         let _entered = runtime.enter();
-        listen()?
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .map_err(|err| err.to_string())?
     };
     let handle = spookery_server::serve(world, config).map_err(|err| err.to_string())?;
     runtime.block_on(async move {
-        stops.recv().await;
+        #[cfg(unix)]
+        tokio::select! {
+            _ = ctrl_c => {}
+            _ = term.recv() => {}
+        }
+        #[cfg(not(unix))]
+        let _ = ctrl_c.await;
         handle.stop();
         let join = tokio::task::spawn_blocking(move || handle.join());
         tokio::select! {
             joined = join => joined.map_err(|err| err.to_string())?.map_err(|err| err.to_string()),
-            _ = stops.recv() => std::process::exit(130),
+            _ = tokio::signal::ctrl_c() => std::process::exit(130),
         }
     })
-}
-
-#[cfg(feature = "server")]
-struct Stops {
-    #[cfg(unix)]
-    interrupt: tokio::signal::unix::Signal,
-    #[cfg(unix)]
-    terminate: tokio::signal::unix::Signal,
-    #[cfg(windows)]
-    ctrl_c: tokio::signal::windows::CtrlC,
-    #[cfg(windows)]
-    ctrl_break: tokio::signal::windows::CtrlBreak,
-}
-
-#[cfg(all(feature = "server", unix))]
-fn listen() -> Result<Stops, String> {
-    use tokio::signal::unix::{signal, SignalKind};
-    Ok(Stops {
-        interrupt: signal(SignalKind::interrupt()).map_err(|err| err.to_string())?,
-        terminate: signal(SignalKind::terminate()).map_err(|err| err.to_string())?,
-    })
-}
-
-#[cfg(all(feature = "server", windows))]
-fn listen() -> Result<Stops, String> {
-    // Ctrl+Break is the interrupt that can be aimed at one process group.
-    // Ctrl+C from a console still arrives on `ctrl_c`.
-    Ok(Stops {
-        ctrl_c: tokio::signal::windows::ctrl_c().map_err(|err| err.to_string())?,
-        ctrl_break: tokio::signal::windows::ctrl_break().map_err(|err| err.to_string())?,
-    })
-}
-
-#[cfg(feature = "server")]
-impl Stops {
-    async fn recv(&mut self) {
-        #[cfg(unix)]
-        {
-            tokio::select! {
-                _ = self.interrupt.recv() => {}
-                _ = self.terminate.recv() => {}
-            }
-        }
-        #[cfg(windows)]
-        {
-            tokio::select! {
-                _ = self.ctrl_c.recv() => {}
-                _ = self.ctrl_break.recv() => {}
-            }
-        }
-    }
 }
 
 #[cfg(all(test, feature = "server", feature = "client"))]

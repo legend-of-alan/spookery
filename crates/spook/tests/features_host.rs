@@ -41,6 +41,7 @@ mod digest;
 #[path = "steps/host.rs"]
 mod host;
 
+#[cfg(unix)]
 #[path = "steps/shutdown.rs"]
 mod shutdown;
 
