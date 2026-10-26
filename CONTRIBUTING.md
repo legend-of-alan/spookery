@@ -14,22 +14,23 @@ Feature scenarios live under `crates/engine/tests/features` and `crates/spook/te
 cargo test --workspace --test features_host --test features_world
 ```
 
-The README scenario runs `scripts/readme_quickstart.py`, so `cargo test` needs Python 3.8 or newer on `PATH` as `python` or `python3` (on Windows, `py -3` also works).
+You need Rust 1.89 or newer, and CI pins 1.89.0. Pull requests only run CI on Linux. Pushes to main also run it on macOS and Windows.
 
 ## Issues and PRs
 
 Issue and PR titles start with a letter for the area and end with a size.
 
-- `R:` rounds and rules: the round stages and triggers
+- `R:` rules and rounds: round stages and triggers
 - `W:` world model: places, exits, travel, items, pack rule schema
-- `K:` kernel and core plumbing: journal, host, transport, CI
-- `N:` naming: renames that make a name say what it does
+- `E:` engine plumbing: journal, save, replay, verify
+- `H:` host and seats: server, seat protocol, CLI and agent clients
+- `N:` naming
 - `D:` docs
-- `T:` tests and flaky-test fixes
+- `T:` tests, flaky-test fixes and CI
 
 Sizes: `[S]` about one sitting, `[M]` a focused PR, `[L]` likely split into sub-issues.
 
-Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enhancement`, `bug`, `documentation`). Phases are milestones.
+Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea). It also gets a type label, which is `enhancement`, `bug` or `documentation`. Phases are milestones.
 
 ## Prove the log
 
@@ -45,7 +46,7 @@ spook verify /tmp/docks
 
 ## Live AI CI
 
-The `Live AI` workflow runs it against Ollama on pull requests that touch the model host. It also runs it against xAI weekly and on demand, never on pull requests, with the `XAI_API_KEY` repo secret passed in as `SPOOK_GM_KEY`. Without that secret the xAI job skips with a notice. The xAI model is `grok-4.20-0309-non-reasoning` unless the `SPOOK_XAI_MODEL` repo variable names another.
+The `Live AI` workflow runs the live round test (`crates/spook/tests/integration/live_round.rs`) against Ollama on pull requests that touch the model host. It also runs it against xAI weekly and on demand, never on pull requests, with the `XAI_API_KEY` repo secret passed in as `SPOOK_GM_KEY`. Without that secret the xAI job skips with a notice. The xAI model is `grok-4.20-0309-non-reasoning` unless the `SPOOK_XAI_MODEL` repo variable names another.
 
 ## Coding agent clients
 

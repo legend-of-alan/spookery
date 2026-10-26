@@ -387,4 +387,37 @@ mod tests {
         let quick = Cli::try_parse_from(["spook", "verify", "--quick", "pack"]).unwrap();
         assert!(matches!(quick.command, Command::Verify { quick: true, .. }));
     }
+
+    #[test]
+    fn every_spook_line_in_the_readme_parses() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../README.md");
+        let readme = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let mut found = false;
+        let mut fenced = false;
+        for line in readme.lines() {
+            if line.starts_with("```") {
+                fenced = !fenced;
+                continue;
+            }
+            if !fenced {
+                continue;
+            }
+            let Some(args) = split_spook_line(line) else {
+                continue;
+            };
+            found = true;
+            Cli::try_parse_from(&args).unwrap_or_else(|err| panic!("{}: {err}", args.join(" ")));
+        }
+        assert!(found, "README.md has no spook command");
+    }
+
+    fn split_spook_line(line: &str) -> Option<Vec<&str>> {
+        let args: Vec<&str> = line.split_whitespace().collect();
+        if args.first() == Some(&"spook") {
+            Some(args)
+        } else {
+            None
+        }
+    }
 }
