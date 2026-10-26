@@ -335,7 +335,7 @@ fn worker(
         // rmcp keeps no read on the agent port once a tool call's stream
         // ends, so a killed `spook run` never looks closed. A plain connection
         // with a pending read sees that close the way the TCP client did.
-        tokio::spawn(async move {
+        let watch = tokio::spawn(async move {
             let Ok(mut socket) = tokio::net::TcpStream::connect(door).await else {
                 let _ = watch_events.send(Incoming::Eof);
                 return;
@@ -356,7 +356,11 @@ fn worker(
                 }
             }
         }
-        let _ = running.cancel().await;
+        // A closed seat has nothing to end. Cancel would send the session
+        // DELETE to the dead port, and Windows takes about 2s to refuse it.
+        if !watch.is_finished() {
+            let _ = running.cancel().await;
+        }
     });
 }
 
