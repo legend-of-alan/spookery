@@ -1,7 +1,7 @@
-//! The player wire, the GM wire, and the check band they share.
+//! Player messages, GM messages, and the check band they share.
 
-mod gm_wire;
-mod player_wire;
+mod gm;
+mod player;
 
 use serde::{Deserialize, Serialize};
 
@@ -24,14 +24,14 @@ impl Outcome {
     }
 }
 
-pub use gm_wire::{
+pub use gm::{
     code_result, queued_ack, read_commit_args, read_intent_args, read_perceive_args, read_say_args,
     read_status_args, read_tool_result, released_result, write_check_event, write_pack_event,
     write_queued_event, write_say_event, CastKind, CommitArgs, CommitBody, EventBody, GmSay,
     IntentCall, MenuRow, OutgoingSay, PackSummary, PerceiveArgs, QueueRow, Roll, SessionStatus,
     StatusArgs, StatusPause, StatusPresence,
 };
-pub use player_wire::{
+pub use player::{
     exit_phrase, read_player, read_player_hello, write_player, write_player_hello, Missing,
     PlayerMessage, ViewScene, WireClock, WireExit, WireFact, WireItem, WireMessage, WireMeter,
 };
