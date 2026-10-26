@@ -11,13 +11,13 @@ use super::table;
 
 #[when(expr = "spook run seats a player")]
 fn spook_run_seats_a_player(world: &mut World) {
-    start_host(world, false, false);
+    start_open_host(world);
     seat(world);
 }
 
 #[when(expr = "spook run starts with stdin closed")]
 fn spook_run_starts_with_stdin_closed(world: &mut World) {
-    start_host(world, true, false);
+    start_closed_host(world);
 }
 
 #[when(expr = "a player sits at that host")]
@@ -27,7 +27,7 @@ fn a_player_sits_at_that_host(world: &mut World) {
 
 #[when(expr = "spook run seats a player and shutdown will block")]
 fn spook_run_seats_a_player_and_shutdown_will_block(world: &mut World) {
-    start_host(world, false, true);
+    start_held_host(world);
     seat(world);
 }
 
@@ -108,21 +108,28 @@ fn spook_run_has_ended(world: &mut World) {
     );
 }
 
-fn start_host(world: &mut World, closed_stdin: bool, hold: bool) {
+fn start_open_host(world: &mut World) {
+    launch(world, false, None);
+}
+
+fn start_closed_host(world: &mut World) {
+    launch(world, true, None);
+}
+
+fn start_held_host(world: &mut World) {
+    let path = std::env::temp_dir().join(format!("spook-shutdown-hold-{}", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let text = path.to_string_lossy().into_owned();
+    world.scratch = text.clone();
+    launch(world, false, Some(text));
+}
+
+fn launch(world: &mut World, closed_stdin: bool, hold: Option<String>) {
     let pack = table::pack(world).to_path_buf();
-    let hold_text = if hold {
-        let path = std::env::temp_dir().join(format!("spook-shutdown-hold-{}", std::process::id()));
-        let _ = std::fs::remove_file(&path);
-        let text = path.to_string_lossy().into_owned();
-        world.scratch = text.clone();
-        Some(text)
-    } else {
-        None
-    };
-    let held = hold_text.unwrap_or_default();
+    let held = hold.unwrap_or_default();
     let pair = [("SPOOK_SHUTDOWN_HOLD", held.as_str())];
-    let env: &[(&str, &str)] = if hold { &pair } else { &[] };
-    let pending = table::spawn_host(&pack, &["--addr", "127.0.0.1:0"], env, closed_stdin, true);
+    let env: &[(&str, &str)] = if held.is_empty() { &[] } else { &pair };
+    let pending = table::spawn_host(&pack, &["--addr", "127.0.0.1:0"], env, closed_stdin);
     let listening = table::take_report(pending);
     table::install(world, &pack, listening);
 }

@@ -267,8 +267,6 @@ fn stop_on_signal(
     world: spookery_engine::World,
     config: spookery_server::Config,
 ) -> Result<(), String> {
-    #[cfg(windows)]
-    allow_ctrl_c();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -276,7 +274,7 @@ fn stop_on_signal(
     // Register before `serve` so the server runtime is not built inside this one.
     let mut stops = {
         let _entered = runtime.enter();
-        Stops::listen()?
+        listen()?
     };
     let handle = spookery_server::serve(world, config).map_err(|err| err.to_string())?;
     runtime.block_on(async move {
@@ -288,21 +286,6 @@ fn stop_on_signal(
             _ = stops.recv() => std::process::exit(130),
         }
     })
-}
-
-#[cfg(all(feature = "server", windows))]
-fn allow_ctrl_c() {
-    // A new process group starts with Ctrl+C ignored.
-    unsafe extern "system" {
-        fn SetConsoleCtrlHandler(
-            handler: Option<unsafe extern "system" fn(u32) -> i32>,
-            add: i32,
-        ) -> i32;
-    }
-    let handler: Option<unsafe extern "system" fn(u32) -> i32> = None;
-    unsafe {
-        SetConsoleCtrlHandler(handler, 0);
-    }
 }
 
 #[cfg(feature = "server")]
@@ -317,28 +300,27 @@ struct Stops {
     ctrl_break: tokio::signal::windows::CtrlBreak,
 }
 
+#[cfg(all(feature = "server", unix))]
+fn listen() -> Result<Stops, String> {
+    use tokio::signal::unix::{signal, SignalKind};
+    Ok(Stops {
+        interrupt: signal(SignalKind::interrupt()).map_err(|err| err.to_string())?,
+        terminate: signal(SignalKind::terminate()).map_err(|err| err.to_string())?,
+    })
+}
+
+#[cfg(all(feature = "server", windows))]
+fn listen() -> Result<Stops, String> {
+    // Ctrl+Break is the interrupt that can be aimed at one process group.
+    // Ctrl+C from a console still arrives on `ctrl_c`.
+    Ok(Stops {
+        ctrl_c: tokio::signal::windows::ctrl_c().map_err(|err| err.to_string())?,
+        ctrl_break: tokio::signal::windows::ctrl_break().map_err(|err| err.to_string())?,
+    })
+}
+
 #[cfg(feature = "server")]
 impl Stops {
-    fn listen() -> Result<Self, String> {
-        #[cfg(unix)]
-        {
-            use tokio::signal::unix::{signal, SignalKind};
-            return Ok(Self {
-                interrupt: signal(SignalKind::interrupt()).map_err(|err| err.to_string())?,
-                terminate: signal(SignalKind::terminate()).map_err(|err| err.to_string())?,
-            });
-        }
-        #[cfg(windows)]
-        {
-            // Ctrl+Break is the interrupt that can be aimed at one process group.
-            // Ctrl+C from a console still arrives on `ctrl_c`.
-            Ok(Self {
-                ctrl_c: tokio::signal::windows::ctrl_c().map_err(|err| err.to_string())?,
-                ctrl_break: tokio::signal::windows::ctrl_break().map_err(|err| err.to_string())?,
-            })
-        }
-    }
-
     async fn recv(&mut self) {
         #[cfg(unix)]
         {

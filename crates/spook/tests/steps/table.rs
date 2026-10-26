@@ -225,7 +225,7 @@ pub fn reported(stdout: &str) -> (SocketAddr, SocketAddr) {
 }
 
 pub fn spawn_table(pack: &Path, flags: &[&str], env: &[(&str, &str)]) -> Pending {
-    spawn_host(pack, flags, env, false, false)
+    spawn_host(pack, flags, env, false)
 }
 
 pub fn spawn_host(
@@ -233,7 +233,6 @@ pub fn spawn_host(
     flags: &[&str],
     env: &[(&str, &str)],
     closed_stdin: bool,
-    own_group: bool,
 ) -> Pending {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.arg("run").arg(support::pack_arg(pack)).args(flags);
@@ -242,13 +241,11 @@ pub fn spawn_host(
     }
     // Windows can aim Ctrl+Break only at a process group created this way.
     #[cfg(windows)]
-    if own_group {
+    {
         use std::os::windows::process::CommandExt;
         const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
         command.creation_flags(CREATE_NEW_PROCESS_GROUP);
     }
-    #[cfg(not(windows))]
-    let _ = own_group;
     command
         .stdin(if closed_stdin {
             Stdio::null()
