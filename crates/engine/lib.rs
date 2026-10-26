@@ -205,16 +205,8 @@ pub mod testing {
     }
 
     pub fn insert_nell(pack: &Path) {
-        let cast = pack.join("cast/pc-nell.md");
-        if let Some(parent) = cast.parent() {
-            fs::create_dir_all(parent)
-                .unwrap_or_else(|err| panic!("mkdir {}: {err}", parent.display()));
-        }
-        fs::write(
-            &cast,
-            "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n  flags:\n    - marked\n    - missed\n    - guarded\n---\nNell keeps a guard up.\n",
-        )
-        .unwrap_or_else(|err| panic!("write {}: {err}", cast.display()));
+        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        copy_dir(&manifest.join("fixtures/cast"), &pack.join("cast"));
         edit_save(pack, |now| {
             now.actors.insert(
                 "pc_nell".to_string(),
