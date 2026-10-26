@@ -1,10 +1,17 @@
 # Docs
 
-[Engine guarantees](engine-guarantees.md) states what the engine promises. The feature files test them. Where the doc and the feature files disagree, the feature files win.
+Start with the [README](../README.md) to build and play. This page points at everything else.
 
-[Write your first pack](first-pack.md) walks through `spook new` and the first edits. [Pack reference](pack-reference.md) is the field reference for authors and agents. [Expressions](spec.md) is the number language those fields share. [Seat protocol](seat-protocol.md) is the wire for a player client or a GM integration.
+| Doc | What it's for |
+| --- | --- |
+| [Engine guarantees](engine-guarantees.md) | What the engine promises. The feature files test it, and they win if the two disagree. |
+| [Write your first pack](first-pack.md) | A walkthrough that starts from `spook new` and makes your first edits. |
+| [Pack reference](pack-reference.md) | Every pack field, for people and agents writing packs. |
+| [Expressions](spec.md) | The small number language pack fields use, like `2d6` or `self.might`. |
+| [Seat protocol](seat-protocol.md) | The wire format, for anyone writing a player client or a GM. |
+| [CONTRIBUTING](../CONTRIBUTING.md) | Issue rules, running the tests, and pointing a coding agent at the table. |
 
-[At the table](#at-the-table) covers the host flags. [Game master](#game-master) covers the empty seat, the model, and a human GM. [Privacy](#privacy) is what `spook ai-gm` sends. The [license](#license) split is at the bottom. Build and play are in the [README](../README.md#start).
+Further down this page you'll find the [glossary](#glossary), [host options](#at-the-table), [GM setup](#game-master), [what the model sees](#privacy) and the [license](#license).
 
 Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
@@ -24,18 +31,18 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 
 | Term | Meaning |
 |---|---|
-| **Spookery** | The project name. The library is `spookery`; the package and binary are `spook`. |
+| **Spookery** | The project name. The library is `spookery`. The package and binary are `spook`. |
 | **Pack** | A folder of text that is the world: canon, rules and current state. |
 | **Seat** | One place at the table. Each player character is a seat, and the GM is one more. |
 | **Canon** | Files under `world/`, `cast/` and `rules/` in a pack. They don't change while the world runs. |
 | **`spook`** | The program that loads a pack. It is the only thing that writes the pack's state. |
 | **Kernel** | The code that decides what is legal, rolls checks and tracks who knows what. |
-| **Tick** | A unit of game time on the world clock. Talking does not take a tick; moving and acting do. |
+| **Tick** | A unit of game time on the world clock. Talking takes no ticks. Moving and acting do. |
 | **Round** | One batch in which queued intents are settled together and the results are logged. |
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
 | **Effect** | A checked change to the world, produced from an intent. |
 | **Expression** | A number in a rule. An integer, dice such as `2d6` or `2d20kh1`, a meter read such as `self.might`, and `+`, `-`, `*`, `/`, `min`, and `max`. A condition's value does not roll dice. |
-| **GM** | The storyteller seat. Usually an agent that talks to the agent door; `spook ai-gm` is the built-in model GM. |
+| **GM** | The storyteller seat. Usually an agent that talks to the agent door. `spook ai-gm` is the built-in model GM. |
 | **Play door** | The human client, `spook play`, over loopback. |
 | **Agent door** | The MCP endpoint `spook run` serves, `http://127.0.0.1:9738/mcp` by default. |
 
@@ -58,73 +65,100 @@ crates/
 
 ## At the table
 
-`--addr` sets the loopback address. The default is `127.0.0.1:9737`. Passing `127.0.0.1` alone means that same port. Any other host is refused before the pack opens. The agent door is the next port, `127.0.0.1:9738`.
+These are the host options and the commands that touch a save.
 
-`--as <id>` sits that character. `pc_rowan` and `player:pc_rowan` are the same seat. A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
+| Option or command | What it does |
+| --- | --- |
+| `--addr <addr>` | Sets the game address. The default is `127.0.0.1:9737`, and plain `127.0.0.1` means that same port. Only loopback is allowed. Anything else is refused before the pack opens. |
+| `--mcp-http 127.0.0.1:<port>` | Sets the agent door. By default it's the game port plus one, so `127.0.0.1:9738`. |
+| `--as <id>` | Picks your character in `spook play`. `pc_rowan` and `player:pc_rowan` mean the same seat. |
+| `spook status <pack>` | Prints the host digest. It doesn't write the pack. |
+| `spook tick <pack>` | Advances the world one tick and writes `state/`. |
+| `spook migrate <pack>` | Stores the current canon hash in the save. |
 
-`spook status` prints the host digest and does not write the pack. `spook tick` and `spook migrate` write `state/`. Stop `spook run` before those two, because the server keeps the save in memory.
+Stop `spook run` before you use `tick` or `migrate`, because the running server keeps the save in memory.
+
+If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [SESSION_FULL]`.
+
+`spook` builds with both the `server` and `client` features by default. To build just one, pass `--no-default-features --features server` or `--no-default-features --features client`.
 
 ## Game master
 
 ### No GM
 
-Leave the GM seat empty. Speech is stored on the tape and does not advance time. Each player move is committed as its own tick, and a move that leaves every seated player busy runs on to the arrival. There is no narration and no model call.
+You can leave the GM seat empty. Then nobody narrates and no model gets called. Speech goes on the tape without moving the clock, and each move commits as its own tick.
+
+If a move leaves every seated player busy, the clock runs on until they arrive.
 
 ### Model GM
 
-`spook ai-gm` sits the GM seat and calls a chat-completions endpoint. It does not start the server or the player. Start `spook run` first. The client posts to `{SPOOK_GM_URL}/chat/completions` with one tool, `act`. The model answers with that tool. The engine then commits the queued lines.
+`spook ai-gm` puts a model in the GM seat. It doesn't start the host, so run `spook run` first.
 
-Three environment variables, and no others. All three are required. There is no default URL.
+It posts to `{SPOOK_GM_URL}/chat/completions` with one tool, `act`. The model answers by calling that tool, and then the engine commits the queued lines.
 
-| Variable | Required | Meaning |
-| --- | --- | --- |
-| `SPOOK_GM_KEY` | yes | Bearer token. Read from the environment, never from the pack. |
-| `SPOOK_GM_URL` | yes | Origin of the endpoint, including the `/v1` prefix the provider documents. |
-| `SPOOK_GM_MODEL` | yes | Model name sent in the request. |
+You need all three of these. There's no default URL.
 
-A missing variable is printed on stderr as `<NAME> is unset` and the process exits 1 before it dials. The variables are checked in the order `SPOOK_GM_KEY`, `SPOOK_GM_URL`, `SPOOK_GM_MODEL`.
+| Variable | What it holds |
+| --- | --- |
+| `SPOOK_GM_KEY` | Your API key, sent as a bearer token. It's read from the environment, never from the pack. |
+| `SPOOK_GM_URL` | The endpoint origin, including the `/v1` prefix your provider documents. |
+| `SPOOK_GM_MODEL` | The model name to send. |
 
-xAI:
+If one is missing, `spook ai-gm` prints `<NAME> is unset` and exits 1 before it connects. It checks them in the order shown in the table.
+
+For xAI:
 
 ```sh
 SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.x.ai/v1 SPOOK_GM_MODEL=grok-4.20-0309-non-reasoning spook ai-gm
 ```
 
-Claude, through the chat-completions endpoint:
+For Claude, through its chat-completions endpoint. Swap in whichever Claude model you want.
 
 ```sh
 SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.anthropic.com/v1 SPOOK_GM_MODEL=claude-sonnet-4-5 spook ai-gm
 ```
 
-Set `SPOOK_GM_MODEL` to the Claude model you want. [Ollama](https://ollama.com), running locally:
+For [Ollama](https://ollama.com) on your own machine:
 
 ```sh
 ollama pull qwen2.5:0.5b
 SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b spook ai-gm
 ```
 
-When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
+If the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error on one line, cut to 200 characters, with your key replaced by `[key]`.
 
-`crates/spook/tests/integration/live_round.rs` plays one real round against whatever provider those three variables name. It is ignored by default. CI runs it too; see [CONTRIBUTING.md](../CONTRIBUTING.md#live-ai-ci).
+`crates/spook/tests/integration/live_round.rs` plays one real round against whatever those variables point at. It's ignored by default. CI runs it as described in [Live AI CI](../CONTRIBUTING.md#live-ai-ci).
 
 ### Human GM
 
-`spook gm` sits the same GM seat as `spook ai-gm`. Start `spook run` first. Both dial the agent door. `--mcp-http 127.0.0.1:<port>` dials that door instead. `spook run --addr 127.0.0.1:0` lets the operating system choose the ports, then prints the listening line. Pass that door to `--mcp-http`.
+`spook gm` puts you in the same GM seat. Run `spook run` first, then:
 
 ```sh
 spook gm
 ```
 
-Type `help` for the seat commands. `spook gm --raw` prints each protocol frame as one JSON line.
+Type `help` to see the GM commands. `spook gm --raw` prints each protocol frame as one JSON line instead.
+
+Both `spook gm` and `spook ai-gm` connect to the agent door. Use `--mcp-http 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you the door. Pass that to `--mcp-http`.
 
 ## Privacy
 
-`spook ai-gm` sends table text to the host named by `SPOOK_GM_URL`. There is no default host. The API key is the bearer token from `SPOOK_GM_KEY` in the environment. The pack does not hold the key.
+`spook ai-gm` sends table text to whatever host `SPOOK_GM_URL` names. There's no default host. The key comes from `SPOOK_GM_KEY` in your environment and never lives in the pack.
 
-The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt includes the Markdown body of the current place and of each cast member in the views. Each of those bodies is cut at 800 characters. It does not include `save.yaml` or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
+Each call is one chat-completions POST. The body has the model name, `"stream": false`, the `act` tool and one user message.
+
+That message is a bounded JSON prompt. It holds the last 16 says this process has handled, the new player lines, the move menu, the queued intents and trimmed player and NPC views. After a roll, a follow-up call adds the dice faces.
+
+The views are trimmed on purpose. A player view that's only a room census drops known facts, messages and unknown mentions. An NPC view keeps each fact's id and text. Fact bodies are always dropped.
+
+The prompt does include the Markdown body of the current place and of each cast member in those views. Each body is cut at 800 characters.
+
+It never sends `save.yaml` or the tape file. Those stay on disk in the pack. A new `spook ai-gm` process starts fresh and remembers nothing from the last one.
 
 ## License
 
-The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. The exception is the `spookery-protocol` crate, which is MIT, so a game client can reuse the wire codec freely. Documentation, schemas, and packs are CC BY 4.0.
+The engine is open source under AGPL-3.0. Runtime code, its tests, and the repo's tooling and scripts are AGPL-3.0-or-later.
 
-The terms are in [LICENSE](../LICENSE), [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-CC-BY-4.0](../LICENSE-CC-BY-4.0).
+The `spookery-protocol` crate is MIT, so a game client can reuse the wire codec freely. Docs, schemas and packs are CC BY 4.0.
+
+The full terms are in [LICENSE](../LICENSE), [LICENSE-MIT](../LICENSE-MIT) and [LICENSE-CC-BY-4.0](../LICENSE-CC-BY-4.0).
