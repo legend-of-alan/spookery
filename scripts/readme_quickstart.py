@@ -125,13 +125,12 @@ def main() -> None:
         else:
             host = spawn(parse_spook_args(run_line))
         game, door = wait_listening(host)
-        pack = str(scratch) if scratch is not None else parse_spook_args(run_line)[2]
         env = os.environ.copy()
         env["SPOOK_GM_KEY"] = "stub"
         env["SPOOK_GM_URL"] = f"http://127.0.0.1:{stub_port}/v1"
         env["SPOOK_GM_MODEL"] = "stub"
         gm = spawn(
-            ["spook", "ai-gm", pack, "--addr", game, "--mcp-http", door],
+            ["spook", "ai-gm", "--addr", game, "--mcp-http", door],
             env=env,
         )
         wait_text(gm.err, "listening", 30, "the stub GM did not sit", gm, host)
@@ -163,9 +162,10 @@ def main() -> None:
             dump("the host exited", code, host, gm, play)
         print("--- play ---")
         print("".join(play.out), end="")
-        verify_args = (
-            ["spook", "verify", pack] if scratch is not None else parse_spook_args(verify_line)
-        )
+        if scratch is not None:
+            verify_args = ["spook", "verify", str(scratch)]
+        else:
+            verify_args = parse_spook_args(verify_line)
         verified = subprocess.run(
             verify_args,
             cwd=ROOT,

@@ -407,23 +407,23 @@ A missing variable is printed on stderr as `<NAME> is unset` and the process exi
 xAI:
 
 ```sh
-SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.x.ai/v1 SPOOK_GM_MODEL=grok-4.20-0309-non-reasoning spook ai-gm /tmp/yard
+SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.x.ai/v1 SPOOK_GM_MODEL=grok-4.20-0309-non-reasoning spook ai-gm
 ```
 
 Claude, through the chat-completions endpoint:
 
 ```sh
-SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.anthropic.com/v1 SPOOK_GM_MODEL=claude-sonnet-4-5 spook ai-gm /tmp/yard
+SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.anthropic.com/v1 SPOOK_GM_MODEL=claude-sonnet-4-5 spook ai-gm
 ```
 
 Set `SPOOK_GM_MODEL` to the Claude model you want. [Ollama](https://ollama.com), running locally:
 
 ```sh
 ollama pull qwen2.5:0.5b
-SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b spook ai-gm /tmp/yard
+SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b spook ai-gm
 ```
 
-On Windows, set the three variables in that terminal before `spook ai-gm`, and pass the pack path you copied (`$env:TEMP\yard`).
+On Windows, set the three variables in that terminal before `spook ai-gm`.
 
 When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
 
@@ -434,7 +434,7 @@ When the provider refuses a call, stderr shows `model call returned <status>: <t
 `spook gm` sits the same GM seat as `spook ai-gm`. Start `spook run` first. Both dial the agent door. `--mcp-http 127.0.0.1:<port>` dials that door instead. `spook run --addr 127.0.0.1:0` lets the operating system choose the ports, then prints the listening line. Pass that door to `--mcp-http`.
 
 ```sh
-spook gm /tmp/yard
+spook gm
 ```
 
 Type `help` for the seat commands. `spook gm --raw` prints each protocol frame as one JSON line.

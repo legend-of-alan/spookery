@@ -41,8 +41,6 @@ enum Command {
     /// Sit the GM seat.
     #[cfg(feature = "client")]
     Gm {
-        /// Pack directory.
-        pack: PathBuf,
         /// Agent door. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
@@ -54,8 +52,6 @@ enum Command {
     #[cfg(feature = "client")]
     #[command(name = "ai-gm")]
     AiGm {
-        /// Pack directory.
-        pack: PathBuf,
         /// Agent door. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
@@ -155,20 +151,13 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             raw,
         )),
         #[cfg(feature = "client")]
-        Command::Gm {
-            pack,
-            mcp_http,
-            raw,
-        } => from_terminal(spookery::terminal::run_gm(
-            &pack,
-            addr,
-            door_addr(mcp_http)?,
-            raw,
-        )),
+        Command::Gm { mcp_http, raw } => {
+            from_terminal(spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw))
+        }
         #[cfg(feature = "client")]
-        Command::AiGm { pack, mcp_http } => {
+        Command::AiGm { mcp_http } => {
             let door = door_addr(mcp_http)?;
-            if spookery::ai::sit(&pack, addr, door).is_err() {
+            if spookery::ai::sit(addr, door).is_err() {
                 std::process::exit(1);
             }
             Ok(())
@@ -338,10 +327,10 @@ mod tests {
     #[test]
     fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
-        assert!(Cli::try_parse_from(["spook", "gm"]).is_err());
-        let gm = Cli::try_parse_from(["spook", "gm", "pack"]).unwrap();
+        assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());
+        let gm = Cli::try_parse_from(["spook", "gm"]).unwrap();
         assert!(matches!(gm.command, Command::Gm { raw: false, .. }));
-        let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw", "pack"]).unwrap();
+        let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw"]).unwrap();
         assert!(matches!(gm_raw.command, Command::Gm { raw: true, .. }));
         assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
@@ -360,17 +349,14 @@ mod tests {
             } if text == "127.0.0.1:9801"
         ));
         for command in ["gm", "ai-gm"] {
-            let open =
-                Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9", "no-such-pack"])
-                    .unwrap();
+            let open = Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9"]).unwrap();
             assert_eq!(
                 dispatch(open).unwrap_err(),
                 "NOT_IN_SPEC",
                 "{command} --mcp-http"
             );
             let door =
-                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801", "pack"])
-                    .unwrap();
+                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801"]).unwrap();
             let text = match door.command {
                 Command::Gm { mcp_http, .. } | Command::AiGm { mcp_http, .. } => mcp_http,
                 _ => panic!("{command}"),
@@ -387,7 +373,7 @@ mod tests {
         }
         let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
         assert!(matches!(raw.command, Command::Play { raw: true, .. }));
-        let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
+        let host = Cli::try_parse_from(["spook", "ai-gm"]).unwrap();
         assert!(matches!(host.command, Command::AiGm { .. }));
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();
         assert!(matches!(

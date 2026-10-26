@@ -243,7 +243,7 @@ mod tests {
                     std::env::set_var(name, val);
                 }
             }
-            let err = crate::ai::sit(std::path::Path::new("."), addr, None).expect_err(missing);
+            let err = crate::ai::sit(addr, None).expect_err(missing);
             assert!(
                 err.message.contains(&format!("{missing} is unset")),
                 "{}",

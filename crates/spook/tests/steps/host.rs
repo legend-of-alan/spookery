@@ -18,29 +18,21 @@ use spookery::ai::{
 };
 use spookery::gm_connection::GmConnection;
 
-use crate::support::{self, pack_arg, temp_pack};
+use crate::support::{self, temp_pack};
 use crate::World;
 
 use super::table;
 
-#[when(expr = "the operator runs ai-gm with no pack")]
-fn the_operator_runs_host_with_no_pack(world: &mut World) {
-    let addr = arm_listener(world);
-    table::run(world, &["ai-gm", "--addr", &addr]);
-}
-
 #[when(expr = "the operator runs ai-gm with an extra argument")]
 fn the_operator_runs_host_with_an_extra_argument(world: &mut World) {
     let addr = arm_listener(world);
-    let pack = pack_arg(table::pack(world));
-    table::run(world, &["ai-gm", &pack, "extra", "--addr", &addr]);
+    table::run(world, &["ai-gm", "extra", "--addr", &addr]);
 }
 
 #[when(expr = "the operator runs ai-gm with nothing listening")]
 fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
-    let pack = pack_arg(table::pack(world));
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(["ai-gm", &pack, "--addr", "127.0.0.1:1"]);
+    command.args(["ai-gm", "--addr", "127.0.0.1:1"]);
     apply_model_env(&mut command, None);
     let output = command
         .output()
@@ -53,9 +45,8 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
 #[when(expr = "the operator runs ai-gm without {string}")]
 fn the_operator_runs_host_without(world: &mut World, name: String) {
     let (addr, listeners) = bind_game_and_agent();
-    let pack = pack_arg(table::pack(world));
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(["ai-gm", &pack, "--addr", &addr]);
+    command.args(["ai-gm", "--addr", &addr]);
     apply_model_env(&mut command, Some(&name));
     let output = command
         .output()
@@ -98,10 +89,9 @@ fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
         .local_addr()
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
         .to_string();
-    let pack = pack_arg(table::pack(world));
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["ai-gm", &pack, "--addr", &addr])
+        .args(["ai-gm", "--addr", &addr])
         .stdin(Stdio::null());
     apply_model_env(&mut command, None);
     let child = command
@@ -142,10 +132,9 @@ fn the_host_is_pointed_at_an_overridden_agent_door(world: &mut World) {
     // `--mcp-http` and dialing the next port misses this listener.
     let addr = "127.0.0.1:1".to_string();
     let http = format!("127.0.0.1:{door}");
-    let pack = pack_arg(table::pack(world));
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["ai-gm", &pack, "--addr", &addr, "--mcp-http", &http])
+        .args(["ai-gm", "--addr", &addr, "--mcp-http", &http])
         .stdin(Stdio::null());
     apply_model_env(&mut command, None);
     let child = command
@@ -240,13 +229,12 @@ fn play_and_host_and_a_stub(world: &mut World) {
     fs::write(&aldric, body).unwrap();
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     let (stub_port, posts) = stub_server();
-    let pack_arg = pack_arg(&pack);
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
     let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
     host_cmd
-        .args(["ai-gm", &pack_arg, "--addr", &addr, "--mcp-http", &door])
+        .args(["ai-gm", "--addr", &addr, "--mcp-http", &door])
         .stdin(Stdio::null());
     apply_model_env(&mut host_cmd, None);
     let mut host = host_cmd
@@ -394,7 +382,7 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     assert_eq!(world_time(&pack), 1080);
     table::live_mut(world).gm.take();
     let model = ScriptedModel::new();
-    let (handle, watch) = start_after_gm(world, &pack, &model);
+    let (handle, watch) = start_after_gm(world, &model);
     table::wait_world_time(&pack, 1085);
     wait_idle(&watch, &model, 1);
     assert_eq!(
@@ -422,12 +410,11 @@ fn with_host(
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
     let model_bg = model.clone();
-    let pack_bg = pack.clone();
     let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        run_gm(&pack_bg, addr, Some(door), &mut model, &watch_bg)
+        run_gm(addr, Some(door), &mut model, &watch_bg)
     });
     wait_listening(&watch);
     body(world, &pack, port, &model, &watch);
@@ -442,7 +429,6 @@ fn stop_host(world: &mut World, handle: thread::JoinHandle<Result<(), spookery::
 
 fn start_after_gm(
     world: &mut World,
-    pack: &Path,
     model: &ScriptedModel,
 ) -> (
     thread::JoinHandle<Result<(), spookery::ai::Error>>,
@@ -452,12 +438,11 @@ fn start_after_gm(
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
     let model_bg = model.clone();
-    let pack_bg = pack.to_path_buf();
     let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        run_gm(&pack_bg, addr, Some(door), &mut model, &watch_bg)
+        run_gm(addr, Some(door), &mut model, &watch_bg)
     });
     wait_listening(&watch);
     (handle, watch)
@@ -561,7 +546,7 @@ fn a_hung_model_call_meets_a_queued_player_line(world: &mut World) {
     let backoff = Duration::from_secs(2);
     let clock = TestClock::new();
     let (stub, events) = hang_server(clock.clone(), total, backoff);
-    let (handle, watch) = drive_when_free(world, &pack, stub, total, backoff, clock);
+    let (handle, watch) = drive_when_free(world, stub, total, backoff, clock);
     let advanced = wait_time(&pack, sit + 5, Duration::from_secs(8));
     let log = events.lock().unwrap().clone();
     let up = watch.listening.load(Ordering::Acquire) && !handle.is_finished();
@@ -685,7 +670,6 @@ fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
     let (stub, posts) = scripted_stub(replies);
     let (handle, _watch) = drive_when_free(
         world,
-        &pack,
         stub,
         Duration::from_secs(5),
         Duration::from_millis(50),
@@ -726,7 +710,6 @@ fn queued_travel(world: &mut World, label: &str) -> (std::path::PathBuf, u64) {
 
 fn drive_when_free<C>(
     world: &World,
-    pack: &Path,
     stub: u16,
     total: Duration,
     backoff: Duration,
@@ -740,7 +723,7 @@ where
 {
     let mut last = String::new();
     for _ in 0..40 {
-        let (handle, watch) = spawn_model(world, pack, stub, total, backoff, clock.clone());
+        let (handle, watch) = spawn_model(world, stub, total, backoff, clock.clone());
         let start = Instant::now();
         while start.elapsed() < Duration::from_millis(500) {
             if watch.listening.load(Ordering::Acquire) {
@@ -794,7 +777,6 @@ fn http_model<C: Clock>(port: u16, total: Duration, backoff: Duration, clock: C)
 
 fn spawn_model<C>(
     world: &World,
-    pack: &Path,
     stub: u16,
     total: Duration,
     backoff: Duration,
@@ -808,13 +790,12 @@ where
 {
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
-    let pack_bg = pack.to_path_buf();
     let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
     // The client owns a runtime. Build and drop it off the cucumber thread.
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);
-        run_gm(&pack_bg, addr, Some(door), &mut model, &watch_bg)
+        run_gm(addr, Some(door), &mut model, &watch_bg)
     });
     (handle, watch)
 }

@@ -3,7 +3,6 @@
 use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
@@ -38,12 +37,7 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub fn run_gm(
-    _pack: &Path,
-    addr: SocketAddr,
-    door: Option<SocketAddr>,
-    raw: bool,
-) -> Result<(), super::Error> {
+pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(), super::Error> {
     let connected = match door {
         Some(door) => GmConnection::connect_door(door),
         None => GmConnection::connect(addr),
