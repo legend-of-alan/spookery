@@ -41,6 +41,9 @@ mod digest;
 #[path = "steps/host.rs"]
 mod host;
 
+#[path = "steps/shutdown.rs"]
+mod shutdown;
+
 #[path = "steps/round_output.rs"]
 mod round_output;
 
