@@ -65,11 +65,11 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          ! cargo tree -e normal -p spookery-cli --locked | grep -E 'spookery-engine|spookery-server'
-          ! cargo tree -e normal -p spookery-agent --locked | grep -E 'spookery-engine|spookery-server|tokio|reqwest|socket2'
-          ! cargo tree -e normal -p spookery-server --locked | grep -E 'spookery-cli|spookery-agent|reqwest'
-          ! cargo tree -e normal -p spook --no-default-features --features client --locked | grep -E 'spookery-engine|spookery-server'
-          ! cargo tree -e normal -p spook --no-default-features --features server --locked | grep -E 'spookery-cli|spookery-agent|reqwest'
+          cargo tree -e normal -p spookery-cli --locked | (! grep -E 'spookery-engine|spookery-server')
+          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|cli)|tokio|reqwest|socket2')
+          cargo tree -e normal -p spookery-server --locked | (! grep -E 'spookery-cli|spookery-agent|reqwest')
+          cargo tree -e normal -p spook --no-default-features --features client --locked | (! grep -E 'spookery-engine|spookery-server')
+          cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'spookery-cli|spookery-agent|reqwest')
           cargo build -p spook --no-default-features --features server --locked
           cargo build -p spook --no-default-features --features client --locked
           cargo build -p spook --locked
