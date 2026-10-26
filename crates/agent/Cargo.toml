@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 publish.workspace = true
-license = "MIT"
+license.workspace = true
 [lib]
 path = "lib.rs"
 [dependencies]
