@@ -56,9 +56,6 @@ mod sample;
 #[path = "steps/showcase.rs"]
 mod showcase;
 
-#[path = "steps/readme.rs"]
-mod readme;
-
 #[path = "feature_paths.rs"]
 mod feature_paths;
 

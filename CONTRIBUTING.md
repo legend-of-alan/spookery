@@ -14,22 +14,23 @@ Feature scenarios live under `crates/engine/tests/features` and `crates/spook/te
 cargo test --workspace --test features_host --test features_world
 ```
 
-The README scenario runs `scripts/readme_quickstart.py`, so `cargo test` needs Python 3.8 or newer on `PATH` as `python` or `python3` (on Windows, `py -3` also works).
+The workspace `rust-version` is 1.89. CI pins 1.89.0 and builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest`. The GitHub Ubuntu image already includes `pkg-config` and `libssl-dev`. A minimal Linux install does not.
 
 ## Issues and PRs
 
 Issue and PR titles start with a letter for the area and end with a size.
 
-- `R:` rounds and rules: the round stages and triggers
+- `R:` rules and rounds: round stages and triggers
 - `W:` world model: places, exits, travel, items, pack rule schema
-- `K:` kernel and core plumbing: journal, host, transport, CI
-- `N:` naming: renames that make a name say what it does
+- `E:` engine plumbing: journal, save, replay, verify
+- `H:` host and seats: server, seat protocol, CLI and agent clients
+- `N:` naming
 - `D:` docs
-- `T:` tests and flaky-test fixes
+- `T:` tests, flaky-test fixes and CI
 
 Sizes: `[S]` about one sitting, `[M]` a focused PR, `[L]` likely split into sub-issues.
 
-Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enhancement`, `bug`, `documentation`). Phases are milestones.
+Every issue gets a priority label (`P0` highest to `P4`, and `P4` is a parked idea) and a type label (`enhancement`, `bug`, `documentation`). Phases are milestones.
 
 ## Prove the log
 

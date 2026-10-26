@@ -459,4 +459,50 @@ mod tests {
         let quick = Cli::try_parse_from(["spook", "verify", "--quick", "pack"]).unwrap();
         assert!(matches!(quick.command, Command::Verify { quick: true, .. }));
     }
+
+    #[test]
+    fn every_spook_line_in_the_readme_parses() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../README.md");
+        let readme = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let mut found = false;
+        let mut fenced = false;
+        for line in readme.lines() {
+            if line.starts_with("```") {
+                fenced = !fenced;
+                continue;
+            }
+            if !fenced {
+                continue;
+            }
+            let Some(args) = spook_argv(line) else {
+                continue;
+            };
+            found = true;
+            Cli::try_parse_from(&args).unwrap_or_else(|err| panic!("{}: {err}", args.join(" ")));
+        }
+        assert!(found, "README.md has no spook command");
+    }
+
+    fn spook_argv(line: &str) -> Option<Vec<String>> {
+        let args: Vec<String> = line
+            .split_whitespace()
+            .skip_while(|word| is_env(word))
+            .map(str::to_string)
+            .collect();
+        if args.first().is_some_and(|word| word == "spook") {
+            Some(args)
+        } else {
+            None
+        }
+    }
+
+    fn is_env(word: &str) -> bool {
+        let Some((name, _)) = word.split_once('=') else {
+            return false;
+        };
+        let mut chars = name.chars();
+        matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
+            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    }
 }

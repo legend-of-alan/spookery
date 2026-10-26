@@ -9,7 +9,6 @@ use cucumber::World as _;
 pub struct World {
     pub pack: Option<PathBuf>,
     pub scratch: String,
-    pub runner: String,
     pub before: Vec<(PathBuf, Vec<u8>)>,
     pub code: Option<i32>,
     pub stdout: String,
