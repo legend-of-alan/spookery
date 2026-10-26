@@ -68,7 +68,7 @@ jobs:
           cargo tree -e normal -p spookery-cli --locked | (! grep -E 'spookery-engine|spookery-server')
           cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|cli)|tokio|reqwest|socket2')
           # spookery-protocol is MIT: every license in its tree must be permissive.
-          cargo tree -e normal -p spookery-protocol --locked --prefix none --no-dedupe --format '{l}' | tr -d '()' | tr ' ' '\n' | (! grep -vxE 'OR|AND|MIT|Apache-2.0|Unlicense|Unicode-3.0|BSD-2-Clause|BSD-3-Clause|ISC|Zlib')
+          cargo tree -e normal -p spookery-protocol --locked --target all --prefix none --no-dedupe --format '{l}' | tr -d '()' | tr ' ' '\n' | (! grep -vxE 'OR|AND|MIT|Apache-2.0|Unlicense|Unicode-3.0|BSD-2-Clause|BSD-3-Clause|ISC|Zlib')
           cargo tree -e normal -p spookery-server --locked | (! grep -E 'spookery-cli|spookery-agent|reqwest')
           cargo tree -e normal -p spook --no-default-features --features client --locked | (! grep -E 'spookery-engine|spookery-server')
           cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'spookery-cli|spookery-agent|reqwest')

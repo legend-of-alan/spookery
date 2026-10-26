@@ -467,6 +467,6 @@ The request is one chat-completions POST. The JSON body carries one user message
 
 ## License
 
-The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. The exception is the `spookery-protocol` crate, which is MIT, so a game client can use the wire format freely. Documentation, schemas, and packs are CC BY 4.0.
+The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. The exception is the `spookery-protocol` crate, which is MIT, so a game client can reuse the wire codec freely. Documentation, schemas, and packs are CC BY 4.0.
 
 The terms are in [LICENSE](LICENSE), [LICENSE-MIT](LICENSE-MIT) and [LICENSE-CC-BY-4.0](LICENSE-CC-BY-4.0).
