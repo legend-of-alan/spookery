@@ -3,7 +3,7 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -71,10 +71,8 @@ fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
     table::seat_actor(world, &pack, &actor);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     world.gm = Some(support::spawn(&[
         "gm",
-        &pack_arg,
         "--addr",
         &addr,
         "--mcp-http",
@@ -140,8 +138,7 @@ fn the_gm_commits(world: &mut World) {
 fn another_gm_joins(world: &mut World) {
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["gm", &pack, "--addr", &addr, "--mcp-http", &door]);
+    let output = support::spook(&["gm", "--addr", &addr, "--mcp-http", &door]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -183,12 +180,10 @@ fn spook_run_listens_with_an_overridden_agent_door(world: &mut World) {
 fn a_human_gm_dials_that_door(world: &mut World) {
     let live = table::live_mut(world);
     let (game, http) = (live.port, live.http_port);
-    let pack_arg = support::pack_arg(table::pack(world));
     let game = format!("127.0.0.1:{game}");
     let http = format!("127.0.0.1:{http}");
     world.gm = Some(support::spawn(&[
         "gm",
-        &pack_arg,
         "--addr",
         &game,
         "--mcp-http",
@@ -199,8 +194,7 @@ fn a_human_gm_dials_that_door(world: &mut World) {
 
 #[when(expr = "the operator runs gm with nothing listening")]
 fn gm_with_nothing_listening(world: &mut World) {
-    let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["gm", &pack, "--addr", "127.0.0.1:1"]);
+    let output = support::spook(&["gm", "--addr", "127.0.0.1:1"]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -315,10 +309,8 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     let mut args = vec![
         "gm".to_string(),
-        pack_arg,
         "--addr".to_string(),
         addr.clone(),
         "--mcp-http".to_string(),
@@ -335,19 +327,8 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
 }
 
 fn sit_play(world: &mut World, addr: &str, as_player: Option<&str>) {
-    let pack_arg = support::pack_arg(table::pack(world));
-    let mut args = vec![
-        "play".to_string(),
-        pack_arg,
-        "--addr".to_string(),
-        addr.to_string(),
-    ];
-    if let Some(id) = as_player {
-        args.push("--as".to_string());
-        args.push(format!("player:{id}"));
-    }
-    let refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let mut play = support::spawn(&refs);
+    let as_arg = format!("player:{}", as_player.unwrap_or("pc_rowan"));
+    let mut play = support::spawn(&["play", "--addr", addr, "--as", &as_arg]);
     wait_proc(&mut play, "You are in");
     if world.play.is_none() {
         world.play = Some(play);
@@ -429,7 +410,5 @@ fn gm_stderr(world: &mut World) -> String {
 }
 
 fn tick_json(world: &mut World) -> serde_json::Value {
-    let text = spookery_kernel::api::journal::read_record_line(table::pack(world), "tick-0001")
-        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
-    serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"))
+    crate::support::read_tick(table::pack(world), "tick-0001")
 }

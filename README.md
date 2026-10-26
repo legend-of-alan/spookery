@@ -61,7 +61,7 @@ spook run /tmp/yard
 ```
 
 ```sh
-spook play /tmp/yard
+spook play
 ```
 
 ```sh
@@ -85,14 +85,14 @@ spook run $env:TEMP\yard
 ```
 
 ```powershell
-spook play $env:TEMP\yard
+spook play
 ```
 
 ```powershell
 spook verify $env:TEMP\yard
 ```
 
-`verify` prints `verified <n> records, state_rev <r>` when the journal matches. `spook replay` and `spook audit` are described in [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
+`verify` prints `verified <n> records, state_rev <r>` when the journal matches. See [CONTRIBUTING.md](CONTRIBUTING.md#prove-the-log).
 
 ## Transcript
 
@@ -360,7 +360,7 @@ From the repository root:
 cargo build --release --locked
 ```
 
-The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`.
+The binary is `target/release/spook`. On Windows it is `target/release/spook.exe`. `spook` enables the `server` and `client` Cargo features by default; pass `--no-default-features --features <server|client>` to build one slice.
 
 Linux needs `pkg-config` and `libssl-dev`, or your distribution's equivalents. The model client uses reqwest with native TLS. macOS needs the Xcode command line tools. Windows needs the MSVC C++ build tools.
 
@@ -380,7 +380,7 @@ CI builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest
 
 `--addr` sets the loopback address. The default is `127.0.0.1:9737`. Passing `127.0.0.1` alone means that same port. Any other host is refused before the pack opens. The agent door is the next port, `127.0.0.1:9738`.
 
-`--as player:<id>` sits that character. A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
+`--as <id>` sits that character. `pc_rowan` and `player:pc_rowan` are the same seat. A second client for a character who is already sitting exits 1 and prints `That character is already taken. [SEAT_TAKEN]`. A fourth player exits 1 and prints `The table is full. [SESSION_FULL]`.
 
 `spook status` prints the host digest and does not write the pack. `spook tick` and `spook migrate` write `state/`. Stop `spook run` before those two, because the server keeps the save in memory.
 
@@ -407,23 +407,23 @@ A missing variable is printed on stderr as `<NAME> is unset` and the process exi
 xAI:
 
 ```sh
-SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.x.ai/v1 SPOOK_GM_MODEL=grok-4.20-0309-non-reasoning spook ai-gm /tmp/yard
+SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.x.ai/v1 SPOOK_GM_MODEL=grok-4.20-0309-non-reasoning spook ai-gm
 ```
 
 Claude, through the chat-completions endpoint:
 
 ```sh
-SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.anthropic.com/v1 SPOOK_GM_MODEL=claude-sonnet-4-5 spook ai-gm /tmp/yard
+SPOOK_GM_KEY=your-key SPOOK_GM_URL=https://api.anthropic.com/v1 SPOOK_GM_MODEL=claude-sonnet-4-5 spook ai-gm
 ```
 
 Set `SPOOK_GM_MODEL` to the Claude model you want. [Ollama](https://ollama.com), running locally:
 
 ```sh
 ollama pull qwen2.5:0.5b
-SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b spook ai-gm /tmp/yard
+SPOOK_GM_KEY=ollama SPOOK_GM_URL=http://127.0.0.1:11434/v1 SPOOK_GM_MODEL=qwen2.5:0.5b spook ai-gm
 ```
 
-On Windows, set the three variables in that terminal before `spook ai-gm`, and pass the pack path you copied (`$env:TEMP\yard`).
+On Windows, set the three variables in that terminal before `spook ai-gm`.
 
 When the provider refuses a call, stderr shows `model call returned <status>: <text>`. The text is the provider's error body on one line, cut to 200 characters, with the key replaced by `[key]`.
 
@@ -434,7 +434,7 @@ When the provider refuses a call, stderr shows `model call returned <status>: <t
 `spook gm` sits the same GM seat as `spook ai-gm`. Start `spook run` first. Both dial the agent door. `--mcp-http 127.0.0.1:<port>` dials that door instead. `spook run --addr 127.0.0.1:0` lets the operating system choose the ports, then prints the listening line. Pass that door to `--mcp-http`.
 
 ```sh
-spook gm /tmp/yard
+spook gm
 ```
 
 Type `help` for the seat commands. `spook gm --raw` prints each protocol frame as one JSON line.
@@ -455,17 +455,18 @@ spook check /tmp/yard
 
 `spook ai-gm` sends table text to the host named by `SPOOK_GM_URL`. There is no default host. The API key is the bearer token from `SPOOK_GM_KEY` in the environment. The pack does not hold the key.
 
-The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt includes the Markdown body of the current place and of each cast member in the views. Each of those bodies is cut at 800 characters, and a body that repeats a hidden fact is left out. It does not include `save.yaml` or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
+The request is one chat-completions POST. The JSON body carries one user message, the model name, `"stream": false`, and one function tool named `act`. The message content is a bounded JSON prompt: the last 16 says this process has handled, the new player lines, the move menu, the queued intents, and stripped views. A follow-up after a roll adds the roll faces. A player view that is only a room census drops known facts, messages, and unknown mentions. An NPC view keeps each fact's id and text. Every fact body is dropped. The prompt includes the Markdown body of the current place and of each cast member in the views. Each of those bodies is cut at 800 characters. It does not include `save.yaml` or the tape file. Those stay on disk under the pack. Starting `spook ai-gm` again remembers nothing from the previous process.
 
 ## Docs
 
 - [docs/engine-guarantees.md](docs/engine-guarantees.md) states what the engine promises. The feature files test them. Where the doc and the feature files disagree, the feature files win.
 - [docs/README.md](docs/README.md) has the principles, glossary and repo layout.
 - [LICENSE](LICENSE)
+- [LICENSE-MIT](LICENSE-MIT)
 - [CONTRIBUTING.md](CONTRIBUTING.md) has issue and PR conventions and maintainer notes.
 
 ## License
 
-The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. Documentation, schemas, and packs are CC BY 4.0.
+The engine is open source (AGPL-3.0). Runtime code, the tests of that code, and repository tooling and scripts are AGPL-3.0-or-later. The exception is the `spookery-protocol` crate, which is MIT, so a game client can reuse the wire codec freely. Documentation, schemas, and packs are CC BY 4.0.
 
-The terms are in [LICENSE](LICENSE) and [LICENSE-CC-BY-4.0](LICENSE-CC-BY-4.0).
+The terms are in [LICENSE](LICENSE), [LICENSE-MIT](LICENSE-MIT) and [LICENSE-CC-BY-4.0](LICENSE-CC-BY-4.0).

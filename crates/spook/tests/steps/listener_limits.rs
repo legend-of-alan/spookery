@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use spookery::host::{OUTBOUND_BYTES, OUTBOUND_FRAMES, REQUESTED_SEND_BUFFER};
 use spookery::protocol::{write_player, PlayerMessage};
@@ -568,7 +568,10 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 }
 
 fn try_gm(port: u16) -> Result<(), String> {
-    match spookery::gm_connection::GmConnection::connect_door(&format!("127.0.0.1:{port}")) {
+    match spookery::gm_connection::GmConnection::connect_door(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        port,
+    ))) {
         Ok(gm) => {
             drop(gm);
             Ok(())

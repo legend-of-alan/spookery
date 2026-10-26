@@ -1,12 +1,10 @@
 //! The `spook` command for one loopback table.
 
 use std::net::SocketAddr;
+#[cfg(feature = "server")]
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use spookery_kernel::api::Reason;
-
-mod starter;
 
 /// One loopback table.
 #[derive(Parser)]
@@ -23,6 +21,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Listen for the player seat and the GM seat.
+    #[cfg(feature = "server")]
     Run {
         /// Pack directory.
         pack: PathBuf,
@@ -31,20 +30,18 @@ enum Command {
         mcp_http: Option<String>,
     },
     /// Sit the player seat.
+    #[cfg(feature = "client")]
     Play {
-        /// Pack directory.
-        pack: PathBuf,
-        /// Actor to sit, as `player:<id>`.
-        #[arg(long = "as", value_name = "player:<id>")]
+        /// Actor to sit. A pack id, or `player:<id>`.
+        #[arg(long = "as", value_name = "ID")]
         as_player: Option<String>,
         /// Print each protocol frame as one JSON line.
         #[arg(long)]
         raw: bool,
     },
     /// Sit the GM seat.
+    #[cfg(feature = "client")]
     Gm {
-        /// Pack directory.
-        pack: PathBuf,
         /// Agent door. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
@@ -53,38 +50,33 @@ enum Command {
         raw: bool,
     },
     /// Sit the GM seat and call the model.
+    #[cfg(feature = "client")]
     #[command(name = "ai-gm")]
     AiGm {
-        /// Pack directory.
-        pack: PathBuf,
         /// Agent door. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
     },
     /// Advance the pack one tick.
+    #[cfg(feature = "server")]
     Tick {
         /// Pack directory.
         pack: PathBuf,
     },
     /// Print the host digest.
+    #[cfg(feature = "server")]
     Status {
         /// Pack directory.
         pack: PathBuf,
     },
     /// Store the current canon hash in the save.
+    #[cfg(feature = "server")]
     Migrate {
         /// Pack directory.
         pack: PathBuf,
     },
-    /// Replay the journal and print the final state_rev.
-    Replay {
-        /// Pack directory.
-        pack: PathBuf,
-        /// Directory whose `state/save.yaml` is the replay base.
-        #[arg(long)]
-        from: Option<PathBuf>,
-    },
     /// Replay the journal and byte-compare `save.yaml`.
+    #[cfg(feature = "server")]
     Verify {
         /// Pack directory.
         pack: PathBuf,
@@ -95,15 +87,8 @@ enum Command {
         #[arg(long)]
         quick: bool,
     },
-    /// Replay the journal and report a hidden fact sent to a player.
-    Audit {
-        /// Fail when speech repeats a hidden fact.
-        #[arg(long)]
-        strict: bool,
-        /// Pack directory.
-        pack: PathBuf,
-    },
     /// Report pack problems and write nothing.
+    #[cfg(feature = "server")]
     Check {
         /// Print problems as one JSON array on stdout.
         #[arg(long)]
@@ -114,12 +99,8 @@ enum Command {
         /// Pack directory.
         pack: PathBuf,
     },
-    /// Print the pack's exit graph.
-    Map {
-        /// Pack directory.
-        pack: PathBuf,
-    },
     /// Write a minimal pack and print the next commands.
+    #[cfg(feature = "server")]
     New {
         /// Directory to create. An existing non-empty directory is refused.
         #[arg(value_name = "DIR")]
@@ -130,136 +111,101 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     if let Err(exit) = dispatch(cli) {
-        match exit {
-            spookery::Error::Reason(code) => eprintln!("{code}"),
-            spookery::Error::Io(err) => eprintln!("{err}"),
-        }
+        eprintln!("{exit}");
         std::process::exit(1);
     }
 }
 
-fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
+fn dispatch(cli: Cli) -> Result<(), String> {
     // `--addr` is global: every command refuses an open host before any pack opens.
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
+        #[cfg(feature = "server")]
         Command::Run { pack, mcp_http } => {
-            let http = match mcp_http {
-                Some(text) => Some(parse_loopback(&text)?),
-                None => None,
-            };
-            spookery::host::listen(&pack, addr, http)
+            let door = door_addr(mcp_http)?;
+            let world = spookery_engine::World::resume(&pack).map_err(|e| e.to_string())?;
+            let mut config = spookery_server::Config::new(addr);
+            config.door = door;
+            if let Some(ms) = std::env::var("SPOOK_HELLO_TIMEOUT_MS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .filter(|&ms| ms > 0)
+            {
+                config.hello_timeout = std::time::Duration::from_millis(ms);
+            }
+            config.out = Box::new(std::io::stdout());
+            config.err = Box::new(std::io::stderr());
+            let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
+            for line in std::io::stdin().lines() {
+                match line.as_deref() {
+                    Ok("stop") | Err(_) => break,
+                    Ok(_) => eprintln!("NOT_IN_SPEC"),
+                }
+            }
+            handle.stop();
+            handle.join().map_err(|e| e.to_string())
         }
-        Command::Play {
-            pack,
-            as_player,
-            raw,
-        } => from_terminal(spookery::terminal::run_player_terminal(
-            &pack,
+        #[cfg(feature = "client")]
+        Command::Play { as_player, raw } => from_terminal(spookery::terminal::run_player(
             as_player.as_deref(),
-            &addr.to_string(),
+            addr,
             raw,
         )),
-        Command::Gm {
-            pack,
-            mcp_http,
-            raw,
-        } => {
-            let door = door_addr(mcp_http)?;
-            from_terminal(spookery::terminal::run_gm_terminal(
-                &pack,
-                &addr.to_string(),
-                door.as_deref(),
-                raw,
-            ))
+        #[cfg(feature = "client")]
+        Command::Gm { mcp_http, raw } => {
+            from_terminal(spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw))
         }
-        Command::AiGm { pack, mcp_http } => {
+        #[cfg(feature = "client")]
+        Command::AiGm { mcp_http } => {
             let door = door_addr(mcp_http)?;
-            if spookery::ai::sit(&pack, &addr.to_string(), door.as_deref()).is_err() {
+            if spookery::ai::sit(addr, door).is_err() {
                 std::process::exit(1);
             }
             Ok(())
         }
-        Command::Map { pack } => {
-            let canon = spookery_kernel::api::canon::load_canon(&pack)
-                .map_err(|diags| spookery::Error::Reason(spookery_kernel::api::reason_of(diags)))?;
-            print!("{}", spookery_kernel::api::map::graph(&canon));
-            Ok(())
-        }
+        #[cfg(feature = "server")]
         Command::Tick { pack } => {
             if let Some(warning) =
-                spookery_round::play_pack_once(&pack).map_err(spookery::Error::Reason)?
+                spookery_engine::play_pack_once(&pack).map_err(|e| e.to_string())?
             {
                 eprintln!("{warning}");
             }
             Ok(())
         }
+        #[cfg(feature = "server")]
         Command::Status { pack } => {
-            let world = spookery_round::resume(&pack).map_err(spookery::Error::Reason)?;
-            let text =
-                spookery_kernel::api::host_summary(&world).map_err(spookery::Error::Reason)?;
+            let world = spookery_engine::World::resume(&pack).map_err(|e| e.to_string())?;
+            let text = world.host_summary().map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
         }
+        #[cfg(feature = "server")]
         Command::Migrate { pack } => {
-            spookery_round::migrate_pack(&pack).map_err(spookery::Error::Reason)
+            spookery_engine::migrate_pack(&pack).map_err(|e| e.to_string())
         }
-        Command::Replay { pack, from } => {
-            match spookery_round::from_journal(&pack, from.as_deref(), None) {
-                Ok(report) => {
-                    println!("state_rev {}, {} records", report.state_rev, report.applied);
-                    Ok(())
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    std::process::exit(1);
-                }
-            }
-        }
+        #[cfg(feature = "server")]
         Command::Verify { pack, from, quick } => {
             if quick && from.is_some() {
-                eprintln!("verify --quick does not take --from");
-                std::process::exit(1);
+                return Err("verify --quick does not take --from".into());
             }
-            let checked = if quick {
-                spookery_round::verify_quick(&pack)
-            } else if from.is_none() {
-                spookery_round::verify_parallel(&pack)
+            let report = if quick {
+                spookery_engine::verify_quick(&pack)
             } else {
-                spookery_round::verify_pack(&pack, from.as_deref())
-            };
-            match checked {
-                Ok(report) => {
-                    println!(
-                        "verified {} records, state_rev {}",
-                        report.applied, report.state_rev
-                    );
-                    Ok(())
-                }
-                Err(err) => {
-                    eprintln!("{err}");
-                    std::process::exit(1);
-                }
+                spookery_engine::verify_pack(&pack, from.as_deref())
             }
+            .map_err(|e| e.to_string())?;
+            println!(
+                "verified {} records, state_rev {}",
+                report.applied, report.state_rev
+            );
+            Ok(())
         }
-        Command::Audit { pack, strict } => match spookery::audit::audit_pack(&pack, strict) {
-            Ok(report) => {
-                print!("{}", report.text);
-                if report.failed {
-                    std::process::exit(1);
-                }
-                Ok(())
-            }
-            Err(err) => {
-                eprintln!("{err}");
-                std::process::exit(1);
-            }
-        },
+        #[cfg(feature = "server")]
         Command::Check { pack, json, rules } => {
-            let mut found = spookery_kernel::api::check_pack(&pack);
+            let mut found = spookery_engine::check_pack(&pack);
             if rules && found.is_empty() {
-                let canon = spookery_kernel::api::canon::load_canon(&pack).map_err(|diags| {
-                    spookery::Error::Reason(spookery_kernel::api::reason_of(diags))
-                })?;
+                let canon = spookery_engine::canon::load_canon(&pack)
+                    .map_err(|diags| spookery_engine::reason_of(diags).to_string())?;
                 for id in canon.rules.ids_in_order() {
                     println!("{id}");
                 }
@@ -272,8 +218,10 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                         .then(left.line.cmp(&right.line))
                         .then(left.path.cmp(&right.path))
                 });
-                let text = serde_json::to_string(&found).expect("diagnostic json");
-                println!("{text}");
+                println!(
+                    "{}",
+                    serde_json::to_string(&found).expect("diagnostic json")
+                );
             } else if found.is_empty() {
                 println!("no problems");
             } else {
@@ -281,59 +229,46 @@ fn dispatch(cli: Cli) -> Result<(), spookery::Error> {
                     eprintln!("{}", item.report_line());
                 }
             }
-            let errors = found.iter().any(|item| item.code != "WARNING");
-            if !errors {
-                Ok(())
-            } else {
+            if found.iter().any(spookery_engine::Diagnostic::is_error) {
                 std::process::exit(1);
             }
+            Ok(())
         }
-        Command::New { dir } => match starter::write_starter(&dir) {
-            Ok(next) => {
-                print!("{next}");
-                Ok(())
-            }
-            Err(err) => {
-                eprintln!("{err}");
-                std::process::exit(1);
-            }
-        },
+        #[cfg(feature = "server")]
+        Command::New { dir } => {
+            let next = spookery::starter::write_starter(&dir).map_err(|e| e.to_string())?;
+            print!("{next}");
+            Ok(())
+        }
     }
 }
 
-fn from_terminal(
-    result: Result<(), spookery::terminal::TerminalError>,
-) -> Result<(), spookery::Error> {
+#[cfg(feature = "client")]
+fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), String> {
     result.map_err(|err| match err {
-        spookery::terminal::TerminalError::Reason(code) => spookery::Error::Reason(code),
-        spookery::terminal::TerminalError::Io(err) => spookery::Error::Io(err),
+        spookery::terminal::Error::Reason(code) => code.to_string(),
+        spookery::terminal::Error::Io(err) => err.to_string(),
     })
 }
 
-fn parse_loopback(addr: &str) -> Result<SocketAddr, spookery::Error> {
+fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
     if addr == "127.0.0.1" {
         return Ok(SocketAddr::from(([127, 0, 0, 1], 9737)));
     }
-    let Some(port) = addr.strip_prefix("127.0.0.1:") else {
-        return Err(spookery::Error::Reason(Reason::NotInSpec));
-    };
-    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(spookery::Error::Reason(Reason::NotInSpec));
-    }
-    let port: u16 = port
-        .parse()
-        .map_err(|_| spookery::Error::Reason(Reason::NotInSpec))?;
+    let port = addr
+        .strip_prefix("127.0.0.1:")
+        .filter(|p| !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit()))
+        .ok_or_else(|| "NOT_IN_SPEC".to_string())?
+        .parse::<u16>()
+        .map_err(|_| "NOT_IN_SPEC".to_string())?;
     Ok(SocketAddr::from(([127, 0, 0, 1], port)))
 }
 
-fn door_addr(mcp_http: Option<String>) -> Result<Option<String>, spookery::Error> {
-    match mcp_http {
-        Some(text) => Ok(Some(parse_loopback(&text)?.to_string())),
-        None => Ok(None),
-    }
+fn door_addr(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
+    mcp_http.as_deref().map(parse_loopback).transpose()
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "server", feature = "client"))]
 mod tests {
     use std::path::Path;
 
@@ -343,18 +278,12 @@ mod tests {
     fn the_default_address_is_loopback_9737() {
         let cli = Cli::try_parse_from(["spook", "tick", "pack"]).unwrap();
         assert_eq!(cli.addr, "127.0.0.1:9737");
-        assert!(matches!(
-            parse_loopback("127.0.0.1"),
-            Ok(addr) if addr == SocketAddr::from(([127, 0, 0, 1], 9737))
-        ));
-        assert!(matches!(
-            parse_loopback(&cli.addr),
-            Ok(addr) if addr.port() == 9737
-        ));
-        assert!(matches!(
-            parse_loopback("127.0.0.1:0"),
-            Ok(addr) if addr.port() == 0
-        ));
+        assert_eq!(
+            parse_loopback("127.0.0.1").unwrap(),
+            SocketAddr::from(([127, 0, 0, 1], 9737))
+        );
+        assert_eq!(parse_loopback(&cli.addr).unwrap().port(), 9737);
+        assert_eq!(parse_loopback("127.0.0.1:0").unwrap().port(), 0);
     }
 
     #[test]
@@ -379,17 +308,17 @@ mod tests {
     #[test]
     fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
-            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "replay", "verify",
-            "audit", "new",
+            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "verify", "new",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
-                let cli = Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
+                let cli = Cli::try_parse_from(["spook", command, "--addr", addr])
+                    .or_else(|_| {
+                        Cli::try_parse_from(["spook", command, "--addr", addr, "no-such-pack"])
+                    })
                     .unwrap();
-                assert!(
-                    matches!(
-                        dispatch(cli),
-                        Err(spookery::Error::Reason(Reason::NotInSpec))
-                    ),
+                assert_eq!(
+                    dispatch(cli).unwrap_err(),
+                    "NOT_IN_SPEC",
                     "{command} --addr {addr}"
                 );
             }
@@ -399,10 +328,10 @@ mod tests {
     #[test]
     fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
-        assert!(Cli::try_parse_from(["spook", "gm"]).is_err());
-        let gm = Cli::try_parse_from(["spook", "gm", "pack"]).unwrap();
+        assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());
+        let gm = Cli::try_parse_from(["spook", "gm"]).unwrap();
         assert!(matches!(gm.command, Command::Gm { raw: false, .. }));
-        let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw", "pack"]).unwrap();
+        let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw"]).unwrap();
         assert!(matches!(gm_raw.command, Command::Gm { raw: true, .. }));
         assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
@@ -410,10 +339,7 @@ mod tests {
         assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
         let http = Cli::try_parse_from(["spook", "run", "--mcp-http", "0.0.0.0:9", "no-such-pack"])
             .unwrap();
-        assert!(matches!(
-            dispatch(http),
-            Err(spookery::Error::Reason(Reason::NotInSpec))
-        ));
+        assert_eq!(dispatch(http).unwrap_err(), "NOT_IN_SPEC");
         let http_loopback =
             Cli::try_parse_from(["spook", "run", "--mcp-http", "127.0.0.1:9801", "pack"]).unwrap();
         assert!(matches!(
@@ -424,47 +350,32 @@ mod tests {
             } if text == "127.0.0.1:9801"
         ));
         for command in ["gm", "ai-gm"] {
-            let open =
-                Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9", "no-such-pack"])
-                    .unwrap();
-            assert!(
-                matches!(
-                    dispatch(open),
-                    Err(spookery::Error::Reason(Reason::NotInSpec))
-                ),
+            let open = Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9"]).unwrap();
+            assert_eq!(
+                dispatch(open).unwrap_err(),
+                "NOT_IN_SPEC",
                 "{command} --mcp-http"
             );
             let door =
-                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801", "pack"])
-                    .unwrap();
+                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801"]).unwrap();
             let text = match door.command {
                 Command::Gm { mcp_http, .. } | Command::AiGm { mcp_http, .. } => mcp_http,
                 _ => panic!("{command}"),
             };
             assert_eq!(text.as_deref(), Some("127.0.0.1:9801"));
         }
-        let play = Cli::try_parse_from(["spook", "play", "pack", "--as", "player:rowan"]).unwrap();
+        let play = Cli::try_parse_from(["spook", "play", "--as", "pc_rowan"]).unwrap();
         match play.command {
-            Command::Play {
-                as_player,
-                pack,
-                raw,
-            } => {
-                assert_eq!(as_player.as_deref(), Some("player:rowan"));
-                assert_eq!(pack, Path::new("pack"));
+            Command::Play { as_player, raw } => {
+                assert_eq!(as_player.as_deref(), Some("pc_rowan"));
                 assert!(!raw);
             }
             _ => panic!("play"),
         }
-        let raw = Cli::try_parse_from(["spook", "play", "--raw", "pack"]).unwrap();
+        let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
         assert!(matches!(raw.command, Command::Play { raw: true, .. }));
-        let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
+        let host = Cli::try_parse_from(["spook", "ai-gm"]).unwrap();
         assert!(matches!(host.command, Command::AiGm { .. }));
-        let replay = Cli::try_parse_from(["spook", "replay", "pack", "--from", "snap"]).unwrap();
-        assert!(matches!(
-            replay.command,
-            Command::Replay { from: Some(path), .. } if path == Path::new("snap")
-        ));
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();
         assert!(matches!(
             verify.command,
@@ -476,7 +387,5 @@ mod tests {
         ));
         let quick = Cli::try_parse_from(["spook", "verify", "--quick", "pack"]).unwrap();
         assert!(matches!(quick.command, Command::Verify { quick: true, .. }));
-        let audit = Cli::try_parse_from(["spook", "audit", "--strict", "pack"]).unwrap();
-        assert!(matches!(audit.command, Command::Audit { strict: true, .. }));
     }
 }

@@ -4,7 +4,7 @@ Feature: The showcase pack can be finished
     Given sample-d20 and a recorded line script
     When the script is played with the stub GM
     Then the ending flag is set within the session
-    And spook verify and spook audit pass on the save
+    And spook verify passes on the save
 
   Scenario: Every choice has a reachable ending
     Then each of the 2-3 branch scripts reaches an ending

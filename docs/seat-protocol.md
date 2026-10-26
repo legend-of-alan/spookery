@@ -44,7 +44,7 @@ Dial the game address. Send one line, then read one JSON object per line. Lines 
 
 ### Hello
 
-The hello is the actor id with a `player:` prefix. It is not JSON. `spook play --as player:pc_rowan` sends this line. The docks pack has three live PCs: `pc_rowan`, `pc_harbormouse`, and `pc_wren`.
+The hello is the actor id with a `player:` prefix. It is not JSON. `spook play --as player:pc_rowan` sends this line. The docks pack has three live PCs: `pc_rowan`, `pc_harbormouse`, and `pc_wren`. An empty line is not a hello. The table refuses it with `CHOOSE_PC`. `missing` is a JSON array of the free bare PC ids. When none are free, `missing` is `[]`. `player:` alone is a bad id and is `SCHEMA`, not an empty hello.
 
 <!-- example: player-hello -->
 ```text
@@ -57,7 +57,14 @@ A legal hello sits that PC. Speech already on the tape for that player arrives f
 ```json
 {
   "kind": "resume",
-  "text": "clock assassination_debt 2 6 paused\n"
+  "clocks": [
+    {
+      "id": "assassination_debt",
+      "value": 2,
+      "max": 6,
+      "paused": true
+    }
+  ]
 }
 ```
 
@@ -132,7 +139,7 @@ A legal hello sits that PC. Speech already on the tape for that player arrives f
 }
 ```
 
-`resume.text` is the player digest, already text. `perceive` is what that viewer can see. `viewer` is `player:<id>`. `place_name` and `actor_names` are the pack's display names. `prose` is the place body with hidden fact text removed. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
+`resume` carries the notes addressed to that viewer (`messages`) and their own clocks (`clocks`). `perceive` is what that viewer can see. `viewer` is `player:<id>`. `place_name` and `actor_names` are the pack's display names. `prose` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
 
 Sitting keeps presence in memory and does not bump `state_rev`. The cap is three player seats, in the engine, not in the pack.
 
@@ -168,6 +175,20 @@ An id that is not a live PC:
 }
 ```
 
+An empty line, after Rowan is sat. `missing` is the free PCs:
+
+<!-- example: player-choose-pc -->
+```json
+{
+  "kind": "refused",
+  "code": "CHOOSE_PC",
+  "missing": [
+    "pc_harbormouse",
+    "pc_wren"
+  ]
+}
+```
+
 The game port is not the GM seat. The line `gm` is refused and nothing is written:
 
 <!-- example: player-gm-on-game-port -->
@@ -188,7 +209,7 @@ A hello or a later line over 8 KiB, not counting the newline, closes the socket:
 }
 ```
 
-A hello that is `SCHEMA` or `LINE_TOO_LONG` closes. Invalid UTF-8 is `SCHEMA`, not a replacement character. A hello that does not finish within 10 seconds closes, and nothing is committed. A `SCHEMA` refusal on a line after the hello leaves the socket up.
+A hello that is `SCHEMA`, `CHOOSE_PC`, or `LINE_TOO_LONG` closes. Invalid UTF-8 is `SCHEMA`, not a replacement character. A hello that does not finish within 10 seconds closes, and nothing is committed. A `SCHEMA` refusal on a line after the hello leaves the socket up.
 
 ### Lines the player sends
 
@@ -413,7 +434,7 @@ A call is `tools/call`. The body below is the JSON-RPC request. The result examp
 
 #### session_status
 
-No key is required. `since` is the only other accepted key. It is a tape sequence number. The reply then includes `events`, the say objects after that sequence, inside the tape window. The window defaults to 64 lines and stops at 256. A generic client that ignores `spook/event` uses this as the pull path.
+No key is required. `since` is the only other accepted key. It is a tape sequence number. The reply then includes `events`, the say objects after that sequence, inside the tape window. The window defaults to 64 lines and stops at 256. A generic client that ignores `spook/event` uses this as the pull path. The pack summary is delivered as that `pack` event when the GM sits, before the first `session_status` result. It is not a field of this object.
 
 <!-- example: session-status-request -->
 ```json
@@ -519,7 +540,7 @@ After the two says above, `since` 0 returns them:
 
 #### perceive
 
-`as` is required. It is `player:<id>` or `npc:<id>`. A missing `as`, or `as` set to `gm`, is `UNSCOPED_PERCEIVE`. `focus` may be `place` or `actor`. `budget_tokens` may be a non-negative integer. The default budget is 800.
+`as` is required. It is a bare actor id. It is not `player:<id>` or `npc:<id>`. A missing `as`, or `as` set to `gm`, is `UNSCOPED_PERCEIVE`. `focus` may be `place` or `actor`. `budget_tokens` may be a non-negative integer. The default budget is 800.
 
 The result is the same object as the player `perceive` line above.
 
@@ -532,7 +553,7 @@ The result is the same object as the player `perceive` line above.
   "params": {
     "name": "perceive",
     "arguments": {
-      "as": "player:pc_rowan"
+      "as": "pc_rowan"
     }
   }
 }
@@ -562,7 +583,7 @@ An empty argument object:
 
 #### intent
 
-`actor_id`, `actor_kind`, `source`, and `move` are required. `actor_kind` is `player` or `npc`. `source` is `player`. Any other source is `SCHEMA`. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is an object: empty, or one of `place`, `actor`, or `clock`. `args` may carry `to`, a list of actor ids. `tick_index` and `rationale_code` may be sent.
+`actor_id` and `move` are required. `actor_id` is a bare actor id. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is a string. `args` may carry `to`, a list of actor ids. `tick_index` and `rationale_code` may be sent.
 
 The call queues the move. It does not emit `spook/event` and it does not write a player line. The result is the queue id.
 
@@ -576,8 +597,6 @@ The call queues the move. It does not emit `spook/event` and it does not write a
     "name": "intent",
     "arguments": {
       "actor_id": "pc_rowan",
-      "actor_kind": "player",
-      "source": "player",
       "move": "wait",
       "id": "gm-wait"
     }
@@ -755,6 +774,96 @@ An unknown tool:
 
 The seat pushes `spook/event` notifications. A generic client may ignore them and poll `session_status` with `since` instead. The GM seat is not rate-limited.
 
+On seat open, the pack menu, cast kinds, and prose. The pack summary is this event, sent when the GM sits, before the first `session_status` result.
+
+<!-- example: pack-event -->
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "spook/event",
+  "params": {
+    "kind": "pack",
+    "menu": [
+      {
+        "name": "leave_door_note",
+        "audience": "habit",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "restock_lamp_oil",
+        "audience": "habit",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "wait",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "travel",
+        "audience": "verb",
+        "token": "exit",
+        "on": "self"
+      },
+      {
+        "name": "grit",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "take",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "drop",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "wield",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "unwield",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      }
+    ],
+    "kinds": {
+      "aldric": "npc",
+      "bram": "npc",
+      "mira": "npc",
+      "pc_harbormouse": "pc_template",
+      "pc_rowan": "pc_template",
+      "pc_wren": "pc_template"
+    },
+    "places": {
+      "docks_shop": "The shop faces the water. Tins sit in a row.\n",
+      "docks_street": "The street runs between the shop and the rooms.\n",
+      "mira_rooms": "A lamp burns past the shop's back stair.\n"
+    },
+    "cast": {
+      "aldric": "Aldric sweeps the shop and does not keep the books.\n",
+      "bram": "Bram walks the night watch between the street and the shop.\n",
+      "mira": "Mira keeps the shop neat and the tin out of sight.\n",
+      "pc_harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
+      "pc_rowan": "Rowan keeps the shop and walks the street.\n",
+      "pc_wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
+    }
+  }
+}
+```
+
 A player say:
 
 <!-- example: say-event -->
@@ -838,7 +947,7 @@ A roll, after `commit_round`. The same faces are on the tool result.
 
 ## Errors
 
-A player refusal is `{"kind":"refused","code":"..."}`. `missing` is present only when the refusal names a thing, as in the locked-exit example. A GM tool refusal is `{"code":"..."}` and the seat stays up. The GM object has no `missing`.
+A player refusal is `{"kind":"refused","code":"..."}`. `missing` is present only when the refusal names a thing, as in the locked-exit example. On `CHOOSE_PC`, `missing` is a JSON array of the free bare PC ids. A GM tool refusal is `{"code":"..."}` and the seat stays up. The GM object has no `missing`.
 
 A hello refusal is one line, then the write side closes. `LINE_TOO_LONG` closes on a hello and on a later line. `SCHEMA` closes on a hello and leaves a seated player up. Invalid UTF-8 is `SCHEMA`.
 
@@ -848,10 +957,11 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 |---|---|
 | `SESSION_FULL` | Stop. Three players are sat, or the GM seat is held. Connect again only after that seat is free. Do not retry the same hello in a loop. |
 | `SEAT_TAKEN` | That PC is held. Connect again as a different live PC. |
-| `SCHEMA` | The line or the arguments are the wrong shape. On a seated player, send a corrected line. On hello, connect again with `player:<id>` of a live PC. |
+| `CHOOSE_PC` | The hello was empty. Pick one id from the JSON list in `missing` and connect again as `player:<id>`. An empty list means no PC is free. |
+| `SCHEMA` | The line or the arguments are the wrong shape. `player:` with an empty id is `SCHEMA`. On a seated player, send a corrected line. On hello, connect again with `player:<id>` of a live PC. |
 | `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, `commit_round` set `include_tick` false while a move is queued, or the call is on a session that already closed. Nothing was written for that call. The queue is still there after the false commit. |
 | `LINE_TOO_LONG` | The line is over 8 KiB, not counting the newline. The socket is closed. Connect again with a shorter line. |
-| `UNSCOPED_PERCEIVE` | Call `perceive` again with `as` set to `player:<id>` or `npc:<id>`. |
+| `UNSCOPED_PERCEIVE` | Call `perceive` again with `as` set to a bare actor id. |
 | `NO_EXIT` | The move was not queued. On the player line, `missing` is the locked text when the pack set one. |
 | `CANT_AFFORD` | The move was not queued. On the player line, `missing` is the meter or item id. |
 | `MISSING_ITEM` | The actor does not have the item. The move was not queued. |

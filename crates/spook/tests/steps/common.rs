@@ -6,9 +6,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Now;
-use spookery_kernel::api::store::codec::{emit_save, load_save};
+use spookery_engine::model::Now;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::table;
 use crate::support::{self, temp_pack};
@@ -16,13 +15,7 @@ use crate::World;
 
 pub(crate) const EVENING: u64 = 21 * 60 + 30;
 
-pub(crate) fn edit_save(pack: &Path, edit: impl FnOnce(&mut Now)) {
-    let path = pack.join("state/save.yaml");
-    let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    edit(&mut now);
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
-    fs::write(&path, emit_save(&now).unwrap()).unwrap();
-}
+pub(crate) use crate::support::edit_save;
 
 pub(crate) fn give_key(now: &mut Now) {
     now.actors
@@ -107,17 +100,6 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
-        "hidden fact in a place body" => {
-            let path = pack.join("world/places/docks_shop.md");
-            let mut text = fs::read_to_string(&path).unwrap();
-            text.push_str("The lamp-oil ledger is short.\n");
-            fs::write(path, text).unwrap();
-        }
-        "hidden fact in a message" => replace_file(
-            &pack.join("cast/mira.md"),
-            "text: Back at dusk. Oil on the shelf.\n",
-            "text: The lamp-oil ledger is short.\n",
-        ),
         "exit to an unknown place" => replace_file(
             &pack.join("world/places/docks_shop.md"),
             "  - to: docks_street\n",
@@ -151,8 +133,13 @@ pub(crate) fn join_play(world: &mut World, raw: bool) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
-    let mut args = vec!["play".to_string(), pack_arg, "--addr".to_string(), addr];
+    let mut args = vec![
+        "play".into(),
+        "--addr".into(),
+        addr,
+        "--as".into(),
+        "player:pc_rowan".into(),
+    ];
     if raw {
         args.push("--raw".to_string());
     }
@@ -204,6 +191,23 @@ pub(crate) fn play_stdout(world: &mut World) -> String {
     let text = support::text_of(&play.stdout);
     world.stdout = text.clone();
     text
+}
+
+pub(crate) fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
+    let act = now
+        .actors
+        .get_mut(actor)
+        .unwrap_or_else(|| panic!("no {actor}"))
+        .act_mut();
+    act.busy_until = Some(until);
+    act.busy_for = Some(spookery_engine::model::PendingAction {
+        rule: "verb:travel".to_string(),
+        verb: "travel".to_string(),
+        target: via.to_string(),
+        arrive: Some(arrive.to_string()),
+        via: Some(via.to_string()),
+        source: spookery_engine::Source::Player,
+    });
 }
 
 #[given(expr = "a docks table")]
@@ -288,6 +292,21 @@ fn the_report_says(world: &mut World, text: String) {
 #[when(expr = "play joins the table on a free loopback address")]
 fn play_joins_the_table_on_a_free_loopback_address(world: &mut World) {
     join_play(world, false);
+}
+
+#[when(expr = "play joins the sample table")]
+fn play_joins_the_sample_table(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    let addr = table::game_addr(world);
+    world.play = Some(support::spawn(&[
+        "play",
+        "--addr",
+        &addr,
+        "--as",
+        "player:pc_lark",
+    ]));
+    wait_play(world, "Gate Yard");
 }
 
 #[when(expr = "play types {string}")]
@@ -382,10 +401,10 @@ fn now_unchanged_since_the_seat(world: &mut World) {
     assert_eq!(now, seated);
 }
 
-#[when(expr = "the operator runs replay")]
-fn the_operator_runs_replay(world: &mut World) {
+#[when(expr = "the operator runs verify")]
+fn the_operator_runs_verify(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["replay", pack.to_str().unwrap()]);
+    table::run(world, &["verify", pack.to_str().unwrap()]);
 }
 
 #[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]

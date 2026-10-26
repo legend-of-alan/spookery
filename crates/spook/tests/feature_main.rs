@@ -5,18 +5,7 @@ use std::process::Child;
 use cucumber::writer::Stats;
 use cucumber::World as _;
 
-/// An HTTP GM held across steps. Dropped with the scenario.
-pub struct Holder(
-    pub rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
-);
-
-impl std::fmt::Debug for Holder {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Holder").finish_non_exhaustive()
-    }
-}
-
-#[derive(Debug, Default, cucumber::World)]
+#[derive(Default, cucumber::World)]
 pub struct World {
     pub pack: Option<PathBuf>,
     pub scratch: String,
@@ -40,8 +29,19 @@ pub struct World {
     pub live: Option<table::Live>,
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
-    pub seated: Vec<(PathBuf, spookery_kernel::api::model::Presence)>,
-    pub holder: Option<Holder>,
+    pub seated: Vec<(PathBuf, spookery_engine::model::Presence)>,
+    pub holder: Option<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>,
+}
+
+impl std::fmt::Debug for World {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("World").finish_non_exhaustive()
+    }
+}
+
+#[cucumber::given(expr = "a copy of the sample-d20 pack")]
+fn a_copy_of_the_sample_d20_pack(world: &mut World) {
+    world.pack = Some(support::copy_pack("sample-d20", "sample"));
 }
 
 fn scenario_limit() -> usize {

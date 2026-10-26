@@ -17,9 +17,6 @@ mod steps_run;
 #[path = "steps/rounds.rs"]
 mod rounds;
 
-#[path = "steps/round_play.rs"]
-mod round_play;
-
 #[path = "steps/replay.rs"]
 mod replay;
 
@@ -53,17 +50,11 @@ mod commit;
 #[path = "steps/proofs.rs"]
 mod proofs;
 
-#[path = "steps/leak_audit.rs"]
-mod leak_audit;
-
 #[path = "steps/sample.rs"]
 mod sample;
 
 #[path = "steps/showcase.rs"]
 mod showcase;
-
-#[path = "steps/no_facts.rs"]
-mod no_facts;
 
 #[path = "steps/readme.rs"]
 mod readme;

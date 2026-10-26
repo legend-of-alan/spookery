@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Now;
+use spookery_engine::model::Now;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -39,15 +39,6 @@ pub struct Live {
     pub server: Option<Proc>,
 }
 
-impl std::fmt::Debug for Live {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Live")
-            .field("port", &self.port)
-            .field("http_port", &self.http_port)
-            .finish_non_exhaustive()
-    }
-}
-
 pub fn live_mut(world: &mut World) -> &mut Live {
     world
         .live
@@ -73,7 +64,7 @@ pub fn files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
-            } else {
+            } else if path.file_name().is_none_or(|n| n != ".serve.lock") {
                 let bytes =
                     fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
                 out.push((path, bytes));
@@ -97,11 +88,11 @@ pub fn pack(world: &World) -> &Path {
 pub fn now_of(pack: &Path) -> Now {
     let start = Instant::now();
     loop {
-        match spookery_round::from_journal(pack, None, None) {
+        match spookery_engine::testing::from_journal(pack, None, None) {
             Ok(report) => {
                 let text = std::str::from_utf8(&report.now_yaml)
                     .unwrap_or_else(|err| panic!("save text: {err}"));
-                return spookery_kernel::api::store::codec::load_save(text)
+                return spookery_engine::store::load_save(text)
                     .unwrap_or_else(|err| panic!("load now: {err:?}"));
             }
             Err(err) if start.elapsed() > Duration::from_secs(2) => {
@@ -114,7 +105,7 @@ pub fn now_of(pack: &Path) -> Now {
 
 /// The actors whose player `wait` is in that tick.
 pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
+    let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     let tick: Value =
         serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
@@ -210,6 +201,7 @@ pub fn listen_flags(
     flags: &[&str],
     env: &[(&str, &str)],
 ) -> (u16, u16) {
+    drop(world.live.take());
     let listening = take_report(spawn_table(pack, flags, env));
     let ports = (listening.game.port(), listening.door.port());
     install(world, pack, listening);
@@ -394,8 +386,8 @@ pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
 }
 
 pub fn seat_gm(world: &mut World) {
-    let door = door_addr(world);
-    let gm = GmConnection::connect_door(&door).unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let door = door_addr(world).parse().unwrap();
+    let gm = GmConnection::connect_door(door).unwrap_or_else(|err| panic!("seat GM: {err}"));
     let opened = gm.opened_line().to_string();
     let live = live_mut(world);
     push_line(&live.gm_text, &opened);
@@ -690,8 +682,8 @@ pub fn live_presence(world: &mut World) -> (u32, Vec<String>) {
 
 fn status_body(world: &mut World) -> Value {
     if live_ref(world).gm.is_none() {
-        let door = door_addr(world);
-        let gm = GmConnection::connect_door(&door).unwrap_or_else(|err| panic!("status: {err}"));
+        let door = door_addr(world).parse().unwrap();
+        let gm = GmConnection::connect_door(door).unwrap_or_else(|err| panic!("status: {err}"));
         let live = live_mut(world);
         live.gm = Some(gm);
         live.gm_probe = true;

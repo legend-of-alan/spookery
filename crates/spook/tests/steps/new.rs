@@ -1,13 +1,13 @@
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::model::ActorLive;
+use spookery_engine::model::ActorLive;
 
 use crate::support;
 use crate::World;
 
+use super::common::wait_play;
 use super::table;
 
 #[when(expr = "the operator runs spook new in a fresh directory")]
@@ -26,7 +26,7 @@ fn stdout_names_the_next_commands(world: &mut World) {
         format!("Wrote {text}"),
         format!("spook check {text}"),
         format!("spook run {text}"),
-        format!("spook play {text}"),
+        "spook play\n".to_string(),
     ] {
         assert!(
             world.stdout.contains(&line),
@@ -127,8 +127,7 @@ fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
+    world.play = Some(support::spawn(&["play", "--addr", &addr]));
     wait_play(world, "You are in Yard.");
 }
 
@@ -139,7 +138,7 @@ fn the_travel_committed_a_tick(world: &mut World) {
     let now = table::now_of(pack);
     assert_eq!(now.actors.get("pc_ada").unwrap().place(), "lane");
     assert!(
-        spookery_kernel::api::journal::list_tick_keys(pack).contains(&"tick-0001".to_string()),
+        spookery_engine::testing::journal::list_tick_keys(pack).contains(&"tick-0001".to_string()),
         "no tick file"
     );
 }
@@ -315,11 +314,13 @@ fn run_new(world: &mut World, pack: &Path) {
 }
 
 fn fresh_path(label: &str) -> PathBuf {
-    crate::support::vacant_path(&format!("new-{label}"))
+    let dir = crate::support::fresh_dir(&format!("new-{label}"));
+    fs::remove_dir(&dir).unwrap();
+    dir
 }
 
 fn template_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("templates/starter")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../server/templates/starter")
 }
 
 fn relative_files(root: &Path) -> Vec<(String, Vec<u8>)> {
@@ -336,32 +337,4 @@ fn relative_files(root: &Path) -> Vec<(String, Vec<u8>)> {
             (rel, bytes)
         })
         .collect()
-}
-
-fn wait_play(world: &mut World, needle: &str) {
-    let start = Instant::now();
-    loop {
-        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-        let stdout = support::text_of(&play.stdout);
-        if stdout.contains(needle) {
-            world.stdout = stdout;
-            return;
-        }
-        if let Some(status) = world
-            .play
-            .as_mut()
-            .unwrap()
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = support::text_of(&world.play.as_ref().unwrap().stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = support::text_of(&world.play.as_ref().unwrap().stderr);
-            panic!("missing {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }

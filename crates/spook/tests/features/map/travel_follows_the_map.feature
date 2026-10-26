@@ -61,7 +61,3 @@ Feature: Travel follows the map
   Scenario: A player map lists visited places
     When rowan travels via stairs holding brass_key
     Then rowan's map lists mira_rooms and not the trapdoor
-
-  Scenario: spook map prints the exit graph
-    When the operator runs spook map on the docks pack
-    Then the map lists the stairs exit and does not hide it

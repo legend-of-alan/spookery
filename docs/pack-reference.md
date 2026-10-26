@@ -607,7 +607,7 @@ One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `s
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`. `location.to` names a place, or `target`. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 
-`note` is stored on the save as `messages`. A note is shown to everyone named in `to`, wherever they are, and to anyone standing in `place`. It is hidden from a viewer when one of its `fact_ids`, or a fact its text names, is one that viewer may not know. `narrate` is one-off text for the people it names, written on the round and left out of the save. `reveal` adds its fact to that actor's known facts and writes no memory line. A flag with `who: world` is stored on the save as `flags`.
+`note` is stored on the save as `messages`. A note is shown to everyone named in `to`, wherever they are, and to anyone standing in `place`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people it names, written on the round and left out of the save. `reveal` adds its fact to that actor's known facts and writes no memory line. A flag with `who: world` is stored on the save as `flags`.
 
 `wield` fills the actor's one wielded slot. `unwield` empties it. `who` on an effect is the same set as on a condition.
 
@@ -624,9 +624,5 @@ The message and the hint can change. The code stays.
 | `PACK_REV_MISMATCH` | `run spook migrate to store the current hash` |
 | `RULES_REV` | `start a fresh save` |
 | `HAND_EDIT` | `run spook migrate to keep the edit, or restore the file` |
-| `HIDDEN_FACT_IN_BODY` | `remove that sentence from the prose, or set hidden: false` |
-| `HIDDEN_FACT_IN_TEXT` | `rewrite that note, or set hidden: false` |
 | `TRIGGER_LEAK` | `address that output to self, or to here when the room can see the change` |
 | `WARNING` | An unreachable place: `add an exit that reaches it`. `teleport: true` in `rules/verbs.yaml`: `teleport belongs on an author rule, not in verbs.yaml`. A trigger cycle: `stop one rule in the cycle from setting the next watched value`. |
-
-A hidden fact is matched as a case-sensitive substring of a Markdown body, and of a `note` or `narrate` `text`.

@@ -9,9 +9,6 @@ Feature: Dice and arithmetic in rule numbers
     And the GM commit reply shows the 2d6 faces
     And the player text has no dice faces
     And replaying the tick reproduces the save
-    When the operator runs audit
-    Then the audit exits 0
-    And stdout names "2d6 →"
 
   Scenario: An ability modifier is computed from a meter
     Given a docks table

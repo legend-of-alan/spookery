@@ -3,21 +3,21 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::intent::{ActorKind, Intent, IntentArgs, Source, Target};
-use spookery_kernel::api::model::{Now, PlaceLive};
-use spookery_kernel::api::rules::gate;
-use spookery_kernel::api::rules::{faces, MoveReport, RollKey};
-use spookery_kernel::api::store::codec::{emit_save, load_save};
-use spookery_kernel::api::Reason;
-use spookery_round::{play, RoundCause};
+use spookery::host::{idle_clock::wall_now, MoveOutcome};
+use spookery_engine::handle_player_move;
+use spookery_engine::model::PlaceLive;
+use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::MoveReport;
+use spookery_engine::Reason;
+use spookery_engine::RoundCause;
 
 use super::table;
-use crate::support::{copy_pack, spook, temp_pack};
+use crate::support::{append, copy_pack, edit_save, now_of, spook, temp_pack};
 use crate::World;
 #[given(expr = "a save with rules_rev 6 and an engine at 7")]
 fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
     assert_eq!(
-        spookery_kernel::api::store::RULES_REV,
+        spookery_engine::store::RULES_REV,
         7,
         "the engine rules version is 7"
     );
@@ -63,7 +63,7 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
     let live = text.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
     fs::write(&path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
-    let hash = spookery_kernel::api::journal::hash_now(live.as_bytes());
+    let hash = spookery_engine::testing::journal::hash_now(live.as_bytes());
     fs::write(
         journal.join("presence-0001.json"),
         format!(
@@ -123,12 +123,14 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let located = spookery_kernel::api::journal::locate(&pack, "tick-0001")
+    let located = spookery_engine::testing::journal::locate(&pack, "tick-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
-    let mut tick: Value = serde_json::from_str(&located.line).unwrap_or_else(|err| {
-        panic!("json: {err}\n{text}");
-    });
+    let line = text
+        .lines()
+        .find(|l| serde_json::from_str::<Value>(l).unwrap()["tick_index"] == 1)
+        .unwrap();
+    let mut tick: Value = serde_json::from_str(line).unwrap();
     let effects = tick["effects"]
         .as_array_mut()
         .unwrap_or_else(|| panic!("no effects\n{text}"));
@@ -139,7 +141,7 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
         .unwrap_or_else(|| panic!("no tick_index\n{text}"));
     world.scratch = format!("tick {index}");
     let encoded = serde_json::to_string(&tick).unwrap_or_else(|err| panic!("encode: {err}"));
-    let rewritten = text.replacen(&located.line, &encoded, 1);
+    let rewritten = text.replacen(line, &encoded, 1);
     assert_ne!(rewritten, text);
     fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write tick: {err}"));
 }
@@ -206,7 +208,7 @@ rules:
     do: []
 ",
     );
-    save(&pack, |_| {});
+    edit_save(&pack, |_| {});
     world.pack = Some(pack);
 }
 
@@ -268,7 +270,7 @@ The ferry waits at the dock.
     );
     assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
-    save(&pack, |now| {
+    edit_save(&pack, |now| {
         now.places.insert(
             "ferry_dock".to_string(),
             PlaceLive {
@@ -286,17 +288,25 @@ The ferry waits at the dock.
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    opened.set_presence(spookery_kernel::api::model::Presence {
+    opened.set_presence(spookery_engine::model::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });
-    spookery::host::handle_player_move(&mut opened, "pc_rowan", "travel ferry_dock", false)
-        .unwrap_or_else(|err| panic!("travel {}", err.token()));
+    let wall = wall_now().unwrap();
+    let played = handle_player_move(
+        &mut opened,
+        "pc_rowan",
+        "travel",
+        Some("ferry_dock"),
+        false,
+        &wall,
+    );
+    played.unwrap_or_else(|err| panic!("travel {}", err.token()));
 }
 
 #[then(expr = "place:ferry_dock\\/travel runs and verb:travel does not")]
 fn the_ferry_rule_runs(world: &mut World) {
-    let now = read_now(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place(), "ferry_dock", "verb:travel moved the PC");
     assert!(
@@ -345,7 +355,7 @@ Briar tops up the oil before the shop opens.
 #[when(expr = "an empty tick lands at hour 7 with briar in the shop")]
 fn an_empty_tick_at_hour_7(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    save(&pack, |now| {
+    edit_save(&pack, |now| {
         now.world_time = 360;
         now.clocks.get_mut("shop_day").unwrap().value = 0;
         let briar = now.actors.get("mira").unwrap().clone();
@@ -354,22 +364,24 @@ fn an_empty_tick_at_hour_7(world: &mut World) {
     });
     let mut opened = open_pack(&pack);
     let wall = opened.now().last_tick_at.clone();
-    play(&mut opened, RoundCause::Manual, &wall).unwrap_or_else(|err| {
-        panic!(
-            "empty tick {}: {}",
-            err.token(),
-            spookery_kernel::api::check_pack(&pack)
-                .iter()
-                .map(|diag| diag.report_line())
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    });
+    opened
+        .play(RoundCause::Manual, &wall)
+        .unwrap_or_else(|err| {
+            panic!(
+                "empty tick {}: {}",
+                err.token(),
+                spookery_engine::check_pack(&pack)
+                    .iter()
+                    .map(|diag| diag.report_line())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        });
 }
 
 #[then(expr = "docks_shop lamp_oil increases by 4")]
 fn lamp_oil_increases_by_4(world: &mut World) {
-    let now = read_now(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     let oil = now
         .places
         .get("docks_shop")
@@ -415,7 +427,7 @@ fn attack_targets_defense(world: &mut World) {
     );
     assert_ne!(text, next, "briar profile was not found");
     fs::write(&briar, next).unwrap();
-    save(&pack, |now| {
+    edit_save(&pack, |now| {
         let defense = now
             .actors
             .get_mut("npc_briar")
@@ -437,7 +449,7 @@ fn attack_targets_defense(world: &mut World) {
 #[when(expr = "lark attacks with a seeded total of 21")]
 fn lark_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let loaded = read_now(&pack);
+    let loaded = now_of(&pack);
     let face = faces(
         &RollKey {
             world_id: loaded.shard_id.clone(),
@@ -450,7 +462,7 @@ fn lark_attacks(world: &mut World) {
         20,
     )
     .unwrap_or_else(|err| panic!("faces {}", err.token()))[0];
-    save(&pack, |now| {
+    edit_save(&pack, |now| {
         let might = now
             .actors
             .get_mut("pc_lark")
@@ -462,16 +474,20 @@ fn lark_attacks(world: &mut World) {
         might.offset = 0;
     });
     let mut opened = open_pack(&pack);
-    let reports =
-        match spookery::host::handle_player_move(&mut opened, "pc_lark", "attack npc_briar", false)
-        {
-            Ok(spookery::host::MoveOutcome::Committed { outputs, .. }) => {
-                outputs.into_iter().next().unwrap().reports
-            }
-            Ok(spookery::host::MoveOutcome::Queued(_)) => panic!("attack queued"),
-            Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("attack was busy"),
-            Err(err) => panic!("attack {}", err.token()),
-        };
+    let wall = wall_now().unwrap();
+    let reports = match handle_player_move(
+        &mut opened,
+        "pc_lark",
+        "attack",
+        Some("npc_briar"),
+        false,
+        &wall,
+    ) {
+        Ok(MoveOutcome::Committed { outputs, .. }) => outputs.into_iter().next().unwrap().reports,
+        Ok(MoveOutcome::Queued(_)) => panic!("attack queued"),
+        Ok(MoveOutcome::Busy { .. }) => panic!("attack was busy"),
+        Err(err) => panic!("attack {}", err.token()),
+    };
     let rolled = reports.into_iter().find_map(|report| match report {
         MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some(out),
         _ => None,
@@ -479,13 +495,18 @@ fn lark_attacks(world: &mut World) {
     let rolled = rolled.unwrap_or_else(|| panic!("Lark did not roll"));
     assert_eq!(rolled.total, 21, "{rolled:?}");
     assert_eq!(rolled.target, 22, "{rolled:?}");
-    world.scratch = rolled.outcome.as_str().to_string();
+    world.scratch = match rolled.outcome {
+        spookery_engine::Outcome::Success => "success",
+        spookery_engine::Outcome::Partial => "partial",
+        spookery_engine::Outcome::Miss => "miss",
+    }
+    .to_string();
 }
 
 #[then(expr = "the outcome is a miss")]
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
-    let now = read_now(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     let flags = now.actors.get("npc_briar").unwrap().flags();
     assert!(flags.iter().any(|flag| flag == "missed"), "{flags:?}");
     assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
@@ -533,7 +554,7 @@ fn bogus_appears_in_earlier_text(world: &mut World) {
 fn an_effect_key_is_bogus(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     append(&pack.join("rules/verbs.yaml"), "      - bogus: true\n");
-    save(&pack, |_| {});
+    edit_save(&pack, |_| {});
 }
 
 #[then(expr = "spook check reports that key at its own line and column")]
@@ -584,7 +605,7 @@ fn two_conditions_under_one_dash(world: &mut World) {
     do: []
 "#,
     );
-    save(&pack, |_| {});
+    edit_save(&pack, |_| {});
     world.pack = Some(pack);
 }
 
@@ -614,7 +635,7 @@ fn steady_costs_five_grit(world: &mut World) {
     do: []
 "#,
     );
-    save(&pack, |now| {
+    edit_save(&pack, |now| {
         let grit = now
             .actors
             .get_mut("pc_rowan")
@@ -632,11 +653,12 @@ fn steady_costs_five_grit(world: &mut World) {
 fn the_sitter_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    world.scratch =
-        match spookery::host::handle_player_move(&mut opened, "pc_rowan", "steady", false) {
-            Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
-            Ok(_) => "queued".to_string(),
-        };
+    let wall = wall_now().unwrap();
+    let played = handle_player_move(&mut opened, "pc_rowan", "steady", None, false, &wall);
+    world.scratch = match played {
+        Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
+        Ok(_) => "queued".to_string(),
+    };
 }
 
 #[then(expr = "the refusal is CANT_AFFORD naming grit and world_time stays 1080")]
@@ -645,7 +667,7 @@ fn the_refusal_is_cant_afford(world: &mut World) {
         world.scratch,
         format!("{} grit", Reason::CantAfford.token())
     );
-    let now = read_now(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.tick_index, 0);
 }
@@ -670,8 +692,8 @@ rules:
           value: true
 ",
     );
-    save(&pack, |_| {});
-    let now = read_now(&pack);
+    edit_save(&pack, |_| {});
+    let now = now_of(&pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     world.pack = Some(pack);
 }
@@ -679,19 +701,14 @@ rules:
 #[when(expr = "a PC is gated on those full ids")]
 fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let opened = open_pack(&pack);
+    let mut opened = open_pack(&pack);
     let mut codes = Vec::new();
     for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
-        let intent = pc_probe(move_name);
-        let resolved = gate::resolve(opened.canon(), opened.now(), &intent);
-        let gated = gate::gate(opened.canon(), opened.now(), &intent);
-        match (resolved, gated) {
-            (Err(reason), Err(miss))
-                if reason == Reason::NotInSpec && miss.reason() == Reason::NotInSpec =>
-            {
-                codes.push(reason.token());
+        match opened.queue_player_move("pc_rowan", move_name, None) {
+            Err(miss) if miss.reason() == Reason::NotInSpec => {
+                codes.push(miss.token());
             }
-            (resolved, gated) => panic!("{move_name}: resolved={resolved:?} gated={gated:?}"),
+            other => panic!("{move_name}: {other:?}"),
         }
     }
     world.scratch = codes.join(" ");
@@ -707,7 +724,7 @@ fn both_full_ids_are_refused(world: &mut World) {
             Reason::NotInSpec.token()
         )
     );
-    let now = read_now(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
@@ -754,7 +771,7 @@ A small bottle.
     do: []
 ",
     );
-    save(&pack, |now| {
+    edit_save(&pack, |now| {
         let rowan = now.actors.get_mut("pc_rowan").unwrap();
         rowan.inventory_mut().insert("tonic".to_string(), 1);
     });
@@ -765,26 +782,27 @@ A small bottle.
 fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    world.scratch =
-        match spookery::host::handle_player_move(&mut opened, "pc_rowan", "use tonic", true) {
-            Ok(spookery::host::MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
-            Ok(spookery::host::MoveOutcome::Queued(note)) => {
-                let queued = opened
-                    .queued_intents()
-                    .iter()
-                    .find(|intent| intent.id == note.id)
-                    .unwrap();
-                format!("{:?} {}", queued.target, queued.move_name)
-            }
-            Ok(spookery::host::MoveOutcome::Committed { .. }) => "committed".to_string(),
-            Err(err) => err.token().to_string(),
-        };
+    let wall = wall_now().unwrap();
+    let played = handle_player_move(&mut opened, "pc_rowan", "use", Some("tonic"), true, &wall);
+    world.scratch = match played {
+        Ok(MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
+        Ok(MoveOutcome::Queued(queued)) => {
+            let intent = opened
+                .queued_intents()
+                .iter()
+                .find(|intent| intent.id == queued.id)
+                .unwrap();
+            format!("{:?} {}", intent.target, intent.move_name)
+        }
+        Ok(MoveOutcome::Committed { .. }) => "committed".to_string(),
+        Err(err) => err.token().to_string(),
+    };
 }
 
 #[then(expr = "the queued target is that actor and the save is unchanged")]
 fn the_queued_target_is_that_actor(world: &mut World) {
     assert_eq!(world.scratch, "Actor(\"tonic\") use");
-    let now = read_now(world.pack.as_ref().unwrap());
+    let now = now_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.tick_index, 0);
@@ -812,7 +830,7 @@ fn a_verb_with_time_and_resist(world: &mut World) {
             target: 2
 "#,
     );
-    save(&pack, |_| {});
+    edit_save(&pack, |_| {});
     world.pack = Some(pack);
 }
 
@@ -863,7 +881,7 @@ const SAME_AFTER_ROLL: &str = "
 fn a_verb_whose_only_resist_is_same(world: &mut World) {
     let pack = temp_pack("rules-bare-same");
     append(&pack.join("rules/verbs.yaml"), BARE_SAME);
-    save(&pack, |_| {});
+    edit_save(&pack, |_| {});
     world.pack = Some(pack);
 }
 
@@ -883,7 +901,7 @@ fn check_reports_bare_resist_same(world: &mut World) {
 fn a_verb_whose_resist_same_follows_a_roll(world: &mut World) {
     let pack = temp_pack("rules-same-after");
     append(&pack.join("rules/verbs.yaml"), SAME_AFTER_ROLL);
-    save(&pack, |_| {});
+    edit_save(&pack, |_| {});
     world.pack = Some(pack);
 }
 
@@ -898,20 +916,6 @@ fn check_accepts_resist_same_after_a_roll(world: &mut World) {
     );
 }
 
-fn pc_probe(move_name: &str) -> Intent {
-    Intent {
-        id: "probe".to_string(),
-        tick_index: 0,
-        actor_id: "pc_rowan".to_string(),
-        actor_kind: ActorKind::Player,
-        source: Source::Player,
-        move_name: move_name.to_string(),
-        target: Target::Empty,
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    }
-}
-
 fn run(world: &mut World, args: &[&str]) {
     let pack = crate::support::pack_arg(world.pack.as_ref().unwrap());
     let mut full = Vec::with_capacity(args.len() + 1);
@@ -923,42 +927,18 @@ fn run(world: &mut World, args: &[&str]) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
-fn open_pack(pack: &Path) -> spookery_kernel::api::World {
-    spookery_round::resume(pack).unwrap_or_else(|err| {
+fn open_pack(pack: &Path) -> spookery_engine::World {
+    spookery_engine::World::resume(pack).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
             err.token(),
-            spookery_kernel::api::check_pack(pack)
+            spookery_engine::check_pack(pack)
                 .iter()
                 .map(|diag| diag.report_line())
                 .collect::<Vec<_>>()
                 .join("\n")
         )
     })
-}
-
-fn save(pack: &Path, edit: impl FnOnce(&mut Now)) {
-    let path = pack.join("state/save.yaml");
-    let mut now = read_now(pack);
-    edit(&mut now);
-    now.pack_rev = spookery_kernel::api::canon::pack_rev(pack).unwrap();
-    fs::write(&path, emit_save(&now).unwrap()).unwrap();
-}
-
-fn read_now(pack: &Path) -> Now {
-    let report =
-        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
-    let text = std::str::from_utf8(&report.now_yaml).unwrap();
-    load_save(text).unwrap()
-}
-
-fn append(path: &Path, extra: &str) {
-    let mut text = fs::read_to_string(path).unwrap();
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    text.push_str(extra);
-    fs::write(path, text).unwrap();
 }
 
 fn insert_before_fence(path: &Path, block: &str) {

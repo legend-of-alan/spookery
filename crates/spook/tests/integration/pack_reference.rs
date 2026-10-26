@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_kernel::api::{check_pack, Diagnostic};
+use spookery_engine::{check_pack, Diagnostic, Reason, Severity};
 
 const EFFECTS: &[&str] = &[
     "- meter:",
@@ -120,7 +120,9 @@ fn a_drifted_example_fails_spook_check() {
     let pack = write_pack(&drifted, "drift");
     let found = check_pack(pack.path());
     assert!(
-        found.iter().any(|diag| diag.code == "SCHEMA"),
+        found
+            .iter()
+            .any(|diag| diag.code == Severity::Error(Reason::Schema)),
         "{}",
         report(&found)
     );

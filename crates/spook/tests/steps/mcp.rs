@@ -64,10 +64,8 @@ fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     world.gm = Some(support::spawn(&[
         "gm",
-        &pack_arg,
         "--addr",
         &addr,
         "--mcp-http",
@@ -221,7 +219,7 @@ fn gm_holds_over_http(world: &mut World) {
         assert_sat(&status, "session_status");
         running
     });
-    world.holder = Some(crate::Holder(holder));
+    world.holder = Some(holder);
 }
 
 #[when(expr = "another GM tries to sit over HTTP")]
@@ -260,7 +258,6 @@ fn holder_leaves(world: &mut World) {
         .unwrap_or_else(|| panic!("no GM holds the seat"));
     block_on(async move {
         running
-            .0
             .cancel()
             .await
             .unwrap_or_else(|err| panic!("close GM session: {err}"));
@@ -332,13 +329,11 @@ async fn exercise_http(port: u16) {
 async fn exercise(running: &impl ToolClient) {
     for (name, arguments) in [
         ("session_status", None),
-        ("perceive", Some(json!({"as": "player:pc_rowan"}))),
+        ("perceive", Some(json!({"as": "pc_rowan"}))),
         (
             "intent",
             Some(json!({
                 "actor_id": "pc_rowan",
-                "actor_kind": "player",
-                "source": "player",
                 "move": "wait"
             })),
         ),

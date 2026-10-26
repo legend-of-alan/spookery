@@ -22,7 +22,7 @@ Feature: Seat presence stays in memory
   Scenario: A tick played with one human replays with the same now_hash
     Given a docks table with a seated player
     When the player waits
-    And the operator runs replay
+    And the operator runs verify
     Then the command exits 0
     And the tick now_hash matches the save
     And stderr is empty

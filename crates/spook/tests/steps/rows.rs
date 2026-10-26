@@ -1,14 +1,10 @@
-use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use serde_json::Value;
-use spookery_kernel::api::meter::MeterLive;
-use spookery_kernel::api::model::ActorLive;
-use spookery_kernel::api::Reason;
+use spookery_engine::Reason;
 
-use crate::support::{stamp_pack_rev, temp_pack};
+use crate::support::{insert_nell, read_tick, stamp_pack_rev, temp_pack};
 use crate::World;
 
 use super::table;
@@ -55,8 +51,8 @@ fn the_player_travels_to(world: &mut World, place: String) {
 #[then(expr = "the load refusal is SCHEMA")]
 fn the_load_refusal_is_schema(world: &mut World) {
     assert_eq!(
-        spookery_kernel::api::reason_of(
-            spookery_kernel::api::canon::load_canon(table::pack(world)).unwrap_err()
+        spookery_engine::reason_of(
+            spookery_engine::canon::load_canon(table::pack(world)).unwrap_err()
         ),
         Reason::Schema
     );
@@ -78,7 +74,7 @@ fn the_tick_records_the_move(world: &mut World) {
 }
 
 fn assert_location(pack: &Path, name: &str) {
-    let tick = tick(pack, name);
+    let tick = read_tick(pack, name);
     let hits: Vec<_> = tick["effects"]
         .as_array()
         .unwrap()
@@ -88,12 +84,6 @@ fn assert_location(pack: &Path, name: &str) {
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0]["from"], "docks_shop");
     assert_eq!(hits[0]["to"], "docks_street");
-}
-
-fn tick(pack: &Path, name: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err}"))
 }
 
 fn place_of(pack: &Path) -> String {
@@ -118,59 +108,4 @@ fn add_knife_row(pack: &Path) {
         "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-}
-
-fn insert_nell(pack: &Path) {
-    fs::write(
-        pack.join("cast/pc-nell.md"),
-        "\
----
-schema: cast
-id: pc_nell
-kind: pc_template
-display_name: Nell
-facts: []
-tick:
-  eligible: false
-  flags:
-    - marked
-    - missed
-    - guarded
----
-Nell keeps a guard up.
-",
-    )
-    .unwrap();
-    let now_path = pack.join("state/save.yaml");
-    let mut now =
-        spookery_kernel::api::store::codec::load_save(&fs::read_to_string(&now_path).unwrap())
-            .unwrap();
-    now.actors.insert(
-        "pc_nell".to_string(),
-        ActorLive::Pc {
-            place: "docks_shop".to_string(),
-            flags: Vec::new(),
-
-            meters: BTreeMap::from([
-                (
-                    "grit".to_string(),
-                    MeterLive {
-                        base: 100,
-                        offset: 0,
-                    },
-                ),
-                ("rest".to_string(), MeterLive { base: 3, offset: 0 }),
-            ]),
-            inventory: BTreeMap::new(),
-            wielded: None,
-            known_facts: Vec::new(),
-            visited: vec!["docks_shop".to_string()],
-            act: spookery_kernel::api::model::ActCounters::fresh(),
-        },
-    );
-    fs::write(
-        &now_path,
-        spookery_kernel::api::store::codec::emit_save(&now).unwrap(),
-    )
-    .unwrap();
 }

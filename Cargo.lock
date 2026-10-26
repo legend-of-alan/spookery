@@ -2058,40 +2058,80 @@ dependencies = [
 name = "spook"
 version = "0.0.0"
 dependencies = [
- "axum",
  "clap",
  "cucumber",
- "futures-core",
  "reqwest 0.12.28",
  "rmcp",
- "serde",
  "serde-saphyr",
  "serde_json",
  "socket2",
- "spookery-kernel",
- "spookery-round",
+ "spookery-cli",
+ "spookery-engine",
+ "spookery-protocol",
+ "spookery-server",
  "tokio",
 ]
 
 [[package]]
-name = "spookery-kernel"
+name = "spookery-agent"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "spookery-protocol",
+]
+
+[[package]]
+name = "spookery-cli"
+version = "0.0.0"
+dependencies = [
+ "reqwest 0.12.28",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "spookery-agent",
+ "spookery-protocol",
+ "tokio",
+]
+
+[[package]]
+name = "spookery-engine"
 version = "0.0.0"
 dependencies = [
  "blake2",
+ "cucumber",
  "flate2",
  "proptest",
  "serde",
  "serde-saphyr",
  "serde_json",
  "serde_path_to_error",
+ "spookery-engine",
+ "spookery-protocol",
+ "tokio",
 ]
 
 [[package]]
-name = "spookery-round"
+name = "spookery-protocol"
 version = "0.0.0"
 dependencies = [
- "proptest",
- "spookery-kernel",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "spookery-server"
+version = "0.0.0"
+dependencies = [
+ "axum",
+ "futures-core",
+ "rmcp",
+ "serde",
+ "serde_json",
+ "socket2",
+ "spookery-engine",
+ "spookery-protocol",
+ "tokio",
 ]
 
 [[package]]

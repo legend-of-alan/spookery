@@ -1,14 +1,8 @@
 //! Reading the `steps_run` field of a stored tick record.
 
-use std::path::Path;
-
 use serde_json::Value;
 
-pub(crate) fn read_tick(pack: &Path, key: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(pack, key)
-        .unwrap_or_else(|err| panic!("{key}: {}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{key}: {err}\n{text}"))
-}
+pub(crate) use crate::support::read_tick;
 
 /// Step names stored on `tick`, or none when the field is left out.
 pub(crate) fn read_steps_run(tick: &Value) -> Vec<String> {

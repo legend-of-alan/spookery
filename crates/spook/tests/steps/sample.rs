@@ -3,17 +3,12 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::meter;
 
 use crate::support::{self, text_of};
 use crate::World;
 
+use super::common::play_stdout;
 use super::table;
-
-#[given(expr = "a copy of the sample-d20 pack")]
-fn a_copy_of_the_sample_d20_pack(world: &mut World) {
-    world.pack = Some(copy_sample("sample"));
-}
 
 #[given(expr = "a sample-d20 table")]
 fn a_sample_d20_table(world: &mut World) {
@@ -64,16 +59,6 @@ fn the_player_drinks(world: &mut World) {
     world.player_added = added;
 }
 
-#[when(expr = "play joins the sample table")]
-fn play_joins_the_sample_table(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
-    wait_play(world, "Gate Yard");
-}
-
 #[when(expr = "the save before the fight is kept")]
 fn the_save_before_the_fight_is_kept(world: &mut World) {
     world.scratch = snapshot_of(table::pack(world)).display().to_string();
@@ -116,7 +101,7 @@ fn play_shows_successful_rolls(world: &mut World, rolls: usize) {
 }
 
 fn sit(world: &mut World, might: Option<i64>, tonic: bool) {
-    let pack = copy_sample("sample-table");
+    let pack = support::copy_pack("sample-d20", "sample-table");
     if let Some(might) = might {
         set_lark_might(&pack, might);
     }
@@ -126,10 +111,6 @@ fn sit(world: &mut World, might: Option<i64>, tonic: bool) {
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
-}
-
-fn copy_sample(label: &str) -> PathBuf {
-    support::copy_pack("sample-d20", label)
 }
 
 fn set_lark_might(pack: &Path, base: i64) {
@@ -156,25 +137,10 @@ fn take_tonic(pack: &Path) {
 
 fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let now = table::now_of(pack);
-    let canon = spookery_kernel::api::canon::load_canon(pack).unwrap_or_else(|err| {
-        panic!(
-            "load canon: {}",
-            spookery_kernel::api::reason_of(err).token()
-        )
-    });
-    let actor = now
-        .actors
-        .get(actor_id)
-        .unwrap_or_else(|| panic!("{actor_id} missing"));
-    let def = canon
-        .meters
-        .get("hp")
-        .unwrap_or_else(|| panic!("no hp meter"));
-    let live = actor
-        .meters()
-        .get("hp")
-        .unwrap_or_else(|| panic!("{actor_id} has no hp"));
-    meter::current(def, live).unwrap_or_else(|err| panic!("hp: {}", err.token()))
+    let canon = spookery_engine::canon::load_canon(pack)
+        .unwrap_or_else(|err| panic!("load canon: {}", spookery_engine::reason_of(err).token()));
+    now.meter_value(&canon, actor_id, "hp")
+        .unwrap_or_else(|err| panic!("hp: {}", err.token()))
 }
 
 fn wait_hp(world: &mut World, actor_id: &str, expected: i64) {
@@ -199,38 +165,4 @@ fn snapshot_of(pack: &Path) -> PathBuf {
     let dest = support::fresh_dir("before");
     support::copy_dir(pack, &dest);
     dest
-}
-
-fn play_stdout(world: &World) -> String {
-    text_of(
-        &world
-            .play
-            .as_ref()
-            .unwrap_or_else(|| panic!("no play"))
-            .stdout,
-    )
-}
-
-fn wait_play(world: &mut World, needle: &str) {
-    let start = Instant::now();
-    loop {
-        let stdout = play_stdout(world);
-        if stdout.contains(needle) {
-            return;
-        }
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        if let Some(status) = play
-            .child
-            .try_wait()
-            .unwrap_or_else(|err| panic!("try_wait: {err}"))
-        {
-            let stderr = text_of(&play.stderr);
-            panic!("play exited {status:?}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        if start.elapsed() > Duration::from_secs(8) {
-            let stderr = text_of(&world.play.as_ref().unwrap().stderr);
-            panic!("play did not show {needle}\nstdout:\n{stdout}\nstderr:\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
 }

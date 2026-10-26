@@ -126,6 +126,7 @@ fn capture() -> BTreeMap<String, Example> {
         "player-unknown-pc",
         refused(table.game, "player:no_such"),
     );
+    json(&mut out, "player-choose-pc", refused(table.game, ""));
     json(
         &mut out,
         "player-gm-on-game-port",
@@ -155,8 +156,10 @@ fn capture() -> BTreeMap<String, Example> {
     // with 405, so the header is the version the handshake returned.
     delete_session(table.door, &session, &negotiated);
 
-    let mut gm = GmConnection::connect_door(&format!("127.0.0.1:{}", table.door))
-        .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let mut gm =
+        GmConnection::connect_door(std::net::SocketAddr::from(([127, 0, 0, 1], table.door)))
+            .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    json(&mut out, "pack-event", one_event(&mut gm));
 
     let status_args = serde_json::json!({});
     json(
@@ -170,7 +173,7 @@ fn capture() -> BTreeMap<String, Example> {
         call(&mut gm, "session_status", status_args),
     );
 
-    let perceive_args = serde_json::json!({"as": "player:pc_rowan"});
+    let perceive_args = serde_json::json!({"as": "pc_rowan"});
     json(
         &mut out,
         "perceive-request",
@@ -212,8 +215,6 @@ fn capture() -> BTreeMap<String, Example> {
 
     let intent_args = serde_json::json!({
         "actor_id": "pc_rowan",
-        "actor_kind": "player",
-        "source": "player",
         "move": "wait",
         "id": "gm-wait"
     });

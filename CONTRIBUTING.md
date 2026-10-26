@@ -8,10 +8,10 @@ Title letters, sizes, and labels are below, under Issues and PRs. Build and play
 
 A contributor license agreement (CLA) and a developer certificate of origin (DCO) are deferred.
 
-Feature scenarios live under `crates/spook/tests/features`. Two programs run them:
+Feature scenarios live under `crates/engine/tests/features` and `crates/spook/tests/features`. Two programs per crate run them:
 
 ```sh
-cargo test -p spook --test features_host --test features_world
+cargo test --workspace --test features_host --test features_world
 ```
 
 The README scenario runs `scripts/readme_quickstart.py`, so `cargo test` needs Python 3.8 or newer on `PATH` as `python` or `python3` (on Windows, `py -3` also works).
@@ -33,23 +33,15 @@ Every issue gets a priority label (`P0` highest to `P3`) and a type label (`enha
 
 ## Prove the log
 
-Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook replay` replays that journal and prints the final save counter. `spook verify` replays it and checks the save byte for byte. Neither command writes the pack, takes the lock, or binds a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
+Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook verify` replays that journal and checks the save byte for byte. It does not write the pack, take the lock, or bind a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
 
 ```sh
 cp -r packs/oneshot-docks /tmp/docks
 spook tick /tmp/docks
-spook replay /tmp/docks
 spook verify /tmp/docks
 ```
 
-`replay` prints `state_rev <r>, <n> records`. `verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`.
-
-`spook audit` replays that same journal and checks each player character's view for a hidden fact. A clean table prints `pass` and the character id, one line each, and exits 0. Speech that repeats a hidden fact is a note and does not fail the command. `--strict` makes those notes fail.
-
-```sh
-spook audit /tmp/docks
-spook audit --strict /tmp/docks
-```
+`verify` prints `verified <n> records, state_rev <r>` when the save matches. A fresh copy has never committed, so verify prints `verified 0 records, state_rev 0`.
 
 ## Live AI CI
 

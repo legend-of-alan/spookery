@@ -1,7 +1,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use crate::World;
 
@@ -23,6 +23,36 @@ fn a_socket_sends_gm_on_the_game_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     world.scratch = table::second_hello(world, "gm");
+}
+
+#[when(regex = r"^a socket sends (an empty hello|player:)$")]
+fn a_socket_sends_hello(world: &mut World, which: String) {
+    if world.live.is_none() {
+        listen_pack(world);
+    }
+    world.scratch = table::second_hello(world, if which == "player:" { "player:" } else { "" });
+}
+
+#[then(expr = "the hello is refused with {string} and the missing list is {string}")]
+fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: String) {
+    the_hello_is_refused_with(world, code);
+    let frame: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
+    let expected: Vec<String> = serde_json::from_str(&missing).unwrap();
+    let got: Vec<String> = serde_json::from_value(frame["missing"].clone()).unwrap();
+    assert_eq!(got, expected);
+}
+
+#[then(expr = "the hello reply does not contain {string}")]
+fn the_hello_reply_does_not_contain(world: &mut World, needle: String) {
+    assert!(!world.scratch.contains(&needle), "{}", world.scratch);
+}
+
+#[when(expr = "play joins that one-player table with no --as")]
+fn play_joins_that_one_player_table_with_no_as(world: &mut World) {
+    the_player_leaves(world);
+    let addr = table::game_addr(world);
+    world.play = Some(crate::support::spawn(&["play", "--addr", &addr]));
+    super::common::wait_play(world, "You are in");
 }
 
 #[then(expr = "save.yaml is unchanged since the table opened")]
@@ -102,6 +132,7 @@ fn the_session_ids_differ(world: &mut World) {
 
 const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
 const HIDDEN_FACT: &str = "fact_wren_channel";
+const HIDDEN_TEXT: &str = "The tide chart marks a private channel.";
 
 #[when(expr = "three players and a GM sit")]
 fn three_players_and_a_gm_sit(world: &mut World) {
@@ -127,16 +158,16 @@ tick:
 Lark watches the street from a dry doorway.
 ";
     fs::write(pack.join("cast/pc-lark.md"), cast).unwrap_or_else(|err| panic!("cast: {err}"));
-    let mut now = read_now(&pack);
-    let mut actor = now
-        .actors
-        .get("pc_rowan")
-        .unwrap_or_else(|| panic!("pc_rowan"))
-        .clone();
-    *actor.place_mut() = "docks_street".to_string();
-    now.actors.insert("pc_lark".to_string(), actor);
-    store_now(&pack, now);
-    spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
+    crate::support::edit_save(&pack, |now| {
+        let mut actor = now
+            .actors
+            .get("pc_rowan")
+            .unwrap_or_else(|| panic!("pc_rowan"))
+            .clone();
+        *actor.place_mut() = "docks_street".to_string();
+        now.actors.insert("pc_lark".to_string(), actor);
+    });
+    spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("four-pc pack: {err}"));
     world.pack = Some(pack);
 }
 
@@ -178,11 +209,11 @@ fn a_one_player_docks_table(world: &mut World) {
         .unwrap_or_else(|err| panic!("remove harbormouse: {err}"));
     fs::remove_file(pack.join("cast/pc-wren.md"))
         .unwrap_or_else(|err| panic!("remove wren: {err}"));
-    let mut now = read_now(&pack);
-    now.actors.remove("pc_harbormouse");
-    now.actors.remove("pc_wren");
-    store_now(&pack, now);
-    spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
+    crate::support::edit_save(&pack, |now| {
+        now.actors.remove("pc_harbormouse");
+        now.actors.remove("pc_wren");
+    });
+    spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("one-pc pack: {err}"));
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
     world.pack = Some(pack);
@@ -218,18 +249,17 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read cast: {err}"));
     let text = text.replace(
         "facts: []\n",
-        "facts:\n  - id: fact_wren_channel\n    text: The tide chart marks a private channel.\n    hidden: true\n",
+        &format!("facts:\n  - id: {HIDDEN_FACT}\n    text: {HIDDEN_TEXT}\n    hidden: true\n"),
     );
     fs::write(&path, text).unwrap_or_else(|err| panic!("write cast: {err}"));
-    let mut now = read_now(&pack);
-    now.actors
-        .get_mut("pc_wren")
-        .unwrap_or_else(|| panic!("pc_wren"))
-        .known_facts_mut()
-        .push(HIDDEN_FACT.to_string());
-    store_now(&pack, now);
-    spookery_kernel::api::World::open(&pack)
-        .unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
+    crate::support::edit_save(&pack, |now| {
+        now.actors
+            .get_mut("pc_wren")
+            .unwrap_or_else(|| panic!("pc_wren"))
+            .known_facts_mut()
+            .push(HIDDEN_FACT.to_string());
+    });
+    spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("hidden fact pack: {err}"));
     world.pack = Some(pack);
 }
 
@@ -240,6 +270,18 @@ fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
     for id in ["pc_rowan", "pc_harbormouse"] {
         let text = table::actor_text(world, id);
         assert!(!text.contains(HIDDEN_FACT), "{id}\n{text}");
+    }
+}
+
+#[when(expr = "that PC says the hidden fact and another PC waits")]
+fn that_pc_says_the_hidden_fact(world: &mut World) {
+    let marks = ["pc_rowan", "pc_harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
+    let say = format!("say {HIDDEN_TEXT}");
+    table::actor_send(world, "pc_wren", &say, "\"kind\":\"say\"");
+    table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"perceive\"");
+    for (id, mark) in marks {
+        let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"perceive\"");
+        assert!(heard.contains(HIDDEN_TEXT), "{id} did not hear it\n{heard}");
     }
 }
 
@@ -334,12 +376,12 @@ fn each_wait_committed_its_own_tick(world: &mut World) {
 #[given(expr = "a docks table with two PCs in the shop")]
 fn a_docks_table_with_two_pcs_in_the_shop(world: &mut World) {
     let pack = crate::support::temp_pack("two-shop");
-    let mut now = read_now(&pack);
-    *now.actors
-        .get_mut("pc_harbormouse")
-        .unwrap_or_else(|| panic!("pc_harbormouse"))
-        .place_mut() = "docks_shop".to_string();
-    store_now(&pack, now);
+    crate::support::edit_save(&pack, |now| {
+        *now.actors
+            .get_mut("pc_harbormouse")
+            .unwrap_or_else(|| panic!("pc_harbormouse"))
+            .place_mut() = "docks_shop".to_string();
+    });
     table::listen(world, &pack);
     seat_three(world, &pack);
     world.pack = Some(pack);
@@ -382,11 +424,10 @@ fn three_play_clients_sit_on_a_free_port(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     let addr = table::game_addr(world);
-    let pack_arg = crate::support::pack_arg(&pack);
     for id in DOCKS_PCS {
         let as_arg = format!("player:{id}");
         world.plays.push(crate::support::spawn(&[
-            "play", &pack_arg, "--addr", &addr, "--as", &as_arg,
+            "play", "--addr", &addr, "--as", &as_arg,
         ]));
     }
 }
@@ -408,21 +449,6 @@ fn seat_three(world: &mut World, pack: &std::path::Path) {
     for id in ["pc_rowan", "pc_harbormouse", "pc_wren"] {
         table::seat_actor(world, pack, id);
     }
-}
-
-fn read_now(pack: &std::path::Path) -> spookery_kernel::api::model::Now {
-    let text = fs::read_to_string(pack.join("state/save.yaml"))
-        .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    spookery_kernel::api::store::codec::load_save(&text)
-        .unwrap_or_else(|err| panic!("load now: {err:?}"))
-}
-
-fn store_now(pack: &std::path::Path, mut now: spookery_kernel::api::model::Now) {
-    now.pack_rev =
-        spookery_kernel::api::canon::pack_rev(pack).unwrap_or_else(|err| panic!("rev: {err}"));
-    let text = spookery_kernel::api::store::codec::emit_save(&now)
-        .unwrap_or_else(|err| panic!("emit: {err}"));
-    fs::write(pack.join("state/save.yaml"), text).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
 fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
@@ -451,17 +477,17 @@ fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
 #[then(expr = "the tick now_hash matches the save")]
 fn the_tick_now_hash_matches_the_save(world: &mut World) {
     let pack = table::pack(world);
-    let tick = spookery_kernel::api::journal::read_record_line(pack, "tick-0001")
+    let tick = spookery_engine::testing::journal::read_record_line(pack, "tick-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     let value: serde_json::Value =
         serde_json::from_str(&tick).unwrap_or_else(|err| panic!("{err}"));
     let expected = value["now_hash"]
         .as_str()
         .unwrap_or_else(|| panic!("now_hash\n{tick}"));
-    let report =
-        spookery_round::from_journal(pack, None, None).unwrap_or_else(|err| panic!("{err}"));
+    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(
-        spookery_kernel::api::journal::hash_now(&report.now_yaml),
+        spookery_engine::testing::journal::hash_now(&report.now_yaml),
         expected
     );
 }
@@ -475,17 +501,11 @@ fn two_players_sit_and_one_sits_again(world: &mut World) {
 fn seat_drop_and_reseat() -> [String; 3] {
     let pack = crate::support::temp_pack("session-ids");
     let mut shard =
-        spookery_kernel::api::World::open(&pack).unwrap_or_else(|err| panic!("World::open: {err}"));
-    let rowan = spookery::host::seat_player(&mut shard, "pc_rowan").unwrap();
-    let wren = spookery::host::seat_player(&mut shard, "pc_wren").unwrap();
-    assert!(spookery::host::release_player_seat(
-        &mut shard,
-        &rowan,
-        "pc_rowan",
-        spookery::host::SocketEnd::Close,
-    )
-    .unwrap());
-    let again = spookery::host::seat_player(&mut shard, "pc_rowan").unwrap();
+        spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("World::open: {err}"));
+    let rowan = shard.seat_player("pc_rowan").unwrap();
+    let wren = shard.seat_player("pc_wren").unwrap();
+    assert!(shard.release_player_seat(&rowan, "pc_rowan").unwrap());
+    let again = shard.seat_player("pc_rowan").unwrap();
     let _ = fs::remove_dir_all(&pack);
     [rowan, wren, again]
 }

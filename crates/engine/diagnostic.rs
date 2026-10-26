@@ -1,0 +1,402 @@
+//! One problem a loader or pack check can show.
+//!
+//! `code` is an [`Error`](Severity::Error) [`Reason`] or a [`Warning`](Severity::Warning).
+//! The struct is plain data so a later JSON printer can serialize it as it stands.
+
+use serde::{Serialize, Serializer};
+use serde_saphyr::Error as YamlError;
+
+use crate::error::Reason;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Severity {
+    Error(Reason),
+    Warning,
+}
+
+impl Severity {
+    pub fn token(self) -> &'static str {
+        match self {
+            Severity::Error(reason) => reason.token(),
+            Severity::Warning => "WARNING",
+        }
+    }
+}
+
+impl Serialize for Severity {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.token())
+    }
+}
+
+pub(crate) const PACK_SCHEMA: &str = "pack";
+pub(crate) const PLACE_SCHEMA: &str = "place";
+pub(crate) const CAST_SCHEMA: &str = "cast";
+pub(crate) const METERS_SCHEMA: &str = "meters";
+pub(crate) const VERBS_SCHEMA: &str = "verbs";
+pub(crate) const ITEM_SCHEMA: &str = "item";
+pub(crate) const STORY_SCHEMA: &str = "story";
+pub(crate) const CHECKS_SCHEMA: &str = "checks";
+pub(crate) const TICK_SCHEMA: &str = "tick";
+pub(crate) const NOW_SCHEMA: &str = "now";
+
+struct FoundSchema<'a> {
+    line: u32,
+    value: &'a str,
+}
+
+/// The first `schema` key, with its 1-based line. Comments and blank lines are skipped.
+fn find_schema(text: &str) -> Option<FoundSchema<'_>> {
+    for (index, line) in text.lines().enumerate() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let value = unquote(trimmed.strip_prefix("schema:")?.trim());
+        if value.is_empty() {
+            return None;
+        }
+        return Some(FoundSchema {
+            line: index as u32 + 1,
+            value,
+        });
+    }
+    None
+}
+
+fn unquote(value: &str) -> &str {
+    let bytes = value.as_bytes();
+    if bytes.len() >= 2 {
+        let quote = bytes[0];
+        if (quote == b'"' || quote == b'\'') && bytes[bytes.len() - 1] == quote {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Diagnostic {
+    /// Pack-relative path, with `/` on every OS.
+    pub file: String,
+    pub line: Option<u32>,
+    pub column: Option<u32>,
+    /// Key path such as `rules[0].when`.
+    pub path: Option<String>,
+    pub code: Severity,
+    pub message: String,
+    pub hint: Option<String>,
+}
+
+impl Diagnostic {
+    pub fn new(file: &str, code: Severity, problem: &str, hint: &str) -> Self {
+        Self {
+            file: file.replace('\\', "/"),
+            line: None,
+            column: None,
+            path: None,
+            code,
+            message: format!("{problem}; {hint}"),
+            hint: Some(hint.to_string()),
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        matches!(self.code, Severity::Error(_))
+    }
+
+    pub(crate) fn at_line(mut self, line: u32, column: Option<u32>) -> Self {
+        self.line = Some(line);
+        self.column = column;
+        self
+    }
+
+    pub(crate) fn with_path(mut self, path: impl Into<String>) -> Self {
+        self.path = Some(path.into());
+        self
+    }
+
+    /// `file:line: message (CODE)`, or `file: path: message (CODE)` when there is no line.
+    pub fn report_line(&self) -> String {
+        let head = match (self.line, self.path.as_deref()) {
+            (Some(line), _) => format!("{}:{line}", self.file),
+            (None, Some(path)) => format!("{}: {path}", self.file),
+            (None, None) => self.file.clone(),
+        };
+        format!("{head}: {} ({})", self.message, self.code.token())
+    }
+}
+
+pub fn reason_of(diagnostics: Vec<Diagnostic>) -> Reason {
+    first_reason(&diagnostics)
+}
+
+pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
+    diagnostics
+        .iter()
+        .find_map(|diag| match diag.code {
+            Severity::Error(reason) => Some(reason),
+            Severity::Warning => None,
+        })
+        .unwrap_or(Reason::Schema)
+}
+
+pub(crate) fn schema(file: &str, problem: &str, hint: &str) -> Diagnostic {
+    coded(file, Reason::Schema, problem, hint)
+}
+
+pub(crate) fn coded(file: &str, code: Reason, problem: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Severity::Error(code), problem, hint)
+}
+
+pub(crate) fn warning(file: &str, problem: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Severity::Warning, problem, hint)
+}
+
+/// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
+pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u32)> {
+    if needle.is_empty() {
+        return None;
+    }
+    let mut seen = 0usize;
+    for (index, line) in text.lines().enumerate() {
+        let Some(col) = line.find(needle) else {
+            continue;
+        };
+        if seen == nth {
+            return Some((index as u32 + 1, col as u32 + 1));
+        }
+        seen += 1;
+    }
+    None
+}
+
+/// `field` inside the `row`th list item that contains `marker` (`name:` or `id:`).
+pub(crate) fn locate_row_field(
+    text: &str,
+    marker: &str,
+    row: usize,
+    field: &str,
+) -> Option<(u32, u32)> {
+    let mut marks = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        if line.contains(marker) {
+            marks.push(index);
+        }
+    }
+    let start = *marks.get(row)?;
+    let end = marks.get(row + 1).copied().unwrap_or(usize::MAX);
+    for (index, line) in text.lines().enumerate().skip(start) {
+        if index >= end {
+            break;
+        }
+        if let Some(col) = line.find(field) {
+            return Some((index as u32 + 1, col as u32 + 1));
+        }
+    }
+    None
+}
+
+pub(crate) fn with_spot(
+    mut diag: Diagnostic,
+    spot: Option<(u32, u32)>,
+    line_base: u32,
+) -> Diagnostic {
+    if let Some((line, column)) = spot {
+        diag.line = Some(line + line_base);
+        diag.column = Some(column);
+    }
+    diag
+}
+
+/// Wrong or missing `schema` tag. `None` means the tag is the one this file uses.
+pub(crate) fn tag_diagnostic(
+    text: &str,
+    expected: &str,
+    file: &str,
+    line_base: u32,
+) -> Option<Diagnostic> {
+    let hint = format!("write 'schema: {expected}' with no version suffix");
+    let Some(found) = find_schema(text) else {
+        return Some(
+            schema(file, "the schema tag is missing", &hint)
+                .with_path("schema")
+                .at_line(1 + line_base, Some(1)),
+        );
+    };
+    if found.value == expected {
+        return None;
+    }
+    let problem = if found.value.contains('/') {
+        format!("schema is '{}', an old versioned tag", found.value)
+    } else {
+        format!("schema is '{}', which this file does not use", found.value)
+    };
+    Some(
+        schema(file, &problem, &hint)
+            .with_path("schema")
+            .at_line(found.line + line_base, Some(1)),
+    )
+}
+
+pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Diagnostic {
+    let err = err.without_snippet();
+    let spot = err.location().and_then(|loc| {
+        let line = u32::try_from(loc.line()).ok()?;
+        if line == 0 {
+            return None;
+        }
+        let column = u32::try_from(loc.column())
+            .ok()
+            .filter(|column| *column > 0);
+        Some((line + line_base, column))
+    });
+    let (path, problem, hint) = match err {
+        YamlError::SerdeUnknownField { field, .. } => (
+            Some(field.clone()),
+            format!("unknown field '{field}'"),
+            "remove it or spell a field this file allows".to_string(),
+        ),
+        YamlError::SerdeMissingField { field, .. } => (
+            Some((*field).to_string()),
+            format!("missing field '{field}'"),
+            format!("add '{field}'"),
+        ),
+        YamlError::SerdeInvalidType {
+            unexpected,
+            expected,
+            ..
+        } => (
+            None,
+            format!("found {unexpected} where a {expected} belongs"),
+            format!("rewrite the value as a {expected}"),
+        ),
+        YamlError::SerdeInvalidValue {
+            unexpected,
+            expected,
+            ..
+        } => (
+            None,
+            format!("value {unexpected} is not allowed"),
+            format!("use {expected}"),
+        ),
+        YamlError::SerdeUnknownVariant { variant, .. } => (
+            Some(variant.clone()),
+            format!("unknown value '{variant}'"),
+            "use one of the values this field allows".to_string(),
+        ),
+        YamlError::InvalidScalar { ty, .. } => (
+            None,
+            format!("this value is not a valid {ty}"),
+            format!("rewrite it as a {ty}"),
+        ),
+        _ => (
+            None,
+            "this YAML could not be read".to_string(),
+            "fix the syntax at this spot and try again".to_string(),
+        ),
+    };
+    let mut diag = schema(file, &problem, &hint);
+    if let Some(path) = path {
+        diag = diag.with_path(path);
+    }
+    if let Some((line, column)) = spot {
+        diag = diag.at_line(line, column);
+    }
+    diag
+}
+
+pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
+    file: &str,
+    text: &str,
+    line_base: u32,
+) -> Result<T, Vec<Diagnostic>> {
+    serde_saphyr::from_str(text).map_err(|err| vec![yaml_diagnostic(file, &err, line_base)])
+}
+
+pub(crate) fn load_headed<T: serde::de::DeserializeOwned>(
+    file: &str,
+    text: &str,
+    expected: &str,
+    line_base: u32,
+) -> Result<T, Vec<Diagnostic>> {
+    if let Some(diag) = tag_diagnostic(text, expected, file, line_base) {
+        return Err(vec![diag]);
+    }
+    parse_file(file, text, line_base)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_diagnostic_serializes_and_prints_the_line_form() {
+        let diag = schema(
+            "rules/verbs.yaml",
+            "rule 'grit' is missing when",
+            "add when",
+        )
+        .with_path("rules[0].when")
+        .at_line(14, Some(5));
+        assert_eq!(
+            diag.report_line(),
+            "rules/verbs.yaml:14: rule 'grit' is missing when; add when (SCHEMA)"
+        );
+        let json = serde_json::to_value(&diag).unwrap();
+        assert_eq!(json["file"], "rules/verbs.yaml");
+        assert_eq!(json["line"], 14);
+        assert_eq!(json["column"], 5);
+        assert_eq!(json["path"], "rules[0].when");
+        assert_eq!(json["code"], "SCHEMA");
+        assert!(json["hint"].as_str().unwrap().contains("add when"));
+        assert_eq!(first_reason(&[diag]), Reason::Schema);
+    }
+
+    #[test]
+    fn a_path_is_the_location_when_the_line_is_unknown() {
+        let diag = coded(
+            "state/save.yaml",
+            Reason::PackRevMismatch,
+            "pack_rev does not match the canon hash",
+            "run spook migrate to store the current hash",
+        )
+        .with_path("pack_rev");
+        assert_eq!(
+            diag.report_line(),
+            "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
+        );
+    }
+
+    #[test]
+    fn a_misspelled_field_keeps_the_yaml_line() {
+        #[derive(Debug, serde::Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Row {
+            name: String,
+        }
+        let ok: Row = parse_file("rules/moves.yaml", "name: grit\n", 0).unwrap();
+        assert_eq!(ok.name, "grit");
+        let text = "name: grit\naudiance: player\n";
+        let err = parse_file::<Row>("rules/moves.yaml", text, 0).unwrap_err();
+        let err = &err[0];
+        assert!(err.message.contains("unknown field 'audiance'"), "{err:?}");
+        assert_eq!(err.code, Severity::Error(Reason::Schema));
+        assert!(err.line.is_some(), "{err:?}");
+        let spot = locate_row_field(&format!("schema: moves\n{text}"), "name:", 0, "audiance");
+        assert_eq!(spot, Some((3, 1)));
+        assert_eq!(locate_nth(text, "name:", 0), Some((1, 1)));
+        let shifted = with_spot(err.clone(), spot, 1);
+        assert_eq!(shifted.line, Some(4));
+    }
+
+    #[test]
+    fn an_old_tag_names_the_schema_line() {
+        let text = "\n# note\nschema: moves/v0\nmoves: []\n";
+        let diag = tag_diagnostic(text, "moves", "rules/moves.yaml", 0).unwrap();
+        assert_eq!(diag.line, Some(3));
+        assert!(diag.message.contains("old versioned tag"));
+        assert!(diag.message.contains("no version"));
+        assert_eq!(diag.code, Severity::Error(Reason::Schema));
+    }
+}

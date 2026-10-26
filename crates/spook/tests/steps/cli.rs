@@ -60,8 +60,7 @@ fn play_says(world: &mut World, text: String) {
 fn another_play_joins_that_table(world: &mut World) {
     let port = table::live_mut(world).port;
     let addr = format!("127.0.0.1:{port}");
-    let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["play", &pack, "--addr", &addr]);
+    let output = support::spook(&["play", "--addr", &addr, "--as", "player:pc_rowan"]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -190,7 +189,15 @@ fn play_shows_the_raw_resume_digest(world: &mut World) {
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .find(|frame| frame["kind"] == "resume")
         .unwrap_or_else(|| panic!("no resume frame\n{stdout}"));
-    assert_eq!(resume["text"], super::digest::RESUME, "{stdout}");
+    assert_eq!(resume["messages"][0]["id"], "note_mira_door", "{stdout}");
+    assert_eq!(
+        resume["messages"][0]["text"], "Back at dusk. Oil on the shelf.",
+        "{stdout}"
+    );
+    assert_eq!(resume["clocks"][0]["id"], "assassination_debt", "{stdout}");
+    assert_eq!(resume["clocks"][0]["value"], 2, "{stdout}");
+    assert_eq!(resume["clocks"][0]["max"], 6, "{stdout}");
+    assert_eq!(resume["clocks"][0]["paused"], true, "{stdout}");
     assert!(!stdout.contains("While you were away"), "{stdout}");
 }
 

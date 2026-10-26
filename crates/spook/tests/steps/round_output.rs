@@ -2,10 +2,9 @@ use std::fs;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Now;
+use spookery_engine::testing::journal::list_tick_keys;
 
-use super::common::edit_save;
+use super::common::{edit_save, set_busy};
 use super::table;
 use crate::support::{self, temp_pack};
 use crate::World;
@@ -93,7 +92,7 @@ fn the_commit_reply_lists_one_check(world: &mut World, actor: String) {
     assert_eq!(checks.len(), 1, "checks\n{}", world.stdout);
     let pack = table::pack(world).to_path_buf();
     let found = list_tick_keys(&pack).iter().any(|key| {
-        let text = spookery_kernel::api::journal::read_record_line(&pack, key)
+        let text = spookery_engine::testing::journal::read_record_line(&pack, key)
             .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
         text.contains(&format!("\"actor_id\":\"{actor}\"")) && text.contains("\"move\":\"grit\"")
     });
@@ -159,12 +158,10 @@ const STATUS_LINE: &str = "clock shop_day 1 1 running";
 
 fn queue_move(world: &mut World, actor: &str, move_name: &str, place: Option<&str>) {
     let target = match place {
-        Some(place) => format!(r#","target":{{"place":"{place}"}}"#),
+        Some(place) => format!(r#","target":"{place}""#),
         None => String::new(),
     };
-    let args = format!(
-        r#"{{"actor_id":"{actor}","actor_kind":"player","source":"player","move":"{move_name}"{target}}}"#
-    );
+    let args = format!(r#"{{"actor_id":"{actor}","move":"{move_name}"{target}}}"#);
     let text = table::gm_call(world, 4, "intent", &args);
     assert!(
         text.contains("\"queued\""),
@@ -176,21 +173,4 @@ fn commit_body(world: &World) -> Value {
     let value: Value = serde_json::from_str(&world.stdout)
         .unwrap_or_else(|err| panic!("commit reply: {err}\n{}", world.stdout));
     value["result"]["structuredContent"].clone()
-}
-
-fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
-    let act = now
-        .actors
-        .get_mut(actor)
-        .unwrap_or_else(|| panic!("no {actor}"))
-        .act_mut();
-    act.busy_until = Some(until);
-    act.busy_for = Some(spookery_kernel::api::model::Pending {
-        rule: "verb:travel".to_string(),
-        verb: "travel".to_string(),
-        target: via.to_string(),
-        arrive: Some(arrive.to_string()),
-        via: Some(via.to_string()),
-        source: "player".to_string(),
-    });
 }

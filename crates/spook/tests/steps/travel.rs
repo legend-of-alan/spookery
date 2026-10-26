@@ -2,11 +2,9 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
-use spookery_kernel::api::model::Now;
+use spookery_engine::testing::journal::list_tick_keys;
 
-use super::common::{add_trapdoor, edit_save, give_key, EVENING};
+use super::common::{add_trapdoor, edit_save, give_key, set_busy, EVENING};
 use super::table;
 use crate::support::{self, temp_pack};
 use crate::World;
@@ -16,25 +14,6 @@ fn pack_of(world: &World) -> std::path::PathBuf {
         .pack
         .clone()
         .unwrap_or_else(|| table::pack(world).to_path_buf())
-}
-
-fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
-    let act = now.actors.get_mut(actor).unwrap().act_mut();
-    act.busy_until = Some(until);
-    act.busy_for = Some(spookery_kernel::api::model::Pending {
-        rule: "verb:travel".to_string(),
-        verb: "travel".to_string(),
-        target: via.to_string(),
-        arrive: Some(arrive.to_string()),
-        via: Some(via.to_string()),
-        source: "player".to_string(),
-    });
-}
-
-fn tick_file(pack: &Path, name: &str) -> Value {
-    let text = spookery_kernel::api::journal::read_record_line(pack, name)
-        .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
 }
 
 fn add_toll(pack: &Path) {
@@ -135,7 +114,7 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let now = table::now_of(&pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert_eq!(now.world_time, 1085, "the tick shortened or skipped");
-    let tick = tick_file(&pack, "tick-0001");
+    let tick = crate::support::read_tick(&pack, "tick-0001");
     assert_eq!(tick["arrivals"][0]["arrived_at"], 1082);
     assert_eq!(tick["world_time_after"], 1085);
     assert_eq!(tick["world_time_before"], 1080);
@@ -154,7 +133,7 @@ fn a_place_rule_teleports(world: &mut World) {
     edit_save(&pack, |now| {
         now.places.insert(
             "cellar".to_string(),
-            spookery_kernel::api::model::PlaceLive {
+            spookery_engine::model::PlaceLive {
                 items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
@@ -209,7 +188,7 @@ fn two_arrivals(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_kernel::api::model::ActorLive::Pc {
+            spookery_engine::model::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -218,15 +197,15 @@ fn two_arrivals(world: &mut World) {
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
                 act: {
-                    let mut act = spookery_kernel::api::model::ActCounters::fresh();
+                    let mut act = spookery_engine::model::ActCounters::fresh();
                     act.busy_until = Some(EVENING + 5);
-                    act.busy_for = Some(spookery_kernel::api::model::Pending {
+                    act.busy_for = Some(spookery_engine::model::PendingAction {
                         rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
                         target: "docks_street".to_string(),
                         arrive: Some("docks_street".to_string()),
                         via: Some("docks_street".to_string()),
-                        source: "player".to_string(),
+                        source: spookery_engine::Source::Player,
                     });
                     act
                 },
@@ -245,8 +224,8 @@ fn arrivals_are_in_time_order(world: &mut World) {
     let pack = pack_of(world);
     let names = list_tick_keys(&pack);
     assert!(names.len() >= 2, "{names:?}");
-    let first = tick_file(&pack, &names[0]);
-    let second = tick_file(&pack, &names[1]);
+    let first = crate::support::read_tick(&pack, &names[0]);
+    let second = crate::support::read_tick(&pack, &names[1]);
     assert_eq!(first["world_time_after"], EVENING + 5);
     assert_eq!(first["arrivals"][0]["actor_id"], "pc_nell");
     assert_eq!(second["world_time_after"], EVENING + 10);
@@ -274,14 +253,14 @@ fn rowan_travels_in_the_evening_tick(world: &mut World) {
 
 #[then(expr = "the tick still ends at 21:35")]
 fn the_tick_ends_at_half(world: &mut World) {
-    let tick = tick_file(&pack_of(world), "tick-0001");
+    let tick = crate::support::read_tick(&pack_of(world), "tick-0001");
     assert_eq!(tick["world_time_before"], EVENING);
     assert_eq!(tick["world_time_after"], EVENING + 5);
 }
 
 #[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that tick's line")]
 fn arrival_is_stamped(world: &mut World) {
-    let tick = tick_file(&pack_of(world), "tick-0001");
+    let tick = crate::support::read_tick(&pack_of(world), "tick-0001");
     assert_eq!(tick["arrivals"][0]["actor_id"], "pc_rowan");
     assert_eq!(tick["arrivals"][0]["arrived_at"], EVENING + 2);
     let stamped = tick["effects"]
@@ -306,18 +285,20 @@ fn the_next_tick_accepts_a_move(world: &mut World) {
 )]
 fn ticks_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
-    let mut seated_world = spookery_kernel::api::World::open(&seated).unwrap();
-    seated_world.set_presence(spookery_kernel::api::model::Presence {
+    let mut seated_world = spookery_engine::World::open(&seated).unwrap();
+    seated_world.set_presence(spookery_engine::model::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });
     let wall = seated_world.now().last_tick_at.clone();
-    spookery_round::play(&mut seated_world, spookery_round::RoundCause::Manual, &wall).unwrap();
+    seated_world
+        .play(spookery_engine::RoundCause::Manual, &wall)
+        .unwrap();
     drop(seated_world);
     let idle = temp_pack("idle-length");
-    spookery_round::play_pack_once(&idle).unwrap();
-    let seated_tick = tick_file(&seated, "tick-0001");
-    let idle_tick = tick_file(&idle, "tick-0001");
+    spookery_engine::play_pack_once(&idle).unwrap();
+    let seated_tick = crate::support::read_tick(&seated, "tick-0001");
+    let idle_tick = crate::support::read_tick(&idle, "tick-0001");
     assert_eq!(
         seated_tick["world_time_after"].as_u64().unwrap()
             - seated_tick["world_time_before"].as_u64().unwrap(),
@@ -347,7 +328,7 @@ fn both_busy_without_a_gm(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_kernel::api::model::ActorLive::Pc {
+            spookery_engine::model::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -355,7 +336,7 @@ fn both_busy_without_a_gm(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: spookery_kernel::api::model::ActCounters::fresh(),
+                act: spookery_engine::model::ActCounters::fresh(),
             },
         );
         set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");
@@ -373,7 +354,11 @@ fn the_shard_ticks_through_both_arrivals(world: &mut World) {
     let names = list_tick_keys(&pack);
     let ends: Vec<u64> = names
         .iter()
-        .map(|name| tick_file(&pack, name)["world_time_after"].as_u64().unwrap())
+        .map(|name| {
+            crate::support::read_tick(&pack, name)["world_time_after"]
+                .as_u64()
+                .unwrap()
+        })
         .collect();
     assert!(ends.contains(&(EVENING + 5)), "{ends:?}");
     assert!(ends.contains(&(EVENING + 10)), "{ends:?}");
@@ -384,9 +369,9 @@ fn the_habit_runs_at_half(world: &mut World) {
     let pack = pack_of(world);
     let tick = list_tick_keys(&pack)
         .into_iter()
-        .find(|name| tick_file(&pack, name)["world_time_after"] == EVENING + 5)
+        .find(|name| crate::support::read_tick(&pack, name)["world_time_after"] == EVENING + 5)
         .unwrap_or_else(|| panic!("no 21:35 tick"));
-    let steps = tick_file(&pack, &tick)["steps_run"].to_string();
+    let steps = crate::support::read_tick(&pack, &tick)["steps_run"].to_string();
     assert!(steps.contains("cast:bram/toll"), "{steps}");
 }
 
@@ -467,20 +452,4 @@ fn the_player_map_lists_the_room(world: &mut World) {
     let (_mark, map) = table::player_send(world, "map", "Mira");
     assert!(map.contains("mira_rooms") || map.contains("Mira"), "{map}");
     assert!(!map.contains("trapdoor"), "{map}");
-}
-
-#[when(expr = "the operator runs spook map on the docks pack")]
-fn the_operator_runs_spook_map(world: &mut World) {
-    let pack = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    let output = support::spook(&["map", pack.to_str().unwrap()]);
-    world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-    world.code = output.status.code();
-}
-
-#[then(expr = "the map lists the stairs exit and does not hide it")]
-fn the_map_lists_the_stairs(world: &mut World) {
-    assert_eq!(world.code, Some(0), "{}", world.stderr);
-    assert!(world.stdout.contains("stairs"), "{}", world.stdout);
-    assert!(world.stdout.contains("mira_rooms"), "{}", world.stdout);
 }

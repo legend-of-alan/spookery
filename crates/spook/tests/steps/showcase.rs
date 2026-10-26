@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::table;
 use crate::support;
@@ -92,8 +92,8 @@ fn the_ending_flag_is_set(world: &mut World) {
     assert!(finished(table::pack(world)), "finished is not set");
 }
 
-#[then(expr = "spook verify and spook audit pass on the save")]
-fn verify_and_audit_pass(world: &mut World) {
+#[then(expr = "spook verify passes on the save")]
+fn verify_passes_on_the_save(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::stop_server(world);
     prove(&pack);
@@ -201,7 +201,7 @@ fn commit_line(world: &mut World, line: &str) {
     table::wait_tick_count(table::pack(world), before + 1);
 }
 
-fn tonic_of(now: &spookery_kernel::api::model::Now) -> u32 {
+fn tonic_of(now: &spookery_engine::model::Now) -> u32 {
     now.actors.get("pc_lark").unwrap().count("tonic")
 }
 
@@ -213,7 +213,7 @@ fn finished(pack: &Path) -> bool {
 }
 
 fn lane_cost(pack: &Path) -> u64 {
-    let canon = spookery_kernel::api::canon::load_canon(pack)
+    let canon = spookery_engine::canon::load_canon(pack)
         .unwrap_or_else(|err| panic!("load canon: {err:?}"));
     canon
         .places
@@ -240,7 +240,7 @@ fn ticks(pack: &Path) -> Vec<Value> {
     list_tick_keys(pack)
         .into_iter()
         .map(|name| {
-            let text = spookery_kernel::api::journal::read_record_line(pack, &name)
+            let text = spookery_engine::testing::journal::read_record_line(pack, &name)
                 .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
             serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))
         })
@@ -257,11 +257,4 @@ fn prove(pack: &Path) {
         "verify failed\n{verify_out}\n{verify_err}"
     );
     assert!(verify_out.contains("verified"), "{verify_out}");
-    let audited = support::spook(&["audit", arg]);
-    let audit_out = String::from_utf8_lossy(&audited.stdout);
-    let audit_err = String::from_utf8_lossy(&audited.stderr);
-    assert!(
-        audited.status.success(),
-        "audit failed\n{audit_out}\n{audit_err}"
-    );
 }

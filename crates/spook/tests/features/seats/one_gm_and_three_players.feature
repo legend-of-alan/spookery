@@ -59,6 +59,12 @@ Feature: One GM seat and up to three player seats
     When three players sit
     Then only that PC's perceive shows the hidden fact
 
+  Scenario: Saying a hidden fact does not teach it
+    Given a docks table where one PC knows a hidden fact
+    When three players sit
+    And that PC says the hidden fact and another PC waits
+    Then only that PC's perceive shows the hidden fact
+
   Scenario: With a GM two players commit in one round
     Given a docks table with a GM and two seated players
     When both players wait
@@ -84,3 +90,22 @@ Feature: One GM seat and up to three player seats
 
   Scenario: A reseated player never reuses a held session id
     When two players sit, one drops, and that PC sits again
+
+  Scenario: An empty hello is refused with the free PCs
+    Given a docks table
+    When a socket sends an empty hello
+    Then the hello is refused with "CHOOSE_PC" and the missing list is '["pc_harbormouse","pc_rowan","pc_wren"]'
+    When a socket sends player:
+    Then the hello is refused with "SCHEMA"
+    And the hello reply does not contain "CHOOSE_PC"
+
+  Scenario: An empty hello with no free PC lists none
+    Given a one-player docks table
+    When a socket sends an empty hello
+    Then the hello is refused with "CHOOSE_PC" and the missing list is "[]"
+    And the hello reply does not contain "SEAT_TAKEN"
+
+  Scenario: spook play with one free PC seats it without a prompt
+    Given a one-player docks table
+    When play joins that one-player table with no --as
+    Then play received the first perceive

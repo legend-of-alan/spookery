@@ -16,7 +16,7 @@ Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 
 ## How this differs
 
-The model does not keep the world. It can talk, and it can ask the engine to commit a round. Dice, items, and places change only inside that commit. The journal records the round. Replay repeats the recorded rolls. `spook verify` checks the journal. A player sees a hidden fact only when that character knows it, and `spook audit` checks the view.
+The model does not keep the world. It can talk, and it can ask the engine to commit a round. Dice, items, and places change only inside that commit. The journal records the round. Replay repeats the recorded rolls. `spook verify` checks the journal. A player sees a hidden fact only when that character knows it.
 
 ## Glossary
 
@@ -44,12 +44,11 @@ docs/                  guarantees, first-pack guide, pack reference, expressions
 packs/                 sample packs (oneshot-docks is the official fixture)
 .grok/skills/          the author-pack skill
 crates/
-  kernel/              spookery-kernel: world model, rules, legality
-  round/               spookery-round: settles a round of intents
+  protocol/            spookery-protocol: player and GM wire codecs
+  engine/              spookery-engine: world model, rules, rounds, and journal
+  agent/               spookery-agent: model GM turn state machine
+  cli/                 spookery-cli: spook play, spook gm, and spook ai-gm
+  server/              spookery-server: world loop, seats, idle clock, and MCP door
   spook/               package and binary spook, library spookery
-    src/host/          world loop, seats and the idle clock
-    src/protocol/      shared wire lines
-    src/terminal/      spook play and spook gm
-    src/ai/            spook ai-gm
     tests/features/    BDD scenarios
 ```

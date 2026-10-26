@@ -8,9 +8,6 @@ Feature: A round refusal names the gap
     And the GM commits the round
     Then play's error shows "You cannot afford grit. [CANT_AFFORD]" once
     And the round rejects that habit with "CANT_AFFORD grit"
-    When the operator runs audit
-    Then the command exits 0
-    And stderr is empty
 
   Scenario: A locked exit refused during the round keeps its sentence
     Given a sample table where dropping the tonic locks the loft

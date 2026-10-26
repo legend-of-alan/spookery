@@ -7,27 +7,12 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_kernel::api::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_tick_keys;
 
 use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
 use crate::support::{self, text_of};
 use crate::World;
-
-#[given(expr = "a copy of the sample-d20 pack")]
-fn a_copy_of_the_sample_d20_pack(world: &mut World) {
-    world.pack = Some(support::copy_pack("sample-d20", "refused-round"));
-}
-
-#[when(expr = "play joins the sample table")]
-fn play_joins_the_sample_table(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::listen(world, &pack);
-    let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
-    wait_play(world, "Gate Yard");
-}
 
 #[then(expr = "play's error shows {string} once")]
 fn play_error_shows_once(world: &mut World, text: String) {
@@ -58,12 +43,6 @@ fn play_error_shows_once(world: &mut World, text: String) {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-}
-
-#[when(expr = "the operator runs audit")]
-fn the_operator_runs_audit(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["audit", &support::pack_arg(&pack)]);
 }
 
 #[given(expr = "Oden's habit takes a tonic that is not there")]
@@ -113,7 +92,7 @@ fn the_player_sees_no_refused_frame(world: &mut World) {
 fn push_and_shove_cost_grit(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "grit-gap");
     add_grit(&pack);
-    append(
+    crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
 \n  - id: push
@@ -134,7 +113,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     world.pack = Some(pack);
 }
 
@@ -181,7 +160,7 @@ fn one_effect_is_over_budget(world: &mut World) {
     );
     assert_ne!(text, next, "the effect budget was not lowered");
     fs::write(&path, next).unwrap_or_else(|err| panic!("write tick: {err}"));
-    append(
+    crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
 \n  - id: tap
@@ -204,8 +183,13 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     let addr = table::game_addr(world);
-    let pack_arg = support::pack_arg(&pack);
-    world.play = Some(support::spawn(&["play", &pack_arg, "--addr", &addr]));
+    world.play = Some(support::spawn(&[
+        "play",
+        "--addr",
+        &addr,
+        "--as",
+        "player:pc_lark",
+    ]));
     wait_play(world, "You are in");
 }
 
@@ -237,9 +221,7 @@ fn lark_queues(world: &mut World, line: String) {
 
 #[when(expr = "the GM sends Lark's strike on {word}")]
 fn the_gm_sends_larks_strike(world: &mut World, target: String) {
-    let args = format!(
-        r#"{{"actor_id":"pc_lark","actor_kind":"player","source":"player","move":"strike","target":{{"actor":"{target}"}}}}"#
-    );
+    let args = format!(r#"{{"actor_id":"pc_lark","move":"strike","target":"{target}"}}"#);
     let text = table::gm_call(world, 4, "intent", &args);
     assert!(text.contains("\"queued\""), "{text}");
 }
@@ -288,7 +270,7 @@ rules:
 ",
     );
     fs::write(&path, next).unwrap_or_else(|err| panic!("write oden: {err}"));
-    append(
+    crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
 \n  - id: sap
@@ -302,7 +284,7 @@ rules:
 ",
     );
     edit_save(&pack, |_| {});
-    spookery_round::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
+    spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
@@ -337,7 +319,7 @@ fn replace_oden_rules(text: &str, rules: &str) -> String {
 }
 
 fn add_grit(pack: &Path) {
-    append(
+    crate::support::append(
         &pack.join("rules/meters.yaml"),
         "\
 \n  - id: grit
@@ -349,22 +331,12 @@ fn add_grit(pack: &Path) {
     );
 }
 
-fn append(path: &Path, extra: &str) {
-    let mut text = fs::read_to_string(path).unwrap_or_else(|err| panic!("read {path:?}: {err}"));
-    assert!(!text.contains(extra.trim()), "already present in {path:?}");
-    if !text.ends_with('\n') {
-        text.push('\n');
-    }
-    text.push_str(extra);
-    fs::write(path, text).unwrap_or_else(|err| panic!("write {path:?}: {err}"));
-}
-
 fn assert_one_rejection(world: &World, word: &str) {
     let pack = table::pack(world);
     let keys = list_tick_keys(pack);
     let mut hits = 0;
     for key in &keys {
-        let line = spookery_kernel::api::journal::read_record_line(pack, key)
+        let line = spookery_engine::testing::journal::read_record_line(pack, key)
             .unwrap_or_else(|err| panic!("{}: {}", key, err.detail));
         let round: Value = serde_json::from_str(&line).unwrap_or_else(|err| panic!("{key}: {err}"));
         let Some(rejected) = round["rejected"].as_array() else {

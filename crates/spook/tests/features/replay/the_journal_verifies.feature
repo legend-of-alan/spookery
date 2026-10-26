@@ -51,21 +51,12 @@ Feature: The journal verifies
     And stderr names that record
     And stderr names the first differing save line
 
-  Scenario: Verify and replay leave the pack unchanged
+  Scenario: Verify leaves the pack unchanged
     Given a docks table
     When the operator runs tick
     And the pack bytes are remembered
     And the operator runs verify
-    And the operator runs replay
     Then the pack bytes are unchanged
-
-  Scenario: Replay prints the final state_rev
-    Given a docks table
-    When the operator runs 12 ticks
-    And the operator runs replay
-    Then the command exits 0
-    And stdout shows the final state_rev
-    And stderr is empty
 
   Scenario: Verify from a pre-tick copy
     Given a docks table
