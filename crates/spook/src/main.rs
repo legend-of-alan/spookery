@@ -135,13 +135,12 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             }
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
+            // Ctrl+C stops the host. Listen before serving so an early one is caught.
+            let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
+            let ctrl_c = runtime.spawn(tokio::signal::ctrl_c());
             let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
-            for line in std::io::stdin().lines() {
-                match line.as_deref() {
-                    Ok("stop") | Err(_) => break,
-                    Ok(_) => eprintln!("NOT_IN_SPEC"),
-                }
-            }
+            let caught = runtime.block_on(ctrl_c).map_err(|e| e.to_string())?;
+            caught.map_err(|e| e.to_string())?;
             handle.stop();
             handle.join().map_err(|e| e.to_string())
         }

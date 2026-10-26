@@ -590,8 +590,21 @@ pub fn stop_server(world: &mut World) {
     live.player_write.take();
     live.gm.take();
     live.closed_gm.take();
-    if let Some(server) = live.server.take() {
-        drop(server);
+    // Stop the host the way a person does, with Ctrl+C. Windows just drops it, which kills.
+    if let Some(mut server) = live.server.take() {
+        if cfg!(unix) {
+            let pid = server.child.id().to_string();
+            let kill = std::process::Command::new("kill")
+                .args(["-INT", &pid])
+                .status();
+            assert!(kill.is_ok_and(|s| s.success()), "kill -INT {pid}");
+            let status = server
+                .child
+                .wait()
+                .unwrap_or_else(|err| panic!("wait: {err}"));
+            let stderr = support::text_of(&server.stderr);
+            assert!(status.success(), "host exited {status:?}\n{stderr}");
+        }
     }
 }
 

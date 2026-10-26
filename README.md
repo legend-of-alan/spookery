@@ -21,7 +21,7 @@ You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also 
 
 The walkthrough copies `packs/sample-d20` and plays it to the ending. `spook run` writes its save into the pack folder, so always play a copy, never the folder inside the repo. You are Lark, in the Gate Yard, carrying a tonic. A cart blocks the lane until you chock its wheel, and Briar bars it until you ask. The loft slate says a swing can miss. `use tonic` drinks it. `chock` settles the cart. `ask_briar` opens the lane. `travel mill_lane` takes the exit. The walk costs 15 minutes, and arriving fires the rule in `packs/sample-d20/story/ending.yaml`, which sets the world flag `finished` and prints the ending line.
 
-`spook run` stays in the foreground. In a second terminal, from the repo folder and with the same `PATH`, run `spook play` and type the lines. With no GM seated, each line commits on its own. The CI dry run seats a stub GM that commits the same lines. Type `stop` in the host when the ending line has appeared, then run `spook verify`.
+`spook run <pack>` stays in one terminal. In another terminal, from the repo folder and with the same `PATH`, run `spook play` and type the lines. With no GM seated, each line commits on its own. The CI dry run seats a stub GM that commits the same lines. Press Ctrl+C in the host terminal when the ending line has appeared, then run `spook verify`.
 
 ### Lines
 

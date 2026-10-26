@@ -18,7 +18,7 @@ path = "src/main.rs"
 
 [features]
 default = ["server", "client"]
-server = ["dep:spookery-engine", "dep:spookery-server", "dep:serde_json"]
+server = ["dep:spookery-engine", "dep:spookery-server", "dep:serde_json", "dep:tokio"]
 client = ["dep:spookery-cli"]
 
 [dependencies]
@@ -28,6 +28,7 @@ spookery-cli = { path = "../cli", optional = true }
 spookery-engine = { path = "../engine", optional = true }
 spookery-protocol = { path = "../protocol" }
 spookery-server = { path = "../server", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "signal"], optional = true }
 
 [dev-dependencies]
 cucumber = "=0.23.0"

@@ -15,6 +15,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -154,12 +155,14 @@ def main() -> None:
             else:
                 dump(f"the line did not finish: {line}", None, play, host, gm)
         wait_text(play.out, ending, 45, "the session did not reach the ending", play, host, gm)
-        assert host.proc.stdin is not None
-        host.proc.stdin.write("stop\n")
-        host.proc.stdin.flush()
-        code = host.proc.wait(timeout=20)
-        if code != 0:
-            dump("the host exited", code, host, gm, play)
+        if sys.platform == "win32":
+            # Windows has no SIGINT for one process. The save is atomic, so kill it.
+            host.proc.terminate()
+            host.proc.wait(timeout=20)
+        else:
+            host.proc.send_signal(signal.SIGINT)
+            if (code := host.proc.wait(timeout=20)) != 0:
+                dump("the host exited", code, host, gm, play)
         print("--- play ---")
         print("".join(play.out), end="")
         if scratch is not None:
