@@ -14,7 +14,7 @@ Feature scenarios live under `crates/engine/tests/features` and `crates/spook/te
 cargo test --workspace --test features_host --test features_world
 ```
 
-The workspace `rust-version` is 1.89. CI pins 1.89.0 and builds this workspace on `ubuntu-latest`, `macos-latest`, and `windows-latest`. The GitHub Ubuntu image already includes `pkg-config` and `libssl-dev`. A minimal Linux install does not.
+The workspace `rust-version` is 1.89. CI pins 1.89.0. Pull requests run on `ubuntu-latest`. Pushes to main run on `ubuntu-latest`, `macos-latest`, and `windows-latest`.
 
 ## Issues and PRs
 

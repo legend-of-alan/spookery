@@ -475,7 +475,7 @@ mod tests {
             if !fenced {
                 continue;
             }
-            let Some(args) = spook_argv(line) else {
+            let Some(args) = split_spook_line(line) else {
                 continue;
             };
             found = true;
@@ -484,25 +484,12 @@ mod tests {
         assert!(found, "README.md has no spook command");
     }
 
-    fn spook_argv(line: &str) -> Option<Vec<String>> {
-        let args: Vec<String> = line
-            .split_whitespace()
-            .skip_while(|word| is_env(word))
-            .map(str::to_string)
-            .collect();
-        if args.first().is_some_and(|word| word == "spook") {
+    fn split_spook_line(line: &str) -> Option<Vec<&str>> {
+        let args: Vec<&str> = line.split_whitespace().collect();
+        if args.first() == Some(&"spook") {
             Some(args)
         } else {
             None
         }
-    }
-
-    fn is_env(word: &str) -> bool {
-        let Some((name, _)) = word.split_once('=') else {
-            return false;
-        };
-        let mut chars = name.chars();
-        matches!(chars.next(), Some(c) if c.is_ascii_alphabetic() || c == '_')
-            && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
     }
 }

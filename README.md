@@ -17,7 +17,7 @@ The glossary is in [docs/README.md](docs/README.md#glossary).
 You need Rust 1.89 or newer from [rustup](https://rustup.rs). On Linux you also need `pkg-config` and `libssl-dev` (on Debian or Ubuntu: `sudo apt install pkg-config libssl-dev`).
 
 ```sh
-git clone -c core.autocrlf=false https://github.com/legend-of-alan/spookery.git
+git clone https://github.com/legend-of-alan/spookery.git
 cd spookery
 cargo build --release --locked
 export PATH="$PWD/target/release:$PATH"
@@ -50,7 +50,7 @@ spook verify /tmp/yard
 
 ## At the table
 
-`help` lists the verbs and the exits. `look` prints the place again. `say` plus the words after it is speech, and it does not tick. A word the table does not know says to type help.
+`help` lists the verbs and the exits. `look` prints the place again. `say` plus the words after it is speech, and it does not tick. Anything the table doesn't know tells you to type help.
 
 The other host commands are in [docs/README.md](docs/README.md#at-the-table). A person sits the GM seat with `spook gm`. A model sits it with `spook ai-gm`. Setup for both is in [docs/README.md](docs/README.md#game-master).
 
