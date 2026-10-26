@@ -1,10 +1,10 @@
 //! The Spookery AI GM state machine.
 
 pub mod llm;
-pub mod prompt;
+mod prompt;
 
 pub use llm::*;
-pub use prompt::*;
+use prompt::*;
 pub use spookery_protocol as protocol;
 
 use std::collections::{BTreeMap, VecDeque};
