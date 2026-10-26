@@ -356,7 +356,7 @@ mod tests {
 
     const Q_ST: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"tick_index":0,"state_rev":1,"pack_rev":"p","last_tick_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
     const E_ST: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"tick_index":0,"state_rev":1,"pack_rev":"p","last_tick_at":"","queued":[],"last_seq":1}"#;
-    const VIEW: &str = r#"{"viewer":"player:pc","place":"docks","visible_actors":["pc"]}"#;
+    const VIEW: &str = r#"{"viewer":"pc","place":"docks","visible_actors":["pc"]}"#;
     const COMMIT: &str = r#"{"state_rev":2,"diff_summary":[],"log_path":null,"checks":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
     const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;
 

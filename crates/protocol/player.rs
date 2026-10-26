@@ -232,7 +232,7 @@ mod tests {
 
     #[test]
     fn a_perceive_frame_ignores_unknown_fields() {
-        let line = r#"{"kind":"perceive","viewer":"player:rowan","place":"shop","visible_actors":[],"known_facts":[],"messages":[],"unknown_mentioned":[],"clocks":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
+        let line = r#"{"kind":"perceive","viewer":"rowan","place":"shop","visible_actors":[],"known_facts":[],"messages":[],"unknown_mentioned":[],"clocks":[],"items":[{"id":"oil","count":1,"extra":true}],"habits":[],"future":1}"#;
         assert!(matches!(read_player(line), Ok(PlayerMessage::View { .. })));
     }
 }

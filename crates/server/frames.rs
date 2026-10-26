@@ -225,7 +225,7 @@ pub fn session_status(
 
 fn player_view(view: &View) -> PlayerMessage {
     PlayerMessage::View {
-        viewer: view.viewer.token(),
+        viewer: view.viewer.actor_id().to_string(),
         place: view.place.clone(),
         scene: Box::new(ViewScene {
             place_name: view.place_name.clone(),

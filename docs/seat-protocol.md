@@ -72,7 +72,7 @@ A legal hello sits that PC. Speech already on the tape for that player arrives f
 ```json
 {
   "kind": "perceive",
-  "viewer": "player:pc_rowan",
+  "viewer": "pc_rowan",
   "place": "docks_shop",
   "place_name": "Docks Shop",
   "prose": "The shop faces the water. Tins sit in a row.",
@@ -139,7 +139,7 @@ A legal hello sits that PC. Speech already on the tape for that player arrives f
 }
 ```
 
-`resume` carries the notes addressed to that viewer (`messages`) and their own clocks (`clocks`). `perceive` is what that viewer can see. `viewer` is `player:<id>`. `place_name` and `actor_names` are the pack's display names. `prose` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
+`resume` carries the notes addressed to that viewer (`messages`) and their own clocks (`clocks`). `perceive` is what that viewer can see. `viewer` is the bare actor id, the same form `as` takes. It is not `player:<id>` or `npc:<id>`. `place_name` and `actor_names` are the pack's display names. `prose` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
 
 Sitting keeps presence in memory and does not bump `state_rev`. The cap is three player seats, in the engine, not in the pack.
 

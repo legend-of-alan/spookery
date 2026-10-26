@@ -150,7 +150,7 @@ fn view_text(message: &PlayerMessage) -> String {
             .iter()
             .enumerate()
             .map(|(index, id)| {
-                if is_self(id, viewer) {
+                if id == viewer {
                     "You".to_string()
                 } else {
                     scene
@@ -233,13 +233,6 @@ fn clock_line(clock: &WireClock) -> String {
         format!("{name}: {}/{}, paused", clock.value, clock.max)
     } else {
         format!("{name}: {}/{}", clock.value, clock.max)
-    }
-}
-
-fn is_self(id: &str, viewer: &str) -> bool {
-    match viewer.strip_prefix("player:") {
-        Some(actor) if !actor.is_empty() => id == actor || id == viewer,
-        _ => id == viewer,
     }
 }
 
@@ -453,7 +446,7 @@ Shop day: 1/1"
     #[test]
     fn a_perceive_names_the_place_and_skips_empty_sections() {
         let text = render(&PlayerMessage::View {
-            viewer: "player:pc_rowan".to_string(),
+            viewer: "pc_rowan".to_string(),
             place: "docks_shop".to_string(),
             scene: Box::new(crate::protocol::ViewScene {
                 place_name: "Docks Shop".to_string(),
@@ -543,7 +536,7 @@ stairs (locked) — 2 min"
         assert_readable(&text);
 
         let quiet = render(&PlayerMessage::View {
-            viewer: "player:pc_rowan".to_string(),
+            viewer: "pc_rowan".to_string(),
             place: "docks_street".to_string(),
             scene: Box::new(crate::protocol::ViewScene {
                 place_name: "Docks Street".to_string(),
