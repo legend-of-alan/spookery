@@ -155,7 +155,7 @@ def main() -> None:
             else:
                 dump(f"the line did not finish: {line}", None, play, host, gm)
         wait_text(play.out, ending, 45, "the session did not reach the ending", play, host, gm)
-        if os.name == "nt":
+        if sys.platform == "win32":
             # Windows has no SIGINT for one process. The save is atomic, so kill it.
             host.proc.terminate()
             host.proc.wait(timeout=20)
