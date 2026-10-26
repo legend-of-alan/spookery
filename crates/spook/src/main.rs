@@ -111,10 +111,7 @@ enum Command {
 fn main() {
     let cli = Cli::parse();
     if let Err(exit) = dispatch(cli) {
-        // A printed terminal failure is an empty string. It already showed.
-        if !exit.is_empty() {
-            eprintln!("{exit}");
-        }
+        eprintln!("{exit}");
         std::process::exit(1);
     }
 }
@@ -248,9 +245,8 @@ fn dispatch(cli: Cli) -> Result<(), String> {
 #[cfg(feature = "client")]
 fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), String> {
     result.map_err(|err| match err {
-        spookery::terminal::Error::Reason(code) => code.to_string(),
+        spookery::terminal::Error::Reason(reason) => reason,
         spookery::terminal::Error::Io(err) => err.to_string(),
-        spookery::terminal::Error::Printed => String::new(),
     })
 }
 

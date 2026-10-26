@@ -46,17 +46,11 @@ pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(
         Ok(client) => client,
         Err(gm_connection::Error::Io(err)) => return Err(super::Error::Io(err)),
         Err(gm_connection::Error::Refused { code, raw: line }) => {
-            return Err(print_refusal(&code, &line, raw));
+            return Err(super::Error::Reason(refusal_line(&code, &line, raw)));
         }
-        Err(gm_connection::Error::Bad(line)) => {
-            eprintln!("{line}");
-            let _ = io::stderr().flush();
-            return Err(super::Error::Printed);
-        }
+        Err(gm_connection::Error::Bad(line)) => return Err(super::Error::Reason(line)),
         Err(gm_connection::Error::Closed) => {
-            eprintln!("seat closed");
-            let _ = io::stderr().flush();
-            return Err(super::Error::Printed);
+            return Err(super::Error::Reason("seat closed".into()));
         }
     };
     let mut session = GmSession {
@@ -382,25 +376,19 @@ impl GmSession {
     }
 
     fn show_refusal(&self, code: &str, raw: &str) {
-        if self.raw {
-            emit(raw);
-            eprintln!("{code}");
-        } else {
-            eprintln!("{}", refusal(code));
-        }
+        eprintln!("{}", refusal_line(code, raw, self.raw));
         let _ = io::stderr().flush();
     }
 }
 
-fn print_refusal(code: &str, raw: &str, raw_mode: bool) -> super::Error {
+/// Raw mode echoes the frame and names the code. Text mode names the refusal.
+fn refusal_line(code: &str, raw: &str, raw_mode: bool) -> String {
     if raw_mode {
         emit(raw);
-        eprintln!("{code}");
+        code.to_string()
     } else {
-        eprintln!("{}", refusal(code));
+        refusal(code)
     }
-    let _ = io::stderr().flush();
-    super::Error::Printed
 }
 
 fn emit(line: &str) {

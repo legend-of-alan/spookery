@@ -11,8 +11,6 @@ pub use gm_view::{actor_name, run_gm};
 pub use player_view::run_player;
 
 pub enum Error {
-    Reason(&'static str),
+    Reason(String),
     Io(io::Error),
-    /// The view already printed this failure.
-    Printed,
 }
