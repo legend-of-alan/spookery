@@ -1,12 +1,5 @@
 Feature: The host sits the GM seat
 
-  Scenario: Host without a pack is a usage error
-    When the operator runs ai-gm with no pack
-    Then the command exits 2
-    And stderr shows usage
-    And stdout is empty
-    And nothing was dialed
-
   Scenario: Host with an extra argument is a usage error
     Given a docks table
     When the operator runs ai-gm with an extra argument

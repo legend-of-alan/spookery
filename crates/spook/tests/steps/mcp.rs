@@ -64,10 +64,8 @@ fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     world.gm = Some(support::spawn(&[
         "gm",
-        &pack_arg,
         "--addr",
         &addr,
         "--mcp-http",

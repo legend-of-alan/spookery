@@ -50,7 +50,7 @@ fn a_live_model_plays_one_round() {
     wait_port(&addr, &mut server);
 
     let (proxy, calls) = proxy(upstream);
-    let mut host = spawn_host(&addr, &pack_text, &key, &format!("http://{proxy}"), &model);
+    let mut host = spawn_host(&addr, &key, &format!("http://{proxy}"), &model);
     wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
 
     let sit = world_time(&pack);
@@ -125,10 +125,10 @@ fn setting(name: &str) -> String {
     }
 }
 
-fn spawn_host(addr: &str, pack: &str, key: &str, url: &str, model: &str) -> Proc {
+fn spawn_host(addr: &str, key: &str, url: &str, model: &str) -> Proc {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["--addr", addr, "ai-gm", pack])
+        .args(["--addr", addr, "ai-gm"])
         .env("SPOOK_GM_KEY", key)
         .env("SPOOK_GM_URL", url)
         .env("SPOOK_GM_MODEL", model)

@@ -1,7 +1,6 @@
 //! Sit the GM seat and turn model replies into tool calls.
 
 use std::net::SocketAddr;
-use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use spookery_agent::{Agent, AgentInput, AgentStep, Model};
@@ -18,7 +17,6 @@ pub struct TurnWatch {
 }
 
 pub fn run_gm<M: Model>(
-    _pack: &Path,
     addr: SocketAddr,
     door: Option<SocketAddr>,
     model: &mut M,
