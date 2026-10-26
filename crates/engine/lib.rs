@@ -33,10 +33,7 @@ pub use error::Reason;
 pub use intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 pub use map::ExitView;
 pub use meter::MeterLive;
-pub use model::{
-    ActCounters, ActorLive, Clock, Message, Now, PauseView, PendingAction, PlaceLive, Presence,
-    RunState,
-};
+pub use model::{Message, Now, RunState};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{
     migrate_pack, plan_catchup, play_pack_once, verify_pack, verify_quick, RoundCause, RoundOutput,
@@ -56,7 +53,9 @@ pub mod testing {
     use std::path::{Path, PathBuf};
 
     pub use crate::canon::strip_body;
-    pub use crate::model::MemoryLine;
+    pub use crate::model::{
+        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PlaceLive, Presence,
+    };
     pub use crate::round::replay::from_journal;
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::store::RULES_REV;

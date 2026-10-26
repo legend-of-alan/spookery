@@ -370,8 +370,8 @@ fn snapshot_of(pack: &Path) -> PathBuf {
 
 fn flags_of(world: &World, id: &str) -> Vec<String> {
     let mut flags = match table::now_of(table::pack(world)).actors.get(id) {
-        Some(spookery_engine::ActorLive::Npc { flags, .. })
-        | Some(spookery_engine::ActorLive::Pc { flags, .. }) => flags.clone(),
+        Some(spookery_engine::testing::ActorLive::Npc { flags, .. })
+        | Some(spookery_engine::testing::ActorLive::Pc { flags, .. }) => flags.clone(),
         _ => panic!("{id} missing"),
     };
     flags.sort();

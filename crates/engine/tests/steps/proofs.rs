@@ -4,20 +4,16 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_engine::emit_save;
-use spookery_engine::testing::journal::list_tick_keys;
-use spookery_engine::{
-    handle_player_move, play_pack_once, GmIntentSpec, MeterLive, MoveOutcome, MoveReport, Outcome,
-    World as Shard,
+use spookery_engine::testing::{
+    self as support, insert_nell, journal::list_tick_keys, now_of, open, read_tick as tick_value,
+    save_now, stamp_pack_rev, ActCounters, ActorLive, PauseView, PlaceLive, Presence,
 };
 use spookery_engine::{
-    ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
+    emit_save, handle_player_move, play_pack_once, GmIntentSpec, Message, MeterLive, MoveOutcome,
+    MoveReport, Now, Outcome, RunState, World as Shard,
 };
 
 use crate::World;
-use spookery_engine::testing::{
-    self as support, insert_nell, now_of, open, read_tick as tick_value, save_now, stamp_pack_rev,
-};
 
 const LEDGER: &str = "The lamp-oil ledger is short.";
 
@@ -109,7 +105,7 @@ fn door_message() -> Message {
 }
 
 fn seat_rowan(world: &mut Shard) {
-    world.set_presence(spookery_engine::Presence {
+    world.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
