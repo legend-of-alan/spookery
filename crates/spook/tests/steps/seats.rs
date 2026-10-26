@@ -132,6 +132,7 @@ fn the_session_ids_differ(world: &mut World) {
 
 const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
 const HIDDEN_FACT: &str = "fact_wren_channel";
+const HIDDEN_TEXT: &str = "The tide chart marks a private channel.";
 
 #[when(expr = "three players and a GM sit")]
 fn three_players_and_a_gm_sit(world: &mut World) {
@@ -248,7 +249,7 @@ fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read cast: {err}"));
     let text = text.replace(
         "facts: []\n",
-        "facts:\n  - id: fact_wren_channel\n    text: The tide chart marks a private channel.\n    hidden: true\n",
+        &format!("facts:\n  - id: {HIDDEN_FACT}\n    text: {HIDDEN_TEXT}\n    hidden: true\n"),
     );
     fs::write(&path, text).unwrap_or_else(|err| panic!("write cast: {err}"));
     crate::support::edit_save(&pack, |now| {
@@ -275,15 +276,12 @@ fn only_that_pcs_perceive_shows_the_hidden_fact(world: &mut World) {
 #[when(expr = "that PC says the hidden fact and another PC waits")]
 fn that_pc_says_the_hidden_fact(world: &mut World) {
     let marks = ["pc_rowan", "pc_harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
-    let say = "say The tide chart marks a private channel.";
-    table::actor_send(world, "pc_wren", say, "\"kind\":\"say\"");
+    let say = format!("say {HIDDEN_TEXT}");
+    table::actor_send(world, "pc_wren", &say, "\"kind\":\"say\"");
     table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"perceive\"");
     for (id, mark) in marks {
         let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"perceive\"");
-        assert!(
-            heard.contains("private channel"),
-            "{id} did not hear it\n{heard}"
-        );
+        assert!(heard.contains(HIDDEN_TEXT), "{id} did not hear it\n{heard}");
     }
 }
 

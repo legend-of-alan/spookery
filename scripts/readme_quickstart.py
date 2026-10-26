@@ -162,9 +162,10 @@ def main() -> None:
             dump("the host exited", code, host, gm, play)
         print("--- play ---")
         print("".join(play.out), end="")
-        verify_args = (
-            ["spook", "verify", str(scratch)] if scratch is not None else parse_spook_args(verify_line)
-        )
+        if scratch is not None:
+            verify_args = ["spook", "verify", str(scratch)]
+        else:
+            verify_args = parse_spook_args(verify_line)
         verified = subprocess.run(
             verify_args,
             cwd=ROOT,

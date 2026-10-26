@@ -71,7 +71,7 @@ Tested in `features/replay/the_journal_verifies.feature`,
 
 A player sees a hidden fact only when that character knows it. Stripping prose
 does not reveal a hidden sentence. Saying a hidden fact does not
-teach it, as the seats scenario of that name shows. Roll faces
+teach it. Roll faces
 go to the GM. Expression dice do too. The player hears success, partial, or miss, and does not see those faces. An NPC's roll sends
 the player no roll line. Host status shows the host-only trace. The player's
 resume leaves that trace out. The resume digest shows only notes the view shows. A place lists only its own stock.
