@@ -6,8 +6,8 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_engine::model::Now;
 use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::Now;
 
 use super::table;
 use crate::support::{self, temp_pack};
@@ -200,7 +200,7 @@ pub(crate) fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via
         .unwrap_or_else(|| panic!("no {actor}"))
         .act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(spookery_engine::model::PendingAction {
+    act.busy_for = Some(spookery_engine::PendingAction {
         rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
         target: via.to_string(),

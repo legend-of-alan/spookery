@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::model::Presence;
+use spookery_engine::Presence;
 use spookery_engine::World as Shard;
 
 use crate::World;

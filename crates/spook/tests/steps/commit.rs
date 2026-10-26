@@ -20,7 +20,7 @@ fn state_tree(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn docks_rev() -> String {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    spookery_engine::canon::pack_rev(&root).unwrap()
+    spookery_engine::pack_rev(&root).unwrap()
 }
 
 fn migrate_state_revs(pack: &Path) -> Vec<u64> {
@@ -250,7 +250,7 @@ fn the_journal_has_two_migrate_records(world: &mut World) {
 #[then(expr = "migrate keeps the hand edit")]
 fn migrate_keeps_the_hand_edit(world: &mut World) {
     let pack = table::pack(world);
-    let rev = spookery_engine::canon::pack_rev(pack).unwrap();
+    let rev = spookery_engine::pack_rev(pack).unwrap();
     assert_ne!(rev, docks_rev());
     let now = table::now_of(pack);
     assert_eq!(now.pack_rev, rev);

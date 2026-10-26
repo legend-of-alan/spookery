@@ -4,14 +4,14 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_engine::model::{
-    ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
-};
-use spookery_engine::store::emit_save;
+use spookery_engine::emit_save;
 use spookery_engine::testing::journal::list_tick_keys;
 use spookery_engine::{
     handle_player_move, play_pack_once, GmIntentSpec, MeterLive, MoveOutcome, MoveReport, Outcome,
     World as Shard,
+};
+use spookery_engine::{
+    ActCounters, ActorLive, Message, Now, PauseView, PlaceLive, Presence, RunState,
 };
 
 use crate::World;
@@ -109,7 +109,7 @@ fn door_message() -> Message {
 }
 
 fn seat_rowan(world: &mut Shard) {
-    world.set_presence(spookery_engine::model::Presence {
+    world.set_presence(spookery_engine::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
@@ -345,7 +345,7 @@ Rowan.
         })
         .unwrap_or_else(|err| panic!("copy {name}: {err}"));
     }
-    let rev = spookery_engine::canon::pack_rev(&pack).unwrap();
+    let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
         "gate".to_string(),
@@ -373,7 +373,7 @@ Rowan.
         schema: "now".to_string(),
         shard_id: "ex".to_string(),
         pack_rev: rev,
-        rules_rev: spookery_engine::store::RULES_REV,
+        rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -457,7 +457,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
         fast_forward: false,
         dice: Vec::new(),
         steps_run: Vec::new(),
-        memories: vec![spookery_engine::model::MemoryLine {
+        memories: vec![spookery_engine::testing::MemoryLine {
             tick_index: 1,
             actor_id: "mira".to_string(),
             intent_id: String::new(),
@@ -506,9 +506,7 @@ fn an_incomplete_transaction_is_discarded() {
     assert_eq!(fs::read(&now_path).unwrap(), before);
     assert_eq!(
         lamp_oil(opened.now()),
-        lamp_oil(
-            &spookery_engine::store::load_save(std::str::from_utf8(&before).unwrap()).unwrap()
-        )
+        lamp_oil(&spookery_engine::load_save(std::str::from_utf8(&before).unwrap()).unwrap())
     );
     assert!(!txn.exists());
     let _ = fs::remove_dir_all(&incomplete);
@@ -659,7 +657,7 @@ rules:
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
     }
-    let rev = spookery_engine::canon::pack_rev(&pack).unwrap();
+    let rev = spookery_engine::pack_rev(&pack).unwrap();
     let mut places = BTreeMap::new();
     places.insert(
         "yard".to_string(),
@@ -673,7 +671,7 @@ rules:
         schema: "now".to_string(),
         shard_id: "crowd".to_string(),
         pack_rev: rev,
-        rules_rev: spookery_engine::store::RULES_REV,
+        rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
         tick_index: 0,
         world_time: 0,
@@ -805,8 +803,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
     assert_ne!(next, text, "mira tick block was not patched");
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
-    let mut now =
-        spookery_engine::store::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
+    let mut now = spookery_engine::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
     support::place_of(&mut now, "mira", "docks_shop");
     save_now(pack, &now);
 }

@@ -1,16 +1,16 @@
 //! The Spookery table engine: load a pack, run its rules, and commit or verify the journal.
 
-pub mod canon;
+pub(crate) mod canon;
 pub(crate) mod diagnostic;
 pub(crate) mod draft;
 pub(crate) mod error;
 pub(crate) mod hash;
 pub(crate) mod intent;
 pub(crate) mod map;
-pub mod model;
+pub(crate) mod model;
 pub(crate) mod round;
 pub(crate) mod rules;
-pub mod store;
+pub(crate) mod store;
 pub(crate) mod visibility;
 pub(crate) mod world;
 
@@ -26,18 +26,24 @@ pub(crate) use store::commit;
 pub(crate) use store::journal;
 pub(crate) use store::lock;
 
+pub use canon::{load_canon, pack_rev};
 pub use check::Outcome;
 pub use diagnostic::{first_reason, reason_of, Diagnostic, Severity};
 pub use error::Reason;
 pub use intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
 pub use map::ExitView;
 pub use meter::MeterLive;
+pub use model::{
+    ActCounters, ActorLive, Clock, Message, Now, PauseView, PendingAction, PlaceLive, Presence,
+    RunState,
+};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{
     migrate_pack, plan_catchup, play_pack_once, verify_pack, verify_quick, RoundCause, RoundOutput,
 };
 pub use rule::{Owner, TargetKind, When};
 pub use rules::{GateRefusal, MoveReport, RollResult};
+pub use store::{emit_save, load_save, lock_serve, record_line, TapeRecord};
 pub use visibility::RecipientLine;
 pub use world::{
     check_pack, handle_player_move, GmIntentSpec, Heard, MoveOutcome, QueuedMove, World,
@@ -50,8 +56,10 @@ pub mod testing {
     use std::path::{Path, PathBuf};
 
     pub use crate::canon::strip_body;
+    pub use crate::model::MemoryLine;
     pub use crate::round::replay::from_journal;
     pub use crate::rules::roll::{faces, RollKey};
+    pub use crate::store::RULES_REV;
 
     pub const HOST: &[&str] = &["tests/features/seats"];
 

@@ -76,9 +76,7 @@ fn a_played_d20_fight(world: &mut World) {
         Target::Actor("npc_briar".to_string()),
     )];
     let (now, _rolls, _tick) = play_queued(&pack, intents);
-    world.now_bytes = spookery_engine::store::emit_save(&now)
-        .unwrap()
-        .into_bytes();
+    world.now_bytes = spookery_engine::emit_save(&now).unwrap().into_bytes();
     world.pack = Some(pack);
 }
 
@@ -212,9 +210,7 @@ fn those_waits_are_played(world: &mut World) {
     second.source = Source::Kernel;
     let (now, _rolls, tick) = play_queued(&pack, vec![first, second]);
     world.scratch = tick.to_string();
-    world.now_bytes = spookery_engine::store::emit_save(&now)
-        .unwrap()
-        .into_bytes();
+    world.now_bytes = spookery_engine::emit_save(&now).unwrap().into_bytes();
 }
 
 #[then(expr = "only the first wait lands and the second is INELIGIBLE")]
@@ -235,8 +231,7 @@ fn only_the_first_wait_lands(world: &mut World) {
             .any(|item| item["id"] == "wait-2" && item["reason"] == "INELIGIBLE"),
         "{tick}"
     );
-    let now =
-        spookery_engine::store::load_save(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
+    let now = spookery_engine::load_save(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
     assert_eq!(
         now.actors
             .get("mira")
@@ -505,7 +500,7 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
 fn play_queued(
     pack: &Path,
     intents: Vec<Intent>,
-) -> (spookery_engine::model::Now, Vec<MoveReport>, Value) {
+) -> (spookery_engine::Now, Vec<MoveReport>, Value) {
     let mut world =
         spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = world.now().last_tick_at.clone();
