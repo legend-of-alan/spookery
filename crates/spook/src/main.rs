@@ -1,6 +1,7 @@
 //! The `spook` command for one loopback table.
 
 use std::net::SocketAddr;
+#[cfg(feature = "server")]
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
