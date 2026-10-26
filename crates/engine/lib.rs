@@ -205,8 +205,9 @@ pub mod testing {
     }
 
     pub fn insert_nell(pack: &Path) {
-        let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        copy_dir(&manifest.join("fixtures/cast"), &pack.join("cast"));
+        let from = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/cast/pc-nell.md");
+        fs::copy(&from, pack.join("cast/pc-nell.md"))
+            .unwrap_or_else(|err| panic!("copy {}: {err}", from.display()));
         edit_save(pack, |now| {
             now.actors.insert(
                 "pc_nell".to_string(),
