@@ -53,9 +53,9 @@ pub mod testing {
     pub use crate::round::replay::from_journal;
     pub use crate::rules::roll::{faces, RollKey};
 
-    pub const ENGINE_HOST: &[&str] = &["tests/features/seats"];
+    pub const HOST: &[&str] = &["tests/features/seats"];
 
-    pub const ENGINE_WORLD: &[&str] = &[
+    pub const WORLD: &[&str] = &[
         "tests/features/catchup",
         "tests/features/clocks",
         "tests/features/commit",

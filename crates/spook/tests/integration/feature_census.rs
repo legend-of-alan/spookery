@@ -3,14 +3,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use spookery_engine::testing::{ENGINE_HOST, ENGINE_WORLD};
+use spookery_engine::testing as engine;
 
 use crate::feature_paths::{HOST, WORLD};
 
 #[test]
 fn every_feature_folder_runs_in_one_program() {
     assert_folders_match("tests/features", &[HOST, WORLD]);
-    assert_folders_match("../engine/tests/features", &[ENGINE_HOST, ENGINE_WORLD]);
+    assert_folders_match("../engine/tests/features", &[engine::HOST, engine::WORLD]);
 }
 
 #[test]
