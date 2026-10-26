@@ -22,8 +22,9 @@ impl World {
 
 #[tokio::main]
 async fn main() {
+    let mut failed = false;
     for &dir in feature_dirs() {
-        let failed = World::cucumber()
+        failed |= World::cucumber()
             .max_concurrent_scenarios(1)
             .fail_on_skipped()
             .after(|_, _, _, _, world| {
@@ -35,8 +36,8 @@ async fn main() {
             .run(dir)
             .await
             .execution_has_failed();
-        if failed {
-            std::process::exit(1);
-        }
+    }
+    if failed {
+        std::process::exit(1);
     }
 }
