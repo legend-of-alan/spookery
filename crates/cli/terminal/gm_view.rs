@@ -46,7 +46,7 @@ pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(
         Ok(client) => client,
         Err(gm_connection::Error::Io(err)) => return Err(super::Error::Io(err)),
         Err(gm_connection::Error::Refused { code, raw: line }) => {
-            return exit_refused(&code, &line, raw);
+            return Err(print_refusal(&code, &line, raw));
         }
         Err(gm_connection::Error::Bad(line)) => {
             eprintln!("{line}");
@@ -392,7 +392,7 @@ impl GmSession {
     }
 }
 
-fn exit_refused(code: &str, raw: &str, raw_mode: bool) -> Result<(), super::Error> {
+fn print_refusal(code: &str, raw: &str, raw_mode: bool) -> super::Error {
     if raw_mode {
         emit(raw);
         eprintln!("{code}");
@@ -400,7 +400,7 @@ fn exit_refused(code: &str, raw: &str, raw_mode: bool) -> Result<(), super::Erro
         eprintln!("{}", refusal(code));
     }
     let _ = io::stderr().flush();
-    Err(super::Error::Printed)
+    super::Error::Printed
 }
 
 fn emit(line: &str) {
@@ -832,12 +832,6 @@ mod tests {
         let failure = render_event(&roll(vec![1], -2, -1, 3, Outcome::Miss));
         assert_eq!(failure, "Roll: 1, -2 = -1 vs 3, miss");
         assert!(!failure.contains('{'));
-    }
-
-    #[test]
-    fn a_printed_refusal_returns() {
-        let result = exit_refused("SESSION_FULL", "raw-line", false);
-        assert!(matches!(result, Err(crate::terminal::Error::Printed)));
     }
 
     #[test]

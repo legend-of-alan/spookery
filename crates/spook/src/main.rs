@@ -278,14 +278,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_printed_terminal_error_adds_no_second_line() {
-        assert_eq!(
-            from_terminal(Err(spookery::terminal::Error::Printed)).unwrap_err(),
-            ""
-        );
-    }
-
-    #[test]
     fn the_default_address_is_loopback_9737() {
         let cli = Cli::try_parse_from(["spook", "tick", "pack"]).unwrap();
         assert_eq!(cli.addr, "127.0.0.1:9737");

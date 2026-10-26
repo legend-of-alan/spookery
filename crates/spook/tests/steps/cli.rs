@@ -204,6 +204,13 @@ fn play_shows_the_raw_resume_digest(world: &mut World) {
 #[then(expr = "stderr shows {string}")]
 fn stderr_shows(world: &mut World, text: String) {
     assert_eq!(world.stderr.trim(), text, "{}", world.stderr);
+    // A blank line after the message counts as a second print.
+    assert_eq!(
+        world.stderr.lines().count(),
+        text.lines().count(),
+        "{}",
+        world.stderr
+    );
 }
 
 #[then(expr = "stderr has no protocol JSON")]
