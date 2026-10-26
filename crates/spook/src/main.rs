@@ -135,7 +135,24 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             }
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
-            stop_on_signal(world, config)
+            use std::sync::atomic::{AtomicBool, Ordering};
+            // The first Ctrl+C or SIGTERM wakes this thread to stop the host. A second
+            // one exits at once.
+            static SIGNALED: AtomicBool = AtomicBool::new(false);
+            let main = std::thread::current();
+            ctrlc::set_handler(move || {
+                if SIGNALED.swap(true, Ordering::SeqCst) {
+                    std::process::exit(130);
+                }
+                main.unpark();
+            })
+            .map_err(|e| e.to_string())?;
+            let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
+            while !SIGNALED.load(Ordering::SeqCst) {
+                std::thread::park();
+            }
+            handle.stop();
+            handle.join().map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
         Command::Play { as_player, raw } => from_terminal(spookery::terminal::run_player(
@@ -258,85 +275,6 @@ fn parse_loopback(addr: &str) -> Result<SocketAddr, String> {
 
 fn door_addr(mcp_http: Option<String>) -> Result<Option<SocketAddr>, String> {
     mcp_http.as_deref().map(parse_loopback).transpose()
-}
-
-/// Wait for Ctrl+C or SIGTERM, then `stop` and `join`. A second interrupt exits
-/// at once, because the handler stays installed and would otherwise swallow it.
-#[cfg(feature = "server")]
-fn stop_on_signal(
-    world: spookery_engine::World,
-    config: spookery_server::Config,
-) -> Result<(), String> {
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|err| err.to_string())?;
-    // Register before `serve` so the server runtime is not built inside this one.
-    let mut stops = {
-        let _entered = runtime.enter();
-        listen()?
-    };
-    let handle = spookery_server::serve(world, config).map_err(|err| err.to_string())?;
-    runtime.block_on(async move {
-        stops.recv().await;
-        handle.stop();
-        let join = tokio::task::spawn_blocking(move || handle.join());
-        tokio::select! {
-            joined = join => joined.map_err(|err| err.to_string())?.map_err(|err| err.to_string()),
-            _ = stops.recv() => std::process::exit(130),
-        }
-    })
-}
-
-#[cfg(feature = "server")]
-struct Stops {
-    #[cfg(unix)]
-    interrupt: tokio::signal::unix::Signal,
-    #[cfg(unix)]
-    terminate: tokio::signal::unix::Signal,
-    #[cfg(windows)]
-    ctrl_c: tokio::signal::windows::CtrlC,
-    #[cfg(windows)]
-    ctrl_break: tokio::signal::windows::CtrlBreak,
-}
-
-#[cfg(all(feature = "server", unix))]
-fn listen() -> Result<Stops, String> {
-    use tokio::signal::unix::{signal, SignalKind};
-    Ok(Stops {
-        interrupt: signal(SignalKind::interrupt()).map_err(|err| err.to_string())?,
-        terminate: signal(SignalKind::terminate()).map_err(|err| err.to_string())?,
-    })
-}
-
-#[cfg(all(feature = "server", windows))]
-fn listen() -> Result<Stops, String> {
-    // Ctrl+Break is the interrupt that can be aimed at one process group.
-    // Ctrl+C from a console still arrives on `ctrl_c`.
-    Ok(Stops {
-        ctrl_c: tokio::signal::windows::ctrl_c().map_err(|err| err.to_string())?,
-        ctrl_break: tokio::signal::windows::ctrl_break().map_err(|err| err.to_string())?,
-    })
-}
-
-#[cfg(feature = "server")]
-impl Stops {
-    async fn recv(&mut self) {
-        #[cfg(unix)]
-        {
-            tokio::select! {
-                _ = self.interrupt.recv() => {}
-                _ = self.terminate.recv() => {}
-            }
-        }
-        #[cfg(windows)]
-        {
-            tokio::select! {
-                _ = self.ctrl_c.recv() => {}
-                _ = self.ctrl_break.recv() => {}
-            }
-        }
-    }
 }
 
 #[cfg(all(test, feature = "server", feature = "client"))]

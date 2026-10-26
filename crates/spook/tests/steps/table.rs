@@ -225,33 +225,13 @@ pub fn reported(stdout: &str) -> (SocketAddr, SocketAddr) {
 }
 
 pub fn spawn_table(pack: &Path, flags: &[&str], env: &[(&str, &str)]) -> Pending {
-    spawn_host(pack, flags, env, false)
-}
-
-pub fn spawn_host(
-    pack: &Path,
-    flags: &[&str],
-    env: &[(&str, &str)],
-    closed_stdin: bool,
-) -> Pending {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.arg("run").arg(support::pack_arg(pack)).args(flags);
     for (key, value) in env {
         command.env(key, value);
     }
-    // Windows can aim Ctrl+Break only at a process group created this way.
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        command.creation_flags(CREATE_NEW_PROCESS_GROUP);
-    }
     command
-        .stdin(if closed_stdin {
-            Stdio::null()
-        } else {
-            Stdio::piped()
-        })
+        .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command
@@ -293,7 +273,7 @@ pub fn take_report(mut pending: Pending) -> Listening {
     }
 }
 
-pub(crate) fn install(world: &mut World, pack: &Path, listening: Listening) {
+fn install(world: &mut World, pack: &Path, listening: Listening) {
     let opened_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     drop(world.live.take());
