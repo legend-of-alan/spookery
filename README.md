@@ -4,7 +4,7 @@
 
 Spookery runs living worlds for a small table. You write a world as a pack, which is a folder of YAML rules and Markdown pages for places and people. Then you host it and sit down with up to three players and a GM.
 
-The GM can be a person or a model. Either way, the engine is the only thing that changes the world. The GM talks and asks the engine to commit. Dice are seeded and every commit goes in a journal, so you can replay a game and check that nobody cheated.
+The GM can be a person or a model. Either way, the engine is the only thing that changes the world. The GM talks and asks the engine to commit. Dice are seeded and every commit goes in a journal, so you can replay a game and check every result.
 
 New words like seat and tick are explained in the [glossary](docs/README.md#glossary).
 
