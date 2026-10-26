@@ -135,22 +135,26 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             }
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
-            use std::sync::atomic::{AtomicBool, Ordering};
-            // The first Ctrl+C or SIGTERM wakes this thread to stop the host. A second
-            // one exits at once.
-            static SIGNALED: AtomicBool = AtomicBool::new(false);
-            let main = std::thread::current();
-            ctrlc::set_handler(move || {
-                if SIGNALED.swap(true, Ordering::SeqCst) {
-                    std::process::exit(130);
-                }
-                main.unpark();
-            })
-            .map_err(|e| e.to_string())?;
             let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
-            while !SIGNALED.load(Ordering::SeqCst) {
-                std::thread::park();
-            }
+            // Ctrl+C, or SIGTERM on unix, stops the host.
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| e.to_string())?
+                .block_on(async {
+                    #[cfg(unix)]
+                    {
+                        use tokio::signal::unix::{signal, SignalKind};
+                        let mut term = signal(SignalKind::terminate())?;
+                        tokio::select! {
+                            done = tokio::signal::ctrl_c() => done,
+                            _ = term.recv() => Ok(()),
+                        }
+                    }
+                    #[cfg(not(unix))]
+                    tokio::signal::ctrl_c().await
+                })
+                .map_err(|e| e.to_string())?;
             handle.stop();
             handle.join().map_err(|e| e.to_string())
         }
