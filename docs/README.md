@@ -36,7 +36,7 @@ The model does not keep the world. It can talk, and it can ask the engine to com
 | **Seat** | One place at the table. Each player character is a seat, and the GM is one more. |
 | **Canon** | Files under `world/`, `cast/` and `rules/` in a pack. They don't change while the world runs. |
 | **`spook`** | The program that loads a pack. It is the only thing that writes the pack's state. |
-| **Kernel** | The code that decides what is legal, rolls checks and tracks who knows what. |
+| **Engine** | The code that decides what is legal, rolls checks and tracks who knows what. |
 | **Tick** | A unit of game time on the world clock. Talking takes no ticks. Moving and acting do. |
 | **Round** | One batch in which queued intents are settled together and the results are logged. |
 | **Intent** | A proposed move from a player, an NPC or the engine's scheduler. |
