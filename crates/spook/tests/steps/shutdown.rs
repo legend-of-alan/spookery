@@ -126,10 +126,11 @@ fn start_held_host(world: &mut World) {
 
 fn launch(world: &mut World, closed_stdin: bool, hold: Option<String>) {
     let pack = table::pack(world).to_path_buf();
-    let held = hold.unwrap_or_default();
-    let pair = [("SPOOK_SHUTDOWN_HOLD", held.as_str())];
-    let env: &[(&str, &str)] = if held.is_empty() { &[] } else { &pair };
-    let pending = table::spawn_host(&pack, &["--addr", "127.0.0.1:0"], env, closed_stdin);
+    let env: Vec<_> = hold
+        .iter()
+        .map(|path| ("SPOOK_SHUTDOWN_HOLD", path.as_str()))
+        .collect();
+    let pending = table::spawn_host(&pack, &["--addr", "127.0.0.1:0"], &env, closed_stdin);
     let listening = table::take_report(pending);
     table::install(world, &pack, listening);
 }
