@@ -15,6 +15,8 @@ use rmcp::model::ProtocolVersion;
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
 
+use crate::support;
+
 /// A seat that never answers still has to fail the test. The line itself
 /// unblocks the wait.
 const HANG: Duration = Duration::from_secs(5);
@@ -50,8 +52,8 @@ impl Drop for Table {
     }
 }
 
-#[test]
-fn the_seat_page_matches_a_live_table() {
+#[tokio::test(flavor = "multi_thread")]
+async fn the_seat_page_matches_a_live_table() {
     let captured = capture();
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../docs/seat-protocol.md");
     let doc = std::fs::read_to_string(&path).unwrap_or_default();
@@ -156,9 +158,11 @@ fn capture() -> BTreeMap<String, Example> {
     // with 405, so the header is the version the handshake returned.
     delete_session(table.door, &session, &negotiated);
 
-    let mut gm =
-        GmConnection::connect_door(std::net::SocketAddr::from(([127, 0, 0, 1], table.door)))
-            .unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let mut gm = support::block_on(GmConnection::connect_door(std::net::SocketAddr::from((
+        [127, 0, 0, 1],
+        table.door,
+    ))))
+    .unwrap_or_else(|err| panic!("seat GM: {err}"));
     json(&mut out, "pack-event", one_event(&mut gm));
 
     let status_args = serde_json::json!({});
@@ -567,7 +571,7 @@ fn read_line(stream: &mut TcpStream) -> String {
 }
 
 fn call(gm: &mut GmConnection, name: &str, arguments: Value) -> Value {
-    gm.call(name, arguments)
+    support::block_on(gm.call(name, arguments))
         .unwrap_or_else(|err| panic!("{name}: {err}"))
         .body
 }
@@ -575,7 +579,7 @@ fn call(gm: &mut GmConnection, name: &str, arguments: Value) -> Value {
 fn one_event(gm: &mut GmConnection) -> Value {
     let mut ready = gm.take_events();
     if ready.is_empty() {
-        match gm.next_incoming() {
+        match support::block_on(gm.next_incoming()) {
             Incoming::Event(event) => ready.push(event),
             other => panic!("expected a GM event, got {other:?}"),
         }

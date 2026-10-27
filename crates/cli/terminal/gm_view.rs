@@ -3,9 +3,6 @@
 use std::collections::VecDeque;
 use std::io::{self, Write};
 use std::net::SocketAddr;
-use std::sync::mpsc;
-use std::thread;
-use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -37,10 +34,14 @@ Commands:
       Leave the seat.
 An unknown command prints this list and sends nothing.";
 
-pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(), super::Error> {
+pub async fn run_gm(
+    addr: SocketAddr,
+    door: Option<SocketAddr>,
+    raw: bool,
+) -> Result<(), super::Error> {
     let connected = match door {
-        Some(door) => GmConnection::connect_door(door),
-        None => GmConnection::connect(addr),
+        Some(door) => GmConnection::connect_door(door).await,
+        None => GmConnection::connect(addr).await,
     };
     let client = match connected {
         Ok(client) => client,
@@ -49,9 +50,6 @@ pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(
             return Err(super::Error::Reason(refusal_line(&code, &line, raw)));
         }
         Err(gm_connection::Error::Bad(line)) => return Err(super::Error::Reason(line)),
-        Err(gm_connection::Error::Closed) => {
-            return Err(super::Error::Reason("seat closed".into()));
-        }
     };
     let mut session = GmSession {
         client,
@@ -62,40 +60,25 @@ pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(
         emit(session.client.opened_line());
     }
     emit(HELP);
-    let (tx, rx) = mpsc::channel();
-    thread::spawn(move || {
-        for line in io::stdin().lines() {
-            match line {
-                Ok(line) => {
-                    if tx.send(Some(line)).is_err() {
-                        return;
+    let mut input = super::stdin_lines();
+    let result = async {
+        loop {
+            tokio::select! {
+                incoming = session.client.next_incoming() => {
+                    if !session.show_idle(incoming) {
+                        return Ok(());
                     }
                 }
-                Err(_) => {
-                    let _ = tx.send(None);
-                    return;
-                }
+                line = input.recv() => match line {
+                    Some(line) if session.on_line(&line).await? => {}
+                    _ => return Ok(()),
+                },
             }
-        }
-        let _ = tx.send(None);
-    });
-    loop {
-        if let Some(incoming) = session.client.poll(Duration::from_millis(50)) {
-            if !session.show_idle(incoming) {
-                break;
-            }
-        }
-        match rx.try_recv() {
-            Ok(Some(line)) => {
-                if !session.on_line(&line)? {
-                    break;
-                }
-            }
-            Ok(None) | Err(mpsc::TryRecvError::Disconnected) => break,
-            Err(mpsc::TryRecvError::Empty) => {}
         }
     }
-    Ok(())
+    .await;
+    session.client.close().await;
+    result
 }
 
 struct GmSession {
@@ -133,36 +116,36 @@ impl PrintedChecks {
 }
 
 impl GmSession {
-    fn on_line(&mut self, line: &str) -> Result<bool, super::Error> {
+    async fn on_line(&mut self, line: &str) -> Result<bool, super::Error> {
         match parse_command(line) {
             Parsed::Empty => Ok(true),
             Parsed::Unknown => {
                 emit(HELP);
                 Ok(true)
             }
-            Parsed::Command(command) => self.on_command(command),
+            Parsed::Command(command) => self.on_command(command).await,
         }
     }
 
-    fn on_command(&mut self, command: Command) -> Result<bool, super::Error> {
+    async fn on_command(&mut self, command: Command) -> Result<bool, super::Error> {
         match command {
             Command::Help => emit(HELP),
             Command::Quit => return Ok(false),
-            Command::Status => self.on_status()?,
-            Command::Look { actor } => self.on_look(&actor)?,
-            Command::Say(address) => self.on_say(address)?,
+            Command::Status => self.on_status().await?,
+            Command::Look { actor } => self.on_look(&actor).await?,
+            Command::Say(address) => self.on_say(address).await?,
             Command::Queue {
                 actor,
                 move_name,
                 target,
-            } => self.on_queue(&actor, &move_name, target.as_deref())?,
-            Command::Commit => self.on_commit()?,
+            } => self.on_queue(&actor, &move_name, target.as_deref()).await?,
+            Command::Commit => self.on_commit().await?,
         }
         Ok(true)
     }
 
-    fn on_status(&mut self) -> Result<(), super::Error> {
-        let Some(outcome) = self.call_tool("session_status", json!({}))? else {
+    async fn on_status(&mut self) -> Result<(), super::Error> {
+        let Some(outcome) = self.call_tool("session_status", json!({})).await? else {
             return Ok(());
         };
         self.after_result(&outcome, |_session, outcome| {
@@ -174,8 +157,8 @@ impl GmSession {
         Ok(())
     }
 
-    fn on_look(&mut self, actor: &str) -> Result<(), super::Error> {
-        let Some(outcome) = self.call_tool("perceive", json!({ "as": actor }))? else {
+    async fn on_look(&mut self, actor: &str) -> Result<(), super::Error> {
+        let Some(outcome) = self.call_tool("perceive", json!({ "as": actor })).await? else {
             return Ok(());
         };
         self.after_result(&outcome, |_session, outcome| {
@@ -190,16 +173,16 @@ impl GmSession {
         Ok(())
     }
 
-    fn on_say(&mut self, address: OutgoingSay) -> Result<(), super::Error> {
+    async fn on_say(&mut self, address: OutgoingSay) -> Result<(), super::Error> {
         let arguments = address.arguments();
-        let Some(outcome) = self.call_tool("say", arguments)? else {
+        let Some(outcome) = self.call_tool("say", arguments).await? else {
             return Ok(());
         };
         self.after_result(&outcome, |_session, _outcome| {});
         Ok(())
     }
 
-    fn on_queue(
+    async fn on_queue(
         &mut self,
         actor: &str,
         move_name: &str,
@@ -213,7 +196,7 @@ impl GmSession {
         if let Some(t) = target {
             arguments["target"] = json!(t);
         }
-        let Some(outcome) = self.call_tool("intent", arguments)? else {
+        let Some(outcome) = self.call_tool("intent", arguments).await? else {
             return Ok(());
         };
         self.after_result(&outcome, move |_session, _outcome| {
@@ -222,8 +205,11 @@ impl GmSession {
         Ok(())
     }
 
-    fn on_commit(&mut self) -> Result<(), super::Error> {
-        let Some(outcome) = self.call_tool("commit_round", json!({ "include_tick": true }))? else {
+    async fn on_commit(&mut self) -> Result<(), super::Error> {
+        let Some(outcome) = self
+            .call_tool("commit_round", json!({ "include_tick": true }))
+            .await?
+        else {
             return Ok(());
         };
         let reply = if outcome.refused {
@@ -258,15 +244,14 @@ impl GmSession {
         Ok(())
     }
 
-    fn call_tool(
+    async fn call_tool(
         &mut self,
         name: &str,
         arguments: Value,
     ) -> Result<Option<ToolCallResult>, super::Error> {
-        match self.client.call(name, arguments) {
+        match self.client.call(name, arguments).await {
             Ok(outcome) => Ok(Some(outcome)),
             Err(gm_connection::Error::Io(err)) => Err(super::Error::Io(err)),
-            Err(gm_connection::Error::Closed) => Ok(None),
             Err(gm_connection::Error::Refused { code, raw }) => {
                 self.show_refusal(&code, &raw);
                 Ok(None)

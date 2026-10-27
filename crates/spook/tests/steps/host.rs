@@ -169,20 +169,21 @@ fn the_host_dialed_that_address(world: &mut World) {
 #[when(expr = "the host seat says good evening and calls an unknown tool")]
 fn the_host_seat_says(world: &mut World) {
     let mark = table::player_len(world);
-    let mut seat = GmConnection::connect_door(table::door_addr(world).parse().unwrap())
-        .unwrap_or_else(|err| panic!("{err}"));
-    let say = seat
-        .call("say", json!({"address": "table", "text": "good evening"}))
-        .unwrap_or_else(|err| panic!("{err}"));
+    let door = table::door_addr(world).parse().unwrap();
+    let mut seat =
+        support::block_on(GmConnection::connect_door(door)).unwrap_or_else(|err| panic!("{err}"));
+    let say =
+        support::block_on(seat.call("say", json!({"address": "table", "text": "good evening"})))
+            .unwrap_or_else(|err| panic!("{err}"));
     let again = parse_tool_line(&say.raw).unwrap_or_else(|err| panic!("{err}"));
     assert!(!say.refused, "{}", say.raw);
     assert!(!again.refused, "{}", again.raw);
     assert_eq!(again.body, say.body);
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
     world.scratch = say.raw;
-    let refused = seat
-        .call("not_in_spec", json!({}))
+    let refused = support::block_on(seat.call("not_in_spec", json!({})))
         .unwrap_or_else(|err| panic!("{err}"));
+    support::block_on(seat.close());
     world.stdout = if refused.refused && refused.body.get("code").is_some() {
         "refused".to_string()
     } else {
@@ -380,7 +381,7 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     table::player_send(world, "say good evening", "\"kind\":\"say\"");
     table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), 1080);
-    table::live_mut(world).gm.take();
+    table::release_gm(world);
     let model = ScriptedModel::new();
     let (handle, watch) = start_after_gm(world, &model);
     table::wait_world_time(&pack, 1085);
@@ -412,9 +413,10 @@ fn with_host(
     let model_bg = model.clone();
     let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
+    let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        run_gm(addr, Some(door), &mut model, &watch_bg)
+        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
     });
     wait_listening(&watch);
     body(world, &pack, port, &model, &watch);
@@ -440,9 +442,10 @@ fn start_after_gm(
     let model_bg = model.clone();
     let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
+    let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = model_bg;
-        run_gm(addr, Some(door), &mut model, &watch_bg)
+        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
     });
     wait_listening(&watch);
     (handle, watch)
@@ -595,24 +598,20 @@ const UNAUTHORIZED_BODY: &str =
 /// the error line the host would print.
 fn direct_error(replies: Vec<(u16, String)>) -> String {
     let (stub, _posts) = scripted_stub(replies);
-    thread::spawn(move || {
-        let mut model = http_model(
-            stub,
-            Duration::from_secs(5),
-            Duration::from_millis(50),
-            WallClock,
-        );
-        let request = CompletionRequest {
-            prompt: "the table is quiet".to_string(),
-            says_only: false,
-        };
-        match model.complete(&request) {
-            Ok(reply) => panic!("expected an error, got {reply:?}"),
-            Err(err) => err.to_string(),
-        }
-    })
-    .join()
-    .unwrap_or_else(|_| panic!("direct call panicked"))
+    let mut model = http_model(
+        stub,
+        Duration::from_secs(5),
+        Duration::from_millis(50),
+        WallClock,
+    );
+    let request = CompletionRequest {
+        prompt: "the table is quiet".to_string(),
+        says_only: false,
+    };
+    match support::block_on(model.complete(&request)) {
+        Ok(reply) => panic!("expected an error, got {reply:?}"),
+        Err(err) => err.to_string(),
+    }
 }
 
 #[then(expr = "the error line shows the provider's text without the key")]
@@ -704,7 +703,7 @@ fn queued_travel(world: &mut World, label: &str) -> (std::path::PathBuf, u64) {
     let sit = world_time(&pack);
     table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
     assert_eq!(world_time(&pack), sit, "travel committed before the host");
-    table::live_mut(world).gm.take();
+    table::release_gm(world);
     (pack, sit)
 }
 
@@ -792,10 +791,10 @@ where
     let watch_bg = Arc::clone(&watch);
     let addr = table::game_addr(world).parse().unwrap();
     let door = table::door_addr(world).parse().unwrap();
-    // The client owns a runtime. Build and drop it off the cucumber thread.
+    let runtime = tokio::runtime::Handle::current();
     let handle = thread::spawn(move || {
         let mut model = http_model(stub, total, backoff, clock);
-        run_gm(addr, Some(door), &mut model, &watch_bg)
+        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
     });
     (handle, watch)
 }

@@ -18,7 +18,7 @@ use super::table;
 #[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
 fn agent_calls_over_http(world: &mut World) {
     let (_tcp, http) = listen_http(world);
-    block_on(exercise_http(http));
+    support::block_on(exercise_http(http));
 }
 
 #[when(expr = "the operator runs with an open MCP HTTP address")]
@@ -211,7 +211,7 @@ fn seated_player_on_the_http_door(world: &mut World) {
 fn gm_holds_over_http(world: &mut World) {
     let (_tcp, http) = listen_http(world);
     world.mark = usize::from(http);
-    let holder = block_on(async move {
+    let holder = support::block_on(async move {
         let running = connect_http(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
@@ -228,7 +228,7 @@ fn another_gm_tries_http(world: &mut World) {
     // refusal from a raw initialize, then check a real client fails too.
     let http = http_port(world);
     let raw = http_post(http, "127.0.0.1", None);
-    let sat = block_on(async move {
+    let sat = support::block_on(async move {
         match connect_http(http).await {
             Ok(running) => {
                 let _ = running.cancel().await;
@@ -256,7 +256,7 @@ fn holder_leaves(world: &mut World) {
         .holder
         .take()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
-    block_on(async move {
+    support::block_on(async move {
         running
             .cancel()
             .await
@@ -273,7 +273,7 @@ fn a_gm_can_sit_over_http(world: &mut World) {
 }
 
 fn agent_sits(port: u16) -> Result<(), String> {
-    block_on(async move {
+    support::block_on(async move {
         let running = connect_http(port).await.map_err(|err| format!("{err:?}"))?;
         let status = call(&running, "session_status", None).await;
         assert_sat(&status, "session_status");
@@ -292,7 +292,7 @@ fn world_time_moved_forward(world: &mut World) {
 fn agent_says_over_http(world: &mut World) {
     let http = http_port(world);
     let mark = table::player_len(world);
-    block_on(async move {
+    support::block_on(async move {
         let running = connect_http(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP: {err}"));
@@ -306,16 +306,6 @@ fn agent_says_over_http(world: &mut World) {
         let _ = running.cancel().await;
     });
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
-}
-
-fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T {
-    tokio::task::block_in_place(|| {
-        tokio::runtime::Handle::current().block_on(async move {
-            tokio::time::timeout(Duration::from_secs(20), work)
-                .await
-                .unwrap_or_else(|_| panic!("the agent timed out"))
-        })
-    })
 }
 
 async fn exercise_http(port: u16) {

@@ -1,7 +1,8 @@
 //! Bind the game port and the agent door.
 
+use std::future::Future;
 use std::io::{self, Write};
-use std::net::{SocketAddr, TcpListener};
+use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
@@ -47,82 +48,32 @@ impl Config {
     }
 }
 
-pub struct Handle {
-    game: SocketAddr,
-    door: SocketAddr,
-    tx: Sender<WorldMsg>,
-    join: Option<std::thread::JoinHandle<Result<(), Error>>>,
-}
-
-impl Handle {
-    pub fn game_addr(&self) -> SocketAddr {
-        self.game
-    }
-
-    pub fn door_addr(&self) -> SocketAddr {
-        self.door
-    }
-
-    pub fn stop(&self) {
-        let _ = self.tx.send(WorldMsg::Stop);
-    }
-
-    pub fn join(mut self) -> Result<(), Error> {
-        self.join
-            .take()
-            .expect("world thread")
-            .join()
-            .unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
-    }
-}
-
-impl Drop for Handle {
-    fn drop(&mut self) {
-        self.stop();
-        if let Some(join) = self.join.take() {
-            let _ = join.join();
-        }
-    }
-}
-
-fn bind_nonblocking(addr: SocketAddr) -> Result<(TcpListener, SocketAddr), Error> {
-    let listener = TcpListener::bind(addr).map_err(Error::Io)?;
-    listener.set_nonblocking(true).map_err(Error::Io)?;
-    let bound = listener.local_addr().map_err(Error::Io)?;
-    Ok((listener, bound))
-}
-
-/// Serve `world` on its own private Tokio runtime until stopped.
-pub fn serve(mut world: spookery_engine::World, mut config: Config) -> Result<Handle, Error> {
+/// Take the serve lock, bind both ports, report them and serve on the
+/// caller's runtime until `shutdown` resolves. Returns the world's result.
+pub async fn serve(
+    mut world: spookery_engine::World,
+    mut config: Config,
+    shutdown: impl Future<Output = ()>,
+) -> Result<(), Error> {
     let guard = spookery_engine::lock_serve(world.root()).map_err(Error::Reason)?;
-    let (listener, game) = bind_nonblocking(config.addr)?;
-    let (http_listener, door) = bind_nonblocking(door_request(config.addr, config.door)?)?;
+    let listener = bind(config.addr).await?;
+    let http_listener = bind(door_request(config.addr, config.door)?).await?;
     if world.clear_crashed().map_err(Error::Reason)? {
         world_loop::write_host(&mut *config.out, &world, &[]);
     }
+    let game = listener.local_addr().map_err(Error::Io)?;
+    let door = http_listener.local_addr().map_err(Error::Io)?;
     report_bound(&mut *config.out, game, door)?;
     // Keepalive stays the pack interval. The idle switch does not change it.
     let keepalive_secs = world.budget().tick_every_real_seconds;
     let arm_idle_timer = world.budget().idle_ticking;
     let hello_timeout = config.hello_timeout;
     let (tx, rx) = std::sync::mpsc::channel();
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .map_err(Error::Io)?;
-    let handle = runtime.handle().clone();
-    let (listener, http_listener) = {
-        let _entered = handle.enter();
-        (
-            tokio::net::TcpListener::from_std(listener).map_err(Error::Io)?,
-            tokio::net::TcpListener::from_std(http_listener).map_err(Error::Io)?,
-        )
-    };
+    let mut tasks = tokio::task::JoinSet::new();
     let next_conn = Arc::new(AtomicU64::new(1));
     let tx_accept = tx.clone();
     let ids = Arc::clone(&next_conn);
-    handle.spawn(async move {
+    tasks.spawn(async move {
         while let Ok((stream, _)) = listener.accept().await {
             if tune(&stream, keepalive_secs).is_err() {
                 continue;
@@ -132,13 +83,11 @@ pub fn serve(mut world: spookery_engine::World, mut config: Config) -> Result<Ha
             tokio::spawn(connection(stream, tx_conn, id, hello_timeout));
         }
     });
-    let tx_http = tx.clone();
-    handle.spawn(mcp_http::serve(http_listener, tx_http, next_conn));
-    let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
+    tasks.spawn(mcp_http::serve(http_listener, tx.clone(), next_conn));
+    let (restart_tx, mut restart_rx) = tokio::sync::watch::channel(0u64);
     if arm_idle_timer {
         let tx_timer = tx.clone();
-        handle.spawn(async move {
-            let mut restart_rx = restart_rx;
+        tasks.spawn(async move {
             loop {
                 tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
@@ -154,20 +103,24 @@ pub fn serve(mut world: spookery_engine::World, mut config: Config) -> Result<Ha
                 }
             }
         });
-    } else {
-        drop(restart_rx);
     }
-    let join = std::thread::spawn(move || {
+    let mut world_loop = tokio::task::spawn_blocking(move || {
         let _guard = guard;
-        let _runtime = runtime;
         world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
     });
-    Ok(Handle {
-        game,
-        door,
-        tx,
-        join: Some(join),
-    })
+    // A world loop that ends on its own (a store fault) ends `serve` too.
+    let done = tokio::select! {
+        done = &mut world_loop => done,
+        () = shutdown => {
+            let _ = tx.send(WorldMsg::Stop);
+            world_loop.await
+        }
+    };
+    done.unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
+}
+
+async fn bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, Error> {
+    tokio::net::TcpListener::bind(addr).await.map_err(Error::Io)
 }
 
 /// The agent door to bind. A fixed game port keeps the next port. Port 0, on

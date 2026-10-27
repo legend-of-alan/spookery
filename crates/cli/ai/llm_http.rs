@@ -66,8 +66,6 @@ pub struct HttpModel<C> {
     client: reqwest::Client,
     limits: Limits,
     clock: C,
-    /// Dropped after `client`. The client may still be settling a connection.
-    runtime: tokio::runtime::Runtime,
 }
 
 pub fn require_env() -> Result<Env, Error> {
@@ -108,17 +106,11 @@ impl<C: Clock> HttpModel<C> {
             .connect_timeout(limits.connect)
             .build()
             .map_err(|err| fail(err.to_string()))?;
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_io()
-            .enable_time()
-            .build()
-            .map_err(|err| fail(err.to_string()))?;
         Ok(Self {
             env,
             client,
             limits,
             clock,
-            runtime,
         })
     }
 }
@@ -208,15 +200,16 @@ impl<C: Clock> HttpModel<C> {
 }
 
 impl<C: Clock> Model for HttpModel<C> {
-    fn complete(&mut self, request: &CompletionRequest) -> Result<Option<String>, CompleteError> {
-        self.runtime.block_on(async {
-            let first = self.attempt(request).await;
-            if !first.retry {
-                return first.result;
-            }
-            self.clock.wait(self.limits.backoff).await;
-            self.attempt(request).await.result
-        })
+    async fn complete(
+        &mut self,
+        request: &CompletionRequest,
+    ) -> Result<Option<String>, CompleteError> {
+        let first = self.attempt(request).await;
+        if !first.retry {
+            return first.result;
+        }
+        self.clock.wait(self.limits.backoff).await;
+        self.attempt(request).await.result
     }
 }
 
@@ -224,9 +217,9 @@ impl<C: Clock> Model for HttpModel<C> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn each_missing_setting_is_named_and_does_not_dial() {
-        let _guard = ENV.lock().unwrap_or_else(|err| err.into_inner());
+    #[tokio::test]
+    async fn each_missing_setting_is_named_and_does_not_dial() {
+        let _guard = ENV.lock().await;
         let saved = save_settings();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         listener.set_nonblocking(true).unwrap();
@@ -243,7 +236,7 @@ mod tests {
                     std::env::set_var(name, val);
                 }
             }
-            let err = crate::ai::sit(addr, None).expect_err(missing);
+            let err = crate::ai::sit(addr, None).await.expect_err(missing);
             assert!(
                 err.message.contains(&format!("{missing} is unset")),
                 "{}",
@@ -264,9 +257,9 @@ mod tests {
         restore_settings(saved);
     }
 
-    #[test]
-    fn a_trailing_slash_is_trimmed() {
-        let _guard = ENV.lock().unwrap_or_else(|err| err.into_inner());
+    #[tokio::test]
+    async fn a_trailing_slash_is_trimmed() {
+        let _guard = ENV.lock().await;
         let saved = save_settings();
         clear_settings();
         std::env::set_var("SPOOK_GM_KEY", "test-key");
@@ -301,5 +294,5 @@ mod tests {
         }
     }
 
-    static ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 }
