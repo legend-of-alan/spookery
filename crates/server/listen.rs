@@ -104,15 +104,19 @@ pub async fn serve(
             }
         });
     }
-    let world_loop = tokio::task::spawn_blocking(move || {
+    let mut world_loop = tokio::task::spawn_blocking(move || {
         let _guard = guard;
         world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
     });
-    shutdown.await;
-    let _ = tx.send(WorldMsg::Stop);
-    world_loop
-        .await
-        .unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
+    // A world loop that ends on its own (a store fault) ends `serve` too.
+    let done = tokio::select! {
+        done = &mut world_loop => done,
+        () = shutdown => {
+            let _ = tx.send(WorldMsg::Stop);
+            world_loop.await
+        }
+    };
+    done.unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
 }
 
 async fn bind(addr: SocketAddr) -> Result<tokio::net::TcpListener, Error> {

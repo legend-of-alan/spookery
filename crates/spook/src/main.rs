@@ -139,7 +139,9 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             // Ctrl+C stops the host. Listen before serving so an early one is caught.
             let ctrl_c = tokio::spawn(tokio::signal::ctrl_c());
             let shutdown = async {
-                let _ = ctrl_c.await;
+                if let Err(err) = ctrl_c.await.map_err(std::io::Error::from).and_then(|r| r) {
+                    eprintln!("{err}");
+                }
                 // A second Ctrl+C ends a shutdown that hangs.
                 tokio::spawn(async {
                     let _ = tokio::signal::ctrl_c().await;
