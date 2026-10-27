@@ -73,7 +73,8 @@ pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) ->
             // `next_line` is cancel safe, so a frame cut by a typed line is kept.
             line = frames.next_line() => {
                 let Some(line) = line.map_err(Error::Io)? else {
-                    return Err(Error::Reason("host closed".into()));
+                    eprintln!("host closed");
+                    return Ok(());
                 };
                 if let FrameEffect::Refuse(shown) = write_frame(&mut formatter, &line, raw) {
                     eprintln!("{shown}");
