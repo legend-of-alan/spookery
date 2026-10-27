@@ -18,7 +18,7 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
             probe.write_all(b"\n").map_err(Error::Io)?;
             probe.flush().map_err(Error::Io)?;
             let Some(line) = read_line(&mut BufReader::new(probe))? else {
-                return Err(Error::Reason("NOT_IN_SPEC"));
+                return Err(Error::Reason("NOT_IN_SPEC".into()));
             };
             match crate::protocol::read_player(&line) {
                 Ok(PlayerMessage::Refused { code, missing }) if code == "CHOOSE_PC" => {
@@ -27,11 +27,7 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
                         _ => Vec::new(),
                     };
                     match pcs.as_slice() {
-                        [] => {
-                            eprintln!("No free characters");
-                            let _ = io::stderr().flush();
-                            std::process::exit(1);
-                        }
+                        [] => return Err(Error::Reason("No free characters".into())),
                         [only] => only.clone(),
                         many => {
                             println!("Choose a character:\n{}", many.join("\n"));
@@ -44,8 +40,11 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
                     }
                 }
                 _ => {
-                    write_frame(&mut formatter, &line, raw);
-                    std::process::exit(1);
+                    let reason = match write_frame(&mut formatter, &line, raw) {
+                        FrameEffect::Refuse(shown) => shown,
+                        FrameEffect::Continue | FrameEffect::View => "NOT_IN_SPEC".into(),
+                    };
+                    return Err(Error::Reason(reason));
                 }
             }
         }
@@ -59,11 +58,10 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
     let mut reader = BufReader::new(stream);
     loop {
         let Some(line) = read_line(&mut reader)? else {
-            eprintln!("NOT_IN_SPEC");
-            std::process::exit(1);
+            return Err(Error::Reason("NOT_IN_SPEC".into()));
         };
         match write_frame(&mut formatter, &line, raw) {
-            FrameEffect::Refuse => std::process::exit(1),
+            FrameEffect::Refuse(shown) => return Err(Error::Reason(shown)),
             FrameEffect::View => break,
             FrameEffect::Continue => {}
         }
@@ -72,7 +70,11 @@ pub fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Resul
     std::thread::spawn(move || loop {
         match read_line(&mut reader) {
             Ok(Some(line)) => match write_frame(&mut formatter, &line, raw) {
-                FrameEffect::Refuse | FrameEffect::Continue | FrameEffect::View => {}
+                FrameEffect::Refuse(shown) => {
+                    eprintln!("{shown}");
+                    let _ = io::stderr().flush();
+                }
+                FrameEffect::Continue | FrameEffect::View => {}
             },
             Ok(None) => std::process::exit(0),
             Err(Error::Io(err)) => {
@@ -98,7 +100,7 @@ fn player_id(token: &str) -> Result<String, Error> {
     let id = token.strip_prefix("player:").unwrap_or(token);
     crate::protocol::read_player_hello(&format!("player:{id}"))
         .map(str::to_string)
-        .ok_or(Error::Reason("SCHEMA"))
+        .ok_or(Error::Reason("SCHEMA".into()))
 }
 
 fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error> {
@@ -119,7 +121,8 @@ fn read_line(reader: &mut BufReader<TcpStream>) -> Result<Option<String>, Error>
 enum FrameEffect {
     Continue,
     View,
-    Refuse,
+    /// The host refused. Carries the line to show on stderr.
+    Refuse(String),
 }
 
 fn write_frame(formatter: &mut render::PlayerFormatter, line: &str, raw: bool) -> FrameEffect {
@@ -131,9 +134,7 @@ fn write_frame(formatter: &mut render::PlayerFormatter, line: &str, raw: bool) -
 
 fn write_raw(line: &str) -> FrameEffect {
     if let Some(code) = refused_code(line) {
-        eprintln!("{code}");
-        let _ = io::stderr().flush();
-        return FrameEffect::Refuse;
+        return FrameEffect::Refuse(code);
     }
     println!("{line}");
     let _ = io::stdout().flush();
@@ -150,34 +151,21 @@ fn write_readable(formatter: &mut render::PlayerFormatter, line: &str) -> FrameE
         let _ = io::stderr().flush();
         return FrameEffect::Continue;
     };
-    let effect = frame_effect(&message);
     let shown = formatter.show(&message);
-    if shown.is_empty() {
-        return effect;
-    }
-    match effect {
-        FrameEffect::Refuse => {
-            eprintln!("{shown}");
-            let _ = io::stderr().flush();
-        }
-        FrameEffect::Continue | FrameEffect::View => {
-            println!("{shown}");
-            let _ = io::stdout().flush();
-        }
-    }
-    effect
-}
-
-fn frame_effect(message: &PlayerMessage) -> FrameEffect {
-    match message {
-        PlayerMessage::Refused { .. } => FrameEffect::Refuse,
+    let effect = match message {
+        PlayerMessage::Refused { .. } => return FrameEffect::Refuse(shown),
         PlayerMessage::View { .. } => FrameEffect::View,
         PlayerMessage::Say { .. }
         | PlayerMessage::Queued { .. }
         | PlayerMessage::Check { .. }
         | PlayerMessage::Resume { .. }
         | PlayerMessage::Lines { .. } => FrameEffect::Continue,
+    };
+    if !shown.is_empty() {
+        println!("{shown}");
+        let _ = io::stdout().flush();
     }
+    effect
 }
 
 fn refused_code(line: &str) -> Option<String> {

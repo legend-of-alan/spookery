@@ -45,16 +45,12 @@ pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(
     let client = match connected {
         Ok(client) => client,
         Err(gm_connection::Error::Io(err)) => return Err(super::Error::Io(err)),
-        Err(gm_connection::Error::Refused { code, raw: line }) => exit_refused(&code, &line, raw),
-        Err(gm_connection::Error::Bad(line)) => {
-            eprintln!("{line}");
-            let _ = io::stderr().flush();
-            std::process::exit(1);
+        Err(gm_connection::Error::Refused { code, raw: line }) => {
+            return Err(super::Error::Reason(refusal_line(&code, &line, raw)));
         }
+        Err(gm_connection::Error::Bad(line)) => return Err(super::Error::Reason(line)),
         Err(gm_connection::Error::Closed) => {
-            eprintln!("seat closed");
-            let _ = io::stderr().flush();
-            std::process::exit(1);
+            return Err(super::Error::Reason("seat closed".into()));
         }
     };
     let mut session = GmSession {
@@ -91,7 +87,7 @@ pub fn run_gm(addr: SocketAddr, door: Option<SocketAddr>, raw: bool) -> Result<(
         }
         match rx.try_recv() {
             Ok(Some(line)) => {
-                if !session.on_line(&line) {
+                if !session.on_line(&line)? {
                     break;
                 }
             }
@@ -137,37 +133,37 @@ impl PrintedChecks {
 }
 
 impl GmSession {
-    fn on_line(&mut self, line: &str) -> bool {
+    fn on_line(&mut self, line: &str) -> Result<bool, super::Error> {
         match parse_command(line) {
-            Parsed::Empty => true,
+            Parsed::Empty => Ok(true),
             Parsed::Unknown => {
                 emit(HELP);
-                true
+                Ok(true)
             }
             Parsed::Command(command) => self.on_command(command),
         }
     }
 
-    fn on_command(&mut self, command: Command) -> bool {
+    fn on_command(&mut self, command: Command) -> Result<bool, super::Error> {
         match command {
             Command::Help => emit(HELP),
-            Command::Quit => return false,
-            Command::Status => self.on_status(),
-            Command::Look { actor } => self.on_look(&actor),
-            Command::Say(address) => self.on_say(address),
+            Command::Quit => return Ok(false),
+            Command::Status => self.on_status()?,
+            Command::Look { actor } => self.on_look(&actor)?,
+            Command::Say(address) => self.on_say(address)?,
             Command::Queue {
                 actor,
                 move_name,
                 target,
-            } => self.on_queue(&actor, &move_name, target.as_deref()),
-            Command::Commit => self.on_commit(),
+            } => self.on_queue(&actor, &move_name, target.as_deref())?,
+            Command::Commit => self.on_commit()?,
         }
-        true
+        Ok(true)
     }
 
-    fn on_status(&mut self) {
-        let Some(outcome) = self.call_tool("session_status", json!({})) else {
-            return;
+    fn on_status(&mut self) -> Result<(), super::Error> {
+        let Some(outcome) = self.call_tool("session_status", json!({}))? else {
+            return Ok(());
         };
         self.after_result(&outcome, |_session, outcome| {
             match read_status(&outcome.body) {
@@ -175,11 +171,12 @@ impl GmSession {
                 None => unread(),
             }
         });
+        Ok(())
     }
 
-    fn on_look(&mut self, actor: &str) {
-        let Some(outcome) = self.call_tool("perceive", json!({ "as": actor })) else {
-            return;
+    fn on_look(&mut self, actor: &str) -> Result<(), super::Error> {
+        let Some(outcome) = self.call_tool("perceive", json!({ "as": actor }))? else {
+            return Ok(());
         };
         self.after_result(&outcome, |_session, outcome| {
             match serde_json::from_value::<PlayerMessage>(outcome.body.clone()) {
@@ -190,17 +187,24 @@ impl GmSession {
                 }
             }
         });
+        Ok(())
     }
 
-    fn on_say(&mut self, address: OutgoingSay) {
+    fn on_say(&mut self, address: OutgoingSay) -> Result<(), super::Error> {
         let arguments = address.arguments();
-        let Some(outcome) = self.call_tool("say", arguments) else {
-            return;
+        let Some(outcome) = self.call_tool("say", arguments)? else {
+            return Ok(());
         };
         self.after_result(&outcome, |_session, _outcome| {});
+        Ok(())
     }
 
-    fn on_queue(&mut self, actor: &str, move_name: &str, target: Option<&str>) {
+    fn on_queue(
+        &mut self,
+        actor: &str,
+        move_name: &str,
+        target: Option<&str>,
+    ) -> Result<(), super::Error> {
         let shown = format!("{} queued: {move_name}", actor_name(actor));
         let mut arguments = json!({
             "actor_id": actor,
@@ -209,17 +213,18 @@ impl GmSession {
         if let Some(t) = target {
             arguments["target"] = json!(t);
         }
-        let Some(outcome) = self.call_tool("intent", arguments) else {
-            return;
+        let Some(outcome) = self.call_tool("intent", arguments)? else {
+            return Ok(());
         };
         self.after_result(&outcome, move |_session, _outcome| {
             emit(&shown);
         });
+        Ok(())
     }
 
-    fn on_commit(&mut self) {
-        let Some(outcome) = self.call_tool("commit_round", json!({ "include_tick": true })) else {
-            return;
+    fn on_commit(&mut self) -> Result<(), super::Error> {
+        let Some(outcome) = self.call_tool("commit_round", json!({ "include_tick": true }))? else {
+            return Ok(());
         };
         let reply = if outcome.refused {
             None
@@ -250,20 +255,21 @@ impl GmSession {
             unread();
         }
         self.show_ready();
+        Ok(())
     }
 
-    fn call_tool(&mut self, name: &str, arguments: Value) -> Option<ToolCallResult> {
+    fn call_tool(
+        &mut self,
+        name: &str,
+        arguments: Value,
+    ) -> Result<Option<ToolCallResult>, super::Error> {
         match self.client.call(name, arguments) {
-            Ok(outcome) => Some(outcome),
-            Err(gm_connection::Error::Io(err)) => {
-                eprintln!("{err}");
-                let _ = io::stderr().flush();
-                std::process::exit(1);
-            }
-            Err(gm_connection::Error::Closed) => None,
+            Ok(outcome) => Ok(Some(outcome)),
+            Err(gm_connection::Error::Io(err)) => Err(super::Error::Io(err)),
+            Err(gm_connection::Error::Closed) => Ok(None),
             Err(gm_connection::Error::Refused { code, raw }) => {
                 self.show_refusal(&code, &raw);
-                None
+                Ok(None)
             }
             Err(gm_connection::Error::Bad(line)) => {
                 if self.raw {
@@ -272,7 +278,7 @@ impl GmSession {
                     eprintln!("{line}");
                     let _ = io::stderr().flush();
                 }
-                None
+                Ok(None)
             }
         }
     }
@@ -370,25 +376,19 @@ impl GmSession {
     }
 
     fn show_refusal(&self, code: &str, raw: &str) {
-        if self.raw {
-            emit(raw);
-            eprintln!("{code}");
-        } else {
-            eprintln!("{}", refusal(code));
-        }
+        eprintln!("{}", refusal_line(code, raw, self.raw));
         let _ = io::stderr().flush();
     }
 }
 
-fn exit_refused(code: &str, raw: &str, raw_mode: bool) -> ! {
+/// Raw mode echoes the frame and names the code. Text mode names the refusal.
+fn refusal_line(code: &str, raw: &str, raw_mode: bool) -> String {
     if raw_mode {
         emit(raw);
-        eprintln!("{code}");
+        code.to_string()
     } else {
-        eprintln!("{}", refusal(code));
+        refusal(code)
     }
-    let _ = io::stderr().flush();
-    std::process::exit(1);
 }
 
 fn emit(line: &str) {

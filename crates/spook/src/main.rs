@@ -245,7 +245,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
 #[cfg(feature = "client")]
 fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), String> {
     result.map_err(|err| match err {
-        spookery::terminal::Error::Reason(code) => code.to_string(),
+        spookery::terminal::Error::Reason(reason) => reason,
         spookery::terminal::Error::Io(err) => err.to_string(),
     })
 }
