@@ -14,4 +14,4 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 spookery-agent = { path = "../agent" }
 spookery-protocol = { path = "../protocol" }
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "net", "io-util", "sync"] }
+tokio = { version = "1", features = ["macros", "rt", "time", "net", "io-util", "sync"] }

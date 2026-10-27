@@ -108,15 +108,16 @@ enum Command {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
-    if let Err(exit) = dispatch(cli) {
+    if let Err(exit) = dispatch(cli).await {
         eprintln!("{exit}");
         std::process::exit(1);
     }
 }
 
-fn dispatch(cli: Cli) -> Result<(), String> {
+async fn dispatch(cli: Cli) -> Result<(), String> {
     // `--addr` is global: every command refuses an open host before any pack opens.
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
@@ -136,28 +137,30 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
             // Ctrl+C stops the host. Listen before serving so an early one is caught.
-            let runtime = tokio::runtime::Runtime::new().map_err(|e| e.to_string())?;
-            let ctrl_c = runtime.spawn(tokio::signal::ctrl_c());
+            let ctrl_c = tokio::spawn(tokio::signal::ctrl_c());
             let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
-            let caught = runtime.block_on(ctrl_c).map_err(|e| e.to_string())?;
-            caught.map_err(|e| e.to_string())?;
-            handle.stop();
-            handle.join().map_err(|e| e.to_string())
+            let shutdown = async {
+                let _ = ctrl_c.await;
+                // A second Ctrl+C ends a shutdown that hangs.
+                tokio::spawn(async {
+                    let _ = tokio::signal::ctrl_c().await;
+                    std::process::exit(130);
+                });
+            };
+            handle.run(shutdown).await.map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { as_player, raw } => from_terminal(spookery::terminal::run_player(
-            as_player.as_deref(),
-            addr,
-            raw,
-        )),
+        Command::Play { as_player, raw } => {
+            from_terminal(spookery::terminal::run_player(as_player.as_deref(), addr, raw).await)
+        }
         #[cfg(feature = "client")]
         Command::Gm { mcp_http, raw } => {
-            from_terminal(spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw))
+            from_terminal(spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw).await)
         }
         #[cfg(feature = "client")]
         Command::AiGm { mcp_http } => {
             let door = door_addr(mcp_http)?;
-            if spookery::ai::sit(addr, door).is_err() {
+            if spookery::ai::sit(addr, door).await.is_err() {
                 std::process::exit(1);
             }
             Ok(())
@@ -304,8 +307,8 @@ mod tests {
         assert!(parse_loopback("127.0.0.1:").is_err());
     }
 
-    #[test]
-    fn every_command_refuses_an_open_address_before_the_pack_opens() {
+    #[tokio::test]
+    async fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
             "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "verify", "new",
         ] {
@@ -316,7 +319,7 @@ mod tests {
                     })
                     .unwrap();
                 assert_eq!(
-                    dispatch(cli).unwrap_err(),
+                    dispatch(cli).await.unwrap_err(),
                     "NOT_IN_SPEC",
                     "{command} --addr {addr}"
                 );
@@ -324,8 +327,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn usage_is_not_an_engine_refusal() {
+    #[tokio::test]
+    async fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
         assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());
         let gm = Cli::try_parse_from(["spook", "gm"]).unwrap();
@@ -338,7 +341,7 @@ mod tests {
         assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
         let http = Cli::try_parse_from(["spook", "run", "--mcp-http", "0.0.0.0:9", "no-such-pack"])
             .unwrap();
-        assert_eq!(dispatch(http).unwrap_err(), "NOT_IN_SPEC");
+        assert_eq!(dispatch(http).await.unwrap_err(), "NOT_IN_SPEC");
         let http_loopback =
             Cli::try_parse_from(["spook", "run", "--mcp-http", "127.0.0.1:9801", "pack"]).unwrap();
         assert!(matches!(
@@ -351,7 +354,7 @@ mod tests {
         for command in ["gm", "ai-gm"] {
             let open = Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9"]).unwrap();
             assert_eq!(
-                dispatch(open).unwrap_err(),
+                dispatch(open).await.unwrap_err(),
                 "NOT_IN_SPEC",
                 "{command} --mcp-http"
             );

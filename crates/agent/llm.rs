@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 use std::fmt;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -33,7 +34,10 @@ impl std::error::Error for CompleteError {}
 
 /// One model call. The HTTP client and the scripted model both implement this.
 pub trait Model {
-    fn complete(&mut self, request: &CompletionRequest) -> Result<Option<String>, CompleteError>;
+    fn complete(
+        &mut self,
+        request: &CompletionRequest,
+    ) -> impl Future<Output = Result<Option<String>, CompleteError>>;
 }
 
 #[derive(Clone, Default)]
@@ -62,7 +66,10 @@ impl ScriptedModel {
 }
 
 impl Model for ScriptedModel {
-    fn complete(&mut self, request: &CompletionRequest) -> Result<Option<String>, CompleteError> {
+    async fn complete(
+        &mut self,
+        request: &CompletionRequest,
+    ) -> Result<Option<String>, CompleteError> {
         let mut inner = self.inner.lock().expect("script");
         inner.calls.push(request.clone());
         inner.replies.pop_front().unwrap_or(Ok(None))

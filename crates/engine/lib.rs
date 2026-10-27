@@ -40,7 +40,7 @@ pub use round::{
 };
 pub use rule::{Owner, TargetKind, When};
 pub use rules::{GateRefusal, MoveReport, RollResult};
-pub use store::{emit_save, load_save, lock_serve, record_line, TapeRecord};
+pub use store::{emit_save, load_save, lock_serve, record_line, LockGuard, TapeRecord};
 pub use visibility::RecipientLine;
 pub use world::{
     check_pack, handle_player_move, GmIntentSpec, Heard, MoveOutcome, QueuedMove, World,

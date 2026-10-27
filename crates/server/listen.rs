@@ -1,5 +1,6 @@
 //! Bind the game port and the agent door.
 
+use std::future::Future;
 use std::io::{self, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -50,8 +51,10 @@ impl Config {
 pub struct Handle {
     game: SocketAddr,
     door: SocketAddr,
-    tx: Sender<WorldMsg>,
-    join: Option<std::thread::JoinHandle<Result<(), Error>>>,
+    world: spookery_engine::World,
+    config: Config,
+    guard: spookery_engine::LockGuard,
+    listeners: [TcpListener; 2],
 }
 
 impl Handle {
@@ -63,25 +66,67 @@ impl Handle {
         self.door
     }
 
-    pub fn stop(&self) {
-        let _ = self.tx.send(WorldMsg::Stop);
-    }
-
-    pub fn join(mut self) -> Result<(), Error> {
-        self.join
-            .take()
-            .expect("world thread")
-            .join()
-            .unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
-    }
-}
-
-impl Drop for Handle {
-    fn drop(&mut self) {
-        self.stop();
-        if let Some(join) = self.join.take() {
-            let _ = join.join();
+    /// Serve on the caller's runtime until `shutdown` resolves, then stop the
+    /// world and return its result. Dropping the tasks closes both listeners.
+    pub async fn run(self, shutdown: impl Future<Output = ()>) -> Result<(), Error> {
+        let Handle {
+            world,
+            mut config,
+            guard,
+            listeners: [listener, http_listener],
+            ..
+        } = self;
+        // Keepalive stays the pack interval. The idle switch does not change it.
+        let keepalive_secs = world.budget().tick_every_real_seconds;
+        let arm_idle_timer = world.budget().idle_ticking;
+        let hello_timeout = config.hello_timeout;
+        let listener = tokio::net::TcpListener::from_std(listener).map_err(Error::Io)?;
+        let http_listener = tokio::net::TcpListener::from_std(http_listener).map_err(Error::Io)?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut tasks = tokio::task::JoinSet::new();
+        let next_conn = Arc::new(AtomicU64::new(1));
+        let tx_accept = tx.clone();
+        let ids = Arc::clone(&next_conn);
+        tasks.spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                if tune(&stream, keepalive_secs).is_err() {
+                    continue;
+                }
+                let id = ids.fetch_add(1, Ordering::Relaxed);
+                let tx_conn = tx_accept.clone();
+                tokio::spawn(connection(stream, tx_conn, id, hello_timeout));
+            }
+        });
+        tasks.spawn(mcp_http::serve(http_listener, tx.clone(), next_conn));
+        let (restart_tx, mut restart_rx) = tokio::sync::watch::channel(0u64);
+        if arm_idle_timer {
+            let tx_timer = tx.clone();
+            tasks.spawn(async move {
+                loop {
+                    tokio::select! {
+                        _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
+                            if tx_timer.send(WorldMsg::Wake).is_err() {
+                                break;
+                            }
+                        }
+                        changed = restart_rx.changed() => {
+                            if changed.is_err() {
+                                break;
+                            }
+                        }
+                    }
+                }
+            });
         }
+        let world_loop = tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+            world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
+        });
+        shutdown.await;
+        let _ = tx.send(WorldMsg::Stop);
+        world_loop
+            .await
+            .unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
     }
 }
 
@@ -92,7 +137,7 @@ fn bind_nonblocking(addr: SocketAddr) -> Result<(TcpListener, SocketAddr), Error
     Ok((listener, bound))
 }
 
-/// Serve `world` on its own private Tokio runtime until stopped.
+/// Take the serve lock, bind both listeners and report them. `Handle::run` serves.
 pub fn serve(mut world: spookery_engine::World, mut config: Config) -> Result<Handle, Error> {
     let guard = spookery_engine::lock_serve(world.root()).map_err(Error::Reason)?;
     let (listener, game) = bind_nonblocking(config.addr)?;
@@ -101,72 +146,13 @@ pub fn serve(mut world: spookery_engine::World, mut config: Config) -> Result<Ha
         world_loop::write_host(&mut *config.out, &world, &[]);
     }
     report_bound(&mut *config.out, game, door)?;
-    // Keepalive stays the pack interval. The idle switch does not change it.
-    let keepalive_secs = world.budget().tick_every_real_seconds;
-    let arm_idle_timer = world.budget().idle_ticking;
-    let hello_timeout = config.hello_timeout;
-    let (tx, rx) = std::sync::mpsc::channel();
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .map_err(Error::Io)?;
-    let handle = runtime.handle().clone();
-    let (listener, http_listener) = {
-        let _entered = handle.enter();
-        (
-            tokio::net::TcpListener::from_std(listener).map_err(Error::Io)?,
-            tokio::net::TcpListener::from_std(http_listener).map_err(Error::Io)?,
-        )
-    };
-    let next_conn = Arc::new(AtomicU64::new(1));
-    let tx_accept = tx.clone();
-    let ids = Arc::clone(&next_conn);
-    handle.spawn(async move {
-        while let Ok((stream, _)) = listener.accept().await {
-            if tune(&stream, keepalive_secs).is_err() {
-                continue;
-            }
-            let id = ids.fetch_add(1, Ordering::Relaxed);
-            let tx_conn = tx_accept.clone();
-            tokio::spawn(connection(stream, tx_conn, id, hello_timeout));
-        }
-    });
-    let tx_http = tx.clone();
-    handle.spawn(mcp_http::serve(http_listener, tx_http, next_conn));
-    let (restart_tx, restart_rx) = tokio::sync::watch::channel(0u64);
-    if arm_idle_timer {
-        let tx_timer = tx.clone();
-        handle.spawn(async move {
-            let mut restart_rx = restart_rx;
-            loop {
-                tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
-                        if tx_timer.send(WorldMsg::Wake).is_err() {
-                            break;
-                        }
-                    }
-                    changed = restart_rx.changed() => {
-                        if changed.is_err() {
-                            break;
-                        }
-                    }
-                }
-            }
-        });
-    } else {
-        drop(restart_rx);
-    }
-    let join = std::thread::spawn(move || {
-        let _guard = guard;
-        let _runtime = runtime;
-        world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
-    });
     Ok(Handle {
         game,
         door,
-        tx,
-        join: Some(join),
+        world,
+        config,
+        guard,
+        listeners: [listener, http_listener],
     })
 }
 
