@@ -138,7 +138,6 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             config.err = Box::new(std::io::stderr());
             // Ctrl+C stops the host. Listen before serving so an early one is caught.
             let ctrl_c = tokio::spawn(tokio::signal::ctrl_c());
-            let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
             let shutdown = async {
                 let _ = ctrl_c.await;
                 // A second Ctrl+C ends a shutdown that hangs.
@@ -147,7 +146,9 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                     std::process::exit(130);
                 });
             };
-            handle.run(shutdown).await.map_err(|e| e.to_string())
+            spookery_server::serve(world, config, shutdown)
+                .await
+                .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
         Command::Play { as_player, raw } => {
