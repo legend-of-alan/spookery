@@ -2,5 +2,5 @@
 
 pub mod ai;
 pub mod gm_connection;
-pub use spookery_protocol as protocol;
+use spookery_protocol as protocol;
 pub mod terminal;

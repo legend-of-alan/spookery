@@ -240,7 +240,7 @@ pub fn latest_checkpoint(entries: &[JournalEntry]) -> Option<&CheckpointRecord> 
 }
 
 /// Keys of every round record, such as `round-0001`, in order.
-#[allow(dead_code)]
+#[cfg(any(test, feature = "testing"))]
 pub fn list_round_keys(pack: &Path) -> Vec<String> {
     let Ok(entries) = read_entries(pack) else {
         return Vec::new();
@@ -255,7 +255,7 @@ pub fn list_round_keys(pack: &Path) -> Vec<String> {
 }
 
 /// The stored line for a record key such as `round-0001` or `migrate-0002`, without a newline.
-#[allow(dead_code)]
+#[cfg(any(test, feature = "testing"))]
 pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> {
     let entries = read_entries(pack)?;
     let found = entries
@@ -289,7 +289,7 @@ pub fn locate(pack: &Path, key: &str) -> Result<Located, JournalFault> {
     Err(fault_name(key, "the journal record is missing"))
 }
 
-#[allow(dead_code)]
+#[cfg(any(test, feature = "testing"))]
 pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, JournalFault> {
     bundle_files(&pack.join("state/journal"))
 }

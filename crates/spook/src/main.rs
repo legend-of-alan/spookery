@@ -246,7 +246,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "server")]
         Command::New { dir } => {
-            let next = spookery::starter::write_starter(&dir).map_err(|e| e.to_string())?;
+            let next = spookery::host::starter::write_starter(&dir).map_err(|e| e.to_string())?;
             print!("{next}");
             Ok(())
         }

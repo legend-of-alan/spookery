@@ -4,8 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{json, Value};
-use spookery::host::idle_clock::wall_now;
-use spookery::host::{call_gm_tool, commit_then_fast_forward, on_scheduled_wake, MoveOutcome};
+use spookery::host::idle_clock::{on_scheduled_wake, wall_now};
+use spookery::host::{call_gm_tool, commit_then_fast_forward, MoveOutcome};
 use spookery_engine::handle_player_move;
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::World as Shard;

@@ -5,7 +5,7 @@ mod prompt;
 
 pub use llm::*;
 use prompt::*;
-pub use spookery_protocol as protocol;
+use spookery_protocol as protocol;
 
 use std::collections::{BTreeMap, VecDeque};
 

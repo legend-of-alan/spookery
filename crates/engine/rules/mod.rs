@@ -14,6 +14,5 @@ pub(crate) mod roll;
 pub(crate) mod rule;
 
 pub use gate::GateRefusal;
-#[allow(unused_imports)]
-pub(crate) use roll::{faces, faces_from, roll, RollInput, RollKey};
+pub(crate) use roll::{faces_from, roll, RollInput, RollKey};
 pub use roll::{MoveReport, RollResult};
