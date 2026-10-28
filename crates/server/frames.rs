@@ -130,7 +130,7 @@ pub fn player_resume_line(view: &View) -> String {
         .messages
         .iter()
         .filter(|message| message.to.iter().any(|to| to == actor_id))
-        .map(wire_message)
+        .map(message_view)
         .collect();
     crate::protocol::write_player(&PlayerMessage::Resume {
         messages,
@@ -229,7 +229,7 @@ fn player_view(view: &View) -> PlayerMessage {
         }),
         visible_actors: view.visible_actors.clone(),
         known_facts: view.known_facts.clone(),
-        messages: view.messages.iter().map(wire_message).collect(),
+        messages: view.messages.iter().map(message_view).collect(),
         unknown_mentioned: view.unknown_mentioned.clone(),
         clocks: view.clocks.clone(),
         items: view.items.clone(),
@@ -239,7 +239,7 @@ fn player_view(view: &View) -> PlayerMessage {
     }
 }
 
-fn wire_message(message: &Message) -> MessageView {
+fn message_view(message: &Message) -> MessageView {
     MessageView {
         id: message.id.clone(),
         to: message.to.clone(),
