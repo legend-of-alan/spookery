@@ -29,15 +29,6 @@ impl Serialize for Severity {
     }
 }
 
-pub(crate) const PACK_SCHEMA: &str = "pack";
-pub(crate) const PLACE_SCHEMA: &str = "place";
-pub(crate) const CAST_SCHEMA: &str = "cast";
-pub(crate) const METERS_SCHEMA: &str = "meters";
-pub(crate) const VERBS_SCHEMA: &str = "verbs";
-pub(crate) const ITEM_SCHEMA: &str = "item";
-pub(crate) const STORY_SCHEMA: &str = "story";
-pub(crate) const CHECKS_SCHEMA: &str = "checks";
-pub(crate) const TICK_SCHEMA: &str = "tick";
 pub(crate) const NOW_SCHEMA: &str = "now";
 
 struct FoundSchema<'a> {
@@ -171,44 +162,6 @@ pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u
     None
 }
 
-/// `field` inside the `row`th list item that contains `marker` (`name:` or `id:`).
-pub(crate) fn locate_row_field(
-    text: &str,
-    marker: &str,
-    row: usize,
-    field: &str,
-) -> Option<(u32, u32)> {
-    let mut marks = Vec::new();
-    for (index, line) in text.lines().enumerate() {
-        if line.contains(marker) {
-            marks.push(index);
-        }
-    }
-    let start = *marks.get(row)?;
-    let end = marks.get(row + 1).copied().unwrap_or(usize::MAX);
-    for (index, line) in text.lines().enumerate().skip(start) {
-        if index >= end {
-            break;
-        }
-        if let Some(col) = line.find(field) {
-            return Some((index as u32 + 1, col as u32 + 1));
-        }
-    }
-    None
-}
-
-pub(crate) fn with_spot(
-    mut diag: Diagnostic,
-    spot: Option<(u32, u32)>,
-    line_base: u32,
-) -> Diagnostic {
-    if let Some((line, column)) = spot {
-        diag.line = Some(line + line_base);
-        diag.column = Some(column);
-    }
-    diag
-}
-
 /// Wrong or missing `schema` tag. `None` means the tag is the one this file uses.
 pub(crate) fn tag_diagnostic(
     text: &str,
@@ -314,18 +267,6 @@ pub(crate) fn parse_file<T: serde::de::DeserializeOwned>(
     serde_saphyr::from_str(text).map_err(|err| vec![yaml_diagnostic(file, &err, line_base)])
 }
 
-pub(crate) fn load_headed<T: serde::de::DeserializeOwned>(
-    file: &str,
-    text: &str,
-    expected: &str,
-    line_base: u32,
-) -> Result<T, Vec<Diagnostic>> {
-    if let Some(diag) = tag_diagnostic(text, expected, file, line_base) {
-        return Err(vec![diag]);
-    }
-    parse_file(file, text, line_base)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,28 +307,6 @@ mod tests {
             diag.report_line(),
             "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
         );
-    }
-
-    #[test]
-    fn a_misspelled_field_keeps_the_yaml_line() {
-        #[derive(Debug, serde::Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Row {
-            name: String,
-        }
-        let ok: Row = parse_file("rules/moves.yaml", "name: grit\n", 0).unwrap();
-        assert_eq!(ok.name, "grit");
-        let text = "name: grit\naudiance: player\n";
-        let err = parse_file::<Row>("rules/moves.yaml", text, 0).unwrap_err();
-        let err = &err[0];
-        assert!(err.message.contains("unknown field 'audiance'"), "{err:?}");
-        assert_eq!(err.code, Severity::Error(Reason::Schema));
-        assert!(err.line.is_some(), "{err:?}");
-        let spot = locate_row_field(&format!("schema: moves\n{text}"), "name:", 0, "audiance");
-        assert_eq!(spot, Some((3, 1)));
-        assert_eq!(locate_nth(text, "name:", 0), Some((1, 1)));
-        let shifted = with_spot(err.clone(), spot, 1);
-        assert_eq!(shifted.line, Some(4));
     }
 
     #[test]

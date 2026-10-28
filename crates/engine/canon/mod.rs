@@ -8,11 +8,7 @@ use serde::Deserialize;
 
 use crate::canon::round_settings::load_round_settings;
 use crate::check::CheckDef;
-use crate::diagnostic::{
-    coded, load_headed, locate_nth, locate_row_field, schema as schema_error, with_spot,
-    Diagnostic, CAST_SCHEMA, CHECKS_SCHEMA, ITEM_SCHEMA, METERS_SCHEMA, PACK_SCHEMA, PLACE_SCHEMA,
-    STORY_SCHEMA, VERBS_SCHEMA,
-};
+use crate::diagnostic::{coded, locate_nth, schema as schema_error, Diagnostic};
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
@@ -25,6 +21,7 @@ mod oracle;
 pub(crate) mod round_settings;
 mod save;
 mod schema;
+mod source;
 
 pub(crate) use check::check_canon;
 use check::{
@@ -34,6 +31,10 @@ use check::{
 pub use round_settings::Budget;
 pub(crate) use save::{check_save, migrate_save, pending_meters};
 use schema::RuleEntry;
+use source::{
+    load_headed, locate_row_field, with_spot, CAST_SCHEMA, CHECKS_SCHEMA, ITEM_SCHEMA,
+    METERS_SCHEMA, PACK_SCHEMA, PLACE_SCHEMA, STORY_SCHEMA, VERBS_SCHEMA,
+};
 
 #[derive(Clone, Debug)]
 pub struct Canon {

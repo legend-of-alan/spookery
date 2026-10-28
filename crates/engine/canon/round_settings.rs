@@ -2,7 +2,8 @@
 
 use serde::Deserialize;
 
-use crate::diagnostic::{load_headed, locate_nth, schema, Diagnostic};
+use crate::canon::source::{load_headed, TICK_SCHEMA};
+use crate::diagnostic::{locate_nth, schema, Diagnostic};
 
 const TICK_FILE: &str = "rules/tick.yaml";
 
@@ -67,7 +68,7 @@ impl Budget {
 }
 
 pub(crate) fn load_round_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let file: TickFile = load_headed(TICK_FILE, text, crate::diagnostic::TICK_SCHEMA, 0)?;
+    let file: TickFile = load_headed(TICK_FILE, text, TICK_SCHEMA, 0)?;
     let mut diags = Vec::new();
     let defaults = Budget::defaults();
     let max_intents_applied = take(
