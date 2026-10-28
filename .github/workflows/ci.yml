@@ -15,6 +15,8 @@ on:
       - "docs/README.md"
       - "**/*.png"
       - "**/*.svg"
+  # Lets a branch run the full matrix by hand: gh workflow run CI --ref <branch>
+  workflow_dispatch:
 
 permissions:
   contents: read
