@@ -19,8 +19,6 @@ mod fact;
 mod item;
 mod lint;
 mod meters;
-#[cfg(test)]
-mod oracle;
 mod pack;
 mod place;
 mod rule_list;
