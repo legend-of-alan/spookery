@@ -7,7 +7,7 @@ use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_saphyr::Spanned;
 
-use crate::canon::source::{serde_spot, At, Fault, Problem, Source};
+use crate::canon::source::{load_headed, serde_spot, At, Fault, Problem, Source, VERBS_SCHEMA};
 use crate::diagnostic::{schema, Diagnostic};
 use crate::rule::{
     parse_expr, stamp_expr, Arith, ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo,
@@ -1145,4 +1145,10 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
         .parse::<i64>()
         .map_err(|_| format!("crosses '{text}' needs an operator and a number"))?;
     Ok((op, bound))
+}
+
+pub(super) fn load_verbs(text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
+    const FILE: &str = "rules/verbs.yaml";
+    let file: VerbsFile = load_headed(FILE, text, VERBS_SCHEMA, 0)?;
+    compile(FILE, file.rules, &Owner::Verb)
 }

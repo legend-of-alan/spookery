@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::canon::round_settings::Budget;
+use crate::canon::tick::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic, Severity};
 use crate::effect::{payload_json, Effect};

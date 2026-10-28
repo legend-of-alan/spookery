@@ -1,40 +1,52 @@
 //! The loaded pack: places, cast, facts, and rules.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::round_settings::load_round_settings;
+use crate::canon::tick::load_round_settings;
 use crate::check::CheckDef;
-use crate::diagnostic::{coded, schema as schema_error, Diagnostic};
+use crate::diagnostic::{schema as schema_error, Diagnostic};
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
 use crate::rule::{Cond, Cost, Owner, Rule, RuleTable, TargetKind, When};
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
-mod check;
+mod cast;
+mod checks;
+mod fact;
+mod item;
+mod lint;
+mod meters;
 #[cfg(test)]
 mod oracle;
-pub(crate) mod round_settings;
+mod pack;
+mod place;
+mod rule_list;
 mod save;
-mod schema;
 mod source;
+mod story;
+pub(crate) mod tick;
 
-pub(crate) use check::check_canon;
-use check::{
+use cast::load_cast;
+use checks::load_checks;
+use fact::{fact_ids_of, insert_fact, FactFile};
+use item::load_item;
+pub(crate) use lint::check_canon;
+use lint::{
     broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
     unknown_rule_items,
 };
-pub use round_settings::Budget;
+use meters::load_meters;
+use pack::load_pack;
+use place::{compile_exits, load_place};
+use rule_list::load_verbs;
 pub(crate) use save::{check_save, migrate_save, pending_meters};
-use schema::RuleEntry;
-use source::{
-    load_headed, At, Problem, Source, CAST_SCHEMA, CHECKS_SCHEMA, ITEM_SCHEMA, METERS_SCHEMA,
-    PACK_SCHEMA, PLACE_SCHEMA, STORY_SCHEMA, VERBS_SCHEMA,
-};
+use source::{collect_files, read_text, split_frontmatter, At, Problem, Source};
+use story::load_story;
+pub use tick::Budget;
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -260,7 +272,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                         continue;
                     }
                     let id = item.id.clone();
-                    match schema::compile(&rel, item.rules, &Owner::Item(id.clone())) {
+                    match rule_list::compile(&rel, item.rules, &Owner::Item(id.clone())) {
                         Ok(rules) => loaded.extend(rules),
                         Err(more) => diags.extend(more),
                     }
@@ -325,7 +337,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 exits,
             },
         );
-        match schema::compile(&rel, file.rules, &Owner::Place(file.id)) {
+        match rule_list::compile(&rel, file.rules, &Owner::Place(file.id)) {
             Ok(rules) => loaded.extend(rules),
             Err(more) => diags.extend(more),
         }
@@ -418,13 +430,13 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
                 tick: file.tick,
             },
         );
-        match schema::compile(&rel, file.rules, &Owner::Cast(id)) {
+        match rule_list::compile(&rel, file.rules, &Owner::Cast(id)) {
             Ok(rules) => loaded.extend(rules),
             Err(more) => diags.extend(more),
         }
     }
     if root.join("rules/moves.yaml").is_file() {
-        diags.push(schema::replaced_moves_file());
+        diags.push(rule_list::replaced_moves_file());
     }
     let verbs_text = match read_text(root, "rules/verbs.yaml") {
         Ok(text) => Some(text),
@@ -488,7 +500,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
             continue;
         };
         match load_story(&rel, text) {
-            Ok(story) => match schema::compile(&rel, story.rules, &Owner::Story(story.id)) {
+            Ok(story) => match rule_list::compile(&rel, story.rules, &Owner::Story(story.id)) {
                 Ok(rules) => loaded.extend(rules),
                 Err(more) => diags.extend(more),
             },
@@ -586,556 +598,6 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     })
 }
 
-fn fact_ids_of(facts: &BTreeMap<String, FactCanon>, owner: &str) -> Vec<String> {
-    facts
-        .iter()
-        .filter(|(_, fact)| fact.owner_id == owner)
-        .map(|(id, _)| id.clone())
-        .collect()
-}
-
-fn insert_fact(
-    facts: &mut BTreeMap<String, FactCanon>,
-    file: &str,
-    text: &str,
-    row: usize,
-    fact: FactFile,
-    owner: &str,
-) -> Result<(), Vec<Diagnostic>> {
-    let source = Source {
-        file,
-        text,
-        line_base: 0,
-    };
-    let path = format!("facts[{row}].id");
-    if fact.id.is_empty() {
-        return Err(vec![Problem {
-            source: &source,
-            path: &path,
-            at: At::Row { row, key: "id:" },
-            problem: "a fact id is empty".into(),
-            hint: "set id to a short name",
-        }
-        .schema()]);
-    }
-    if facts.contains_key(&fact.id) {
-        return Err(vec![Problem {
-            source: &source,
-            path: &path,
-            at: At::Row { row, key: "id:" },
-            problem: format!("fact '{}' is already defined", fact.id),
-            hint: "keep one fact with this id",
-        }
-        .schema()]);
-    }
-    facts.insert(
-        fact.id,
-        FactCanon {
-            text: fact.text,
-            hidden: fact.hidden,
-            owner_id: owner.to_string(),
-        },
-    );
-    Ok(())
-}
-
-fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
-    let source = Source::named(file);
-    let mut diags = Vec::new();
-    let mut compiled = Vec::new();
-    let mut names = BTreeSet::new();
-    for (index, exit) in exits.iter().enumerate() {
-        if exit.name.is_empty() || exit.to.is_empty() {
-            diags.push(
-                schema_error(file, "an exit needs a name and a to", "set both")
-                    .with_path(format!("exits[{index}]")),
-            );
-            continue;
-        }
-        if !names.insert(exit.name.clone()) {
-            diags.push(
-                schema_error(
-                    file,
-                    &format!("exit '{}' is listed twice", exit.name),
-                    "keep one exit with this name",
-                )
-                .with_path(format!("exits[{index}].name")),
-            );
-            continue;
-        }
-        let cost = match &exit.cost {
-            Some(yaml) => match schema::cost_of(yaml) {
-                Ok(cost) => cost,
-                Err(fault) => {
-                    diags.push(
-                        Problem {
-                            source: &source,
-                            path: &format!("exits[{index}].cost"),
-                            at: At::Spot(fault.spot),
-                            problem: fault.message,
-                            hint: "fix the exit cost",
-                        }
-                        .schema(),
-                    );
-                    continue;
-                }
-            },
-            None => Cost {
-                minutes: 0,
-                meters: Vec::new(),
-                items: Vec::new(),
-            },
-        };
-        let mut if_ = Vec::new();
-        let mut bad = false;
-        for cond in &exit.if_ {
-            match schema::cond_of(cond) {
-                Ok(cond) => if_.push(cond),
-                Err(fault) => {
-                    diags.push(
-                        Problem {
-                            source: &source,
-                            path: &format!("exits[{index}].if"),
-                            at: At::Spot(fault.spot),
-                            problem: fault.message,
-                            hint: "fix the exit condition",
-                        }
-                        .schema(),
-                    );
-                    bad = true;
-                }
-            }
-        }
-        if bad {
-            continue;
-        }
-        compiled.push(Exit {
-            name: exit.name.clone(),
-            to: exit.to.clone(),
-            minutes: cost.minutes,
-            cost,
-            if_,
-            locked_text: exit.locked_text.clone(),
-            hidden: exit.hidden,
-            revealed_by: exit.revealed_by.clone(),
-            file: file.to_string(),
-            index,
-        });
-    }
-    if diags.is_empty() {
-        Ok(compiled)
-    } else {
-        Err(diags)
-    }
-}
-
-pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-    const FILE: &str = "rules/meters.yaml";
-    let file: MetersFile = load_headed(FILE, text, METERS_SCHEMA, 0)?;
-    let source = Source {
-        file: FILE,
-        text,
-        line_base: 0,
-    };
-    let mut diags = Vec::new();
-    let mut meters = BTreeMap::new();
-    for (row, entry) in file.meters.into_iter().enumerate() {
-        let path = format!("meters[{row}]");
-        let mut bad = false;
-        if entry.id.is_empty() {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: "a meter id is empty".into(),
-                    hint: "set id to a short name",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if entry.min > entry.base_cap {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.min"),
-                    at: At::Row { row, key: "min:" },
-                    problem: format!("meter '{}' has min above base_cap", entry.id),
-                    hint: "set min at or below base_cap",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if entry.base_cap > entry.max {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.base_cap"),
-                    at: At::Row {
-                        row,
-                        key: "base_cap:",
-                    },
-                    problem: format!("meter '{}' has base_cap above max", entry.id),
-                    hint: "set base_cap at or below max",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if !(entry.min..=entry.base_cap).contains(&entry.start) {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.start"),
-                    at: At::Row { row, key: "start:" },
-                    problem: format!("meter '{}' has start outside min and base_cap", entry.id),
-                    hint: "set start between min and base_cap",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if !bad && meters.contains_key(&entry.id) {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: format!("meter '{}' is listed twice", entry.id),
-                    hint: "keep one meter",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if !bad {
-            meters.insert(
-                entry.id,
-                MeterDef {
-                    min: entry.min,
-                    base_cap: entry.base_cap,
-                    max: entry.max,
-                    start: entry.start,
-                    hidden: entry.hidden,
-                },
-            );
-        }
-    }
-    if diags.is_empty() {
-        Ok(meters)
-    } else {
-        Err(diags)
-    }
-}
-
-pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
-    const CHECKS_FILE: &str = "rules/checks.yaml";
-    let file: ChecksFile = load_headed(CHECKS_FILE, text, CHECKS_SCHEMA, 0)?;
-    let source = Source {
-        file: CHECKS_FILE,
-        text,
-        line_base: 0,
-    };
-    let mut diags = Vec::new();
-    let mut checks = BTreeMap::new();
-    for (row, entry) in file.checks.into_iter().enumerate() {
-        let path = format!("checks[{row}]");
-        let mut bad = false;
-        if entry.id.is_empty() {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: "a check id is empty".into(),
-                    hint: "set id to a short name",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if entry.dice.count == 0 {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.dice.count"),
-                    at: At::Row { row, key: "count:" },
-                    problem: format!("check '{}' rolls zero dice", entry.id),
-                    hint: "set dice.count to 1 or more",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if entry.dice.sides == 0 {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.dice.sides"),
-                    at: At::Row { row, key: "sides:" },
-                    problem: format!("check '{}' has a die with zero sides", entry.id),
-                    hint: "set dice.sides to 2 or more",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if entry.stat.is_empty() {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.stat"),
-                    at: At::Row { row, key: "stat:" },
-                    problem: format!("check '{}' names no meter", entry.id),
-                    hint: "set stat to a meter id from rules/meters.yaml",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if !bad && checks.contains_key(&entry.id) {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: format!("check '{}' is listed twice", entry.id),
-                    hint: "keep one check",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
-        if !bad {
-            checks.insert(
-                entry.id,
-                CheckDef {
-                    dice_count: entry.dice.count,
-                    dice_sides: entry.dice.sides,
-                    stat: entry.stat,
-                },
-            );
-        }
-    }
-    if diags.is_empty() {
-        Ok(checks)
-    } else {
-        Err(diags)
-    }
-}
-
-fn load_verbs(text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    const FILE: &str = "rules/verbs.yaml";
-    let file: schema::VerbsFile = load_headed(FILE, text, VERBS_SCHEMA, 0)?;
-    schema::compile(FILE, file.rules, &Owner::Verb)
-}
-
-fn load_item(file: &str, yaml: &str) -> Result<ItemFile, Vec<Diagnostic>> {
-    load_headed(file, yaml, ITEM_SCHEMA, 1)
-}
-
-fn load_story(file: &str, text: &str) -> Result<StoryFile, Vec<Diagnostic>> {
-    load_headed(file, text, STORY_SCHEMA, 0)
-}
-
-fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
-    let path = root.join(rel);
-    if !path.is_file() {
-        return Err(vec![coded(
-            rel,
-            Reason::NotInSpec,
-            &format!("{rel} is missing"),
-            &format!("add {rel}"),
-        )
-        .with_path("schema")]);
-    }
-    fs::read_to_string(&path).map_err(|_| {
-        vec![coded(
-            rel,
-            Reason::Schema,
-            "this file could not be read as UTF-8 text",
-            "save it as UTF-8",
-        )
-        .with_path("schema")]
-    })
-}
-
-fn load_pack(text: &str) -> Result<PackFile, Vec<Diagnostic>> {
-    let file: PackFile = load_headed("pack.yaml", text, PACK_SCHEMA, 0)?;
-    if file.id.is_empty() {
-        return Err(vec![schema_error(
-            "pack.yaml",
-            "id is empty",
-            "set id to a short pack id",
-        )
-        .with_path("id")]);
-    }
-    Ok(file)
-}
-
-fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<Diagnostic>> {
-    let parsed: PlaceFile = load_headed(file, yaml, PLACE_SCHEMA, line_base)?;
-    let source = Source {
-        file,
-        text: yaml,
-        line_base,
-    };
-    let mut diags = Vec::new();
-    if parsed.id.is_empty() {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "id",
-                at: At::Key("id:"),
-                problem: "id is empty".into(),
-                hint: "set id to a short place id",
-            }
-            .schema(),
-        );
-    }
-    if parsed.display_name.trim().is_empty() {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "display_name",
-                at: At::Key("display_name:"),
-                problem: "display_name is empty".into(),
-                hint: "set display_name to the name players see",
-            }
-            .schema(),
-        );
-    }
-    if diags.is_empty() {
-        Ok(parsed)
-    } else {
-        Err(diags)
-    }
-}
-
-fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Diagnostic>> {
-    let parsed: CastFile = load_headed(file, yaml, CAST_SCHEMA, line_base)?;
-    let source = Source {
-        file,
-        text: yaml,
-        line_base,
-    };
-    let mut diags = Vec::new();
-    if parsed.id.is_empty() {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "id",
-                at: At::Key("id:"),
-                problem: "id is empty".into(),
-                hint: "set id to a short cast id",
-            }
-            .schema(),
-        );
-    }
-    if parsed.id == crate::effect::WORLD {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "id",
-                at: At::Key("id:"),
-                problem: "id world is reserved".into(),
-                hint: "rename this cast member",
-            }
-            .schema(),
-        );
-    }
-    if parsed.display_name.trim().is_empty() {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "display_name",
-                at: At::Key("display_name:"),
-                problem: "display_name is empty".into(),
-                hint: "set display_name to the name players see",
-            }
-            .schema(),
-        );
-    }
-    if parsed.kind != "npc" && parsed.kind != "pc_template" {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "kind",
-                at: At::Key("kind:"),
-                problem: format!("kind is '{}', which is not npc or pc_template", parsed.kind),
-                hint: "set kind to npc or pc_template",
-            }
-            .schema(),
-        );
-    }
-    if diags.is_empty() {
-        Ok(parsed)
-    } else {
-        Err(diags)
-    }
-}
-
-fn collect_files(dir: &Path, root: &Path, out: &mut Vec<(String, Vec<u8>)>) -> Result<(), Reason> {
-    if !dir.exists() {
-        return Ok(());
-    }
-    let mut entries = fs::read_dir(dir)
-        .map_err(|_| Reason::Schema)?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|_| Reason::Schema)?;
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_files(&path, root, out)?;
-            continue;
-        }
-        let rel = path.strip_prefix(root).map_err(|_| Reason::Schema)?;
-        let rel = rel
-            .components()
-            .map(|component| component.as_os_str().to_string_lossy())
-            .collect::<Vec<_>>()
-            .join("/");
-        let bytes = fs::read(&path).map_err(|_| Reason::Schema)?;
-        out.push((rel, bytes));
-    }
-    Ok(())
-}
-
-fn split_frontmatter<'a>(file: &str, text: &'a str) -> Result<(&'a str, &'a str), Vec<Diagnostic>> {
-    let rest = match text
-        .strip_prefix("---\n")
-        .or_else(|| text.strip_prefix("---\r\n"))
-    {
-        Some(rest) => rest,
-        None => {
-            return Err(vec![schema_error(
-                file,
-                "this file has no YAML frontmatter",
-                "start with a --- line and close the header with ---",
-            )
-            .at_line(1, Some(1))]);
-        }
-    };
-    if let Some(index) = rest.find("\n---\n") {
-        return Ok((&rest[..index], &rest[index + 5..]));
-    }
-    if let Some(index) = rest.find("\n---\r\n") {
-        return Ok((&rest[..index], &rest[index + 6..]));
-    }
-    if let Some(yaml) = rest.strip_suffix("\n---") {
-        return Ok((yaml, ""));
-    }
-    Err(vec![schema_error(
-        file,
-        "this file has no closing frontmatter fence",
-        "close the header with a --- line",
-    )
-    .at_line(1, Some(1))])
-}
-
 /// Markdown with the body removed. Frontmatter stays. The trailing delimiter is kept.
 #[allow(dead_code)]
 pub fn strip_body(text: &str) -> Result<String, Reason> {
@@ -1143,149 +605,10 @@ pub fn strip_body(text: &str) -> Result<String, Reason> {
     Ok(format!("---\n{yaml}\n---\n"))
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PackFile {
-    #[serde(rename = "schema")]
-    _schema: String,
-    id: String,
-    title: String,
-    system: String,
-    start: PackStart,
-    #[serde(default)]
-    checkpoint_every: Option<u64>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PackStart {
-    place: String,
-    pc: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PlaceFile {
-    #[serde(rename = "schema")]
-    _schema: String,
-    id: String,
-    display_name: String,
-    facts: Vec<FactFile>,
-    #[serde(default)]
-    exits: Vec<ExitFile>,
-    #[serde(default)]
-    rules: Vec<RuleEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ExitFile {
-    to: String,
-    name: String,
-    #[serde(default)]
-    cost: Option<schema::CostYaml>,
-    #[serde(default, rename = "if")]
-    if_: Vec<schema::CondYaml>,
-    #[serde(default)]
-    locked_text: String,
-    #[serde(default)]
-    hidden: bool,
-    #[serde(default)]
-    revealed_by: Option<String>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct FactFile {
-    id: String,
-    text: String,
-    hidden: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CastFile {
-    #[serde(rename = "schema")]
-    _schema: String,
-    id: String,
-    kind: String,
-    display_name: String,
-    facts: Vec<FactFile>,
-    #[serde(default)]
-    tick: Option<TickProfile>,
-    #[serde(default)]
-    rules: Vec<RuleEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ItemFile {
-    #[serde(rename = "schema")]
-    _schema: String,
-    id: String,
-    #[serde(default)]
-    name: String,
-    #[serde(default)]
-    tags: Vec<String>,
-    #[serde(default)]
-    rules: Vec<RuleEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StoryFile {
-    #[serde(rename = "schema")]
-    _schema: String,
-    id: String,
-    #[serde(default)]
-    rules: Vec<RuleEntry>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct MetersFile {
-    #[serde(rename = "schema")]
-    _schema: String,
-    meters: Vec<MeterEntryFile>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct MeterEntryFile {
-    id: String,
-    min: i64,
-    base_cap: i64,
-    max: i64,
-    start: i64,
-    #[serde(default)]
-    hidden: bool,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ChecksFile {
-    #[serde(rename = "schema")]
-    _schema: String,
-    checks: Vec<CheckEntryFile>,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CheckEntryFile {
-    id: String,
-    dice: CheckDiceFile,
-    stat: String,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct CheckDiceFile {
-    count: u32,
-    sides: u32,
-}
-
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use crate::diagnostic::reason_of;
     use crate::error::Reason;
@@ -1302,61 +625,12 @@ mod tests {
         assert_eq!(line, format!("pack_rev: {rev}"));
     }
 
-    #[test]
-    fn load_meters_rejects_a_broken_inequality_a_duplicate_id_and_an_unknown_key() {
-        let broken = "\
-schema: meters
-meters:
-  - id: grit
-    min: 2
-    base_cap: 1
-    max: 3
-    start: 1
-";
-        let err = load_meters(broken).unwrap_err();
-        assert!(
-            err.iter()
-                .any(|diag| diag.message.contains("min above base_cap")),
-            "{err:?}"
-        );
-        assert_eq!(reason_of(err), Reason::Schema);
-        let duplicate = "\
-schema: meters
-meters:
-  - id: grit
-    min: 0
-    base_cap: 1
-    max: 1
-    start: 1
-  - id: grit
-    min: 0
-    base_cap: 1
-    max: 1
-    start: 0
-";
-        let err = load_meters(duplicate).unwrap_err();
-        assert!(
-            err.iter().any(|diag| diag.message.contains("listed twice")),
-            "{err:?}"
-        );
-        assert_eq!(reason_of(err), Reason::Schema);
-        let unknown = "\
-schema: meters
-meters:
-  - id: grit
-    min: 0
-    base_cap: 1
-    max: 1
-    start: 1
-    kind: stat
-";
-        let err = load_meters(unknown).unwrap_err();
-        assert_eq!(err.len(), 1, "{err:?}");
-        assert!(err[0].message.contains("unknown field 'kind'"), "{err:?}");
-        assert_eq!(reason_of(err), Reason::Schema);
-    }
-
-    fn rejects(load: fn(&str) -> Result<(), Vec<Diagnostic>>, good: &str, old: &str, body: &str) {
+    pub(super) fn rejects(
+        load: fn(&str) -> Result<(), Vec<Diagnostic>>,
+        good: &str,
+        old: &str,
+        body: &str,
+    ) {
         let text = |tag: &str| format!("schema: {tag}\n{body}");
         assert!(load(&text(good)).is_ok());
         let old_err = load(&text(old)).unwrap_err();
@@ -1365,95 +639,6 @@ meters:
         let bogus = load(&text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(reason_of(bogus), Reason::Schema);
-    }
-
-    #[test]
-    fn load_place_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_place("world/places/gate.md", text, 0).map(|_| ()),
-            "place",
-            concat!("place/", "v0"),
-            "id: gate\ndisplay_name: Gate\nfacts: []\n",
-        );
-    }
-
-    #[test]
-    fn load_cast_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_cast("cast/mira.md", text, 0).map(|_| ()),
-            "cast",
-            concat!("cast/", "v0"),
-            "id: mira\nkind: npc\ndisplay_name: Mira\nfacts: []\n",
-        );
-    }
-
-    #[test]
-    fn load_pack_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_pack(text).map(|_| ()),
-            "pack",
-            concat!("pack/", "v0"),
-            "id: ex\ntitle: Ex\nsystem: ex\nstart:\n  place: gate\n  pc: pc_rowan\n",
-        );
-    }
-
-    #[test]
-    fn load_meters_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_meters(text).map(|_| ()),
-            "meters",
-            concat!("meters/", "v0"),
-            "meters: []\n",
-        );
-    }
-
-    #[test]
-    fn load_checks_rejects_an_unknown_tag_and_the_old_versioned_tag() {
-        rejects(
-            |text| load_checks(text).map(|_| ()),
-            "checks",
-            concat!("checks/", "v0"),
-            "checks: []\n",
-        );
-    }
-
-    #[test]
-    fn a_check_refusal_names_the_fix() {
-        let duplicate = "\
-schema: checks
-checks:
-  - id: grit
-    dice:
-      count: 2
-      sides: 6
-    stat: grit
-  - id: grit
-    dice:
-      count: 1
-      sides: 6
-    stat: grit
-";
-        let err = load_checks(duplicate).unwrap_err();
-        assert!(
-            err.iter().any(|diag| {
-                diag.message.contains("listed twice")
-                    && diag.path.as_deref() == Some("checks[1].id")
-                    && diag.line.is_some()
-            }),
-            "{err:?}"
-        );
-        let zero = "\
-schema: checks
-checks:
-  - id: grit
-    dice:
-      count: 0
-      sides: 0
-    stat: grit
-";
-        let err = load_checks(zero).unwrap_err();
-        assert!(err.iter().any(|diag| diag.message.contains("zero dice")));
-        assert!(err.iter().any(|diag| diag.message.contains("zero sides")));
     }
 
     #[test]

@@ -1,6 +1,6 @@
 //! Move world time forward.
 
-use crate::canon::round_settings::Budget;
+use crate::canon::tick::Budget;
 use crate::draft::Draft;
 use crate::Reason;
 

@@ -1,8 +1,13 @@
 //! Reading one pack file: its schema tag, its typed YAML, and where a problem sits in it.
 
+use std::fs;
+use std::path::Path;
+
 use serde_saphyr::Spanned;
 
-use crate::diagnostic::{locate_nth, parse_file, tag_diagnostic, Diagnostic, Severity};
+use crate::diagnostic::{
+    coded, locate_nth, parse_file, schema as schema_error, tag_diagnostic, Diagnostic, Severity,
+};
 use crate::error::Reason;
 use crate::rule::Spot;
 
@@ -158,6 +163,94 @@ pub(super) fn load_headed<T: serde::de::DeserializeOwned>(
         return Err(vec![diag]);
     }
     parse_file(file, text, line_base)
+}
+
+pub(super) fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {
+    let path = root.join(rel);
+    if !path.is_file() {
+        return Err(vec![coded(
+            rel,
+            Reason::NotInSpec,
+            &format!("{rel} is missing"),
+            &format!("add {rel}"),
+        )
+        .with_path("schema")]);
+    }
+    fs::read_to_string(&path).map_err(|_| {
+        vec![coded(
+            rel,
+            Reason::Schema,
+            "this file could not be read as UTF-8 text",
+            "save it as UTF-8",
+        )
+        .with_path("schema")]
+    })
+}
+
+pub(super) fn collect_files(
+    dir: &Path,
+    root: &Path,
+    out: &mut Vec<(String, Vec<u8>)>,
+) -> Result<(), Reason> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    let mut entries = fs::read_dir(dir)
+        .map_err(|_| Reason::Schema)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|_| Reason::Schema)?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_files(&path, root, out)?;
+            continue;
+        }
+        let rel = path.strip_prefix(root).map_err(|_| Reason::Schema)?;
+        let rel = rel
+            .components()
+            .map(|component| component.as_os_str().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join("/");
+        let bytes = fs::read(&path).map_err(|_| Reason::Schema)?;
+        out.push((rel, bytes));
+    }
+    Ok(())
+}
+
+pub(super) fn split_frontmatter<'a>(
+    file: &str,
+    text: &'a str,
+) -> Result<(&'a str, &'a str), Vec<Diagnostic>> {
+    let rest = match text
+        .strip_prefix("---\n")
+        .or_else(|| text.strip_prefix("---\r\n"))
+    {
+        Some(rest) => rest,
+        None => {
+            return Err(vec![schema_error(
+                file,
+                "this file has no YAML frontmatter",
+                "start with a --- line and close the header with ---",
+            )
+            .at_line(1, Some(1))]);
+        }
+    };
+    if let Some(index) = rest.find("\n---\n") {
+        return Ok((&rest[..index], &rest[index + 5..]));
+    }
+    if let Some(index) = rest.find("\n---\r\n") {
+        return Ok((&rest[..index], &rest[index + 6..]));
+    }
+    if let Some(yaml) = rest.strip_suffix("\n---") {
+        return Ok((yaml, ""));
+    }
+    Err(vec![schema_error(
+        file,
+        "this file has no closing frontmatter fence",
+        "close the header with a --- line",
+    )
+    .at_line(1, Some(1))])
 }
 
 #[cfg(test)]
