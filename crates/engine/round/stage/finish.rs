@@ -1,4 +1,4 @@
-//! Finish the timed actions whose minute this round reached.
+//! Finishes due pending actions, journeys arriving and timed actions completing.
 
 use crate::apply::apply_effect;
 use crate::draft::Draft;

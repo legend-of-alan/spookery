@@ -31,7 +31,7 @@ Feature: spook new makes a pack
     Then play shows "You are in Yard."
     When play types "travel lane"
     Then play shows "You are in Lane."
-    And the travel committed a tick
+    And the travel committed a round
     When the operator runs spook new beside that pack
     And the operator runs tick on that untouched pack
     Then the keeper habit has set tended

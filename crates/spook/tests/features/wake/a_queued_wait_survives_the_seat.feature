@@ -6,7 +6,7 @@ Feature: A queued wait survives the seat
   Scenario: Sitting again keeps the same queued wait
     When the player drops and sits again with a queued wait
 
-  Scenario: An early wake after a commit does not tick
+  Scenario: An early wake after a commit does not play a round
     When a committed wait wakes early
 
   Scenario: A due wake applies the queued wait once

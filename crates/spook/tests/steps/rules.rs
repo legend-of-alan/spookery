@@ -128,24 +128,24 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
         .lines()
         .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
         .unwrap();
-    let mut tick: Value = serde_json::from_str(line).unwrap();
-    let effects = tick["effects"]
+    let mut round: Value = serde_json::from_str(line).unwrap();
+    let effects = round["effects"]
         .as_array_mut()
         .unwrap_or_else(|| panic!("no effects\n{text}"));
     assert!(!effects.is_empty(), "{text}");
     effects[0]["intent_id"] = Value::String("not-the-replayed-effect".to_string());
-    let index = tick["round_index"]
+    let index = round["round_index"]
         .as_u64()
         .unwrap_or_else(|| panic!("no round_index\n{text}"));
     world.scratch = format!("round {index}");
-    let encoded = serde_json::to_string(&tick).unwrap_or_else(|err| panic!("encode: {err}"));
+    let encoded = serde_json::to_string(&round).unwrap_or_else(|err| panic!("encode: {err}"));
     let rewritten = text.replacen(line, &encoded, 1);
     assert_ne!(rewritten, text);
     fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write tick: {err}"));
 }
 
 #[then(expr = "spook verify names the round and the first differing effect")]
-fn spook_verify_names_the_tick_and_the_first_differing_effect(world: &mut World) {
+fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::run(world, &["verify", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(1), "{}", world.stderr);
@@ -350,8 +350,8 @@ Briar tops up the oil before the shop opens.
     world.pack = Some(pack);
 }
 
-#[when(expr = "an empty tick lands at hour 7 with briar in the shop")]
-fn an_empty_tick_at_hour_7(world: &mut World) {
+#[when(expr = "an empty round lands at hour 7 with briar in the shop")]
+fn an_empty_round_at_hour_7(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = 360;
@@ -364,7 +364,7 @@ fn an_empty_tick_at_hour_7(world: &mut World) {
     let wall = opened.now().last_tick_at.clone();
     opened.play(&wall).unwrap_or_else(|err| {
         panic!(
-            "empty tick {}: {}",
+            "empty round {}: {}",
             err.token(),
             spookery_engine::check_pack(&pack)
                 .iter()

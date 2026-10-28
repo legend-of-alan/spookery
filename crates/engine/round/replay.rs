@@ -145,7 +145,7 @@ fn round_diverged(record: &RoundRecord, detail: impl Into<String>) -> ReplayDive
 
 /// Replay the journal. `from` is a directory whose `state/save.yaml` replaces the base.
 /// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
-pub fn from_journal(
+pub fn replay_journal(
     pack: &Path,
     from: Option<&Path>,
     until: Option<u64>,
@@ -203,7 +203,7 @@ pub fn from_journal(
         if rev <= base_rev || rev > cap {
             continue;
         }
-        apply(&mut world, entry)?;
+        apply_entry(&mut world, entry)?;
         if entry.changes_state() {
             applied += 1;
         }
@@ -217,7 +217,7 @@ pub fn from_journal(
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
-pub(crate) fn resume(path: &Path) -> Result<World, Reason> {
+pub(crate) fn open_at_tip(path: &Path) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
     let mut world = World::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
@@ -227,34 +227,9 @@ pub(crate) fn resume(path: &Path) -> Result<World, Reason> {
     Ok(world)
 }
 
-/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
-pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
-    let now = journal_tip(path)?;
-    crate::commit::migrate_journal(path, now)
-}
-
-fn journal_tip(path: &Path) -> Result<Now, Reason> {
-    let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let file_now = load_save(text).map_err(reason_of)?;
-    crate::store::recover::recover(path)?;
-    let ahead = journal::read_live(path)
-        .map_err(|_| Reason::Schema)?
-        .iter()
-        .any(|entry| {
-            !matches!(entry, JournalEntry::Checkpoint(_))
-                && entry.state_rev_after() > file_now.state_rev
-        });
-    if ahead {
-        Ok(resume_for_migrate(path)?.now().clone())
-    } else {
-        Ok(file_now)
-    }
-}
-
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
 /// The caller runs crash recovery first.
-pub(crate) fn resume_for_migrate(path: &Path) -> Result<World, Reason> {
+pub(crate) fn replay_tip_unchecked(path: &Path) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
     let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now = load_base(&save).map_err(replay_reason)?;
@@ -274,7 +249,7 @@ fn replay_tail(world: &mut World) -> Result<bool, Reason> {
         if entry.state_rev_after() <= base_rev {
             continue;
         }
-        apply(world, entry).map_err(replay_reason)?;
+        apply_entry(world, entry).map_err(replay_reason)?;
         replayed = true;
     }
     // Seats are this process. The journal records who was present so the round
@@ -317,7 +292,7 @@ fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
             }
         }
     }
-    let report = from_journal(path, None, Some(mark.state_rev))?;
+    let report = replay_journal(path, None, Some(mark.state_rev))?;
     if hash_now(&report.now_yaml) != mark.state_hash {
         return Err(ReplayDivergence::new(
             DivergenceKind::Checkpoint,
@@ -429,7 +404,7 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
     Ok(())
 }
 
-pub(crate) fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
+pub(crate) fn apply_entry(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
     match entry {
         JournalEntry::Round(record) => apply_recorded_round(world, record),
         JournalEntry::Migrate(record) => apply_migrate(world, record),
@@ -563,7 +538,7 @@ pub(crate) fn read_now_bytes(world: &World) -> Result<Vec<u8>, ReplayError> {
 mod tests {
     use std::fs;
 
-    use super::from_journal;
+    use super::replay_journal;
     use crate::round::play_pack_once;
     use crate::testing::temp_pack;
 
@@ -571,8 +546,8 @@ mod tests {
     fn two_replays_in_one_process_do_not_collide() {
         let pack = temp_pack("replay-collide");
         play_pack_once(&pack).unwrap();
-        let left = from_journal(&pack, None, None).unwrap();
-        let right = from_journal(&pack, None, None).unwrap();
+        let left = replay_journal(&pack, None, None).unwrap();
+        let right = replay_journal(&pack, None, None).unwrap();
         assert_eq!(left.now_yaml, right.now_yaml);
         assert_eq!(left.applied, 1);
         assert_eq!(right.applied, 1);

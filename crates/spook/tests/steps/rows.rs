@@ -66,14 +66,14 @@ fn rowan_is_in_docks_street(world: &mut World) {
     assert_eq!(place_of(table::pack(world)), "docks_street");
 }
 
-#[then(expr = "the tick records the move to the street")]
-fn the_tick_records_the_move(world: &mut World) {
+#[then(expr = "the round records the move to the street")]
+fn the_round_records_the_move(world: &mut World) {
     assert_location(table::pack(world), "round-0001");
 }
 
 fn assert_location(pack: &Path, name: &str) {
-    let tick = read_round(pack, name);
-    let hits: Vec<_> = tick["effects"]
+    let round = read_round(pack, name);
+    let hits: Vec<_> = round["effects"]
         .as_array()
         .unwrap()
         .iter()

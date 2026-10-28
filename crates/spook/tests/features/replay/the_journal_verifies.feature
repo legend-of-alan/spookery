@@ -7,7 +7,7 @@ Feature: The journal verifies
     And stdout says "verified 0 records, state_rev 0"
     And stderr is empty
 
-  Scenario: Twelve ticks verify
+  Scenario: Twelve rounds verify
     Given a docks table
     When the operator runs 12 ticks
     And the operator runs verify
@@ -23,7 +23,7 @@ Feature: The journal verifies
     And stdout says the save was verified
     And stderr is empty
 
-  Scenario: A migrate between ticks verifies
+  Scenario: A migrate between rounds verifies
     Given a docks table
     When the operator runs tick
     And a canon file gains a byte
@@ -58,9 +58,9 @@ Feature: The journal verifies
     And the operator runs verify
     Then the pack bytes are unchanged
 
-  Scenario: Verify from a pre-tick copy
+  Scenario: Verify from a pre-round copy
     Given a docks table
-    When the pack is copied before the tick
+    When the pack is copied before the round
     And the operator runs tick
     And the replay base is removed
     And the operator runs verify from that copy

@@ -19,10 +19,7 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
     candidates.extend(habit_intents(draft.canon(), draft.now()));
     let now = draft.now();
     let mut candidates = order_intents(now, candidates, now.round_index, &now.shard_id);
-    let max_intents = draft.budget().max_intents_applied as usize;
-    if candidates.len() > max_intents {
-        candidates.truncate(max_intents);
-    }
+    candidates.truncate(draft.budget().max_intents_applied as usize);
     unique(candidates)
 }
 
@@ -83,7 +80,7 @@ fn priority(now: &Now, intent: &Intent, round_index: u64, world_id: &str) -> Pri
     } else {
         ClockRank::Other
     };
-    let claim = if claimed(now, intent) {
+    let claim = if touches_seated_player(now, intent) {
         ClaimRank::Claimed
     } else {
         ClaimRank::Unclaimed
@@ -114,7 +111,7 @@ fn targets_pc_clock(now: &Now, intent: &Intent) -> bool {
     })
 }
 
-fn claimed(now: &Now, intent: &Intent) -> bool {
+fn touches_seated_player(now: &Now, intent: &Intent) -> bool {
     let present = &now.presence.actors_present;
     let target_hit = match &intent.target {
         Target::Actor(id) => present.iter().any(|actor| actor == id),

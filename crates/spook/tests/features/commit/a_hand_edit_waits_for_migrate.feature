@@ -5,15 +5,15 @@ Feature: A hand edit waits for migrate
     When a canon file gains a byte
     And the operator runs tick
     Then the command exits 1
-    And the tick writes nothing
+    And the round writes nothing
 
   Scenario: Two migrates bump state_rev and append evidence
     Given a docks table
     When the operator migrates twice
     Then state_rev is 2
     And world_time is 1080
-    And tick index is 0
-    And no tick file was written
+    And round index is 0
+    And no round file was written
     And the journal has two migrate records, at state_rev 1 and 2
 
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
@@ -45,7 +45,7 @@ Feature: A hand edit waits for migrate
     And the operator runs tick
     Then the command exits 1
     And stderr names PACK_REV_MISMATCH
-    And the tick writes nothing
+    And the round writes nothing
 
   Scenario: Check and run agree on an edit after a round
     Given a docks table
@@ -79,7 +79,7 @@ Feature: A hand edit waits for migrate
     And the operator runs tick
     Then the command exits 1
     And stderr names PACK_REV_MISMATCH
-    And the tick writes nothing
+    And the round writes nothing
 
   Scenario: A second canon edit in one live bundle migrates
     Given a docks table
@@ -109,7 +109,7 @@ Feature: A hand edit waits for migrate
 
   Scenario: Verify replays a migrate from before a later canon edit
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When a canon file gains a byte
     And the operator runs migrate
     And the operator runs tick

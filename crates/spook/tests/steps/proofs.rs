@@ -13,8 +13,8 @@ use spookery_engine::World as Shard;
 use crate::support::{self, now_of, open, read_round as round_value, save_now, stamp_pack_rev};
 use crate::World;
 
-fn player_waits(tick: &Value) -> Vec<String> {
-    tick["intents"]
+fn player_waits(round: &Value) -> Vec<String> {
+    round["intents"]
         .as_array()
         .unwrap()
         .iter()
@@ -65,7 +65,7 @@ fn a_reseated_player_keeps_the_queued_wait() {
     let _ = fs::remove_dir_all(&dropped);
 }
 
-fn early_wake_does_not_tick_again() {
+fn early_wake_does_not_play_another_round() {
     let early = support::temp_pack("early-wake");
     let mut shard = open(&early);
     let session = shard.seat_player("pc_rowan").unwrap();
@@ -243,7 +243,7 @@ fn the_player_drops_and_sits_again(_world: &mut World) {
 
 #[when(expr = "a committed wait wakes early")]
 fn a_committed_wait_wakes_early(_world: &mut World) {
-    early_wake_does_not_tick_again();
+    early_wake_does_not_play_another_round();
 }
 
 #[when(expr = "a queued wait is due")]

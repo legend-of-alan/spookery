@@ -26,16 +26,16 @@ Feature: Items are real
   Scenario: The tonic has one verb, use
     Given nell holds 1 tonic and has 3 of 10 hp
     When nell types "drink"
-    Then the line is rejected with NOT_IN_SPEC and no tick was written
+    Then the line is rejected with NOT_IN_SPEC and no round was written
 
   Scenario: Taking an item that is not there is refused
     Given docks_shop has no lamp_oil
     When rowan types "take lamp_oil"
-    Then the line is rejected with NOT_IN_SPEC and no tick was written
+    Then the line is rejected with NOT_IN_SPEC and no round was written
 
   Scenario Outline: Something out of sight reads like an unknown word
     When lark types "<line>"
-    Then the line is rejected with NOT_IN_SPEC and no tick was written
+    Then the line is rejected with NOT_IN_SPEC and no round was written
 
     Examples:
       | line              |
@@ -48,7 +48,7 @@ Feature: Items are real
   Scenario: Dropping an item you do not hold is refused
     Given docks_shop has 3 lamp_oil
     When rowan drops lamp_oil
-    Then the tick names MISSING_ITEM and rowan still has no lamp_oil
+    Then the round names MISSING_ITEM and rowan still has no lamp_oil
 
   Scenario: Unknown item
     Given now.yaml lists an item with no definition
@@ -76,10 +76,10 @@ Feature: Items are real
   Scenario: Dropping the wielded item empties the slot
     Given lark wields poisoned_dagger
     When lark drops poisoned_dagger
-    Then lark's wielded slot is empty in the same tick
+    Then lark's wielded slot is empty in the same round
 
   Scenario: Resist is an outcome, not a refusal
     Given nell resists the poison with a seeded Constitution roll of 15 vs 12
     When lark hits nell with poisoned_dagger
-    Then nell loses 3 hp, is not poisoned, sees "The poison burns, then fades.", and the tick shows no refusal
+    Then nell loses 3 hp, is not poisoned, sees "The poison burns, then fades.", and the round shows no refusal
     And spook verify reproduces both rolls

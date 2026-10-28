@@ -171,13 +171,13 @@ fn the_report_names_the_expression_line(world: &mut World) {
 
 #[then(expr = "the journal rejects the hit as OUT_OF_RANGE")]
 fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
-    let tick = latest_tick(world);
-    let rejected = tick["rejected"]
+    let round = latest_round(world);
+    let rejected = round["rejected"]
         .as_array()
-        .unwrap_or_else(|| panic!("rejected\n{tick}"));
+        .unwrap_or_else(|| panic!("rejected\n{round}"));
     assert!(
         rejected.iter().any(|row| row["code"] == "OUT_OF_RANGE"),
-        "{tick}"
+        "{round}"
     );
 }
 
@@ -208,22 +208,22 @@ fn grit_of(world: &World, actor: &str) -> i64 {
     live.base + live.offset
 }
 
-fn latest_tick(world: &World) -> Value {
+fn latest_round(world: &World) -> Value {
     let pack = table::pack(world);
     let keys = list_round_keys(pack);
-    let name = keys.last().unwrap_or_else(|| panic!("no tick"));
+    let name = keys.last().unwrap_or_else(|| panic!("no round"));
     let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
     serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"))
 }
 
 fn dice_line(world: &World) -> String {
-    let tick = latest_tick(world);
-    tick["dice"]
+    let round = latest_round(world);
+    round["dice"]
         .as_array()
         .and_then(|rows| rows.first())
         .and_then(Value::as_str)
-        .unwrap_or_else(|| panic!("no dice line\n{tick}"))
+        .unwrap_or_else(|| panic!("no dice line\n{round}"))
         .to_string()
 }
 

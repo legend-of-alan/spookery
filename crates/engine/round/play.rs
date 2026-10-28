@@ -16,7 +16,7 @@ use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
-use crate::round::stage::{advance, apply, deliver, finish, gather, record, resolve, triggers};
+use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
 
 pub(crate) enum RoundKind<'a> {
     /// Drain the queue, hold the lock, write the journal line.
@@ -44,7 +44,7 @@ pub struct RoundOutput {
 /// Play one round from the save. `Some` is a warning the host prints: the round
 /// was committed, and the checkpoint bundle was not closed.
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
-    let mut world = crate::round::replay::resume(path)?;
+    let mut world = crate::round::replay::open_at_tip(path)?;
     let wall = world.now().last_tick_at.clone();
     play_round(
         &mut world,
@@ -106,8 +106,8 @@ fn ceil_div(numerator: u64, denominator: u64) -> u64 {
 }
 
 /// Keep playing while a seated PC is still busy. The burst starts only when every
-/// seated PC is busy. `already` counts a tick this call did not play, and the burst
-/// stops at `max_fastforward_ticks` including that tick.
+/// seated PC is busy. `already` counts a round this call did not play, and the burst
+/// stops at `max_fastforward_ticks` including that round.
 pub(crate) fn play_while_busy(
     world: &mut World,
     wall: &str,
@@ -166,7 +166,7 @@ pub(crate) fn play_round(
         RoundKind::Live { .. } => world.queued_intents(),
         RoundKind::Replay { queue, .. } => queue,
     };
-    let candidates = gather::run(&draft, queue)?;
+    let candidates = pick::run(&draft, queue)?;
     let snapshot = draft.now().clone();
     let resolved = resolve::run(
         draft.canon(),

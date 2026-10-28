@@ -41,15 +41,15 @@ fn running_a_round_again_matches_the_logged_effects() {
 fn rerun(played: &Path) -> Result<(), TestCaseError> {
     let records = journal::read_verified(played)
         .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
-    let ticks: Vec<_> = records
+    let round_records: Vec<_> = records
         .into_iter()
         .filter_map(|entry| match entry {
             JournalEntry::Round(record) => Some(record),
             _ => None,
         })
         .collect();
-    if ticks.is_empty() {
-        return Err(fail_msg("the rounds wrote no tick".to_string()));
+    if round_records.is_empty() {
+        return Err(fail_msg("the rounds wrote no record".to_string()));
     }
     let base = played.join("state").join(journal::base_rel());
     let snapshot = if base.is_file() {
@@ -62,7 +62,7 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     let pack = TempPack(copy_pack(played, "prop-rerun-again"));
     fs::write(pack.0.join("state/save.yaml"), snapshot).map_err(|err| fail_msg(err.to_string()))?;
     let mut world = World::open(&pack.0).map_err(|err| fail_msg(err.to_string()))?;
-    for record in &ticks {
+    for record in &round_records {
         let effects = play_round(
             &mut world,
             &record.last_tick_at,
@@ -75,9 +75,9 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
             },
         )
         .map(|output| output.effects)
-        .map_err(|err| fail_msg(format!("tick {} did not re-run: {err}", record.round_index)))?;
+        .map_err(|err| fail_msg(format!("round {} failed: {err}", record.round_index)))?;
         if let Some(diff) = first_effect_difference(&record.effects, &effects) {
-            return Err(fail_msg(format!("tick {} {diff}", record.round_index)));
+            return Err(fail_msg(format!("round {} {diff}", record.round_index)));
         }
     }
     Ok(())

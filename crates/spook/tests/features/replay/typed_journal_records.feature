@@ -22,7 +22,7 @@ Feature: Journal records are typed
   Scenario: An unknown key is refused
     Given a docks table
     When the operator runs tick
-    And the tick record gains an unknown key
+    And the round record gains an unknown key
     And the operator runs verify
     Then the command exits 1
     And stderr names that unknown key
@@ -40,7 +40,7 @@ Feature: Journal records are typed
     When the operator runs 3 ticks
     Then each journal record parses back to the bytes that were written
 
-  Scenario: A quiet tick omits the standard steps
+  Scenario: A quiet round omits the standard steps
     Given a docks table
     When the operator runs 2 ticks
     Then the first round lists only effect_applied and cast:mira/leave_door_note

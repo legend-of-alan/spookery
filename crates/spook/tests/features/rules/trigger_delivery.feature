@@ -2,8 +2,8 @@ Feature: Trigger delivery
 
   Scenario: Narrate reaches the people in the room
     When nell travels into the shop and the bell narrates
-    Then the tick narrates "The bell rings." to "pc_nell"
-    And the tick does not narrate "The bell rings." to "pc_wren"
+    Then the round narrates "The bell rings." to "pc_nell"
+    And the round does not narrate "The bell rings." to "pc_wren"
     And "pc_nell" is told "The bell rings."
     And spook verify passes on this pack
 
@@ -27,10 +27,10 @@ Feature: Trigger delivery
     And "pc_nell"'s summary lists "actor_flag pc_nell heard_bell"
     And "pc_wren"'s summary does not list "actor_flag pc_nell heard_bell"
 
-  Scenario: Tick counters stay with the GM
+  Scenario: Round counters stay with the GM
     When a round runs
-    Then the GM summary lists a tick counter change
-    And "pc_nell"'s summary lists no tick counter change
+    Then the GM summary lists a round counter change
+    And "pc_nell"'s summary lists no round counter change
 
   Scenario: A learned fact is told only to that person
     When pc_nell learns fact_trapdoor while pc_wren is in the same room
@@ -95,4 +95,4 @@ Feature: Trigger delivery
     And the report says "reveals to the world"
 
   Scenario: Replay
-    Then spook verify passes after ticks that fired triggers
+    Then spook verify passes after rounds that fired triggers

@@ -2,17 +2,17 @@ Feature: Triggers
 
   Scenario: Arrival hangs on the place
     When nell travels via door into docks_shop
-    Then place:docks_shop/bell fires in the same tick
+    Then place:docks_shop/bell fires in the same round
     And teleporting into docks_shop by an author rule also fires it
 
   Scenario: Downed at 0 hp
     Given briar has 3 hp and a story rule on hp crosses <=0 sets flag downed
     When an attack removes 4 hp
-    Then briar has flag downed in the same tick
+    Then briar has flag downed in the same round
 
   Scenario: Edge, not level
     Given briar is already downed
-    When another tick passes
+    When another round passes
     Then the rule does not fire again
 
   Scenario: Plot beat
@@ -21,7 +21,7 @@ Feature: Triggers
 
   Scenario: Loops stop
     Given two rules that set each other's watched flag
-    Then spook check warns of a cycle, and a tick stops at depth 4 and logs trigger_depth
+    Then spook check warns of a cycle, and a round stops at depth 4 and logs trigger_depth
 
   Scenario: A private change narrated to the room leaks
     Given a rule on a known fact narrates to the room
@@ -37,7 +37,7 @@ Feature: Triggers
     And stdout says "no problems"
 
   Scenario: Replay
-    Then spook verify passes after ticks that fired triggers
+    Then spook verify passes after rounds that fired triggers
 
   Scenario: Entering the bog rolls stamina
     When nell enters the bog

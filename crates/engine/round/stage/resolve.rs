@@ -77,7 +77,7 @@ fn gate_and_roll(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Resolution, R
     match &rule.roll {
         Some(roll) if crate::map::span(canon, snapshot, intent, rule) == 0 => {
             rolls.log.steps.push(Step::CheckRolled);
-            roll_check(rolls, intent, rule, roll)
+            roll_intent_check(rolls, intent, rule, roll)
         }
         _ => Ok(Resolution::Ready {
             rule_id: rule.id.clone(),
@@ -86,7 +86,7 @@ fn gate_and_roll(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Resolution, R
     }
 }
 
-fn roll_check(
+fn roll_intent_check(
     rolls: &mut Rolls<'_>,
     intent: &Intent,
     rule: &crate::rule::Rule,
@@ -109,7 +109,7 @@ fn roll_check(
     if let Some(out) = rolls.opposed.get(&intent.id) {
         return Ok(Resolution::Ready {
             rule_id,
-            rolled: Some(reclassify(out, target, partial_at)),
+            rolled: Some(rescore(out, target, partial_at)),
         });
     }
     let key = rolls.dice.key(&intent.move_name, actor_id);
@@ -162,7 +162,7 @@ fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>,
     Ok(Some(total))
 }
 
-fn reclassify(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollResult {
+fn rescore(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollResult {
     RollResult {
         faces: out.faces.clone(),
         stat: out.stat,

@@ -310,9 +310,9 @@ fn seat_lark(world: &mut World, pack: std::path::PathBuf) {
 }
 
 fn replace_oden_rules(text: &str, rules: &str) -> String {
-    let start = text.find("tick:\n").expect("oden tick");
+    let start = text.find("tick:\n").expect("oden round");
     let end = text.find("\n---\n").expect("oden close");
-    assert!(start < end, "oden tick is outside the frontmatter");
+    assert!(start < end, "oden round is outside the frontmatter");
     let next = format!("{}{}{}", &text[..start], rules, &text[end + 1..]);
     assert_ne!(text, next, "oden's habit was not inserted");
     next

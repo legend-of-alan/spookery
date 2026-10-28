@@ -19,8 +19,8 @@ fn the_operator_runs_quick_verify(world: &mut World) {
     table::run(world, &["verify", "--quick", pack.to_str().unwrap()]);
 }
 
-#[when(expr = "the pack is copied before the tick")]
-fn the_pack_is_copied_before_the_tick(world: &mut World) {
+#[when(expr = "the pack is copied before the round")]
+fn the_pack_is_copied_before_the_round(world: &mut World) {
     let pack = table::pack(world);
     let dest = crate::support::fresh_dir("from");
     crate::support::copy_dir(pack, &dest);
@@ -88,11 +88,11 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
 #[when(expr = "a queued intent the round never had is written into its record")]
 fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
     let mut scratch = String::new();
-    edit_tick(world, |tick| {
-        let intents = tick["intents"]
+    edit_round(world, |round| {
+        let intents = round["intents"]
             .as_array_mut()
             .unwrap_or_else(|| panic!("no intents"));
-        assert!(intents.is_empty(), "a plain tick queued {intents:?}");
+        assert!(intents.is_empty(), "a plain round queued {intents:?}");
         intents.push(serde_json::json!({
             "id": "written-in",
             "round_index": 1,
@@ -103,8 +103,8 @@ fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
             "args": {},
             "rationale_code": "",
         }));
-        let rev = tick["state_rev_after"].as_u64().unwrap();
-        let index = tick["round_index"].as_u64().unwrap();
+        let rev = round["state_rev_after"].as_u64().unwrap();
+        let index = round["round_index"].as_u64().unwrap();
         scratch = format!("state_rev {rev} round {index}");
     });
     world.scratch = scratch;
@@ -147,15 +147,15 @@ fn stderr_names_the_first_differing_save_line(world: &mut World) {
 
 #[when(expr = "the round record's round_index is a string")]
 fn the_round_index_is_a_string(world: &mut World) {
-    edit_tick(world, |tick| {
-        tick["round_index"] = Value::String("no".to_string());
+    edit_round(world, |round| {
+        round["round_index"] = Value::String("no".to_string());
     });
 }
 
-#[when(expr = "the tick record gains an unknown key")]
-fn the_tick_record_gains_an_unknown_key(world: &mut World) {
-    edit_tick(world, |tick| {
-        tick["surplus"] = Value::Bool(true);
+#[when(expr = "the round record gains an unknown key")]
+fn the_round_record_gains_an_unknown_key(world: &mut World) {
+    edit_round(world, |round| {
+        round["surplus"] = Value::Bool(true);
     });
     world.scratch = "surplus".to_string();
 }
@@ -163,8 +163,8 @@ fn the_tick_record_gains_an_unknown_key(world: &mut World) {
 #[when(expr = "one effect class is need")]
 fn one_effect_class_is_need(world: &mut World) {
     let mut scratch = String::new();
-    edit_tick(world, |tick| {
-        let effects = tick["effects"]
+    edit_round(world, |round| {
+        let effects = round["effects"]
             .as_array_mut()
             .unwrap_or_else(|| panic!("no effects"));
         if effects.is_empty() {
@@ -176,15 +176,15 @@ fn one_effect_class_is_need(world: &mut World) {
         } else {
             effects[0]["class"] = Value::String("need".to_string());
         }
-        let rev = tick["state_rev_after"].as_u64().unwrap();
-        let index = tick["round_index"].as_u64().unwrap();
+        let rev = round["state_rev_after"].as_u64().unwrap();
+        let index = round["round_index"].as_u64().unwrap();
         scratch = format!("state_rev {rev} round {index}");
     });
     world.scratch = scratch;
 }
 
 #[then(expr = "stderr names the round record and the field round_index")]
-fn stderr_names_the_tick_field(world: &mut World) {
+fn stderr_names_the_round_field(world: &mut World) {
     assert!(world.stderr.contains("bundle-"), "{}", world.stderr);
     assert!(world.stderr.contains("round_index"), "{}", world.stderr);
     assert!(world.stderr.contains("invalid type"), "{}", world.stderr);
@@ -223,11 +223,11 @@ fn each_journal_record_parses_back(world: &mut World) {
     let entries = spookery_engine::testing::journal::read_verified(pack).unwrap_or_else(|fault| {
         panic!("{}: {}", fault.file, fault.detail);
     });
-    let ticks = entries
+    let rounds = entries
         .iter()
         .filter(|entry| entry.round_index().is_some())
         .count();
-    assert!(ticks >= 3, "ticks {ticks}");
+    assert!(rounds >= 3, "rounds {rounds}");
     for entry in &entries {
         let key = spookery_engine::testing::journal::format_record_key(entry);
         let located = spookery_engine::testing::journal::locate(pack, &key)
@@ -241,7 +241,7 @@ fn each_journal_record_parses_back(world: &mut World) {
     }
 }
 
-fn edit_tick(world: &mut World, edit: impl FnOnce(&mut Value)) {
+fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
     let located = spookery_engine::testing::journal::locate(table::pack(world), "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap();
@@ -249,16 +249,16 @@ fn edit_tick(world: &mut World, edit: impl FnOnce(&mut Value)) {
         .lines()
         .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
         .unwrap();
-    let mut tick: Value = serde_json::from_str(line).unwrap();
-    edit(&mut tick);
-    let next = serde_json::to_string(&tick).unwrap();
+    let mut round: Value = serde_json::from_str(line).unwrap();
+    edit(&mut round);
+    let next = serde_json::to_string(&round).unwrap();
     let rewritten = text.replacen(line, &next, 1);
     assert_ne!(rewritten, text);
     fs::write(&located.path, rewritten).unwrap();
 }
 
-#[given(expr = "checkpoints are taken every {int} ticks")]
-fn checkpoints_are_taken_every_n_ticks(world: &mut World, every: u64) {
+#[given(expr = "checkpoints are taken every {int} rounds")]
+fn checkpoints_are_taken_every_n_rounds(world: &mut World, every: u64) {
     let path = table::pack(world).join("pack.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read pack.yaml: {err}"));
     if !text.ends_with('\n') {
@@ -279,7 +279,7 @@ fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
         .iter()
         .rev()
         .find(|entry| entry.changes_state())
-        .unwrap_or_else(|| panic!("no tick"));
+        .unwrap_or_else(|| panic!("no round"));
     world.mark = last.state_rev_after() as usize;
     world.scratch = last.now_hash().to_string();
     let mut bytes = fs::read(&path).unwrap();
@@ -303,7 +303,7 @@ fn the_torn_tail_is_gone(world: &mut World) {
 
 #[then(expr = "the opened state matches the last complete record")]
 fn the_opened_state_matches_the_last_complete_record(world: &mut World) {
-    let report = spookery_engine::testing::from_journal(table::pack(world), None, None)
+    let report = spookery_engine::testing::replay_journal(table::pack(world), None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(report.state_rev, world.mark as u64);
     assert_eq!(
@@ -415,18 +415,18 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
 }
 
 #[then(expr = "the first round lists only effect_applied and cast:mira\\/leave_door_note")]
-fn the_first_tick_keeps_only_the_extra_steps(world: &mut World) {
-    let tick = read_round(table::pack(world), "round-0001");
+fn the_first_round_keeps_only_the_extra_steps(world: &mut World) {
+    let round = read_round(table::pack(world), "round-0001");
     assert_eq!(
-        read_steps_run(&tick),
+        read_steps_run(&round),
         ["effect_applied", "cast:mira/leave_door_note"]
     );
 }
 
 #[then(expr = "the second round omits steps_run")]
-fn the_second_tick_omits_steps_run(world: &mut World) {
-    let tick = read_round(table::pack(world), "round-0002");
-    assert!(tick.get("steps_run").is_none(), "{tick}");
+fn the_second_round_omits_steps_run(world: &mut World) {
+    let round = read_round(table::pack(world), "round-0002");
+    assert!(round.get("steps_run").is_none(), "{round}");
 }
 
 #[when(expr = "the operator runs a tick")]
@@ -526,7 +526,7 @@ fn gunzip_closed(path: &std::path::Path) -> Vec<u8> {
 fn parallel_full_verification_matches_serial_replay(world: &mut World) {
     let pack = table::pack(world);
     let verified = spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("{err}"));
-    let serial = spookery_engine::testing::from_journal(pack, None, None)
+    let serial = spookery_engine::testing::replay_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(verified.state_rev, serial.state_rev);
     assert!(verified.applied > 0, "{verified:?}");

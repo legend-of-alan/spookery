@@ -114,12 +114,12 @@ fn gzip_path(plain: &Path) -> PathBuf {
 }
 
 /// Memory files are a cache of the journal. The live bundle supplies lines since
-/// the last checkpoint. A line for a tick the live bundle does not have, and
+/// the last checkpoint. A line for a round the live bundle does not have, and
 /// that the checkpoint does not cover, is dropped.
 fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
     let records = journal::read_live(root).map_err(|fault| fault.reason)?;
     let head = journal::read_head(root).map_err(|fault| fault.reason)?;
-    let live_ticks: BTreeSet<u64> = records
+    let live_rounds: BTreeSet<u64> = records
         .iter()
         .filter_map(|entry| match entry {
             JournalEntry::Round(record) => Some(record.round_index),
@@ -166,7 +166,8 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
                 if line.is_empty() {
                     continue;
                 }
-                if memory_tick(line).is_some_and(|tick| keep_tick(tick, head.as_ref(), &live_ticks))
+                if memory_round(line)
+                    .is_some_and(|round| keep_round(round, head.as_ref(), &live_rounds))
                 {
                     kept.push(line.to_string());
                 }
@@ -194,12 +195,12 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn keep_tick(tick: u64, head: Option<&journal::BundleHead>, live_ticks: &BTreeSet<u64>) -> bool {
-    if live_ticks.contains(&tick) {
+fn keep_round(round: u64, head: Option<&journal::BundleHead>, live_rounds: &BTreeSet<u64>) -> bool {
+    if live_rounds.contains(&round) {
         return true;
     }
     match head {
-        Some(head) => tick <= head.round_index,
+        Some(head) => round <= head.round_index,
         None => false,
     }
 }
@@ -227,12 +228,12 @@ fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn memory_tick(line: &str) -> Option<u64> {
+fn memory_round(line: &str) -> Option<u64> {
     #[derive(serde::Deserialize)]
-    struct MemoryTick {
+    struct MemoryRound {
         round_index: u64,
     }
-    serde_json::from_str::<MemoryTick>(line)
+    serde_json::from_str::<MemoryRound>(line)
         .ok()
         .map(|row| row.round_index)
 }

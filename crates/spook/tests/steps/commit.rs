@@ -53,7 +53,7 @@ fn one_round_has_committed(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     assert!(
         !spookery_engine::testing::journal::list_round_keys(&pack).is_empty(),
-        "no tick committed"
+        "no round committed"
     );
 }
 
@@ -135,8 +135,8 @@ fn stderr_names(world: &mut World, code: String) {
     assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
-#[then(expr = "the tick writes nothing")]
-fn the_tick_writes_nothing(world: &mut World) {
+#[then(expr = "the round writes nothing")]
+fn the_round_writes_nothing(world: &mut World) {
     let pack = table::pack(world);
     assert_eq!(
         fs::read(pack.join("state/save.yaml")).unwrap(),
@@ -146,7 +146,7 @@ fn the_tick_writes_nothing(world: &mut World) {
     assert_eq!(
         state_tree(pack),
         world.state_files,
-        "the tick wrote under state/"
+        "the round wrote under state/"
     );
 }
 

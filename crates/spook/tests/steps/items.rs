@@ -54,7 +54,7 @@ fn play(
     spookery_engine::handle_player_move(&mut world, actor, verb, target, false, &wall)
 }
 
-fn tick_text(pack: &Path) -> String {
+fn round_text(pack: &Path) -> String {
     spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
@@ -187,7 +187,7 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
     assert_eq!(
         support::now_of(pack).round_index,
         1,
-        "the refusal committed another tick"
+        "the refusal committed another round"
     );
 }
 
@@ -281,7 +281,7 @@ fn no_round_was_spent(world: &mut World) {
     assert_eq!(now.actors.get("pc_lark").unwrap().count("latch"), 1);
 }
 
-#[then(expr = "the line is rejected with {word} and no tick was written")]
+#[then(expr = "the line is rejected with {word} and no round was written")]
 fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
@@ -308,19 +308,19 @@ fn rowan_drops_oil(world: &mut World) {
     play(&pack, "pc_rowan", "drop lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
 }
 
-fn tick_names_missing(pack: &Path) {
-    let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
-    let rejected = tick["rejected"].as_array().unwrap();
+fn round_names_missing(pack: &Path) {
+    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let rejected = round["rejected"].as_array().unwrap();
     assert!(
         rejected.iter().any(|item| item["code"] == "MISSING_ITEM"),
-        "{tick}"
+        "{round}"
     );
 }
 
-#[then(expr = "the tick names MISSING_ITEM and rowan still has no lamp_oil")]
+#[then(expr = "the round names MISSING_ITEM and rowan still has no lamp_oil")]
 fn the_drop_was_missing(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    tick_names_missing(pack);
+    round_names_missing(pack);
     let now = support::now_of(pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().count("lamp_oil"), 0);
     assert_eq!(
@@ -403,11 +403,11 @@ fn lark_wields_the_dagger(world: &mut World) {
 #[then(expr = "it is rejected with NOT_A_WEAPON and the slot is unchanged")]
 fn tonic_is_not_a_weapon(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
-    let rejected = tick["rejected"].as_array().unwrap();
+    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let rejected = round["rejected"].as_array().unwrap();
     assert!(
         rejected.iter().any(|item| item["code"] == "NOT_A_WEAPON"),
-        "{tick}"
+        "{round}"
     );
     assert_eq!(wielded(pack, "pc_lark"), None);
 }
@@ -443,8 +443,8 @@ fn lark_attacks(world: &mut World) {
 #[then(expr = "item:poisoned_dagger\\/attack ran, not verb:attack")]
 fn the_dagger_rule_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
-    let steps = tick["steps_run"].to_string();
+    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let steps = round["steps_run"].to_string();
     assert!(steps.contains("item:poisoned_dagger/attack"), "{steps}");
     assert!(!steps.contains("verb:attack"), "{steps}");
     assert_eq!(hp(pack, "pc_nell"), 5);
@@ -453,8 +453,8 @@ fn the_dagger_rule_ran(world: &mut World) {
 #[then(expr = "verb:attack ran")]
 fn bare_hands_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
-    let steps = tick["steps_run"].to_string();
+    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let steps = round["steps_run"].to_string();
     assert!(steps.contains("verb:attack"), "{steps}");
     assert!(!steps.contains("item:poisoned_dagger/attack"), "{steps}");
     assert_eq!(hp(pack, "pc_nell"), 7);
@@ -466,8 +466,8 @@ fn lark_drops_the_dagger(world: &mut World) {
     play(&pack, "pc_lark", "drop poisoned_dagger").unwrap_or_else(|err| panic!("{}", err.token()));
 }
 
-#[then(expr = "lark's wielded slot is empty in the same tick")]
-fn the_slot_clears_in_the_tick(world: &mut World) {
+#[then(expr = "lark's wielded slot is empty in the same round")]
+fn the_slot_clears_in_the_round(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::now_of(pack);
     assert_eq!(now.round_index, 1);
@@ -616,7 +616,7 @@ fn lark_hits_with_the_dagger(world: &mut World) {
     assert_eq!(output.reports.len(), 2, "{:?}", output.reports);
 }
 
-#[then(expr = "nell loses 3 hp, is not poisoned, sees {string}, and the tick shows no refusal")]
+#[then(expr = "nell loses 3 hp, is not poisoned, sees {string}, and the round shows no refusal")]
 fn the_poison_fades(world: &mut World, text: String) {
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(hp(pack, "pc_nell"), 7);
@@ -627,9 +627,9 @@ fn the_poison_fades(world: &mut World, text: String) {
         .flags()
         .iter()
         .any(|flag| flag == "poisoned"));
-    let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
-    assert!(tick["rejected"].as_array().unwrap().is_empty(), "{tick}");
-    let effects = tick["effects"].to_string();
+    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    assert!(round["rejected"].as_array().unwrap().is_empty(), "{round}");
+    let effects = round["effects"].to_string();
     assert!(effects.contains(&text), "{effects}");
     assert!(effects.contains("pc_nell"), "{effects}");
 }

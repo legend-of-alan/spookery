@@ -12,8 +12,8 @@ use crate::world::World;
 use crate::Reason;
 
 use crate::round::replay::{
-    apply, from_journal, journal_fault, load_base, load_entries, read_now_bytes, state_rev_of,
-    DivergenceKind, ReplayDivergence, ReplayError,
+    apply_entry, journal_fault, load_base, load_entries, read_now_bytes, replay_journal,
+    state_rev_of, DivergenceKind, ReplayDivergence, ReplayError,
 };
 
 #[derive(Debug)]
@@ -42,7 +42,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Rep
         });
     }
     let cap = records.iter().map(JournalEntry::state_rev_after).max();
-    let report = from_journal(pack, from, cap).map_err(|err| match err {
+    let report = replay_journal(pack, from, cap).map_err(|err| match err {
         ReplayError::Diverged(diverged) => with_save_line(diverged, &read_snapshot(pack)),
         other => other,
     })?;
@@ -236,7 +236,7 @@ fn replay_bundle(
     let mut world = World::open_for_replay(pack, canon, now);
     let mut changed = false;
     for entry in entries {
-        apply(&mut world, entry)?;
+        apply_entry(&mut world, entry)?;
         changed |= entry.changes_state();
     }
     if changed {

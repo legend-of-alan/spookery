@@ -16,7 +16,7 @@ use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
 use crate::round::play::{play_round, RoundKind};
-use crate::round::replay::from_journal;
+use crate::round::replay::replay_journal;
 
 pub(crate) const CASES: u32 = 64;
 pub(crate) const SEED: u64 = 0x0018_0018;
@@ -226,9 +226,9 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
     } else {
         format!("{verb} {token}")
     };
-    let tick = now.round_index.saturating_add(1);
+    let round_index = now.round_index.saturating_add(1);
     Intent {
-        id: player_intent_id(&now.shard_id, tick, actor, &line),
+        id: player_intent_id(&now.shard_id, round_index, actor, &line),
         round_index: now.round_index,
         actor: ViewerId::Player(actor.to_string()),
         source: Source::Player,
@@ -254,7 +254,7 @@ fn copy_dir(from: &Path, to: &Path) {
 
 /// Replay the journal and compare it with the state hash on the last record.
 pub(crate) fn same_save(pack: &Path) -> Result<(), TestCaseError> {
-    let report = from_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
+    let report = replay_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
     let entries = journal::read_entries(pack)
         .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
     let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {

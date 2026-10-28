@@ -78,11 +78,11 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn no_self_win() {
     let pack = support::temp_pack("self-win");
-    for tick in 1..=12 {
-        play_pack_once(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+    for round in 1..=12 {
+        play_pack_once(&pack).unwrap_or_else(|err| panic!("round {round}: {err}"));
     }
     let now = now_of(&pack);
-    assert_eq!(now.round_index, 12, "twelve empty-table ticks commit");
+    assert_eq!(now.round_index, 12, "twelve empty-table rounds commit");
     let clock = now
         .clocks
         .get("assassination_debt")
@@ -288,7 +288,7 @@ fn catchup_cap() {
     catchup_for(72, 12);
 }
 
-fn catchup_for(hours: u64, ticks: u64) {
+fn catchup_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("catchup");
     let _ = fs::remove_dir_all(&pack);
@@ -397,11 +397,11 @@ Rowan.
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = Shard::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
     let now = saved.now();
-    assert_eq!(now.state_rev, ticks, "{hours} hours");
-    assert_eq!(now.round_index, ticks);
-    assert_eq!(now.world_time, ticks * 60);
+    assert_eq!(now.state_rev, rounds, "{hours} hours");
+    assert_eq!(now.round_index, rounds);
+    assert_eq!(now.world_time, rounds * 60);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
-    assert_eq!(list_round_keys(&pack).len() as u64, ticks);
+    assert_eq!(list_round_keys(&pack).len() as u64, rounds);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
         place_before
@@ -433,7 +433,7 @@ fn busy_skip() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn sealed_tick(pack: &Path, state_rev: u64) -> String {
+fn sealed_round(pack: &Path, state_rev: u64) -> String {
     use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, RoundRecord};
     let entry = JournalEntry::Round(RoundRecord {
         round_index: 1,
@@ -554,7 +554,7 @@ fn the_next_revision_keeps_the_new_save() {
     fs::write(txn.join("COMPLETE"), b"").unwrap();
     let log = next.join("state/journal");
     fs::create_dir_all(&log).unwrap();
-    let kept = sealed_tick(&next, live.state_rev);
+    let kept = sealed_round(&next, live.state_rev);
     let mut torn = kept.into_bytes();
     torn.extend(br#"{"round_index":99,"#);
     let bundle = log.join("bundle-0000.jsonl");
@@ -798,7 +798,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
         &format!("tick:\n  eligible: true\n  flags:\n{flags}"),
         1,
     );
-    assert_ne!(next, text, "mira tick block was not patched");
+    assert_ne!(next, text, "mira round block was not patched");
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
     let mut now = spookery_engine::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
@@ -835,8 +835,8 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             vec!["marked".to_string()],
             "{label} success {success}"
         );
-        let tick = round_value(&pack, "round-0001");
-        assert!(tick["steps_run"]
+        let round = round_value(&pack, "round-0001");
+        assert!(round["steps_run"]
             .as_array()
             .unwrap()
             .iter()
@@ -902,9 +902,9 @@ fn opposing_total_reused() {
         let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
-        let tick = spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
+        let round = spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
-        assert!(!tick.contains("faces"));
+        assert!(!round.contains("faces"));
         if opposed {
             let nell = rolled_stat(&reports, 100);
             assert_eq!(nell.target, 0);
@@ -971,23 +971,23 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let _ = fs::remove_dir_all(&held);
 }
 
-#[when(expr = "twelve empty ticks pass")]
-fn twelve_empty_ticks_pass(_world: &mut World) {
+#[when(expr = "twelve empty rounds pass")]
+fn twelve_empty_rounds_pass(_world: &mut World) {
     no_self_win();
 }
 
-#[when(expr = "the evening tick runs with Rowan away")]
-fn the_evening_tick_runs(_world: &mut World) {
+#[when(expr = "the evening round runs with Rowan away")]
+fn the_evening_round_runs(_world: &mut World) {
     evening_note();
 }
 
-#[when(expr = "the morning tick runs with the note already left")]
-fn the_morning_tick_runs(_world: &mut World) {
+#[when(expr = "the morning round runs with the note already left")]
+fn the_morning_round_runs(_world: &mut World) {
     morning_restock();
 }
 
-#[when(expr = "the morning tick runs and the shelf already holds 6 lamp oil")]
-fn the_morning_tick_caps_the_shelf(world: &mut World) {
+#[when(expr = "the morning round runs and the shelf already holds 6 lamp oil")]
+fn the_morning_round_caps_the_shelf(world: &mut World) {
     world.scratch = capped_restock().to_string();
 }
 
@@ -996,8 +996,8 @@ fn the_shop_holds_8_lamp_oil(world: &mut World) {
     assert_eq!(world.scratch, "8");
 }
 
-#[when(expr = "an off-hours tick runs with the note already left")]
-fn an_off_hours_tick_runs(_world: &mut World) {
+#[when(expr = "an off-hours round runs with the note already left")]
+fn an_off_hours_round_runs(_world: &mut World) {
     off_hours_hold();
 }
 
@@ -1026,7 +1026,7 @@ fn one_hour_of_catch_up(_world: &mut World) {
     catchup_for(1, 8);
 }
 
-#[when(expr = "Mira is busy and a tick runs")]
+#[when(expr = "Mira is busy and a round runs")]
 fn mira_is_busy(_world: &mut World) {
     busy_skip();
 }
@@ -1051,7 +1051,7 @@ fn a_finished_transaction_advances(_world: &mut World) {
     the_next_revision_keeps_the_new_save();
 }
 
-#[when(expr = "fifty NPCs share one tick")]
+#[when(expr = "fifty NPCs share one round")]
 fn fifty_npcs(_world: &mut World) {
     budget_caps();
 }

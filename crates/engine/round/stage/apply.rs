@@ -65,7 +65,7 @@ pub(crate) fn run(
         let minutes = map::span(draft.canon(), draft.now(), &intent, &rule);
         if minutes > 0 {
             let at = clock.world_time_before;
-            if begin_timed(draft, &intent, &rule, at, minutes, dice, log) && spends_slot {
+            if start_timed_action(draft, &intent, &rule, at, minutes, dice, log) && spends_slot {
                 slots += 1;
             }
             continue;
@@ -97,7 +97,7 @@ pub(crate) fn run(
             rolled,
             resisted,
         };
-        match commit_intent(draft, &intent, &rule, &expansion, dice, log) {
+        match apply_instant_intent(draft, &intent, &rule, &expansion, dice, log) {
             Landing::Landed if spends_slot => slots += 1,
             Landing::Landed | Landing::Refused => {}
             Landing::BudgetSpent => break,
@@ -106,7 +106,7 @@ pub(crate) fn run(
     Ok(())
 }
 
-fn begin_timed(
+fn start_timed_action(
     draft: &mut Draft,
     intent: &Intent,
     rule: &Rule,
@@ -137,7 +137,7 @@ fn begin_timed(
     true
 }
 
-fn commit_intent(
+fn apply_instant_intent(
     draft: &mut Draft,
     intent: &Intent,
     rule: &Rule,
@@ -180,7 +180,7 @@ fn commit_intent(
         };
     }
     log.effects.extend_from_slice(&expansion.effects);
-    keep_roll(log, &expansion.rolled, intent.actor.actor_id());
+    report_roll(log, &expansion.rolled, intent.actor.actor_id());
     log.reports.extend_from_slice(&expansion.resisted);
     log.steps.push(Step::Rule(rule.id.clone()));
     Landing::Landed
@@ -211,7 +211,7 @@ fn refused_report(intent: &Intent, refusal: &GateRefusal) -> MoveReport {
     }
 }
 
-fn keep_roll(log: &mut RoundLog, rolled: &Option<RollResult>, actor_id: &str) {
+fn report_roll(log: &mut RoundLog, rolled: &Option<RollResult>, actor_id: &str) {
     if let Some(out) = rolled.clone() {
         log.reports.push(MoveReport::Rolled {
             actor_id: actor_id.to_string(),

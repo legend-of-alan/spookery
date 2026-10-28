@@ -262,10 +262,10 @@ impl World {
             Target::Actor(id) | Target::Place(id) => id.as_str(),
             Target::Clock(_) => return Err(Reason::Schema),
         };
-        let tick = self.now.round_index.checked_add(1).ok_or(Reason::Schema)?;
+        let round_index = self.now.round_index.checked_add(1).ok_or(Reason::Schema)?;
         let id = player_intent_id(
             &self.now.shard_id,
-            tick,
+            round_index,
             actor_id,
             &canonical_line(verb, token),
         );
@@ -274,7 +274,7 @@ impl World {
         }
         Ok(Intent::new(
             id,
-            tick,
+            round_index,
             ViewerId::Player(actor_id.to_string()),
             Source::Player,
             verb,
@@ -323,7 +323,7 @@ impl World {
             return Err(Reason::Schema);
         }
         let round_index = match spec.round_index {
-            Some(tick) => tick,
+            Some(index) => index,
             None => self.now.round_index.checked_add(1).ok_or(Reason::Schema)?,
         };
         let args = IntentArgs {
@@ -432,7 +432,7 @@ impl World {
     /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
     /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
     pub fn resume(root: &Path) -> Result<Self, Reason> {
-        crate::round::replay::resume(root)
+        crate::round::replay::open_at_tip(root)
     }
 
     pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
@@ -508,9 +508,9 @@ impl World {
         let start = self.now.round_index + 1 - outputs.len() as u64;
         let mut effects = Vec::new();
         for (offset, output) in outputs.iter().enumerate() {
-            let tick = start + offset as u64;
+            let round_index = start + offset as u64;
             for effect in &output.effects {
-                effects.push((tick, effect));
+                effects.push((round_index, effect));
             }
         }
         self.format_host_lines(&effects)

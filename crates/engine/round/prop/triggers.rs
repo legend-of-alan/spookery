@@ -75,30 +75,30 @@ fn triggers_stop(pack: &Path, rules: &[RuleSpec], rounds: usize) -> Result<(), T
         .max_trigger_depth;
     let entries = journal::read_entries(pack)
         .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
-    let ticks: Vec<&RoundRecord> = entries
+    let records: Vec<&RoundRecord> = entries
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Round(tick) => Some(tick),
+            JournalEntry::Round(record) => Some(record),
             _ => None,
         })
         .collect();
-    if ticks.len() != rounds {
+    if records.len() != rounds {
         return Err(fail_msg(format!(
             "played {rounds} rounds but the journal has {} round records",
-            ticks.len()
+            records.len()
         )));
     }
     let mut held = BTreeSet::new();
-    for tick in ticks {
-        held = check_round(tick, rules, max, held, rowan_gained_oil(tick))?;
+    for record in records {
+        held = check_round(record, rules, max, held, rowan_gained_oil(record))?;
     }
     same_save(pack)
 }
 
 /// Trigger watches see the net write. Dropping the oil and gaining it back
 /// leaves no change, so the chain does not start.
-fn rowan_gained_oil(tick: &RoundRecord) -> bool {
-    let net: i64 = tick
+fn rowan_gained_oil(record: &RoundRecord) -> bool {
+    let net: i64 = record
         .effects
         .iter()
         .filter_map(|effect| match &effect.class {
@@ -118,13 +118,13 @@ fn rowan_gained_oil(tick: &RoundRecord) -> bool {
 }
 
 fn check_round(
-    tick: &RoundRecord,
+    record: &RoundRecord,
     rules: &[RuleSpec],
     max: u64,
     mut held: BTreeSet<String>,
     mut oil: bool,
 ) -> Result<BTreeSet<String>, TestCaseError> {
-    let logged: Vec<&str> = tick
+    let logged: Vec<&str> = record
         .steps_run
         .iter()
         .filter_map(|step| match step {
@@ -132,7 +132,7 @@ fn check_round(
             _ => None,
         })
         .collect();
-    let hit_cap = tick.steps_run.contains(&Step::TriggerDepth);
+    let hit_cap = record.steps_run.contains(&Step::TriggerDepth);
     let mut armed = BTreeSet::new();
     let mut index = 0usize;
     let mut passes = 0u64;
@@ -141,15 +141,15 @@ fn check_round(
         if ready.is_empty() {
             if index != logged.len() {
                 return Err(fail_msg(format!(
-                    "tick {} logged trigger rules after the chain stopped: {}",
-                    tick.round_index,
+                    "round {} logged trigger rules after the chain stopped: {}",
+                    record.round_index,
                     logged.join(",")
                 )));
             }
             if hit_cap {
                 return Err(fail_msg(format!(
-                    "tick {} logged trigger_depth after {passes} passes, under the cap {max}",
-                    tick.round_index
+                    "round {} logged trigger_depth after {passes} passes, under the cap {max}",
+                    record.round_index
                 )));
             }
             return Ok(held);
@@ -157,15 +157,15 @@ fn check_round(
         if passes >= max {
             if index != logged.len() {
                 return Err(fail_msg(format!(
-                    "tick {} ran more than {max} trigger passes: {}",
-                    tick.round_index,
+                    "round {} ran more than {max} trigger passes: {}",
+                    record.round_index,
                     logged.join(",")
                 )));
             }
             if !hit_cap {
                 return Err(fail_msg(format!(
-                    "tick {} hit the cap after {max} trigger passes without trigger_depth: {:?}",
-                    tick.round_index, tick.steps_run
+                    "round {} hit the cap after {max} trigger passes without trigger_depth: {:?}",
+                    record.round_index, record.steps_run
                 )));
             }
             return Ok(held);
@@ -176,16 +176,16 @@ fn check_round(
         for rule in ready {
             let Some(got) = logged.get(index) else {
                 return Err(fail_msg(format!(
-                    "tick {} stopped during pass {} before {}",
-                    tick.round_index,
+                    "round {} stopped during pass {} before {}",
+                    record.round_index,
                     passes + 1,
                     rule.id
                 )));
             };
             if *got != rule.id {
                 return Err(fail_msg(format!(
-                    "tick {} pass {} expected {} but logged {got}",
-                    tick.round_index,
+                    "round {} pass {} expected {} but logged {got}",
+                    record.round_index,
                     passes + 1,
                     rule.id
                 )));

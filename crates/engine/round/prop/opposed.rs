@@ -92,6 +92,6 @@ fn fight(base: &Path, warmup: u32) -> Result<(), String> {
         "warm-up {warmup}: the lunge was not rejected for its budget: {last:?}"
     );
     crate::round::verify_pack(&pack.0, None).map_err(|err| fail("verify", err.to_string()))?;
-    crate::round::replay::resume(&pack.0).map_err(|err| fail("resume", err.to_string()))?;
+    crate::round::replay::open_at_tip(&pack.0).map_err(|err| fail("resume", err.to_string()))?;
     Ok(())
 }

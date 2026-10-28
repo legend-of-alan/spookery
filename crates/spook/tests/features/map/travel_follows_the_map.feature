@@ -30,30 +30,30 @@ Feature: Travel follows the map
 
   Scenario: Arrivals complete in time order
     Given rowan arrives at 21:40 and nell at 21:35
-    Then nell's arrival is applied before rowan's, in separate ticks
+    Then nell's arrival is applied before rowan's, in separate rounds
 
-  Scenario: Arrival is stamped at its exact minute and the actor acts next tick
-    Given ticks are 5 minutes while seated and the stairs exit costs 2 minutes
-    When rowan travels via stairs in the tick starting 21:30
-    Then the tick still ends at 21:35
-    And rowan's arrival is recorded with arrived_at 21:32 in that tick's line
-    And a move from rowan is accepted from the tick starting 21:35
+  Scenario: Arrival is stamped at its exact minute and the actor acts next round
+    Given rounds are 5 minutes while seated and the stairs exit costs 2 minutes
+    When rowan travels via stairs in the round starting 21:30
+    Then the round still ends at 21:35
+    And rowan's arrival is recorded with arrived_at 21:32 in that round's line
+    And a move from rowan is accepted from the round starting 21:35
 
-  Scenario: Ticks never shorten
-    Then every tick line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated
+  Scenario: Rounds never shorten
+    Then every round line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated
 
   Scenario: Fast-forward when all seated PCs are busy
     Given rowan and nell are seated and both busy, with no GM
-    Then the shard ticks to 21:35 then 21:40 without waiting on the wall clock
-    And an NPC habit due at 21:35 runs in that tick
+    Then the shard plays rounds to 21:35 then 21:40 without waiting on the wall clock
+    And an NPC habit due at 21:35 runs in that round
 
   Scenario: GM mode waits for commit
     Given a GM is seated and both PCs are busy
     Then nothing advances until the GM commits
 
   Scenario: Fast-forward is capped
-    Given busy_until is 200 ticks away and max_fastforward_ticks is 12
-    Then 12 ticks run and the rest continues on the next action
+    Given busy_until is 200 rounds away and max_fastforward_ticks is 12
+    Then 12 rounds run and the rest continues on the next action
 
   Scenario: Replay
     Then spook verify passes over a fast-forwarded journey

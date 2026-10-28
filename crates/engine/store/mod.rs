@@ -15,7 +15,7 @@ pub use codec::{emit_save, load_save};
 pub use lock::lock_serve;
 pub use tape::{record_line, TapeRecord};
 
-/// Rules version stamped on every save and every tick.
+/// Rules version stamped on every save and every round.
 /// A different version is refused. There is no migration.
 pub const RULES_REV: u64 = 8;
 

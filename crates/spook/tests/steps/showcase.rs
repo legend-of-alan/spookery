@@ -138,7 +138,7 @@ fn they_arrive_at_the_exits_cost(world: &mut World) {
     assert!(cost > 0);
     assert!(finished(&pack));
     assert!(
-        ticks(&pack).iter().any(|tick| tick["fast_forward"] == true),
+        rounds(&pack).iter().any(|r| r["fast_forward"] == true),
         "the journey did not fast-forward"
     );
     assert!(
@@ -198,7 +198,7 @@ fn commit_line(world: &mut World, line: &str) {
     table::wait_player_from(world, mark, "\"kind\":\"queued\"");
     let before = list_round_keys(table::pack(world)).len();
     table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
-    table::wait_tick_count(table::pack(world), before + 1);
+    table::wait_round_count(table::pack(world), before + 1);
 }
 
 fn tonic_of(now: &spookery_engine::Now) -> u32 {
@@ -227,16 +227,16 @@ fn lane_cost(pack: &Path) -> u64 {
 }
 
 fn arrival_minute(pack: &Path) -> u64 {
-    ticks(pack)
+    rounds(pack)
         .into_iter()
-        .flat_map(|tick| tick["arrivals"].as_array().cloned().unwrap_or_default())
+        .flat_map(|round| round["arrivals"].as_array().cloned().unwrap_or_default())
         .find(|arrival| arrival["to"] == "mill_lane")
         .unwrap_or_else(|| panic!("no arrival on mill lane"))["arrived_at"]
         .as_u64()
         .unwrap()
 }
 
-fn ticks(pack: &Path) -> Vec<Value> {
+fn rounds(pack: &Path) -> Vec<Value> {
     list_round_keys(pack)
         .into_iter()
         .map(|name| {

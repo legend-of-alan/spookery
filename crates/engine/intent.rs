@@ -229,7 +229,7 @@ fn absent<T>(value: &Option<T>) -> bool {
     value.is_none()
 }
 
-/// Blake2s of `shard|tick|actor|row`. The P37 preimage stays.
+/// Blake2s of `shard|round|actor|row`. The P37 preimage stays.
 pub(crate) fn kernel_intent_id(
     shard_id: &str,
     round_index: u64,

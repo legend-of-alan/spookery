@@ -40,7 +40,7 @@ Feature: The d20 pack runs a fight
     When the player drinks
     Then lark is refused with NOT_IN_SPEC
     And save.yaml is unchanged since the seat
-    And no tick file was written
+    And no round file was written
 
   Scenario: A short fight through play drops the raider to zero
     Given a copy of the sample-d20 pack
@@ -55,4 +55,4 @@ Feature: The d20 pack runs a fight
     And play types "strike npc_briar"
     Then play shows 3 successful rolls
     And the raider's hp is 0
-    And replaying the tick reproduces the save
+    And replaying the round reproduces the save

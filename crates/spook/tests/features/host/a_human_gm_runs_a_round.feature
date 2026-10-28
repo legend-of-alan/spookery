@@ -9,7 +9,7 @@ Feature: A human GM runs a round
     Then play shows "GM: good evening"
     When the GM queues Mira's restock and commits
     Then world time advanced one live tick
-    And the tick log records Mira's restock
+    And the round log records Mira's restock
 
   Scenario: Two players queue and one commit runs both
     Given a docks table
@@ -18,7 +18,7 @@ Feature: A human GM runs a round
     Then the GM shows "Pc rowan queued: wait"
     And the GM shows "Pc wren queued: wait"
     When the GM commits the queue
-    Then the tick log records Rowan and Wren waiting
+    Then the round log records Rowan and Wren waiting
 
   Scenario: Each commit's roll shows once
     Given a docks table

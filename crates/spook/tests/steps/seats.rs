@@ -345,8 +345,8 @@ fn session_status_lists_both_queued_lines(world: &mut World) {
     );
 }
 
-#[then(expr = "the tick log records both waits")]
-fn the_tick_log_records_both_waits(world: &mut World) {
+#[then(expr = "the round log records both waits")]
+fn the_round_log_records_both_waits(world: &mut World) {
     let actors = table::list_player_waits(table::pack(world), "round-0001");
     assert_eq!(
         actors,
@@ -354,8 +354,8 @@ fn the_tick_log_records_both_waits(world: &mut World) {
     );
 }
 
-#[then(expr = "each wait committed its own tick")]
-fn each_wait_committed_its_own_tick(world: &mut World) {
+#[then(expr = "each wait committed its own round")]
+fn each_wait_committed_its_own_round(world: &mut World) {
     let pack = table::pack(world);
     table::wait_world_time(pack, 1090);
     assert_eq!(table::now_of(pack).round_index, 2);
@@ -474,17 +474,17 @@ fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
     }
 }
 
-#[then(expr = "the tick now_hash matches the save")]
-fn the_tick_now_hash_matches_the_save(world: &mut World) {
+#[then(expr = "the round now_hash matches the save")]
+fn the_round_now_hash_matches_the_save(world: &mut World) {
     let pack = table::pack(world);
-    let tick = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
+    let round = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     let value: serde_json::Value =
-        serde_json::from_str(&tick).unwrap_or_else(|err| panic!("{err}"));
+        serde_json::from_str(&round).unwrap_or_else(|err| panic!("{err}"));
     let expected = value["now_hash"]
         .as_str()
-        .unwrap_or_else(|| panic!("now_hash\n{tick}"));
-    let report = spookery_engine::testing::from_journal(pack, None, None)
+        .unwrap_or_else(|| panic!("now_hash\n{round}"));
+    let report = spookery_engine::testing::replay_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(
         spookery_engine::testing::journal::hash_now(&report.now_yaml),

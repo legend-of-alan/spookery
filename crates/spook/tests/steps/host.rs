@@ -215,9 +215,9 @@ fn the_host_call_was_refused(world: &mut World) {
 #[when(expr = "the scripted host plays the turn checks")]
 fn the_scripted_host_plays_the_turn_checks(world: &mut World) {
     speech_leaves_world_time_and_a_gm_say_does_not_call(world);
-    travel_ticks_once(world, false);
-    travel_ticks_once(world, true);
-    epilogue_does_not_tick_again(world);
+    travel_rounds_once(world, false);
+    travel_rounds_once(world, true);
+    epilogue_does_not_play_another_round(world);
     sit_commits_the_waiting_queue(world);
 }
 
@@ -258,7 +258,7 @@ fn play_and_host_and_a_stub(world: &mut World) {
     writeln!(play_in, "say hello").unwrap();
     play_in.flush().unwrap();
     wait_posts(&posts, 1);
-    assert_eq!(world_time(&pack), 1080, "speech ticked");
+    assert_eq!(world_time(&pack), 1080, "speech played a round");
     let first = posts.lock().unwrap()[0].clone();
     assert!(first.contains("act"), "{first}");
     assert!(first.contains("CASTBODYONLY-FIXTURE"), "{first}");
@@ -277,7 +277,7 @@ fn play_and_host_and_a_stub(world: &mut World) {
     assert!(second.contains("CASTBODYONLY-FIXTURE"), "{second}");
     assert_chat_post(&second);
     thread::sleep(Duration::from_millis(200));
-    assert_eq!(world_time(&pack), 1085, "travel ticked twice");
+    assert_eq!(world_time(&pack), 1085, "travel played two rounds");
     assert!(
         support::text_of(&host_stdout).is_empty(),
         "{}",
@@ -309,7 +309,7 @@ fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
     });
 }
 
-fn travel_ticks_once(world: &mut World, transport_error: bool) {
+fn travel_rounds_once(world: &mut World, transport_error: bool) {
     let label = if transport_error {
         "host-transport"
     } else {
@@ -329,7 +329,7 @@ fn travel_ticks_once(world: &mut World, transport_error: bool) {
         table::wait_world_time(pack, sit + 5);
         wait_idle(watch, model, 1);
         thread::sleep(Duration::from_millis(200));
-        assert_eq!(world_time(pack), sit + 5, "travel ticked more than once");
+        assert_eq!(world_time(pack), sit + 5, "travel ran twice");
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
         assert_eq!(
             table::now_of(pack)
@@ -341,7 +341,7 @@ fn travel_ticks_once(world: &mut World, transport_error: bool) {
     });
 }
 
-fn epilogue_does_not_tick_again(world: &mut World) {
+fn epilogue_does_not_play_another_round(world: &mut World) {
     with_host(
         world,
         "host-epilogue",
@@ -367,7 +367,7 @@ fn epilogue_does_not_tick_again(world: &mut World) {
                 calls[1].prompt
             );
             thread::sleep(Duration::from_millis(200));
-            assert_eq!(world_time(pack), sit + 5, "epilogue ticked");
+            assert_eq!(world_time(pack), sit + 5, "epilogue played a round");
             assert_eq!(model.calls().len(), 2);
         },
     );
@@ -480,7 +480,7 @@ fn wait_idle(watch: &TurnWatch, model: &ScriptedModel, calls: usize) {
 }
 
 fn world_time(pack: &Path) -> u64 {
-    let report = spookery_engine::testing::from_journal(pack, None, None)
+    let report = spookery_engine::testing::replay_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     spookery_engine::load_save(text).unwrap().world_time
@@ -624,8 +624,8 @@ fn the_error_line_shows_the_providers_text_without_the_key(world: &mut World) {
     assert!(!line.contains('\n'), "{line}");
 }
 
-#[then(expr = "the queued line committed one tick")]
-fn the_queued_line_committed_one_tick(world: &mut World) {
+#[then(expr = "the queued line committed one round")]
+fn the_queued_line_committed_one_round(world: &mut World) {
     assert_eq!(world.stdout, "advanced", "{}", world.scratch);
 }
 
@@ -802,7 +802,7 @@ where
 fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     let start = Instant::now();
     while start.elapsed() < bound {
-        if let Ok(report) = spookery_engine::testing::from_journal(pack, None, None) {
+        if let Ok(report) = spookery_engine::testing::replay_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
                 if let Ok(now) = spookery_engine::load_save(text) {
                     if now.world_time == expected {

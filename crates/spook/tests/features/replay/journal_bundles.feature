@@ -10,14 +10,14 @@ Feature: Hash-chained journal bundles
 
   Scenario: Startup does not open a closed bundle
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 5 ticks
     And every closed bundle is made unreadable
     Then the table still opens
 
   Scenario: An edit to a closed bundle fails verification
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 4 ticks
     And one record in a closed bundle is changed
     And the operator runs verify
@@ -26,7 +26,7 @@ Feature: Hash-chained journal bundles
 
   Scenario: A missing snapshot is rebuilt from the bundles
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 4 ticks
     And the save snapshot is removed
     And the operator rebuilds the snapshot
@@ -34,7 +34,7 @@ Feature: Hash-chained journal bundles
 
   Scenario: Quick verification reports the latest bundle
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 5 ticks
     And the operator runs quick verify
     Then the command exits 0
@@ -42,7 +42,7 @@ Feature: Hash-chained journal bundles
 
   Scenario: Quick verification fails when the live bundle is edited
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 5 ticks
     And one record in the live bundle is changed
     And the operator runs quick verify
@@ -51,13 +51,13 @@ Feature: Hash-chained journal bundles
 
   Scenario: Parallel full verification matches serial replay
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 6 ticks
     Then parallel full verification matches serial replay
 
   Scenario: A bundle left open after its checkpoint is closed on the next open
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 2 ticks
     And the closed bundle is expanded back to plain JSONL
     And the operator runs a tick
@@ -68,7 +68,7 @@ Feature: Hash-chained journal bundles
 
   Scenario: A plain bundle beside its gzip is removed on open
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs 2 ticks
     And the closed bundle is copied back beside its gzip
     And the table is opened again
@@ -78,7 +78,7 @@ Feature: Hash-chained journal bundles
 
   Scenario: A checkpoint whose save did not land is published by the next round
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When the operator runs a tick
     And the save is kept
     And the operator runs a tick

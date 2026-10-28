@@ -110,7 +110,7 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     else {
         return;
     };
-    let intent = intent_for(draft.now().round_index, viewer, &rule.id);
+    let intent = trigger_intent(draft.now().round_index, viewer, &rule.id);
     if cond::holds(
         draft.canon(),
         draft.now(),
@@ -175,7 +175,7 @@ fn expand_trigger(
     })
 }
 
-fn intent_for(round_index: u64, actor: ViewerId, rule_id: &str) -> Intent {
+fn trigger_intent(round_index: u64, actor: ViewerId, rule_id: &str) -> Intent {
     Intent::new(
         trigger_intent_id(rule_id, actor.actor_id()),
         round_index,
@@ -224,7 +224,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
                 let place = rule.watched_place(place);
                 change.before.as_text() != Some(place)
                     && change.after.as_text() == Some(place)
-                    && who_ok(draft, who, actor)
+                    && watcher_matches(draft, who, actor)
             }
             _ => false,
         },
@@ -233,7 +233,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
                 let place = rule.watched_place(place);
                 change.before.as_text() == Some(place)
                     && change.after.as_text() != Some(place)
-                    && who_ok(draft, who, actor)
+                    && watcher_matches(draft, who, actor)
             }
             _ => false,
         },
@@ -279,7 +279,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
     }
 }
 
-fn who_ok(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
+fn watcher_matches(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
     let Some(actor) = draft.now().actors.get(actor_id) else {
         return false;
     };

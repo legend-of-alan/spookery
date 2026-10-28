@@ -115,7 +115,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "schema: tick\n",
             "schema: tick\nidle: maybe\n",
         ),
-        "zero tick interval" => replace_file(
+        "zero round interval" => replace_file(
             &pack.join("rules/tick.yaml"),
             "tick_every_real_seconds: 300\n",
             "tick_every_real_seconds: 0\n",
@@ -380,16 +380,16 @@ fn the_gm_commits_the_round(world: &mut World) {
     world.stdout = table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
 }
 
-#[then(expr = "a tick file was written")]
-fn a_tick_file_was_written(world: &mut World) {
+#[then(expr = "a round file was written")]
+fn a_round_file_was_written(world: &mut World) {
     assert_eq!(
         list_round_keys(table::pack(world)),
         vec!["round-0001".to_string()]
     );
 }
 
-#[then(expr = "no tick file was written")]
-fn no_tick_file(world: &mut World) {
+#[then(expr = "no round file was written")]
+fn no_round_file(world: &mut World) {
     assert!(list_round_keys(table::pack(world)).is_empty());
 }
 

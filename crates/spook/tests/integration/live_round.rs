@@ -13,7 +13,7 @@
 //! `ai-gm` and the provider so the test can see each model call and its HTTP
 //! status. The round passes when every model call returned 2xx, `ai-gm`
 //! printed no model-call failure, stayed up, and the queued move committed one
-//! tick. What the model says does not matter.
+//! round. What the model says does not matter.
 
 use std::fs;
 use std::io::{Read, Write};
@@ -110,10 +110,10 @@ fn a_live_model_plays_one_round() {
     assert!(up, "ai-gm exited\n{host_err}");
     assert!(
         advanced,
-        "the queued move did not commit a tick\n{host_err}"
+        "the queued move did not commit a round\n{host_err}"
     );
     println!(
-        "live round passed: {} model call(s), one tick committed",
+        "live round passed: {} model call(s), one round committed",
         recorded.len()
     );
 }
@@ -276,7 +276,7 @@ fn wait_text(proc: &Proc, slot: &Arc<Mutex<String>>, needle: &str, bound: Durati
 }
 
 fn world_time(pack: &Path) -> u64 {
-    let report = spookery_engine::testing::from_journal(pack, None, None).expect("replay");
+    let report = spookery_engine::testing::replay_journal(pack, None, None).expect("replay");
     let text = std::str::from_utf8(&report.now_yaml).expect("save text");
     spookery_engine::load_save(text)
         .expect("load now")
@@ -286,7 +286,7 @@ fn world_time(pack: &Path) -> u64 {
 fn wait_advance(pack: &Path, sit: u64, host: &mut Proc) -> bool {
     let start = Instant::now();
     while start.elapsed() < ROUND_BOUND {
-        if let Ok(report) = spookery_engine::testing::from_journal(pack, None, None) {
+        if let Ok(report) = spookery_engine::testing::replay_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
                 if let Ok(now) = spookery_engine::load_save(text) {
                     if now.world_time > sit {

@@ -22,15 +22,15 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
-#[when(expr = "thirteen ticks pass")]
-fn thirteen_ticks_pass(world: &mut World) {
+#[when(expr = "thirteen rounds pass")]
+fn thirteen_rounds_pass(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
-    for tick in 1..=13 {
+    for round in 1..=13 {
         let output = spook(&["tick", arg]);
         assert!(
             output.status.success(),
-            "tick {tick}\nstdout:\n{}\nstderr:\n{}",
+            "round {round}\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );

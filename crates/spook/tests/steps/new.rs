@@ -131,8 +131,8 @@ fn play_joins_that_pack_on_a_free_loopback_address(world: &mut World) {
     wait_play(world, "You are in Yard.");
 }
 
-#[then(expr = "the travel committed a tick")]
-fn the_travel_committed_a_tick(world: &mut World) {
+#[then(expr = "the travel committed a round")]
+fn the_travel_committed_a_round(world: &mut World) {
     let pack = table::pack(world);
     table::wait_world_time(pack, 5);
     let now = table::now_of(pack);
@@ -140,7 +140,7 @@ fn the_travel_committed_a_tick(world: &mut World) {
     assert!(
         spookery_engine::testing::journal::list_round_keys(pack)
             .contains(&"round-0001".to_string()),
-        "no tick file"
+        "no round file"
     );
 }
 
@@ -166,7 +166,7 @@ fn the_keeper_habit_has_set_tended(world: &mut World) {
     let idle = PathBuf::from(&world.scratch);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let now = table::now_of(&idle);
-    assert_eq!(now.world_time, 60, "idle tick did not advance an hour");
+    assert_eq!(now.world_time, 60, "idle round did not advance an hour");
     let flags = match now.actors.get("keeper") {
         Some(ActorLive::Npc { flags, .. }) => flags,
         other => panic!("keeper missing: {other:?}"),
