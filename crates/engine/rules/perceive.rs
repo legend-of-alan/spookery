@@ -33,34 +33,9 @@ pub struct View {
     pub status: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KnownFact {
-    pub id: String,
-    pub text: String,
-    pub body: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClockView {
-    pub id: String,
-    pub value: i64,
-    pub max: i64,
-    pub paused: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ItemStack {
-    pub id: String,
-    pub count: u32,
-}
-
-/// One of the viewer's own meters. A hidden meter is not here.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MeterView {
-    pub id: String,
-    pub value: i64,
-    pub max: i64,
-}
+pub use spookery_protocol::{
+    WireClock as ClockView, WireFact as KnownFact, WireItem as ItemStack, WireMeter as MeterView,
+};
 
 pub fn perceive(world: &World, as_arg: &str) -> Result<View, Reason> {
     perceive_budget(world, as_arg, BUDGET_TOKENS)
