@@ -5,13 +5,12 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::tick::load_round_settings;
 use crate::check::CheckDef;
 use crate::diagnostic::{schema as schema_error, Diagnostic};
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
-use crate::rule::{Cond, Cost, Owner, Rule, RuleTable, TargetKind, When};
+use crate::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
 mod cast;
@@ -30,10 +29,9 @@ mod source;
 mod story;
 pub(crate) mod tick;
 
-use cast::load_cast;
+use cast::add_cast;
 use checks::load_checks;
-use fact::{fact_ids_of, insert_fact, FactFile};
-use item::load_item;
+use item::add_item;
 pub(crate) use lint::check_canon;
 use lint::{
     broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
@@ -41,11 +39,12 @@ use lint::{
 };
 use meters::load_meters;
 use pack::load_pack;
-use place::{compile_exits, load_place};
+use place::add_place;
 use rule_list::load_verbs;
 pub(crate) use save::{check_save, migrate_save, pending_meters};
-use source::{collect_files, read_text, split_frontmatter, At, Problem, Source};
-use story::load_story;
+use source::{collect_files, markdown_files, read_text, split_frontmatter, Diags};
+use story::load_stories;
+use tick::load_tick;
 pub use tick::Budget;
 
 #[derive(Clone, Debug)]
@@ -202,311 +201,56 @@ pub fn pack_rev(root: &Path) -> Result<String, Reason> {
     Ok(format!("blake2s:{}", blake2s_hex(&preimage)))
 }
 
+/// Loads a pack in the numbered order below, which is also the order of its diagnostics.
 pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
-    let mut diags = Vec::new();
-    let pack = match read_text(root, "pack.yaml") {
-        Ok(text) => match load_pack(&text) {
-            Ok(pack) => Some(pack),
-            Err(more) => {
-                diags.extend(more);
-                None
-            }
-        },
-        Err(more) => {
-            diags.extend(more);
-            None
-        }
-    };
+    let mut diags = Diags::default();
     let mut places = BTreeMap::new();
+    let mut cast = BTreeMap::new();
     let mut facts = BTreeMap::new();
     let mut items = BTreeMap::new();
-    let mut loaded: Vec<Rule> = Vec::new();
-    let mut place_files = Vec::new();
-    if collect_files(&root.join("world"), root, &mut place_files).is_err() {
-        diags.push(
-            Problem {
-                source: &Source::named("world"),
-                path: "world",
-                at: At::Nowhere,
-                problem: "could not read world/".into(),
-                hint: "check that the directory is readable",
-            }
-            .schema(),
-        );
-    }
-    for (rel, bytes) in place_files {
-        if !rel.ends_with(".md") {
-            continue;
-        }
-        let Ok(text) = std::str::from_utf8(&bytes) else {
-            diags.push(
-                schema_error(&rel, "this file is not UTF-8 text", "save it as UTF-8")
-                    .with_path("schema"),
-            );
+    let mut loaded = Vec::new();
+    // 1. pack.yaml: missing, unreadable, tag, shape, empty id.
+    let pack = diags.keep(read_text(root, "pack.yaml").and_then(|text| load_pack(&text)));
+    // 2. One walk of world/: items and places by path prefix; other files are skipped.
+    for page in markdown_files(root, "world") {
+        let Some(page) = diags.keep(page) else {
             continue;
         };
-        let (yaml, body) = match split_frontmatter(&rel, text) {
-            Ok(split) => split,
-            Err(more) => {
-                diags.extend(more);
-                continue;
-            }
-        };
-        if rel.starts_with("world/items/") {
-            match load_item(&rel, yaml) {
-                Ok(item) => {
-                    if item.id.is_empty() {
-                        diags.push(schema_error(
-                            &rel,
-                            "an item id is empty",
-                            "set id to a short name",
-                        ));
-                        continue;
-                    }
-                    if items.contains_key(&item.id) {
-                        diags.push(schema_error(
-                            &rel,
-                            &format!("item '{}' is already defined", item.id),
-                            "keep one item with this id",
-                        ));
-                        continue;
-                    }
-                    let id = item.id.clone();
-                    match rule_list::compile(&rel, item.rules, &Owner::Item(id.clone())) {
-                        Ok(rules) => loaded.extend(rules),
-                        Err(more) => diags.extend(more),
-                    }
-                    items.insert(
-                        id,
-                        ItemCanon {
-                            name: item.name,
-                            tags: item.tags,
-                            body: body.trim().to_string(),
-                        },
-                    );
-                }
-                Err(more) => diags.extend(more),
-            }
-            continue;
-        }
-        if !rel.starts_with("world/places/") {
-            continue;
-        }
-        let file = match load_place(&rel, yaml, 1) {
-            Ok(file) => file,
-            Err(more) => {
-                diags.extend(more);
-                continue;
-            }
-        };
-        let mut fact_ok = true;
-        for (index, fact) in file.facts.into_iter().enumerate() {
-            if let Err(more) = insert_fact(&mut facts, &rel, text, index, fact, &file.id) {
-                diags.extend(more);
-                fact_ok = false;
-            }
-        }
-        if !fact_ok {
-            continue;
-        }
-        let ids = fact_ids_of(&facts, &file.id);
-        let exits = match compile_exits(&rel, &file.exits) {
-            Ok(exits) => exits,
-            Err(more) => {
-                diags.extend(more);
-                Vec::new()
-            }
-        };
-        if places.contains_key(&file.id) {
-            diags.push(
-                schema_error(
-                    &rel,
-                    &format!("place '{}' is already defined", file.id),
-                    "keep one place with this id",
-                )
-                .with_path("id"),
-            );
-            continue;
-        }
-        places.insert(
-            file.id.clone(),
-            PlaceCanon {
-                name: file.display_name,
-                facts: ids,
-                body: body.to_string(),
-                exits,
-            },
-        );
-        match rule_list::compile(&rel, file.rules, &Owner::Place(file.id)) {
-            Ok(rules) => loaded.extend(rules),
-            Err(more) => diags.extend(more),
-        }
-    }
-    let mut cast = BTreeMap::new();
-    let mut cast_files = Vec::new();
-    if collect_files(&root.join("cast"), root, &mut cast_files).is_err() {
-        diags.push(
-            Problem {
-                source: &Source::named("cast"),
-                path: "cast",
-                at: At::Nowhere,
-                problem: "could not read cast/".into(),
-                hint: "check that the directory is readable",
-            }
-            .schema(),
-        );
-    }
-    for (rel, bytes) in cast_files {
-        if !rel.ends_with(".md") {
-            continue;
-        }
-        let Ok(text) = std::str::from_utf8(&bytes) else {
-            diags.push(
-                schema_error(&rel, "this file is not UTF-8 text", "save it as UTF-8")
-                    .with_path("schema"),
-            );
-            continue;
-        };
-        let (yaml, body) = match split_frontmatter(&rel, text) {
-            Ok(split) => split,
-            Err(more) => {
-                diags.extend(more);
-                continue;
-            }
-        };
-        let file = match load_cast(&rel, yaml, 1) {
-            Ok(file) => file,
-            Err(more) => {
-                diags.extend(more);
-                continue;
-            }
-        };
-        let mut fact_ok = true;
-        for (index, fact) in file.facts.iter().enumerate() {
-            if let Err(more) = insert_fact(
-                &mut facts,
-                &rel,
-                text,
-                index,
-                FactFile {
-                    id: fact.id.clone(),
-                    text: fact.text.clone(),
-                    hidden: fact.hidden,
-                },
-                &file.id,
-            ) {
-                diags.extend(more);
-                fact_ok = false;
-            }
-        }
-        if !fact_ok {
-            continue;
-        }
-        // `load_cast` validates `file.kind` is `"npc"` or `"pc_template"`.
-        let kind = if file.kind == "npc" {
-            CastKind::Npc
+        let rules = if page.file.starts_with("world/items/") {
+            add_item(page, &mut items, &mut diags)
+        } else if page.file.starts_with("world/places/") {
+            add_place(page, &mut facts, &mut places, &mut diags)
         } else {
-            CastKind::PcTemplate
+            None
         };
-        if cast.contains_key(&file.id) {
-            diags.push(
-                schema_error(
-                    &rel,
-                    &format!("cast id '{}' is already defined", file.id),
-                    "keep one cast file with this id",
-                )
-                .with_path("id"),
-            );
-            continue;
-        }
-        let id = file.id.clone();
-        cast.insert(
-            id.clone(),
-            CastCanon {
-                kind,
-                display_name: file.display_name,
-                facts: fact_ids_of(&facts, &id),
-                body: body.to_string(),
-                tick: file.tick,
-            },
-        );
-        match rule_list::compile(&rel, file.rules, &Owner::Cast(id)) {
-            Ok(rules) => loaded.extend(rules),
-            Err(more) => diags.extend(more),
-        }
+        loaded.extend(rules.unwrap_or_default());
     }
+    // 3. One walk of cast/.
+    for page in markdown_files(root, "cast") {
+        let Some(page) = diags.keep(page) else {
+            continue;
+        };
+        loaded.extend(add_cast(page, &mut facts, &mut cast, &mut diags).unwrap_or_default());
+    }
+    // 4. rules/moves.yaml is refused.
     if root.join("rules/moves.yaml").is_file() {
         diags.push(rule_list::replaced_moves_file());
     }
-    let verbs_text = match read_text(root, "rules/verbs.yaml") {
-        Ok(text) => Some(text),
-        Err(more) => {
-            diags.extend(more);
-            None
-        }
-    };
-    let checks_text = match read_text(root, "rules/checks.yaml") {
-        Ok(text) => Some(text),
-        Err(more) => {
-            diags.extend(more);
-            None
-        }
-    };
-    let meters_text = match read_text(root, "rules/meters.yaml") {
-        Ok(text) => Some(text),
-        Err(more) => {
-            diags.extend(more);
-            None
-        }
-    };
-    let tick_text = match read_text(root, "rules/tick.yaml") {
-        Ok(text) => Some(text),
-        Err(more) => {
-            diags.extend(more);
-            None
-        }
-    };
-    if let Some(text) = &verbs_text {
-        match load_verbs(text) {
-            Ok(rules) => loaded.extend(rules),
-            Err(more) => diags.extend(more),
-        }
+    // 5. The four rule files are read in this order; a missing one is reported here.
+    let [verbs, checks, meters, tick] = [
+        "rules/verbs.yaml",
+        "rules/checks.yaml",
+        "rules/meters.yaml",
+        "rules/tick.yaml",
+    ]
+    .map(|rel| diags.keep(read_text(root, rel)));
+    // 6. Verbs.
+    if let Some(text) = &verbs {
+        loaded.extend(diags.keep(load_verbs(text)).unwrap_or_default());
     }
-    let mut story_files = Vec::new();
-    if root.join("story").is_dir()
-        && collect_files(&root.join("story"), root, &mut story_files).is_err()
-    {
-        diags.push(
-            Problem {
-                source: &Source::named("story"),
-                path: "story",
-                at: At::Nowhere,
-                problem: "could not read story/".into(),
-                hint: "check that the directory is readable",
-            }
-            .schema(),
-        );
-    }
-    for (rel, bytes) in story_files {
-        if !rel.ends_with(".yaml") {
-            continue;
-        }
-        let Ok(text) = std::str::from_utf8(&bytes) else {
-            diags.push(schema_error(
-                &rel,
-                "this file is not UTF-8 text",
-                "save it as UTF-8",
-            ));
-            continue;
-        };
-        match load_story(&rel, text) {
-            Ok(story) => match rule_list::compile(&rel, story.rules, &Owner::Story(story.id)) {
-                Ok(rules) => loaded.extend(rules),
-                Err(more) => diags.extend(more),
-            },
-            Err(more) => diags.extend(more),
-        }
-    }
+    // 7. story/.
+    loaded.extend(load_stories(root, &mut diags));
+    // 8. Rule ids across files.
     let mut seen_ids = BTreeSet::new();
     for rule in &loaded {
         if !seen_ids.insert(rule.id.clone()) {
@@ -518,36 +262,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         }
     }
     let rules = RuleTable::new(loaded);
-    let checks = match &checks_text {
-        Some(text) => match load_checks(text) {
-            Ok(checks) => Some(checks),
-            Err(more) => {
-                diags.extend(more);
-                None
-            }
-        },
-        None => None,
-    };
-    let meters = match &meters_text {
-        Some(text) => match load_meters(text) {
-            Ok(meters) => Some(meters),
-            Err(more) => {
-                diags.extend(more);
-                None
-            }
-        },
-        None => None,
-    };
-    let budget = match &tick_text {
-        Some(text) => match load_round_settings(text) {
-            Ok(budget) => Some(budget),
-            Err(more) => {
-                diags.extend(more);
-                None
-            }
-        },
-        None => None,
-    };
+    // 9. Checks. 10. Meters. 11. Tick.
+    let checks = checks.and_then(|text| diags.keep(load_checks(&text)));
+    let meters = meters.and_then(|text| diags.keep(load_meters(&text)));
+    let budget = tick.and_then(|text| diags.keep(load_tick(&text)));
+    // 12. Lints across files.
     if let Some(checks) = &checks {
         diags.extend(unknown_checks(&rules, checks));
     }
@@ -561,25 +280,16 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     diags.extend(reveal_problems(&rules, &facts));
     diags.extend(find_bare_resist(&rules));
     diags.extend(broken_exits(&places, &facts, &items));
-    let checkpoint_every = match pack.as_ref().and_then(|file| file.checkpoint_every) {
-        None => 100,
-        Some(0) => {
-            diags.push(
-                schema_error(
-                    "pack.yaml",
-                    "checkpoint_every is 0",
-                    "set checkpoint_every to a positive number of ticks, or omit it",
-                )
-                .with_path("checkpoint_every"),
-            );
-            100
-        }
-        Some(every) => every,
+    // 13. checkpoint_every.
+    let checkpoint_every = pack
+        .as_ref()
+        .and_then(|pack| diags.keep(pack.checkpoint_every()));
+    diags.result(())?;
+    let (Some(pack), Some(checks), Some(meters), Some(budget), Some(checkpoint_every)) =
+        (pack, checks, meters, budget, checkpoint_every)
+    else {
+        unreachable!("a part that did not load reported why");
     };
-    if !diags.is_empty() {
-        return Err(diags);
-    }
-    let pack = pack.expect("pack loaded");
     Ok(Canon {
         pack_id: pack.id,
         title: pack.title,
@@ -590,10 +300,10 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         cast,
         facts,
         rules,
-        checks: checks.expect("checks loaded"),
-        meters: meters.expect("meters loaded"),
+        checks,
+        meters,
         items,
-        budget: budget.expect("tick loaded"),
+        budget,
         checkpoint_every,
     })
 }

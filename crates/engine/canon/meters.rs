@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_headed, At, Problem, Source, METERS_SCHEMA};
+use crate::canon::source::{load_headed, At, Diags, Problem, Source, METERS_SCHEMA};
 use crate::diagnostic::Diagnostic;
 use crate::meter::MeterDef;
 
@@ -16,7 +16,7 @@ pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
         text,
         line_base: 0,
     };
-    let mut diags = Vec::new();
+    let mut diags = Diags::default();
     let mut meters = BTreeMap::new();
     for (row, entry) in file.meters.into_iter().enumerate() {
         let path = format!("meters[{row}]");
@@ -102,11 +102,7 @@ pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
             );
         }
     }
-    if diags.is_empty() {
-        Ok(meters)
-    } else {
-        Err(diags)
-    }
+    diags.result(meters)
 }
 
 #[derive(Deserialize)]

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_headed, At, Problem, Source, CHECKS_SCHEMA};
+use crate::canon::source::{load_headed, At, Diags, Problem, Source, CHECKS_SCHEMA};
 use crate::check::CheckDef;
 use crate::diagnostic::Diagnostic;
 
@@ -16,7 +16,7 @@ pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<
         text,
         line_base: 0,
     };
-    let mut diags = Vec::new();
+    let mut diags = Diags::default();
     let mut checks = BTreeMap::new();
     for (row, entry) in file.checks.into_iter().enumerate() {
         let path = format!("checks[{row}]");
@@ -97,11 +97,7 @@ pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<
             );
         }
     }
-    if diags.is_empty() {
-        Ok(checks)
-    } else {
-        Err(diags)
-    }
+    diags.result(checks)
 }
 
 #[derive(Deserialize)]

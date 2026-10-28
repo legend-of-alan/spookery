@@ -1,28 +1,72 @@
 //! `world/places/*.md`: a place and its exits.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
-use crate::canon::fact::FactFile;
+use crate::canon::fact::{fact_ids_of, insert_fact, FactFile};
 use crate::canon::rule_list::{self, RuleEntry};
-use crate::canon::source::{load_headed, At, Problem, Source, PLACE_SCHEMA};
-use crate::canon::Exit;
+use crate::canon::source::{load_headed, At, Diags, Page, Problem, Source, PLACE_SCHEMA};
+use crate::canon::{Exit, FactCanon, PlaceCanon};
 use crate::diagnostic::{schema as schema_error, Diagnostic};
-use crate::rule::Cost;
+use crate::rule::{Cost, Owner, Rule};
 
-pub(super) fn load_place(
-    file: &str,
-    yaml: &str,
-    line_base: u32,
-) -> Result<PlaceFile, Vec<Diagnostic>> {
+/// One place page into `places` and its facts into `facts`, and its rules. A bad fact
+/// stops the file; the exits compile before the duplicate id check.
+pub(super) fn add_place(
+    page: Page,
+    facts: &mut BTreeMap<String, FactCanon>,
+    places: &mut BTreeMap<String, PlaceCanon>,
+    diags: &mut Diags,
+) -> Option<Vec<Rule>> {
+    let file = diags.keep(load_place(&page.file, &page.yaml, 1))?;
+    let mut fact_ok = true;
+    for (index, fact) in file.facts.into_iter().enumerate() {
+        let inserted = insert_fact(facts, &page.file, &page.text, index, fact, &file.id);
+        fact_ok &= diags.keep(inserted).is_some();
+    }
+    if !fact_ok {
+        return None;
+    }
+    let ids = fact_ids_of(facts, &file.id);
+    let exits = diags
+        .keep(compile_exits(&page.file, &file.exits))
+        .unwrap_or_default();
+    if places.contains_key(&file.id) {
+        diags.push(
+            schema_error(
+                &page.file,
+                &format!("place '{}' is already defined", file.id),
+                "keep one place with this id",
+            )
+            .with_path("id"),
+        );
+        return None;
+    }
+    places.insert(
+        file.id.clone(),
+        PlaceCanon {
+            name: file.display_name,
+            facts: ids,
+            body: page.body,
+            exits,
+        },
+    );
+    diags.keep(rule_list::compile(
+        &page.file,
+        file.rules,
+        &Owner::Place(file.id),
+    ))
+}
+
+fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<Diagnostic>> {
     let parsed: PlaceFile = load_headed(file, yaml, PLACE_SCHEMA, line_base)?;
     let source = Source {
         file,
         text: yaml,
         line_base,
     };
-    let mut diags = Vec::new();
+    let mut diags = Diags::default();
     if parsed.id.is_empty() {
         diags.push(
             Problem {
@@ -47,16 +91,12 @@ pub(super) fn load_place(
             .schema(),
         );
     }
-    if diags.is_empty() {
-        Ok(parsed)
-    } else {
-        Err(diags)
-    }
+    diags.result(parsed)
 }
 
-pub(super) fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
+fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
     let source = Source::named(file);
-    let mut diags = Vec::new();
+    let mut diags = Diags::default();
     let mut compiled = Vec::new();
     let mut names = BTreeSet::new();
     for (index, exit) in exits.iter().enumerate() {
@@ -137,30 +177,26 @@ pub(super) fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>,
             index,
         });
     }
-    if diags.is_empty() {
-        Ok(compiled)
-    } else {
-        Err(diags)
-    }
+    diags.result(compiled)
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct PlaceFile {
+struct PlaceFile {
     #[serde(rename = "schema")]
     _schema: String,
-    pub(super) id: String,
-    pub(super) display_name: String,
-    pub(super) facts: Vec<FactFile>,
+    id: String,
+    display_name: String,
+    facts: Vec<FactFile>,
     #[serde(default)]
-    pub(super) exits: Vec<ExitFile>,
+    exits: Vec<ExitFile>,
     #[serde(default)]
-    pub(super) rules: Vec<RuleEntry>,
+    rules: Vec<RuleEntry>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(super) struct ExitFile {
+struct ExitFile {
     to: String,
     name: String,
     #[serde(default)]

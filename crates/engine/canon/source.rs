@@ -117,6 +117,36 @@ impl From<&str> for Fault {
     }
 }
 
+/// Diagnostics in the order they were found.
+#[derive(Default)]
+pub(super) struct Diags(Vec<Diagnostic>);
+
+impl Diags {
+    /// The value, or `None` once the result's diagnostics are kept.
+    pub fn keep<T>(&mut self, result: Result<T, Vec<Diagnostic>>) -> Option<T> {
+        result.map_err(|more| self.0.extend(more)).ok()
+    }
+
+    pub fn push(&mut self, diag: Diagnostic) {
+        self.0.push(diag);
+    }
+
+    /// `value` when nothing was found, else every diagnostic.
+    pub fn result<T>(self, value: T) -> Result<T, Vec<Diagnostic>> {
+        if self.0.is_empty() {
+            Ok(value)
+        } else {
+            Err(self.0)
+        }
+    }
+}
+
+impl Extend<Diagnostic> for Diags {
+    fn extend<I: IntoIterator<Item = Diagnostic>>(&mut self, more: I) {
+        self.0.extend(more);
+    }
+}
+
 /// The line and column serde recorded for a value, or `None` when it has no line.
 pub(super) fn serde_spot<T>(span: &Spanned<T>) -> Option<Spot> {
     let line = u32::try_from(span.referenced.line()).unwrap_or(0);
@@ -163,6 +193,59 @@ pub(super) fn load_headed<T: serde::de::DeserializeOwned>(
         return Err(vec![diag]);
     }
     parse_file(file, text, line_base)
+}
+
+/// A Markdown file split at its frontmatter fence. `text` is the whole file.
+pub(super) struct Page {
+    pub file: String,
+    pub text: String,
+    pub yaml: String,
+    pub body: String,
+}
+
+/// Each `.md` file under `dir` in directory order, split at its frontmatter, or its UTF-8
+/// or frontmatter refusal. An unreadable directory comes first; the files read before it
+/// failed still follow.
+pub(super) fn markdown_files(root: &Path, dir: &str) -> Vec<Result<Page, Vec<Diagnostic>>> {
+    let mut files = Vec::new();
+    let mut pages = Vec::new();
+    if collect_files(&root.join(dir), root, &mut files).is_err() {
+        pages.push(Err(vec![unreadable(dir)]));
+    }
+    for (file, bytes) in files {
+        if !file.ends_with(".md") {
+            continue;
+        }
+        let Ok(text) = String::from_utf8(bytes) else {
+            pages.push(Err(vec![schema_error(
+                &file,
+                "this file is not UTF-8 text",
+                "save it as UTF-8",
+            )
+            .with_path("schema")]));
+            continue;
+        };
+        let split = split_frontmatter(&file, &text)
+            .map(|(yaml, body)| (yaml.to_string(), body.to_string()));
+        pages.push(split.map(|(yaml, body)| Page {
+            file,
+            text,
+            yaml,
+            body,
+        }));
+    }
+    pages
+}
+
+pub(super) fn unreadable(dir: &str) -> Diagnostic {
+    Problem {
+        source: &Source::named(dir),
+        path: dir,
+        at: At::Nowhere,
+        problem: format!("could not read {dir}/"),
+        hint: "check that the directory is readable",
+    }
+    .schema()
 }
 
 pub(super) fn read_text(root: &Path, rel: &str) -> Result<String, Vec<Diagnostic>> {

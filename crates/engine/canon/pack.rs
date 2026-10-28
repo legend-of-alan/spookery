@@ -18,6 +18,22 @@ pub(super) fn load_pack(text: &str) -> Result<PackFile, Vec<Diagnostic>> {
     Ok(file)
 }
 
+impl PackFile {
+    /// Ticks between checkpoints: 100 when unset, refused when 0.
+    pub(super) fn checkpoint_every(&self) -> Result<u64, Vec<Diagnostic>> {
+        match self.checkpoint_every {
+            None => Ok(100),
+            Some(0) => Err(vec![schema_error(
+                "pack.yaml",
+                "checkpoint_every is 0",
+                "set checkpoint_every to a positive number of ticks, or omit it",
+            )
+            .with_path("checkpoint_every")]),
+            Some(every) => Ok(every),
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(super) struct PackFile {
@@ -28,7 +44,7 @@ pub(super) struct PackFile {
     pub(super) system: String,
     pub(super) start: PackStart,
     #[serde(default)]
-    pub(super) checkpoint_every: Option<u64>,
+    checkpoint_every: Option<u64>,
 }
 
 #[derive(Deserialize)]
