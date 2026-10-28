@@ -20,22 +20,13 @@ pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
     let mut meters = BTreeMap::new();
     for (row, entry) in file.meters.into_iter().enumerate() {
         let path = format!("meters[{row}]");
-        let mut bad = false;
-        if entry.id.is_empty() {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: "a meter id is empty".into(),
-                    hint: "set id to a short name",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
+        let mut found = Vec::new();
+        let id_path = format!("{path}.id");
+        let id_at = At::Row { row, key: "id:" };
+        let empty = ("a meter id is empty", "set id to a short name");
+        found.extend(source.required(&entry.id, &id_path, id_at, empty));
         if entry.min > entry.base_cap {
-            diags.push(
+            found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.min"),
@@ -45,10 +36,9 @@ pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
                 }
                 .schema(),
             );
-            bad = true;
         }
         if entry.base_cap > entry.max {
-            diags.push(
+            found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.base_cap"),
@@ -61,10 +51,9 @@ pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
                 }
                 .schema(),
             );
-            bad = true;
         }
         if !(entry.min..=entry.base_cap).contains(&entry.start) {
-            diags.push(
+            found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.start"),
@@ -74,33 +63,25 @@ pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
                 }
                 .schema(),
             );
-            bad = true;
         }
-        if !bad && meters.contains_key(&entry.id) {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: format!("meter '{}' is listed twice", entry.id),
-                    hint: "keep one meter",
-                }
-                .schema(),
-            );
-            bad = true;
+        let twice = ("meter", "is listed twice", "keep one meter");
+        // A repeat is checked only on a row with nothing else wrong.
+        let taken = found.is_empty() && meters.contains_key(&entry.id);
+        found.extend(source.unique(taken, &entry.id, &id_path, id_at, twice));
+        if !found.is_empty() {
+            diags.extend(found);
+            continue;
         }
-        if !bad {
-            meters.insert(
-                entry.id,
-                MeterDef {
-                    min: entry.min,
-                    base_cap: entry.base_cap,
-                    max: entry.max,
-                    start: entry.start,
-                    hidden: entry.hidden,
-                },
-            );
-        }
+        meters.insert(
+            entry.id,
+            MeterDef {
+                min: entry.min,
+                base_cap: entry.base_cap,
+                max: entry.max,
+                start: entry.start,
+                hidden: entry.hidden,
+            },
+        );
     }
     diags.result(meters)
 }

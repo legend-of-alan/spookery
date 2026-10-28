@@ -2,20 +2,14 @@
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_headed, PACK_SCHEMA};
+use crate::canon::source::{load_headed, At, Source, PACK_SCHEMA};
 use crate::diagnostic::{schema as schema_error, Diagnostic};
 
 pub(super) fn load_pack(text: &str) -> Result<PackFile, Vec<Diagnostic>> {
     let file: PackFile = load_headed("pack.yaml", text, PACK_SCHEMA, 0)?;
-    if file.id.is_empty() {
-        return Err(vec![schema_error(
-            "pack.yaml",
-            "id is empty",
-            "set id to a short pack id",
-        )
-        .with_path("id")]);
-    }
-    Ok(file)
+    let empty = ("id is empty", "set id to a short pack id");
+    let refused = Source::named("pack.yaml").required(&file.id, "id", At::Nowhere, empty);
+    refused.map_or(Ok(file), |diag| Err(vec![diag]))
 }
 
 impl PackFile {

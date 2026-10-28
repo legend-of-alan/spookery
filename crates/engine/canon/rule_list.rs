@@ -7,7 +7,9 @@ use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_saphyr::Spanned;
 
-use crate::canon::source::{load_headed, serde_spot, At, Fault, Problem, Source, VERBS_SCHEMA};
+use crate::canon::source::{
+    load_headed, serde_spot, At, Diags, Fault, Problem, Source, VERBS_SCHEMA,
+};
 use crate::diagnostic::{schema, Diagnostic};
 use crate::rule::{
     parse_expr, stamp_expr, Arith, ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo,
@@ -428,39 +430,27 @@ pub(crate) fn compile(
     entries: Vec<RuleEntry>,
     owner: &Owner,
 ) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    let mut diags = Vec::new();
-    let mut rules = Vec::new();
-    let mut verbs: Vec<(String, String)> = Vec::new();
+    let source = Source::named(file);
+    let mut diags = Diags::default();
+    let mut rules: Vec<Rule> = Vec::new();
+    let mut verbs = Vec::new();
     for (index, entry) in entries.into_iter().enumerate() {
-        match compile_one(file, index, entry, owner) {
-            Ok(rule) => {
-                if let When::Verb { verb, .. } = &rule.when {
-                    if verbs.iter().any(|(name, _)| name == verb) {
-                        diags.push(schema(
-                            file,
-                            &format!("two verb rules for '{verb}' at the same level"),
-                            "keep one rule for that verb in this file",
-                        ));
-                    }
-                    verbs.push((verb.clone(), rule.id.clone()));
-                }
-                if rules.iter().any(|earlier: &Rule| earlier.id == rule.id) {
-                    diags.push(schema(
-                        file,
-                        &format!("rule '{}' is listed twice", rule.local_id),
-                        "keep one rule with this id",
-                    ));
-                }
-                rules.push(rule);
-            }
-            Err(more) => diags.extend(more),
+        let Some(rule) = diags.keep(compile_one(file, index, entry, owner)) else {
+            continue;
+        };
+        if let When::Verb { verb, .. } = &rule.when {
+            let hint = "keep one rule for that verb in this file";
+            let twice = ("two verb rules for", "at the same level", hint);
+            let taken = verbs.contains(verb);
+            diags.extend(source.unique(taken, verb, "", At::Nowhere, twice));
+            verbs.push(verb.clone());
         }
+        let twice = ("rule", "is listed twice", "keep one rule with this id");
+        let taken = rules.iter().any(|earlier| earlier.id == rule.id);
+        diags.extend(source.unique(taken, &rule.local_id, "", At::Nowhere, twice));
+        rules.push(rule);
     }
-    if diags.is_empty() {
-        Ok(rules)
-    } else {
-        Err(diags)
-    }
+    diags.result(rules)
 }
 
 fn compile_one(

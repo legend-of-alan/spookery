@@ -20,22 +20,13 @@ pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<
     let mut checks = BTreeMap::new();
     for (row, entry) in file.checks.into_iter().enumerate() {
         let path = format!("checks[{row}]");
-        let mut bad = false;
-        if entry.id.is_empty() {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: "a check id is empty".into(),
-                    hint: "set id to a short name",
-                }
-                .schema(),
-            );
-            bad = true;
-        }
+        let mut found = Vec::new();
+        let id_path = format!("{path}.id");
+        let id_at = At::Row { row, key: "id:" };
+        let empty = ("a check id is empty", "set id to a short name");
+        found.extend(source.required(&entry.id, &id_path, id_at, empty));
         if entry.dice.count == 0 {
-            diags.push(
+            found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.dice.count"),
@@ -45,10 +36,9 @@ pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<
                 }
                 .schema(),
             );
-            bad = true;
         }
         if entry.dice.sides == 0 {
-            diags.push(
+            found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.dice.sides"),
@@ -58,10 +48,9 @@ pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<
                 }
                 .schema(),
             );
-            bad = true;
         }
         if entry.stat.is_empty() {
-            diags.push(
+            found.push(
                 Problem {
                     source: &source,
                     path: &format!("{path}.stat"),
@@ -71,31 +60,23 @@ pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<
                 }
                 .schema(),
             );
-            bad = true;
         }
-        if !bad && checks.contains_key(&entry.id) {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: &format!("{path}.id"),
-                    at: At::Row { row, key: "id:" },
-                    problem: format!("check '{}' is listed twice", entry.id),
-                    hint: "keep one check",
-                }
-                .schema(),
-            );
-            bad = true;
+        let twice = ("check", "is listed twice", "keep one check");
+        // A repeat is checked only on a row with nothing else wrong.
+        let taken = found.is_empty() && checks.contains_key(&entry.id);
+        found.extend(source.unique(taken, &entry.id, &id_path, id_at, twice));
+        if !found.is_empty() {
+            diags.extend(found);
+            continue;
         }
-        if !bad {
-            checks.insert(
-                entry.id,
-                CheckDef {
-                    dice_count: entry.dice.count,
-                    dice_sides: entry.dice.sides,
-                    stat: entry.stat,
-                },
-            );
-        }
+        checks.insert(
+            entry.id,
+            CheckDef {
+                dice_count: entry.dice.count,
+                dice_sides: entry.dice.sides,
+                stat: entry.stat,
+            },
+        );
     }
     diags.result(checks)
 }

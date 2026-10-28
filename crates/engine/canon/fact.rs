@@ -4,61 +4,64 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::source::{At, Problem, Source};
+use crate::canon::source::{At, Diags, Source};
 use crate::canon::FactCanon;
 use crate::diagnostic::Diagnostic;
 
-pub(super) fn fact_ids_of(facts: &BTreeMap<String, FactCanon>, owner: &str) -> Vec<String> {
-    facts
-        .iter()
-        .filter(|(_, fact)| fact.owner_id == owner)
-        .map(|(id, _)| id.clone())
-        .collect()
-}
+/// Every fact in the pack by id, from places and cast alike.
+#[derive(Default)]
+pub(super) struct Facts(pub(super) BTreeMap<String, FactCanon>);
 
-pub(super) fn insert_fact(
-    facts: &mut BTreeMap<String, FactCanon>,
-    file: &str,
-    text: &str,
-    row: usize,
-    fact: FactFile,
-    owner: &str,
-) -> Result<(), Vec<Diagnostic>> {
-    let source = Source {
-        file,
-        text,
-        line_base: 0,
-    };
-    let path = format!("facts[{row}].id");
-    if fact.id.is_empty() {
-        return Err(vec![Problem {
-            source: &source,
-            path: &path,
-            at: At::Row { row, key: "id:" },
-            problem: "a fact id is empty".into(),
-            hint: "set id to a short name",
+impl Facts {
+    /// One file's facts for `owner`, then the ids of every fact `owner` has, or the
+    /// refusals. `source` is the whole file, so its own `id:` is row 0 (issue #328).
+    pub fn add(
+        &mut self,
+        source: &Source,
+        facts: Vec<FactFile>,
+        owner: &str,
+    ) -> Result<Vec<String>, Vec<Diagnostic>> {
+        let mut diags = Diags::default();
+        for (row, fact) in facts.into_iter().enumerate() {
+            diags.extend(self.insert(source, row, fact, owner));
         }
-        .schema()]);
+        diags.result(())?;
+        Ok(self
+            .0
+            .iter()
+            .filter(|(_, fact)| fact.owner_id == owner)
+            .map(|(id, _)| id.clone())
+            .collect())
     }
-    if facts.contains_key(&fact.id) {
-        return Err(vec![Problem {
-            source: &source,
-            path: &path,
-            at: At::Row { row, key: "id:" },
-            problem: format!("fact '{}' is already defined", fact.id),
-            hint: "keep one fact with this id",
+
+    fn insert(
+        &mut self,
+        source: &Source,
+        row: usize,
+        FactFile { id, text, hidden }: FactFile,
+        owner: &str,
+    ) -> Option<Diagnostic> {
+        let path = format!("facts[{row}].id");
+        let at = At::Row { row, key: "id:" };
+        let empty = ("a fact id is empty", "set id to a short name");
+        let twice = ("fact", "is already defined", "keep one fact with this id");
+        let taken = self.0.contains_key(&id);
+        let refused = source
+            .required(&id, &path, at, empty)
+            .or_else(|| source.unique(taken, &id, &path, at, twice));
+        if refused.is_none() {
+            let owner_id = owner.to_string();
+            self.0.insert(
+                id,
+                FactCanon {
+                    text,
+                    hidden,
+                    owner_id,
+                },
+            );
         }
-        .schema()]);
+        refused
     }
-    facts.insert(
-        fact.id,
-        FactCanon {
-            text: fact.text,
-            hidden: fact.hidden,
-            owner_id: owner.to_string(),
-        },
-    );
-    Ok(())
 }
 
 #[derive(Deserialize)]

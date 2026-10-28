@@ -38,9 +38,54 @@ impl<'a> Source<'a> {
             line_base: 0,
         }
     }
+
+    /// The refusal at `path` when `id` is empty.
+    pub fn required(&self, id: &str, path: &str, at: At, words: Empty) -> Option<Diagnostic> {
+        let (problem, hint) = words;
+        id.is_empty()
+            .then(|| self.refusal(path, at, problem.into(), hint))
+    }
+
+    /// The refusal at `path` when `id` is already `taken`.
+    pub fn unique(
+        &self,
+        taken: bool,
+        id: &str,
+        path: &str,
+        at: At,
+        words: Twice,
+    ) -> Option<Diagnostic> {
+        let (before, after, hint) = words;
+        taken.then(|| self.refusal(path, at, format!("{before} '{id}' {after}"), hint))
+    }
+
+    /// The refusal for a blank `display_name`, which places and cast both have.
+    pub fn display_name(&self, name: &str) -> Option<Diagnostic> {
+        let hint = "set display_name to the name players see";
+        let empty = ("display_name is empty", hint);
+        self.required(name.trim(), "display_name", At::Key("display_name:"), empty)
+    }
+
+    fn refusal(&self, path: &str, at: At, problem: String, hint: &str) -> Diagnostic {
+        Problem {
+            source: self,
+            path,
+            at,
+            problem,
+            hint,
+        }
+        .schema()
+    }
 }
 
+/// How an empty id is refused: the sentence and the hint, worded per kind.
+pub(super) type Empty = (&'static str, &'static str);
+
+/// How a repeated id is refused: the words before and after the quoted id, and the hint.
+pub(super) type Twice = (&'static str, &'static str, &'static str);
+
 /// Where a problem is.
+#[derive(Clone, Copy)]
 pub(super) enum At<'a> {
     /// No line; the path alone says where.
     Nowhere,

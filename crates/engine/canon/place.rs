@@ -4,10 +4,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
-use crate::canon::fact::{fact_ids_of, insert_fact, FactFile};
+use crate::canon::fact::{FactFile, Facts};
 use crate::canon::rule_list::{self, RuleEntry};
 use crate::canon::source::{load_headed, At, Diags, Page, Problem, Source, PLACE_SCHEMA};
-use crate::canon::{Exit, FactCanon, PlaceCanon};
+use crate::canon::{Exit, PlaceCanon};
 use crate::diagnostic::{schema as schema_error, Diagnostic};
 use crate::rule::{Cost, Owner, Rule};
 
@@ -15,32 +15,24 @@ use crate::rule::{Cost, Owner, Rule};
 /// stops the file; the exits compile before the duplicate id check.
 pub(super) fn add_place(
     page: Page,
-    facts: &mut BTreeMap<String, FactCanon>,
+    facts: &mut Facts,
     places: &mut BTreeMap<String, PlaceCanon>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(load_place(&page.file, &page.yaml, 1))?;
-    let mut fact_ok = true;
-    for (index, fact) in file.facts.into_iter().enumerate() {
-        let inserted = insert_fact(facts, &page.file, &page.text, index, fact, &file.id);
-        fact_ok &= diags.keep(inserted).is_some();
-    }
-    if !fact_ok {
-        return None;
-    }
-    let ids = fact_ids_of(facts, &file.id);
+    let whole = Source {
+        file: &page.file,
+        text: &page.text,
+        line_base: 0,
+    };
+    let ids = diags.keep(facts.add(&whole, file.facts, &file.id))?;
     let exits = diags
         .keep(compile_exits(&page.file, &file.exits))
         .unwrap_or_default();
-    if places.contains_key(&file.id) {
-        diags.push(
-            schema_error(
-                &page.file,
-                &format!("place '{}' is already defined", file.id),
-                "keep one place with this id",
-            )
-            .with_path("id"),
-        );
+    let twice = ("place", "is already defined", "keep one place with this id");
+    let taken = places.contains_key(&file.id);
+    if let Some(diag) = whole.unique(taken, &file.id, "id", At::Nowhere, twice) {
+        diags.push(diag);
         return None;
     }
     places.insert(
@@ -67,30 +59,9 @@ fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<D
         line_base,
     };
     let mut diags = Diags::default();
-    if parsed.id.is_empty() {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "id",
-                at: At::Key("id:"),
-                problem: "id is empty".into(),
-                hint: "set id to a short place id",
-            }
-            .schema(),
-        );
-    }
-    if parsed.display_name.trim().is_empty() {
-        diags.push(
-            Problem {
-                source: &source,
-                path: "display_name",
-                at: At::Key("display_name:"),
-                problem: "display_name is empty".into(),
-                hint: "set display_name to the name players see",
-            }
-            .schema(),
-        );
-    }
+    let empty = ("id is empty", "set id to a short place id");
+    diags.extend(source.required(&parsed.id, "id", At::Key("id:"), empty));
+    diags.extend(source.display_name(&parsed.display_name));
     diags.result(parsed)
 }
 
@@ -107,15 +78,11 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
             );
             continue;
         }
-        if !names.insert(exit.name.clone()) {
-            diags.push(
-                schema_error(
-                    file,
-                    &format!("exit '{}' is listed twice", exit.name),
-                    "keep one exit with this name",
-                )
-                .with_path(format!("exits[{index}].name")),
-            );
+        let path = format!("exits[{index}].name");
+        let twice = ("exit", "is listed twice", "keep one exit with this name");
+        let taken = !names.insert(exit.name.clone());
+        if let Some(diag) = source.unique(taken, &exit.name, &path, At::Nowhere, twice) {
+            diags.push(diag);
             continue;
         }
         let cost = match &exit.cost {

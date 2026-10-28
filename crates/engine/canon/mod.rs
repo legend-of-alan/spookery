@@ -6,7 +6,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::check::CheckDef;
-use crate::diagnostic::{schema as schema_error, Diagnostic};
+use crate::diagnostic::Diagnostic;
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 use crate::meter::MeterDef;
@@ -31,6 +31,7 @@ pub(crate) mod tick;
 
 use cast::add_cast;
 use checks::load_checks;
+use fact::Facts;
 use item::add_item;
 pub(crate) use lint::check_canon;
 use lint::{
@@ -42,7 +43,7 @@ use pack::load_pack;
 use place::add_place;
 use rule_list::load_verbs;
 pub(crate) use save::{check_save, migrate_save, pending_meters};
-use source::{collect_files, markdown_files, read_text, split_frontmatter, Diags};
+use source::{collect_files, markdown_files, read_text, split_frontmatter, At, Diags, Source};
 use story::load_stories;
 use tick::load_tick;
 pub use tick::Budget;
@@ -206,7 +207,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     let mut diags = Diags::default();
     let mut places = BTreeMap::new();
     let mut cast = BTreeMap::new();
-    let mut facts = BTreeMap::new();
+    let mut facts = Facts::default();
     let mut items = BTreeMap::new();
     let mut loaded = Vec::new();
     // 1. pack.yaml: missing, unreadable, tag, shape, empty id.
@@ -253,13 +254,10 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
     // 8. Rule ids across files.
     let mut seen_ids = BTreeSet::new();
     for rule in &loaded {
-        if !seen_ids.insert(rule.id.clone()) {
-            diags.push(schema_error(
-                &rule.file,
-                &format!("rule '{}' is already defined", rule.id),
-                "keep one rule with this id",
-            ));
-        }
+        let twice = ("rule", "is already defined", "keep one rule with this id");
+        let taken = !seen_ids.insert(rule.id.clone());
+        let source = Source::named(&rule.file);
+        diags.extend(source.unique(taken, &rule.id, "", At::Nowhere, twice));
     }
     let rules = RuleTable::new(loaded);
     // 9. Checks. 10. Meters. 11. Tick.
@@ -277,9 +275,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(unknown_exprs(meters, &cast, &places, &rules));
     }
     diags.extend(unknown_rule_items(&rules, &items));
-    diags.extend(reveal_problems(&rules, &facts));
+    diags.extend(reveal_problems(&rules, &facts.0));
     diags.extend(find_bare_resist(&rules));
-    diags.extend(broken_exits(&places, &facts, &items));
+    diags.extend(broken_exits(&places, &facts.0, &items));
     // 13. checkpoint_every.
     let checkpoint_every = pack
         .as_ref()
@@ -298,7 +296,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         start_pc: pack.start.pc,
         places,
         cast,
-        facts,
+        facts: facts.0,
         rules,
         checks,
         meters,
