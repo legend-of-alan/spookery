@@ -329,7 +329,7 @@ mod tests {
             state_rev: 0,
             round_index: 0,
             world_time: 0,
-            last_tick_at: String::new(),
+            last_round_at: String::new(),
             presence: crate::model::Presence::default(),
             pause: crate::model::PauseView {
                 named_plot_clocks: crate::model::RunState::Running,

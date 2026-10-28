@@ -75,7 +75,7 @@ mod tests {
             presence_humans: 0,
             actors_present: Vec::new(),
             seed: "seed".to_string(),
-            last_tick_at: "2026-01-01T00:00:00Z".to_string(),
+            last_round_at: "2026-01-01T00:00:00Z".to_string(),
             intents: Vec::new(),
             rejected: Vec::new(),
             effects: vec![effect.clone()],

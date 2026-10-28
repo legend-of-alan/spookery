@@ -12,7 +12,7 @@ use crate::model::Now;
 use crate::rules::RollResult;
 use crate::Reason;
 
-use crate::round::dice::{ResistKey, RoundDice};
+use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
 
 /// One candidate and how resolve left it for apply.
@@ -102,7 +102,7 @@ fn roll_intent_check(
         Some(total) => (total, None),
         None => rolls
             .dice
-            .roller(rolls.log, &intent.move_name, actor_id, ResistKey::Rule)
+            .roller(rolls.log, &rule.id, actor_id)
             .thresholds(canon, snapshot, intent, roll)?,
     };
     let rule_id = rule.id.clone();
@@ -112,7 +112,7 @@ fn roll_intent_check(
             rolled: Some(rescore(out, target, partial_at)),
         });
     }
-    let key = rolls.dice.key(&intent.move_name, actor_id);
+    let key = rolls.dice.key(&rule.id, actor_id);
     match rolls
         .dice
         .check(canon, snapshot, key, &roll.check, target, partial_at)

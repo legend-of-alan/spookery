@@ -494,7 +494,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
         &RollKey {
             world_id: "sample-d20".to_string(),
             round_index: 1,
-            rule_id: "attack".to_string(),
+            rule_id: "item:poisoned_dagger/attack".to_string(),
             subject_id: "pc_nell".to_string(),
             roll_index: 0,
         },

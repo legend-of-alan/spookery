@@ -133,7 +133,7 @@ fn seal(
         presence_humans: line.presence.humans,
         actors_present: line.presence.actors_present,
         seed: line.seed,
-        last_tick_at: line.wall,
+        last_round_at: line.wall,
         intents: line.queue,
         rejected: line.log.rejected,
         effects: line.log.effects,

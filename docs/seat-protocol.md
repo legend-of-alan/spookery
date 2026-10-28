@@ -710,11 +710,11 @@ The result is the tape object. The same object follows as a `spook/event`, and e
   "checks": [
     {
       "faces": [
-        4,
-        4
+        5,
+        2
       ],
       "stat": 1,
-      "total": 9,
+      "total": 8,
       "target": 0,
       "outcome": "success"
     }
@@ -934,11 +934,11 @@ A roll, after `commit_round`. The same faces are on the tool result.
   "params": {
     "kind": "check",
     "faces": [
-      4,
-      4
+      5,
+      2
     ],
     "stat": 1,
-    "total": 9,
+    "total": 8,
     "target": 0,
     "outcome": "success"
   }

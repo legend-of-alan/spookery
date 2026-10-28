@@ -23,7 +23,7 @@ pub struct Now {
     pub state_rev: u64,
     pub round_index: u64,
     pub world_time: u64,
-    pub last_tick_at: String,
+    pub last_round_at: String,
     /// Live seats. Memory only: never written to or read from the save.
     #[serde(skip)]
     pub presence: Presence,

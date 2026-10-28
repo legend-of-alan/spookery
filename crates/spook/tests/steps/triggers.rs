@@ -954,7 +954,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     let mut kernel =
         spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
-    let wall = kernel.now().last_tick_at.clone();
+    let wall = kernel.now().last_round_at.clone();
     let quiet = kernel.play(&wall).unwrap_or_else(|err| {
         panic!("quiet: {err}");
     });
@@ -963,7 +963,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         actors_present: vec!["pc_rowan".to_string()],
     });
     kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
-    let wall = kernel.now().last_tick_at.clone();
+    let wall = kernel.now().last_round_at.clone();
     let back = kernel
         .play(&wall)
         .unwrap_or_else(|err| panic!("back: {err}"));
@@ -1268,7 +1268,7 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
     if let Some(presence) = remembered_presence(scenario, pack) {
         round.set_presence(presence);
     }
-    let wall = round.now().last_tick_at.clone();
+    let wall = round.now().last_round_at.clone();
     for intent in intents {
         round.queue(intent);
     }

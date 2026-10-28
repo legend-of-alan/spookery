@@ -13,7 +13,7 @@ use crate::rules::gate::{gate, GateRefusal};
 use crate::rules::{MoveReport, RollResult};
 use crate::Reason;
 
-use crate::round::dice::{Expansion, ResistKey, RoundDice};
+use crate::round::dice::{Expansion, RoundDice};
 use crate::round::log::RoundLog;
 use crate::round::stage::advance::Clock;
 use crate::round::stage::resolve::{Resolution, Resolved};
@@ -73,12 +73,7 @@ pub(crate) fn run(
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let canon = draft.canon();
         let chosen = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
-        let mut roller = dice.roller(
-            log,
-            &intent.move_name,
-            intent.actor.actor_id(),
-            ResistKey::Rule,
-        );
+        let mut roller = dice.roller(log, &rule_id, intent.actor.actor_id());
         let expanded = expand_rule(canon, snapshot, chosen, &intent, outcome, &mut roller);
         let resisted = roller.finish();
         let effects = match expanded {
@@ -116,12 +111,7 @@ fn start_timed_action(
     log: &mut RoundLog,
 ) -> bool {
     let point = draft.savepoint();
-    let mut roller = dice.roller(
-        log,
-        &intent.move_name,
-        intent.actor.actor_id(),
-        ResistKey::Rule,
-    );
+    let mut roller = dice.roller(log, &rule.id, intent.actor.actor_id());
     let begun = match &rule.cost {
         Some(cost) => cost::pay(draft, intent, cost, &mut roller),
         None => Ok(()),
@@ -147,12 +137,7 @@ fn apply_instant_intent(
 ) -> Landing {
     let point = draft.savepoint();
     if let Some(cost) = &rule.cost {
-        let mut roller = dice.roller(
-            log,
-            &intent.move_name,
-            intent.actor.actor_id(),
-            ResistKey::Rule,
-        );
+        let mut roller = dice.roller(log, &rule.id, intent.actor.actor_id());
         let paid = cost::pay(draft, intent, cost, &mut roller);
         drop(roller);
         if let Err(code) = paid {

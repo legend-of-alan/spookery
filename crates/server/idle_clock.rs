@@ -4,8 +4,8 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use spookery_engine::{Reason, World};
 
-pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {
-    elapsed_secs(last_tick_at, SystemTime::now())
+pub fn seconds_since(last_round_at: &str) -> Result<u64, Reason> {
+    elapsed_secs(last_round_at, SystemTime::now())
 }
 
 pub fn wall_now() -> Result<String, Reason> {
@@ -27,12 +27,12 @@ pub fn idle_tick_if_due(world: &mut World) -> Result<(), Reason> {
         return Ok(());
     }
     let now = SystemTime::now();
-    let elapsed = elapsed_secs(&world.now().last_tick_at, now)?;
+    let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
     world.catch_up(&format_utc(now)?, elapsed / 3600)
 }
 
-fn elapsed_secs(last_tick_at: &str, now: SystemTime) -> Result<u64, Reason> {
-    let last = parse_utc(last_tick_at)?;
+fn elapsed_secs(last_round_at: &str, now: SystemTime) -> Result<u64, Reason> {
+    let last = parse_utc(last_round_at)?;
     let now = now
         .duration_since(UNIX_EPOCH)
         .map_err(|_| Reason::Schema)?
@@ -140,7 +140,7 @@ pub fn on_scheduled_wake(
         return Ok(false);
     }
     let every = world.budget().tick_every_real_seconds;
-    if seconds_since(&world.now().last_tick_at)? < every {
+    if seconds_since(&world.now().last_round_at)? < every {
         return Ok(false);
     }
     let before = world.now().world_time;

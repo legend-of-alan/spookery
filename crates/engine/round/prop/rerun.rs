@@ -65,7 +65,7 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     for record in &round_records {
         let effects = play_round(
             &mut world,
-            &record.last_tick_at,
+            &record.last_round_at,
             RoundKind::Replay {
                 queue: &record.intents,
                 presence: Presence {

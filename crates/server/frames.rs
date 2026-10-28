@@ -206,7 +206,7 @@ pub fn session_status(
         tick_index: now.round_index,
         state_rev: now.state_rev,
         pack_rev: now.pack_rev.clone(),
-        last_tick_at: now.last_tick_at.clone(),
+        last_tick_at: now.last_round_at.clone(),
         queued: queued
             .iter()
             .map(|intent| QueueRow {

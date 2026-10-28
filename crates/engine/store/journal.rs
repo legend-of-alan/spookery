@@ -561,7 +561,7 @@ pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, Journal
         presence_humans: raw.presence_humans,
         actors_present: raw.actors_present,
         seed: raw.seed,
-        last_tick_at: raw.last_tick_at,
+        last_round_at: raw.last_round_at,
         intents: raw.intents,
         rejected: raw.rejected,
         effects,

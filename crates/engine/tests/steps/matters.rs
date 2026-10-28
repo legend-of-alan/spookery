@@ -243,7 +243,7 @@ fn seat(pack: &Path) -> Shard {
 
 fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = support::split_move(line);
-    let wall = world.now().last_tick_at.clone();
+    let wall = world.now().last_round_at.clone();
     match spookery_engine::handle_player_move(world, "pc_lark", verb, target, false, &wall) {
         Ok(spookery_engine::MoveOutcome::Committed { outputs, .. }) => {
             outputs.into_iter().next().unwrap()

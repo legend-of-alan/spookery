@@ -461,7 +461,7 @@ fn apply_recorded_round(world: &mut World, record: &RoundRecord) -> Result<(), R
     }
     let replayed = play_round(
         world,
-        &record.last_tick_at,
+        &record.last_round_at,
         RoundKind::Replay {
             queue: &record.intents,
             presence: Presence {

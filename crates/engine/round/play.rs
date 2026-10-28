@@ -45,7 +45,7 @@ pub struct RoundOutput {
 /// was committed, and the checkpoint bundle was not closed.
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
     let mut world = crate::round::replay::open_at_tip(path)?;
-    let wall = world.now().last_tick_at.clone();
+    let wall = world.now().last_round_at.clone();
     play_round(
         &mut world,
         &wall,

@@ -198,7 +198,7 @@ fn player_in_the_shop() {
     }
     let mut shard = open(&pack);
     seat_rowan(&mut shard);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     shard
         .play(&wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
@@ -239,7 +239,7 @@ fn gm_restocks() {
     }
     let mut shard = open(&pack);
     seat_rowan(&mut shard);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     queue_gm(&mut shard, "gm-1", "mira", "restock_lamp_oil");
     shard.play(&wall).unwrap();
     assert_eq!(lamp_oil(shard.now()), 8);
@@ -258,7 +258,7 @@ fn claimed_note_sorts_first() {
     }
     let mut shard = open(&pack);
     seat_rowan(&mut shard);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     for (id, actor, move_name) in [
         ("gm-1", "bram", "wait"),
         ("gm-2", "mira", "leave_door_note"),
@@ -373,7 +373,7 @@ Rowan.
         state_rev: 0,
         round_index: 0,
         world_time: 0,
-        last_tick_at: "2026-01-01T00:00:00Z".to_string(),
+        last_round_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
             humans: 0,
             actors_present: Vec::new(),
@@ -391,7 +391,7 @@ Rowan.
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     shard
         .catch_up(&wall, hours)
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
@@ -400,7 +400,7 @@ Rowan.
     assert_eq!(now.state_rev, rounds, "{hours} hours");
     assert_eq!(now.round_index, rounds);
     assert_eq!(now.world_time, rounds * 60);
-    assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
+    assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(list_round_keys(&pack).len() as u64, rounds);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
@@ -445,7 +445,7 @@ fn sealed_round(pack: &Path, state_rev: u64) -> String {
         presence_humans: 0,
         actors_present: Vec::new(),
         seed: String::new(),
-        last_tick_at: String::new(),
+        last_round_at: String::new(),
         intents: Vec::new(),
         rejected: Vec::new(),
         effects: Vec::new(),
@@ -671,7 +671,7 @@ rules:
         state_rev: 0,
         round_index: 0,
         world_time: 0,
-        last_tick_at: "2026-01-01T00:00:00Z".to_string(),
+        last_round_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
             humans: 0,
             actors_present: Vec::new(),
@@ -809,7 +809,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
 fn play_mark(pack: &Path) -> Now {
     let mut shard = open(pack);
     shard.seat_player("pc_rowan").unwrap();
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     let played =
         handle_player_move(&mut shard, "pc_rowan", "mark", Some("mira"), false, &wall).unwrap();
     let MoveOutcome::Committed { .. } = played else {
@@ -891,7 +891,7 @@ fn opposing_total_reused() {
         if opposed {
             queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
         }
-        let wall = shard.now().last_tick_at.clone();
+        let wall = shard.now().last_round_at.clone();
         let mark = handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall)
             .unwrap();
         let MoveOutcome::Queued(_) = mark else {
@@ -952,7 +952,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let mut shard = open(&held);
     shard.seat_player("pc_rowan").unwrap();
     queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     let queued =
         handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall).unwrap();
     let MoveOutcome::Queued(_) = queued else {

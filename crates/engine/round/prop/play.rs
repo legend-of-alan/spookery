@@ -90,7 +90,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
                 },
             );
         }
-        let wall = world.now().last_tick_at.clone();
+        let wall = world.now().last_round_at.clone();
         play_round(
             &mut world,
             &wall,

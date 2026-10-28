@@ -10,7 +10,7 @@ use crate::model::{PendingAction, PendingKind};
 use crate::rules::MoveReport;
 use crate::Reason;
 
-use crate::round::dice::{ResistKey, RoundDice};
+use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
 
 /// Finish every due action, earliest first.
@@ -98,9 +98,9 @@ fn perform(
     let canon = draft.canon();
     let snapshot = draft.now();
     let rule = crate::rules::gate::resolve(canon, snapshot, intent)?;
-    let mut roller = dice.roller(log, &intent.move_name, actor_id, ResistKey::Check);
+    let mut roller = dice.roller(log, &rule.id, actor_id);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, snapshot, intent, spec, &spec.check)?),
+        Some(spec) => Some(roller.roll_spec(canon, snapshot, intent, spec)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);

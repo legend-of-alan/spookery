@@ -290,7 +290,7 @@ fn rounds_never_shorten(_world: &mut World) {
         humans: 1,
         actors_present: Vec::new(),
     });
-    let wall = seated_world.now().last_tick_at.clone();
+    let wall = seated_world.now().last_round_at.clone();
     seated_world.play(&wall).unwrap();
     drop(seated_world);
     let idle = temp_pack("idle-length");

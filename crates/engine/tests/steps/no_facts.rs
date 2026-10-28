@@ -125,7 +125,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
         actors_present: vec![actor.to_string()],
     });
     let (verb, target) = support::split_move(line);
-    let wall = opened.now().last_tick_at.clone();
+    let wall = opened.now().last_round_at.clone();
     spookery_engine::handle_player_move(&mut opened, actor, verb, target, false, &wall)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
 }

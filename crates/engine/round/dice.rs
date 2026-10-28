@@ -88,14 +88,12 @@ impl RoundDice {
         log: &'a mut RoundLog,
         rule: &'a str,
         subject: &'a str,
-        resist: ResistKey,
     ) -> Roller<'a> {
         Roller {
             dice: self,
             log,
             rule,
             subject,
-            resist,
             key: None,
             drawn: 0,
             reports: Vec::new(),
@@ -110,37 +108,29 @@ pub(crate) struct Expansion {
     pub resisted: Vec<MoveReport>,
 }
 
-/// Which name seeds a resist roll. Kept per site so keys stay byte-identical.
-#[derive(Clone, Copy)]
-pub(crate) enum ResistKey {
-    Rule,
-    Check,
-}
-
-/// Expression dice and resist rolls for one rule and subject. `finish` is the only way out.
+/// Expression dice and resist rolls for one rule and subject, all keyed by the rule id.
+/// `finish` returns the resist reports. Dropping the roller discards them.
 pub(crate) struct Roller<'a> {
     dice: &'a mut RoundDice,
     log: &'a mut RoundLog,
     rule: &'a str,
     subject: &'a str,
-    resist: ResistKey,
     key: Option<RollKey>,
     drawn: usize,
     reports: Vec<MoveReport>,
 }
 
 impl Roller<'_> {
-    /// Evaluate a rule's `roll:` spec, then roll the check keyed by `rule_key`.
+    /// Evaluate a rule's `roll:` spec, then roll its check.
     pub(crate) fn roll_spec(
         &mut self,
         canon: &Canon,
         now: &Now,
         intent: &Intent,
         spec: &RollSpec,
-        rule_key: &str,
     ) -> Result<RollResult, Reason> {
         let (target, partial_at) = self.thresholds(canon, now, intent, spec)?;
-        let key = self.dice.key(rule_key, intent.actor.actor_id());
+        let key = self.dice.key(self.rule, intent.actor.actor_id());
         self.dice
             .check(canon, now, key, &spec.check, target, partial_at)
     }
@@ -195,11 +185,7 @@ impl Dice for Roller<'_> {
         check_id: &str,
         target: i64,
     ) -> Result<Outcome, Reason> {
-        let rule = match self.resist {
-            ResistKey::Rule => self.rule,
-            ResistKey::Check => check_id,
-        };
-        let key = self.dice.key(rule, actor_id);
+        let key = self.dice.key(self.rule, actor_id);
         let out = self.dice.check(canon, now, key, check_id, target, None)?;
         self.reports.push(MoveReport::Rolled {
             actor_id: actor_id.to_string(),

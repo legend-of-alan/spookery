@@ -108,7 +108,7 @@ pub struct RoundRecord<E = Effect> {
     /// Seated actor ids when the round ran.
     pub actors_present: Vec<String>,
     pub seed: String,
-    pub last_tick_at: String,
+    pub last_round_at: String,
     /// The intents queued for this round, before stamping and habits, which replay plays again.
     pub intents: Vec<Intent>,
     pub rejected: Vec<Rejected>,

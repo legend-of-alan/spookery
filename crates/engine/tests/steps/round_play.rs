@@ -378,7 +378,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     table
         .queue_player_move("pc_rowan", "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
-    let wall = table.now().last_tick_at.clone();
+    let wall = table.now().last_round_at.clone();
     for round in 1..=6 {
         let output = table.play(&wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
@@ -440,7 +440,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
         &RollKey {
             world_id: world.now().shard_id.clone(),
             round_index: world.now().round_index,
-            rule_id: "strike".to_string(),
+            rule_id: "verb:strike".to_string(),
             subject_id: actor_id.to_string(),
             roll_index,
         },
@@ -533,7 +533,7 @@ fn play_queued(
 ) -> (spookery_engine::Now, Vec<MoveReport>, Value) {
     let mut world =
         spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
-    let wall = world.now().last_tick_at.clone();
+    let wall = world.now().last_round_at.clone();
     for intent in intents {
         world.queue(intent);
     }

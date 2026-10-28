@@ -56,10 +56,10 @@ impl Draft {
         &mut self.state
     }
 
-    pub(crate) fn stamp_round(&mut self, round_index: u64, world_time: u64, last_tick_at: &str) {
+    pub(crate) fn stamp_round(&mut self, round_index: u64, world_time: u64, last_round_at: &str) {
         self.state.round_index = round_index;
         self.state.world_time = world_time;
-        self.state.last_tick_at = last_tick_at.to_string();
+        self.state.last_round_at = last_round_at.to_string();
     }
 
     pub(crate) fn apply_pause_policy(&mut self) -> Result<(), Reason> {

@@ -14,7 +14,7 @@ use crate::rules::expr::Ctx;
 use crate::rules::MoveReport;
 use crate::Reason;
 
-use crate::round::dice::{Expansion, ResistKey, RoundDice};
+use crate::round::dice::{Expansion, RoundDice};
 use crate::round::log::RoundLog;
 
 /// Every change record of the round, pass by pass.
@@ -161,9 +161,9 @@ fn expand_trigger(
     intent: &Intent,
     subject: &str,
 ) -> Option<Expansion> {
-    let mut roller = dice.roller(log, &rule.id, subject, ResistKey::Rule);
+    let mut roller = dice.roller(log, &rule.id, subject);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, now, intent, spec, &rule.id).ok()?),
+        Some(spec) => Some(roller.roll_spec(canon, now, intent, spec).ok()?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);

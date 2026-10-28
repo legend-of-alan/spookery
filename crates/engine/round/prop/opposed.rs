@@ -54,7 +54,7 @@ fn fight(base: &Path, warmup: u32) -> Result<(), String> {
         humans: 1,
         actors_present: vec!["pc_lark".to_string()],
     });
-    let wall = world.now().last_tick_at.clone();
+    let wall = world.now().last_round_at.clone();
     for _ in 0..warmup {
         world
             .play(&wall)

@@ -6,21 +6,15 @@ Feature: The d20 pack runs a fight
     Then the check exits 0
     And stdout says "[]"
 
-  Scenario: A fixed seed misses and the raider's hp stays
-    Given a sample-d20 table
-    When the player strikes the raider
-    Then the roll is "miss"
-    And the raider's hp is 8
-
   Scenario: A fixed seed succeeds and lowers the raider's hp by the hit amount
     Given a sample-d20 table
-    When the player waits 1 and strikes the raider
+    When the player waits 2 and strikes the raider
     Then the roll is "success"
     And the raider's hp is 5
 
   Scenario: A fixed seed grazes and applies the partial amount
     Given a sample-d20 table
-    When the player waits 5 and strikes the raider
+    When the player strikes the raider
     Then the roll is "partial"
     And the raider's hp is 7
 
@@ -47,12 +41,11 @@ Feature: The d20 pack runs a fight
     When play joins the sample table
     And the save before the fight is kept
     And play types "strike npc_briar"
-    Then play shows "Your roll missed."
-    When play types "strike npc_briar"
-    Then play shows "Your roll succeeded."
+    Then play shows "Your roll partly succeeded."
     When play types "strike npc_briar"
     And play types "strike npc_briar"
     And play types "strike npc_briar"
-    Then play shows 3 successful rolls
+    And play types "strike npc_briar"
+    Then play shows 2 successful rolls
     And the raider's hp is 0
     And replaying the round reproduces the save

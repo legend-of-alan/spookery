@@ -361,7 +361,7 @@ fn an_empty_round_at_hour_7(world: &mut World) {
         *now.actors.get_mut("briar").unwrap().place_mut() = "docks_shop".to_string();
     });
     let mut opened = open_pack(&pack);
-    let wall = opened.now().last_tick_at.clone();
+    let wall = opened.now().last_round_at.clone();
     opened.play(&wall).unwrap_or_else(|err| {
         panic!(
             "empty round {}: {}",
@@ -450,7 +450,7 @@ fn lark_attacks(world: &mut World) {
         &RollKey {
             world_id: loaded.shard_id.clone(),
             round_index: loaded.round_index + 1,
-            rule_id: "attack".to_string(),
+            rule_id: "verb:attack".to_string(),
             subject_id: "pc_lark".to_string(),
             roll_index: 0,
         },
