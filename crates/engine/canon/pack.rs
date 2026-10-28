@@ -37,7 +37,6 @@ pub(super) struct PackFile {
     pub(super) title: String,
     pub(super) system: String,
     pub(super) start: PackStart,
-    #[serde(default)]
     checkpoint_every: Option<u64>,
 }
 

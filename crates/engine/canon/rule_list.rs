@@ -42,11 +42,9 @@ pub struct VerbsFile {
 pub struct RuleEntry {
     pub id: Spanned<String>,
     pub when: Spanned<WhenYaml>,
-    #[serde(rename = "if", default)]
+    #[serde(rename = "if")]
     pub if_: Option<IfYaml>,
-    #[serde(default)]
     pub cost: Option<CostYaml>,
-    #[serde(default)]
     pub roll: Option<RollYaml>,
     #[serde(rename = "do", default)]
     pub do_: Vec<EffectYaml>,
@@ -230,22 +228,15 @@ pub struct HumansYaml {
 pub struct CostYaml {
     pub time: Option<String>,
     #[serde(default)]
-    pub meter: MeterCost,
+    pub meter: Counts,
     #[serde(default)]
-    pub items: ItemCost,
+    pub items: Counts,
 }
 
+/// Counts by key under a cost. The unit variant keeps a scalar's refusal generic.
 #[derive(Deserialize, Default)]
 #[serde(untagged)]
-pub enum MeterCost {
-    Map(std::collections::BTreeMap<String, Spanned<NumberYaml>>),
-    #[default]
-    None,
-}
-
-#[derive(Deserialize, Default)]
-#[serde(untagged)]
-pub enum ItemCost {
+pub enum Counts {
     Map(std::collections::BTreeMap<String, Spanned<NumberYaml>>),
     #[default]
     None,
@@ -256,7 +247,6 @@ pub enum ItemCost {
 pub struct RollYaml {
     pub check: String,
     pub target: Spanned<NumberYaml>,
-    #[serde(default)]
     pub partial_at: Option<Spanned<NumberYaml>>,
 }
 
@@ -306,7 +296,6 @@ pub struct MeterEffectYaml {
     pub key: String,
     pub add: Option<Spanned<NumberYaml>>,
     pub set: Option<Spanned<NumberYaml>>,
-    #[serde(default)]
     pub resist: Option<ResistYaml>,
 }
 
@@ -316,16 +305,13 @@ pub struct FlagEffectYaml {
     pub who: Spanned<String>,
     pub key: String,
     pub value: bool,
-    #[serde(default)]
     pub resist: Option<ResistYaml>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct LocationYaml {
-    #[serde(default)]
     pub to: Option<String>,
-    #[serde(default)]
     pub via: Option<String>,
     #[serde(default)]
     pub teleport: bool,
@@ -337,7 +323,6 @@ pub struct NoteYaml {
     pub id: String,
     #[serde(default)]
     pub to: Vec<String>,
-    #[serde(default)]
     pub place: Option<String>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
@@ -351,7 +336,6 @@ pub struct NarrateYaml {
     pub text: String,
     #[serde(default)]
     pub fact_ids: Vec<String>,
-    #[serde(default)]
     pub resist: Option<ResistYaml>,
 }
 
@@ -359,7 +343,6 @@ pub struct NarrateYaml {
 #[serde(deny_unknown_fields)]
 pub struct ClockEffectYaml {
     pub id: String,
-    #[serde(default)]
     pub add: Option<i64>,
     #[serde(default)]
     pub start: bool,
@@ -371,7 +354,6 @@ pub struct MemoryYaml {
     pub who: Spanned<String>,
     #[serde(default)]
     pub fact_ids: Vec<String>,
-    #[serde(default)]
     pub text: Option<String>,
 }
 
@@ -381,9 +363,7 @@ pub struct ItemEffectYaml {
     pub who: Spanned<String>,
     pub id: String,
     pub add: i64,
-    #[serde(default)]
     pub max: Option<i64>,
-    #[serde(default)]
     pub resist: Option<ResistYaml>,
 }
 
@@ -417,7 +397,6 @@ pub enum ResistYaml {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResistRollYaml {
-    #[serde(default)]
     pub who: Option<Spanned<String>>,
     pub check: String,
     pub target: Spanned<NumberYaml>,
@@ -812,25 +791,21 @@ pub(crate) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
         Some(text) => duration_minutes(text)?,
         None => 0,
     };
-    let meters = match &yaml.meter {
-        MeterCost::Map(map) => map
-            .iter()
-            .map(|(key, n)| Ok((key.clone(), number_of(n)?)))
-            .collect::<Result<Vec<_>, Fault>>()?,
-        MeterCost::None => Vec::new(),
-    };
-    let items = match &yaml.items {
-        ItemCost::Map(map) => map
-            .iter()
-            .map(|(key, n)| Ok((key.clone(), number_of(n)?)))
-            .collect::<Result<Vec<_>, Fault>>()?,
-        ItemCost::None => Vec::new(),
-    };
     Ok(Cost {
         minutes,
-        meters,
-        items,
+        meters: counts_of(&yaml.meter)?,
+        items: counts_of(&yaml.items)?,
     })
+}
+
+fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
+    match yaml {
+        Counts::Map(map) => map
+            .iter()
+            .map(|(key, n)| Ok((key.clone(), number_of(n)?)))
+            .collect(),
+        Counts::None => Ok(Vec::new()),
+    }
 }
 
 pub(crate) fn duration_minutes(text: &str) -> Result<u64, String> {
@@ -1117,24 +1092,11 @@ fn op_of(word: &str) -> Result<Op, String> {
 
 fn cross_of(text: &str) -> Result<(Op, i64), String> {
     let text = text.trim();
-    let (op, rest) = if let Some(rest) = text.strip_prefix("<=") {
-        (Op::Le, rest)
-    } else if let Some(rest) = text.strip_prefix(">=") {
-        (Op::Ge, rest)
-    } else if let Some(rest) = text.strip_prefix("==") {
-        (Op::Eq, rest)
-    } else if let Some(rest) = text.strip_prefix('<') {
-        (Op::Lt, rest)
-    } else if let Some(rest) = text.strip_prefix('>') {
-        (Op::Gt, rest)
-    } else {
-        return Err(format!("crosses '{text}' needs an operator and a number"));
-    };
-    let bound = rest
-        .trim()
-        .parse::<i64>()
-        .map_err(|_| format!("crosses '{text}' needs an operator and a number"))?;
-    Ok((op, bound))
+    let split = text.find(|ch| !matches!(ch, '<' | '=' | '>'));
+    let (op, bound) = text.split_at(split.unwrap_or(text.len()));
+    Op::parse(op)
+        .zip(bound.trim().parse::<i64>().ok())
+        .ok_or_else(|| format!("crosses '{text}' needs an operator and a number"))
 }
 
 pub(super) fn load_verbs(text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {

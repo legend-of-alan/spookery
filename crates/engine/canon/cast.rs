@@ -100,7 +100,6 @@ struct CastFile {
     kind: String,
     display_name: String,
     facts: Vec<FactFile>,
-    #[serde(default)]
     tick: Option<TickProfile>,
     #[serde(default)]
     rules: Vec<RuleEntry>,

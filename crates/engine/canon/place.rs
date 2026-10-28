@@ -166,7 +166,6 @@ struct PlaceFile {
 struct ExitFile {
     to: String,
     name: String,
-    #[serde(default)]
     cost: Option<rule_list::CostYaml>,
     #[serde(default, rename = "if")]
     if_: Vec<rule_list::CondYaml>,
@@ -174,7 +173,6 @@ struct ExitFile {
     locked_text: String,
     #[serde(default)]
     hidden: bool,
-    #[serde(default)]
     revealed_by: Option<String>,
 }
 
