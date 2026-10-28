@@ -230,8 +230,16 @@ pub fn replay_journal(
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
+/// The caller holds the pack lock.
 pub(crate) fn open_at_tip(path: &Path) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
+    let world = peek_at_tip(path)?;
+    crate::commit::settle_open_checkpoint(&world)?;
+    Ok(world)
+}
+
+/// The journal tip in memory. Writes nothing.
+pub(crate) fn peek_at_tip(path: &Path) -> Result<World, Reason> {
     let mut world = World::open(path)?;
     // Open checked a save with nothing past it. A replayed tip is checked here.
     if replay_tail(&mut world)? {
@@ -253,7 +261,6 @@ fn journal_tip(path: &Path) -> Result<(Now, bool), Reason> {
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_now = load_save(text).map_err(reason_of)?;
-    crate::store::recover::recover(path)?;
     // A save from before the head is a checkpoint that did not land, not an edit.
     let edited = journal::read_head(path)
         .map_err(|fault| fault.reason)?
@@ -275,12 +282,13 @@ fn journal_tip(path: &Path) -> Result<(Now, bool), Reason> {
 }
 
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
-/// The caller runs crash recovery first.
+/// The caller holds the pack lock.
 fn replay_tip_unchecked(path: &Path) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
     let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let mut world = open_for_replay(path, &save).map_err(replay_reason)?;
     replay_tail(&mut world)?;
+    crate::commit::settle_open_checkpoint(&world)?;
     Ok(world)
 }
 
@@ -310,7 +318,6 @@ fn replay_tail(world: &mut World) -> Result<bool, Reason> {
         humans: 0,
         actors_present: Vec::new(),
     });
-    crate::commit::settle_open_checkpoint(world)?;
     Ok(replayed)
 }
 

@@ -16,6 +16,13 @@ fn spook_run_is_serving_a_docks_table(world: &mut World) {
     world.pack = Some(pack);
 }
 
+#[given(expr = "a commit folder is left in the pack")]
+fn a_commit_folder_is_left_in_the_pack(world: &mut World) {
+    let txn = table::pack(world).join("state/.txn/prev");
+    std::fs::create_dir_all(&txn).unwrap();
+    std::fs::write(txn.join("save.yaml"), b"not-yaml\n").unwrap();
+}
+
 #[when(expr = "the host runs spook {word} on that pack")]
 fn the_host_runs_spook_on_that_pack(world: &mut World, command: String) {
     world.state_files = state_files(world);
@@ -33,6 +40,11 @@ fn spook_tick_was_refused(world: &mut World) {
 fn spook_exits_non_zero_with(world: &mut World, command: String, code: String) {
     assert_ne!(world.code, Some(0), "spook {command} exited 0");
     assert!(world.stderr.contains(&code), "{}", world.stderr);
+}
+
+#[then(expr = "spook {word} exits 0")]
+fn spook_exits_0(world: &mut World, command: String) {
+    assert_eq!(world.code, Some(0), "spook {command}: {}", world.stderr);
 }
 
 #[then(expr = "the journal is unchanged")]

@@ -10,7 +10,7 @@ use crate::model::MemoryLine;
 use crate::store::codec::emit_memory_line;
 use crate::store::durable::{atomic_publish, fsync_dir, fsync_file, rename, tmp_path};
 
-/// Run before reading a pack that a crash may have left mid-commit.
+/// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
 pub fn recover(root: &Path) -> Result<(), Reason> {
     let state = root.join("state");
     let txn = state.join(".txn");
@@ -265,6 +265,7 @@ mod tests {
     use crate::model::Presence;
     use crate::round::log::{RoundLine, RoundLog};
     use crate::round::stage::advance::Clock;
+    use crate::store::lock::lock_pack;
     use crate::testing::temp_pack;
     use crate::world::World;
 
@@ -281,6 +282,7 @@ mod tests {
         let mut torn = kept.clone();
         torn.extend(br#"{"round_index":99,"#);
         fs::write(&bundle, &torn).unwrap();
+        drop(lock_pack(&root).unwrap());
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
         assert_eq!(fs::read(root.join("state/save.yaml")).unwrap(), pre);
@@ -294,8 +296,8 @@ mod tests {
         let log = root.join("state/journal");
         fs::create_dir_all(&log).unwrap();
         fs::write(log.join("migrate-0001.json"), "{}\n").unwrap();
-        match World::open(&root) {
-            Ok(_) => panic!("old layout opened"),
+        match lock_pack(&root) {
+            Ok(_) => panic!("old layout locked"),
             Err(err) => assert_eq!(err, crate::error::Reason::RulesRev),
         }
         let _ = fs::remove_dir_all(&root);

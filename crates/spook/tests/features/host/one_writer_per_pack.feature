@@ -12,6 +12,14 @@ Feature: One writer per pack
     Then spook migrate exits non-zero with COMMIT_CONFLICT
     And the journal is unchanged
 
+  Scenario: spook status reads the pack spook run holds and writes nothing
+    Given spook run is serving a docks table
+    And a commit folder is left in the pack
+    When the host runs spook status on that pack
+    Then spook status exits 0
+    And the host text lists the clocks
+    And the journal is unchanged
+
   Scenario: the table keeps a verifiable journal after a refused tick
     Given spook run is serving a docks table
     And spook tick was refused
