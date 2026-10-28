@@ -62,10 +62,7 @@ fn snapshot_matches(root: &Path, plain: &Path) -> bool {
     let Some(mark) = journal::trailing_checkpoint(plain) else {
         return false;
     };
-    let snap = root
-        .join("state/checkpoints")
-        .join(format!("{}.yaml", mark.state_rev));
-    fs::read(snap)
+    fs::read(journal::checkpoint_path(root, mark.state_rev))
         .ok()
         .is_some_and(|bytes| journal::hash_now(&bytes) == mark.state_hash)
 }

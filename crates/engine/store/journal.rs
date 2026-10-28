@@ -33,6 +33,12 @@ pub(crate) fn base_rel() -> &'static str {
     "journal/base.yaml"
 }
 
+/// The snapshot a checkpoint at `state_rev` publishes.
+pub(crate) fn checkpoint_path(pack: &Path, state_rev: u64) -> PathBuf {
+    pack.join("state/checkpoints")
+        .join(format!("{state_rev}.yaml"))
+}
+
 pub(crate) fn head_rel() -> &'static str {
     "journal/head.json"
 }

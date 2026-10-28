@@ -2,18 +2,14 @@
 
 use std::fs;
 use std::path::Path;
-use std::sync::Arc;
 
-use crate::canon::load_canon;
-use crate::diagnostic::reason_of;
 use crate::journal::{self, JournalEntry};
 use crate::store::codec::emit_save;
-use crate::world::World;
 use crate::Reason;
 
 use crate::round::replay::{
-    apply_entry, journal_fault, load_base, load_entries, read_now_bytes, replay_journal,
-    state_rev_of, DivergenceKind, ReplayDivergence, ReplayError,
+    apply_entry, checkpoint_diverged, journal_fault, load_base, load_entries, open_for_replay,
+    read_now_bytes, replay_journal, state_rev_of, DivergenceKind, ReplayDivergence, ReplayError,
 };
 
 #[derive(Debug)]
@@ -42,10 +38,7 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Rep
         });
     }
     let cap = records.iter().map(JournalEntry::state_rev_after).max();
-    let report = replay_journal(pack, from, cap).map_err(|err| match err {
-        ReplayError::Diverged(diverged) => with_save_line(diverged, &read_snapshot(pack)),
-        other => other,
-    })?;
+    let report = replay_journal(pack, from, cap).map_err(|err| name_save_line(pack, err))?;
     let verified = VerifyReport {
         state_rev: report.state_rev,
         applied: report.applied,
@@ -107,17 +100,14 @@ fn bundle_starts<'a>(
             .into());
         };
         let diverged = |detail: &str| {
-            ReplayDivergence::new(
-                DivergenceKind::Checkpoint,
+            checkpoint_diverged(
                 mark.state_rev,
-                Some(mark.round_index),
+                mark.round_index,
                 format!("{name}: {detail}"),
             )
         };
-        let snap = pack
-            .join("state/checkpoints")
-            .join(format!("{}.yaml", mark.state_rev));
-        current = fs::read(&snap).map_err(|_| diverged("missing snapshot"))?;
+        current = fs::read(journal::checkpoint_path(pack, mark.state_rev))
+            .map_err(|_| diverged("missing snapshot"))?;
         if journal::hash_now(&current) != mark.state_hash {
             return Err(diverged("state hash differed").replayed(current).into());
         }
@@ -131,20 +121,15 @@ fn check_bundle_end(
     entries: &[JournalEntry],
     end: Result<Vec<u8>, ReplayError>,
 ) -> Result<Vec<u8>, ReplayError> {
-    let end = end.map_err(|err| match err {
-        ReplayError::Diverged(diverged) => with_save_line(diverged, &read_snapshot(pack)),
-        other => other,
-    })?;
+    let end = end.map_err(|err| name_save_line(pack, err))?;
     if let Some(mark) = journal::latest_checkpoint(entries) {
         if journal::hash_now(&end) != mark.state_hash {
-            return Err(ReplayDivergence::new(
-                DivergenceKind::Checkpoint,
-                mark.state_rev,
-                Some(mark.round_index),
-                format!("{name}: state hash differed"),
-            )
-            .replayed(end)
-            .into());
+            let detail = format!("{name}: state hash differed");
+            return Err(
+                checkpoint_diverged(mark.state_rev, mark.round_index, detail)
+                    .replayed(end)
+                    .into(),
+            );
         }
     }
     Ok(end)
@@ -174,11 +159,7 @@ fn verify_save_file(
     }
     if let Some(mark) = journal::latest_checkpoint(records) {
         if journal::hash_now(&live) != mark.state_hash {
-            let snap = fs::read(
-                pack.join("state/checkpoints")
-                    .join(format!("{}.yaml", mark.state_rev)),
-            )
-            .ok();
+            let snap = fs::read(journal::checkpoint_path(pack, mark.state_rev)).ok();
             let diverged = ReplayDivergence {
                 replayed: snap,
                 ..ReplayDivergence::new(
@@ -212,10 +193,15 @@ fn with_save_line(mut diverged: ReplayDivergence, live: &[u8]) -> ReplayError {
     diverged.into()
 }
 
-fn read_snapshot(pack: &Path) -> Vec<u8> {
-    fs::read(pack.join("state/save.yaml"))
+/// A replay divergence names the first differing line of the save, or of the base without one.
+fn name_save_line(pack: &Path, err: ReplayError) -> ReplayError {
+    let ReplayError::Diverged(diverged) = err else {
+        return err;
+    };
+    let live = fs::read(pack.join("state/save.yaml"))
         .or_else(|_| fs::read(pack.join("state").join(journal::base_rel())))
-        .unwrap_or_default()
+        .unwrap_or_default();
+    with_save_line(diverged, &live)
 }
 
 fn read_genesis(pack: &Path) -> Result<Vec<u8>, ReplayError> {
@@ -231,9 +217,7 @@ fn replay_bundle(
     start: &[u8],
     entries: &[JournalEntry],
 ) -> Result<Vec<u8>, ReplayError> {
-    let now = load_base(start)?;
-    let canon = Arc::new(load_canon(pack).map_err(|diags| ReplayError::Reason(reason_of(diags)))?);
-    let mut world = World::open_for_replay(pack, canon, now);
+    let mut world = open_for_replay(pack, start)?;
     let mut changed = false;
     for entry in entries {
         apply_entry(&mut world, entry)?;

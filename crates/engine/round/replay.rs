@@ -143,6 +143,20 @@ fn round_diverged(record: &RoundRecord, detail: impl Into<String>) -> ReplayDive
     )
 }
 
+/// A checkpoint whose hash no longer matches.
+pub(crate) fn checkpoint_diverged(
+    state_rev: u64,
+    round_index: u64,
+    detail: impl Into<String>,
+) -> ReplayDivergence {
+    ReplayDivergence::new(
+        DivergenceKind::Checkpoint,
+        state_rev,
+        Some(round_index),
+        detail,
+    )
+}
+
 /// Replay the journal. `from` is a directory whose `state/save.yaml` replaces the base.
 /// `until` ignores records with a later `state_rev`, so a live server cannot race a verify.
 pub fn replay_journal(
@@ -195,9 +209,7 @@ pub fn replay_journal(
             now_yaml: base_bytes,
         });
     }
-    let now = load_base(&base_bytes)?;
-    let canon = Arc::new(load_canon(pack).map_err(|diags| ReplayError::Reason(reason_of(diags)))?);
-    let mut world = World::open_for_replay(pack, canon, now);
+    let mut world = open_for_replay(pack, &base_bytes)?;
     for entry in records.iter() {
         let rev = entry.state_rev_after();
         if rev <= base_rev || rev > cap {
@@ -257,11 +269,16 @@ fn journal_tip(path: &Path) -> Result<Now, Reason> {
 fn replay_tip_unchecked(path: &Path) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
     let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let now = load_base(&save).map_err(replay_reason)?;
-    let canon = Arc::new(load_canon(path).map_err(reason_of)?);
-    let mut world = World::open_for_replay(path, canon, now);
+    let mut world = open_for_replay(path, &save).map_err(replay_reason)?;
     replay_tail(&mut world)?;
     Ok(world)
+}
+
+/// A replay world at `base` with the pack's canon.
+pub(crate) fn open_for_replay(pack: &Path, base: &[u8]) -> Result<World, ReplayError> {
+    let now = load_base(base)?;
+    let canon = load_canon(pack).map_err(|diags| ReplayError::Reason(reason_of(diags)))?;
+    Ok(World::open_for_replay(pack, Arc::new(canon), now))
 }
 
 /// Replay the live records past the save. `true` when any record was replayed.
@@ -319,14 +336,11 @@ fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
     }
     let report = replay_journal(path, None, Some(mark.state_rev))?;
     if hash_now(&report.now_yaml) != mark.state_hash {
-        return Err(ReplayDivergence::new(
-            DivergenceKind::Checkpoint,
-            mark.state_rev,
-            Some(mark.round_index),
-            "state hash differed",
-        )
-        .replayed(report.now_yaml)
-        .into());
+        return Err(
+            checkpoint_diverged(mark.state_rev, mark.round_index, "state hash differed")
+                .replayed(report.now_yaml)
+                .into(),
+        );
     }
     atomic_publish(&save, &report.now_yaml).map_err(ReplayError::Reason)?;
     Ok(())
@@ -436,10 +450,9 @@ pub(crate) fn apply_entry(world: &mut World, entry: &JournalEntry) -> Result<(),
         JournalEntry::Checkpoint(record) => {
             let written = read_now_bytes(world)?;
             if hash_now(&written) != record.state_hash {
-                return Err(ReplayDivergence::new(
-                    DivergenceKind::Checkpoint,
+                return Err(checkpoint_diverged(
                     record.state_rev,
-                    Some(record.round_index),
+                    record.round_index,
                     "state hash differed",
                 )
                 .replayed(written)

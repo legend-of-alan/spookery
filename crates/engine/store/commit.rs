@@ -242,11 +242,8 @@ pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
     if hash_now(&now_bytes) != mark.state_hash {
         return Ok(());
     }
-    let state = world.root.join("state");
-    let save = state.join("save.yaml");
-    let snap = state
-        .join("checkpoints")
-        .join(format!("{}.yaml", mark.state_rev));
+    let save = world.root.join("state/save.yaml");
+    let snap = journal::checkpoint_path(&world.root, mark.state_rev);
     let save_ok = fs::read(&save)
         .ok()
         .is_some_and(|bytes| hash_now(&bytes) == mark.state_hash);
@@ -462,9 +459,7 @@ mod tests {
         let saved = fs::read(root.join("state/save.yaml")).unwrap();
         let kept = crate::journal::latest_checkpoint(first_entries).unwrap();
         assert_eq!(crate::journal::hash_now(&saved), kept.state_hash);
-        let snap = root
-            .join("state/checkpoints")
-            .join(format!("{}.yaml", kept.state_rev));
+        let snap = crate::journal::checkpoint_path(&root, kept.state_rev);
         assert_eq!(fs::read(snap).unwrap(), saved);
         let _ = fs::remove_dir_all(&root);
     }
