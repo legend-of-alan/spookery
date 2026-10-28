@@ -33,6 +33,10 @@ pub struct MigrateRecord {
     /// Meters this migrate added. Omitted when it added none, so older lines stay the same.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub meters: Vec<AddedMeter>,
+    /// The migrate started from a hand-edited save, and a checkpoint of its result follows it.
+    /// Omitted when false, so a plain migrate keeps its bytes.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub edited: bool,
     /// Chain hash of the previous record. Empty on a record that has not been sealed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prev: String,

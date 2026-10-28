@@ -488,6 +488,7 @@ messages: []
             1,
             "blake2s:cc",
             &[],
+            false,
         ));
         assert_eq!(
             migrate,

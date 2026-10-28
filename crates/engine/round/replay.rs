@@ -243,15 +243,23 @@ pub(crate) fn open_at_tip(path: &Path) -> Result<World, Reason> {
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
     let _lock = lock_pack(path)?;
-    let now = journal_tip(path)?;
-    crate::commit::migrate_journal(path, now)
+    let (now, edited) = journal_tip(path)?;
+    crate::commit::migrate_journal(path, now, edited)
 }
 
-fn journal_tip(path: &Path) -> Result<Now, Reason> {
+/// The state to migrate, and whether it is a hand edit of the checkpoint head.
+/// A hand edit with live rounds past it is refused, because the tip does not hold it.
+fn journal_tip(path: &Path) -> Result<(Now, bool), Reason> {
     let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
     let file_now = load_save(text).map_err(reason_of)?;
     crate::store::recover::recover(path)?;
+    // A save from before the head is a checkpoint that did not land, not an edit.
+    let edited = journal::read_head(path)
+        .map_err(|fault| fault.reason)?
+        .is_some_and(|head| {
+            head.state_rev == file_now.state_rev && head.state_hash != hash_now(&bytes)
+        });
     let ahead = journal::read_live(path)
         .map_err(|_| Reason::Schema)?
         .iter()
@@ -259,10 +267,10 @@ fn journal_tip(path: &Path) -> Result<Now, Reason> {
             !matches!(entry, JournalEntry::Checkpoint(_))
                 && entry.state_rev_after() > file_now.state_rev
         });
-    if ahead {
-        Ok(replay_tip_unchecked(path)?.now().clone())
-    } else {
-        Ok(file_now)
+    match (ahead, edited) {
+        (true, true) => Err(Reason::HandEdit),
+        (true, false) => Ok((replay_tip_unchecked(path)?.now().clone(), false)),
+        (false, _) => Ok((file_now, edited)),
     }
 }
 
@@ -544,6 +552,16 @@ fn apply_migrate(world: &mut World, record: &MigrateRecord) -> Result<(), Replay
     };
     if world.now().pack_rev != record.pack_rev_before {
         return Err(diverged("pack_rev differed").into());
+    }
+    if record.edited {
+        // A migrate of a hand edit restarts from the checkpoint written with it.
+        let path = journal::checkpoint_path(world.root(), record.state_rev_after);
+        let bytes = fs::read(path).map_err(|_| diverged("missing snapshot"))?;
+        if hash_now(&bytes) != record.now_hash {
+            return Err(diverged("now_hash differed").replayed(bytes).into());
+        }
+        world.install_replayed(load_base(&bytes)?);
+        return Ok(());
     }
     let next = migrate_save(
         world.now().clone(),

@@ -82,6 +82,7 @@ pub(crate) fn migrate_entry(
     state_rev_after: u64,
     now_hash: &str,
     meters: &[AddedMeter],
+    edited: bool,
 ) -> JournalEntry {
     JournalEntry::Migrate(MigrateRecord {
         kind: MigrateKind::Migrate,
@@ -91,6 +92,7 @@ pub(crate) fn migrate_entry(
         state_rev_after,
         now_hash: now_hash.to_string(),
         meters: meters.to_vec(),
+        edited,
         prev: String::new(),
         chain: String::new(),
     })
@@ -624,6 +626,7 @@ mod tests {
             2,
             "blake2s:cc",
             &[],
+            false,
         ));
         let JournalEntry::Migrate(parsed) =
             parse_line("migrate-0002.json", migrate.trim_end()).unwrap()

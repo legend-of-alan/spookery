@@ -205,6 +205,9 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 "verified {} records, state_rev {}",
                 report.applied, report.state_rev
             );
+            for rev in report.trusted_edits {
+                println!("operator edit trusted at state_rev {rev}");
+            }
             Ok(())
         }
         #[cfg(feature = "server")]

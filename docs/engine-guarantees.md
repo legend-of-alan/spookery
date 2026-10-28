@@ -63,8 +63,14 @@ unrelated roll in the same round does not move them, and verify reproduces
 them. A number in a rule can roll dice, including an NPC habit's effect. Those faces are seeded with the
 round, written on the journal line, and shown to the GM. `spook verify` replays
 the journal, rolls them again from that seed, and checks the save. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
+Migrate may carry a hand edit of `save.yaml`. It writes a checkpoint of the
+migrated save, replay restarts from that checkpoint, and full verification
+trusts the edit and names it as `operator edit trusted at state_rev N`. A hand
+edit made while the journal has rounds past `save.yaml` is refused with
+`HAND_EDIT`, and migrate writes nothing.
 
 Tested in `features/replay/the_journal_verifies.feature`,
+`features/commit/a_hand_edit_waits_for_migrate.feature`,
 `features/replay/typed_journal_records.feature`,
 `features/replay/journal_bundles.feature`,
 `features/round/each_roll_has_its_own_seed.feature`,

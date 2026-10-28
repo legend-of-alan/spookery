@@ -119,3 +119,53 @@ Feature: A hand edit waits for migrate
     And the operator tries a round
     Then the command exits 0
     And spook verify passes
+
+  Scenario: Migrate keeps a hand edit at a checkpoint
+    Given a docks table
+    And checkpoints are taken every 2 rounds
+    When the operator plays 2 rounds
+    And the shop's lamp oil is hand edited to 2
+    And the operator runs migrate
+    Then the command exits 0
+    And the shop has 2 lamp oil
+    And verify trusts the operator edit at state_rev 3
+    When the operator runs quick verify
+    Then the command exits 0
+    When the table is opened again
+    Then the shop has 2 lamp oil
+    When the operator tries a round
+    Then the command exits 0
+    And the shop has 2 lamp oil
+    And spook verify passes
+
+  Scenario: Migrate keeps a hand edit before any checkpoint
+    Given a docks table
+    And checkpoints are taken every 2 rounds
+    When the shop's lamp oil is hand edited to 2
+    And the operator runs migrate
+    Then the command exits 0
+    And the shop has 2 lamp oil
+    And spook verify passes
+    When the operator tries a round
+    Then the command exits 0
+    And the shop has 2 lamp oil
+    And spook verify passes
+
+  Scenario: A hand edit behind the journal tip is refused
+    Given a docks table
+    And checkpoints are taken every 2 rounds
+    When the operator plays 3 rounds
+    And the shop's lamp oil is hand edited to 2
+    And the operator runs migrate
+    Then the command exits 1
+    And stderr names HAND_EDIT
+    And the pack bytes are unchanged
+
+  Scenario: A plain migrate keeps its bytes
+    Given a docks table
+    When the operator runs migrate
+    Then the command exits 0
+    And the journal line migrate-0001 is
+      """
+      {"kind":"migrate","pack_rev_before":"blake2s:1958ea45e07e207e4dd3aec586573b5edf8f8543e3cf72cf8992cbb84fdbce09","pack_rev_after":"blake2s:1958ea45e07e207e4dd3aec586573b5edf8f8543e3cf72cf8992cbb84fdbce09","state_rev_before":0,"state_rev_after":1,"now_hash":"blake2s:c9730131c12425aa0393d2f0867752e98b93a837c067cdec25b964c8a6feedaf","prev":"blake2s:eb050775d2b8b8516995788644e1b11ef523df6db5f16b72efe67991f3706fd7","chain":"blake2s:6bba7920c4512a5437608c6c631049707a224900783e025805627ede3316e29f"}
+      """
