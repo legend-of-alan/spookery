@@ -37,15 +37,8 @@ pub fn commit(
     let line = seal(line, world.now.state_rev, &draft, &now_bytes, &world.root)?;
     let due = checkpoint_due(world.canon().checkpoint_every, draft.state.round_index);
     let (payload, chain) = if due {
-        let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
-        let mark = journal::checkpoint_entry(
-            draft.state.round_index,
-            draft.state.state_rev,
-            &hash_now(&now_bytes),
-        );
-        let sealed = journal::seal(&mark, &prev);
-        let chain = journal::sealed_chain(&sealed).map_err(|_| Reason::Schema)?;
-        (format!("{line}{sealed}"), Some(chain))
+        let (payload, chain) = seal_checkpoint(line, &draft.state, &now_bytes)?;
+        (payload, Some(chain))
     } else {
         (line, None)
     };
@@ -85,8 +78,10 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
 }
 
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
-/// The caller holds the pack lock.
-pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
+/// `edited` means `now` is a hand edit of the checkpoint head. The journal does not hold
+/// that edit, so a checkpoint of the migrated save follows the record and replay restarts
+/// from it. The caller holds the pack lock.
+pub fn migrate_journal(root: &Path, now: Now, edited: bool) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -108,11 +103,31 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
         now.state_rev,
         &hash_now(&emitted),
         &added,
+        edited,
     );
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&entry, &prev);
-    append_bundle(root, &line)?;
+    if !edited {
+        append_bundle(root, &line)?;
+        return Ok(());
+    }
+    // The snapshot lands before the record, so a crash after the append still replays.
+    atomic_publish(&journal::checkpoint_path(root, now.state_rev), &emitted)?;
+    let (payload, chain) = seal_checkpoint(line, &now, &emitted)?;
+    append_bundle(root, &payload)?;
+    store_checkpoint(root, &emitted, now.state_rev, now.round_index, &chain)?;
+    // The migrate is committed. A bundle left open is closed by the next append.
+    let _ = close_finished(root);
     Ok(())
+}
+
+/// Follow a sealed `line` with a checkpoint of `now`. Returns both lines and the checkpoint's chain.
+fn seal_checkpoint(line: String, now: &Now, now_bytes: &[u8]) -> Result<(String, String), Reason> {
+    let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
+    let mark = journal::checkpoint_entry(now.round_index, now.state_rev, &hash_now(now_bytes));
+    let sealed = journal::seal(&mark, &prev);
+    let chain = journal::sealed_chain(&sealed).map_err(|_| Reason::Schema)?;
+    Ok((format!("{line}{sealed}"), chain))
 }
 
 fn seal(

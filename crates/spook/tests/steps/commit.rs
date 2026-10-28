@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
+use cucumber::gherkin::Step;
 use cucumber::{given, then, when};
 
 use crate::support;
@@ -248,4 +249,43 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(migrate_state_revs(pack), [1]);
+}
+
+#[when(expr = "the shop's lamp oil is hand edited to {int}")]
+fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
+    let pack = table::pack(world);
+    let path = pack.join("state/save.yaml");
+    let text = fs::read_to_string(&path).unwrap();
+    let edited = text.replacen(
+        "      lamp_oil: 4\n",
+        &format!("      lamp_oil: {count}\n"),
+        1,
+    );
+    assert_ne!(edited, text, "the shop did not hold 4 lamp oil\n{text}");
+    fs::write(&path, edited).unwrap();
+    world.before = table::files(pack);
+}
+
+#[then(expr = "the shop has {int} lamp oil")]
+fn the_shop_has_lamp_oil(world: &mut World, count: u32) {
+    let now = table::now_of(table::pack(world));
+    let shop = now.places.get("docks_shop").unwrap();
+    assert_eq!(shop.items.get("lamp_oil").copied(), Some(count));
+}
+
+#[then(expr = "verify trusts the operator edit at state_rev {int}")]
+fn verify_trusts_the_operator_edit(world: &mut World, rev: u64) {
+    let pack = table::pack(world).to_path_buf();
+    table::run(world, &["verify", pack.to_str().unwrap()]);
+    assert_eq!(world.code, Some(0), "{}", world.stderr);
+    let line = format!("operator edit trusted at state_rev {rev}");
+    assert!(world.stdout.contains(&line), "{}", world.stdout);
+}
+
+#[then(expr = "the journal line {word} is")]
+fn the_journal_line_is(world: &mut World, key: String, step: &Step) {
+    let line = spookery_engine::testing::journal::read_record_line(table::pack(world), &key)
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let golden = step.docstring.as_deref().unwrap_or_default();
+    assert_eq!(line, golden.trim());
 }

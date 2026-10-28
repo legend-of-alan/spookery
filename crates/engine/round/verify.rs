@@ -16,6 +16,8 @@ use crate::round::replay::{
 pub struct VerifyReport {
     pub state_rev: u64,
     pub applied: u64,
+    /// The `state_rev` of each migrate that carried a hand edit. Full verify fills it.
+    pub trusted_edits: Vec<u64>,
 }
 
 /// Read the journal, replay it, and check checkpoints and `state/save.yaml`.
@@ -35,13 +37,22 @@ pub fn verify_pack(pack: &Path, from: Option<&Path>) -> Result<VerifyReport, Rep
         return Ok(VerifyReport {
             state_rev: state_rev_of(&genesis)?,
             applied: 0,
+            trusted_edits: Vec::new(),
         });
     }
     let cap = records.iter().map(JournalEntry::state_rev_after).max();
     let report = replay_journal(pack, from, cap).map_err(|err| name_save_line(pack, err))?;
+    let trusted_edits = records
+        .iter()
+        .filter_map(|entry| match entry {
+            JournalEntry::Migrate(record) if record.edited => Some(record.state_rev_after),
+            _ => None,
+        })
+        .collect();
     let verified = VerifyReport {
         state_rev: report.state_rev,
         applied: report.applied,
+        trusted_edits,
     };
     if from.is_some() {
         return Ok(verified);
@@ -65,6 +76,7 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, ReplayError> {
         return Ok(VerifyReport {
             state_rev: state_rev_of(&genesis)?,
             applied: 0,
+            trusted_edits: Vec::new(),
         });
     };
     let (name, _) = bundles.last().expect("bundle");
@@ -73,6 +85,7 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, ReplayError> {
     Ok(VerifyReport {
         state_rev: state_rev_of(&end)?,
         applied: entries.iter().filter(|entry| entry.changes_state()).count() as u64,
+        trusted_edits: Vec::new(),
     })
 }
 
