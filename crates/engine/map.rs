@@ -5,9 +5,9 @@ use std::collections::BTreeSet;
 use crate::canon::{Canon, Exit};
 use crate::draft::Draft;
 use crate::error::Reason;
-use crate::intent::{Intent, IntentArgs, Source, Target};
+use crate::intent::{Intent, Source, Target};
 use crate::key::StateKey;
-use crate::model::{Now, PendingAction};
+use crate::model::{Now, PendingAction, PendingKind};
 use crate::rule::{EffectTemplate, LocationTo, Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
@@ -62,16 +62,16 @@ pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Gat
     };
     let from = now
         .actors
-        .get(&intent.actor_id)
+        .get(intent.actor.actor_id())
         .map(|actor| actor.place())
         .unwrap_or("");
     let Some(exit) = named(canon, from, &token) else {
         return Err(Reason::NoExit.into());
     };
-    if !revealed(canon, now, &intent.actor_id, exit) {
+    if !revealed(canon, now, intent.actor.actor_id(), exit) {
         return Err(Reason::NoExit.into());
     }
-    if locked(canon, now, &intent.actor_id, exit) {
+    if locked(canon, now, intent.actor.actor_id(), exit) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -95,7 +95,7 @@ pub(crate) fn revealed(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) ->
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = now.actor_viewer(actor_id) else {
+    let Some(viewer) = now.actors.get(actor_id).map(|actor| actor.viewer(actor_id)) else {
         return false;
     };
     allows(canon, now, &viewer, fact)
@@ -108,17 +108,14 @@ pub(crate) fn locked(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> b
     let Some(actor) = now.actors.get(actor_id) else {
         return true;
     };
-    let intent = Intent {
-        id: String::new(),
-        tick_index: now.tick_index,
-        actor_id: actor_id.to_string(),
-        actor_kind: actor.actor_kind(),
-        source: Source::Player,
-        move_name: "travel".to_string(),
-        target: Target::Place(exit.name.clone()),
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    };
+    let intent = Intent::new(
+        String::new(),
+        now.round_index,
+        actor.viewer(actor_id),
+        Source::Player,
+        "travel",
+        Target::Place(exit.name.clone()),
+    );
     cond::holds(canon, now, &Ctx { intent: &intent }, &exit.if_).is_err()
 }
 
@@ -160,7 +157,7 @@ pub(crate) fn used_exit<'a>(
     rule: &Rule,
 ) -> Option<&'a Exit> {
     let token = token(rule, intent)?;
-    let from = now.actors.get(&intent.actor_id)?.place();
+    let from = now.actors.get(intent.actor.actor_id())?.place();
     named(canon, from, &token)
 }
 
@@ -221,28 +218,29 @@ pub fn begin(
     minutes: u64,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let travel = used_exit(draft.canon(), draft.now(), intent, rule)
-        .map(|exit| (exit.cost.clone(), exit.to.clone(), exit.name.clone()));
-    if let Some((cost, _, _)) = &travel {
-        cost::pay(draft, intent, cost, dice)?;
-    }
+    let kind = match used_exit(draft.canon(), draft.now(), intent, rule).cloned() {
+        Some(exit) => {
+            cost::pay(draft, intent, &exit.cost, dice)?;
+            PendingKind::Arrive {
+                place: exit.to,
+                via: exit.name,
+            }
+        }
+        None => PendingKind::Finish {
+            target: intent.target.clone(),
+        },
+    };
     let until = world_time_before.saturating_add(minutes);
     let pending = PendingAction {
-        rule: rule.id.clone(),
         verb: intent.move_name.clone(),
-        target: match &intent.target {
-            Target::Place(id) | Target::Actor(id) | Target::Clock(id) => id.clone(),
-            Target::Empty => String::new(),
-        },
-        arrive: travel.as_ref().map(|(_, to, _)| to.clone()),
-        via: travel.as_ref().map(|(_, _, name)| name.clone()),
         source: intent.source,
+        kind,
     };
-    draft.track(StateKey::ActorBusy(intent.actor_id.clone()))?;
+    draft.track(StateKey::ActorBusy(intent.actor.actor_id().to_string()))?;
     let act = draft
         .now_mut()
         .actors
-        .get_mut(&intent.actor_id)
+        .get_mut(intent.actor.actor_id())
         .ok_or(Reason::UnknownKey)?
         .act_mut();
     act.busy_until = Some(until);
@@ -309,12 +307,10 @@ pub fn busy_line(now: &Now, actor_id: &str) -> Option<String> {
         return None;
     }
     let until = actor.act().busy_until?;
-    let via = actor
-        .act()
-        .busy_for
-        .as_ref()
-        .and_then(|pending| pending.via.as_deref())
-        .filter(|name| !name.is_empty())?;
+    let via = match actor.act().busy_for.as_ref().map(|pending| &pending.kind) {
+        Some(PendingKind::Arrive { via, .. }) if !via.is_empty() => via,
+        _ => return None,
+    };
     Some(format!("on the {via} until {}", clock_face(until)))
 }
 
@@ -380,7 +376,7 @@ fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: Targe
     };
     let place = actor.place().to_string();
     let wielded = actor.wielded().map(str::to_string);
-    let kind = actor.actor_kind();
+    let viewer = actor.viewer(actor_id);
     for hint in verb_hints(canon, now, actor_id, target) {
         let Some(rule) = gate::verb_for(
             canon,
@@ -398,17 +394,14 @@ fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: Targe
             continue;
         };
         let token = hint.unwrap_or_default();
-        let intent = Intent {
-            id: String::new(),
-            tick_index: now.tick_index,
-            actor_id: actor_id.to_string(),
-            actor_kind: kind,
-            source: Source::Player,
-            move_name: verb.to_string(),
-            target: chosen.store(&token),
-            args: IntentArgs::default(),
-            rationale_code: String::new(),
-        };
+        let intent = Intent::new(
+            String::new(),
+            now.round_index,
+            viewer.clone(),
+            Source::Player,
+            verb,
+            chosen.store(&token),
+        );
         if cond::holds(canon, now, &Ctx { intent: &intent }, &rule.if_).is_ok() {
             return true;
         }

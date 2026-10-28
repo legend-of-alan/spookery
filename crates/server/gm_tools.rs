@@ -9,7 +9,7 @@ use super::world_loop::commit_then_fast_forward;
 pub struct GmToolReply {
     pub value: Value,
     pub advanced: bool,
-    pub ticked: bool,
+    pub played_round: bool,
     pub gm_event: Option<Vec<u8>>,
     /// Written on the GM socket after this call's response line.
     pub after: Vec<Vec<u8>>,
@@ -28,7 +28,7 @@ impl GmToolReply {
         Self {
             value,
             advanced: false,
-            ticked: false,
+            played_round: false,
             gm_event: None,
             after: Vec::new(),
             player_line: None,
@@ -321,7 +321,7 @@ fn commit_tool(
     };
     done.outputs = outputs;
     done.advanced = world.now().world_time != before;
-    done.ticked = true;
+    done.played_round = true;
     Ok(done)
 }
 
@@ -380,7 +380,7 @@ fn queue_tool_intent(
     world.queue_gm_intent(
         GmIntentSpec {
             id: call.id,
-            tick_index: call.tick_index,
+            round_index: call.tick_index,
             actor_id: call.actor_id,
             move_name: call.move_name,
             target: call.target,

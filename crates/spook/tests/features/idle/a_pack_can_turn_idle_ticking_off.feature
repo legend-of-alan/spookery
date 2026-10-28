@@ -1,6 +1,6 @@
 Feature: A pack can turn idle ticking off
 
-  Scenario: An empty table past its interval writes no tick while idle is off
+  Scenario: An empty table past its interval writes no round while idle is off
     When idle is off and a past-due wake arrives
 
   Scenario: A long absence writes no catch-up while idle is off
@@ -24,9 +24,9 @@ Feature: A pack can turn idle ticking off
     And stdout is empty
     And the pack bytes are unchanged
 
-  Scenario: A zero tick interval is refused at load
+  Scenario: A zero round interval is refused at load
     Given a docks table
-    When the copy is broken by "zero tick interval"
+    When the copy is broken by "zero round interval"
     And the operator runs spook check
     Then the check exits 1
     And the report names "rules/tick.yaml"

@@ -1,6 +1,7 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
+use crate::check::Outcome;
 use crate::error::Reason;
 use crate::intent::{Intent, Target};
 use crate::model::Now;
@@ -15,6 +16,15 @@ pub trait Dice {
     fn begin(&mut self);
     fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason>;
     fn note(&mut self, text: String);
+    /// The band of `actor_id`'s resist roll against `target`.
+    fn resist(
+        &mut self,
+        canon: &Canon,
+        now: &Now,
+        actor_id: &str,
+        check_id: &str,
+        target: i64,
+    ) -> Result<Outcome, Reason>;
 }
 
 /// No dice. A rule that rolls here is refused.
@@ -28,6 +38,10 @@ impl Dice for NoDice {
     }
 
     fn note(&mut self, _text: String) {}
+
+    fn resist(&mut self, _: &Canon, _: &Now, _: &str, _: &str, _: i64) -> Result<Outcome, Reason> {
+        Err(Reason::Schema)
+    }
 }
 
 pub struct EvalOutput {
@@ -200,14 +214,14 @@ pub(crate) fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reaso
 
 pub(crate) fn resolve_who_id(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
     match who {
-        Who::Self_ => Ok(ctx.intent.actor_id.clone()),
+        Who::Self_ => Ok(ctx.intent.actor.actor_id().to_string()),
         Who::Target => match &ctx.intent.target {
             Target::Actor(id) | Target::Place(id) => Ok(id.clone()),
             _ => Err(Reason::Schema),
         },
         Who::Here => now
             .actors
-            .get(&ctx.intent.actor_id)
+            .get(ctx.intent.actor.actor_id())
             .map(|actor| actor.place().to_string())
             .ok_or(Reason::UnknownKey),
         Who::Actor(id) => Ok(id.clone()),
@@ -223,7 +237,7 @@ mod tests {
     use super::{eval_with_dice, Ctx, Dice};
     use crate::canon::Canon;
     use crate::error::Reason;
-    use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+    use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
     use crate::meter::{MeterDef, MeterLive};
     use crate::model::{ActCounters, ActorLive, Now};
     use crate::rule::{parse_expr, Keep};
@@ -250,14 +264,24 @@ mod tests {
         fn note(&mut self, text: String) {
             self.notes.push(text);
         }
+
+        fn resist(
+            &mut self,
+            _: &Canon,
+            _: &Now,
+            _: &str,
+            _: &str,
+            _: i64,
+        ) -> Result<crate::check::Outcome, Reason> {
+            Err(Reason::Schema)
+        }
     }
 
     fn intent(actor: &str, target: &str) -> Intent {
         Intent {
             id: "t".to_string(),
-            tick_index: 0,
-            actor_id: actor.to_string(),
-            actor_kind: ActorKind::Player,
+            round_index: 0,
+            actor: ViewerId::Player(actor.to_string()),
             source: Source::Player,
             move_name: "hit".to_string(),
             target: Target::Actor(target.to_string()),
@@ -289,7 +313,7 @@ mod tests {
                 },
             )]),
             items: BTreeMap::new(),
-            budget: crate::canon::tick_settings::Budget::defaults(),
+            budget: crate::canon::round_settings::Budget::defaults(),
             checkpoint_every: 100,
         }
     }
@@ -303,9 +327,9 @@ mod tests {
             pack_rev: String::new(),
             rules_rev: 0,
             state_rev: 0,
-            tick_index: 0,
+            round_index: 0,
             world_time: 0,
-            last_tick_at: String::new(),
+            last_round_at: String::new(),
             presence: crate::model::Presence::default(),
             pause: crate::model::PauseView {
                 named_plot_clocks: crate::model::RunState::Running,

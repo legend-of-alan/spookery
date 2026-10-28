@@ -8,7 +8,7 @@ Feature: Travel follows an exit
     When the player travels to "docks_street"
     Then world_time is 1085
     And Rowan is in docks_street
-    And the tick records the move to the street
+    And the round records the move to the street
 
   Scenario: A street travel waits until the GM commits
     Given a docks table with a GM and a seated player
@@ -16,8 +16,8 @@ Feature: Travel follows an exit
     Then the player line is queued
     And Rowan is in docks_shop
     And world_time is 1080
-    And no tick file was written
+    And no round file was written
     When the GM commits the round
     Then world_time is 1085
     And Rowan is in docks_street
-    And the tick records the move to the street
+    And the round records the move to the street

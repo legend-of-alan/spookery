@@ -9,7 +9,7 @@ Feature: Status is the host view
 
   Scenario: After the door note the player resume omits the host trace
     Given a docks table
-    When thirteen ticks pass
+    When thirteen rounds pass
     And the operator runs status
     Then status exits 0
     And the host text lists the door note

@@ -11,9 +11,9 @@ pub enum StateKey {
     ActorMeter(String, String),
     ActorBusy(String),
     ActorKnownFact(String),
-    TickLastAct(String),
-    TickIdleActs(String),
-    TickLiveActs(String),
+    LastActRound(String),
+    IdleActsToday(String),
+    LiveActsThisHour(String),
     ActorItem(String, String),
     PlaceItem(String, String),
     ActorWielded(String),
@@ -31,9 +31,9 @@ impl fmt::Display for StateKey {
             StateKey::ActorMeter(id, key) => write!(f, "actor_meter {id} {key}"),
             StateKey::ActorBusy(id) => write!(f, "actor_busy {id}"),
             StateKey::ActorKnownFact(id) => write!(f, "actor_known_fact {id}"),
-            StateKey::TickLastAct(id) => write!(f, "tick_last_act {id}"),
-            StateKey::TickIdleActs(id) => write!(f, "tick_idle_acts {id}"),
-            StateKey::TickLiveActs(id) => write!(f, "tick_live_acts {id}"),
+            StateKey::LastActRound(id) => write!(f, "last_act_round {id}"),
+            StateKey::IdleActsToday(id) => write!(f, "idle_acts_today {id}"),
+            StateKey::LiveActsThisHour(id) => write!(f, "live_acts_this_hour {id}"),
             StateKey::ActorItem(actor, id) => write!(f, "actor_item {actor} {id}"),
             StateKey::PlaceItem(place, id) => write!(f, "place_item {place} {id}"),
             StateKey::ActorWielded(actor) => write!(f, "actor_wielded {actor}"),
@@ -54,9 +54,9 @@ impl StateKey {
             | StateKey::ActorMeter(id, _)
             | StateKey::ActorBusy(id)
             | StateKey::ActorKnownFact(id)
-            | StateKey::TickLastAct(id)
-            | StateKey::TickIdleActs(id)
-            | StateKey::TickLiveActs(id)
+            | StateKey::LastActRound(id)
+            | StateKey::IdleActsToday(id)
+            | StateKey::LiveActsThisHour(id)
             | StateKey::ActorItem(id, _)
             | StateKey::ActorWielded(id) => Some(id),
             StateKey::PlaceItem(_, _)
@@ -76,6 +76,34 @@ pub enum StateValue {
     Number(i64),
     Mark(bool),
     List(Vec<String>),
+}
+
+impl StateValue {
+    pub(crate) fn as_text(&self) -> Option<&str> {
+        match self {
+            StateValue::Text(text) => Some(text),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_number(&self) -> Option<i64> {
+        match self {
+            StateValue::Number(number) => Some(*number),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_mark(&self) -> Option<bool> {
+        match self {
+            StateValue::Mark(mark) => Some(*mark),
+            _ => None,
+        }
+    }
+
+    /// Whether this is a list that holds `id`.
+    pub(crate) fn lists(&self, id: &str) -> bool {
+        matches!(self, StateValue::List(ids) if ids.iter().any(|listed| listed == id))
+    }
 }
 
 /// A key that changed, with the value before the change and the value after it.

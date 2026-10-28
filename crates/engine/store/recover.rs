@@ -62,10 +62,7 @@ fn snapshot_matches(root: &Path, plain: &Path) -> bool {
     let Some(mark) = journal::trailing_checkpoint(plain) else {
         return false;
     };
-    let snap = root
-        .join("state/checkpoints")
-        .join(format!("{}.yaml", mark.state_rev));
-    fs::read(snap)
+    fs::read(journal::checkpoint_path(root, mark.state_rev))
         .ok()
         .is_some_and(|bytes| journal::hash_now(&bytes) == mark.state_hash)
 }
@@ -114,22 +111,22 @@ fn gzip_path(plain: &Path) -> PathBuf {
 }
 
 /// Memory files are a cache of the journal. The live bundle supplies lines since
-/// the last checkpoint. A line for a tick the live bundle does not have, and
+/// the last checkpoint. A line for a round the live bundle does not have, and
 /// that the checkpoint does not cover, is dropped.
 fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
     let records = journal::read_live(root).map_err(|fault| fault.reason)?;
     let head = journal::read_head(root).map_err(|fault| fault.reason)?;
-    let live_ticks: BTreeSet<u64> = records
+    let live_rounds: BTreeSet<u64> = records
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Tick(record) => Some(record.tick_index),
+            JournalEntry::Round(record) => Some(record.round_index),
             _ => None,
         })
         .collect();
     let fresh: Vec<MemoryLine> = records
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Tick(record) => Some(record.memories.clone()),
+            JournalEntry::Round(record) => Some(record.memories.clone()),
             _ => None,
         })
         .flatten()
@@ -166,7 +163,8 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
                 if line.is_empty() {
                     continue;
                 }
-                if memory_tick(line).is_some_and(|tick| keep_tick(tick, head.as_ref(), &live_ticks))
+                if memory_round(line)
+                    .is_some_and(|round| keep_round(round, head.as_ref(), &live_rounds))
                 {
                     kept.push(line.to_string());
                 }
@@ -194,12 +192,12 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn keep_tick(tick: u64, head: Option<&journal::BundleHead>, live_ticks: &BTreeSet<u64>) -> bool {
-    if live_ticks.contains(&tick) {
+fn keep_round(round: u64, head: Option<&journal::BundleHead>, live_rounds: &BTreeSet<u64>) -> bool {
+    if live_rounds.contains(&round) {
         return true;
     }
     match head {
-        Some(head) => tick <= head.tick_index,
+        Some(head) => round <= head.round_index,
         None => false,
     }
 }
@@ -227,14 +225,14 @@ fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
     Ok(())
 }
 
-fn memory_tick(line: &str) -> Option<u64> {
+fn memory_round(line: &str) -> Option<u64> {
     #[derive(serde::Deserialize)]
-    struct MemoryTick {
-        tick_index: u64,
+    struct MemoryRound {
+        round_index: u64,
     }
-    serde_json::from_str::<MemoryTick>(line)
+    serde_json::from_str::<MemoryRound>(line)
         .ok()
-        .map(|row| row.tick_index)
+        .map(|row| row.round_index)
 }
 
 fn delete_tmp(dir: &Path) {
@@ -265,6 +263,9 @@ mod tests {
 
     use crate::commit::commit;
     use crate::draft::Draft;
+    use crate::model::Presence;
+    use crate::round::log::{RoundLine, RoundLog};
+    use crate::round::stage::advance::Clock;
     use crate::world::World;
 
     #[test]
@@ -278,7 +279,7 @@ mod tests {
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let kept = fs::read(&bundle).unwrap();
         let mut torn = kept.clone();
-        torn.extend(br#"{"tick_index":99,"#);
+        torn.extend(br#"{"round_index":99,"#);
         fs::write(&bundle, &torn).unwrap();
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
@@ -300,29 +301,19 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn journal_line() -> crate::journal::TickRecord {
-        crate::journal::TickRecord {
-            tick_index: 0,
-            rules_rev: 7,
-            state_rev_before: 0,
-            state_rev_after: 1,
-            world_time_before: 0,
-            world_time_after: 0,
-            presence_humans: 0,
-            actors_present: Vec::new(),
+    fn journal_line() -> RoundLine {
+        RoundLine {
+            clock: Clock {
+                round_index: 0,
+                world_time_before: 0,
+                world_time_after: 0,
+            },
+            presence: Presence::default(),
             seed: String::new(),
-            last_tick_at: String::new(),
-            intents: Vec::new(),
-            rejected: Vec::new(),
-            effects: Vec::new(),
-            arrivals: Vec::new(),
+            wall: String::new(),
             fast_forward: false,
-            dice: Vec::new(),
-            steps_run: Vec::new(),
-            memories: Vec::new(),
-            now_hash: String::new(),
-            prev: String::new(),
-            chain: String::new(),
+            log: RoundLog::default(),
+            queue: Vec::new(),
         }
     }
 

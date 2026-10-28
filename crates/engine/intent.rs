@@ -38,14 +38,6 @@ impl ViewerId {
             ViewerId::Npc(id) => format!("npc:{id}"),
         }
     }
-
-    pub fn from_kind(kind: ActorKind, id: &str) -> Result<Self, Reason> {
-        match kind {
-            ActorKind::Npc => Ok(ViewerId::Npc(id.to_string())),
-            ActorKind::Player => Ok(ViewerId::Player(id.to_string())),
-            ActorKind::System => Err(Reason::UnscopedPerceive),
-        }
-    }
 }
 
 impl From<ViewerId> for String {
@@ -59,24 +51,6 @@ impl TryFrom<String> for ViewerId {
 
     fn try_from(raw: String) -> Result<Self, Self::Error> {
         ViewerId::parse(&raw)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActorKind {
-    Npc,
-    Player,
-    System,
-}
-
-impl ActorKind {
-    pub fn token(self) -> &'static str {
-        match self {
-            ActorKind::Npc => "npc",
-            ActorKind::Player => "player",
-            ActorKind::System => "system",
-        }
     }
 }
 
@@ -98,13 +72,20 @@ impl Source {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(try_from = "TargetWire", into = "TargetWire")]
 pub enum Target {
     #[default]
     Empty,
     Place(String),
     Actor(String),
     Clock(String),
+}
+
+impl Target {
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Target::Empty)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -116,17 +97,38 @@ pub struct IntentArgs {
 #[serde(deny_unknown_fields)]
 pub struct Intent {
     pub id: String,
-    pub tick_index: u64,
-    pub actor_id: String,
-    pub actor_kind: ActorKind,
+    pub round_index: u64,
+    pub actor: ViewerId,
     pub source: Source,
     #[serde(rename = "move")]
     pub move_name: String,
-    #[serde(with = "target_as")]
     pub target: Target,
     #[serde(with = "args_as")]
     pub args: IntentArgs,
     pub rationale_code: String,
+}
+
+impl Intent {
+    /// An intent with no message recipients and no rationale.
+    pub(crate) fn new(
+        id: String,
+        round_index: u64,
+        actor: ViewerId,
+        source: Source,
+        move_name: &str,
+        target: Target,
+    ) -> Self {
+        Self {
+            id,
+            round_index,
+            actor,
+            source,
+            move_name: move_name.to_string(),
+            target,
+            args: IntentArgs::default(),
+            rationale_code: String::new(),
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize)]
@@ -140,8 +142,8 @@ pub(crate) struct TargetWire {
     clock: Option<String>,
 }
 
-impl From<&Target> for TargetWire {
-    fn from(target: &Target) -> Self {
+impl From<Target> for TargetWire {
+    fn from(target: Target) -> Self {
         match target {
             Target::Empty => Self {
                 place: None,
@@ -149,19 +151,19 @@ impl From<&Target> for TargetWire {
                 clock: None,
             },
             Target::Place(id) => Self {
-                place: Some(id.clone()),
+                place: Some(id),
                 actor: None,
                 clock: None,
             },
             Target::Actor(id) => Self {
                 place: None,
-                actor: Some(id.clone()),
+                actor: Some(id),
                 clock: None,
             },
             Target::Clock(id) => Self {
                 place: None,
                 actor: None,
-                clock: Some(id.clone()),
+                clock: Some(id),
             },
         }
     }
@@ -204,25 +206,6 @@ impl From<ArgsWire> for IntentArgs {
     }
 }
 
-pub(crate) mod target_as {
-    use super::TargetWire;
-    use crate::intent::Target;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub(crate) fn serialize<S: Serializer>(
-        target: &Target,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        TargetWire::from(target).serialize(serializer)
-    }
-
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Target, D::Error> {
-        Target::try_from(TargetWire::deserialize(deserializer)?).map_err(serde::de::Error::custom)
-    }
-}
-
 pub(crate) mod args_as {
     use super::ArgsWire;
     use crate::intent::IntentArgs;
@@ -246,26 +229,36 @@ fn absent<T>(value: &Option<T>) -> bool {
     value.is_none()
 }
 
-/// Blake2s of `shard|tick|actor|row`. The P37 preimage stays.
+/// Blake2s of `shard|round|actor|row`. The P37 preimage stays.
 pub(crate) fn kernel_intent_id(
     shard_id: &str,
-    tick_index: u64,
+    round_index: u64,
     actor_id: &str,
     row: &str,
 ) -> String {
-    crate::hash::blake2s_hex(format!("{shard_id}|{tick_index}|{actor_id}|{row}").as_bytes())
+    crate::hash::blake2s_hex(format!("{shard_id}|{round_index}|{actor_id}|{row}").as_bytes())
 }
 
-/// Blake2s of `shard|tick_index_plus_one|actor|canonical_line`.
+/// Blake2s of `shard|round_index_plus_one|actor|canonical_line`.
 pub(crate) fn player_intent_id(
     shard_id: &str,
-    tick_index_plus_one: u64,
+    round_index_plus_one: u64,
     actor_id: &str,
     line: &str,
 ) -> String {
     crate::hash::blake2s_hex(
-        format!("{shard_id}|{tick_index_plus_one}|{actor_id}|{line}").as_bytes(),
+        format!("{shard_id}|{round_index_plus_one}|{actor_id}|{line}").as_bytes(),
     )
+}
+
+/// The id of the intent that finishes `actor_id`'s timed action.
+pub(crate) fn arrival_intent_id(actor_id: &str) -> String {
+    format!("arrival:{actor_id}")
+}
+
+/// The id of the intent that fires `rule_id` for `actor_id`.
+pub(crate) fn trigger_intent_id(rule_id: &str, actor_id: &str) -> String {
+    format!("trigger:{rule_id}:{actor_id}")
 }
 
 #[cfg(test)]

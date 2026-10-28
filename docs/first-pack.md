@@ -86,7 +86,7 @@ The save lists the places people can stand in. Add `porch` under `places` in `st
 
 ## Add a player move
 
-Append a yield to `rules/verbs.yaml`. A yield commits a tick and changes no numbers.
+Append a yield to `rules/verbs.yaml`. A yield commits a round and changes no numbers.
 
 ```yaml path=rules/verbs.yaml mode=append
   - id: listen
@@ -160,4 +160,4 @@ spook run /tmp/mypack
 spook play
 ```
 
-You sit `pc_ada`. The first picture is the yard. `travel lane` leaves for the lane and commits a tick, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.
+You sit `pc_ada`. The first picture is the yard. `travel lane` leaves for the lane and commits a round, because no GM is seated. `listen`, `wait`, `steady`, and `press` are the other player verbs.

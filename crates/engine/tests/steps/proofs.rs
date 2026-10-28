@@ -5,8 +5,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use spookery_engine::testing::{
-    self as support, insert_nell, journal::list_tick_keys, now_of, open, read_tick as tick_value,
-    save_now, stamp_pack_rev, ActCounters, ActorLive, PauseView, PlaceLive, Presence,
+    self as support, insert_nell, journal::list_round_keys, now_of, open,
+    read_round as round_value, save_now, stamp_pack_rev, ActCounters, ActorLive, PauseView,
+    PlaceLive, Presence,
 };
 use spookery_engine::{
     emit_save, handle_player_move, play_pack_once, GmIntentSpec, Message, MeterLive, MoveOutcome,
@@ -77,11 +78,11 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
 
 fn no_self_win() {
     let pack = support::temp_pack("self-win");
-    for tick in 1..=12 {
-        play_pack_once(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
+    for round in 1..=12 {
+        play_pack_once(&pack).unwrap_or_else(|err| panic!("round {round}: {err}"));
     }
     let now = now_of(&pack);
-    assert_eq!(now.tick_index, 12, "twelve empty-table ticks commit");
+    assert_eq!(now.round_index, 12, "twelve empty-table rounds commit");
     let clock = now
         .clocks
         .get("assassination_debt")
@@ -197,14 +198,14 @@ fn player_in_the_shop() {
     }
     let mut shard = open(&pack);
     seat_rowan(&mut shard);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     shard
-        .play(spookery_engine::RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.messages.len(), 1);
-    assert_eq!(now.actors.get("mira").unwrap().act().last_act_tick, 0);
+    assert_eq!(now.actors.get("mira").unwrap().act().last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -213,7 +214,7 @@ fn queue_gm(shard: &mut Shard, id: &str, actor: &str, move_name: &str) {
         .queue_gm_intent(
             GmIntentSpec {
                 id: None,
-                tick_index: None,
+                round_index: None,
                 actor_id: Some(actor.to_string()),
                 move_name: Some(move_name.to_string()),
                 target: None,
@@ -238,11 +239,9 @@ fn gm_restocks() {
     }
     let mut shard = open(&pack);
     seat_rowan(&mut shard);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     queue_gm(&mut shard, "gm-1", "mira", "restock_lamp_oil");
-    shard
-        .play(spookery_engine::RoundCause::Manual, &wall)
-        .unwrap();
+    shard.play(&wall).unwrap();
     assert_eq!(lamp_oil(shard.now()), 8);
     assert_eq!(shard.now().messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
@@ -259,28 +258,29 @@ fn claimed_note_sorts_first() {
     }
     let mut shard = open(&pack);
     seat_rowan(&mut shard);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     for (id, actor, move_name) in [
         ("gm-1", "bram", "wait"),
         ("gm-2", "mira", "leave_door_note"),
     ] {
         queue_gm(&mut shard, id, actor, move_name);
     }
-    shard
-        .play(spookery_engine::RoundCause::Manual, &wall)
-        .unwrap();
-    let log = tick_value(&pack, "tick-0001");
-    let moves: Vec<&str> = log["intents"]
+    shard.play(&wall).unwrap();
+    let log = round_value(&pack, "round-0001");
+    let rules: Vec<&str> = log["steps_run"]
         .as_array()
         .unwrap()
         .iter()
-        .map(|intent| intent["move"].as_str().unwrap())
+        .filter_map(|step| step["rule"].as_str())
         .collect();
-    assert_eq!(moves, vec!["leave_door_note", "wait"]);
-    assert_eq!(
-        log["intents"][0]["args"]["to"][0].as_str(),
-        Some("pc_rowan")
-    );
+    assert_eq!(rules, vec!["cast:mira/leave_door_note", "verb:wait"]);
+    let note = log["effects"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|effect| effect["class"] == "message")
+        .unwrap_or_else(|| panic!("no door note: {log}"));
+    assert_eq!(note["to"], serde_json::json!(["pc_rowan"]));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -288,7 +288,7 @@ fn catchup_cap() {
     catchup_for(72, 12);
 }
 
-fn catchup_for(hours: u64, ticks: u64) {
+fn catchup_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("catchup");
     let _ = fs::remove_dir_all(&pack);
@@ -371,9 +371,9 @@ Rowan.
         pack_rev: rev,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
-        tick_index: 0,
+        round_index: 0,
         world_time: 0,
-        last_tick_at: "2026-01-01T00:00:00Z".to_string(),
+        last_round_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
             humans: 0,
             actors_present: Vec::new(),
@@ -391,17 +391,17 @@ Rowan.
     let place_before = fs::read(pack.join("world/places/gate.md")).unwrap();
     let cast_before = fs::read(pack.join("cast/pc_rowan.md")).unwrap();
     let mut shard = open(&pack);
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     shard
         .catch_up(&wall, hours)
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
     let saved = Shard::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
     let now = saved.now();
-    assert_eq!(now.state_rev, ticks, "{hours} hours");
-    assert_eq!(now.tick_index, ticks);
-    assert_eq!(now.world_time, ticks * 60);
-    assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
-    assert_eq!(list_tick_keys(&pack).len() as u64, ticks);
+    assert_eq!(now.state_rev, rounds, "{hours} hours");
+    assert_eq!(now.round_index, rounds);
+    assert_eq!(now.world_time, rounds * 60);
+    assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
+    assert_eq!(list_round_keys(&pack).len() as u64, rounds);
     assert_eq!(
         fs::read(pack.join("world/places/gate.md")).unwrap(),
         place_before
@@ -428,16 +428,16 @@ fn busy_skip() {
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(now.actors.get("mira").unwrap().act().last_act_tick, 0);
-    assert_eq!(now.actors.get("bram").unwrap().act().last_act_tick, 0);
+    assert_eq!(now.actors.get("mira").unwrap().act().last_act_round, 0);
+    assert_eq!(now.actors.get("bram").unwrap().act().last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn sealed_tick(pack: &Path, state_rev: u64) -> String {
-    use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, TickRecord};
-    let entry = JournalEntry::Tick(TickRecord {
-        tick_index: 1,
-        rules_rev: 7,
+fn sealed_round(pack: &Path, state_rev: u64) -> String {
+    use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, RoundRecord};
+    let entry = JournalEntry::Round(RoundRecord {
+        round_index: 1,
+        rules_rev: spookery_engine::testing::RULES_REV,
         state_rev_before: state_rev.saturating_sub(1),
         state_rev_after: state_rev,
         world_time_before: 0,
@@ -445,7 +445,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
         presence_humans: 0,
         actors_present: Vec::new(),
         seed: String::new(),
-        last_tick_at: String::new(),
+        last_round_at: String::new(),
         intents: Vec::new(),
         rejected: Vec::new(),
         effects: Vec::new(),
@@ -454,7 +454,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
         dice: Vec::new(),
         steps_run: Vec::new(),
         memories: vec![spookery_engine::testing::MemoryLine {
-            tick_index: 1,
+            round_index: 1,
             actor_id: "mira".to_string(),
             intent_id: String::new(),
             fact_ids: Vec::new(),
@@ -554,16 +554,16 @@ fn the_next_revision_keeps_the_new_save() {
     fs::write(txn.join("COMPLETE"), b"").unwrap();
     let log = next.join("state/journal");
     fs::create_dir_all(&log).unwrap();
-    let kept = sealed_tick(&next, live.state_rev);
+    let kept = sealed_round(&next, live.state_rev);
     let mut torn = kept.into_bytes();
-    torn.extend(br#"{"tick_index":99,"#);
+    torn.extend(br#"{"round_index":99,"#);
     let bundle = log.join("bundle-0000.jsonl");
     fs::write(&bundle, &torn).unwrap();
     let memories = next.join("state/memories");
     fs::create_dir_all(&memories).unwrap();
     fs::write(
         memories.join("mira.jsonl"),
-        "{\"tick_index\":1,\"text\":\"kept-line\"}\n{\"tick_index\":99,\"text\":\"orphan-line\"}\n",
+        "{\"round_index\":1,\"text\":\"kept-line\"}\n{\"round_index\":99,\"text\":\"orphan-line\"}\n",
     )
     .unwrap();
     let opened = open(&next);
@@ -572,7 +572,7 @@ fn the_next_revision_keeps_the_new_save() {
     assert!(!txn.exists());
     let bundle_text = fs::read_to_string(&bundle).unwrap();
     assert!(bundle_text.ends_with('\n'), "{bundle_text}");
-    assert!(!bundle_text.contains("tick_index\":99"));
+    assert!(!bundle_text.contains("round_index\":99"));
     let memory = fs::read_to_string(memories.join("mira.jsonl")).unwrap();
     assert!(memory.contains("kept-line"));
     assert!(!memory.contains("orphan-line"));
@@ -669,9 +669,9 @@ rules:
         pack_rev: rev,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
-        tick_index: 0,
+        round_index: 0,
         world_time: 0,
-        last_tick_at: "2026-01-01T00:00:00Z".to_string(),
+        last_round_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
             humans: 0,
             actors_present: Vec::new(),
@@ -688,7 +688,7 @@ rules:
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
-    assert_eq!(now.tick_index, 1);
+    assert_eq!(now.round_index, 1);
     assert_eq!(
         now.actors.values().filter(|actor| actor.is_npc()).count(),
         50
@@ -696,12 +696,14 @@ rules:
     let acted = now
         .actors
         .values()
-        .filter(|actor| actor.act().last_act_tick == 1)
+        .filter(|actor| actor.act().last_act_round == 1)
         .count();
-    let applied = tick_value(&pack, "tick-0001")["intents"]
+    let applied = round_value(&pack, "round-0001")["steps_run"]
         .as_array()
         .unwrap()
-        .len();
+        .iter()
+        .filter(|step| step["rule"].is_string())
+        .count();
     assert!((1..=8).contains(&acted), "acted {acted}");
     assert!((1..=12).contains(&applied), "applied {applied}");
     let _ = fs::remove_dir_all(&pack);
@@ -796,7 +798,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
         &format!("tick:\n  eligible: true\n  flags:\n{flags}"),
         1,
     );
-    assert_ne!(next, text, "mira tick block was not patched");
+    assert_ne!(next, text, "mira round block was not patched");
     fs::write(&path, next).unwrap();
     let now_path = pack.join("state/save.yaml");
     let mut now = spookery_engine::load_save(&fs::read_to_string(&now_path).unwrap()).unwrap();
@@ -807,7 +809,7 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
 fn play_mark(pack: &Path) -> Now {
     let mut shard = open(pack);
     shard.seat_player("pc_rowan").unwrap();
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     let played =
         handle_player_move(&mut shard, "pc_rowan", "mark", Some("mira"), false, &wall).unwrap();
     let MoveOutcome::Committed { .. } = played else {
@@ -833,14 +835,14 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             vec!["marked".to_string()],
             "{label} success {success}"
         );
-        let tick = tick_value(&pack, "tick-0001");
-        assert!(tick["steps_run"]
+        let round = round_value(&pack, "round-0001");
+        assert!(round["steps_run"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|name| name == "resolve_check"));
+            .any(|name| name == "check_rolled"));
         assert!(
-            !spookery_engine::testing::journal::read_record_line(&pack, "tick-0001")
+            !spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
                 .unwrap_or_else(|err| panic!("{}", err.detail))
                 .contains("faces")
         );
@@ -889,7 +891,7 @@ fn opposing_total_reused() {
         if opposed {
             queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
         }
-        let wall = shard.now().last_tick_at.clone();
+        let wall = shard.now().last_round_at.clone();
         let mark = handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall)
             .unwrap();
         let MoveOutcome::Queued(_) = mark else {
@@ -900,9 +902,9 @@ fn opposing_total_reused() {
         let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
-        let tick = spookery_engine::testing::journal::read_record_line(&pack, "tick-0001")
+        let round = spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
-        assert!(!tick.contains("faces"));
+        assert!(!round.contains("faces"));
         if opposed {
             let nell = rolled_stat(&reports, 100);
             assert_eq!(nell.target, 0);
@@ -950,7 +952,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let mut shard = open(&held);
     shard.seat_player("pc_rowan").unwrap();
     queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
-    let wall = shard.now().last_tick_at.clone();
+    let wall = shard.now().last_round_at.clone();
     let queued =
         handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall).unwrap();
     let MoveOutcome::Queued(_) = queued else {
@@ -962,30 +964,30 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let rowan = rolled_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
-        !spookery_engine::testing::journal::read_record_line(&held, "tick-0001")
+        !spookery_engine::testing::journal::read_record_line(&held, "round-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail))
             .contains("faces")
     );
     let _ = fs::remove_dir_all(&held);
 }
 
-#[when(expr = "twelve empty ticks pass")]
-fn twelve_empty_ticks_pass(_world: &mut World) {
+#[when(expr = "twelve empty rounds pass")]
+fn twelve_empty_rounds_pass(_world: &mut World) {
     no_self_win();
 }
 
-#[when(expr = "the evening tick runs with Rowan away")]
-fn the_evening_tick_runs(_world: &mut World) {
+#[when(expr = "the evening round runs with Rowan away")]
+fn the_evening_round_runs(_world: &mut World) {
     evening_note();
 }
 
-#[when(expr = "the morning tick runs with the note already left")]
-fn the_morning_tick_runs(_world: &mut World) {
+#[when(expr = "the morning round runs with the note already left")]
+fn the_morning_round_runs(_world: &mut World) {
     morning_restock();
 }
 
-#[when(expr = "the morning tick runs and the shelf already holds 6 lamp oil")]
-fn the_morning_tick_caps_the_shelf(world: &mut World) {
+#[when(expr = "the morning round runs and the shelf already holds 6 lamp oil")]
+fn the_morning_round_caps_the_shelf(world: &mut World) {
     world.scratch = capped_restock().to_string();
 }
 
@@ -994,8 +996,8 @@ fn the_shop_holds_8_lamp_oil(world: &mut World) {
     assert_eq!(world.scratch, "8");
 }
 
-#[when(expr = "an off-hours tick runs with the note already left")]
-fn an_off_hours_tick_runs(_world: &mut World) {
+#[when(expr = "an off-hours round runs with the note already left")]
+fn an_off_hours_round_runs(_world: &mut World) {
     off_hours_hold();
 }
 
@@ -1024,7 +1026,7 @@ fn one_hour_of_catch_up(_world: &mut World) {
     catchup_for(1, 8);
 }
 
-#[when(expr = "Mira is busy and a tick runs")]
+#[when(expr = "Mira is busy and a round runs")]
 fn mira_is_busy(_world: &mut World) {
     busy_skip();
 }
@@ -1049,7 +1051,7 @@ fn a_finished_transaction_advances(_world: &mut World) {
     the_next_revision_keeps_the_new_save();
 }
 
-#[when(expr = "fifty NPCs share one tick")]
+#[when(expr = "fifty NPCs share one round")]
 fn fifty_npcs(_world: &mut World) {
     budget_caps();
 }

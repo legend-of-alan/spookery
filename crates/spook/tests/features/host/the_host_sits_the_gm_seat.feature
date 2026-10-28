@@ -30,7 +30,7 @@ Feature: The host sits the GM seat
 
   Scenario: A hung model call times out and the table keeps going
     When a hung model call meets a queued player line
-    Then the queued line committed one tick
+    Then the queued line committed one round
     And the hung call retried once after the delay
     And both hung calls closed
     And the seat stayed up
@@ -39,13 +39,13 @@ Feature: The host sits the GM seat
     When a model answers 500 once and then a say
     Then the stub saw 2 model posts
     And the model's say landed
-    And the queued line committed one tick
+    And the queued line committed one round
 
   Scenario: A model that answers 401 is not retried
     When a model answers 401
     Then the stub saw 1 model post
     And the model's say did not land
-    And the queued line committed one tick
+    And the queued line committed one round
     And the error line shows the provider's text without the key
 
   Scenario: The host seat submits a say and reports a refused call

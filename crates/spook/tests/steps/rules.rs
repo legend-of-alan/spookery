@@ -8,23 +8,22 @@ use spookery_engine::handle_player_move;
 use spookery_engine::testing::{faces, PlaceLive, RollKey};
 use spookery_engine::MoveReport;
 use spookery_engine::Reason;
-use spookery_engine::RoundCause;
 
 use super::table;
 use crate::support::{append, copy_pack, edit_save, now_of, spook, temp_pack};
 use crate::World;
-#[given(expr = "a save with rules_rev 6 and an engine at 7")]
-fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
+#[given(expr = "a save with rules_rev 7 and an engine at 8")]
+fn a_save_with_rules_rev_7_and_an_engine_at_8(world: &mut World) {
     assert_eq!(
         spookery_engine::testing::RULES_REV,
-        7,
-        "the engine rules version is 7"
+        8,
+        "the engine rules version is 8"
     );
     let pack = crate::support::temp_pack("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let stamped = text.replacen("rules_rev: 7\n", "rules_rev: 6\n", 1);
-    assert_ne!(stamped, text, "save did not carry rules_rev 7\n{text}");
+    let stamped = text.replacen("rules_rev: 8\n", "rules_rev: 7\n", 1);
+    assert_ne!(stamped, text, "save did not carry rules_rev 8\n{text}");
     fs::write(&path, stamped).unwrap_or_else(|err| panic!("write save: {err}"));
     world.pack = Some(pack);
 }
@@ -36,7 +35,7 @@ fn an_old_save_from_rules_rev_6(world: &mut World) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let old = text
-        .replacen("rules_rev: 7\n", "rules_rev: 6\n", 1)
+        .replacen("rules_rev: 8\n", "rules_rev: 6\n", 1)
         .replacen(
             "pause:\n",
             "presence:\n  humans: 1\n  actors_present:\n    - pc_rowan\npause:\n",
@@ -56,7 +55,7 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     let pack = crate::support::temp_pack("rules-rev-presence-record");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    assert!(text.contains("rules_rev: 7\n"), "{text}");
+    assert!(text.contains("rules_rev: 8\n"), "{text}");
     let journal = pack.join("state/journal");
     fs::create_dir_all(&journal).unwrap_or_else(|err| panic!("mkdir journal: {err}"));
     fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
@@ -122,31 +121,31 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let located = spookery_engine::testing::journal::locate(&pack, "tick-0001")
+    let located = spookery_engine::testing::journal::locate(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
     let line = text
         .lines()
-        .find(|l| serde_json::from_str::<Value>(l).unwrap()["tick_index"] == 1)
+        .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
         .unwrap();
-    let mut tick: Value = serde_json::from_str(line).unwrap();
-    let effects = tick["effects"]
+    let mut round: Value = serde_json::from_str(line).unwrap();
+    let effects = round["effects"]
         .as_array_mut()
         .unwrap_or_else(|| panic!("no effects\n{text}"));
     assert!(!effects.is_empty(), "{text}");
     effects[0]["intent_id"] = Value::String("not-the-replayed-effect".to_string());
-    let index = tick["tick_index"]
+    let index = round["round_index"]
         .as_u64()
-        .unwrap_or_else(|| panic!("no tick_index\n{text}"));
-    world.scratch = format!("tick {index}");
-    let encoded = serde_json::to_string(&tick).unwrap_or_else(|err| panic!("encode: {err}"));
+        .unwrap_or_else(|| panic!("no round_index\n{text}"));
+    world.scratch = format!("round {index}");
+    let encoded = serde_json::to_string(&round).unwrap_or_else(|err| panic!("encode: {err}"));
     let rewritten = text.replacen(line, &encoded, 1);
     assert_ne!(rewritten, text);
     fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write tick: {err}"));
 }
 
-#[then(expr = "spook verify names the tick and the first differing effect")]
-fn spook_verify_names_the_tick_and_the_first_differing_effect(world: &mut World) {
+#[then(expr = "spook verify names the round and the first differing effect")]
+fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::run(world, &["verify", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(1), "{}", world.stderr);
@@ -351,8 +350,8 @@ Briar tops up the oil before the shop opens.
     world.pack = Some(pack);
 }
 
-#[when(expr = "an empty tick lands at hour 7 with briar in the shop")]
-fn an_empty_tick_at_hour_7(world: &mut World) {
+#[when(expr = "an empty round lands at hour 7 with briar in the shop")]
+fn an_empty_round_at_hour_7(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     edit_save(&pack, |now| {
         now.world_time = 360;
@@ -362,20 +361,18 @@ fn an_empty_tick_at_hour_7(world: &mut World) {
         *now.actors.get_mut("briar").unwrap().place_mut() = "docks_shop".to_string();
     });
     let mut opened = open_pack(&pack);
-    let wall = opened.now().last_tick_at.clone();
-    opened
-        .play(RoundCause::Manual, &wall)
-        .unwrap_or_else(|err| {
-            panic!(
-                "empty tick {}: {}",
-                err.token(),
-                spookery_engine::check_pack(&pack)
-                    .iter()
-                    .map(|diag| diag.report_line())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        });
+    let wall = opened.now().last_round_at.clone();
+    opened.play(&wall).unwrap_or_else(|err| {
+        panic!(
+            "empty round {}: {}",
+            err.token(),
+            spookery_engine::check_pack(&pack)
+                .iter()
+                .map(|diag| diag.report_line())
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    });
 }
 
 #[then(expr = "docks_shop lamp_oil increases by 4")]
@@ -452,8 +449,8 @@ fn lark_attacks(world: &mut World) {
     let face = faces(
         &RollKey {
             world_id: loaded.shard_id.clone(),
-            round_index: loaded.tick_index + 1,
-            rule_id: "attack".to_string(),
+            round_index: loaded.round_index + 1,
+            rule_id: "verb:attack".to_string(),
             subject_id: "pc_lark".to_string(),
             roll_index: 0,
         },
@@ -668,7 +665,7 @@ fn the_refusal_is_cant_afford(world: &mut World) {
     );
     let now = now_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
-    assert_eq!(now.tick_index, 0);
+    assert_eq!(now.round_index, 0);
 }
 
 #[given(
@@ -727,7 +724,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
-    assert_eq!(now.tick_index, 0);
+    assert_eq!(now.round_index, 0);
     assert!(
         now.messages
             .iter()
@@ -804,7 +801,7 @@ fn the_queued_target_is_that_actor(world: &mut World) {
     let now = now_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
-    assert_eq!(now.tick_index, 0);
+    assert_eq!(now.round_index, 0);
 }
 
 #[given(expr = "a verb with a time cost and a resist roll")]

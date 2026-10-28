@@ -1,9 +1,12 @@
-//! Failure tokens. JSONL lowers `BUDGET` at the log edge.
+//! Failure tokens.
 
 use std::fmt;
 
-/// Pinned failure tokens. JSONL lowers `BUDGET` at the log edge.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use serde::{Deserialize, Serialize};
+
+/// Pinned failure tokens. The journal stores the same token.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Reason {
     IllegalClass,
     IllegalKnowledge,
@@ -70,14 +73,6 @@ impl Reason {
             Reason::NoExit => "NO_EXIT",
             Reason::Busy => "BUSY",
             Reason::TriggerLeak => "TRIGGER_LEAK",
-        }
-    }
-
-    /// JSONL `rejected.reason`. `budget` is the lowercase word.
-    pub fn jsonl_reason(self) -> &'static str {
-        match self {
-            Reason::Budget => "budget",
-            other => other.token(),
         }
     }
 }
@@ -171,6 +166,9 @@ mod tests {
         for reason in ALL {
             assert!(listed(reason));
             assert!(!reason.token().is_empty());
+            let stored = serde_json::to_string(&reason).unwrap();
+            assert_eq!(stored, format!("\"{}\"", reason.token()));
+            assert_eq!(serde_json::from_str::<Reason>(&stored).unwrap(), reason);
         }
     }
 }

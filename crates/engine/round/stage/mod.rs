@@ -2,9 +2,9 @@
 
 pub(crate) mod advance;
 pub(crate) mod apply;
-pub(crate) mod complete;
-pub(crate) mod gather;
-pub(crate) mod observe;
+pub(crate) mod deliver;
+pub(crate) mod finish;
+pub(crate) mod pick;
 pub(crate) mod record;
 pub(crate) mod resolve;
 pub(crate) mod triggers;

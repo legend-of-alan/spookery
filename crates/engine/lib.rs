@@ -30,14 +30,12 @@ pub use canon::{load_canon, pack_rev};
 pub use check::Outcome;
 pub use diagnostic::{first_reason, reason_of, Diagnostic, Severity};
 pub use error::Reason;
-pub use intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+pub use intent::{Intent, IntentArgs, Source, Target, ViewerId};
 pub use map::ExitView;
 pub use meter::MeterLive;
 pub use model::{Message, Now, RunState};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
-pub use round::{
-    migrate_pack, plan_catchup, play_pack_once, verify_pack, verify_quick, RoundCause, RoundOutput,
-};
+pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::{Owner, TargetKind, When};
 pub use rules::{GateRefusal, MoveReport, RollResult};
 pub use store::{emit_save, load_save, lock_serve, record_line, TapeRecord};
@@ -54,9 +52,10 @@ pub mod testing {
 
     pub use crate::canon::strip_body;
     pub use crate::model::{
-        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PlaceLive, Presence,
+        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PendingKind,
+        PlaceLive, Presence,
     };
-    pub use crate::round::replay::from_journal;
+    pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
     pub use crate::store::RULES_REV;
 
@@ -77,8 +76,8 @@ pub mod testing {
     pub mod journal {
         pub use crate::store::journal::{
             bundles, emit_entry, find_live_bundle, format_record_key, genesis_hash, gunzip_bytes,
-            gzip_bytes, hash_now, latest_checkpoint, list_tick_keys, locate, read_entries,
-            read_record_line, read_verified, seal, JournalEntry, TickRecord,
+            gzip_bytes, hash_now, latest_checkpoint, list_round_keys, locate, read_entries,
+            read_record_line, read_verified, seal, JournalEntry, RoundRecord,
         };
     }
 
@@ -164,8 +163,8 @@ pub mod testing {
     }
 
     pub fn now_of(pack: &Path) -> crate::model::Now {
-        let report = from_journal(pack, None, None)
-            .unwrap_or_else(|err| panic!("from_journal {}: {err}", pack.display()));
+        let report = replay_journal(pack, None, None)
+            .unwrap_or_else(|err| panic!("replay_journal {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
             .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));
         crate::store::load_save(yaml)
@@ -241,7 +240,7 @@ pub mod testing {
         });
     }
 
-    pub fn read_tick(pack: &Path, key: &str) -> serde_json::Value {
+    pub fn read_round(pack: &Path, key: &str) -> serde_json::Value {
         let text = journal::read_record_line(pack, key)
             .unwrap_or_else(|err| panic!("{} {key}: {}", pack.display(), err.detail));
         serde_json::from_str(text.trim_end())

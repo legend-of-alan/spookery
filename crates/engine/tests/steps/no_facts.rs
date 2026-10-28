@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{self as support, journal::list_tick_keys, Presence};
+use spookery_engine::testing::{self as support, journal::list_round_keys, Presence};
 
 use crate::World;
 
@@ -45,12 +45,12 @@ fn nell_waits(world: &mut World) {
 fn the_wait_commits_with_nothing_rejected(world: &mut World) {
     let pack = world.pack();
     let mut found = false;
-    for key in list_tick_keys(pack) {
-        let round = support::read_tick(pack, &key);
+    for key in list_round_keys(pack) {
+        let round = support::read_round(pack, &key);
         let waited = round["intents"].as_array().is_some_and(|intents| {
             intents
                 .iter()
-                .any(|intent| intent["move"] == "wait" && intent["actor_id"] == "pc_nell")
+                .any(|intent| intent["move"] == "wait" && intent["actor"] == "player:pc_nell")
         });
         if !waited {
             continue;
@@ -97,10 +97,14 @@ fn a_docks_round_plays(world: &mut World) {
 #[then(expr = "Mira's habit fires")]
 fn miras_habit_fires(world: &mut World) {
     let pack = world.pack();
-    let fired = list_tick_keys(pack).iter().any(|key| {
-        support::read_tick(pack, key)["steps_run"]
+    let fired = list_round_keys(pack).iter().any(|key| {
+        support::read_round(pack, key)["steps_run"]
             .as_array()
-            .is_some_and(|steps| steps.iter().any(|step| step == "cast:mira/leave_door_note"))
+            .is_some_and(|steps| {
+                steps
+                    .iter()
+                    .any(|step| step["rule"] == "cast:mira/leave_door_note")
+            })
     });
     assert!(fired, "leave_door_note did not run");
     let now = support::now_of(pack);
@@ -121,7 +125,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
         actors_present: vec![actor.to_string()],
     });
     let (verb, target) = support::split_move(line);
-    let wall = opened.now().last_tick_at.clone();
+    let wall = opened.now().last_round_at.clone();
     spookery_engine::handle_player_move(&mut opened, actor, verb, target, false, &wall)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
 }
@@ -148,8 +152,8 @@ fn place_of(pack: &Path, actor: &str) -> String {
 
 fn location_moves(pack: &Path, actor: &str) -> Vec<(String, String)> {
     let mut moves = Vec::new();
-    for key in list_tick_keys(pack) {
-        for effect in support::read_tick(pack, &key)["effects"]
+    for key in list_round_keys(pack) {
+        for effect in support::read_round(pack, &key)["effects"]
             .as_array()
             .unwrap()
         {

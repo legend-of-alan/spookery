@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::Now;
 
 use crate::support::{self, Proc};
@@ -88,7 +88,7 @@ pub fn pack(world: &World) -> &Path {
 pub fn now_of(pack: &Path) -> Now {
     let start = Instant::now();
     loop {
-        match spookery_engine::testing::from_journal(pack, None, None) {
+        match spookery_engine::testing::replay_journal(pack, None, None) {
             Ok(report) => {
                 let text = std::str::from_utf8(&report.now_yaml)
                     .unwrap_or_else(|err| panic!("save text: {err}"));
@@ -103,21 +103,22 @@ pub fn now_of(pack: &Path) -> Now {
     }
 }
 
-/// The actors whose player `wait` is in that tick.
+/// The actors whose player `wait` is in that round.
 pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
     let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));
-    let tick: Value =
+    let round: Value =
         serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{name}: {err}"));
-    tick["intents"]
+    round["intents"]
         .as_array()
         .unwrap_or_else(|| panic!("intents"))
         .iter()
         .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
         .map(|intent| {
-            intent["actor_id"]
+            intent["actor"]
                 .as_str()
-                .unwrap_or_else(|| panic!("actor_id"))
+                .and_then(|actor| actor.strip_prefix("player:"))
+                .unwrap_or_else(|| panic!("actor"))
                 .to_string()
         })
         .collect()
@@ -127,13 +128,13 @@ pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
 /// one commit, not the whole wait, so a slow machine only makes the wait longer.
 const JOURNAL_STALL: Duration = Duration::from_secs(10);
 
-/// Waits until `done` holds for the committed tick keys. Fails only when no
-/// tick commits for `JOURNAL_STALL`; `want` names the condition in the panic.
-pub fn wait_ticks_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> bool) -> Vec<String> {
+/// Waits until `done` holds for the committed round keys. Fails only when no
+/// round commits for `JOURNAL_STALL`; `want` names the condition in the panic.
+pub fn wait_rounds_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> bool) -> Vec<String> {
     let mut seen = 0;
     let mut moved = Instant::now();
     loop {
-        let keys = list_tick_keys(pack);
+        let keys = list_round_keys(pack);
         if done(&keys) {
             return keys;
         }
@@ -141,20 +142,20 @@ pub fn wait_ticks_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> boo
             seen = keys.len();
             moved = Instant::now();
         } else if moved.elapsed() > JOURNAL_STALL {
-            panic!("no tick committed for {JOURNAL_STALL:?} at {seen} ticks; wanted {want}");
+            panic!("no round committed for {JOURNAL_STALL:?} at {seen} rounds; wanted {want}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }
 }
 
-/// Waits until the journal holds at least `count` ticks.
-pub fn wait_tick_count(pack: &Path, count: usize) -> Vec<String> {
-    wait_ticks_until(pack, &format!("{count} ticks"), |keys| keys.len() >= count)
+/// Waits until the journal holds at least `count` rounds.
+pub fn wait_round_count(pack: &Path, count: usize) -> Vec<String> {
+    wait_rounds_until(pack, &format!("{count} rounds"), |keys| keys.len() >= count)
 }
 
-/// Waits until a tick after `before` holds that actor's player `wait`.
+/// Waits until a round after `before` holds that actor's player `wait`.
 pub fn expect_wait_from(pack: &Path, actor_id: &str, before: usize) -> Vec<String> {
-    wait_ticks_until(pack, &format!("{actor_id}'s wait"), |keys| {
+    wait_rounds_until(pack, &format!("{actor_id}'s wait"), |keys| {
         keys.get(before..)
             .unwrap_or_default()
             .iter()

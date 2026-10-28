@@ -52,13 +52,13 @@ fn one_round_has_committed(world: &mut World) {
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     assert!(
-        !spookery_engine::testing::journal::list_tick_keys(&pack).is_empty(),
-        "no tick committed"
+        !spookery_engine::testing::journal::list_round_keys(&pack).is_empty(),
+        "no round committed"
     );
 }
 
-#[when(expr = "the operator runs tick")]
-fn the_operator_runs_tick(world: &mut World) {
+#[when(expr = "the operator tries a round")]
+fn the_operator_tries_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     world.state_files = state_tree(&pack);
     table::run(world, &["tick", pack.to_str().unwrap()]);
@@ -135,8 +135,8 @@ fn stderr_names(world: &mut World, code: String) {
     assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
-#[then(expr = "the tick writes nothing")]
-fn the_tick_writes_nothing(world: &mut World) {
+#[then(expr = "the round writes nothing")]
+fn the_round_writes_nothing(world: &mut World) {
     let pack = table::pack(world);
     assert_eq!(
         fs::read(pack.join("state/save.yaml")).unwrap(),
@@ -146,7 +146,7 @@ fn the_tick_writes_nothing(world: &mut World) {
     assert_eq!(
         state_tree(pack),
         world.state_files,
-        "the tick wrote under state/"
+        "the round wrote under state/"
     );
 }
 
@@ -239,7 +239,7 @@ fn state_rev_is_2(world: &mut World) {
             .copied(),
         Some(4u32)
     );
-    assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
+    assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
 }
 
 #[then(expr = "the journal has two migrate records, at state_rev 1 and 2")]
@@ -256,9 +256,9 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.pack_rev, rev);
     assert_eq!(now.state_rev, 1);
     assert_eq!(now.world_time, 7);
-    assert_eq!(now.tick_index, 0);
-    assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
+    assert_eq!(now.round_index, 0);
+    assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
-    assert!(spookery_engine::testing::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(migrate_state_revs(pack), [1]);
 }

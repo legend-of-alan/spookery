@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::canon::pack_rev;
-use crate::intent::{player_intent_id, ActorKind, Intent, IntentArgs, Source, Target};
+use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::journal;
 use crate::map::visible;
 use crate::rules::gate::gate;
@@ -15,8 +15,8 @@ use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
-use crate::round::from_journal;
-use crate::round::play::{play, RoundCause};
+use crate::round::play::{play_round, RoundKind};
+use crate::round::replay::replay_journal;
 
 pub(crate) const CASES: u32 = 64;
 pub(crate) const SEED: u64 = 0x0018_0018;
@@ -90,9 +90,15 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
                 },
             );
         }
-        let wall = world.now().last_tick_at.clone();
-        play(&mut world, RoundCause::Manual, &wall)
-            .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
+        let wall = world.now().last_round_at.clone();
+        play_round(
+            &mut world,
+            &wall,
+            RoundKind::Live {
+                fast_forward: false,
+            },
+        )
+        .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
 }
@@ -220,12 +226,11 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
     } else {
         format!("{verb} {token}")
     };
-    let tick = now.tick_index.saturating_add(1);
+    let round_index = now.round_index.saturating_add(1);
     Intent {
-        id: player_intent_id(&now.shard_id, tick, actor, &line),
-        tick_index: now.tick_index,
-        actor_id: actor.to_string(),
-        actor_kind: ActorKind::Player,
+        id: player_intent_id(&now.shard_id, round_index, actor, &line),
+        round_index: now.round_index,
+        actor: ViewerId::Player(actor.to_string()),
         source: Source::Player,
         move_name: verb.to_string(),
         target,
@@ -249,7 +254,7 @@ fn copy_dir(from: &Path, to: &Path) {
 
 /// Replay the journal and compare it with the state hash on the last record.
 pub(crate) fn same_save(pack: &Path) -> Result<(), TestCaseError> {
-    let report = from_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
+    let report = replay_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
     let entries = journal::read_entries(pack)
         .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
     let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {

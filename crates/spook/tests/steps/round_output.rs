@@ -2,7 +2,7 @@ use std::fs;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{edit_save, set_busy};
 use super::table;
@@ -91,10 +91,11 @@ fn the_commit_reply_lists_one_check(world: &mut World, actor: String) {
         .unwrap_or_else(|| panic!("checks\n{}", world.stdout));
     assert_eq!(checks.len(), 1, "checks\n{}", world.stdout);
     let pack = table::pack(world).to_path_buf();
-    let found = list_tick_keys(&pack).iter().any(|key| {
+    let found = list_round_keys(&pack).iter().any(|key| {
         let text = spookery_engine::testing::journal::read_record_line(&pack, key)
             .unwrap_or_else(|err| panic!("read {key}: {}", err.detail));
-        text.contains(&format!("\"actor_id\":\"{actor}\"")) && text.contains("\"move\":\"grit\"")
+        text.contains(&format!("\"actor\":\"player:{actor}\""))
+            && text.contains("\"move\":\"grit\"")
     });
     assert!(found, "no grit intent for {actor}");
 }

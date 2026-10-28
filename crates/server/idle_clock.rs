@@ -2,10 +2,10 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_engine::{plan_catchup, Reason, RoundCause, World};
+use spookery_engine::{Reason, World};
 
-pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {
-    elapsed_secs(last_tick_at, SystemTime::now())
+pub fn seconds_since(last_round_at: &str) -> Result<u64, Reason> {
+    elapsed_secs(last_round_at, SystemTime::now())
 }
 
 pub fn wall_now() -> Result<String, Reason> {
@@ -22,29 +22,17 @@ pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
     format_utc(UNIX_EPOCH + Duration::from_secs(now.saturating_sub(seconds)))
 }
 
-pub fn idle_tick_if_due(world: &mut World) -> Result<(), Reason> {
+pub fn idle_round_if_due(world: &mut World) -> Result<(), Reason> {
     if !world.budget().idle_ticking && world.now().presence.humans == 0 {
         return Ok(());
     }
     let now = SystemTime::now();
-    let elapsed = elapsed_secs(&world.now().last_tick_at, now)?;
-    let wall = format_utc(now)?;
-    let hours = elapsed / 3600;
-    if hours == 0 {
-        world.play(RoundCause::Scheduler, &wall).map(|_| ())
-    } else {
-        let humans = world.now().presence.humans;
-        let ticks = plan_catchup(humans, world.budget(), hours)?;
-        if ticks == 0 {
-            world.play(RoundCause::Scheduler, &wall).map(|_| ())
-        } else {
-            world.catch_up(&wall, hours)
-        }
-    }
+    let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
+    world.catch_up(&format_utc(now)?, elapsed / 3600)
 }
 
-fn elapsed_secs(last_tick_at: &str, now: SystemTime) -> Result<u64, Reason> {
-    let last = parse_utc(last_tick_at)?;
+fn elapsed_secs(last_round_at: &str, now: SystemTime) -> Result<u64, Reason> {
+    let last = parse_utc(last_round_at)?;
     let now = now
         .duration_since(UNIX_EPOCH)
         .map_err(|_| Reason::Schema)?
@@ -138,7 +126,7 @@ fn number(text: &str, start: usize, end: usize) -> Result<u32, Reason> {
         .ok_or(Reason::Schema)
 }
 
-/// Seat check and interval check. A tick that runs borrows this `World`.
+/// Seat check and interval check. A round that runs borrows this `World`.
 /// Returns whether `world_time` advanced.
 pub fn on_scheduled_wake(
     world: &mut World,
@@ -152,11 +140,11 @@ pub fn on_scheduled_wake(
         return Ok(false);
     }
     let every = world.budget().tick_every_real_seconds;
-    if seconds_since(&world.now().last_tick_at)? < every {
+    if seconds_since(&world.now().last_round_at)? < every {
         return Ok(false);
     }
     let before = world.now().world_time;
-    idle_tick_if_due(world)?;
+    idle_round_if_due(world)?;
     Ok(world.now().world_time != before)
 }
 

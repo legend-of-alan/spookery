@@ -3,46 +3,51 @@
 use crate::apply::apply_effect;
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::effect::Effect;
 use crate::expand::expand_rule;
-use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use crate::intent::{trigger_intent_id, Intent, Source, Target, ViewerId};
+use crate::journal::Step;
 use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::Now;
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
-use crate::rules::{MoveReport, RollResult};
+use crate::rules::MoveReport;
 use crate::Reason;
 
-use super::resolve::{eval_roll_spec, resist_outcome};
-use crate::round::state::Round;
+use crate::round::dice::{Expansion, RoundDice};
+use crate::round::log::RoundLog;
 
-/// Change rules, edge-triggered, to a fixpoint.
-pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.steps_run.push("run_triggers".to_string());
+/// Every change record of the round, pass by pass.
+pub(crate) fn run(
+    draft: &mut Draft,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
+) -> Result<Vec<ChangeRecord>, Reason> {
     let max = draft.budget().max_trigger_depth;
-    let rules = change_rules(draft);
+    let canon = draft.shared_canon();
+    let rules = change_rules(&canon);
     let mut depth = 0u64;
+    let mut all_changes = Vec::new();
     loop {
         let changes = draft.take_changes();
         if changes.is_empty() {
             break;
         }
-        round.changes.extend(changes.iter().cloned());
-        let matched_triggers = plan(draft, &rules, &changes);
+        all_changes.extend(changes.iter().cloned());
+        let matched_triggers = triggered(draft, &rules, &changes);
         if matched_triggers.is_empty() {
             break;
         }
         if depth >= max {
-            round.steps_run.push("trigger_depth".to_string());
+            log.steps.push(Step::TriggerDepth);
             break;
         }
         depth += 1;
         for matched in matched_triggers {
-            fire(round, draft, matched.rule, &matched.subject);
+            fire(draft, dice, log, matched.rule, &matched.subject);
         }
     }
-    Ok(())
+    Ok(all_changes)
 }
 
 struct TriggerMatch<'a> {
@@ -50,13 +55,11 @@ struct TriggerMatch<'a> {
     subject: String,
 }
 
-fn change_rules(draft: &Draft) -> Vec<Rule> {
-    let mut rules: Vec<Rule> = draft
-        .canon()
+fn change_rules(canon: &Canon) -> Vec<&Rule> {
+    let mut rules: Vec<&Rule> = canon
         .rules
         .iter()
         .filter(|rule| matches!(rule.when, When::Change(_)))
-        .cloned()
         .collect();
     rules.sort_by(|left, right| {
         left.owner
@@ -68,9 +71,14 @@ fn change_rules(draft: &Draft) -> Vec<Rule> {
     rules
 }
 
-fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<TriggerMatch<'a>> {
+/// Which rules a batch of changes triggers, and for whom.
+fn triggered<'a>(
+    draft: &Draft,
+    rules: &[&'a Rule],
+    changes: &[ChangeRecord],
+) -> Vec<TriggerMatch<'a>> {
     let mut matched_triggers = Vec::new();
-    for rule in rules {
+    for &rule in rules {
         let When::Change(watch) = &rule.when else {
             continue;
         };
@@ -93,22 +101,16 @@ fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<T
     matched_triggers
 }
 
-struct TriggerExpansion {
-    effects: Vec<Effect>,
-    rolled: Option<RollResult>,
-    resist: Vec<MoveReport>,
-}
-
-fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
-    let Some(kind) = draft
+fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
+    let Some(viewer) = draft
         .now()
         .actors
         .get(subject)
-        .map(|actor| actor.actor_kind())
+        .map(|actor| actor.viewer(subject))
     else {
         return;
     };
-    let intent = intent_for(round, subject, kind, &rule.id);
+    let intent = trigger_intent(draft.now().round_index, viewer, &rule.id);
     if cond::holds(
         draft.canon(),
         draft.now(),
@@ -123,7 +125,7 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
     let expanded = {
         let now = draft.now();
         let canon = draft.canon();
-        expand_trigger(round, now, canon, rule, &intent, subject)
+        expand_trigger(dice, log, now, canon, rule, &intent, subject)
     };
     let Some(expanded) = expanded else {
         draft.rollback(point);
@@ -140,72 +142,48 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
         }
     }
     if let Some(out) = expanded.rolled {
-        round.move_reports.push(MoveReport::Rolled {
+        log.reports.push(MoveReport::Rolled {
             actor_id: subject.to_string(),
             out,
         });
     }
-    round.move_reports.extend(expanded.resist);
-    round.effects.extend(expanded.effects);
-    round.steps_run.push(rule.id.clone());
+    log.reports.extend(expanded.resisted);
+    log.effects.extend(expanded.effects);
+    log.steps.push(Step::Rule(rule.id.clone()));
 }
 
 fn expand_trigger(
-    round: &mut Round,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
     now: &Now,
     canon: &Canon,
     rule: &Rule,
     intent: &Intent,
     subject: &str,
-) -> Option<TriggerExpansion> {
-    super::resolve::with_dice(round, |tracker| {
-        let mut roller = tracker.roller(&rule.id, subject);
-        let mut rolled = None;
-        let mut resist = Vec::new();
-        let outcome = if let Some(spec) = &rule.roll {
-            let out =
-                eval_roll_spec(canon, now, intent, spec, &rule.id, tracker, &mut roller).ok()?;
-            let band = out.outcome;
-            rolled = Some(out);
-            Some(band)
-        } else {
-            None
-        };
-        let effects = expand_rule(
-            canon,
-            now,
-            rule,
-            intent,
-            outcome,
-            &mut roller,
-            |actor_id, check_id, target| {
-                let (band, report) =
-                    resist_outcome(canon, now, &rule.id, actor_id, check_id, target, tracker)?;
-                resist.push(report);
-                Ok(band)
-            },
-        )
-        .ok()?;
-        Some(TriggerExpansion {
-            effects,
-            rolled,
-            resist,
-        })
+) -> Option<Expansion> {
+    let mut roller = dice.roller(log, &rule.id, subject);
+    let rolled = match &rule.roll {
+        Some(spec) => Some(roller.roll_spec(canon, now, intent, spec).ok()?),
+        None => None,
+    };
+    let outcome = rolled.as_ref().map(|out| out.outcome);
+    let effects = expand_rule(canon, now, rule, intent, outcome, &mut roller).ok()?;
+    Some(Expansion {
+        effects,
+        rolled,
+        resisted: roller.finish(),
     })
 }
 
-fn intent_for(round: &Round, actor_id: &str, kind: ActorKind, rule_id: &str) -> Intent {
-    Intent {
-        id: format!("trigger:{rule_id}:{actor_id}"),
-        tick_index: round.tick_index,
-        actor_id: actor_id.to_string(),
-        actor_kind: kind,
-        source: Source::Kernel,
-        move_name: rule_id.to_string(),
-        target: Target::Empty,
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    }
+fn trigger_intent(round_index: u64, actor: ViewerId, rule_id: &str) -> Intent {
+    Intent::new(
+        trigger_intent_id(rule_id, actor.actor_id()),
+        round_index,
+        actor,
+        Source::Kernel,
+        rule_id,
+        Target::Empty,
+    )
 }
 
 fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
@@ -244,18 +222,18 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         ChangeWatch::Arrive { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
-                text(&change.before) != Some(place)
-                    && text(&change.after) == Some(place)
-                    && who_ok(draft, who, actor)
+                change.before.as_text() != Some(place)
+                    && change.after.as_text() == Some(place)
+                    && watcher_matches(draft, who, actor)
             }
             _ => false,
         },
         ChangeWatch::Leave { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
-                text(&change.before) == Some(place)
-                    && text(&change.after) != Some(place)
-                    && who_ok(draft, who, actor)
+                change.before.as_text() == Some(place)
+                    && change.after.as_text() != Some(place)
+                    && watcher_matches(draft, who, actor)
             }
             _ => false,
         },
@@ -267,7 +245,8 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
             StateKey::ActorFlag(_, flag) | StateKey::WorldFlag(flag) if flag == key => {
-                mark(&change.before) == Some(!becomes) && mark(&change.after) == Some(*becomes)
+                change.before.as_mark() == Some(!becomes)
+                    && change.after.as_mark() == Some(*becomes)
             }
             _ => false,
         },
@@ -277,7 +256,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
                     return false;
                 };
                 matches!(
-                    (number(&change.before), number(&change.after)),
+                    (change.before.as_number(), change.after.as_number()),
                     (Some(before), Some(after)) if before < max && after == max
                 )
             }
@@ -285,7 +264,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         },
         ChangeWatch::Item { id, gained } => match &change.key {
             StateKey::ActorItem(_, item) if item == id => {
-                match (number(&change.before), number(&change.after)) {
+                match (change.before.as_number(), change.after.as_number()) {
                     (Some(before), Some(after)) if *gained => after > before,
                     (Some(before), Some(after)) => after < before,
                     _ => false,
@@ -294,15 +273,13 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Knows { fact } => match &change.key {
-            StateKey::ActorKnownFact(_) => {
-                listed(&change.after, fact) && !listed(&change.before, fact)
-            }
+            StateKey::ActorKnownFact(_) => change.after.lists(fact) && !change.before.lists(fact),
             _ => false,
         },
     }
 }
 
-fn who_ok(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
+fn watcher_matches(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
     let Some(actor) = draft.now().actors.get(actor_id) else {
         return false;
     };
@@ -315,36 +292,8 @@ fn who_ok(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
 }
 
 fn crossed(before: &StateValue, after: &StateValue, op: Op, bound: i64) -> bool {
-    let (Some(before), Some(after)) = (number(before), number(after)) else {
+    let (Some(before), Some(after)) = (before.as_number(), after.as_number()) else {
         return false;
     };
     !op.holds(before, bound) && op.holds(after, bound)
-}
-
-fn text(value: &StateValue) -> Option<&str> {
-    match value {
-        StateValue::Text(text) => Some(text),
-        _ => None,
-    }
-}
-
-fn number(value: &StateValue) -> Option<i64> {
-    match value {
-        StateValue::Number(number) => Some(*number),
-        _ => None,
-    }
-}
-
-fn mark(value: &StateValue) -> Option<bool> {
-    match value {
-        StateValue::Mark(mark) => Some(*mark),
-        _ => None,
-    }
-}
-
-fn listed(value: &StateValue, fact: &str) -> bool {
-    match value {
-        StateValue::List(ids) => ids.iter().any(|id| id == fact),
-        _ => false,
-    }
 }

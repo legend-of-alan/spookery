@@ -2,6 +2,7 @@
 
 mod firewall;
 mod inventory;
+mod opposed;
 mod play;
 mod replay;
 mod rerun;

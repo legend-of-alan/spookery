@@ -249,7 +249,7 @@ fn handle(
             }
             let outputs = std::mem::take(&mut done.outputs);
             let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
-            if done.ticked {
+            if done.played_round {
                 refresh_players(world, seats, &outputs, out)?;
                 write_host(out, world, &outputs);
             }

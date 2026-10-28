@@ -102,11 +102,12 @@ fn the_player_sees_a_check_success(world: &mut World) {
     );
 }
 
-#[then(expr = "the tick log resolves the check without faces")]
-fn the_tick_log_resolves_the_check_without_faces(world: &mut World) {
-    let text = spookery_engine::testing::journal::read_record_line(table::pack(world), "tick-0001")
-        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
-    assert!(text.contains("resolve_check"), "{text}");
+#[then(expr = "the round log resolves the check without faces")]
+fn the_round_log_resolves_the_check_without_faces(world: &mut World) {
+    let text =
+        spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
+            .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
+    assert!(text.contains("\"check_rolled\""), "{text}");
     assert!(!text.contains("faces"), "{text}");
 }
 
@@ -263,31 +264,32 @@ fn the_gm_sees_both_rolls(world: &mut World) {
     assert_opposed(&commit_checks(&text));
 }
 
-#[then(expr = "the tick log records Mira's kernel brace")]
-fn the_tick_log_records_miras_kernel_brace(world: &mut World) {
-    let tick = tick_json(world);
-    let hits: Vec<_> = tick["intents"]
+#[then(expr = "the round log records Mira's kernel brace")]
+fn the_round_log_records_miras_kernel_brace(world: &mut World) {
+    let round = round_json(world);
+    let ran: Vec<_> = super::steps_run::read_steps_run(&round)
+        .into_iter()
+        .filter(|step| step == "cast:mira/brace")
+        .collect();
+    assert_eq!(ran.len(), 1, "{round}");
+    let flags: Vec<_> = round["effects"]
         .as_array()
         .unwrap()
         .iter()
-        .filter(|intent| {
-            intent["move"] == "brace"
-                && intent["source"] == "kernel"
-                && intent["actor_id"] == "mira"
-                && intent["actor_kind"] == "npc"
-        })
+        .filter(|effect| effect["class"] == "flag" && effect["actor_id"] == "mira")
         .collect();
-    assert_eq!(hits.len(), 1, "{tick}");
-    assert!(tick["rejected"].as_array().unwrap().is_empty(), "{tick}");
+    assert_eq!(flags.len(), 1, "{round}");
+    assert_eq!(flags[0]["as"], "npc:mira", "{round}");
+    assert!(round["rejected"].as_array().unwrap().is_empty(), "{round}");
 }
 
-#[then(expr = "replaying the tick reproduces the save")]
-fn replaying_the_tick_reproduces_the_save(world: &mut World) {
+#[then(expr = "replaying the round reproduces the save")]
+fn replaying_the_round_reproduces_the_save(world: &mut World) {
     let played = table::pack(world);
     let start = PathBuf::from(&world.scratch);
     let before = fs::read(played.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
-    let report = spookery_engine::testing::from_journal(played, Some(&start), None)
+    let report = spookery_engine::testing::replay_journal(played, Some(&start), None)
         .unwrap_or_else(|err| panic!("replay: {err}"));
     let entries = spookery_engine::testing::journal::read_entries(played)
         .unwrap_or_else(|err| panic!("{}", err.detail));
@@ -295,7 +297,7 @@ fn replaying_the_tick_reproduces_the_save(world: &mut World) {
         .iter()
         .rev()
         .find(|entry| entry.changes_state())
-        .unwrap_or_else(|| panic!("no tick was written"))
+        .unwrap_or_else(|| panic!("no round was written"))
         .now_hash();
     assert_eq!(
         spookery_engine::testing::journal::hash_now(&report.now_yaml),
@@ -378,8 +380,8 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
     flags
 }
 
-fn tick_json(world: &World) -> Value {
-    crate::support::read_tick(table::pack(world), "tick-0001")
+fn round_json(world: &World) -> Value {
+    crate::support::read_round(table::pack(world), "round-0001")
 }
 
 fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {

@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{add_trapdoor, edit_save, give_key, set_busy, EVENING};
 use super::table;
@@ -56,8 +56,8 @@ fn rejected_no_exit_and_stays(world: &mut World) {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_street");
     assert_eq!(now.world_time, 1080);
     assert!(
-        list_tick_keys(&pack_of(world)).is_empty(),
-        "a refused exit ticked"
+        list_round_keys(&pack_of(world)).is_empty(),
+        "a refused exit played a round"
     );
 }
 
@@ -75,7 +75,7 @@ fn rowan_travels_via_stairs(world: &mut World) {
     world.scratch = format!(
         "{} {} {}",
         before.world_time,
-        before.tick_index,
+        before.round_index,
         before.actors.get("pc_rowan").unwrap().place()
     );
     let (_mark, added) = table::player_send(world, "travel stairs", "locked");
@@ -88,7 +88,7 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     let now = table::now_of(&pack_of(world));
     let mut parts = world.scratch.split(' ');
     assert_eq!(now.world_time.to_string(), parts.next().unwrap());
-    assert_eq!(now.tick_index.to_string(), parts.next().unwrap());
+    assert_eq!(now.round_index.to_string(), parts.next().unwrap());
     assert_eq!(
         now.actors.get("pc_rowan").unwrap().place(),
         parts.next().unwrap()
@@ -113,11 +113,11 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let pack = pack_of(world);
     let now = table::now_of(&pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
-    assert_eq!(now.world_time, 1085, "the tick shortened or skipped");
-    let tick = crate::support::read_tick(&pack, "tick-0001");
-    assert_eq!(tick["arrivals"][0]["arrived_at"], 1082);
-    assert_eq!(tick["world_time_after"], 1085);
-    assert_eq!(tick["world_time_before"], 1080);
+    assert_eq!(now.world_time, 1085, "the round shortened or skipped");
+    let round = crate::support::read_round(&pack, "round-0001");
+    assert_eq!(round["arrivals"][0]["arrived_at"], 1082);
+    assert_eq!(round["world_time_after"], 1085);
+    assert_eq!(round["world_time_before"], 1080);
 }
 
 #[given(expr = "a place rule with location to cellar, teleport true")]
@@ -200,12 +200,12 @@ fn two_arrivals(world: &mut World) {
                     let mut act = spookery_engine::testing::ActCounters::fresh();
                     act.busy_until = Some(EVENING + 5);
                     act.busy_for = Some(spookery_engine::testing::PendingAction {
-                        rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
-                        target: "docks_street".to_string(),
-                        arrive: Some("docks_street".to_string()),
-                        via: Some("docks_street".to_string()),
                         source: spookery_engine::Source::Player,
+                        kind: spookery_engine::testing::PendingKind::Arrive {
+                            place: "docks_street".to_string(),
+                            via: "docks_street".to_string(),
+                        },
                     });
                     act
                 },
@@ -218,23 +218,23 @@ fn two_arrivals(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "nell's arrival is applied before rowan's, in separate ticks")]
+#[then(expr = "nell's arrival is applied before rowan's, in separate rounds")]
 fn arrivals_are_in_time_order(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
     let pack = pack_of(world);
-    let names = list_tick_keys(&pack);
+    let names = list_round_keys(&pack);
     assert!(names.len() >= 2, "{names:?}");
-    let first = crate::support::read_tick(&pack, &names[0]);
-    let second = crate::support::read_tick(&pack, &names[1]);
+    let first = crate::support::read_round(&pack, &names[0]);
+    let second = crate::support::read_round(&pack, &names[1]);
     assert_eq!(first["world_time_after"], EVENING + 5);
     assert_eq!(first["arrivals"][0]["actor_id"], "pc_nell");
     assert_eq!(second["world_time_after"], EVENING + 10);
     assert_eq!(second["arrivals"][0]["actor_id"], "pc_rowan");
-    assert!(first["tick_index"].as_u64() < second["tick_index"].as_u64());
+    assert!(first["round_index"].as_u64() < second["round_index"].as_u64());
 }
 
-#[given(expr = "ticks are 5 minutes while seated and the stairs exit costs 2 minutes")]
-fn seated_ticks_are_five_minutes(world: &mut World) {
+#[given(expr = "rounds are 5 minutes while seated and the stairs exit costs 2 minutes")]
+fn seated_rounds_are_five_minutes(world: &mut World) {
     let pack = temp_pack("exact-minute");
     edit_save(&pack, |now| {
         give_key(now);
@@ -245,34 +245,34 @@ fn seated_ticks_are_five_minutes(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "rowan travels via stairs in the tick starting 21:30")]
-fn rowan_travels_in_the_evening_tick(world: &mut World) {
+#[when(expr = "rowan travels via stairs in the round starting 21:30")]
+fn rowan_travels_in_the_evening_round(world: &mut World) {
     let (_mark, added) = table::player_send(world, "travel stairs", "mira_rooms");
     world.player_added = added;
 }
 
-#[then(expr = "the tick still ends at 21:35")]
-fn the_tick_ends_at_half(world: &mut World) {
-    let tick = crate::support::read_tick(&pack_of(world), "tick-0001");
-    assert_eq!(tick["world_time_before"], EVENING);
-    assert_eq!(tick["world_time_after"], EVENING + 5);
+#[then(expr = "the round still ends at 21:35")]
+fn the_round_ends_at_half(world: &mut World) {
+    let round = crate::support::read_round(&pack_of(world), "round-0001");
+    assert_eq!(round["world_time_before"], EVENING);
+    assert_eq!(round["world_time_after"], EVENING + 5);
 }
 
-#[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that tick's line")]
+#[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that round's line")]
 fn arrival_is_stamped(world: &mut World) {
-    let tick = crate::support::read_tick(&pack_of(world), "tick-0001");
-    assert_eq!(tick["arrivals"][0]["actor_id"], "pc_rowan");
-    assert_eq!(tick["arrivals"][0]["arrived_at"], EVENING + 2);
-    let stamped = tick["effects"]
+    let round = crate::support::read_round(&pack_of(world), "round-0001");
+    assert_eq!(round["arrivals"][0]["actor_id"], "pc_rowan");
+    assert_eq!(round["arrivals"][0]["arrived_at"], EVENING + 2);
+    let stamped = round["effects"]
         .as_array()
         .unwrap()
         .iter()
         .any(|effect| effect["class"] == "location" && effect["arrived_at"] == EVENING + 2);
-    assert!(stamped, "{tick}");
+    assert!(stamped, "{round}");
 }
 
-#[then(expr = "a move from rowan is accepted from the tick starting 21:35")]
-fn the_next_tick_accepts_a_move(world: &mut World) {
+#[then(expr = "a move from rowan is accepted from the round starting 21:35")]
+fn the_next_round_accepts_a_move(world: &mut World) {
     let (_mark, added) = table::player_send(world, "wait", "\"kind\":");
     assert!(!added.contains("BUSY"), "{added}");
     let now = table::now_of(&pack_of(world));
@@ -281,32 +281,30 @@ fn the_next_tick_accepts_a_move(world: &mut World) {
 }
 
 #[then(
-    expr = "every tick line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated"
+    expr = "every round line shows world_time_after minus world_time_before equal to 5 seated or 60 unseated"
 )]
-fn ticks_never_shorten(_world: &mut World) {
+fn rounds_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
     let mut seated_world = spookery_engine::World::open(&seated).unwrap();
     seated_world.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });
-    let wall = seated_world.now().last_tick_at.clone();
-    seated_world
-        .play(spookery_engine::RoundCause::Manual, &wall)
-        .unwrap();
+    let wall = seated_world.now().last_round_at.clone();
+    seated_world.play(&wall).unwrap();
     drop(seated_world);
     let idle = temp_pack("idle-length");
     spookery_engine::play_pack_once(&idle).unwrap();
-    let seated_tick = crate::support::read_tick(&seated, "tick-0001");
-    let idle_tick = crate::support::read_tick(&idle, "tick-0001");
+    let seated_round = crate::support::read_round(&seated, "round-0001");
+    let idle_round = crate::support::read_round(&idle, "round-0001");
     assert_eq!(
-        seated_tick["world_time_after"].as_u64().unwrap()
-            - seated_tick["world_time_before"].as_u64().unwrap(),
+        seated_round["world_time_after"].as_u64().unwrap()
+            - seated_round["world_time_before"].as_u64().unwrap(),
         5
     );
     assert_eq!(
-        idle_tick["world_time_after"].as_u64().unwrap()
-            - idle_tick["world_time_before"].as_u64().unwrap(),
+        idle_round["world_time_after"].as_u64().unwrap()
+            - idle_round["world_time_before"].as_u64().unwrap(),
         60
     );
 }
@@ -347,15 +345,15 @@ fn both_busy_without_a_gm(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "the shard ticks to 21:35 then 21:40 without waiting on the wall clock")]
-fn the_shard_ticks_through_both_arrivals(world: &mut World) {
+#[then(expr = "the shard plays rounds to 21:35 then 21:40 without waiting on the wall clock")]
+fn the_shard_plays_rounds_through_both_arrivals(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
     let pack = pack_of(world);
-    let names = list_tick_keys(&pack);
+    let names = list_round_keys(&pack);
     let ends: Vec<u64> = names
         .iter()
         .map(|name| {
-            crate::support::read_tick(&pack, name)["world_time_after"]
+            crate::support::read_round(&pack, name)["world_time_after"]
                 .as_u64()
                 .unwrap()
         })
@@ -364,14 +362,14 @@ fn the_shard_ticks_through_both_arrivals(world: &mut World) {
     assert!(ends.contains(&(EVENING + 10)), "{ends:?}");
 }
 
-#[then(expr = "an NPC habit due at 21:35 runs in that tick")]
+#[then(expr = "an NPC habit due at 21:35 runs in that round")]
 fn the_habit_runs_at_half(world: &mut World) {
     let pack = pack_of(world);
-    let tick = list_tick_keys(&pack)
+    let round = list_round_keys(&pack)
         .into_iter()
-        .find(|name| crate::support::read_tick(&pack, name)["world_time_after"] == EVENING + 5)
-        .unwrap_or_else(|| panic!("no 21:35 tick"));
-    let steps = crate::support::read_tick(&pack, &tick)["steps_run"].to_string();
+        .find(|name| crate::support::read_round(&pack, name)["world_time_after"] == EVENING + 5)
+        .unwrap_or_else(|| panic!("no 21:35 round"));
+    let steps = crate::support::read_round(&pack, &round)["steps_run"].to_string();
     assert!(steps.contains("cast:bram/toll"), "{steps}");
 }
 
@@ -392,7 +390,7 @@ fn nothing_advances_until_commit(world: &mut World) {
     assert!(table::now_of(&pack).world_time > before);
 }
 
-#[given(expr = "busy_until is 200 ticks away and max_fastforward_ticks is 12")]
+#[given(expr = "busy_until is 200 rounds away and max_fastforward_ticks is 12")]
 fn a_long_journey_and_the_cap(world: &mut World) {
     let pack = temp_pack("cap");
     edit_save(&pack, |now| {
@@ -404,15 +402,15 @@ fn a_long_journey_and_the_cap(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "12 ticks run and the rest continues on the next action")]
-fn twelve_ticks_then_more(world: &mut World) {
+#[then(expr = "12 rounds run and the rest continues on the next action")]
+fn twelve_rounds_then_more(world: &mut World) {
     let pack = pack_of(world);
     // BUSY is sent after the burst commits, so wait on the journal first.
     let mark = table::player_write(world, "wait");
-    table::wait_tick_count(&pack, 12);
+    table::wait_round_count(&pack, 12);
     let added = table::wait_player_from(world, mark, "BUSY");
     assert!(added.contains("BUSY"), "{added}");
-    assert_eq!(list_tick_keys(&pack).len(), 12, "first burst");
+    assert_eq!(list_round_keys(&pack).len(), 12, "first burst");
     let mid = table::now_of(&pack).world_time;
     assert_eq!(mid, EVENING + 12 * 5);
     assert!(table::now_of(&pack)
@@ -421,10 +419,10 @@ fn twelve_ticks_then_more(world: &mut World) {
         .unwrap()
         .is_busy(mid));
     let mark = table::player_write(world, "wait");
-    table::wait_tick_count(&pack, 24);
+    table::wait_round_count(&pack, 24);
     let added = table::wait_player_from(world, mark, "BUSY");
     assert!(added.contains("BUSY"), "{added}");
-    assert_eq!(list_tick_keys(&pack).len(), 24, "second burst");
+    assert_eq!(list_round_keys(&pack).len(), 24, "second burst");
     assert_eq!(table::now_of(&pack).world_time, mid + 12 * 5);
 }
 

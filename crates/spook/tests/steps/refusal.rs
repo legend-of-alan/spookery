@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
 use super::table;
@@ -310,9 +310,9 @@ fn seat_lark(world: &mut World, pack: std::path::PathBuf) {
 }
 
 fn replace_oden_rules(text: &str, rules: &str) -> String {
-    let start = text.find("tick:\n").expect("oden tick");
+    let start = text.find("tick:\n").expect("oden round");
     let end = text.find("\n---\n").expect("oden close");
-    assert!(start < end, "oden tick is outside the frontmatter");
+    assert!(start < end, "oden round is outside the frontmatter");
     let next = format!("{}{}{}", &text[..start], rules, &text[end + 1..]);
     assert_ne!(text, next, "oden's habit was not inserted");
     next
@@ -331,9 +331,13 @@ fn add_grit(pack: &Path) {
     );
 }
 
+/// `word` is a code, optionally followed by the missing meter or item.
 fn assert_one_rejection(world: &World, word: &str) {
+    let (code, missing) = word
+        .split_once(' ')
+        .map_or((word, None), |(code, missing)| (code, Some(missing)));
     let pack = table::pack(world);
-    let keys = list_tick_keys(pack);
+    let keys = list_round_keys(pack);
     let mut hits = 0;
     for key in &keys {
         let line = spookery_engine::testing::journal::read_record_line(pack, key)
@@ -344,7 +348,7 @@ fn assert_one_rejection(world: &World, word: &str) {
         };
         hits += rejected
             .iter()
-            .filter(|item| item["reason"] == word)
+            .filter(|item| item["code"] == code && item["missing"].as_str() == missing)
             .count();
     }
     assert_eq!(hits, 1, "{keys:?}");

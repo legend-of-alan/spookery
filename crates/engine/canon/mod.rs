@@ -6,7 +6,7 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::canon::tick_settings::load_tick_settings;
+use crate::canon::round_settings::load_round_settings;
 use crate::check::CheckDef;
 use crate::diagnostic::{
     coded, load_headed, locate_nth, locate_row_field, schema as schema_error, with_spot,
@@ -20,18 +20,18 @@ use crate::rule::{Cond, Cost, Owner, Rule, RuleTable, TargetKind, When};
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
 mod check;
+pub(crate) mod round_settings;
 mod save;
 mod schema;
-pub(crate) mod tick_settings;
 
 pub(crate) use check::check_canon;
 use check::{
     broken_exits, find_bare_resist, reveal_problems, unknown_checks, unknown_exprs, unknown_meters,
     unknown_rule_items,
 };
+pub use round_settings::Budget;
 pub(crate) use save::{check_save, migrate_save, pending_meters};
 use schema::RuleEntry;
-pub use tick_settings::Budget;
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -497,7 +497,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         None => None,
     };
     let budget = match &tick_text {
-        Some(text) => match load_tick_settings(text) {
+        Some(text) => match load_round_settings(text) {
             Ok(budget) => Some(budget),
             Err(more) => {
                 diags.extend(more);

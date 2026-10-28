@@ -11,7 +11,7 @@ Feature: Rules live with their owner
 
   Scenario: Habit is a cast rule
     Given cast:briar/restock with hour 6..9 and humans == 0
-    When an empty tick lands at hour 7 with briar in the shop
+    When an empty round lands at hour 7 with briar in the shop
     Then docks_shop lamp_oil increases by 4
 
   Scenario: Difficulty from defense

@@ -6,9 +6,8 @@ use serde_json::Value;
 use spookery_engine::testing::Clock;
 use spookery_engine::MeterLive;
 use spookery_engine::Now;
-use spookery_engine::RoundCause;
 use spookery_engine::{emit_save, load_save};
-use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_engine::{Intent, IntentArgs, Source, Target, ViewerId};
 
 use super::steps_run::read_steps_run;
 use crate::support::{self, temp_pack};
@@ -41,14 +40,14 @@ fn nell_travels_via_door(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "place:docks_shop\\/bell fires in the same tick")]
-fn bell_fires_in_the_same_tick(world: &mut World) {
-    let tick = latest(world.pack.as_ref().unwrap());
+#[then(expr = "place:docks_shop\\/bell fires in the same round")]
+fn bell_fires_in_the_same_round(world: &mut World) {
+    let round = latest(world.pack.as_ref().unwrap());
     assert!(
-        read_steps_run(&tick)
+        read_steps_run(&round)
             .iter()
             .any(|name| name == "place:docks_shop/bell"),
-        "bell did not fire\n{tick}"
+        "bell did not fire\n{round}"
     );
 }
 
@@ -60,12 +59,12 @@ fn teleport_also_fires_the_bell(world: &mut World) {
         &pack,
         vec![intent("wren-blink", "pc_wren", "blink", Target::Empty)],
     );
-    let tick = latest(&pack);
+    let round = latest(&pack);
     assert!(
-        read_steps_run(&tick)
+        read_steps_run(&round)
             .iter()
             .any(|name| name == "place:docks_shop/bell"),
-        "a teleport did not fire the bell\n{tick}"
+        "a teleport did not fire the bell\n{round}"
     );
 }
 
@@ -90,15 +89,15 @@ fn an_attack_removes_4_hp(world: &mut World) {
     );
 }
 
-#[then(expr = "briar has flag downed in the same tick")]
+#[then(expr = "briar has flag downed in the same round")]
 fn briar_has_flag_downed(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let tick = latest(pack);
+    let round = latest(pack);
     assert!(
-        read_steps_run(&tick)
+        read_steps_run(&round)
             .iter()
             .any(|name| name == "story:injury/downed"),
-        "the downed rule did not fire\n{tick}"
+        "the downed rule did not fire\n{round}"
     );
     assert!(
         load(pack)
@@ -118,8 +117,8 @@ fn briar_is_already_downed(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "another tick passes")]
-fn another_tick_passes(world: &mut World) {
+#[when(expr = "another round passes")]
+fn another_round_passes(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
         world,
@@ -135,12 +134,12 @@ fn another_tick_passes(world: &mut World) {
 
 #[then(expr = "the rule does not fire again")]
 fn the_rule_does_not_fire_again(world: &mut World) {
-    let tick = latest(world.pack.as_ref().unwrap());
+    let round = latest(world.pack.as_ref().unwrap());
     assert!(
-        read_steps_run(&tick)
+        read_steps_run(&round)
             .iter()
             .all(|name| name != "story:injury/downed"),
-        "the downed rule fired again\n{tick}"
+        "the downed rule fired again\n{round}"
     );
 }
 
@@ -281,8 +280,8 @@ rules:
     world.pack = Some(pack);
 }
 
-#[then(expr = "spook check warns of a cycle, and a tick stops at depth 4 and logs trigger_depth")]
-fn check_warns_of_a_cycle_and_the_tick_stops(world: &mut World) {
+#[then(expr = "spook check warns of a cycle, and a round stops at depth 4 and logs trigger_depth")]
+fn check_warns_of_a_cycle_and_the_round_stops(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     let output = support::spook(&["check", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -290,18 +289,18 @@ fn check_warns_of_a_cycle_and_the_tick_stops(world: &mut World) {
     assert!(output.status.success(), "check failed\n{stdout}{stderr}");
     assert!(stderr.contains("cycle"), "{stderr}");
     assert!(stderr.contains("WARNING"), "{stderr}");
-    a_tick_stops_at_depth_4(world);
+    a_round_stops_at_depth_4(world);
 }
 
-fn a_tick_stops_at_depth_4(world: &mut World) {
+fn a_round_stops_at_depth_4(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     play(
         world,
         &pack,
         vec![intent("raise-sun", "pc_nell", "raise", Target::Empty)],
     );
-    let tick = latest(&pack);
-    let names = read_steps_run(&tick);
+    let round = latest(&pack);
+    let names = read_steps_run(&round);
     let suns = names
         .iter()
         .filter(|name| name.as_str() == "story:loop/sun_to_moon")
@@ -310,11 +309,11 @@ fn a_tick_stops_at_depth_4(world: &mut World) {
         .iter()
         .filter(|name| name.as_str() == "story:loop/moon_to_sun")
         .count();
-    assert_eq!(suns, 2, "sun rule ran {suns} times\n{tick}");
-    assert_eq!(moons, 2, "moon rule ran {moons} times\n{tick}");
+    assert_eq!(suns, 2, "sun rule ran {suns} times\n{round}");
+    assert_eq!(moons, 2, "moon rule ran {moons} times\n{round}");
     assert!(
         names.iter().any(|name| name == "trigger_depth"),
-        "trigger_depth was not logged\n{tick}"
+        "trigger_depth was not logged\n{round}"
     );
 }
 
@@ -356,7 +355,7 @@ rules:
     pack
 }
 
-#[then(expr = "spook verify passes after ticks that fired triggers")]
+#[then(expr = "spook verify passes after rounds that fired triggers")]
 fn verify_passes_after_triggers(world: &mut World) {
     let pack = temp_pack("trigger-verify");
     add_door(&pack);
@@ -433,7 +432,7 @@ The ground gives.
     edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
     });
-    let (_now, rolls, tick) = play(
+    let (_now, rolls, round) = play(
         world,
         &pack,
         vec![intent(
@@ -444,7 +443,7 @@ The ground gives.
         )],
     );
     let faces = rolls.iter().any(|roll| roll.actor_id() == "pc_nell");
-    assert!(faces, "nell did not roll\n{tick}");
+    assert!(faces, "nell did not roll\n{round}");
     world.scratch = "rolled".to_string();
     world.pack = Some(pack);
 }
@@ -488,28 +487,28 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
             Target::Place("door".to_string()),
         )],
     );
-    world.scratch = played.tick.to_string();
+    world.scratch = played.round.to_string();
     world.summary = played.summary;
     world.seen = played.seen;
     world.told = played.told;
     world.pack = Some(pack);
 }
 
-#[then(expr = "the tick narrates {string} to {string}")]
-fn the_tick_narrates_to(world: &mut World, text: String, viewer: String) {
-    let tick: Value = serde_json::from_str(&world.scratch).unwrap();
+#[then(expr = "the round narrates {string} to {string}")]
+fn the_round_narrates_to(world: &mut World, text: String, viewer: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
     assert!(
-        narrates(&tick, &text, &viewer),
-        "missing narrate to {viewer}\n{tick}"
+        narrates(&round, &text, &viewer),
+        "missing narrate to {viewer}\n{round}"
     );
 }
 
-#[then(expr = "the tick does not narrate {string} to {string}")]
-fn the_tick_does_not_narrate_to(world: &mut World, text: String, viewer: String) {
-    let tick: Value = serde_json::from_str(&world.scratch).unwrap();
+#[then(expr = "the round does not narrate {string} to {string}")]
+fn the_round_does_not_narrate_to(world: &mut World, text: String, viewer: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
     assert!(
-        !narrates(&tick, &text, &viewer),
-        "narrate reached {viewer}\n{tick}"
+        !narrates(&round, &text, &viewer),
+        "narrate reached {viewer}\n{round}"
     );
 }
 
@@ -714,7 +713,7 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
 
 #[when(expr = "a round runs")]
 fn a_round_runs(world: &mut World) {
-    let pack = temp_pack("trigger-tick-counter");
+    let pack = temp_pack("trigger-round-counter");
     write_nell(&pack, &[]);
     edit_save(world, &pack, |now| {
         seat(now, "pc_rowan", "pc_nell", "docks_street");
@@ -722,21 +721,21 @@ fn a_round_runs(world: &mut World) {
     show(world, pack, Vec::new());
 }
 
-#[then(expr = "the GM summary lists a tick counter change")]
-fn the_gm_summary_lists_a_tick_counter(world: &mut World) {
+#[then(expr = "the GM summary lists a round counter change")]
+fn the_gm_summary_lists_a_round_counter(world: &mut World) {
     assert!(
-        world.summary.iter().any(|item| is_tick_counter(item)),
-        "no tick counter\n{:?}",
+        world.summary.iter().any(|item| is_round_counter(item)),
+        "no round counter\n{:?}",
         world.summary
     );
 }
 
-#[then(expr = "{string}'s summary lists no tick counter change")]
-fn the_viewer_summary_omits_tick_counters(world: &mut World, viewer: String) {
+#[then(expr = "{string}'s summary lists no round counter change")]
+fn the_viewer_summary_omits_round_counters(world: &mut World, viewer: String) {
     let changes = seen_of(world, &viewer);
     assert!(
-        changes.iter().all(|item| !is_tick_counter(item)),
-        "{viewer} saw a tick counter\n{changes:?}"
+        changes.iter().all(|item| !is_round_counter(item)),
+        "{viewer} saw a round counter\n{changes:?}"
     );
 }
 
@@ -955,20 +954,18 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     let mut kernel =
         spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
-    let wall = kernel.now().last_tick_at.clone();
-    let quiet = kernel
-        .play(RoundCause::Manual, &wall)
-        .unwrap_or_else(|err| {
-            panic!("quiet: {err}");
-        });
+    let wall = kernel.now().last_round_at.clone();
+    let quiet = kernel.play(&wall).unwrap_or_else(|err| {
+        panic!("quiet: {err}");
+    });
     kernel.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
     kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
-    let wall = kernel.now().last_tick_at.clone();
+    let wall = kernel.now().last_round_at.clone();
     let back = kernel
-        .play(RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("back: {err}"));
     world.told = quiet
         .lines
@@ -1015,10 +1012,10 @@ fn seen_of(world: &World, viewer: &str) -> Vec<String> {
         .collect()
 }
 
-fn is_tick_counter(key: &str) -> bool {
-    key.starts_with("tick_last_act ")
-        || key.starts_with("tick_idle_acts ")
-        || key.starts_with("tick_live_acts ")
+fn is_round_counter(key: &str) -> bool {
+    key.starts_with("last_act_round ")
+        || key.starts_with("idle_acts_today ")
+        || key.starts_with("live_acts_this_hour ")
 }
 
 fn show(world: &mut World, pack: std::path::PathBuf, intents: Vec<Intent>) {
@@ -1037,8 +1034,8 @@ fn sit(now: &mut Now, ids: &[&str]) {
     now.presence.actors_present = ids.iter().map(|id| (*id).to_string()).collect();
 }
 
-fn narrates(tick: &Value, text: &str, viewer: &str) -> bool {
-    tick["effects"]
+fn narrates(round: &Value, text: &str, viewer: &str) -> bool {
+    round["effects"]
         .as_array()
         .into_iter()
         .flatten()
@@ -1244,7 +1241,7 @@ fn remembered_presence(world: &World, pack: &Path) -> Option<spookery_engine::te
 struct Played {
     now: Now,
     rolls: Vec<spookery_engine::MoveReport>,
-    tick: Value,
+    round: Value,
     summary: Vec<String>,
     seen: Vec<(String, Vec<String>)>,
     told: Vec<(String, String)>,
@@ -1256,7 +1253,7 @@ fn play(
     intents: Vec<Intent>,
 ) -> (Now, Vec<spookery_engine::MoveReport>, Value) {
     let played = play_view(world, pack, intents);
-    (played.now, played.rolls, played.tick)
+    (played.now, played.rolls, played.round)
 }
 
 fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played {
@@ -1271,14 +1268,14 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
     if let Some(presence) = remembered_presence(scenario, pack) {
         round.set_presence(presence);
     }
-    let wall = round.now().last_tick_at.clone();
+    let wall = round.now().last_round_at.clone();
     for intent in intents {
         round.queue(intent);
     }
     let output = round
-        .play(RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    let tick = latest(pack);
+    let record = latest(pack);
     let told = output
         .lines
         .into_iter()
@@ -1292,7 +1289,7 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
     Played {
         now: round.now().clone(),
         rolls: output.reports,
-        tick,
+        round: record,
         summary: output.summary,
         seen,
         told,
@@ -1302,9 +1299,8 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
 fn intent(id: &str, actor: &str, verb: &str, target: Target) -> Intent {
     Intent {
         id: id.to_string(),
-        tick_index: 1,
-        actor_id: actor.to_string(),
-        actor_kind: ActorKind::Player,
+        round_index: 1,
+        actor: ViewerId::Player(actor.to_string()),
         source: Source::Player,
         move_name: verb.to_string(),
         target,
@@ -1321,17 +1317,17 @@ fn append(path: &Path, from: &str, to: &str) {
 }
 
 fn load(pack: &Path) -> Now {
-    let report = spookery_engine::testing::from_journal(pack, None, None)
+    let report = spookery_engine::testing::replay_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
     load_save(text).unwrap()
 }
 
 fn latest(pack: &Path) -> Value {
-    let names = spookery_engine::testing::journal::list_tick_keys(pack);
+    let names = spookery_engine::testing::journal::list_round_keys(pack);
     let name = names
         .last()
-        .unwrap_or_else(|| panic!("no tick was written"));
+        .unwrap_or_else(|| panic!("no round was written"));
     let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{name}: {err}"))

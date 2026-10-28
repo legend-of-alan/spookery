@@ -1,11 +1,11 @@
 schema: now
 shard_id: sample-d20
 pack_rev: blake2s:02f86c17e890574432cb533294581156dffdd633d751afb1022287715fb34b46
-rules_rev: 7
+rules_rev: 8
 state_rev: 0
-tick_index: 0
+round_index: 0
 world_time: 1080
-last_tick_at: "2026-01-01T00:00:00Z"
+last_round_at: "2026-01-01T00:00:00Z"
 pause:
   named_plot_clocks: paused
 places:
@@ -53,7 +53,7 @@ actors:
     inventory: {}
     known_facts: []
     act:
-      last_act_tick: 0
+      last_act_round: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
   npc_oden:
@@ -76,7 +76,7 @@ actors:
     inventory: {}
     known_facts: []
     act:
-      last_act_tick: 0
+      last_act_round: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
   pc_lark:
@@ -102,7 +102,7 @@ actors:
     visited:
       - gate_yard
     act:
-      last_act_tick: 0
+      last_act_round: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
   pc_nell:
@@ -127,7 +127,7 @@ actors:
     visited:
       - mill_lane
     act:
-      last_act_tick: 0
+      last_act_round: 0
       idle_acts_today: 0
       live_acts_this_hour: 0
 clocks: {}

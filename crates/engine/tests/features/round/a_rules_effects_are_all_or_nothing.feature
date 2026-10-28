@@ -7,7 +7,7 @@ Feature: A rule's effects are all or nothing
 
   Scenario: A rule over the effect cap is refused, not truncated
     Given max_effects_per_intent is 1 and a row with 2 effects
-    Then no effect from that row applies and the tick log names the refusal
+    Then no effect from that row applies and the round log names the refusal
 
   Scenario: A refused roll is not reported as a success
     Given a docks row spilled that rolls grit and then removes 8 lamp oil

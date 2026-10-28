@@ -1,4 +1,4 @@
-Feature: A transaction does not leak a partial tick
+Feature: A transaction does not leak a partial round
 
   Scenario: Dropping an open transaction leaves the save unchanged
     When an open transaction is dropped

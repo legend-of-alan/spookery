@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::intent::{ActorKind, Intent, Source, Target, ViewerId};
+use crate::intent::{Intent, Source, Target, ViewerId};
 use crate::model::Now;
 use crate::rule::{Owner, Rule, TargetKind, When};
 use crate::rules::cond;
@@ -35,16 +35,6 @@ impl GateRefusal {
         self.reason().token()
     }
 
-    /// Journal word. A shortfall is `CANT_AFFORD` plus the meter or item id.
-    pub fn named(&self) -> String {
-        match self {
-            GateRefusal::CantAfford(missing) => format!("CANT_AFFORD {missing}"),
-            GateRefusal::Code(reason) | GateRefusal::Text { code: reason, .. } => {
-                reason.jsonl_reason().to_string()
-            }
-        }
-    }
-
     /// The shortfall, or the sentence a locked exit shows.
     pub fn missing(&self) -> Option<&str> {
         match self {
@@ -66,13 +56,13 @@ impl From<Reason> for GateRefusal {
 pub fn resolve<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, Reason> {
     let habit = canon
         .rules
-        .habits_of(&intent.actor_id)
+        .habits_of(intent.actor.actor_id())
         .into_iter()
         .find(|rule| rule.local_id == intent.move_name);
     let verb = verb_rule(canon, now, intent);
     match intent.source {
         Source::Kernel => habit.or(verb).ok_or(Reason::UnknownMove),
-        Source::Player | Source::System if intent.actor_kind == ActorKind::Npc => {
+        Source::Player | Source::System if matches!(intent.actor, ViewerId::Npc(_)) => {
             habit.or(verb).ok_or(Reason::UnknownMove)
         }
         Source::Player | Source::System => {
@@ -89,7 +79,7 @@ fn verb_rule<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Option<&'a Rul
         Target::Actor(token) => Some(token.as_str()),
         _ => None,
     };
-    let actor = now.actors.get(&intent.actor_id);
+    let actor = now.actors.get(intent.actor.actor_id());
     let place = actor.map(|actor| actor.place());
     let wielded = actor.and_then(|actor| actor.wielded());
     verb_for(canon, place, &intent.move_name, hint, wielded)
@@ -135,7 +125,7 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 /// Gate every intent. A player-sourced habit skips its `if`. Cost is checked for every rule.
 pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, GateRefusal> {
     let rule = resolve(canon, now, intent)?;
-    if let Some(actor) = now.actors.get(&intent.actor_id) {
+    if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Reason::Busy.into());
         }
@@ -154,12 +144,12 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
             return Err(Reason::Schema.into());
         }
     }
-    if intent.source == Source::Kernel && intent.actor_kind == ActorKind::Player {
+    if intent.source == Source::Kernel && matches!(intent.actor, ViewerId::Player(_)) {
         return Err(Reason::KernelOnPlayer.into());
     }
     if intent.source == Source::Kernel
-        && intent.actor_kind == ActorKind::Npc
-        && !is_eligible(canon, now, &intent.actor_id)
+        && matches!(intent.actor, ViewerId::Npc(_))
+        && !is_eligible(canon, now, intent.actor.actor_id())
     {
         return Err(Reason::Ineligible.into());
     }
@@ -183,15 +173,14 @@ fn sees(canon: &Canon, now: &Now, intent: &Intent) -> bool {
     };
     if now
         .actors
-        .get(&intent.actor_id)
+        .get(intent.actor.actor_id())
         .is_some_and(|actor| actor.count(id) > 0)
     {
         return true;
     }
-    let view = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)
-        .ok()
-        .and_then(|viewer| perceive_viewer(canon, now, &viewer).ok());
-    let Some(view) = view else { return false };
+    let Ok(view) = perceive_viewer(canon, now, &intent.actor) else {
+        return false;
+    };
     view.place == id
         || view.visible_actors.iter().any(|other| other == id)
         || view.items.iter().any(|item| item.id == id)

@@ -5,12 +5,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::canon::tick_settings::Budget;
+use crate::canon::round_settings::Budget;
 use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic, Severity};
 use crate::effect::{payload_json, Effect};
 use crate::error::Reason;
-use crate::intent::{player_intent_id, ActorKind, Intent, IntentArgs, Source, Target};
+use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::journal::{self, JournalEntry};
 use crate::model::{sort_unique, ActorLive, Now, Presence};
 use crate::rule::{TargetKind, When};
@@ -89,7 +89,7 @@ pub fn handle_player_move(
 
 pub struct GmIntentSpec {
     pub id: Option<String>,
-    pub tick_index: Option<u64>,
+    pub round_index: Option<u64>,
     pub actor_id: Option<String>,
     pub move_name: Option<String>,
     pub target: Option<String>,
@@ -262,27 +262,24 @@ impl World {
             Target::Actor(id) | Target::Place(id) => id.as_str(),
             Target::Clock(_) => return Err(Reason::Schema),
         };
-        let tick = self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?;
+        let round_index = self.now.round_index.checked_add(1).ok_or(Reason::Schema)?;
         let id = player_intent_id(
             &self.now.shard_id,
-            tick,
+            round_index,
             actor_id,
             &canonical_line(verb, token),
         );
         if self.queue.iter().any(|intent| intent.id == id) {
             return Err(Reason::Schema);
         }
-        Ok(Intent {
+        Ok(Intent::new(
             id,
-            tick_index: tick,
-            actor_id: actor_id.to_string(),
-            actor_kind: ActorKind::Player,
-            source: Source::Player,
-            move_name: verb.to_string(),
+            round_index,
+            ViewerId::Player(actor_id.to_string()),
+            Source::Player,
+            verb,
             target,
-            args: IntentArgs::default(),
-            rationale_code: String::new(),
-        })
+        ))
     }
 
     pub fn queue_gm_intent(
@@ -299,9 +296,10 @@ impl World {
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
         let actor = self.now.actors.get(&actor_id).ok_or(Reason::UnknownKey)?;
-        let actor_kind = actor.actor_kind();
+        let viewer = actor.viewer(&actor_id);
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
-        let is_habit = actor_kind == ActorKind::Npc
+        let is_npc = matches!(viewer, ViewerId::Npc(_));
+        let is_habit = is_npc
             && self
                 .canon
                 .rules
@@ -311,7 +309,7 @@ impl World {
         let target = match (is_habit, token) {
             (true, None) => Target::Empty,
             (true, Some(_)) => return Err(Reason::Schema),
-            (false, _) if actor_kind == ActorKind::Npc => {
+            (false, _) if is_npc => {
                 self.verb_target(actor, &move_name, token, Reason::UnknownMove)?
             }
             (false, _) => self.verb_target(actor, &move_name, token, Reason::NotInSpec)?,
@@ -324,18 +322,17 @@ impl World {
         if self.queue.iter().any(|intent| intent.id == id) {
             return Err(Reason::Schema);
         }
-        let tick_index = match spec.tick_index {
-            Some(tick) => tick,
-            None => self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?,
+        let round_index = match spec.round_index {
+            Some(index) => index,
+            None => self.now.round_index.checked_add(1).ok_or(Reason::Schema)?,
         };
         let args = IntentArgs {
             message_to: spec.message_to,
         };
         self.queue(Intent {
             id: id.clone(),
-            tick_index,
-            actor_id: actor_id.clone(),
-            actor_kind,
+            round_index,
+            actor: viewer,
             source: Source::Player,
             move_name: move_name.clone(),
             target,
@@ -384,7 +381,7 @@ impl World {
             Heard::Actor(actor) => ("actor", None, Some(actor.to_string())),
         };
         let recipients = speech_recipients(&self.now, speaker, heard);
-        let tick_index = self.now.tick_index;
+        let round_index = self.now.round_index;
         let world_time = self.now.world_time;
         append_record(&self.root, |seq| TapeRecord {
             seq,
@@ -394,7 +391,7 @@ impl World {
             actor,
             recipients,
             text,
-            tick_index,
+            round_index,
             world_time,
         })
     }
@@ -435,15 +432,17 @@ impl World {
     /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
     /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
     pub fn resume(root: &Path) -> Result<Self, Reason> {
-        crate::round::resume(root)
+        crate::round::replay::open_at_tip(root)
     }
 
-    pub fn play(
-        &mut self,
-        cause: crate::RoundCause,
-        now_wall: &str,
-    ) -> Result<crate::RoundOutput, Reason> {
-        crate::round::play(self, cause, now_wall)
+    pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
+        crate::round::play_round(
+            self,
+            now_wall,
+            crate::round::play::RoundKind::Live {
+                fast_forward: false,
+            },
+        )
     }
 
     /// Commit a queued round, then fast-forward while every seated PC is busy.
@@ -455,15 +454,15 @@ impl World {
         let mut outputs = Vec::new();
         let committed = !self.queue.is_empty();
         if committed {
-            outputs.push(self.play(crate::RoundCause::Flush, wall)?);
+            outputs.push(self.play(wall)?);
         }
         let already = u32::from(committed);
-        outputs.extend(crate::round::advance_while_busy(self, wall, already)?);
+        outputs.extend(crate::round::play_while_busy(self, wall, already)?);
         Ok(outputs)
     }
 
     pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
-        crate::round::catch_up(self, now_wall, downtime_hours)
+        crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
     pub fn perceive(&self, as_arg: &str) -> Result<crate::perceive::View, Reason> {
@@ -494,24 +493,24 @@ impl World {
         let entries = journal::read_verified(&self.root).map_err(|fault| fault.reason)?;
         let mut effects = Vec::new();
         for entry in &entries {
-            let JournalEntry::Tick(record) = entry else {
+            let JournalEntry::Round(record) = entry else {
                 continue;
             };
             for effect in &record.effects {
-                effects.push((record.tick_index, effect));
+                effects.push((record.round_index, effect));
             }
         }
         Ok(self.format_host_lines(&effects))
     }
 
-    /// Effect rows for `outputs` (ending at this world's `tick_index`), then the clocks.
+    /// Effect rows for `outputs` (ending at this world's `round_index`), then the clocks.
     pub fn host_lines(&self, outputs: &[crate::RoundOutput]) -> String {
-        let start = self.now.tick_index + 1 - outputs.len() as u64;
+        let start = self.now.round_index + 1 - outputs.len() as u64;
         let mut effects = Vec::new();
         for (offset, output) in outputs.iter().enumerate() {
-            let tick = start + offset as u64;
+            let round_index = start + offset as u64;
             for effect in &output.effects {
-                effects.push((tick, effect));
+                effects.push((round_index, effect));
             }
         }
         self.format_host_lines(&effects)
@@ -519,9 +518,9 @@ impl World {
 
     fn format_host_lines(&self, effects: &[(u64, &Effect)]) -> String {
         let mut rows = Vec::new();
-        for (tick_index, effect) in effects {
+        for (round_index, effect) in effects {
             rows.push(format!(
-                "effect {} {tick_index} {}",
+                "effect {} {round_index} {}",
                 effect.class_name(),
                 payload_json(effect)
             ));
@@ -574,15 +573,15 @@ impl World {
 
     /// The pack's canon with a save from memory, for replay. Nothing is checked:
     /// each journal record's hash proves the state it reaches.
-    pub(crate) fn open_for_replay(pack: &Path, now: Now) -> Result<Self, Reason> {
-        Ok(Self {
+    pub(crate) fn open_for_replay(pack: &Path, canon: Arc<Canon>, now: Now) -> Self {
+        Self {
             root: pack.to_path_buf(),
-            canon: Arc::new(load_canon(pack).map_err(reason_of)?),
+            canon,
             now,
             queue: Vec::new(),
             next_session: 1,
             warning: None,
-        })
+        }
     }
 }
 

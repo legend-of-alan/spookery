@@ -1,16 +1,16 @@
 //! Play one round and replay the journal.
 
+pub(crate) mod dice;
+pub(crate) mod log;
 pub(crate) mod play;
 pub(crate) mod replay;
 pub(crate) mod stage;
-pub(crate) mod state;
+pub(crate) mod verify;
 
-pub(crate) use play::{advance_while_busy, catch_up, play};
-pub use play::{migrate_pack, play_pack_once, RoundCause, RoundOutput};
-#[allow(unused_imports)]
-pub(crate) use replay::{from_journal, resume};
-pub use replay::{verify_pack, verify_quick};
-pub use stage::advance::plan_catchup;
+pub(crate) use play::{play_catch_up, play_round, play_while_busy};
+pub use play::{play_pack_once, RoundOutput};
+pub use replay::migrate_pack;
+pub use verify::{verify_pack, verify_quick};
 
 #[cfg(test)]
 mod prop;

@@ -15,9 +15,9 @@ fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "tick index is {int}")]
-fn tick_index_is(world: &mut World, index: u64) {
-    assert_eq!(table::now_of(table::pack(world)).tick_index, index);
+#[then(expr = "round index is {int}")]
+fn round_index_is(world: &mut World, index: u64) {
+    assert_eq!(table::now_of(table::pack(world)).round_index, index);
 }
 
 #[then(expr = "the player line is queued")]
@@ -35,12 +35,13 @@ fn the_player_line_is_queued(world: &mut World) {
     world.mark = table::player_len(world);
 }
 
-#[then(expr = "the tick log records the player wait")]
-fn the_tick_log_records_the_player_wait(world: &mut World) {
-    let text = spookery_engine::testing::journal::read_record_line(table::pack(world), "tick-0001")
-        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
-    let tick: Value = serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"));
-    let waits = tick["intents"]
+#[then(expr = "the round log records the player wait")]
+fn the_round_log_records_the_player_wait(world: &mut World) {
+    let text =
+        spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
+            .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
+    let round: Value = serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"));
+    let waits = round["intents"]
         .as_array()
         .unwrap()
         .iter()

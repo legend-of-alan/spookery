@@ -203,15 +203,15 @@ pub fn session_status(
             named_plot_clocks: run_state(now.pause.named_plot_clocks),
         },
         world_time: now.world_time,
-        tick_index: now.tick_index,
+        tick_index: now.round_index,
         state_rev: now.state_rev,
         pack_rev: now.pack_rev.clone(),
-        last_tick_at: now.last_tick_at.clone(),
+        last_tick_at: now.last_round_at.clone(),
         queued: queued
             .iter()
             .map(|intent| QueueRow {
                 id: intent.id.clone(),
-                actor_id: intent.actor_id.clone(),
+                actor_id: intent.actor.actor_id().to_string(),
                 move_name: intent.move_name.clone(),
             })
             .collect(),

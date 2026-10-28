@@ -3,17 +3,17 @@ Feature: A hand edit waits for migrate
   Scenario: A canon byte change writes nothing
     Given a docks table
     When a canon file gains a byte
-    And the operator runs tick
+    And the operator tries a round
     Then the command exits 1
-    And the tick writes nothing
+    And the round writes nothing
 
   Scenario: Two migrates bump state_rev and append evidence
     Given a docks table
     When the operator migrates twice
     Then state_rev is 2
     And world_time is 1080
-    And tick index is 0
-    And no tick file was written
+    And round index is 0
+    And no round file was written
     And the journal has two migrate records, at state_rev 1 and 2
 
   Scenario: Migrate keeps a hand edit and rewrites pack_rev
@@ -42,10 +42,10 @@ Feature: A hand edit waits for migrate
     Given a docks table
     And one round has committed
     When a canon file gains a byte
-    And the operator runs tick
+    And the operator tries a round
     Then the command exits 1
     And stderr names PACK_REV_MISMATCH
-    And the tick writes nothing
+    And the round writes nothing
 
   Scenario: Check and run agree on an edit after a round
     Given a docks table
@@ -65,7 +65,7 @@ Feature: A hand edit waits for migrate
     Then the check exits 0
     And spook verify passes
     And every actor has "stamina" at 6
-    When the operator runs tick
+    When the operator tries a round
     Then the command exits 0
     And spook verify passes
 
@@ -73,20 +73,20 @@ Feature: A hand edit waits for migrate
     Given a docks table
     When a canon file gains a byte
     And the operator runs migrate
-    And the operator runs tick
+    And the operator tries a round
     Then the command exits 0
     When a canon file gains a byte
-    And the operator runs tick
+    And the operator tries a round
     Then the command exits 1
     And stderr names PACK_REV_MISMATCH
-    And the tick writes nothing
+    And the round writes nothing
 
   Scenario: A second canon edit in one live bundle migrates
     Given a docks table
     And one round has committed
     When a canon file gains a byte
     And the operator runs migrate
-    And the operator runs tick
+    And the operator tries a round
     And a canon file gains a byte
     And the pack adds meter "stamina" with start 6
     And the operator runs migrate
@@ -95,7 +95,7 @@ Feature: A hand edit waits for migrate
     Then the check exits 0
     And spook verify passes
     And every actor has "stamina" at 6
-    When the operator runs tick
+    When the operator tries a round
     Then the command exits 0
     And spook verify passes
 
@@ -109,13 +109,13 @@ Feature: A hand edit waits for migrate
 
   Scenario: Verify replays a migrate from before a later canon edit
     Given a docks table
-    And checkpoints are taken every 2 ticks
+    And checkpoints are taken every 2 rounds
     When a canon file gains a byte
     And the operator runs migrate
-    And the operator runs tick
-    And the operator runs tick
+    And the operator tries a round
+    And the operator tries a round
     And a canon file gains a byte
     And the operator runs migrate
-    And the operator runs tick
+    And the operator tries a round
     Then the command exits 0
     And spook verify passes

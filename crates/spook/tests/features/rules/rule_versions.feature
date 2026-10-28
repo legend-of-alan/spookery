@@ -1,7 +1,7 @@
 Feature: Rule versions
 
   Scenario: Mismatched save
-    Given a save with rules_rev 6 and an engine at 7
+    Given a save with rules_rev 7 and an engine at 8
     When spook run or spook verify opens it
     Then it refuses with RULES_REV and says to start a fresh save
 
@@ -17,4 +17,4 @@ Feature: Rule versions
 
   Scenario: Divergence is named
     Given logged effects that differ from the re-run
-    Then spook verify names the tick and the first differing effect
+    Then spook verify names the round and the first differing effect

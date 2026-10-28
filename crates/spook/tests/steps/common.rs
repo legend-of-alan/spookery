@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::Now;
 
 use super::table;
@@ -115,7 +115,7 @@ fn break_pack(pack: &Path, fault: &str) {
             "schema: tick\n",
             "schema: tick\nidle: maybe\n",
         ),
-        "zero tick interval" => replace_file(
+        "zero round interval" => replace_file(
             &pack.join("rules/tick.yaml"),
             "tick_every_real_seconds: 300\n",
             "tick_every_real_seconds: 0\n",
@@ -201,12 +201,12 @@ pub(crate) fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via
         .act_mut();
     act.busy_until = Some(until);
     act.busy_for = Some(spookery_engine::testing::PendingAction {
-        rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
-        target: via.to_string(),
-        arrive: Some(arrive.to_string()),
-        via: Some(via.to_string()),
         source: spookery_engine::Source::Player,
+        kind: spookery_engine::testing::PendingKind::Arrive {
+            place: arrive.to_string(),
+            via: via.to_string(),
+        },
     });
 }
 
@@ -380,17 +380,17 @@ fn the_gm_commits_the_round(world: &mut World) {
     world.stdout = table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
 }
 
-#[then(expr = "a tick file was written")]
-fn a_tick_file_was_written(world: &mut World) {
+#[then(expr = "a round file was written")]
+fn a_round_file_was_written(world: &mut World) {
     assert_eq!(
-        list_tick_keys(table::pack(world)),
-        vec!["tick-0001".to_string()]
+        list_round_keys(table::pack(world)),
+        vec!["round-0001".to_string()]
     );
 }
 
-#[then(expr = "no tick file was written")]
-fn no_tick_file(world: &mut World) {
-    assert!(list_tick_keys(table::pack(world)).is_empty());
+#[then(expr = "no round file was written")]
+fn no_round_file(world: &mut World) {
+    assert!(list_round_keys(table::pack(world)).is_empty());
 }
 
 #[then(expr = "save.yaml is unchanged since the seat")]

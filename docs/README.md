@@ -86,7 +86,7 @@ If you join as a character who's already seated, `spook play` exits 1 with `That
 
 ### No GM
 
-You can leave the GM seat empty. Then nobody narrates and no model gets called. Speech goes on the tape without moving the clock, and each move commits as its own tick.
+You can leave the GM seat empty. Then nobody narrates and no model gets called. Speech goes on the tape without moving the clock, and each move commits as its own round.
 
 If a move leaves every seated player busy, the clock runs on until they arrive.
 

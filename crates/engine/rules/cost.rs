@@ -22,7 +22,7 @@ pub(crate) fn can_pay(
     intent: &Intent,
     cost: &Cost,
 ) -> Result<(), CostShortfall> {
-    let who = &intent.actor_id;
+    let who = intent.actor.actor_id();
     let ctx = Ctx { intent };
     for (key, expr) in &cost.meters {
         if expr.needs_dice() {
@@ -96,7 +96,7 @@ pub fn pay(
     cost: &Cost,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let who = &intent.actor_id;
+    let who = intent.actor.actor_id();
     let ctx = Ctx { intent };
     for (key, expr) in &cost.meters {
         let amount = expr::eval_with_dice(draft.canon(), draft.now(), &ctx, expr, dice)?.value;

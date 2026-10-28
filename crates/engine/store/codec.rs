@@ -200,9 +200,9 @@ shard_id: ex
 pack_rev: blake2s:00
 rules_rev: {rules}
 state_rev: 0
-tick_index: 0
+round_index: 0
 world_time: 0
-last_tick_at: \"2026-01-01T00:00:00Z\"
+last_round_at: \"2026-01-01T00:00:00Z\"
 pause:
   named_plot_clocks: paused
 places:
@@ -470,7 +470,7 @@ messages: []
     #[test]
     fn memory_and_migrate_lines_keep_their_key_order() {
         let memory = super::emit_memory_line(&MemoryLine {
-            tick_index: 3,
+            round_index: 3,
             actor_id: "mi\"ra".to_string(),
             intent_id: "abc".to_string(),
             fact_ids: vec!["f".to_string()],
@@ -479,7 +479,7 @@ messages: []
         });
         assert_eq!(
             memory,
-            r#"{"tick_index":3,"actor_id":"mi\"ra","intent_id":"abc","fact_ids":["f"],"tags":[],"text":null}"#
+            r#"{"round_index":3,"actor_id":"mi\"ra","intent_id":"abc","fact_ids":["f"],"tags":[],"text":null}"#
         );
         let migrate = crate::journal::emit_entry(&crate::journal::migrate_entry(
             "blake2s:aa",

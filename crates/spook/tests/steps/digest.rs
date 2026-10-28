@@ -22,15 +22,15 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
-#[when(expr = "thirteen ticks pass")]
-fn thirteen_ticks_pass(world: &mut World) {
+#[when(expr = "thirteen rounds pass")]
+fn thirteen_rounds_pass(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
-    for tick in 1..=13 {
+    for round in 1..=13 {
         let output = spook(&["tick", arg]);
         assert!(
             output.status.success(),
-            "tick {tick}\nstdout:\n{}\nstderr:\n{}",
+            "round {round}\nstdout:\n{}\nstderr:\n{}",
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         );
@@ -47,9 +47,9 @@ fn the_host_text_lists_the_clocks(world: &mut World) {
 fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(world.stdout, HOST);
     let now = table::now_of(table::pack(world));
-    assert_eq!(now.tick_index, 13);
+    assert_eq!(now.round_index, 13);
     assert_eq!(now.world_time, 1860);
-    assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
+    assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(
         now.places
             .get("docks_shop")

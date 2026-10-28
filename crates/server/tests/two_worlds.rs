@@ -54,12 +54,12 @@ async fn two_worlds_serve_on_port_zero_and_stop_independently() {
     step(&mut c1, "wait\n");
     step(&mut c2, "player:pc_rowan\n");
     step(&mut c2, "wait\n");
-    assert_eq!(World::resume(&first_dir).unwrap().now().tick_index, 1);
-    assert_eq!(World::resume(&second_dir).unwrap().now().tick_index, 1);
+    assert_eq!(World::resume(&first_dir).unwrap().now().round_index, 1);
+    assert_eq!(World::resume(&second_dir).unwrap().now().round_index, 1);
     stop1.send(()).unwrap();
     first.await.unwrap().unwrap();
     step(&mut c2, "wait\n");
-    assert_eq!(World::resume(&second_dir).unwrap().now().tick_index, 2);
+    assert_eq!(World::resume(&second_dir).unwrap().now().round_index, 2);
     stop2.send(()).unwrap();
     second.await.unwrap().unwrap();
     fs::remove_dir_all(&first_dir).unwrap();

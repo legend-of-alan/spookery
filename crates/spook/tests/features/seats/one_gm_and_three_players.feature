@@ -43,7 +43,7 @@ Feature: One GM seat and up to three player seats
     Given a one-player docks table
     When the player waits
     Then world_time is 1085
-    And a tick file was written
+    And a round file was written
     When a second player connects
     Then the hello is refused with "SEAT_TAKEN"
     And humans is 1
@@ -71,12 +71,12 @@ Feature: One GM seat and up to three player seats
     Then both lines are queued for the GM
     And session status lists both queued lines
     When the GM commits the round
-    Then the tick log records both waits
+    Then the round log records both waits
 
-  Scenario: With no GM each player line commits its own tick
+  Scenario: With no GM each player line commits its own round
     Given a docks table with two seated players
     When both players wait
-    Then each wait committed its own tick
+    Then each wait committed its own round
 
   Scenario: A place say reaches only the players in that place
     Given a docks table with two PCs in the shop

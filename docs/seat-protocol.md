@@ -679,7 +679,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 }
 ```
 
-`include_tick: true` commits the queue in queue order, one round. An empty queue writes no tick file, unless every seated PC is busy, in which case the table fast-forwards.
+`include_tick: true` commits the queue in queue order, one round. An empty queue writes no round file, unless every seated PC is busy, in which case the table fast-forwards.
 
 <!-- example: commit-request -->
 ```json
@@ -702,19 +702,19 @@ The result is the tape object. The same object follows as a `spook/event`, and e
   "state_rev": 1,
   "diff_summary": [
     "clock_paused assassination_debt",
-    "message note_mira_door",
-    "tick_last_act mira",
-    "tick_live_acts mira"
+    "last_act_round mira",
+    "live_acts_this_hour mira",
+    "message note_mira_door"
   ],
   "log_path": "state/journal/bundle-0000.jsonl",
   "checks": [
     {
       "faces": [
-        4,
-        4
+        5,
+        2
       ],
       "stat": 1,
-      "total": 9,
+      "total": 8,
       "target": 0,
       "outcome": "success"
     }
@@ -722,7 +722,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 }
 ```
 
-`diff_summary` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `log_path` is the journal file for that round, or null when the round wrote no tick file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
+`diff_summary` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `log_path` is the journal file for that round, or null when the round wrote no round file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
 
 #### close
 
@@ -934,11 +934,11 @@ A roll, after `commit_round`. The same faces are on the tool result.
   "params": {
     "kind": "check",
     "faces": [
-      4,
-      4
+      5,
+      2
     ],
     "stat": 1,
-    "total": 9,
+    "total": 8,
     "target": 0,
     "outcome": "success"
   }

@@ -26,9 +26,9 @@ leftover transaction directory is removed. The save on disk stays.
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/rounds/a_line_waits_for_the_gm.feature`,
 `features/host/the_host_sits_the_gm_seat.feature`,
-`features/speech/speech_appends_and_does_not_tick.feature`,
+`features/speech/speech_appends_and_does_not_play_a_round.feature`,
 `features/commit/a_hand_edit_waits_for_migrate.feature`, and
-`features/commit/a_transaction_does_not_leak_a_partial_tick.feature`.
+`features/commit/a_transaction_does_not_leak_a_partial_round.feature`.
 
 ## Replay
 
@@ -40,13 +40,13 @@ the gzip does not land, the round stays committed and the host prints a
 warning. The next commit publishes that checkpoint and then starts a new
 bundle. A plain copy beside a finished gzip is removed. `save.yaml` is the latest
 checkpoint, taken every `checkpoint_every`
-ticks (100 when the pack omits it). Between checkpoints the current state is the
+rounds (100 when the pack omits it). Between checkpoints the current state is the
 journal replayed from that snapshot. A missing snapshot is rebuilt from the
 bundles. History is not deleted.
 
-Full verification (`spook verify`) replays every bundle from tick 0. Those
-bundles replay at the same time, each from the checkpoint it starts at, and the
-tip matches one serial replay. Quick verification (`spook verify --quick`)
+Full verification (`spook verify`) replays the journal once from round 0 and
+checks every closed bundle's checkpoint snapshot against its mark. Quick
+verification (`spook verify --quick`)
 checks the chain and replays only the latest bundle from the snapshot it starts
 at. Startup uses that same snapshot and the live bundle, and does not open a
 closed bundle. Verify names the record and the first save line that
@@ -231,7 +231,7 @@ The table does not open on a public address. A call that is not on the GM menu
 is refused, so a seat cannot patch the save by naming a tool. A player who stops
 reading is dropped, and the other seats keep going.
 
-Tested in `features/speech/speech_appends_and_does_not_tick.feature`,
+Tested in `features/speech/speech_appends_and_does_not_play_a_round.feature`,
 `features/seats/one_gm_and_three_players.feature`,
 `features/loopback/only_loopback_binds.feature`,
 `features/host/the_host_sits_the_gm_seat.feature`, and

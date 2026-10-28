@@ -19,9 +19,11 @@ use serde::de::DeserializeOwned;
 use crate::error::Reason;
 use crate::hash::blake2s_hex;
 
-pub(crate) use super::records::{AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Rejected};
+pub(crate) use super::records::{
+    AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Rejected, Step,
+};
 use super::records::{CheckpointKind, MigrateKind};
-pub use super::records::{JournalEntry, TickRecord};
+pub use super::records::{JournalEntry, RoundRecord};
 
 pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
@@ -31,6 +33,12 @@ pub(crate) fn base_rel() -> &'static str {
     "journal/base.yaml"
 }
 
+/// The snapshot a checkpoint at `state_rev` publishes.
+pub(crate) fn checkpoint_path(pack: &Path, state_rev: u64) -> PathBuf {
+    pack.join("state/checkpoints")
+        .join(format!("{state_rev}.yaml"))
+}
+
 pub(crate) fn head_rel() -> &'static str {
     "journal/head.json"
 }
@@ -38,8 +46,11 @@ pub(crate) fn head_rel() -> &'static str {
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BundleHead {
+    /// Missing on heads written before rules rev 8, which are refused.
+    #[serde(default)]
+    pub rules_rev: u64,
     pub state_rev: u64,
-    pub tick_index: u64,
+    pub round_index: u64,
     pub state_hash: String,
     pub chain: String,
 }
@@ -51,6 +62,16 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault>
     }
     let text = fs::read_to_string(&path)
         .map_err(|_| fault(&path, "the checkpoint head could not be read"))?;
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|err| fault(&path, &err.to_string()))?;
+    let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
+    if let Err(reason) = super::require_rules_rev(rules_rev.unwrap_or(0)) {
+        return Err(fault_coded(
+            &path,
+            reason,
+            "RULES_REV: the checkpoint head was written by older rules; start a fresh save",
+        ));
+    }
     Ok(Some(read_json("head.json", &text)?))
 }
 
@@ -136,10 +157,10 @@ pub(crate) fn chain_hash(prev: &str, body: &str) -> String {
     hash_now(&bytes)
 }
 
-pub(crate) fn checkpoint_entry(tick_index: u64, state_rev: u64, state_hash: &str) -> JournalEntry {
+pub(crate) fn checkpoint_entry(round_index: u64, state_rev: u64, state_hash: &str) -> JournalEntry {
     JournalEntry::Checkpoint(CheckpointRecord {
         kind: CheckpointKind::Checkpoint,
-        tick_index,
+        round_index,
         state_rev,
         state_hash: state_hash.to_string(),
         prev: String::new(),
@@ -216,22 +237,22 @@ pub fn latest_checkpoint(entries: &[JournalEntry]) -> Option<&CheckpointRecord> 
     })
 }
 
-/// Keys of every tick record, such as `tick-0001`, in order.
+/// Keys of every round record, such as `round-0001`, in order.
 #[allow(dead_code)]
-pub fn list_tick_keys(pack: &Path) -> Vec<String> {
+pub fn list_round_keys(pack: &Path) -> Vec<String> {
     let Ok(entries) = read_entries(pack) else {
         return Vec::new();
     };
     let mut keys: Vec<String> = entries
         .iter()
-        .filter(|entry| matches!(entry, JournalEntry::Tick(_)))
+        .filter(|entry| matches!(entry, JournalEntry::Round(_)))
         .map(format_record_key)
         .collect();
     keys.sort();
     keys
 }
 
-/// The stored line for a record key such as `tick-0001` or `migrate-0002`, without a newline.
+/// The stored line for a record key such as `round-0001` or `migrate-0002`, without a newline.
 #[allow(dead_code)]
 pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> {
     let entries = read_entries(pack)?;
@@ -339,7 +360,7 @@ pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
 
 pub fn emit_entry(entry: &JournalEntry) -> String {
     let json = match entry {
-        JournalEntry::Tick(record) => serde_json::to_string(record).expect("tick"),
+        JournalEntry::Round(record) => serde_json::to_string(record).expect("round"),
         JournalEntry::Migrate(record) => serde_json::to_string(record).expect("migrate"),
         JournalEntry::Checkpoint(record) => serde_json::to_string(record).expect("checkpoint"),
     };
@@ -353,12 +374,12 @@ fn chain_of(entry: &JournalEntry) -> String {
     chain_hash(entry.prev(), body.trim_end())
 }
 
-/// Key naming one record inside the bundles: `tick-0001`, `migrate-0002` or `checkpoint-0003`.
+/// Key naming one record inside the bundles: `round-0001`, `migrate-0002` or `checkpoint-0003`.
 pub fn format_record_key(entry: &JournalEntry) -> String {
     match entry {
-        JournalEntry::Tick(record) => format!("tick-{:04}", record.tick_index),
+        JournalEntry::Round(record) => format!("round-{:04}", record.round_index),
         JournalEntry::Migrate(record) => format!("migrate-{:04}", record.state_rev_after),
-        JournalEntry::Checkpoint(record) => format!("checkpoint-{:04}", record.tick_index),
+        JournalEntry::Checkpoint(record) => format!("checkpoint-{:04}", record.round_index),
     }
 }
 
@@ -385,7 +406,17 @@ fn parse_line(name: &str, line: &str) -> Result<JournalEntry, JournalFault> {
     if kind == Some("migrate") {
         return Ok(JournalEntry::Migrate(read_json(name, line)?));
     }
-    Ok(JournalEntry::Tick(parse_tick(name, line)?))
+    let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
+    parse_round(name, line).map(JournalEntry::Round).map_err(
+        |fault| match super::require_rules_rev(rules_rev.unwrap_or(0)) {
+            Ok(()) => fault,
+            Err(reason) => fault_coded(
+                Path::new(name),
+                reason,
+                "RULES_REV: this record was written by older rules; start a fresh save",
+            ),
+        },
+    )
 }
 
 fn refuse_old_layout(dir: &Path) -> Result<(), JournalFault> {
@@ -518,16 +549,16 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
     Ok(out)
 }
 
-pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {
-    let raw: TickRecord<crate::effect::EffectRecord> = read_json(name, text)?;
+pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, JournalFault> {
+    let raw: RoundRecord<crate::effect::EffectRecord> = read_json(name, text)?;
     let effects = raw
         .effects
         .into_iter()
         .map(crate::effect::Effect::try_from)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|reason| fault_coded(Path::new(name), reason, reason.token()))?;
-    Ok(TickRecord {
-        tick_index: raw.tick_index,
+    Ok(RoundRecord {
+        round_index: raw.round_index,
         rules_rev: raw.rules_rev,
         state_rev_before: raw.state_rev_before,
         state_rev_after: raw.state_rev_after,
@@ -536,7 +567,7 @@ pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFa
         presence_humans: raw.presence_humans,
         actors_present: raw.actors_present,
         seed: raw.seed,
-        last_tick_at: raw.last_tick_at,
+        last_round_at: raw.last_round_at,
         intents: raw.intents,
         rejected: raw.rejected,
         effects,
@@ -609,9 +640,9 @@ mod tests {
 
     #[test]
     fn a_sealed_record_chains_to_the_one_before_it() {
-        let tick = include_str!("../fixtures/tick.jsonl");
-        let parsed = parse_tick("tick.jsonl", tick).unwrap();
-        let entry = JournalEntry::Tick(parsed);
+        let round = include_str!("../fixtures/round.jsonl");
+        let parsed = parse_round("round.jsonl", round).unwrap();
+        let entry = JournalEntry::Round(parsed);
         let prev = hash_now(b"genesis");
         let line = seal(&entry, &prev);
         let again = parse_line("bundle-0000.jsonl", line.trim_end()).unwrap();
@@ -624,10 +655,29 @@ mod tests {
     }
 
     #[test]
-    fn golden_tick_and_migrate_round_trip() {
-        let tick = include_str!("../fixtures/tick.jsonl");
-        let parsed = parse_tick("tick.jsonl", tick).unwrap();
-        assert_eq!(emit_entry(&JournalEntry::Tick(parsed.clone())), tick);
+    fn a_record_and_head_from_older_rules_are_rules_rev() {
+        let old = r#"{"tick_index":1,"rules_rev":7,"state_rev_before":0}"#;
+        assert_eq!(
+            parse_line("bundle-0000.jsonl", old).unwrap_err().reason,
+            Reason::RulesRev
+        );
+        let pack = crate::testing::temp_pack("old-head");
+        let head = pack.join("state").join(head_rel());
+        fs::create_dir_all(head.parent().unwrap()).unwrap();
+        fs::write(
+            &head,
+            r#"{"state_rev":1,"tick_index":1,"state_hash":"","chain":""}"#,
+        )
+        .unwrap();
+        assert_eq!(read_head(&pack).unwrap_err().reason, Reason::RulesRev);
+        let _ = fs::remove_dir_all(&pack);
+    }
+
+    #[test]
+    fn golden_round_and_migrate_round_trip() {
+        let round = include_str!("../fixtures/round.jsonl");
+        let parsed = parse_round("round.jsonl", round).unwrap();
+        assert_eq!(emit_entry(&JournalEntry::Round(parsed.clone())), round);
         assert_eq!(parsed.arrivals[0].via, "stairs");
         assert_eq!(parsed.arrivals[0].arrived_at, 1082);
         assert!(parsed.effects.iter().any(|effect| {
