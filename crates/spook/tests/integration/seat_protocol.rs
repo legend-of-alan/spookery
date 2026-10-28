@@ -163,7 +163,6 @@ fn capture() -> BTreeMap<String, Example> {
         table.door,
     ))))
     .unwrap_or_else(|err| panic!("seat GM: {err}"));
-    json(&mut out, "pack-event", one_event(&mut gm));
 
     let status_args = serde_json::json!({});
     json(

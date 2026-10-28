@@ -185,6 +185,9 @@ pub struct SessionStatus {
         deserialize_with = "deserialize_says"
     )]
     pub events: Option<Vec<GmSay>>,
+    /// Sent when the call has no `since`. An older server never sends it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pack: Option<PackSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -278,7 +281,6 @@ pub enum EventBody {
     Say(GmSay),
     Queued(QueueRow),
     Check(Roll),
-    Pack(PackSummary),
 }
 
 impl GmSay {
@@ -306,9 +308,7 @@ where
         .into_iter()
         .map(|event| match event {
             EventBody::Say(say) => Ok(say),
-            EventBody::Queued(_) | EventBody::Check(_) | EventBody::Pack(_) => {
-                Err(serde::de::Error::custom("say"))
-            }
+            EventBody::Queued(_) | EventBody::Check(_) => Err(serde::de::Error::custom("say")),
         })
         .collect::<Result<Vec<_>, _>>()
         .map(Some)
@@ -316,11 +316,6 @@ where
 
 pub fn write_say_event(say: &GmSay) -> Vec<u8> {
     event_line(say.to_value())
-}
-
-pub fn write_pack_event(pack: &PackSummary) -> Vec<u8> {
-    let body = EventBody::Pack(pack.clone());
-    event_line(serde_json::to_value(body).expect("pack event"))
 }
 
 pub fn write_queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
@@ -399,7 +394,7 @@ mod tests {
             assert_eq!(back, v);
         }
         rt::<SessionStatus>(
-            r#"{"presence":{"humans":1,"actors_present":["pc_rowan"],"x":1},"pause":{"named_plot_clocks":"running","x":1},"world_time":10,"tick_index":1,"state_rev":2,"pack_rev":"p","last_tick_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"x":1}"#,
+            r#"{"presence":{"humans":1,"actors_present":["pc_rowan"],"x":1},"pause":{"named_plot_clocks":"running","x":1},"world_time":10,"tick_index":1,"state_rev":2,"pack_rev":"p","last_tick_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         rt::<CommitBody>(
             r#"{"state_rev":3,"diff_summary":["d"],"log_path":null,"checks":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,
@@ -408,7 +403,6 @@ mod tests {
             r#"{"kind":"say","seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","x":1}"#,
             r#"{"kind":"queued","id":"q1","actor_id":"pc_rowan","move":"wait","x":1}"#,
             r#"{"kind":"check","faces":[6,6],"stat":0,"total":12,"target":10,"outcome":"success","x":1}"#,
-            r#"{"kind":"pack","menu":[],"kinds":{},"places":{},"cast":{},"x":1}"#,
         ] {
             rt::<EventBody>(raw);
         }

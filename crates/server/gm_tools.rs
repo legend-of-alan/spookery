@@ -359,6 +359,7 @@ fn session_status_tool(
         world.queued_intents(),
         last_seq,
         events.as_deref(),
+        since.is_none().then(|| world.pack_summary()),
     ))
 }
 

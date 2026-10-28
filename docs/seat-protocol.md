@@ -434,7 +434,7 @@ A call is `tools/call`. The body below is the JSON-RPC request. The result examp
 
 #### session_status
 
-No key is required. `since` is the only other accepted key. It is a tape sequence number. The reply then includes `events`, the say objects after that sequence, inside the tape window. The window defaults to 64 lines and stops at 256. A generic client that ignores `spook/event` uses this as the pull path. The pack summary is delivered as that `pack` event when the GM sits, before the first `session_status` result. It is not a field of this object.
+No key is required. `since` is the only other accepted key. It is a tape sequence number. The reply then includes `events`, the say objects after that sequence, inside the tape window. The window defaults to 64 lines and stops at 256. A generic client that ignores `spook/event` uses this as the pull path. Without `since`, the reply also carries `pack`, the pack summary.
 
 <!-- example: session-status-request -->
 ```json
@@ -467,11 +467,90 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
   "pack_rev": "blake2s:1958ea45e07e207e4dd3aec586573b5edf8f8543e3cf72cf8992cbb84fdbce09",
   "last_tick_at": "2026-01-01T00:00:00Z",
   "queued": [],
-  "last_seq": 0
+  "last_seq": 0,
+  "pack": {
+    "menu": [
+      {
+        "name": "leave_door_note",
+        "audience": "habit",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "restock_lamp_oil",
+        "audience": "habit",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "wait",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "travel",
+        "audience": "verb",
+        "token": "exit",
+        "on": "self"
+      },
+      {
+        "name": "grit",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      },
+      {
+        "name": "take",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "drop",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "wield",
+        "audience": "verb",
+        "token": "item",
+        "on": "self"
+      },
+      {
+        "name": "unwield",
+        "audience": "verb",
+        "token": "none",
+        "on": "self"
+      }
+    ],
+    "kinds": {
+      "aldric": "npc",
+      "bram": "npc",
+      "mira": "npc",
+      "pc_harbormouse": "pc_template",
+      "pc_rowan": "pc_template",
+      "pc_wren": "pc_template"
+    },
+    "places": {
+      "docks_shop": "The shop faces the water. Tins sit in a row.\n",
+      "docks_street": "The street runs between the shop and the rooms.\n",
+      "mira_rooms": "A lamp burns past the shop's back stair.\n"
+    },
+    "cast": {
+      "aldric": "Aldric sweeps the shop and does not keep the books.\n",
+      "bram": "Bram walks the night watch between the street and the shop.\n",
+      "mira": "Mira keeps the shop neat and the tin out of sight.\n",
+      "pc_harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
+      "pc_rowan": "Rowan keeps the shop and walks the street.\n",
+      "pc_wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
+    }
+  }
 }
 ```
 
-`humans` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_tick_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `events` is absent unless `since` was sent.
+`humans` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_tick_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `events` is absent unless `since` was sent. `pack` is the move menu, cast kinds, place prose, and cast prose, and it is absent when `since` was sent. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
 
 After the two says above, `since` 0 returns them:
 
@@ -773,96 +852,6 @@ An unknown tool:
 ### Events
 
 The seat pushes `spook/event` notifications. A generic client may ignore them and poll `session_status` with `since` instead. The GM seat is not rate-limited.
-
-On seat open, the pack menu, cast kinds, and prose. The pack summary is this event, sent when the GM sits, before the first `session_status` result.
-
-<!-- example: pack-event -->
-```json
-{
-  "jsonrpc": "2.0",
-  "method": "spook/event",
-  "params": {
-    "kind": "pack",
-    "menu": [
-      {
-        "name": "leave_door_note",
-        "audience": "habit",
-        "token": "none",
-        "on": "self"
-      },
-      {
-        "name": "restock_lamp_oil",
-        "audience": "habit",
-        "token": "none",
-        "on": "self"
-      },
-      {
-        "name": "wait",
-        "audience": "verb",
-        "token": "none",
-        "on": "self"
-      },
-      {
-        "name": "travel",
-        "audience": "verb",
-        "token": "exit",
-        "on": "self"
-      },
-      {
-        "name": "grit",
-        "audience": "verb",
-        "token": "none",
-        "on": "self"
-      },
-      {
-        "name": "take",
-        "audience": "verb",
-        "token": "item",
-        "on": "self"
-      },
-      {
-        "name": "drop",
-        "audience": "verb",
-        "token": "item",
-        "on": "self"
-      },
-      {
-        "name": "wield",
-        "audience": "verb",
-        "token": "item",
-        "on": "self"
-      },
-      {
-        "name": "unwield",
-        "audience": "verb",
-        "token": "none",
-        "on": "self"
-      }
-    ],
-    "kinds": {
-      "aldric": "npc",
-      "bram": "npc",
-      "mira": "npc",
-      "pc_harbormouse": "pc_template",
-      "pc_rowan": "pc_template",
-      "pc_wren": "pc_template"
-    },
-    "places": {
-      "docks_shop": "The shop faces the water. Tins sit in a row.\n",
-      "docks_street": "The street runs between the shop and the rooms.\n",
-      "mira_rooms": "A lamp burns past the shop's back stair.\n"
-    },
-    "cast": {
-      "aldric": "Aldric sweeps the shop and does not keep the books.\n",
-      "bram": "Bram walks the night watch between the street and the shop.\n",
-      "mira": "Mira keeps the shop neat and the tin out of sight.\n",
-      "pc_harbormouse": "Harbormouse walks the night street and sleeps in a coil of rope.\n",
-      "pc_rowan": "Rowan keeps the shop and walks the street.\n",
-      "pc_wren": "Wren mends nets on the street and keeps the tide chart in their head.\n"
-    }
-  }
-}
-```
 
 A player say:
 

@@ -1,8 +1,9 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, GmSay, Missing, Outcome, OutgoingSay, PlayerMessage, QueueRow, Roll, SessionStatus,
-    StatusPause, StatusPresence, ViewScene, WireClock, WireFact, WireItem, WireMessage, WireMeter,
+    CommitBody, GmSay, Missing, Outcome, OutgoingSay, PackSummary, PlayerMessage, QueueRow, Roll,
+    SessionStatus, StatusPause, StatusPresence, ViewScene, WireClock, WireFact, WireItem,
+    WireMessage, WireMeter,
 };
 use serde_json::{Map, Value};
 use spookery_engine::{
@@ -84,10 +85,6 @@ pub fn player_queued_line(id: &str) -> String {
 
 pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
     crate::protocol::write_queued_event(id, actor_id, move_name)
-}
-
-pub fn pack_event(world: &World) -> Vec<u8> {
-    crate::protocol::write_pack_event(&world.pack_summary())
 }
 
 pub fn player_check_line(outcome: Outcome) -> String {
@@ -193,6 +190,7 @@ pub fn session_status(
     queued: &[Intent],
     last_seq: u64,
     events: Option<&[TapeRecord]>,
+    pack: Option<PackSummary>,
 ) -> Value {
     SessionStatus {
         presence: StatusPresence {
@@ -217,6 +215,7 @@ pub fn session_status(
             .collect(),
         last_seq,
         events: events.map(|events| events.iter().map(gm_say).collect()),
+        pack,
     }
     .to_value()
 }
