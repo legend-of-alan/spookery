@@ -33,7 +33,7 @@ Feature: spook new makes a pack
     Then play shows "You are in Lane."
     And the travel committed a round
     When the operator runs spook new beside that pack
-    And the operator runs tick on that untouched pack
+    And the operator plays a round on that untouched pack
     Then the keeper habit has set tended
 
   Scenario: The first-pack guide passes check

@@ -1,4 +1,4 @@
-//! Which habits an NPC may run on this tick.
+//! Which habits an NPC may run this round.
 
 use crate::canon::Canon;
 use crate::intent::{kernel_intent_id, Intent, Source, Target, ViewerId};

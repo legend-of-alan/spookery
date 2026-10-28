@@ -155,8 +155,8 @@ fn the_operator_runs_spook_new_beside_that_pack(world: &mut World) {
     world.scratch = idle.to_str().unwrap().to_string();
 }
 
-#[when(expr = "the operator runs tick on that untouched pack")]
-fn the_operator_runs_tick_on_that_untouched_pack(world: &mut World) {
+#[when(expr = "the operator plays a round on that untouched pack")]
+fn the_operator_plays_a_round_on_that_untouched_pack(world: &mut World) {
     let idle = PathBuf::from(&world.scratch);
     table::run(world, &["tick", idle.to_str().unwrap()]);
 }

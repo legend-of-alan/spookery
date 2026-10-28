@@ -9,7 +9,7 @@ Feature: The journal verifies
 
   Scenario: Twelve rounds verify
     Given a docks table
-    When the operator runs 12 ticks
+    When the operator plays 12 rounds
     And the operator runs verify
     Then the command exits 0
     And stdout says the save was verified
@@ -25,10 +25,10 @@ Feature: The journal verifies
 
   Scenario: A migrate between rounds verifies
     Given a docks table
-    When the operator runs tick
+    When the operator tries a round
     And a canon file gains a byte
     And the operator runs migrate
-    And the operator runs tick
+    And the operator tries a round
     And the operator runs verify
     Then the command exits 0
     And stdout says the save was verified
@@ -44,7 +44,7 @@ Feature: The journal verifies
 
   Scenario: A changed round intent fails verify
     Given a docks table
-    When the operator runs tick
+    When the operator tries a round
     And a queued intent the round never had is written into its record
     And the operator runs verify
     Then the command exits 1
@@ -53,7 +53,7 @@ Feature: The journal verifies
 
   Scenario: Verify leaves the pack unchanged
     Given a docks table
-    When the operator runs tick
+    When the operator tries a round
     And the pack bytes are remembered
     And the operator runs verify
     Then the pack bytes are unchanged
@@ -61,7 +61,7 @@ Feature: The journal verifies
   Scenario: Verify from a pre-round copy
     Given a docks table
     When the pack is copied before the round
-    And the operator runs tick
+    And the operator tries a round
     And the replay base is removed
     And the operator runs verify from that copy
     Then the command exits 0

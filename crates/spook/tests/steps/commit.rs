@@ -57,8 +57,8 @@ fn one_round_has_committed(world: &mut World) {
     );
 }
 
-#[when(expr = "the operator runs tick")]
-fn the_operator_runs_tick(world: &mut World) {
+#[when(expr = "the operator tries a round")]
+fn the_operator_tries_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     world.state_files = state_tree(&pack);
     table::run(world, &["tick", pack.to_str().unwrap()]);

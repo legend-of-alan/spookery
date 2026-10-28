@@ -2,10 +2,10 @@ Feature: Journal records are typed
 
   Scenario: Old journals still verify
     Given a docks table
-    When the operator runs tick
+    When the operator tries a round
     And a canon file gains a byte
     And the operator runs migrate
-    And the operator runs tick
+    And the operator tries a round
     And the operator runs verify
     Then the command exits 0
     And stdout says the save was verified
@@ -13,7 +13,7 @@ Feature: Journal records are typed
 
   Scenario: A field with the wrong type is named
     Given a docks table
-    When the operator runs tick
+    When the operator tries a round
     And the round record's round_index is a string
     And the operator runs verify
     Then the command exits 1
@@ -21,7 +21,7 @@ Feature: Journal records are typed
 
   Scenario: An unknown key is refused
     Given a docks table
-    When the operator runs tick
+    When the operator tries a round
     And the round record gains an unknown key
     And the operator runs verify
     Then the command exits 1
@@ -29,7 +29,7 @@ Feature: Journal records are typed
 
   Scenario: A retired effect class is still illegal
     Given a docks table
-    When the operator runs tick
+    When the operator tries a round
     And one effect class is need
     And the operator runs verify
     Then the command exits 1
@@ -37,11 +37,11 @@ Feature: Journal records are typed
 
   Scenario: Written records round-trip
     Given a docks table
-    When the operator runs 3 ticks
+    When the operator plays 3 rounds
     Then each journal record parses back to the bytes that were written
 
   Scenario: A quiet round omits the standard steps
     Given a docks table
-    When the operator runs 2 ticks
+    When the operator plays 2 rounds
     Then the first round lists only effect_applied and cast:mira/leave_door_note
     And the second round omits steps_run

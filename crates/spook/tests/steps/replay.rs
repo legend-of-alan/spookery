@@ -43,8 +43,8 @@ fn the_operator_runs_verify_from_that_copy(world: &mut World) {
     let _ = fs::remove_dir_all(&from);
 }
 
-#[when(expr = "the operator runs {int} ticks")]
-fn the_operator_runs_n_ticks(world: &mut World, count: usize) {
+#[when(expr = "the operator plays {int} rounds")]
+fn the_operator_plays_n_rounds(world: &mut World, count: usize) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap().to_string();
     for _ in 0..count {
@@ -429,9 +429,9 @@ fn the_second_round_omits_steps_run(world: &mut World) {
     assert!(round.get("steps_run").is_none(), "{round}");
 }
 
-#[when(expr = "the operator runs a tick")]
-fn the_operator_runs_a_tick(world: &mut World) {
-    the_operator_runs_n_ticks(world, 1);
+#[when(expr = "the operator plays a round")]
+fn the_operator_plays_a_round(world: &mut World) {
+    the_operator_plays_n_rounds(world, 1);
 }
 
 #[when(expr = "the closed bundle is expanded back to plain JSONL")]

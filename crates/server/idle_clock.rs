@@ -22,7 +22,7 @@ pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
     format_utc(UNIX_EPOCH + Duration::from_secs(now.saturating_sub(seconds)))
 }
 
-pub fn idle_tick_if_due(world: &mut World) -> Result<(), Reason> {
+pub fn idle_round_if_due(world: &mut World) -> Result<(), Reason> {
     if !world.budget().idle_ticking && world.now().presence.humans == 0 {
         return Ok(());
     }
@@ -126,7 +126,7 @@ fn number(text: &str, start: usize, end: usize) -> Result<u32, Reason> {
         .ok_or(Reason::Schema)
 }
 
-/// Seat check and interval check. A tick that runs borrows this `World`.
+/// Seat check and interval check. A round that runs borrows this `World`.
 /// Returns whether `world_time` advanced.
 pub fn on_scheduled_wake(
     world: &mut World,
@@ -144,7 +144,7 @@ pub fn on_scheduled_wake(
         return Ok(false);
     }
     let before = world.now().world_time;
-    idle_tick_if_due(world)?;
+    idle_round_if_due(world)?;
     Ok(world.now().world_time != before)
 }
 
