@@ -5,8 +5,6 @@ use serde::Deserialize;
 use crate::canon::source::{load_headed, At, Problem, Source, TICK_SCHEMA};
 use crate::diagnostic::Diagnostic;
 
-const TICK_FILE: &str = "rules/tick.yaml";
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {
     pub max_intents_applied: u64,
@@ -67,10 +65,10 @@ impl Budget {
     }
 }
 
-pub(crate) fn load_tick(text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let file: TickFile = load_headed(TICK_FILE, text, TICK_SCHEMA, 0)?;
+pub(crate) fn load_tick(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
+    let file: TickFile = load_headed(rel, text, TICK_SCHEMA, 0)?;
     let source = Source {
-        file: TICK_FILE,
+        file: rel,
         text,
         line_base: 0,
     };
@@ -203,8 +201,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::load_tick;
+    use super::Budget;
+    use crate::diagnostic::Diagnostic;
     use crate::error::Reason;
+
+    fn load_tick(text: &str) -> Result<Budget, Vec<Diagnostic>> {
+        super::load_tick("rules/tick.yaml", text)
+    }
 
     fn text(tag: &str) -> String {
         format!("schema: {tag}\npause:\n  named_plot_clocks: pause_when_empty\n")

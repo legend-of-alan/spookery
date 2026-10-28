@@ -240,10 +240,10 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         "rules/meters.yaml",
         "rules/tick.yaml",
     ]
-    .map(|rel| diags.keep(read_text(root, rel)));
+    .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
     // 6. Verbs.
-    if let Some(text) = &verbs {
-        loaded.extend(diags.keep(load_verbs(text)).unwrap_or_default());
+    if let Some((rel, text)) = &verbs {
+        loaded.extend(diags.keep(load_verbs(rel, text)).unwrap_or_default());
     }
     // 7. story/.
     loaded.extend(load_stories(root, &mut diags));
@@ -253,13 +253,13 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let twice = ("rule", "is already defined", "keep one rule with this id");
         let taken = !seen_ids.insert(rule.id.clone());
         let source = Source::named(&rule.file);
-        diags.extend(source.unique(taken, &rule.id, "", At::Nowhere, twice));
+        diags.extend(taken.then(|| source.repeat(&rule.id, "", At::Nowhere, twice)));
     }
     let rules = RuleTable::new(loaded);
     // 9. Checks. 10. Meters. 11. Tick.
-    let checks = checks.and_then(|text| diags.keep(load_checks(&text)));
-    let meters = meters.and_then(|text| diags.keep(load_meters(&text)));
-    let budget = tick.and_then(|text| diags.keep(load_tick(&text)));
+    let checks = checks.and_then(|(rel, text)| diags.keep(load_checks(rel, &text)));
+    let meters = meters.and_then(|(rel, text)| diags.keep(load_meters(rel, &text)));
+    let budget = tick.and_then(|(rel, text)| diags.keep(load_tick(rel, &text)));
     // 12. Lints across files.
     if let Some(checks) = &checks {
         diags.extend(unknown_checks(&rules, checks));

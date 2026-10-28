@@ -48,7 +48,7 @@ impl Facts {
         let taken = self.0.contains_key(&id);
         let refused = source
             .required(&id, &path, at, empty)
-            .or_else(|| source.unique(taken, &id, &path, at, twice));
+            .or_else(|| taken.then(|| source.repeat(&id, &path, at, twice)));
         if refused.is_none() {
             let owner_id = owner.to_string();
             self.0.insert(

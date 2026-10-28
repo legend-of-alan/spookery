@@ -9,7 +9,8 @@ use crate::canon::source::{load_headed, At, Diags, Page, Source, ITEM_SCHEMA};
 use crate::canon::ItemCanon;
 use crate::rule::{Owner, Rule};
 
-/// One item page into `items`, and its rules. The rules compile before the item is kept.
+/// One item page into `items`, and its rules. The item is kept even when its rules do not
+/// compile, so a later item with the same id is still refused.
 pub(super) fn add_item(
     page: Page,
     items: &mut BTreeMap<String, ItemCanon>,
@@ -22,7 +23,7 @@ pub(super) fn add_item(
     let taken = items.contains_key(&item.id);
     let refused = source
         .required(&item.id, "", At::Nowhere, empty)
-        .or_else(|| source.unique(taken, &item.id, "", At::Nowhere, twice));
+        .or_else(|| taken.then(|| source.repeat(&item.id, "", At::Nowhere, twice)));
     if let Some(diag) = refused {
         diags.push(diag);
         return None;

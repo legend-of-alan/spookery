@@ -35,7 +35,7 @@ pub(super) fn add_cast(
     let hint = "keep one cast file with this id";
     let twice = ("cast id", "is already defined", hint);
     let taken = cast.contains_key(&file.id);
-    if let Some(diag) = whole.unique(taken, &file.id, "id", At::Nowhere, twice) {
+    if let Some(diag) = taken.then(|| whole.repeat(&file.id, "id", At::Nowhere, twice)) {
         diags.push(diag);
         return None;
     }

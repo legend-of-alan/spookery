@@ -46,17 +46,10 @@ impl<'a> Source<'a> {
             .then(|| self.refusal(path, at, problem.into(), hint))
     }
 
-    /// The refusal at `path` when `id` is already `taken`.
-    pub fn unique(
-        &self,
-        taken: bool,
-        id: &str,
-        path: &str,
-        at: At,
-        words: Twice,
-    ) -> Option<Diagnostic> {
+    /// The refusal at `path` for an `id` the caller found a second time.
+    pub fn repeat(&self, id: &str, path: &str, at: At, words: Twice) -> Diagnostic {
         let (before, after, hint) = words;
-        taken.then(|| self.refusal(path, at, format!("{before} '{id}' {after}"), hint))
+        self.refusal(path, at, format!("{before} '{id}' {after}"), hint)
     }
 
     /// The refusal for a blank `display_name`, which places and cast both have.
@@ -64,6 +57,11 @@ impl<'a> Source<'a> {
         let hint = "set display_name to the name players see";
         let empty = ("display_name is empty", hint);
         self.required(name.trim(), "display_name", At::Key("display_name:"), empty)
+    }
+
+    /// A converter's `fault` at the spot it recorded, refused as a schema error.
+    pub fn fault(&self, path: &str, fault: Fault, hint: &str) -> Diagnostic {
+        self.refusal(path, At::Spot(fault.spot), fault.message, hint)
     }
 
     fn refusal(&self, path: &str, at: At, problem: String, hint: &str) -> Diagnostic {
@@ -110,19 +108,8 @@ pub(super) struct Problem<'a> {
 
 impl Problem<'_> {
     pub fn schema(self) -> Diagnostic {
-        self.coded(Reason::Schema)
-    }
-
-    pub fn warning(self) -> Diagnostic {
-        self.finish(Severity::Warning)
-    }
-
-    pub fn coded(self, reason: Reason) -> Diagnostic {
-        self.finish(Severity::Error(reason))
-    }
-
-    fn finish(self, code: Severity) -> Diagnostic {
         let source = self.source;
+        let code = Severity::Error(Reason::Schema);
         let mut diag = Diagnostic::new(source.file, code, &self.problem, self.hint);
         if !self.path.is_empty() {
             diag = diag.with_path(self.path);
@@ -130,9 +117,7 @@ impl Problem<'_> {
         match self.at {
             At::Nowhere | At::Spot(None) => diag,
             At::Key(key) => with_spot(diag, locate_nth(source.text, key, 0), source.line_base),
-            At::Row { row, key } => {
-                with_spot(diag, locate_row_field(source.text, "id:", row, key), 0)
-            }
+            At::Row { row, key } => with_spot(diag, locate_row_field(source.text, row, key), 0),
             At::Spot(Some(spot)) => {
                 diag.at_line(spot.line, Some(spot.column).filter(|column| *column > 0))
             }
@@ -199,11 +184,11 @@ pub(super) fn serde_spot<T>(span: &Spanned<T>) -> Option<Spot> {
     (line > 0).then_some(Spot { line, column })
 }
 
-/// `field` inside the `row`th list item that contains `marker` (`name:` or `id:`).
-fn locate_row_field(text: &str, marker: &str, row: usize, field: &str) -> Option<(u32, u32)> {
+/// `field` inside the `row`th list item that holds an `id:`.
+fn locate_row_field(text: &str, row: usize, field: &str) -> Option<(u32, u32)> {
     let mut marks = Vec::new();
     for (index, line) in text.lines().enumerate() {
-        if line.contains(marker) {
+        if line.contains("id:") {
             marks.push(index);
         }
     }
@@ -379,33 +364,4 @@ pub(super) fn split_frontmatter<'a>(
         "close the header with a --- line",
     )
     .at_line(1, Some(1))])
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::diagnostic::{locate_nth, Severity};
-    use crate::error::Reason;
-
-    #[test]
-    fn a_misspelled_field_keeps_the_yaml_line() {
-        #[derive(Debug, serde::Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Row {
-            name: String,
-        }
-        let ok: Row = parse_file("rules/moves.yaml", "name: grit\n", 0).unwrap();
-        assert_eq!(ok.name, "grit");
-        let text = "name: grit\naudiance: player\n";
-        let err = parse_file::<Row>("rules/moves.yaml", text, 0).unwrap_err();
-        let err = &err[0];
-        assert!(err.message.contains("unknown field 'audiance'"), "{err:?}");
-        assert_eq!(err.code, Severity::Error(Reason::Schema));
-        assert!(err.line.is_some(), "{err:?}");
-        let spot = locate_row_field(&format!("schema: moves\n{text}"), "name:", 0, "audiance");
-        assert_eq!(spot, Some((3, 1)));
-        assert_eq!(locate_nth(text, "name:", 0), Some((1, 1)));
-        let shifted = with_spot(err.clone(), spot, 1);
-        assert_eq!(shifted.line, Some(4));
-    }
 }

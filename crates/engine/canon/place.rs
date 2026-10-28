@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::canon::fact::{FactFile, Facts};
 use crate::canon::rule_list::{self, RuleEntry};
-use crate::canon::source::{load_headed, At, Diags, Page, Problem, Source, PLACE_SCHEMA};
+use crate::canon::source::{load_headed, At, Diags, Page, Source, PLACE_SCHEMA};
 use crate::canon::{Exit, PlaceCanon};
 use crate::diagnostic::{schema as schema_error, Diagnostic};
 use crate::rule::{Cost, Owner, Rule};
@@ -31,7 +31,7 @@ pub(super) fn add_place(
         .unwrap_or_default();
     let twice = ("place", "is already defined", "keep one place with this id");
     let taken = places.contains_key(&file.id);
-    if let Some(diag) = whole.unique(taken, &file.id, "id", At::Nowhere, twice) {
+    if let Some(diag) = taken.then(|| whole.repeat(&file.id, "id", At::Nowhere, twice)) {
         diags.push(diag);
         return None;
     }
@@ -81,7 +81,7 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
         let path = format!("exits[{index}].name");
         let twice = ("exit", "is listed twice", "keep one exit with this name");
         let taken = !names.insert(exit.name.clone());
-        if let Some(diag) = source.unique(taken, &exit.name, &path, At::Nowhere, twice) {
+        if let Some(diag) = taken.then(|| source.repeat(&exit.name, &path, At::Nowhere, twice)) {
             diags.push(diag);
             continue;
         }
@@ -89,16 +89,11 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
             Some(yaml) => match rule_list::cost_of(yaml) {
                 Ok(cost) => cost,
                 Err(fault) => {
-                    diags.push(
-                        Problem {
-                            source: &source,
-                            path: &format!("exits[{index}].cost"),
-                            at: At::Spot(fault.spot),
-                            problem: fault.message,
-                            hint: "fix the exit cost",
-                        }
-                        .schema(),
-                    );
+                    diags.push(source.fault(
+                        &format!("exits[{index}].cost"),
+                        fault,
+                        "fix the exit cost",
+                    ));
                     continue;
                 }
             },
@@ -114,16 +109,11 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
             match rule_list::cond_of(cond) {
                 Ok(cond) => if_.push(cond),
                 Err(fault) => {
-                    diags.push(
-                        Problem {
-                            source: &source,
-                            path: &format!("exits[{index}].if"),
-                            at: At::Spot(fault.spot),
-                            problem: fault.message,
-                            hint: "fix the exit condition",
-                        }
-                        .schema(),
-                    );
+                    diags.push(source.fault(
+                        &format!("exits[{index}].if"),
+                        fault,
+                        "fix the exit condition",
+                    ));
                     bad = true;
                 }
             }

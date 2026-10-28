@@ -421,12 +421,12 @@ pub(crate) fn compile(
             let hint = "keep one rule for that verb in this file";
             let twice = ("two verb rules for", "at the same level", hint);
             let taken = verbs.contains(verb);
-            diags.extend(source.unique(taken, verb, "", At::Nowhere, twice));
+            diags.extend(taken.then(|| source.repeat(verb, "", At::Nowhere, twice)));
             verbs.push(verb.clone());
         }
         let twice = ("rule", "is listed twice", "keep one rule with this id");
         let taken = rules.iter().any(|earlier| earlier.id == rule.id);
-        diags.extend(source.unique(taken, &rule.local_id, "", At::Nowhere, twice));
+        diags.extend(taken.then(|| source.repeat(&rule.local_id, "", At::Nowhere, twice)));
         rules.push(rule);
     }
     diags.result(rules)
@@ -472,48 +472,25 @@ fn compile_one(
     let if_ = match entry.if_.as_ref().map(if_of).transpose() {
         Ok(list) => list.unwrap_or_default(),
         Err(fault) => {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: "",
-                    at: At::Spot(fault.spot),
-                    problem: fault.message,
-                    hint: "put one condition under each dash; use any: or not: to combine",
-                }
-                .schema(),
-            );
+            diags.push(source.fault(
+                "",
+                fault,
+                "put one condition under each dash; use any: or not: to combine",
+            ));
             Vec::new()
         }
     };
     let cost = match entry.cost.as_ref().map(cost_of).transpose() {
         Ok(cost) => cost,
         Err(fault) => {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: "",
-                    at: At::Spot(fault.spot),
-                    problem: fault.message,
-                    hint: "write time as 30s, 10m, 2h, or 1d",
-                }
-                .schema(),
-            );
+            diags.push(source.fault("", fault, "write time as 30s, 10m, 2h, or 1d"));
             None
         }
     };
     let roll = match entry.roll.as_ref().map(roll_of).transpose() {
         Ok(roll) => roll,
         Err(fault) => {
-            diags.push(
-                Problem {
-                    source: &source,
-                    path: "",
-                    at: At::Spot(fault.spot),
-                    problem: fault.message,
-                    hint: "name a check and a target",
-                }
-                .schema(),
-            );
+            diags.push(source.fault("", fault, "name a check and a target"));
             None
         }
     };
@@ -885,14 +862,11 @@ fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Ve
         match effect_of(effect) {
             Ok(effect) => out.push(effect),
             Err(fault) => {
-                return Err(vec![Problem {
-                    source: &Source::named(file),
-                    path: "",
-                    at: At::Spot(fault.spot),
-                    problem: fault.message,
-                    hint: "one effect key under each dash",
-                }
-                .schema()]);
+                return Err(vec![Source::named(file).fault(
+                    "",
+                    fault,
+                    "one effect key under each dash",
+                )]);
             }
         }
     }
@@ -1099,8 +1073,7 @@ fn cross_of(text: &str) -> Result<(Op, i64), String> {
         .ok_or_else(|| format!("crosses '{text}' needs an operator and a number"))
 }
 
-pub(super) fn load_verbs(text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
-    const FILE: &str = "rules/verbs.yaml";
-    let file: VerbsFile = load_headed(FILE, text, VERBS_SCHEMA, 0)?;
-    compile(FILE, file.rules, &Owner::Verb)
+pub(super) fn load_verbs(rel: &str, text: &str) -> Result<Vec<Rule>, Vec<Diagnostic>> {
+    let file: VerbsFile = load_headed(rel, text, VERBS_SCHEMA, 0)?;
+    compile(rel, file.rules, &Owner::Verb)
 }

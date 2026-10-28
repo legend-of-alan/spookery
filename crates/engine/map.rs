@@ -447,14 +447,7 @@ pub fn place_name(canon: &Canon, id: &str) -> String {
     canon
         .places
         .get(id)
-        .map(|place| {
-            if place.display_name.is_empty() {
-                id.to_string()
-            } else {
-                place.display_name.clone()
-            }
-        })
-        .unwrap_or_else(|| id.to_string())
+        .map_or_else(|| id.to_string(), |place| place.display_name.clone())
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::canon::source::{At, Problem, Source};
 use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
 use crate::check::CheckDef;
-use crate::diagnostic::{schema as schema_error, Diagnostic};
+use crate::diagnostic::{coded, schema as schema_error, warning, Diagnostic};
 use crate::error::Reason;
 use crate::meter::MeterDef;
 use crate::rule::{
@@ -489,14 +489,12 @@ fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
             continue;
         }
         diags.push(
-            Problem {
-                source: &Source::named("world/places"),
-                path: id,
-                at: At::Nowhere,
-                problem: format!("place '{id}' has no path from {}", canon.start_place),
-                hint: "add an exit that reaches it",
-            }
-            .warning(),
+            warning(
+                "world/places",
+                &format!("place '{id}' has no path from {}", canon.start_place),
+                "add an exit that reaches it",
+            )
+            .with_path(id.clone()),
         );
     }
     diags
@@ -514,14 +512,12 @@ fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
                     .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
         })
         .map(|rule| {
-            Problem {
-                source: &Source::named(&rule.file),
-                path: &format!("rules[{}]", rule.index),
-                at: At::Nowhere,
-                problem: format!("verb '{}' teleports", rule.local_id),
-                hint: "teleport belongs on an author rule, not in verbs.yaml",
-            }
-            .warning()
+            warning(
+                &rule.file,
+                &format!("verb '{}' teleports", rule.local_id),
+                "teleport belongs on an author rule, not in verbs.yaml",
+            )
+            .with_path(format!("rules[{}]", rule.index))
         })
         .collect()
 }
@@ -562,14 +558,12 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
         .enumerate()
         .filter(|(index, _)| hit[*index])
         .map(|(_, rule)| {
-            Problem {
-                source: &Source::named(&rule.file),
-                path: &format!("rules[{}]", rule.index),
-                at: At::Nowhere,
-                problem: format!("rule '{}' is in a trigger cycle", rule.local_id),
-                hint: "stop one rule in the cycle from setting the next watched value",
-            }
-            .warning()
+            warning(
+                &rule.file,
+                &format!("rule '{}' is in a trigger cycle", rule.local_id),
+                "stop one rule in the cycle from setting the next watched value",
+            )
+            .with_path(format!("rules[{}]", rule.index))
         })
         .collect()
 }
@@ -592,17 +586,16 @@ fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnost
             continue;
         }
         diags.push(
-            Problem {
-                source: &Source::named(&rule.file),
-                path: &format!("rules[{}]", rule.index),
-                at: At::Nowhere,
-                problem: format!(
+            coded(
+                &rule.file,
+                Reason::TriggerLeak,
+                &format!(
                     "rule '{}' leaks a change to a viewer who cannot see it",
                     rule.local_id
                 ),
-                hint: "address that output to self, or to here when the room can see the change",
-            }
-            .coded(Reason::TriggerLeak),
+                "address that output to self, or to here when the room can see the change",
+            )
+            .with_path(format!("rules[{}]", rule.index)),
         );
     }
     diags

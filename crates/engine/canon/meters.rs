@@ -8,11 +8,13 @@ use crate::canon::source::{load_headed, At, Diags, Problem, Source, METERS_SCHEM
 use crate::diagnostic::Diagnostic;
 use crate::meter::MeterDef;
 
-pub(super) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
-    const FILE: &str = "rules/meters.yaml";
-    let file: MetersFile = load_headed(FILE, text, METERS_SCHEMA, 0)?;
+pub(super) fn load_meters(
+    rel: &str,
+    text: &str,
+) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
+    let file: MetersFile = load_headed(rel, text, METERS_SCHEMA, 0)?;
     let source = Source {
-        file: FILE,
+        file: rel,
         text,
         line_base: 0,
     };
@@ -67,7 +69,7 @@ pub(super) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<
         let twice = ("meter", "is listed twice", "keep one meter");
         // A repeat is checked only on a row with nothing else wrong.
         let taken = found.is_empty() && meters.contains_key(&entry.id);
-        found.extend(source.unique(taken, &entry.id, &id_path, id_at, twice));
+        found.extend(taken.then(|| source.repeat(&entry.id, &id_path, id_at, twice)));
         if !found.is_empty() {
             diags.extend(found);
             continue;
@@ -112,6 +114,10 @@ mod tests {
     use crate::canon::tests::rejects;
     use crate::diagnostic::reason_of;
     use crate::error::Reason;
+
+    fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
+        super::load_meters("rules/meters.yaml", text)
+    }
 
     #[test]
     fn load_meters_rejects_a_broken_inequality_a_duplicate_id_and_an_unknown_key() {
@@ -164,7 +170,31 @@ meters:
         let err = load_meters(unknown).unwrap_err();
         assert_eq!(err.len(), 1, "{err:?}");
         assert!(err[0].message.contains("unknown field 'kind'"), "{err:?}");
+        assert_eq!(err[0].line, Some(8), "{err:?}");
         assert_eq!(reason_of(err), Reason::Schema);
+    }
+
+    #[test]
+    fn a_row_problem_points_at_that_rows_field() {
+        let text = "schema: meters
+meters:
+  - id: grit
+    min: 0
+    base_cap: 1
+    max: 1
+    start: 1
+  - id: nerve
+    min: 2
+    base_cap: 1
+    max: 3
+    start: 1
+";
+        let err = load_meters(text).unwrap_err();
+        let min = err
+            .iter()
+            .find(|diag| diag.message.contains("min above base_cap"))
+            .unwrap();
+        assert_eq!((min.line, min.column), (Some(9), Some(5)), "{min:?}");
     }
 
     #[test]
