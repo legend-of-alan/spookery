@@ -192,6 +192,7 @@ fn store_checkpoint(
     chain: &str,
 ) -> Result<(), Reason> {
     let head = serde_json::to_string(&journal::BundleHead {
+        rules_rev: crate::store::RULES_REV,
         state_rev,
         round_index,
         state_hash: hash_now(now_bytes),

@@ -40,6 +40,9 @@ pub(crate) fn head_rel() -> &'static str {
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BundleHead {
+    /// Missing on heads written before rules rev 8, which are refused.
+    #[serde(default)]
+    pub rules_rev: u64,
     pub state_rev: u64,
     pub round_index: u64,
     pub state_hash: String,
@@ -53,11 +56,13 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault>
     }
     let text = fs::read_to_string(&path)
         .map_err(|_| fault(&path, "the checkpoint head could not be read"))?;
-    // The head carries no rules version; before rules rev 8 it named `tick_index`.
-    if text.contains("\"tick_index\"") {
+    let value: serde_json::Value =
+        serde_json::from_str(&text).map_err(|err| fault(&path, &err.to_string()))?;
+    let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
+    if let Err(reason) = super::require_rules_rev(rules_rev.unwrap_or(0)) {
         return Err(fault_coded(
             &path,
-            Reason::RulesRev,
+            reason,
             "RULES_REV: the checkpoint head was written by older rules; start a fresh save",
         ));
     }
