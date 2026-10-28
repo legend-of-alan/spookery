@@ -2,7 +2,7 @@
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use spookery_engine::{plan_catchup, Reason, RoundCause, World};
+use spookery_engine::{Reason, World};
 
 pub fn seconds_since(last_tick_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_tick_at, SystemTime::now())
@@ -28,19 +28,7 @@ pub fn idle_tick_if_due(world: &mut World) -> Result<(), Reason> {
     }
     let now = SystemTime::now();
     let elapsed = elapsed_secs(&world.now().last_tick_at, now)?;
-    let wall = format_utc(now)?;
-    let hours = elapsed / 3600;
-    if hours == 0 {
-        world.play(RoundCause::Scheduler, &wall).map(|_| ())
-    } else {
-        let humans = world.now().presence.humans;
-        let ticks = plan_catchup(humans, world.budget(), hours)?;
-        if ticks == 0 {
-            world.play(RoundCause::Scheduler, &wall).map(|_| ())
-        } else {
-            world.catch_up(&wall, hours)
-        }
-    }
+    world.catch_up(&format_utc(now)?, elapsed / 3600)
 }
 
 fn elapsed_secs(last_tick_at: &str, now: SystemTime) -> Result<u64, Reason> {

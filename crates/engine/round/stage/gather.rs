@@ -12,12 +12,12 @@ use crate::round::state::shuffle_key;
 use crate::round::state::Round;
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.opposing_candidates = match &round.recorded {
-        Some(recorded) => recorded.intents.clone(),
+    round.opposing_candidates = match &round.replayed {
+        Some(replayed) => replayed.clone(),
         None => round.queued.clone(),
     };
-    let candidates = if let Some(recorded) = &round.recorded {
-        recorded.intents.clone()
+    let candidates = if let Some(replayed) = &round.replayed {
+        replayed.clone()
     } else {
         let mut candidates = round.queued.clone();
         for intent in &mut candidates {

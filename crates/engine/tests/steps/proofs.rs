@@ -199,7 +199,7 @@ fn player_in_the_shop() {
     seat_rowan(&mut shard);
     let wall = shard.now().last_tick_at.clone();
     shard
-        .play(spookery_engine::RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
@@ -240,9 +240,7 @@ fn gm_restocks() {
     seat_rowan(&mut shard);
     let wall = shard.now().last_tick_at.clone();
     queue_gm(&mut shard, "gm-1", "mira", "restock_lamp_oil");
-    shard
-        .play(spookery_engine::RoundCause::Manual, &wall)
-        .unwrap();
+    shard.play(&wall).unwrap();
     assert_eq!(lamp_oil(shard.now()), 8);
     assert_eq!(shard.now().messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
@@ -266,9 +264,7 @@ fn claimed_note_sorts_first() {
     ] {
         queue_gm(&mut shard, id, actor, move_name);
     }
-    shard
-        .play(spookery_engine::RoundCause::Manual, &wall)
-        .unwrap();
+    shard.play(&wall).unwrap();
     let log = tick_value(&pack, "tick-0001");
     let moves: Vec<&str> = log["intents"]
         .as_array()

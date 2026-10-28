@@ -15,8 +15,8 @@ use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
-use crate::round::from_journal;
-use crate::round::play::{play, RoundCause};
+use crate::round::play::{play_round, RoundKind};
+use crate::round::replay::from_journal;
 
 pub(crate) const CASES: u32 = 64;
 pub(crate) const SEED: u64 = 0x0018_0018;
@@ -91,8 +91,14 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
             );
         }
         let wall = world.now().last_tick_at.clone();
-        play(&mut world, RoundCause::Manual, &wall)
-            .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
+        play_round(
+            &mut world,
+            &wall,
+            RoundKind::Live {
+                fast_forward: false,
+            },
+        )
+        .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
 }

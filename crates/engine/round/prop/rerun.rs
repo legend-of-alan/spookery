@@ -22,7 +22,8 @@ use proptest::test_runner::{TestCaseError, TestRunner};
 use super::play::{
     configure_runner, copy_docks, copy_pack, fail_msg, pick_rounds, play_rounds, TempPack,
 };
-use crate::round::play::{play_recorded, RecordedRound};
+use crate::model::Presence;
+use crate::round::play::{play_round, RoundKind};
 use crate::round::replay::first_effect_difference;
 
 #[test]
@@ -62,15 +63,18 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     fs::write(pack.0.join("state/save.yaml"), snapshot).map_err(|err| fail_msg(err.to_string()))?;
     let mut world = World::open(&pack.0).map_err(|err| fail_msg(err.to_string()))?;
     for record in &ticks {
-        let effects = play_recorded(
+        let effects = play_round(
             &mut world,
             &record.last_tick_at,
-            RecordedRound {
-                intents: record.intents.clone(),
-                presence_humans: record.presence_humans,
-                actors_present: record.actors_present.clone(),
+            RoundKind::Replay {
+                intents: &record.intents,
+                presence: Presence {
+                    humans: record.presence_humans,
+                    actors_present: record.actors_present.clone(),
+                },
             },
         )
+        .map(|output| output.effects)
         .map_err(|err| fail_msg(format!("tick {} did not re-run: {err}", record.round_index)))?;
         if let Some(diff) = first_effect_difference(&record.effects, &effects) {
             return Err(fail_msg(format!("tick {} {diff}", record.round_index)));

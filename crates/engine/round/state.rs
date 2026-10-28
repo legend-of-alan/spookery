@@ -9,7 +9,7 @@ use crate::intent::Intent;
 use crate::journal::{Arrival, Rejected};
 use crate::key::ChangeRecord;
 use crate::model::Now;
-use crate::round::play::{RecordedRound, RoundCause};
+use crate::round::play::RoundKind;
 use crate::rules::gate::GateRefusal;
 use crate::rules::{MoveReport, RollResult};
 use crate::visibility::{RecipientLine, ViewerChanges};
@@ -29,12 +29,10 @@ pub(crate) struct Round {
     pub round_index: u64,
     pub world_time_before: u64,
     pub world_time_after: u64,
-    pub humans: u32,
     pub world_id: String,
     pub now_wall: String,
-    pub rev_before: u64,
     pub queued: Vec<Intent>,
-    pub recorded: Option<RecordedRound>,
+    pub replayed: Option<Vec<Intent>>,
     pub candidates: Vec<Intent>,
     pub applied: Vec<Intent>,
     pub rejected: Vec<Rejected>,
@@ -72,30 +70,26 @@ impl Round {
     pub(crate) fn prepare(
         world: &World,
         draft: &Draft,
-        cause: RoundCause,
         now_wall: &str,
-        recorded: Option<RecordedRound>,
+        kind: &RoundKind<'_>,
     ) -> Self {
-        let humans = recorded
-            .as_ref()
-            .map(|recorded| recorded.presence_humans)
-            .unwrap_or(draft.now().presence.humans);
         Self {
             round_index: draft.now().round_index,
             world_time_before: draft.now().world_time,
             world_time_after: draft.now().world_time,
-            humans,
             world_id: draft.now().shard_id.clone(),
             now_wall: now_wall.to_string(),
-            rev_before: draft.now().state_rev,
             queued: world.queued_intents().to_vec(),
-            recorded,
+            replayed: match kind {
+                RoundKind::Replay { intents, .. } => Some(intents.to_vec()),
+                RoundKind::Live { .. } => None,
+            },
             candidates: Vec::new(),
             applied: Vec::new(),
             rejected: Vec::new(),
             effects: Vec::new(),
             arrivals: Vec::new(),
-            fast_forward: cause == RoundCause::FastForward,
+            fast_forward: matches!(kind, RoundKind::Live { fast_forward: true }),
             steps_run: Vec::new(),
             move_reports: Vec::new(),
             changes: Vec::new(),

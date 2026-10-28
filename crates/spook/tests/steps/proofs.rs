@@ -175,7 +175,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     again.seat_player("pc_rowan").unwrap();
     let wall = again.now().last_tick_at.clone();
     again
-        .play(spookery_engine::RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(now.round_index, 2);

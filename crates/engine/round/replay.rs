@@ -14,7 +14,7 @@ use crate::store::require_rules_rev;
 use crate::world::World;
 use crate::Reason;
 
-use crate::round::play::{play_recorded, RecordedRound};
+use crate::round::play::{play_round, RoundKind};
 use crate::round::state::round_seed;
 
 #[derive(Debug)]
@@ -184,6 +184,31 @@ pub(crate) fn resume(path: &Path) -> Result<World, Reason> {
         check_save(world.canon(), world.now()).map_err(reason_of)?;
     }
     Ok(world)
+}
+
+/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
+pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
+    let now = journal_tip(path)?;
+    crate::commit::migrate_journal(path, now)
+}
+
+fn journal_tip(path: &Path) -> Result<Now, Reason> {
+    let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
+    let file_now = load_save(text).map_err(reason_of)?;
+    crate::store::recover::recover(path)?;
+    let ahead = journal::read_live(path)
+        .map_err(|_| Reason::Schema)?
+        .iter()
+        .any(|entry| {
+            !matches!(entry, JournalEntry::Checkpoint(_))
+                && entry.state_rev_after() > file_now.state_rev
+        });
+    if ahead {
+        Ok(resume_for_migrate(path)?.now().clone())
+    } else {
+        Ok(file_now)
+    }
 }
 
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
@@ -668,15 +693,18 @@ fn apply_recorded_round(world: &mut World, record: &RoundRecord) -> Result<(), R
             None,
         )));
     }
-    let replayed = play_recorded(
+    let replayed = play_round(
         world,
         &record.last_tick_at,
-        RecordedRound {
-            intents: record.intents.clone(),
-            presence_humans: record.presence_humans,
-            actors_present: record.actors_present.clone(),
+        RoundKind::Replay {
+            intents: &record.intents,
+            presence: Presence {
+                humans: record.presence_humans,
+                actors_present: record.actors_present.clone(),
+            },
         },
     )
+    .map(|output| output.effects)
     .map_err(|code| {
         ReplayError::Diverged(diverge(
             record.state_rev_after,

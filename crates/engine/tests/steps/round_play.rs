@@ -5,7 +5,6 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::MoveReport;
-use spookery_engine::RoundCause;
 use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
 use crate::World;
@@ -508,7 +507,7 @@ fn play_queued(
         world.queue(intent);
     }
     let output = world
-        .play(RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = read_tick(pack, "tick-0001");
     let now = world.now().clone();

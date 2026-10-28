@@ -8,7 +8,6 @@ use spookery_engine::handle_player_move;
 use spookery_engine::testing::{faces, PlaceLive, RollKey};
 use spookery_engine::MoveReport;
 use spookery_engine::Reason;
-use spookery_engine::RoundCause;
 
 use super::table;
 use crate::support::{append, copy_pack, edit_save, now_of, spook, temp_pack};
@@ -363,19 +362,17 @@ fn an_empty_tick_at_hour_7(world: &mut World) {
     });
     let mut opened = open_pack(&pack);
     let wall = opened.now().last_tick_at.clone();
-    opened
-        .play(RoundCause::Manual, &wall)
-        .unwrap_or_else(|err| {
-            panic!(
-                "empty tick {}: {}",
-                err.token(),
-                spookery_engine::check_pack(&pack)
-                    .iter()
-                    .map(|diag| diag.report_line())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        });
+    opened.play(&wall).unwrap_or_else(|err| {
+        panic!(
+            "empty tick {}: {}",
+            err.token(),
+            spookery_engine::check_pack(&pack)
+                .iter()
+                .map(|diag| diag.report_line())
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    });
 }
 
 #[then(expr = "docks_shop lamp_oil increases by 4")]

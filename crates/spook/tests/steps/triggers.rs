@@ -6,7 +6,6 @@ use serde_json::Value;
 use spookery_engine::testing::Clock;
 use spookery_engine::MeterLive;
 use spookery_engine::Now;
-use spookery_engine::RoundCause;
 use spookery_engine::{emit_save, load_save};
 use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
@@ -956,11 +955,9 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
-    let quiet = kernel
-        .play(RoundCause::Manual, &wall)
-        .unwrap_or_else(|err| {
-            panic!("quiet: {err}");
-        });
+    let quiet = kernel.play(&wall).unwrap_or_else(|err| {
+        panic!("quiet: {err}");
+    });
     kernel.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
@@ -968,7 +965,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
     kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
     let wall = kernel.now().last_tick_at.clone();
     let back = kernel
-        .play(RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("back: {err}"));
     world.told = quiet
         .lines
@@ -1276,7 +1273,7 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
         round.queue(intent);
     }
     let output = round
-        .play(RoundCause::Manual, &wall)
+        .play(&wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let tick = latest(pack);
     let told = output

@@ -14,15 +14,15 @@ pub(crate) fn run(
     round: &mut Round,
     draft: Draft,
 ) -> Result<RoundOutput, Reason> {
-    let record = round.recorded.is_none().then(|| RoundRecord {
+    let record = round.replayed.is_none().then(|| RoundRecord {
         round_index: round.round_index,
         rules_rev: crate::store::RULES_REV,
-        state_rev_before: round.rev_before,
-        state_rev_after: round.rev_before + 1,
+        state_rev_before: 0,
+        state_rev_after: 0,
         world_time_before: round.world_time_before,
         world_time_after: round.world_time_after,
-        presence_humans: round.humans,
-        actors_present: world.presence().actors_present.clone(),
+        presence_humans: draft.now().presence.humans,
+        actors_present: draft.now().presence.actors_present.clone(),
         seed: round_seed(&round.world_id, round.round_index),
         last_tick_at: round.now_wall.clone(),
         intents: std::mem::take(&mut round.applied),

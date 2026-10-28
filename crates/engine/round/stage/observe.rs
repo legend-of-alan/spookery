@@ -10,11 +10,15 @@ use crate::Reason;
 use crate::round::state::Round;
 
 /// Deliver narrate lines and build each viewer's change summary.
+/// An empty table gets only the GM summary.
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     let canon = draft.canon();
     let now = draft.now();
     let gm = visibility::observe(canon, now, &Seat::Gm, &round.changes, &round.effects);
     round.summary = gm.changes;
+    if now.presence.humans == 0 {
+        return Ok(());
+    }
     let mut viewers: BTreeSet<String> = now.actors.keys().cloned().collect();
     for effect in &round.effects {
         if let EffectKind::Narrate { to, .. } = &effect.class {

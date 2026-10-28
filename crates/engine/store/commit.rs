@@ -32,14 +32,9 @@ pub fn commit(
     record: journal::RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
     settle_open_checkpoint(world)?;
-    draft.state.state_rev = draft
-        .state
-        .state_rev
-        .checked_add(1)
-        .ok_or(Reason::CommitConflict)?;
-    canonicalize(&mut draft.state);
+    bump_state_rev(&mut draft)?;
     let now_bytes = emit_save(&draft.state)?.into_bytes();
-    let line = seal_tick(record, &now_bytes, &world.root, &draft.memories)?;
+    let line = seal_tick(record, world.now.state_rev, &draft, &now_bytes, &world.root)?;
     let due = checkpoint_due(world.canon().checkpoint_every, draft.state.round_index);
     let (payload, chain) = if due {
         let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
@@ -74,13 +69,18 @@ pub fn commit(
 
 /// The journal already has this round. Keep the new state in memory.
 pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason> {
+    bump_state_rev(&mut draft)?;
+    world.now = draft.state;
+    Ok(())
+}
+
+fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
     draft.state.state_rev = draft
         .state
         .state_rev
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut draft.state);
-    world.now = draft.state;
     Ok(())
 }
 
@@ -117,12 +117,15 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
 
 fn seal_tick(
     mut record: journal::RoundRecord,
+    state_rev_before: u64,
+    draft: &Draft,
     now_bytes: &[u8],
     root: &Path,
-    memories: &[MemoryLine],
 ) -> Result<String, Reason> {
+    record.state_rev_before = state_rev_before;
+    record.state_rev_after = draft.state.state_rev;
     record.now_hash = hash_now(now_bytes);
-    record.memories = memories.to_vec();
+    record.memories = draft.memories.clone();
     record.prev.clear();
     record.chain.clear();
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;

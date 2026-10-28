@@ -435,15 +435,17 @@ impl World {
     /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
     /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
     pub fn resume(root: &Path) -> Result<Self, Reason> {
-        crate::round::resume(root)
+        crate::round::replay::resume(root)
     }
 
-    pub fn play(
-        &mut self,
-        cause: crate::RoundCause,
-        now_wall: &str,
-    ) -> Result<crate::RoundOutput, Reason> {
-        crate::round::play(self, cause, now_wall)
+    pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
+        crate::round::play_round(
+            self,
+            now_wall,
+            crate::round::play::RoundKind::Live {
+                fast_forward: false,
+            },
+        )
     }
 
     /// Commit a queued round, then fast-forward while every seated PC is busy.
@@ -455,15 +457,15 @@ impl World {
         let mut outputs = Vec::new();
         let committed = !self.queue.is_empty();
         if committed {
-            outputs.push(self.play(crate::RoundCause::Flush, wall)?);
+            outputs.push(self.play(wall)?);
         }
         let already = u32::from(committed);
-        outputs.extend(crate::round::advance_while_busy(self, wall, already)?);
+        outputs.extend(crate::round::play_while_busy(self, wall, already)?);
         Ok(outputs)
     }
 
     pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
-        crate::round::catch_up(self, now_wall, downtime_hours)
+        crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
     pub fn perceive(&self, as_arg: &str) -> Result<crate::perceive::View, Reason> {

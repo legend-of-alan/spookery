@@ -178,7 +178,7 @@ fn commit_intent(
         }
     }
     if intent.actor_kind == ActorKind::Npc {
-        if let Err(code) = draft.stage_npc_counters(&intent.actor_id, round.humans) {
+        if let Err(code) = draft.stage_npc_counters(&intent.actor_id, draft.now().presence.humans) {
             draft.rollback(point);
             refuse(round, intent, code);
             if code == Reason::Budget {

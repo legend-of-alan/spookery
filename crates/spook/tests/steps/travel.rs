@@ -291,9 +291,7 @@ fn ticks_never_shorten(_world: &mut World) {
         actors_present: Vec::new(),
     });
     let wall = seated_world.now().last_tick_at.clone();
-    seated_world
-        .play(spookery_engine::RoundCause::Manual, &wall)
-        .unwrap();
+    seated_world.play(&wall).unwrap();
     drop(seated_world);
     let idle = temp_pack("idle-length");
     spookery_engine::play_pack_once(&idle).unwrap();
