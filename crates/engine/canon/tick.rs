@@ -2,9 +2,8 @@
 
 use serde::Deserialize;
 
-use crate::diagnostic::{load_headed, locate_nth, schema, Diagnostic};
-
-const TICK_FILE: &str = "rules/tick.yaml";
+use crate::canon::source::{load_headed, At, Problem, Source, TICK_SCHEMA};
+use crate::diagnostic::Diagnostic;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Budget {
@@ -66,202 +65,97 @@ impl Budget {
     }
 }
 
-pub(crate) fn load_round_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let file: TickFile = load_headed(TICK_FILE, text, crate::diagnostic::TICK_SCHEMA, 0)?;
+pub(crate) fn load_tick(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
+    let file: TickFile = load_headed(rel, text, TICK_SCHEMA, 0)?;
+    let source = Source {
+        file: rel,
+        text,
+        line_base: 0,
+    };
     let mut diags = Vec::new();
-    let defaults = Budget::defaults();
-    let max_intents_applied = take(
-        text,
-        "max_intents_applied",
-        file.max_intents_applied,
-        defaults.max_intents_applied,
-        &mut diags,
+    let mut budget = Budget::defaults();
+    // Each row is a counter key and the least value it allows, in report order.
+    macro_rules! counters {
+        ($($key:ident >= $least:literal),* $(,)?) => {$(
+            take(&source, stringify!($key), file.$key, &mut budget.$key, $least, &mut diags);
+        )*};
+    }
+    counters!(
+        max_intents_applied >= 0,
+        max_npcs_acting >= 0,
+        max_effects_per_intent >= 0,
+        max_state_keys_mutated >= 0,
+        max_memory_writes >= 0,
+        idle_acts_per_world_day >= 0,
+        live_acts_per_world_hour >= 0,
+        tick_every_real_seconds >= 1,
     );
-    let max_npcs_acting = take(
-        text,
-        "max_npcs_acting",
-        file.max_npcs_acting,
-        defaults.max_npcs_acting,
-        &mut diags,
+    budget.idle_ticking = take_idle(&source, file.idle, &mut diags);
+    counters!(
+        idle_minutes_per_tick >= 1,
+        live_minutes_per_tick >= 0,
+        idle_catchup_max_ticks >= 0,
+        idle_max_world_hours_per_real_hour >= 0,
+        max_fastforward_ticks >= 0,
+        max_trigger_depth >= 0,
     );
-    let max_effects_per_intent = take(
-        text,
-        "max_effects_per_intent",
-        file.max_effects_per_intent,
-        defaults.max_effects_per_intent,
-        &mut diags,
-    );
-    let max_state_keys_mutated = take(
-        text,
-        "max_state_keys_mutated",
-        file.max_state_keys_mutated,
-        defaults.max_state_keys_mutated,
-        &mut diags,
-    );
-    let max_memory_writes = take(
-        text,
-        "max_memory_writes",
-        file.max_memory_writes,
-        defaults.max_memory_writes,
-        &mut diags,
-    );
-    let idle_acts_per_world_day = take(
-        text,
-        "idle_acts_per_world_day",
-        file.idle_acts_per_world_day,
-        defaults.idle_acts_per_world_day,
-        &mut diags,
-    );
-    let live_acts_per_world_hour = take(
-        text,
-        "live_acts_per_world_hour",
-        file.live_acts_per_world_hour,
-        defaults.live_acts_per_world_hour,
-        &mut diags,
-    );
-    let tick_every_real_seconds = take_positive(
-        text,
-        "tick_every_real_seconds",
-        file.tick_every_real_seconds,
-        defaults.tick_every_real_seconds,
-        &mut diags,
-    );
-    let idle_ticking = take_idle(text, file.idle, &mut diags);
-    let idle_minutes_per_tick = take_positive(
-        text,
-        "idle_minutes_per_tick",
-        file.idle_minutes_per_tick,
-        defaults.idle_minutes_per_tick,
-        &mut diags,
-    );
-    let live_minutes_per_tick = take(
-        text,
-        "live_minutes_per_tick",
-        file.live_minutes_per_tick,
-        defaults.live_minutes_per_tick,
-        &mut diags,
-    );
-    let idle_catchup_max_ticks = take(
-        text,
-        "idle_catchup_max_ticks",
-        file.idle_catchup_max_ticks,
-        defaults.idle_catchup_max_ticks,
-        &mut diags,
-    );
-    let idle_max_world_hours_per_real_hour = take(
-        text,
-        "idle_max_world_hours_per_real_hour",
-        file.idle_max_world_hours_per_real_hour,
-        defaults.idle_max_world_hours_per_real_hour,
-        &mut diags,
-    );
-    let max_fastforward_ticks = take(
-        text,
-        "max_fastforward_ticks",
-        file.max_fastforward_ticks,
-        defaults.max_fastforward_ticks,
-        &mut diags,
-    );
-    let max_trigger_depth = take(
-        text,
-        "max_trigger_depth",
-        file.max_trigger_depth,
-        defaults.max_trigger_depth,
-        &mut diags,
-    );
+    budget.pause.named_plot_clocks = file.pause.named_plot_clocks;
     if !diags.is_empty() {
         return Err(diags);
     }
-    Ok(Budget {
-        max_intents_applied,
-        max_npcs_acting,
-        max_effects_per_intent,
-        max_state_keys_mutated,
-        max_memory_writes,
-        idle_acts_per_world_day,
-        live_acts_per_world_hour,
-        tick_every_real_seconds,
-        idle_ticking,
-        idle_minutes_per_tick,
-        live_minutes_per_tick,
-        idle_catchup_max_ticks,
-        idle_max_world_hours_per_real_hour,
-        max_fastforward_ticks,
-        max_trigger_depth,
-        pause: PausePolicies {
-            named_plot_clocks: file.pause.named_plot_clocks,
-        },
-    })
+    Ok(budget)
 }
 
+/// `value` into `slot` when it is at least `least`; otherwise `slot` keeps its default.
 fn take(
-    text: &str,
-    field: &str,
+    source: &Source,
+    key: &str,
     value: Option<i64>,
-    default: u64,
+    slot: &mut u64,
+    least: i64,
     diags: &mut Vec<Diagnostic>,
-) -> u64 {
-    match value {
-        None => default,
-        Some(n) if n >= 0 => n as u64,
-        Some(n) => {
-            let mut diag = schema(
-                TICK_FILE,
-                &format!("{field} is {n}, which is below zero"),
-                "use a number that is zero or greater",
-            )
-            .with_path(field);
-            if let Some((line, column)) = locate_nth(text, &format!("{field}:"), 0) {
-                diag = diag.at_line(line, Some(column));
-            }
-            diags.push(diag);
-            default
-        }
+) {
+    let Some(n) = value else { return };
+    if n >= least {
+        *slot = n as u64;
+        return;
     }
+    let problem = if n < 0 {
+        format!("{key} is {n}, which is below zero")
+    } else {
+        format!("{key} is 0, which is not a positive interval")
+    };
+    let hint = match least {
+        0 => "use a number that is zero or greater",
+        _ => "use a number greater than zero",
+    };
+    diags.push(
+        Problem {
+            source,
+            path: key,
+            at: At::Key(&format!("{key}:")),
+            problem,
+            hint,
+        }
+        .schema(),
+    );
 }
 
-fn take_positive(
-    text: &str,
-    field: &str,
-    value: Option<i64>,
-    default: u64,
-    diags: &mut Vec<Diagnostic>,
-) -> u64 {
-    match value {
-        None => default,
-        Some(n) if n > 0 => n as u64,
-        Some(n) => {
-            let problem = if n < 0 {
-                format!("{field} is {n}, which is below zero")
-            } else {
-                format!("{field} is 0, which is not a positive interval")
-            };
-            let mut diag =
-                schema(TICK_FILE, &problem, "use a number greater than zero").with_path(field);
-            if let Some((line, column)) = locate_nth(text, &format!("{field}:"), 0) {
-                diag = diag.at_line(line, Some(column));
-            }
-            diags.push(diag);
-            default
-        }
-    }
-}
-
-fn take_idle(text: &str, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
+fn take_idle(source: &Source, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
     match value.as_deref() {
         None | Some("on") => true,
         Some("off") => false,
         Some(other) => {
-            let mut diag = schema(
-                TICK_FILE,
-                &format!("idle is '{other}', which is not on or off"),
-                "write idle: on or idle: off",
-            )
-            .with_path("idle");
-            if let Some((line, column)) = locate_nth(text, "idle:", 0) {
-                diag = diag.at_line(line, Some(column));
-            }
-            diags.push(diag);
+            diags.push(
+                Problem {
+                    source,
+                    path: "idle",
+                    at: At::Key("idle:"),
+                    problem: format!("idle is '{other}', which is not on or off"),
+                    hint: "write idle: on or idle: off",
+                }
+                .schema(),
+            );
             true
         }
     }
@@ -286,9 +180,7 @@ struct TickFile {
     live_minutes_per_tick: Option<i64>,
     idle_catchup_max_ticks: Option<i64>,
     idle_max_world_hours_per_real_hour: Option<i64>,
-    #[serde(default)]
     max_fastforward_ticks: Option<i64>,
-    #[serde(default)]
     max_trigger_depth: Option<i64>,
     pause: PauseFile,
 }
@@ -309,8 +201,13 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::load_round_settings;
+    use super::Budget;
+    use crate::diagnostic::Diagnostic;
     use crate::error::Reason;
+
+    fn load_tick(text: &str) -> Result<Budget, Vec<Diagnostic>> {
+        super::load_tick("rules/tick.yaml", text)
+    }
 
     fn text(tag: &str) -> String {
         format!("schema: {tag}\npause:\n  named_plot_clocks: pause_when_empty\n")
@@ -319,11 +216,11 @@ mod tests {
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
         use crate::diagnostic::reason_of;
-        assert!(load_round_settings(&text("tick")).is_ok());
-        let old = load_round_settings(&text(concat!("tick/", "v0"))).unwrap_err();
+        assert!(load_tick(&text("tick")).is_ok());
+        let old = load_tick(&text(concat!("tick/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(reason_of(old), Reason::Schema);
-        let bogus = load_round_settings(&text("bogus")).unwrap_err();
+        let bogus = load_tick(&text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(reason_of(bogus), Reason::Schema);
     }
@@ -331,7 +228,7 @@ mod tests {
     #[test]
     fn a_negative_budget_names_the_field() {
         let text = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_ticks: -3\n";
-        let err = load_round_settings(text).unwrap_err();
+        let err = load_tick(text).unwrap_err();
         assert!(err
             .iter()
             .any(|diag| diag.message.contains("max_npcs_acting") && diag.line.is_some()));
@@ -345,20 +242,20 @@ mod tests {
         use crate::diagnostic::reason_of;
         let mut stale = text("tick");
         stale.push_str("live_tick_every_real_seconds: 60\n");
-        let err = load_round_settings(&stale).unwrap_err();
+        let err = load_tick(&stale).unwrap_err();
         assert_eq!(reason_of(err), Reason::Schema);
     }
 
     #[test]
     fn idle_defaults_to_on_and_off_is_loaded() {
-        let on = load_round_settings(&text("tick")).unwrap();
+        let on = load_tick(&text("tick")).unwrap();
         assert!(on.idle_ticking);
         let mut explicit = text("tick");
         explicit.push_str("idle: on\n");
-        assert!(load_round_settings(&explicit).unwrap().idle_ticking);
+        assert!(load_tick(&explicit).unwrap().idle_ticking);
         let mut off = text("tick");
         off.push_str("idle: off\n");
-        assert!(!load_round_settings(&off).unwrap().idle_ticking);
+        assert!(!load_tick(&off).unwrap().idle_ticking);
     }
 
     #[test]
@@ -366,7 +263,7 @@ mod tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../packs/oneshot-docks/rules/tick.yaml");
         let text = std::fs::read_to_string(path).unwrap();
-        let budget = load_round_settings(&text).unwrap();
+        let budget = load_tick(&text).unwrap();
         assert!(budget.idle_ticking);
         assert_eq!(budget.tick_every_real_seconds, 300);
         assert_eq!(budget.idle_minutes_per_tick, 60);
@@ -377,7 +274,7 @@ mod tests {
         use crate::diagnostic::reason_of;
         let mut maybe = text("tick");
         maybe.push_str("idle: maybe\n");
-        let err = load_round_settings(&maybe).unwrap_err();
+        let err = load_tick(&maybe).unwrap_err();
         assert_eq!(reason_of(err.clone()), Reason::Schema);
         assert_eq!(err[0].file, "rules/tick.yaml");
         assert!(err[0].line.is_some(), "{err:?}");
@@ -385,7 +282,7 @@ mod tests {
         assert!(err[0].message.contains("on or off"), "{err:?}");
 
         let zero = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\ntick_every_real_seconds: 0\n";
-        let err = load_round_settings(zero).unwrap_err();
+        let err = load_tick(zero).unwrap_err();
         assert_eq!(
             err[0].code,
             crate::diagnostic::Severity::Error(Reason::Schema)
@@ -398,7 +295,7 @@ mod tests {
         assert!(err[0].message.contains('0'), "{err:?}");
 
         let minutes = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle_minutes_per_tick: 0\n";
-        let err = load_round_settings(minutes).unwrap_err();
+        let err = load_tick(minutes).unwrap_err();
         assert_eq!(
             err[0].code,
             crate::diagnostic::Severity::Error(Reason::Schema)
@@ -407,7 +304,7 @@ mod tests {
         assert!(err[0].message.contains("idle_minutes_per_tick"), "{err:?}");
 
         let empty = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle:\n";
-        let err = load_round_settings(empty).unwrap_err();
+        let err = load_tick(empty).unwrap_err();
         assert_eq!(reason_of(err), Reason::Schema);
     }
 }

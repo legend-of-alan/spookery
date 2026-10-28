@@ -135,7 +135,7 @@ pub fn visible(canon: &Canon, now: &Now, actor_id: &str) -> Vec<ExitView> {
             name: exit.name.clone(),
             to: exit.to.clone(),
             place_name: place_name(canon, &exit.to),
-            minutes: exit.minutes,
+            minutes: exit.cost.minutes,
             locked: locked(canon, now, actor_id, exit),
         })
         .collect()
@@ -145,7 +145,7 @@ pub fn visible(canon: &Canon, now: &Now, actor_id: &str) -> Vec<ExitView> {
 pub fn span(canon: &Canon, now: &Now, intent: &Intent, rule: &Rule) -> u64 {
     let mut minutes = rule.cost.as_ref().map(|cost| cost.minutes).unwrap_or(0);
     if let Some(exit) = used_exit(canon, now, intent, rule) {
-        minutes = minutes.saturating_add(exit.minutes);
+        minutes = minutes.saturating_add(exit.cost.minutes);
     }
     minutes
 }
@@ -439,21 +439,15 @@ fn verb_hints(canon: &Canon, now: &Now, actor_id: &str, target: TargetKind) -> V
 }
 
 fn exit_line(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> String {
-    exit_phrase(&exit.name, exit.minutes, locked(canon, now, actor_id, exit))
+    let locked = locked(canon, now, actor_id, exit);
+    exit_phrase(&exit.name, exit.cost.minutes, locked)
 }
 
 pub fn place_name(canon: &Canon, id: &str) -> String {
     canon
         .places
         .get(id)
-        .map(|place| {
-            if place.name.is_empty() {
-                id.to_string()
-            } else {
-                place.name.clone()
-            }
-        })
-        .unwrap_or_else(|| id.to_string())
+        .map_or_else(|| id.to_string(), |place| place.display_name.clone())
 }
 
 #[cfg(test)]

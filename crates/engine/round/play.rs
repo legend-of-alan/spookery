@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use crate::canon::round_settings::Budget;
+use crate::canon::Budget;
 use crate::commit::CommitOutcome;
 use crate::draft::Draft;
 use crate::effect::Effect;

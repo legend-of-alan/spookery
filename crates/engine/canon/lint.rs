@@ -2,14 +2,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::canon::save::unknown_item;
+use crate::canon::source::{At, Problem, Source};
 use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
 use crate::check::CheckDef;
 use crate::diagnostic::{coded, schema as schema_error, warning, Diagnostic};
 use crate::error::Reason;
 use crate::meter::MeterDef;
 use crate::rule::{
-    ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo, NarrateTo, ResistSpec, Rule,
+    ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo, NarrateTo, Owner, ResistSpec, Rule,
     RuleTable, When, Who,
 };
 
@@ -137,6 +137,15 @@ pub(super) fn unknown_rule_items(
         }
     }
     diags
+}
+
+pub(super) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
+    schema_error(
+        file,
+        &format!("unknown item '{id}'"),
+        &format!("add world/items/{id}.md"),
+    )
+    .with_path(path)
 }
 
 fn cond_items(cond: &Cond, ids: &mut Vec<String>) {
@@ -267,21 +276,17 @@ pub(super) fn unknown_exprs(
     places: &BTreeMap<String, PlaceCanon>,
     rules: &RuleTable,
 ) -> Vec<Diagnostic> {
+    let known = Known {
+        meters,
+        cast,
+        places,
+    };
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut exprs = Vec::new();
         push_rule_exprs(rule, &mut exprs);
-        for expr in exprs {
-            check_expr(
-                &rule.file,
-                &format!("rules[{}]", rule.index),
-                expr,
-                meters,
-                cast,
-                places,
-                &mut diags,
-            );
-        }
+        let path = format!("rules[{}]", rule.index);
+        known.check(&Source::named(&rule.file), &path, &exprs, &mut diags);
     }
     for place in places.values() {
         for exit in &place.exits {
@@ -290,70 +295,60 @@ pub(super) fn unknown_exprs(
             for cond in &exit.if_ {
                 push_cond(cond, &mut exprs);
             }
-            for expr in exprs {
-                check_expr(
-                    &exit.file,
-                    &format!("exits[{}]", exit.index),
-                    expr,
-                    meters,
-                    cast,
-                    places,
-                    &mut diags,
-                );
-            }
+            let path = format!("exits[{}]", exit.index);
+            known.check(&Source::named(&exit.file), &path, &exprs, &mut diags);
         }
     }
     diags
 }
 
-fn check_expr(
-    file: &str,
-    path: &str,
-    expr: &Expr,
-    meters: &BTreeMap<String, MeterDef>,
-    cast: &BTreeMap<String, CastCanon>,
-    places: &BTreeMap<String, PlaceCanon>,
-    diags: &mut Vec<Diagnostic>,
-) {
-    let mut reads = Vec::new();
-    expr.meters(&mut reads);
-    for (who, key, spot) in reads {
-        if matches!(who, Who::World) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression reads 'world.{key}', but the world has no meters"),
-                "read the meter from self, target, here, place:<id>, or a cast id",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
+/// What an expression may read: the pack's meters, and the cast and places it may name.
+struct Known<'a> {
+    meters: &'a BTreeMap<String, MeterDef>,
+    cast: &'a BTreeMap<String, CastCanon>,
+    places: &'a BTreeMap<String, PlaceCanon>,
+}
+
+impl Known<'_> {
+    /// The unknown reads in `exprs`, at `path` in `source` and at each read's spot.
+    fn check(&self, source: &Source, path: &str, exprs: &[&Expr], diags: &mut Vec<Diagnostic>) {
+        for expr in exprs {
+            let mut reads = Vec::new();
+            expr.meters(&mut reads);
+            for (who, key, spot) in reads {
+                let at = At::Spot(spot);
+                let refuse = |problem, hint| {
+                    Problem {
+                        source,
+                        path,
+                        at,
+                        problem,
+                        hint,
+                    }
+                    .schema()
+                };
+                if matches!(who, Who::World) {
+                    diags.push(refuse(
+                        format!("expression reads 'world.{key}', but the world has no meters"),
+                        "read the meter from self, target, here, place:<id>, or a cast id",
+                    ));
+                    continue;
+                }
+                if !self.meters.contains_key(key) {
+                    diags.push(refuse(
+                        format!(
+                            "expression reads meter '{key}', which is not in rules/meters.yaml"
+                        ),
+                        "add the meter or name one that exists",
+                    ));
+                }
+                if let Some(name) = unknown_who(who, self.cast, self.places) {
+                    diags.push(refuse(
+                        format!("expression names '{name}', which is not a who"),
+                        "use self, target, here, place:<id>, or a cast id",
+                    ));
+                }
             }
-            diags.push(diag);
-            continue;
-        }
-        if !meters.contains_key(key) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression reads meter '{key}', which is not in rules/meters.yaml"),
-                "add the meter or name one that exists",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
-        }
-        if let Some(name) = unknown_who(who, cast, places) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression names '{name}', which is not a who"),
-                "use self, target, here, place:<id>, or a cast id",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
         }
     }
 }
@@ -511,7 +506,7 @@ fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
         .rules
         .iter()
         .filter(|rule| {
-            rule.file.replace('\\', "/").ends_with("rules/verbs.yaml")
+            rule.owner == Owner::Verb
                 && rule
                     .top_effects()
                     .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
