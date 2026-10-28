@@ -2,8 +2,8 @@
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_headed, TICK_SCHEMA};
-use crate::diagnostic::{locate_nth, schema, Diagnostic};
+use crate::canon::source::{load_headed, At, Problem, Source, TICK_SCHEMA};
+use crate::diagnostic::Diagnostic;
 
 const TICK_FILE: &str = "rules/tick.yaml";
 
@@ -69,102 +69,107 @@ impl Budget {
 
 pub(crate) fn load_round_settings(text: &str) -> Result<Budget, Vec<Diagnostic>> {
     let file: TickFile = load_headed(TICK_FILE, text, TICK_SCHEMA, 0)?;
+    let source = Source {
+        file: TICK_FILE,
+        text,
+        line_base: 0,
+    };
     let mut diags = Vec::new();
     let defaults = Budget::defaults();
     let max_intents_applied = take(
-        text,
+        &source,
         "max_intents_applied",
         file.max_intents_applied,
         defaults.max_intents_applied,
         &mut diags,
     );
     let max_npcs_acting = take(
-        text,
+        &source,
         "max_npcs_acting",
         file.max_npcs_acting,
         defaults.max_npcs_acting,
         &mut diags,
     );
     let max_effects_per_intent = take(
-        text,
+        &source,
         "max_effects_per_intent",
         file.max_effects_per_intent,
         defaults.max_effects_per_intent,
         &mut diags,
     );
     let max_state_keys_mutated = take(
-        text,
+        &source,
         "max_state_keys_mutated",
         file.max_state_keys_mutated,
         defaults.max_state_keys_mutated,
         &mut diags,
     );
     let max_memory_writes = take(
-        text,
+        &source,
         "max_memory_writes",
         file.max_memory_writes,
         defaults.max_memory_writes,
         &mut diags,
     );
     let idle_acts_per_world_day = take(
-        text,
+        &source,
         "idle_acts_per_world_day",
         file.idle_acts_per_world_day,
         defaults.idle_acts_per_world_day,
         &mut diags,
     );
     let live_acts_per_world_hour = take(
-        text,
+        &source,
         "live_acts_per_world_hour",
         file.live_acts_per_world_hour,
         defaults.live_acts_per_world_hour,
         &mut diags,
     );
     let tick_every_real_seconds = take_positive(
-        text,
+        &source,
         "tick_every_real_seconds",
         file.tick_every_real_seconds,
         defaults.tick_every_real_seconds,
         &mut diags,
     );
-    let idle_ticking = take_idle(text, file.idle, &mut diags);
+    let idle_ticking = take_idle(&source, file.idle, &mut diags);
     let idle_minutes_per_tick = take_positive(
-        text,
+        &source,
         "idle_minutes_per_tick",
         file.idle_minutes_per_tick,
         defaults.idle_minutes_per_tick,
         &mut diags,
     );
     let live_minutes_per_tick = take(
-        text,
+        &source,
         "live_minutes_per_tick",
         file.live_minutes_per_tick,
         defaults.live_minutes_per_tick,
         &mut diags,
     );
     let idle_catchup_max_ticks = take(
-        text,
+        &source,
         "idle_catchup_max_ticks",
         file.idle_catchup_max_ticks,
         defaults.idle_catchup_max_ticks,
         &mut diags,
     );
     let idle_max_world_hours_per_real_hour = take(
-        text,
+        &source,
         "idle_max_world_hours_per_real_hour",
         file.idle_max_world_hours_per_real_hour,
         defaults.idle_max_world_hours_per_real_hour,
         &mut diags,
     );
     let max_fastforward_ticks = take(
-        text,
+        &source,
         "max_fastforward_ticks",
         file.max_fastforward_ticks,
         defaults.max_fastforward_ticks,
         &mut diags,
     );
     let max_trigger_depth = take(
-        text,
+        &source,
         "max_trigger_depth",
         file.max_trigger_depth,
         defaults.max_trigger_depth,
@@ -196,7 +201,7 @@ pub(crate) fn load_round_settings(text: &str) -> Result<Budget, Vec<Diagnostic>>
 }
 
 fn take(
-    text: &str,
+    source: &Source,
     field: &str,
     value: Option<i64>,
     default: u64,
@@ -206,23 +211,23 @@ fn take(
         None => default,
         Some(n) if n >= 0 => n as u64,
         Some(n) => {
-            let mut diag = schema(
-                TICK_FILE,
-                &format!("{field} is {n}, which is below zero"),
-                "use a number that is zero or greater",
-            )
-            .with_path(field);
-            if let Some((line, column)) = locate_nth(text, &format!("{field}:"), 0) {
-                diag = diag.at_line(line, Some(column));
-            }
-            diags.push(diag);
+            diags.push(
+                Problem {
+                    source,
+                    path: field,
+                    at: At::Key(&format!("{field}:")),
+                    problem: format!("{field} is {n}, which is below zero"),
+                    hint: "use a number that is zero or greater",
+                }
+                .schema(),
+            );
             default
         }
     }
 }
 
 fn take_positive(
-    text: &str,
+    source: &Source,
     field: &str,
     value: Option<i64>,
     default: u64,
@@ -237,32 +242,36 @@ fn take_positive(
             } else {
                 format!("{field} is 0, which is not a positive interval")
             };
-            let mut diag =
-                schema(TICK_FILE, &problem, "use a number greater than zero").with_path(field);
-            if let Some((line, column)) = locate_nth(text, &format!("{field}:"), 0) {
-                diag = diag.at_line(line, Some(column));
-            }
-            diags.push(diag);
+            diags.push(
+                Problem {
+                    source,
+                    path: field,
+                    at: At::Key(&format!("{field}:")),
+                    problem,
+                    hint: "use a number greater than zero",
+                }
+                .schema(),
+            );
             default
         }
     }
 }
 
-fn take_idle(text: &str, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
+fn take_idle(source: &Source, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
     match value.as_deref() {
         None | Some("on") => true,
         Some("off") => false,
         Some(other) => {
-            let mut diag = schema(
-                TICK_FILE,
-                &format!("idle is '{other}', which is not on or off"),
-                "write idle: on or idle: off",
-            )
-            .with_path("idle");
-            if let Some((line, column)) = locate_nth(text, "idle:", 0) {
-                diag = diag.at_line(line, Some(column));
-            }
-            diags.push(diag);
+            diags.push(
+                Problem {
+                    source,
+                    path: "idle",
+                    at: At::Key("idle:"),
+                    problem: format!("idle is '{other}', which is not on or off"),
+                    hint: "write idle: on or idle: off",
+                }
+                .schema(),
+            );
             true
         }
     }

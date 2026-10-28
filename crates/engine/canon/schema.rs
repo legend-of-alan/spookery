@@ -7,50 +7,12 @@ use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
 use serde::Deserialize;
 use serde_saphyr::Spanned;
 
+use crate::canon::source::{serde_spot, At, Fault, Problem, Source};
 use crate::diagnostic::{schema, Diagnostic};
 use crate::rule::{
     parse_expr, stamp_expr, Arith, ChangeWatch, Cond, Cost, EffectTemplate, Expr, LocationTo,
     NarrateTo, Op, Owner, ResistSpec, RollSpec, Rule, Spot, TargetKind, WatchWho, When, Who,
 };
-
-#[derive(Debug)]
-pub(crate) struct Fault {
-    pub message: String,
-    pub line: Option<u32>,
-    pub column: Option<u32>,
-}
-
-impl Fault {
-    fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            line: None,
-            column: None,
-        }
-    }
-
-    fn at(mut self, line: u32, column: u32) -> Self {
-        if line > 0 {
-            self.line = Some(line);
-            if column > 0 {
-                self.column = Some(column);
-            }
-        }
-        self
-    }
-}
-
-impl From<String> for Fault {
-    fn from(message: String) -> Self {
-        Self::new(message)
-    }
-}
-
-impl From<&str> for Fault {
-    fn from(message: &str) -> Self {
-        Self::new(message)
-    }
-}
 
 const REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 
@@ -507,52 +469,82 @@ fn compile_one(
     entry: RuleEntry,
     owner: &Owner,
 ) -> Result<Rule, Vec<Diagnostic>> {
+    let source = Source::named(file);
     let mut diags = Vec::new();
     let local = entry.id.value.clone();
     if local.is_empty() || local == "say" {
-        diags.push(spot(
-            file,
-            &entry.id,
-            &format!("rules[{index}].id"),
-            "a rule id is empty or is say",
-            "set id to a short name; say is speech",
-        ));
+        diags.push(
+            Problem {
+                source: &source,
+                path: &format!("rules[{index}].id"),
+                at: At::Spot(serde_spot(&entry.id)),
+                problem: "a rule id is empty or is say".into(),
+                hint: "set id to a short name; say is speech",
+            }
+            .schema(),
+        );
     }
     let when = match when_of(&entry.when.value) {
         Ok(when) => Some(when),
         Err(problem) => {
-            diags.push(spot(
-                file,
-                &entry.when,
-                &format!("rules[{index}].when"),
-                &problem,
-                "set when to habit, a verb, or a change",
-            ));
+            diags.push(
+                Problem {
+                    source: &source,
+                    path: &format!("rules[{index}].when"),
+                    at: At::Spot(serde_spot(&entry.when)),
+                    problem,
+                    hint: "set when to habit, a verb, or a change",
+                }
+                .schema(),
+            );
             None
         }
     };
     let if_ = match entry.if_.as_ref().map(if_of).transpose() {
         Ok(list) => list.unwrap_or_default(),
         Err(fault) => {
-            diags.push(fault_diag(
-                file,
-                fault,
-                "put one condition under each dash; use any: or not: to combine",
-            ));
+            diags.push(
+                Problem {
+                    source: &source,
+                    path: "",
+                    at: At::Spot(fault.spot),
+                    problem: fault.message,
+                    hint: "put one condition under each dash; use any: or not: to combine",
+                }
+                .schema(),
+            );
             Vec::new()
         }
     };
     let cost = match entry.cost.as_ref().map(cost_of).transpose() {
         Ok(cost) => cost,
         Err(fault) => {
-            diags.push(fault_diag(file, fault, "write time as 30s, 10m, 2h, or 1d"));
+            diags.push(
+                Problem {
+                    source: &source,
+                    path: "",
+                    at: At::Spot(fault.spot),
+                    problem: fault.message,
+                    hint: "write time as 30s, 10m, 2h, or 1d",
+                }
+                .schema(),
+            );
             None
         }
     };
     let roll = match entry.roll.as_ref().map(roll_of).transpose() {
         Ok(roll) => roll,
         Err(fault) => {
-            diags.push(fault_diag(file, fault, "name a check and a target"));
+            diags.push(
+                Problem {
+                    source: &source,
+                    path: "",
+                    at: At::Spot(fault.spot),
+                    problem: fault.message,
+                    hint: "name a check and a target",
+                }
+                .schema(),
+            );
             None
         }
     };
@@ -628,22 +620,6 @@ fn compile_one(
         file: file.to_string(),
         index,
     })
-}
-
-fn spot(
-    file: &str,
-    span: &Spanned<impl Sized>,
-    path: &str,
-    problem: &str,
-    hint: &str,
-) -> Diagnostic {
-    let mut diag = schema(file, problem, hint).with_path(path);
-    let line = u32::try_from(span.referenced.line()).unwrap_or(0);
-    let column = u32::try_from(span.referenced.column()).ok();
-    if line > 0 {
-        diag = diag.at_line(line, column.filter(|column| *column > 0));
-    }
-    diag
 }
 
 fn when_of(yaml: &WhenYaml) -> Result<When, String> {
@@ -900,27 +876,30 @@ fn roll_of(yaml: &RollYaml) -> Result<RollSpec, Fault> {
 fn still_number(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {
     let expr = number_of(yaml)?;
     if expr.needs_dice() {
-        let (line, column) = span_at(yaml);
-        return Err(Fault::new("a condition cannot roll dice").at(line, column));
+        return Err(Fault {
+            message: "a condition cannot roll dice".into(),
+            spot: serde_spot(yaml),
+        });
     }
     Ok(expr)
 }
 
 fn number_of(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {
-    let (line, column) = span_at(yaml);
+    let spot = serde_spot(yaml);
     match &yaml.value {
         NumberYaml::Literal(n) => Ok(Expr::Num(*n)),
         NumberYaml::Text(text) => {
-            let mut expr =
-                parse_expr(text).map_err(|message| Fault::new(message).at(line, column))?;
-            stamp_expr(&mut expr, line, column);
+            let mut expr = parse_expr(text).map_err(|message| Fault { message, spot })?;
+            if let Some(Spot { line, column }) = spot {
+                stamp_expr(&mut expr, line, column);
+            }
             Ok(expr)
         }
         NumberYaml::Plus(plus) => {
             let meter = Expr::Meter {
                 who: who_of(&plus.meter.who)?,
                 key: plus.meter.key.value.clone(),
-                spot: span_spot(&plus.meter.key).or(spot_of(line, column)),
+                spot: serde_spot(&plus.meter.key).or(spot),
             };
             if plus.plus == 0 {
                 Ok(meter)
@@ -935,44 +914,20 @@ fn number_of(yaml: &Spanned<NumberYaml>) -> Result<Expr, Fault> {
     }
 }
 
-fn span_at(span: &Spanned<impl Sized>) -> (u32, u32) {
-    let line = u32::try_from(span.referenced.line()).unwrap_or(0);
-    let column = u32::try_from(span.referenced.column()).unwrap_or(0);
-    (line, column)
-}
-
-fn span_spot(span: &Spanned<String>) -> Option<Spot> {
-    let (line, column) = span_at(span);
-    spot_of(line, column)
-}
-
-fn spot_of(line: u32, column: u32) -> Option<Spot> {
-    if line == 0 {
-        None
-    } else {
-        Some(Spot { line, column })
-    }
-}
-
-fn fault_diag(file: &str, fault: Fault, hint: &str) -> Diagnostic {
-    let mut diag = schema(file, &fault.message, hint);
-    if let Some(line) = fault.line {
-        diag = diag.at_line(line, fault.column);
-    }
-    diag
-}
-
 fn effects_of(file: &str, list: &[EffectYaml]) -> Result<Vec<EffectTemplate>, Vec<Diagnostic>> {
     let mut out = Vec::new();
     for effect in list {
         match effect_of(effect) {
             Ok(effect) => out.push(effect),
             Err(fault) => {
-                return Err(vec![fault_diag(
-                    file,
-                    fault,
-                    "one effect key under each dash",
-                )]);
+                return Err(vec![Problem {
+                    source: &Source::named(file),
+                    path: "",
+                    at: At::Spot(fault.spot),
+                    problem: fault.message,
+                    hint: "one effect key under each dash",
+                }
+                .schema()]);
             }
         }
     }
@@ -1126,8 +1081,10 @@ fn resist_of(yaml: Option<&ResistYaml>) -> Result<Option<ResistSpec>, Fault> {
 }
 
 fn who_of(yaml: &Spanned<String>) -> Result<Who, Fault> {
-    let (line, column) = span_at(yaml);
-    let fault = |message: String| Fault::new(message).at(line, column);
+    let fault = |message: String| Fault {
+        message,
+        spot: serde_spot(yaml),
+    };
     let word = yaml.value.as_str();
     if let Some(place) = word.strip_prefix("place:") {
         if place.is_empty() {

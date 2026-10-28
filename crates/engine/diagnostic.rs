@@ -140,10 +140,6 @@ pub(crate) fn coded(file: &str, code: Reason, problem: &str, hint: &str) -> Diag
     Diagnostic::new(file, Severity::Error(code), problem, hint)
 }
 
-pub(crate) fn warning(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Severity::Warning, problem, hint)
-}
-
 /// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
 pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u32)> {
     if needle.is_empty() {

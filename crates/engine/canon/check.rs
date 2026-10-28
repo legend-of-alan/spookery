@@ -3,9 +3,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::canon::save::unknown_item;
+use crate::canon::source::{At, Problem, Source};
 use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
 use crate::check::CheckDef;
-use crate::diagnostic::{coded, schema as schema_error, warning, Diagnostic};
+use crate::diagnostic::{schema as schema_error, Diagnostic};
 use crate::error::Reason;
 use crate::meter::MeterDef;
 use crate::rule::{
@@ -315,45 +316,48 @@ fn check_expr(
     places: &BTreeMap<String, PlaceCanon>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    let source = Source::named(file);
     let mut reads = Vec::new();
     expr.meters(&mut reads);
     for (who, key, spot) in reads {
         if matches!(who, Who::World) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression reads 'world.{key}', but the world has no meters"),
-                "read the meter from self, target, here, place:<id>, or a cast id",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
+            diags.push(
+                Problem {
+                    source: &source,
+                    path,
+                    at: At::Spot(spot),
+                    problem: format!("expression reads 'world.{key}', but the world has no meters"),
+                    hint: "read the meter from self, target, here, place:<id>, or a cast id",
+                }
+                .schema(),
+            );
             continue;
         }
         if !meters.contains_key(key) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression reads meter '{key}', which is not in rules/meters.yaml"),
-                "add the meter or name one that exists",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
+            diags.push(
+                Problem {
+                    source: &source,
+                    path,
+                    at: At::Spot(spot),
+                    problem: format!(
+                        "expression reads meter '{key}', which is not in rules/meters.yaml"
+                    ),
+                    hint: "add the meter or name one that exists",
+                }
+                .schema(),
+            );
         }
         if let Some(name) = unknown_who(who, cast, places) {
-            let mut diag = schema_error(
-                file,
-                &format!("expression names '{name}', which is not a who"),
-                "use self, target, here, place:<id>, or a cast id",
-            )
-            .with_path(path);
-            if let Some(spot) = spot {
-                diag = diag.at_line(spot.line, Some(spot.column));
-            }
-            diags.push(diag);
+            diags.push(
+                Problem {
+                    source: &source,
+                    path,
+                    at: At::Spot(spot),
+                    problem: format!("expression names '{name}', which is not a who"),
+                    hint: "use self, target, here, place:<id>, or a cast id",
+                }
+                .schema(),
+            );
         }
     }
 }
@@ -494,12 +498,14 @@ fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
             continue;
         }
         diags.push(
-            warning(
-                "world/places",
-                &format!("place '{id}' has no path from {}", canon.start_place),
-                "add an exit that reaches it",
-            )
-            .with_path(id.clone()),
+            Problem {
+                source: &Source::named("world/places"),
+                path: id,
+                at: At::Nowhere,
+                problem: format!("place '{id}' has no path from {}", canon.start_place),
+                hint: "add an exit that reaches it",
+            }
+            .warning(),
         );
     }
     diags
@@ -517,12 +523,14 @@ fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
                     .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
         })
         .map(|rule| {
-            warning(
-                &rule.file,
-                &format!("verb '{}' teleports", rule.local_id),
-                "teleport belongs on an author rule, not in verbs.yaml",
-            )
-            .with_path(format!("rules[{}]", rule.index))
+            Problem {
+                source: &Source::named(&rule.file),
+                path: &format!("rules[{}]", rule.index),
+                at: At::Nowhere,
+                problem: format!("verb '{}' teleports", rule.local_id),
+                hint: "teleport belongs on an author rule, not in verbs.yaml",
+            }
+            .warning()
         })
         .collect()
 }
@@ -563,12 +571,14 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
         .enumerate()
         .filter(|(index, _)| hit[*index])
         .map(|(_, rule)| {
-            warning(
-                &rule.file,
-                &format!("rule '{}' is in a trigger cycle", rule.local_id),
-                "stop one rule in the cycle from setting the next watched value",
-            )
-            .with_path(format!("rules[{}]", rule.index))
+            Problem {
+                source: &Source::named(&rule.file),
+                path: &format!("rules[{}]", rule.index),
+                at: At::Nowhere,
+                problem: format!("rule '{}' is in a trigger cycle", rule.local_id),
+                hint: "stop one rule in the cycle from setting the next watched value",
+            }
+            .warning()
         })
         .collect()
 }
@@ -591,16 +601,17 @@ fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnost
             continue;
         }
         diags.push(
-            coded(
-                &rule.file,
-                Reason::TriggerLeak,
-                &format!(
+            Problem {
+                source: &Source::named(&rule.file),
+                path: &format!("rules[{}]", rule.index),
+                at: At::Nowhere,
+                problem: format!(
                     "rule '{}' leaks a change to a viewer who cannot see it",
                     rule.local_id
                 ),
-                "address that output to self, or to here when the room can see the change",
-            )
-            .with_path(format!("rules[{}]", rule.index)),
+                hint: "address that output to self, or to here when the room can see the change",
+            }
+            .coded(Reason::TriggerLeak),
         );
     }
     diags
