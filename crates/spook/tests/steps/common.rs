@@ -401,6 +401,19 @@ fn now_unchanged_since_the_seat(world: &mut World) {
     assert_eq!(now, seated);
 }
 
+#[then(expr = "spook verify passes")]
+fn spook_verify_passes(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::run(world, &["verify", pack.to_str().unwrap()]);
+    assert_eq!(
+        world.code,
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        world.stdout,
+        world.stderr
+    );
+}
+
 #[when(expr = "the operator runs verify")]
 fn the_operator_runs_verify(world: &mut World) {
     let pack = table::pack(world).to_path_buf();

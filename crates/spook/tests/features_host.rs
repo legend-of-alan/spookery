@@ -56,6 +56,9 @@ mod gm;
 #[path = "steps/refusal.rs"]
 mod refusal;
 
+#[path = "steps/one_writer.rs"]
+mod one_writer;
+
 #[path = "feature_paths.rs"]
 mod feature_paths;
 

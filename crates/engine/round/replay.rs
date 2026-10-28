@@ -9,6 +9,7 @@ use crate::commit::atomic_publish;
 use crate::diagnostic::reason_of;
 use crate::effect::Effect;
 use crate::journal::{self, hash_now, JournalEntry, MigrateRecord, RoundRecord};
+use crate::lock::lock_pack;
 use crate::model::{Now, Presence};
 use crate::store::codec::{emit_effect, emit_save, load_save};
 use crate::store::require_rules_rev;
@@ -241,6 +242,7 @@ pub(crate) fn open_at_tip(path: &Path) -> Result<World, Reason> {
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
+    let _lock = lock_pack(path)?;
     let now = journal_tip(path)?;
     crate::commit::migrate_journal(path, now)
 }

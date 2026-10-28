@@ -124,6 +124,8 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         #[cfg(feature = "server")]
         Command::Run { pack, mcp_http } => {
             let door = door_addr(mcp_http)?;
+            // Lock before resume: opening the pack repairs it, which is a write.
+            let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
             let world = spookery_engine::World::resume(&pack).map_err(|e| e.to_string())?;
             let mut config = spookery_server::Config::new(addr);
             config.door = door;
@@ -148,7 +150,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                     std::process::exit(130);
                 });
             };
-            spookery_server::serve(world, config, shutdown)
+            spookery_server::serve(lock, world, config, shutdown)
                 .await
                 .map_err(|e| e.to_string())
         }

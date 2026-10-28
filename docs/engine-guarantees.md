@@ -22,13 +22,17 @@ one bundle and flushes that file once. The first record in a new bundle also
 flushes the journal directory. `save.yaml` is written at a checkpoint, not on
 every commit. A torn last line in the live bundle is cut off on startup, and a
 leftover transaction directory is removed. The save on disk stays.
+One process writes a pack at a time. `spook run`, `spook tick` and
+`spook migrate` each hold `state/.pack.lock` for as long as they have the pack
+open, and a second one is refused with `COMMIT_CONFLICT` and writes nothing.
 
 Tested in `features/seats/one_gm_and_three_players.feature`,
 `features/rounds/a_line_waits_for_the_gm.feature`,
 `features/host/the_host_sits_the_gm_seat.feature`,
 `features/speech/speech_appends_and_does_not_play_a_round.feature`,
-`features/commit/a_hand_edit_waits_for_migrate.feature`, and
-`features/commit/a_transaction_does_not_leak_a_partial_round.feature`.
+`features/commit/a_hand_edit_waits_for_migrate.feature`,
+`features/commit/a_transaction_does_not_leak_a_partial_round.feature`, and
+`features/host/one_writer_per_pack.feature`.
 
 ## Replay
 

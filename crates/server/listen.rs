@@ -48,14 +48,15 @@ impl Config {
     }
 }
 
-/// Take the serve lock, bind both ports, report them and serve on the
-/// caller's runtime until `shutdown` resolves. Returns the world's result.
+/// Bind both ports, report them and serve on the caller's runtime until
+/// `shutdown` resolves. `lock` is the pack lock the caller took before it
+/// opened `world`; it is held until the world loop ends. Returns the world's result.
 pub async fn serve(
+    lock: spookery_engine::LockGuard,
     mut world: spookery_engine::World,
     mut config: Config,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
-    let guard = spookery_engine::lock_serve(world.root()).map_err(Error::Reason)?;
     let listener = bind(config.addr).await?;
     let http_listener = bind(door_request(config.addr, config.door)?).await?;
     if world.clear_crashed().map_err(Error::Reason)? {
@@ -105,7 +106,7 @@ pub async fn serve(
         });
     }
     let mut world_loop = tokio::task::spawn_blocking(move || {
-        let _guard = guard;
+        let _lock = lock;
         world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
     });
     // A world loop that ends on its own (a store fault) ends `serve` too.

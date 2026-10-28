@@ -64,7 +64,7 @@ pub fn files(root: &Path) -> Vec<(std::path::PathBuf, Vec<u8>)> {
             let path = entry.path();
             if path.is_dir() {
                 stack.push(path);
-            } else if path.file_name().is_none_or(|n| n != ".serve.lock") {
+            } else if path.file_name().is_none_or(|n| n != ".pack.lock") {
                 let bytes =
                     fs::read(&path).unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
                 out.push((path, bytes));

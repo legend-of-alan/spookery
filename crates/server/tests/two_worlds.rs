@@ -1,5 +1,5 @@
 use spookery_engine::testing::temp_pack;
-use spookery_engine::{Reason, World};
+use spookery_engine::{lock_pack, Reason, World};
 use spookery_server::{Config, Error};
 use std::{fs, io::*, net::*, path::Path};
 use tokio::sync::oneshot;
@@ -26,8 +26,9 @@ fn host(
     let mut config = Config::new("127.0.0.1:0".parse().unwrap());
     config.out = Box::new(writer);
     let (stop, stopped) = oneshot::channel::<()>();
+    let lock = lock_pack(dir).unwrap();
     let world = World::resume(dir).unwrap();
-    let served = tokio::spawn(spookery_server::serve(world, config, async {
+    let served = tokio::spawn(spookery_server::serve(lock, world, config, async {
         stopped.await.unwrap()
     }));
     let mut line = String::new();
@@ -46,9 +47,7 @@ async fn two_worlds_serve_on_port_zero_and_stop_independently() {
     let first_dir = temp_pack("2w-1");
     let second_dir = temp_pack("2w-2");
     let (mut c1, stop1, first) = host(&first_dir);
-    let config = Config::new("127.0.0.1:0".parse().unwrap());
-    let err = spookery_server::serve(World::resume(&first_dir).unwrap(), config, async {}).await;
-    assert!(matches!(err, Err(Error::Reason(Reason::CommitConflict))));
+    assert_eq!(lock_pack(&first_dir).err(), Some(Reason::CommitConflict));
     let (mut c2, stop2, second) = host(&second_dir);
     step(&mut c1, "player:pc_rowan\n");
     step(&mut c1, "wait\n");

@@ -7,7 +7,7 @@ use crate::commit::CommitOutcome;
 use crate::draft::Draft;
 use crate::effect::Effect;
 use crate::intent::Intent;
-use crate::lock::lock_world;
+use crate::lock::lock_pack;
 use crate::model::Presence;
 use crate::rules::MoveReport;
 use crate::visibility::{RecipientLine, ViewerChanges};
@@ -19,7 +19,7 @@ use crate::round::log::RoundLog;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
 
 pub(crate) enum RoundKind<'a> {
-    /// Drain the queue, hold the lock, write the journal line.
+    /// Drain the queue and write the journal line.
     Live { fast_forward: bool },
     /// Play the queue a journal line kept, in memory, with the seats it recorded.
     Replay {
@@ -44,6 +44,7 @@ pub struct RoundOutput {
 /// Play one round from the save. `Some` is a warning the host prints: the round
 /// was committed, and the checkpoint bundle was not closed.
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
+    let _lock = lock_pack(path)?;
     let mut world = crate::round::replay::open_at_tip(path)?;
     let wall = world.now().last_round_at.clone();
     play_round(
@@ -152,9 +153,6 @@ pub(crate) fn play_round(
     wall: &str,
     kind: RoundKind<'_>,
 ) -> Result<RoundOutput, Reason> {
-    let _lock = matches!(kind, RoundKind::Live { .. })
-        .then(|| lock_world(world.root()))
-        .transpose()?;
     if let RoundKind::Replay { presence, .. } = &kind {
         world.set_presence_inner(presence.clone());
     }

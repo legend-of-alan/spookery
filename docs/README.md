@@ -76,7 +76,7 @@ These are the host options and the commands that touch a save.
 | `spook tick <pack>` | Advances the world one tick and writes `state/`. |
 | `spook migrate <pack>` | Stores the current canon hash in the save. |
 
-Stop `spook run` before you use `tick` or `migrate`, because the running server keeps the save in memory.
+While `spook run` serves a pack, `tick` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
 
 If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [SESSION_FULL]`.
 
