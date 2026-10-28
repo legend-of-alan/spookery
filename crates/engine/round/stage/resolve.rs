@@ -7,7 +7,7 @@ use crate::rules::expr::{self, Ctx};
 use crate::rules::gate::{gate, GateRefusal};
 
 use crate::canon::Canon;
-use crate::intent::{Intent, Source, Target, ViewerId};
+use crate::intent::{Intent, Source, Target};
 use crate::model::Now;
 use crate::rules::RollResult;
 use crate::Reason;
@@ -92,7 +92,7 @@ fn roll_check(
     rule: &crate::rule::Rule,
     roll: &crate::rule::RollSpec,
 ) -> Result<Resolution, Reason> {
-    if let Err(code) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
+    if let Err(code) = intent.viewer() {
         return Ok(Resolution::CannotRoll(code));
     }
     let opposed = match opposing_total(rolls, intent) {

@@ -37,7 +37,7 @@ pub fn expand_rule(
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<Vec<Effect>, Reason> {
-    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
+    let viewer = intent.viewer()?;
     let mut selected = Vec::new();
     selected.extend(rule.do_.iter());
     match outcome {
@@ -365,7 +365,7 @@ fn wrap(viewer: &ViewerId, intent_id: &str, class: EffectKind) -> Effect {
 }
 
 fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reason> {
-    let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
+    let viewer = intent.viewer()?;
     let from = now
         .actors
         .get(&intent.actor_id)

@@ -186,12 +186,8 @@ fn place_item_sentence(
 
 /// The before and after counts of an item change, when the count changed.
 fn counts(change: &ChangeRecord) -> Option<(i64, i64)> {
-    match (&change.before, &change.after) {
-        (StateValue::Number(before), StateValue::Number(after)) if before != after => {
-            Some((*before, *after))
-        }
-        _ => None,
-    }
+    let (before, after) = (change.before.as_number()?, change.after.as_number()?);
+    (before != after).then_some((before, after))
 }
 
 /// Who holds an item.

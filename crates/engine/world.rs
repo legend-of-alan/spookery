@@ -272,17 +272,15 @@ impl World {
         if self.queue.iter().any(|intent| intent.id == id) {
             return Err(Reason::Schema);
         }
-        Ok(Intent {
+        Ok(Intent::new(
             id,
-            round_index: tick,
-            actor_id: actor_id.to_string(),
-            actor_kind: ActorKind::Player,
-            source: Source::Player,
-            move_name: verb.to_string(),
+            tick,
+            actor_id,
+            ActorKind::Player,
+            Source::Player,
+            verb,
             target,
-            args: IntentArgs::default(),
-            rationale_code: String::new(),
-        })
+        ))
     }
 
     pub fn queue_gm_intent(

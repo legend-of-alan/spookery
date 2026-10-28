@@ -130,6 +130,36 @@ pub struct Intent {
     pub rationale_code: String,
 }
 
+impl Intent {
+    /// An intent with no message recipients and no rationale.
+    pub(crate) fn new(
+        id: String,
+        round_index: u64,
+        actor_id: &str,
+        actor_kind: ActorKind,
+        source: Source,
+        move_name: &str,
+        target: Target,
+    ) -> Self {
+        Self {
+            id,
+            round_index,
+            actor_id: actor_id.to_string(),
+            actor_kind,
+            source,
+            move_name: move_name.to_string(),
+            target,
+            args: IntentArgs::default(),
+            rationale_code: String::new(),
+        }
+    }
+
+    /// The seat this intent acts from.
+    pub(crate) fn viewer(&self) -> Result<ViewerId, Reason> {
+        ViewerId::from_kind(self.actor_kind, &self.actor_id)
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TargetWire {
@@ -267,6 +297,16 @@ pub(crate) fn player_intent_id(
     crate::hash::blake2s_hex(
         format!("{shard_id}|{round_index_plus_one}|{actor_id}|{line}").as_bytes(),
     )
+}
+
+/// The id of the intent that finishes `actor_id`'s timed action.
+pub(crate) fn arrival_intent_id(actor_id: &str) -> String {
+    format!("arrival:{actor_id}")
+}
+
+/// The id of the intent that fires `rule_id` for `actor_id`.
+pub(crate) fn trigger_intent_id(rule_id: &str, actor_id: &str) -> String {
+    format!("trigger:{rule_id}:{actor_id}")
 }
 
 #[cfg(test)]

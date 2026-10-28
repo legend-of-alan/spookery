@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use crate::canon::{Canon, Exit};
 use crate::draft::Draft;
 use crate::error::Reason;
-use crate::intent::{Intent, IntentArgs, Source, Target};
+use crate::intent::{Intent, Source, Target};
 use crate::key::StateKey;
 use crate::model::{Now, PendingAction};
 use crate::rule::{EffectTemplate, LocationTo, Rule, TargetKind, When};
@@ -108,17 +108,15 @@ pub(crate) fn locked(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> b
     let Some(actor) = now.actors.get(actor_id) else {
         return true;
     };
-    let intent = Intent {
-        id: String::new(),
-        round_index: now.round_index,
-        actor_id: actor_id.to_string(),
-        actor_kind: actor.actor_kind(),
-        source: Source::Player,
-        move_name: "travel".to_string(),
-        target: Target::Place(exit.name.clone()),
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    };
+    let intent = Intent::new(
+        String::new(),
+        now.round_index,
+        actor_id,
+        actor.actor_kind(),
+        Source::Player,
+        "travel",
+        Target::Place(exit.name.clone()),
+    );
     cond::holds(canon, now, &Ctx { intent: &intent }, &exit.if_).is_err()
 }
 
@@ -398,17 +396,15 @@ fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: Targe
             continue;
         };
         let token = hint.unwrap_or_default();
-        let intent = Intent {
-            id: String::new(),
-            round_index: now.round_index,
-            actor_id: actor_id.to_string(),
-            actor_kind: kind,
-            source: Source::Player,
-            move_name: verb.to_string(),
-            target: chosen.store(&token),
-            args: IntentArgs::default(),
-            rationale_code: String::new(),
-        };
+        let intent = Intent::new(
+            String::new(),
+            now.round_index,
+            actor_id,
+            kind,
+            Source::Player,
+            verb,
+            chosen.store(&token),
+        );
         if cond::holds(canon, now, &Ctx { intent: &intent }, &rule.if_).is_ok() {
             return true;
         }

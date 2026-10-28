@@ -1,7 +1,7 @@
 //! Which habits an NPC may run on this tick.
 
 use crate::canon::Canon;
-use crate::intent::{kernel_intent_id, ActorKind, Intent, IntentArgs, Source, Target};
+use crate::intent::{kernel_intent_id, ActorKind, Intent, Source, Target};
 use crate::model::Now;
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
@@ -55,15 +55,13 @@ fn player_present_at(now: &Now, place: &str) -> bool {
 }
 
 pub(crate) fn mint(now: &Now, actor_id: &str, local_id: &str) -> Intent {
-    Intent {
-        id: kernel_intent_id(&now.shard_id, now.round_index, actor_id, local_id),
-        round_index: now.round_index,
-        actor_id: actor_id.to_string(),
-        actor_kind: ActorKind::Npc,
-        source: Source::Kernel,
-        move_name: local_id.to_string(),
-        target: Target::Empty,
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    }
+    Intent::new(
+        kernel_intent_id(&now.shard_id, now.round_index, actor_id, local_id),
+        now.round_index,
+        actor_id,
+        ActorKind::Npc,
+        Source::Kernel,
+        local_id,
+        Target::Empty,
+    )
 }

@@ -4,7 +4,7 @@ use crate::apply::apply_effect;
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::expand::expand_rule;
-use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+use crate::intent::{trigger_intent_id, ActorKind, Intent, Source, Target};
 use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::Now;
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
@@ -175,17 +175,15 @@ fn expand_trigger(
 }
 
 fn intent_for(round_index: u64, actor_id: &str, kind: ActorKind, rule_id: &str) -> Intent {
-    Intent {
-        id: format!("trigger:{rule_id}:{actor_id}"),
+    Intent::new(
+        trigger_intent_id(rule_id, actor_id),
         round_index,
-        actor_id: actor_id.to_string(),
-        actor_kind: kind,
-        source: Source::Kernel,
-        move_name: rule_id.to_string(),
-        target: Target::Empty,
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    }
+        actor_id,
+        kind,
+        Source::Kernel,
+        rule_id,
+        Target::Empty,
+    )
 }
 
 fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
@@ -224,8 +222,8 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         ChangeWatch::Arrive { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
-                text(&change.before) != Some(place)
-                    && text(&change.after) == Some(place)
+                change.before.as_text() != Some(place)
+                    && change.after.as_text() == Some(place)
                     && who_ok(draft, who, actor)
             }
             _ => false,
@@ -233,8 +231,8 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         ChangeWatch::Leave { place, who } => match &change.key {
             StateKey::ActorPlace(actor) => {
                 let place = rule.watched_place(place);
-                text(&change.before) == Some(place)
-                    && text(&change.after) != Some(place)
+                change.before.as_text() == Some(place)
+                    && change.after.as_text() != Some(place)
                     && who_ok(draft, who, actor)
             }
             _ => false,
@@ -247,7 +245,8 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         },
         ChangeWatch::Flag { key, becomes } => match &change.key {
             StateKey::ActorFlag(_, flag) | StateKey::WorldFlag(flag) if flag == key => {
-                mark(&change.before) == Some(!becomes) && mark(&change.after) == Some(*becomes)
+                change.before.as_mark() == Some(!becomes)
+                    && change.after.as_mark() == Some(*becomes)
             }
             _ => false,
         },
@@ -257,7 +256,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
                     return false;
                 };
                 matches!(
-                    (number(&change.before), number(&change.after)),
+                    (change.before.as_number(), change.after.as_number()),
                     (Some(before), Some(after)) if before < max && after == max
                 )
             }
@@ -265,7 +264,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
         },
         ChangeWatch::Item { id, gained } => match &change.key {
             StateKey::ActorItem(_, item) if item == id => {
-                match (number(&change.before), number(&change.after)) {
+                match (change.before.as_number(), change.after.as_number()) {
                     (Some(before), Some(after)) if *gained => after > before,
                     (Some(before), Some(after)) => after < before,
                     _ => false,
@@ -274,9 +273,7 @@ fn matches_watch(draft: &Draft, rule: &Rule, watch: &ChangeWatch, change: &Chang
             _ => false,
         },
         ChangeWatch::Knows { fact } => match &change.key {
-            StateKey::ActorKnownFact(_) => {
-                listed(&change.after, fact) && !listed(&change.before, fact)
-            }
+            StateKey::ActorKnownFact(_) => change.after.lists(fact) && !change.before.lists(fact),
             _ => false,
         },
     }
@@ -295,36 +292,8 @@ fn who_ok(draft: &Draft, who: &WatchWho, actor_id: &str) -> bool {
 }
 
 fn crossed(before: &StateValue, after: &StateValue, op: Op, bound: i64) -> bool {
-    let (Some(before), Some(after)) = (number(before), number(after)) else {
+    let (Some(before), Some(after)) = (before.as_number(), after.as_number()) else {
         return false;
     };
     !op.holds(before, bound) && op.holds(after, bound)
-}
-
-fn text(value: &StateValue) -> Option<&str> {
-    match value {
-        StateValue::Text(text) => Some(text),
-        _ => None,
-    }
-}
-
-fn number(value: &StateValue) -> Option<i64> {
-    match value {
-        StateValue::Number(number) => Some(*number),
-        _ => None,
-    }
-}
-
-fn mark(value: &StateValue) -> Option<bool> {
-    match value {
-        StateValue::Mark(mark) => Some(*mark),
-        _ => None,
-    }
-}
-
-fn listed(value: &StateValue, fact: &str) -> bool {
-    match value {
-        StateValue::List(ids) => ids.iter().any(|id| id == fact),
-        _ => false,
-    }
 }

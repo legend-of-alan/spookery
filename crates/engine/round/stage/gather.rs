@@ -47,37 +47,66 @@ fn order_intents(
     round_index: u64,
     world_id: &str,
 ) -> Vec<Intent> {
-    intents.sort_by(|left, right| {
-        priority_key(now, left, round_index, world_id).cmp(&priority_key(
-            now,
-            right,
-            round_index,
-            world_id,
-        ))
-    });
+    intents.sort_by_cached_key(|intent| priority(now, intent, round_index, world_id));
     intents
 }
 
-fn priority_key(
-    now: &Now,
-    intent: &Intent,
-    round_index: u64,
-    world_id: &str,
-) -> (u8, u8, u8, [u8; 32]) {
-    let kind = match intent.actor_kind {
-        ActorKind::Player => 0,
-        ActorKind::Npc => 1,
-        ActorKind::System => 2,
+/// Who acts first: players, then a PC's clock, then a claimed target, then the shuffle.
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+struct Priority {
+    actor: ActorRank,
+    clock: ClockRank,
+    claim: ClaimRank,
+    shuffle: [u8; 32],
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum ActorRank {
+    Player,
+    Npc,
+    System,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum ClockRank {
+    PcClock,
+    Other,
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum ClaimRank {
+    Claimed,
+    Unclaimed,
+}
+
+fn priority(now: &Now, intent: &Intent, round_index: u64, world_id: &str) -> Priority {
+    let actor = match intent.actor_kind {
+        ActorKind::Player => ActorRank::Player,
+        ActorKind::Npc => ActorRank::Npc,
+        ActorKind::System => ActorRank::System,
     };
-    let pc_clock = if targets_pc_clock(now, intent) { 0 } else { 1 };
-    let claimed = if claimed(now, intent) { 0 } else { 1 };
+    let clock = if targets_pc_clock(now, intent) {
+        ClockRank::PcClock
+    } else {
+        ClockRank::Other
+    };
+    let claim = if claimed(now, intent) {
+        ClaimRank::Claimed
+    } else {
+        ClaimRank::Unclaimed
+    };
     // Player lines that share a priority keep the queue order. NPC ties still shuffle.
     let shuffle = if intent.actor_kind == ActorKind::Player {
         [0u8; 32]
     } else {
         shuffle_key(world_id, round_index, &intent.actor_id)
     };
-    (kind, pc_clock, claimed, shuffle)
+    Priority {
+        actor,
+        clock,
+        claim,
+        shuffle,
+    }
 }
 
 fn targets_pc_clock(now: &Now, intent: &Intent) -> bool {

@@ -4,7 +4,7 @@ use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
 use crate::expand::expand_rule;
-use crate::intent::{ActorKind, Intent, IntentArgs, Target, ViewerId};
+use crate::intent::{arrival_intent_id, ActorKind, Intent, Target};
 use crate::journal::Arrival;
 use crate::model::PendingAction;
 use crate::rules::MoveReport;
@@ -56,7 +56,7 @@ fn arrive(
             to: to.clone(),
             arrived_at: Some(until),
         },
-        as_viewer: ViewerId::from_kind(kind, actor_id)?,
+        as_viewer: intent.viewer()?,
         intent_id: intent.id.clone(),
     };
     apply_effect(draft, &intent, effect.clone())?;
@@ -115,19 +115,18 @@ fn due_intent(
     kind: ActorKind,
     pending: &PendingAction,
 ) -> Intent {
-    Intent {
-        id: format!("arrival:{actor_id}"),
+    let target = if pending.target.is_empty() {
+        Target::Empty
+    } else {
+        Target::Place(pending.target.clone())
+    };
+    Intent::new(
+        arrival_intent_id(actor_id),
         round_index,
-        actor_id: actor_id.to_string(),
-        actor_kind: kind,
-        source: pending.source,
-        move_name: pending.verb.clone(),
-        target: if pending.target.is_empty() {
-            Target::Empty
-        } else {
-            Target::Place(pending.target.clone())
-        },
-        args: IntentArgs::default(),
-        rationale_code: String::new(),
-    }
+        actor_id,
+        kind,
+        pending.source,
+        &pending.verb,
+        target,
+    )
 }

@@ -2,7 +2,7 @@
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::intent::{ActorKind, Intent, Source, Target, ViewerId};
+use crate::intent::{ActorKind, Intent, Source, Target};
 use crate::model::Now;
 use crate::rule::{Owner, Rule, TargetKind, When};
 use crate::rules::cond;
@@ -188,7 +188,8 @@ fn sees(canon: &Canon, now: &Now, intent: &Intent) -> bool {
     {
         return true;
     }
-    let view = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)
+    let view = intent
+        .viewer()
         .ok()
         .and_then(|viewer| perceive_viewer(canon, now, &viewer).ok());
     let Some(view) = view else { return false };
