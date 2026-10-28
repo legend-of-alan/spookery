@@ -24,7 +24,11 @@ pub(super) fn load_checks(
         let path = format!("checks[{row}]");
         let mut found = Vec::new();
         let id_path = format!("{path}.id");
-        let id_at = At::Row { row, key: "id:" };
+        let id_at = At::Row {
+            list: "checks:",
+            row,
+            key: "id:",
+        };
         let empty = ("a check id is empty", "set id to a short name");
         found.extend(source.required(&entry.id, &id_path, id_at, empty));
         if entry.dice.count == 0 {
@@ -32,7 +36,11 @@ pub(super) fn load_checks(
                 Problem {
                     source: &source,
                     path: &format!("{path}.dice.count"),
-                    at: At::Row { row, key: "count:" },
+                    at: At::Row {
+                        list: "checks:",
+                        row,
+                        key: "count:",
+                    },
                     problem: format!("check '{}' rolls zero dice", entry.id),
                     hint: "set dice.count to 1 or more",
                 }
@@ -44,7 +52,11 @@ pub(super) fn load_checks(
                 Problem {
                     source: &source,
                     path: &format!("{path}.dice.sides"),
-                    at: At::Row { row, key: "sides:" },
+                    at: At::Row {
+                        list: "checks:",
+                        row,
+                        key: "sides:",
+                    },
                     problem: format!("check '{}' has a die with zero sides", entry.id),
                     hint: "set dice.sides to 2 or more",
                 }
@@ -56,7 +68,11 @@ pub(super) fn load_checks(
                 Problem {
                     source: &source,
                     path: &format!("{path}.stat"),
-                    at: At::Row { row, key: "stat:" },
+                    at: At::Row {
+                        list: "checks:",
+                        row,
+                        key: "stat:",
+                    },
                     problem: format!("check '{}' names no meter", entry.id),
                     hint: "set stat to a meter id from rules/meters.yaml",
                 }

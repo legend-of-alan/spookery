@@ -113,6 +113,32 @@ fn a_json_diagnostic_has_code_file_path_and_null_line(
     );
 }
 
+#[then(
+    expr = "a JSON diagnostic has code {string} file {string} path {string} at line {int} column {int}"
+)]
+fn a_json_diagnostic_has_code_file_path_at_line(
+    world: &mut World,
+    code: String,
+    file: String,
+    path: String,
+    line: u64,
+    column: u64,
+) {
+    let found = json_stdout(world).into_iter().any(|item| {
+        item["code"].as_str() == Some(code.as_str())
+            && item["file"].as_str() == Some(file.as_str())
+            && item["path"].as_str() == Some(path.as_str())
+            && item["line"].as_u64() == Some(line)
+            && item["column"].as_u64() == Some(column)
+    });
+    assert!(
+        found,
+        "missing {code} in {file} at {path} line {line} column {column}
+{}",
+        world.stdout
+    );
+}
+
 #[then(expr = "the JSON diagnostics are ordered by file, line, and path")]
 fn the_json_diagnostics_are_ordered(world: &mut World) {
     let rows = json_stdout(world);

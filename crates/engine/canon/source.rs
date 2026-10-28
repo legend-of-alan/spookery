@@ -89,10 +89,13 @@ pub(super) enum At<'a> {
     Nowhere,
     /// The first `key` in the text, moved down by `line_base`.
     Key(&'a str),
-    /// `key` inside the `row`th list item that holds an `id:`, counted in the text as
-    /// given, without `line_base`. In a Markdown file the file's own `id:` is row 0, so a
-    /// fact points one row early (issue #328).
-    Row { row: usize, key: &'a str },
+    /// `key` inside the `row`th item of the top-level `list` (such as `facts:`), counted
+    /// in the text as given, without `line_base`. Each item starts at its `id:` key.
+    Row {
+        list: &'a str,
+        row: usize,
+        key: &'a str,
+    },
     /// A line and column serde recorded, already counted from the file's first line.
     Spot(Option<Spot>),
 }
@@ -117,7 +120,9 @@ impl Problem<'_> {
         match self.at {
             At::Nowhere | At::Spot(None) => diag,
             At::Key(key) => with_spot(diag, locate_nth(source.text, key, 0), source.line_base),
-            At::Row { row, key } => with_spot(diag, locate_row_field(source.text, row, key), 0),
+            At::Row { list, row, key } => {
+                with_spot(diag, locate_row_field(source.text, list, row, key), 0)
+            }
             At::Spot(Some(spot)) => {
                 diag.at_line(spot.line, Some(spot.column).filter(|column| *column > 0))
             }
@@ -184,25 +189,37 @@ pub(super) fn serde_spot<T>(span: &Spanned<T>) -> Option<Spot> {
     (line > 0).then_some(Spot { line, column })
 }
 
-/// `field` inside the `row`th list item that holds an `id:`.
-fn locate_row_field(text: &str, row: usize, field: &str) -> Option<(u32, u32)> {
-    let mut marks = Vec::new();
-    for (index, line) in text.lines().enumerate() {
-        if line.contains("id:") {
-            marks.push(index);
-        }
-    }
+/// `field` inside the `row`th item of the top-level `list`. An item starts at a line whose
+/// key is `id:`, so an `id:` inside a value, or the file's own `id:`, is not a row.
+fn locate_row_field(text: &str, list: &str, row: usize, field: &str) -> Option<(u32, u32)> {
+    let lines: Vec<&str> = text.lines().collect();
+    let first = lines.iter().position(|line| line.starts_with(list))? + 1;
+    let last = lines[first..]
+        .iter()
+        .position(|line| ends_list(line))
+        .map_or(lines.len(), |end| first + end);
+    let marks: Vec<usize> = (first..last)
+        .filter(|&index| is_id_key(lines[index]))
+        .collect();
     let start = *marks.get(row)?;
-    let end = marks.get(row + 1).copied().unwrap_or(usize::MAX);
-    for (index, line) in text.lines().enumerate().skip(start) {
-        if index >= end {
-            break;
-        }
-        if let Some(col) = line.find(field) {
-            return Some((index as u32 + 1, col as u32 + 1));
-        }
-    }
-    None
+    let end = marks.get(row + 1).copied().unwrap_or(last);
+    (start..end).find_map(|index| {
+        let column = lines[index].find(field)?;
+        Some((index as u32 + 1, column as u32 + 1))
+    })
+}
+
+/// A line that ends a top-level list: the next top-level key, or the frontmatter fence.
+fn ends_list(line: &str) -> bool {
+    let line = line.trim_end();
+    line == "---" || (!line.is_empty() && !line.starts_with([' ', '-', '#']))
+}
+
+/// A line whose key is `id:`, with or without the `- ` that opens a list item.
+fn is_id_key(line: &str) -> bool {
+    let line = line.trim_start();
+    let line = line.strip_prefix('-').map_or(line, str::trim_start);
+    line.starts_with("id:")
 }
 
 fn with_spot(mut diag: Diagnostic, spot: Option<(u32, u32)>, line_base: u32) -> Diagnostic {

@@ -14,7 +14,7 @@ pub(super) struct Facts(pub(super) BTreeMap<String, FactCanon>);
 
 impl Facts {
     /// One file's facts for `owner`, then the ids of every fact `owner` has, or the
-    /// refusals. `source` is the whole file, so its own `id:` is row 0 (issue #328).
+    /// refusals. `source` is the whole file, so a refusal's line counts from its first line.
     pub fn add(
         &mut self,
         source: &Source,
@@ -42,7 +42,11 @@ impl Facts {
         owner: &str,
     ) -> Option<Diagnostic> {
         let path = format!("facts[{row}].id");
-        let at = At::Row { row, key: "id:" };
+        let at = At::Row {
+            list: "facts:",
+            row,
+            key: "id:",
+        };
         let empty = ("a fact id is empty", "set id to a short name");
         let twice = ("fact", "is already defined", "keep one fact with this id");
         let taken = self.0.contains_key(&id);
