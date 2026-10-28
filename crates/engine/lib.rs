@@ -35,10 +35,9 @@ pub use map::ExitView;
 pub use meter::MeterLive;
 pub use model::{Message, Now, RunState};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
-pub use round::{play_pack_once, verify_pack, verify_quick, RoundOutput};
+pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::{Owner, TargetKind, When};
 pub use rules::{GateRefusal, MoveReport, RollResult};
-pub use store::commit::migrate_pack;
 pub use store::{emit_save, load_save, lock_serve, record_line, TapeRecord};
 pub use visibility::RecipientLine;
 pub use world::{

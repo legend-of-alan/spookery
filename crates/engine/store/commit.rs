@@ -9,11 +9,11 @@ use crate::canon::{check_save, migrate_save, pack_rev, pending_meters};
 use crate::diagnostic::reason_of;
 use crate::draft::Draft;
 use crate::error::Reason;
-use crate::journal::{self, hash_now, JournalEntry};
+use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
 use crate::round::log::RoundLine;
-use crate::store::codec::{canonicalize, emit_memory_line, emit_save, load_save};
+use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 pub use crate::store::durable::atomic_publish;
 use crate::store::durable::{fsync_dir, fsync_file};
 use crate::store::recover::close_finished;
@@ -83,33 +83,6 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
         .ok_or(Reason::CommitConflict)?;
     canonicalize(&mut draft.state);
     Ok(())
-}
-
-/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
-pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
-    let now = journal_tip(path)?;
-    migrate_journal(path, now)
-}
-
-fn journal_tip(path: &Path) -> Result<Now, Reason> {
-    let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
-    let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
-    let file_now = load_save(text).map_err(reason_of)?;
-    crate::store::recover::recover(path)?;
-    let ahead = journal::read_live(path)
-        .map_err(|_| Reason::Schema)?
-        .iter()
-        .any(|entry| {
-            !matches!(entry, JournalEntry::Checkpoint(_))
-                && entry.state_rev_after() > file_now.state_rev
-        });
-    if ahead {
-        Ok(crate::round::replay::replay_tip_unchecked(path)?
-            .now()
-            .clone())
-    } else {
-        Ok(file_now)
-    }
 }
 
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.

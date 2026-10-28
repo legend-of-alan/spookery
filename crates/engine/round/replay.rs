@@ -227,9 +227,34 @@ pub(crate) fn open_at_tip(path: &Path) -> Result<World, Reason> {
     Ok(world)
 }
 
+/// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
+pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
+    let now = journal_tip(path)?;
+    crate::commit::migrate_journal(path, now)
+}
+
+fn journal_tip(path: &Path) -> Result<Now, Reason> {
+    let bytes = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
+    let text = std::str::from_utf8(&bytes).map_err(|_| Reason::Schema)?;
+    let file_now = load_save(text).map_err(reason_of)?;
+    crate::store::recover::recover(path)?;
+    let ahead = journal::read_live(path)
+        .map_err(|_| Reason::Schema)?
+        .iter()
+        .any(|entry| {
+            !matches!(entry, JournalEntry::Checkpoint(_))
+                && entry.state_rev_after() > file_now.state_rev
+        });
+    if ahead {
+        Ok(replay_tip_unchecked(path)?.now().clone())
+    } else {
+        Ok(file_now)
+    }
+}
+
 /// The journal tip in memory and unchecked. Migrate checks it after adding its meters.
 /// The caller runs crash recovery first.
-pub(crate) fn replay_tip_unchecked(path: &Path) -> Result<World, Reason> {
+fn replay_tip_unchecked(path: &Path) -> Result<World, Reason> {
     rebuild_snapshot(path).map_err(replay_reason)?;
     let save = fs::read(path.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
     let now = load_base(&save).map_err(replay_reason)?;
