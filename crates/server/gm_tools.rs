@@ -387,56 +387,6 @@ fn queue_tool_intent(
             message_to: call.message_to,
             rationale_code: call.rationale_code,
         },
-        mint_intent_id,
+        || Ok(uuid::Uuid::new_v4().to_string()),
     )
-}
-
-fn mint_intent_id() -> Result<String, Reason> {
-    let mut bytes = [0u8; 16];
-    if !fill_random(&mut bytes) {
-        return Err(Reason::Schema);
-    }
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    Ok(format!(
-        "{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-        bytes[0],
-        bytes[1],
-        bytes[2],
-        bytes[3],
-        bytes[4],
-        bytes[5],
-        bytes[6],
-        bytes[7],
-        bytes[8],
-        bytes[9],
-        bytes[10],
-        bytes[11],
-        bytes[12],
-        bytes[13],
-        bytes[14],
-        bytes[15]
-    ))
-}
-
-#[cfg(windows)]
-fn fill_random(buf: &mut [u8]) -> bool {
-    #[link(name = "advapi32")]
-    extern "system" {
-        fn SystemFunction036(buf: *mut u8, len: u32) -> u8;
-    }
-    unsafe { SystemFunction036(buf.as_mut_ptr(), buf.len() as u32) != 0 }
-}
-
-#[cfg(unix)]
-fn fill_random(buf: &mut [u8]) -> bool {
-    use std::io::Read;
-    std::fs::File::open("/dev/urandom")
-        .and_then(|mut file| file.read_exact(buf))
-        .is_ok()
-}
-
-#[cfg(not(any(windows, unix)))]
-fn fill_random(_buf: &mut [u8]) -> bool {
-    false
 }

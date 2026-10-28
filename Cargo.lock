@@ -2134,6 +2134,7 @@ name = "spookery-server"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "chrono",
  "futures-core",
  "rmcp",
  "serde",
@@ -2142,6 +2143,7 @@ dependencies = [
  "spookery-engine",
  "spookery-protocol",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
