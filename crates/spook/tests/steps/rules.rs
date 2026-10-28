@@ -5,8 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery::host::{idle_clock::wall_now, MoveOutcome};
 use spookery_engine::handle_player_move;
-use spookery_engine::model::PlaceLive;
-use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::testing::{faces, PlaceLive, RollKey};
 use spookery_engine::MoveReport;
 use spookery_engine::Reason;
 use spookery_engine::RoundCause;
@@ -17,7 +16,7 @@ use crate::World;
 #[given(expr = "a save with rules_rev 6 and an engine at 7")]
 fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
     assert_eq!(
-        spookery_engine::store::RULES_REV,
+        spookery_engine::testing::RULES_REV,
         7,
         "the engine rules version is 7"
     );
@@ -288,7 +287,7 @@ The ferry waits at the dock.
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    opened.set_presence(spookery_engine::model::Presence {
+    opened.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });

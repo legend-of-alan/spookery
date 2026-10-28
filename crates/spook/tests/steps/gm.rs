@@ -71,10 +71,8 @@ fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
     table::seat_actor(world, &pack, &actor);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     world.gm = Some(support::spawn(&[
         "gm",
-        &pack_arg,
         "--addr",
         &addr,
         "--mcp-http",
@@ -140,8 +138,7 @@ fn the_gm_commits(world: &mut World) {
 fn another_gm_joins(world: &mut World) {
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["gm", &pack, "--addr", &addr, "--mcp-http", &door]);
+    let output = support::spook(&["gm", "--addr", &addr, "--mcp-http", &door]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -183,12 +180,10 @@ fn spook_run_listens_with_an_overridden_agent_door(world: &mut World) {
 fn a_human_gm_dials_that_door(world: &mut World) {
     let live = table::live_mut(world);
     let (game, http) = (live.port, live.http_port);
-    let pack_arg = support::pack_arg(table::pack(world));
     let game = format!("127.0.0.1:{game}");
     let http = format!("127.0.0.1:{http}");
     world.gm = Some(support::spawn(&[
         "gm",
-        &pack_arg,
         "--addr",
         &game,
         "--mcp-http",
@@ -199,8 +194,7 @@ fn a_human_gm_dials_that_door(world: &mut World) {
 
 #[when(expr = "the operator runs gm with nothing listening")]
 fn gm_with_nothing_listening(world: &mut World) {
-    let pack = support::pack_arg(table::pack(world));
-    let output = support::spook(&["gm", &pack, "--addr", "127.0.0.1:1"]);
+    let output = support::spook(&["gm", "--addr", "127.0.0.1:1"]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -315,10 +309,8 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let pack_arg = support::pack_arg(&pack);
     let mut args = vec![
         "gm".to_string(),
-        pack_arg,
         "--addr".to_string(),
         addr.clone(),
         "--mcp-http".to_string(),

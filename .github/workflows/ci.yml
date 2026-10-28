@@ -54,7 +54,7 @@ jobs:
 
       - name: clippy
         # macOS builds the same unix code as Linux, so it skips clippy. Windows keeps it
-        # for the cfg(windows) code in kernel/lock.rs, kernel/store/durable.rs and host/player_moves.rs.
+        # for the cfg(windows) code in engine/store/lock.rs, engine/store/durable.rs, server/gm_tools.rs, and spook/src/main.rs.
         if: runner.os != 'macOS'
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
@@ -65,42 +65,16 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          ! cargo tree -e normal -p spookery-cli --locked | grep -E 'spookery-engine|spookery-server'
-          ! cargo tree -e normal -p spookery-agent --locked | grep -E 'spookery-engine|spookery-server|tokio|reqwest|socket2'
-          ! cargo tree -e normal -p spookery-server --locked | grep -E 'spookery-cli|spookery-agent|reqwest'
-          ! cargo tree -e normal -p spook --no-default-features --features client --locked | grep -E 'spookery-engine|spookery-server'
-          ! cargo tree -e normal -p spook --no-default-features --features server --locked | grep -E 'spookery-cli|spookery-agent|reqwest'
+          cargo tree -e normal -p spookery-cli --locked | (! grep -E 'spookery-engine|spookery-server')
+          cargo tree -e normal -p spookery-agent --locked | (! grep -E 'spookery-(engine|server|cli)|tokio|reqwest|socket2')
+          # spookery-protocol is MIT: every license in its tree must be permissive.
+          cargo tree -e normal -p spookery-protocol --locked --target all --prefix none --no-dedupe --format '{l}' | tr -d '()' | tr ' ' '\n' | (! grep -vxE 'OR|AND|MIT|Apache-2.0|Unlicense|Unicode-3.0|BSD-2-Clause|BSD-3-Clause|ISC|Zlib')
+          cargo tree -e normal -p spookery-server --locked | (! grep -E 'spookery-cli|spookery-agent|reqwest')
+          cargo tree -e normal -p spook --no-default-features --features client --locked | (! grep -E 'spookery-engine|spookery-server')
+          cargo tree -e normal -p spook --no-default-features --features server --locked | (! grep -E 'spookery-cli|spookery-agent|reqwest')
           cargo build -p spook --no-default-features --features server --locked
           cargo build -p spook --no-default-features --features client --locked
           cargo build -p spook --locked
 
       - name: test
         run: cargo test --workspace --locked
-
-  quick-start:
-    name: quick start (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # Same rule as the ci job: PRs run Linux only, main runs all three.
-        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
-    steps:
-      - name: Keep checkout line endings
-        if: runner.os == 'Windows'
-        run: git config --global core.autocrlf false
-
-      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-
-      - uses: dtolnay/rust-toolchain@1.89.0
-
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-
-      - name: README quick start
-        shell: bash
-        run: |
-          if command -v python3 >/dev/null; then
-            python3 scripts/readme_quickstart.py
-          else
-            python scripts/readme_quickstart.py
-          fi

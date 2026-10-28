@@ -5,6 +5,17 @@ use std::sync::{Arc, Mutex};
 
 pub use spookery_engine::testing::*;
 
+/// Run async work from a sync step on the test runtime.
+pub fn block_on<T: Send>(work: impl std::future::Future<Output = T> + Send) -> T {
+    tokio::task::block_in_place(|| {
+        tokio::runtime::Handle::current().block_on(async move {
+            tokio::time::timeout(std::time::Duration::from_secs(20), work)
+                .await
+                .unwrap_or_else(|_| panic!("async work timed out"))
+        })
+    })
+}
+
 pub fn spook(args: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_spook"))
         .args(args)

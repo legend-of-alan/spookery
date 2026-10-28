@@ -5,11 +5,9 @@ use crate::protocol::{
     StatusPause, StatusPresence, ViewScene, WireClock, WireFact, WireItem, WireMessage, WireMeter,
 };
 use serde_json::{Map, Value};
-use spookery_engine::model::{Message, Now, RunState};
-use spookery_engine::store::{record_line, TapeRecord};
 use spookery_engine::{
-    ClockView, ExitView, Heard, Intent, ItemStack, KnownFact, MeterView, MoveReport, Reason,
-    RollResult, RoundOutput, View, World,
+    record_line, ClockView, ExitView, Heard, Intent, ItemStack, KnownFact, Message, MeterView,
+    MoveReport, Now, Reason, RollResult, RoundOutput, RunState, TapeRecord, View, World,
 };
 
 #[derive(Debug)]
@@ -225,7 +223,7 @@ pub fn session_status(
 
 fn player_view(view: &View) -> PlayerMessage {
     PlayerMessage::View {
-        viewer: view.viewer.token(),
+        viewer: view.viewer.actor_id().to_string(),
         place: view.place.clone(),
         scene: Box::new(ViewScene {
             place_name: view.place_name.clone(),

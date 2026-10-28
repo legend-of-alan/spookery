@@ -77,6 +77,8 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
     table::wait_humans(world, &pack, 1);
+    // A hard kill, so the restart has a crashed presence to repair.
+    table::live_mut(world).server.take();
     table::stop_server(world);
     table::listen(world, &pack);
     table::wait_humans(world, &pack, 0);

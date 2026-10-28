@@ -50,7 +50,7 @@ fn a_live_model_plays_one_round() {
     wait_port(&addr, &mut server);
 
     let (proxy, calls) = proxy(upstream);
-    let mut host = spawn_host(&addr, &pack_text, &key, &format!("http://{proxy}"), &model);
+    let mut host = spawn_host(&addr, &key, &format!("http://{proxy}"), &model);
     wait_text(&host, &host.stderr, "listening", Duration::from_secs(20));
 
     let sit = world_time(&pack);
@@ -125,10 +125,10 @@ fn setting(name: &str) -> String {
     }
 }
 
-fn spawn_host(addr: &str, pack: &str, key: &str, url: &str, model: &str) -> Proc {
+fn spawn_host(addr: &str, key: &str, url: &str, model: &str) -> Proc {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["--addr", addr, "ai-gm", pack])
+        .args(["--addr", addr, "ai-gm"])
         .env("SPOOK_GM_KEY", key)
         .env("SPOOK_GM_URL", url)
         .env("SPOOK_GM_MODEL", model)
@@ -278,7 +278,7 @@ fn wait_text(proc: &Proc, slot: &Arc<Mutex<String>>, needle: &str, bound: Durati
 fn world_time(pack: &Path) -> u64 {
     let report = spookery_engine::testing::from_journal(pack, None, None).expect("replay");
     let text = std::str::from_utf8(&report.now_yaml).expect("save text");
-    spookery_engine::store::load_save(text)
+    spookery_engine::load_save(text)
         .expect("load now")
         .world_time
 }
@@ -288,7 +288,7 @@ fn wait_advance(pack: &Path, sit: u64, host: &mut Proc) -> bool {
     while start.elapsed() < ROUND_BOUND {
         if let Ok(report) = spookery_engine::testing::from_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
-                if let Ok(now) = spookery_engine::store::load_save(text) {
+                if let Ok(now) = spookery_engine::load_save(text) {
                     if now.world_time > sit {
                         return true;
                     }

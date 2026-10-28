@@ -217,7 +217,7 @@ fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
     let shard = spookery_engine::World::resume(pack).unwrap();
     let view = shard.perceive(actor).unwrap();
-    spookery::host::frames::player_resume_line(&view)
+    spookery::host::player_resume_line(&view)
         .trim_end()
         .to_string()
 }

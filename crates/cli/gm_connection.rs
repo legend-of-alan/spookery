@@ -1,26 +1,24 @@
 //! The client that sits the GM seat over the agent door.
 
 use std::collections::VecDeque;
-use std::sync::{mpsc, Arc};
-use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::sync::Arc;
 
 use rmcp::model::{
     CallToolRequestParams, CallToolResult, ClientCapabilities, ClientConfig, CustomNotification,
     Implementation, ProtocolVersion,
 };
-use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient};
+use rmcp::service::{ClientInitializeError, NotificationContext, RoleClient, RunningService};
 use rmcp::transport::common::client_side_sse::NeverRetry;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::transport::{StreamableHttpClientTransport, Transport};
 use rmcp::{ClientHandler, ServiceExt};
 use serde_json::Value;
+use tokio::sync::mpsc;
 
 /// A GM-seat failure. The display text is the seat's message or the I/O error.
 #[derive(Debug)]
 pub enum Error {
     Io(std::io::Error),
-    Closed,
     Bad(String),
     Refused { code: String, raw: String },
 }
@@ -29,7 +27,6 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Io(err) => write!(f, "{err}"),
-            Error::Closed => f.write_str("seat closed"),
             Error::Bad(line) => f.write_str(line),
             Error::Refused { raw, .. } => f.write_str(raw),
         }
@@ -65,17 +62,8 @@ pub struct ToolCallResult {
     pub refused: bool,
 }
 
-enum Command {
-    Call {
-        name: String,
-        arguments: Value,
-        reply: mpsc::Sender<Result<ToolCallResult, Error>>,
-    },
-    Shutdown,
-}
-
 struct Inbox {
-    events: mpsc::Sender<Incoming>,
+    events: mpsc::UnboundedSender<Incoming>,
 }
 
 impl ClientHandler for Inbox {
@@ -101,24 +89,24 @@ impl ClientHandler for Inbox {
 
 /// The loopback GM seat over streamable HTTP.
 pub struct GmConnection {
-    commands: tokio::sync::mpsc::Sender<Command>,
-    incoming: mpsc::Receiver<Incoming>,
+    running: RunningService<RoleClient, Inbox>,
+    /// Finishes when the host closes the agent door.
+    watch: tokio::task::JoinHandle<()>,
+    incoming: mpsc::UnboundedReceiver<Incoming>,
     buffered: VecDeque<Incoming>,
     next_id: u64,
     opened: String,
-    worker: Option<JoinHandle<()>>,
 }
 
 impl GmConnection {
     /// Dial `http://127.0.0.1:<port + 1>/mcp` and finish the handshake.
-    pub fn connect(addr: std::net::SocketAddr) -> Result<Self, Error> {
-        let door = door_for(addr)?;
-        dial(door)
+    pub async fn connect(addr: std::net::SocketAddr) -> Result<Self, Error> {
+        dial(door_for(addr)?).await
     }
 
     /// Dial `http://127.0.0.1:<port>/mcp`. `door` is the agent door, not the game port.
-    pub fn connect_door(door: std::net::SocketAddr) -> Result<Self, Error> {
-        dial(door)
+    pub async fn connect_door(door: std::net::SocketAddr) -> Result<Self, Error> {
+        dial(door).await
     }
 }
 
@@ -129,30 +117,56 @@ fn door_for(addr: std::net::SocketAddr) -> Result<std::net::SocketAddr, Error> {
         .ok_or_else(|| Error::Bad(addr.to_string()))
 }
 
-fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
+async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
     let url = format!("http://{door}/mcp");
-    let (commands, commands_rx) = tokio::sync::mpsc::channel(4);
-    let (events, incoming) = mpsc::channel();
-    let (ready_tx, ready_rx) = mpsc::channel();
-    let worker = thread::spawn(move || worker(door, url, commands_rx, events, ready_tx));
-    let (opened, worker) = park(move || match ready_rx.recv() {
-        Ok(Ok(opened)) => Ok((opened, worker)),
-        Ok(Err(err)) => {
-            let _ = worker.join();
-            Err(err)
+    let (events, incoming) = mpsc::unbounded_channel();
+    // A closed loopback seat ends the stream. The default client retries
+    // that stream forever, so a dropped `spook run` never looks closed.
+    let mut config = StreamableHttpClientTransportConfig::with_uri(url.clone());
+    config.retry_config = Arc::new(NeverRetry::default());
+    config.reinit_on_expired_session = false;
+    let transport = SeatTransport {
+        inner: StreamableHttpClientTransport::from_config(config),
+        events: events.clone(),
+        closed: false,
+    };
+    let running = match (Inbox {
+        events: events.clone(),
+    })
+    .serve(transport)
+    .await
+    {
+        Ok(running) => running,
+        // The streamable client skips a JSON-RPC error on the initialize
+        // event stream and reports the stream as closed. Read that refusal
+        // from a fresh response body.
+        Err(err @ ClientInitializeError::ConnectionClosed(_)) => {
+            return Err(read_seat_refusal(&url)
+                .await
+                .unwrap_or_else(|| from_initialize(err)));
         }
-        Err(_) => {
-            let _ = worker.join();
-            Err(Error::Closed)
+        Err(err) => return Err(from_initialize(err)),
+    };
+    // rmcp keeps no read on the agent port once a tool call's stream
+    // ends, so a killed `spook run` never looks closed. A plain connection
+    // with a pending read sees that close the way the TCP client did.
+    let watch = tokio::spawn(async move {
+        if let Ok(mut socket) = tokio::net::TcpStream::connect(door).await {
+            let mut buf = [0u8; 1];
+            tokio::select! {
+                _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf) => {}
+                () = events.closed() => return,
+            }
         }
-    })?;
+        let _ = events.send(Incoming::Eof);
+    });
     Ok(GmConnection {
-        commands,
+        opened: opened_of(&running),
+        running,
+        watch,
         incoming,
         buffered: VecDeque::new(),
         next_id: 2,
-        opened,
-        worker: Some(worker),
     })
 }
 
@@ -162,21 +176,10 @@ impl GmConnection {
         &self.opened
     }
 
-    pub fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, Error> {
+    pub async fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, Error> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
-        let (reply_tx, reply_rx) = mpsc::channel();
-        let commands = self.commands.clone();
-        park(move || {
-            commands
-                .blocking_send(Command::Call {
-                    name: name.to_string(),
-                    arguments,
-                    reply: reply_tx,
-                })
-                .map_err(|_| Error::Closed)
-        })?;
-        let mut outcome = park(move || reply_rx.recv().unwrap_or(Err(Error::Closed)))?;
+        let mut outcome = call_tool(&self.running, name, arguments).await?;
         while let Ok(item) = self.incoming.try_recv() {
             self.buffered.push_back(item);
         }
@@ -195,22 +198,11 @@ impl GmConnection {
         out
     }
 
-    pub fn next_incoming(&mut self) -> Incoming {
+    pub async fn next_incoming(&mut self) -> Incoming {
         if let Some(item) = self.buffered.pop_front() {
             return item;
         }
-        self.incoming.recv().unwrap_or(Incoming::Eof)
-    }
-
-    pub fn poll(&mut self, timeout: Duration) -> Option<Incoming> {
-        if let Some(item) = self.buffered.pop_front() {
-            return Some(item);
-        }
-        match self.incoming.recv_timeout(timeout) {
-            Ok(item) => Some(item),
-            Err(mpsc::RecvTimeoutError::Timeout) => None,
-            Err(mpsc::RecvTimeoutError::Disconnected) => Some(Incoming::Eof),
-        }
+        self.incoming.recv().await.unwrap_or(Incoming::Eof)
     }
 
     /// Buffered lines, then anything the reader has already queued.
@@ -221,28 +213,14 @@ impl GmConnection {
         }
         out
     }
-}
 
-impl Drop for GmConnection {
-    fn drop(&mut self) {
-        let commands = self.commands.clone();
-        let worker = self.worker.take();
-        park(move || {
-            let _ = commands.blocking_send(Command::Shutdown);
-            if let Some(worker) = worker {
-                let _ = worker.join();
-            }
-        });
-    }
-}
-
-/// `blocking_send` panics on a runtime thread. Cucumber steps run on one.
-fn park<T: Send>(work: impl FnOnce() -> T + Send) -> T {
-    match tokio::runtime::Handle::try_current() {
-        Ok(handle) if handle.runtime_flavor() == tokio::runtime::RuntimeFlavor::MultiThread => {
-            tokio::task::block_in_place(work)
+    /// Give the seat back. The host has freed it when this returns.
+    pub async fn close(self) {
+        // A closed seat has nothing to end. Cancel would send the session
+        // DELETE to the dead port, and Windows takes about 2s to refuse it.
+        if !self.watch.is_finished() {
+            let _ = self.running.cancel().await;
         }
-        _ => work(),
     }
 }
 
@@ -253,7 +231,7 @@ fn park<T: Send>(work: impl FnOnce() -> T + Send) -> T {
 /// signal to leave.
 struct SeatTransport<T> {
     inner: T,
-    events: mpsc::Sender<Incoming>,
+    events: mpsc::UnboundedSender<Incoming>,
     closed: bool,
 }
 
@@ -284,87 +262,7 @@ where
     }
 }
 
-fn worker(
-    door: std::net::SocketAddr,
-    url: String,
-    mut commands: tokio::sync::mpsc::Receiver<Command>,
-    events: mpsc::Sender<Incoming>,
-    ready: mpsc::Sender<Result<String, Error>>,
-) {
-    let runtime = match tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(runtime) => runtime,
-        Err(err) => {
-            let _ = ready.send(Err(Error::Io(err)));
-            return;
-        }
-    };
-    runtime.block_on(async move {
-        // A closed loopback seat ends the stream. The default client retries
-        // that stream forever, so a dropped `spook run` never looks closed.
-        let mut config = StreamableHttpClientTransportConfig::with_uri(url.clone());
-        config.retry_config = Arc::new(NeverRetry::default());
-        config.reinit_on_expired_session = false;
-        let transport = SeatTransport {
-            inner: StreamableHttpClientTransport::from_config(config),
-            events: events.clone(),
-            closed: false,
-        };
-        let watch_events = events.clone();
-        let running = match (Inbox { events }).serve(transport).await {
-            Ok(running) => running,
-            Err(err) => {
-                // The streamable client skips a JSON-RPC error on the
-                // initialize event stream and reports the stream as closed.
-                // Read that refusal from a fresh response body.
-                let mapped = if matches!(err, ClientInitializeError::ConnectionClosed(_)) {
-                    match read_seat_refusal(&url).await {
-                        Some(refused) => refused,
-                        None => from_initialize(err),
-                    }
-                } else {
-                    from_initialize(err)
-                };
-                let _ = ready.send(Err(mapped));
-                return;
-            }
-        };
-        let _ = ready.send(Ok(opened_of(&running)));
-        // rmcp keeps no read on the agent port once a tool call's stream
-        // ends, so a killed `spook run` never looks closed. A plain connection
-        // with a pending read sees that close the way the TCP client did.
-        let watch = tokio::spawn(async move {
-            let Ok(mut socket) = tokio::net::TcpStream::connect(door).await else {
-                let _ = watch_events.send(Incoming::Eof);
-                return;
-            };
-            let mut buf = [0u8; 1];
-            let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut buf).await;
-            let _ = watch_events.send(Incoming::Eof);
-        });
-        while let Some(command) = commands.recv().await {
-            match command {
-                Command::Shutdown => break,
-                Command::Call {
-                    name,
-                    arguments,
-                    reply,
-                } => {
-                    let _ = reply.send(call_tool(&running, &name, arguments).await);
-                }
-            }
-        }
-        // A closed seat has nothing to end. Cancel would send the session
-        // DELETE to the dead port, and Windows takes about 2s to refuse it.
-        if !watch.is_finished() {
-            let _ = running.cancel().await;
-        }
-    });
-}
-
-fn opened_of(running: &rmcp::service::RunningService<RoleClient, Inbox>) -> String {
+fn opened_of(running: &RunningService<RoleClient, Inbox>) -> String {
     let version = running
         .peer_info()
         .map(|info| info.protocol_version.as_str().to_string())
@@ -378,7 +276,7 @@ fn opened_of(running: &rmcp::service::RunningService<RoleClient, Inbox>) -> Stri
 }
 
 async fn call_tool(
-    running: &rmcp::service::RunningService<RoleClient, Inbox>,
+    running: &RunningService<RoleClient, Inbox>,
     name: &str,
     arguments: Value,
 ) -> Result<ToolCallResult, Error> {

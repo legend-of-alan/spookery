@@ -3,8 +3,8 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::model::Now;
 use spookery_engine::testing::{faces, RollKey};
+use spookery_engine::Now;
 
 use super::table;
 use crate::support;
@@ -18,7 +18,7 @@ fn quiet(now: &mut Now) {
 
 fn hp(pack: &Path, actor: &str) -> i64 {
     let now = support::now_of(pack);
-    let canon = spookery_engine::canon::load_canon(pack).unwrap();
+    let canon = spookery_engine::load_canon(pack).unwrap();
     now.meter_value(&canon, actor, "hp").unwrap()
 }
 

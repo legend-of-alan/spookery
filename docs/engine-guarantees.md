@@ -57,8 +57,8 @@ record reads back as the bytes that were written. Verify leaves the pack
 unchanged. Each roll keeps its own dice. An
 unrelated roll in the same round does not move them, and verify reproduces
 them. A number in a rule can roll dice, including an NPC habit's effect. Those faces are seeded with the
-round, written on the journal line, and shown to the GM. Replay rolls them
-again. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
+round, written on the journal line, and shown to the GM. `spook verify` replays
+the journal, rolls them again from that seed, and checks the save. A condition's value does not roll; dice there fail the pack check. A change of who is present, and a migrate between rounds, verify too.
 
 Tested in `features/replay/the_journal_verifies.feature`,
 `features/replay/typed_journal_records.feature`,

@@ -1,6 +1,7 @@
 //! The `spook` command for one loopback table.
 
 use std::net::SocketAddr;
+#[cfg(feature = "server")]
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -41,8 +42,6 @@ enum Command {
     /// Sit the GM seat.
     #[cfg(feature = "client")]
     Gm {
-        /// Pack directory.
-        pack: PathBuf,
         /// Agent door. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
@@ -54,8 +53,6 @@ enum Command {
     #[cfg(feature = "client")]
     #[command(name = "ai-gm")]
     AiGm {
-        /// Pack directory.
-        pack: PathBuf,
         /// Agent door. Defaults to the game port plus one.
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
@@ -111,15 +108,16 @@ enum Command {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
-    if let Err(exit) = dispatch(cli) {
+    if let Err(exit) = dispatch(cli).await {
         eprintln!("{exit}");
         std::process::exit(1);
     }
 }
 
-fn dispatch(cli: Cli) -> Result<(), String> {
+async fn dispatch(cli: Cli) -> Result<(), String> {
     // `--addr` is global: every command refuses an open host before any pack opens.
     let addr = parse_loopback(&cli.addr)?;
     match cli.command {
@@ -138,37 +136,34 @@ fn dispatch(cli: Cli) -> Result<(), String> {
             }
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
-            let handle = spookery_server::serve(world, config).map_err(|e| e.to_string())?;
-            for line in std::io::stdin().lines() {
-                match line.as_deref() {
-                    Ok("stop") | Err(_) => break,
-                    Ok(_) => eprintln!("NOT_IN_SPEC"),
+            // Ctrl+C stops the host. Listen before serving so an early one is caught.
+            let ctrl_c = tokio::spawn(tokio::signal::ctrl_c());
+            let shutdown = async {
+                if let Err(err) = ctrl_c.await.map_err(std::io::Error::from).and_then(|r| r) {
+                    eprintln!("{err}");
                 }
-            }
-            handle.stop();
-            handle.join().map_err(|e| e.to_string())
+                // A second Ctrl+C ends a shutdown that hangs.
+                tokio::spawn(async {
+                    let _ = tokio::signal::ctrl_c().await;
+                    std::process::exit(130);
+                });
+            };
+            spookery_server::serve(world, config, shutdown)
+                .await
+                .map_err(|e| e.to_string())
         }
         #[cfg(feature = "client")]
-        Command::Play { as_player, raw } => from_terminal(spookery::terminal::run_player(
-            as_player.as_deref(),
-            addr,
-            raw,
-        )),
+        Command::Play { as_player, raw } => {
+            from_terminal(spookery::terminal::run_player(as_player.as_deref(), addr, raw).await)
+        }
         #[cfg(feature = "client")]
-        Command::Gm {
-            pack,
-            mcp_http,
-            raw,
-        } => from_terminal(spookery::terminal::run_gm(
-            &pack,
-            addr,
-            door_addr(mcp_http)?,
-            raw,
-        )),
+        Command::Gm { mcp_http, raw } => {
+            from_terminal(spookery::terminal::run_gm(addr, door_addr(mcp_http)?, raw).await)
+        }
         #[cfg(feature = "client")]
-        Command::AiGm { pack, mcp_http } => {
+        Command::AiGm { mcp_http } => {
             let door = door_addr(mcp_http)?;
-            if spookery::ai::sit(&pack, addr, door).is_err() {
+            if spookery::ai::sit(addr, door).await.is_err() {
                 std::process::exit(1);
             }
             Ok(())
@@ -214,7 +209,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
         Command::Check { pack, json, rules } => {
             let mut found = spookery_engine::check_pack(&pack);
             if rules && found.is_empty() {
-                let canon = spookery_engine::canon::load_canon(&pack)
+                let canon = spookery_engine::load_canon(&pack)
                     .map_err(|diags| spookery_engine::reason_of(diags).to_string())?;
                 for id in canon.rules.ids_in_order() {
                     println!("{id}");
@@ -256,7 +251,7 @@ fn dispatch(cli: Cli) -> Result<(), String> {
 #[cfg(feature = "client")]
 fn from_terminal(result: Result<(), spookery::terminal::Error>) -> Result<(), String> {
     result.map_err(|err| match err {
-        spookery::terminal::Error::Reason(code) => code.to_string(),
+        spookery::terminal::Error::Reason(reason) => reason,
         spookery::terminal::Error::Io(err) => err.to_string(),
     })
 }
@@ -315,8 +310,8 @@ mod tests {
         assert!(parse_loopback("127.0.0.1:").is_err());
     }
 
-    #[test]
-    fn every_command_refuses_an_open_address_before_the_pack_opens() {
+    #[tokio::test]
+    async fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
             "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "verify", "new",
         ] {
@@ -327,7 +322,7 @@ mod tests {
                     })
                     .unwrap();
                 assert_eq!(
-                    dispatch(cli).unwrap_err(),
+                    dispatch(cli).await.unwrap_err(),
                     "NOT_IN_SPEC",
                     "{command} --addr {addr}"
                 );
@@ -335,13 +330,13 @@ mod tests {
         }
     }
 
-    #[test]
-    fn usage_is_not_an_engine_refusal() {
+    #[tokio::test]
+    async fn usage_is_not_an_engine_refusal() {
         assert!(Cli::try_parse_from(["spook", "rnu", "x"]).is_err());
-        assert!(Cli::try_parse_from(["spook", "gm"]).is_err());
-        let gm = Cli::try_parse_from(["spook", "gm", "pack"]).unwrap();
+        assert!(Cli::try_parse_from(["spook", "gm", "pack"]).is_err());
+        let gm = Cli::try_parse_from(["spook", "gm"]).unwrap();
         assert!(matches!(gm.command, Command::Gm { raw: false, .. }));
-        let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw", "pack"]).unwrap();
+        let gm_raw = Cli::try_parse_from(["spook", "gm", "--raw"]).unwrap();
         assert!(matches!(gm_raw.command, Command::Gm { raw: true, .. }));
         assert!(Cli::try_parse_from(["spook", "run", "--as", "player:rowan"]).is_err());
         assert!(Cli::try_parse_from(["spook"]).is_err());
@@ -349,7 +344,7 @@ mod tests {
         assert!(Cli::try_parse_from(["spook", "mcp", "--addr", "127.0.0.1:9737"]).is_err());
         let http = Cli::try_parse_from(["spook", "run", "--mcp-http", "0.0.0.0:9", "no-such-pack"])
             .unwrap();
-        assert_eq!(dispatch(http).unwrap_err(), "NOT_IN_SPEC");
+        assert_eq!(dispatch(http).await.unwrap_err(), "NOT_IN_SPEC");
         let http_loopback =
             Cli::try_parse_from(["spook", "run", "--mcp-http", "127.0.0.1:9801", "pack"]).unwrap();
         assert!(matches!(
@@ -360,17 +355,14 @@ mod tests {
             } if text == "127.0.0.1:9801"
         ));
         for command in ["gm", "ai-gm"] {
-            let open =
-                Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9", "no-such-pack"])
-                    .unwrap();
+            let open = Cli::try_parse_from(["spook", command, "--mcp-http", "0.0.0.0:9"]).unwrap();
             assert_eq!(
-                dispatch(open).unwrap_err(),
+                dispatch(open).await.unwrap_err(),
                 "NOT_IN_SPEC",
                 "{command} --mcp-http"
             );
             let door =
-                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801", "pack"])
-                    .unwrap();
+                Cli::try_parse_from(["spook", command, "--mcp-http", "127.0.0.1:9801"]).unwrap();
             let text = match door.command {
                 Command::Gm { mcp_http, .. } | Command::AiGm { mcp_http, .. } => mcp_http,
                 _ => panic!("{command}"),
@@ -387,7 +379,7 @@ mod tests {
         }
         let raw = Cli::try_parse_from(["spook", "play", "--raw"]).unwrap();
         assert!(matches!(raw.command, Command::Play { raw: true, .. }));
-        let host = Cli::try_parse_from(["spook", "ai-gm", "pack"]).unwrap();
+        let host = Cli::try_parse_from(["spook", "ai-gm"]).unwrap();
         assert!(matches!(host.command, Command::AiGm { .. }));
         let verify = Cli::try_parse_from(["spook", "verify", "--from", "snap", "pack"]).unwrap();
         assert!(matches!(
@@ -400,5 +392,38 @@ mod tests {
         ));
         let quick = Cli::try_parse_from(["spook", "verify", "--quick", "pack"]).unwrap();
         assert!(matches!(quick.command, Command::Verify { quick: true, .. }));
+    }
+
+    #[test]
+    fn every_spook_line_in_the_readme_parses() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../README.md");
+        let readme = std::fs::read_to_string(&path)
+            .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
+        let mut found = false;
+        let mut fenced = false;
+        for line in readme.lines() {
+            if line.starts_with("```") {
+                fenced = !fenced;
+                continue;
+            }
+            if !fenced {
+                continue;
+            }
+            let Some(args) = split_spook_line(line) else {
+                continue;
+            };
+            found = true;
+            Cli::try_parse_from(&args).unwrap_or_else(|err| panic!("{}: {err}", args.join(" ")));
+        }
+        assert!(found, "README.md has no spook command");
+    }
+
+    fn split_spook_line(line: &str) -> Option<Vec<&str>> {
+        let args: Vec<&str> = line.split_whitespace().collect();
+        if args.first() == Some(&"spook") {
+            Some(args)
+        } else {
+            None
+        }
     }
 }

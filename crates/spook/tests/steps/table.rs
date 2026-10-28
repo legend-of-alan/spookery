@@ -9,8 +9,8 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
-use spookery_engine::model::Now;
 use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::Now;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -92,7 +92,7 @@ pub fn now_of(pack: &Path) -> Now {
             Ok(report) => {
                 let text = std::str::from_utf8(&report.now_yaml)
                     .unwrap_or_else(|err| panic!("save text: {err}"));
-                return spookery_engine::store::load_save(text)
+                return spookery_engine::load_save(text)
                     .unwrap_or_else(|err| panic!("load now: {err:?}"));
             }
             Err(err) if start.elapsed() > Duration::from_secs(2) => {
@@ -387,7 +387,8 @@ pub fn seat_actor(world: &mut World, pack: &Path, actor_id: &str) {
 
 pub fn seat_gm(world: &mut World) {
     let door = door_addr(world).parse().unwrap();
-    let gm = GmConnection::connect_door(door).unwrap_or_else(|err| panic!("seat GM: {err}"));
+    let gm = support::block_on(GmConnection::connect_door(door))
+        .unwrap_or_else(|err| panic!("seat GM: {err}"));
     let opened = gm.opened_line().to_string();
     let live = live_mut(world);
     push_line(&live.gm_text, &opened);
@@ -442,9 +443,8 @@ pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> Strin
         serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
     let live = live_mut(world);
     let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
-    let outcome = gm
-        .call(name, value)
-        .unwrap_or_else(|err| panic!("gm call: {err}"));
+    let outcome =
+        support::block_on(gm.call(name, value)).unwrap_or_else(|err| panic!("gm call: {err}"));
     for event in gm.take_events() {
         push_line(&live.gm_text, &event.raw);
     }
@@ -590,8 +590,21 @@ pub fn stop_server(world: &mut World) {
     live.player_write.take();
     live.gm.take();
     live.closed_gm.take();
-    if let Some(server) = live.server.take() {
-        drop(server);
+    // Stop the host the way a person does, with Ctrl+C. Windows just drops it, which kills.
+    if let Some(mut server) = live.server.take() {
+        if cfg!(unix) {
+            let pid = server.child.id().to_string();
+            let kill = std::process::Command::new("kill")
+                .args(["-INT", &pid])
+                .status();
+            assert!(kill.is_ok_and(|s| s.success()), "kill -INT {pid}");
+            let status = server
+                .child
+                .wait()
+                .unwrap_or_else(|err| panic!("wait: {err}"));
+            let stderr = support::text_of(&server.stderr);
+            assert!(status.success(), "host exited {status:?}\n{stderr}");
+        }
     }
 }
 
@@ -630,9 +643,8 @@ pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String 
         .closed_gm
         .as_mut()
         .unwrap_or_else(|| panic!("no closed GM"));
-    let outcome = gm
-        .call(name, value)
-        .unwrap_or_else(|err| panic!("gm call: {err}"));
+    let outcome =
+        support::block_on(gm.call(name, value)).unwrap_or_else(|err| panic!("gm call: {err}"));
     let raw = serde_json::json!({
         "jsonrpc": "2.0",
         "id": 92,
@@ -683,7 +695,8 @@ pub fn live_presence(world: &mut World) -> (u32, Vec<String>) {
 fn status_body(world: &mut World) -> Value {
     if live_ref(world).gm.is_none() {
         let door = door_addr(world).parse().unwrap();
-        let gm = GmConnection::connect_door(door).unwrap_or_else(|err| panic!("status: {err}"));
+        let gm = support::block_on(GmConnection::connect_door(door))
+            .unwrap_or_else(|err| panic!("status: {err}"));
         let live = live_mut(world);
         live.gm = Some(gm);
         live.gm_probe = true;

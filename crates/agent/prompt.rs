@@ -478,11 +478,7 @@ fn include_view(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, view:
     }
 }
 
-fn include_cast(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, raw: &str) {
-    let id = raw.split_once(':').map(|(_, id)| id).unwrap_or(raw);
-    if id.is_empty() {
-        return;
-    }
+fn include_cast(bodies: &mut BTreeMap<String, String>, pack: &PackSummary, id: &str) {
     if let Some(body) = pack.cast.get(id) {
         bodies.insert(id.to_string(), body.chars().take(PROSE_BUDGET).collect());
     }
@@ -708,7 +704,7 @@ mod tests {
             calls += 1;
             if viewer == "pc_rowan" {
                 return Ok(serde_json::json!({
-                    "viewer": "player:pc_rowan",
+                    "viewer": "pc_rowan",
                     "place": "docks_shop",
                     "visible_actors": ["aldric", "mira", "pc_rowan"],
                     "known_facts": [{"id": "k", "text": "KNOWN-SENTINEL", "body": "KNOWN-BODY"}],
@@ -721,7 +717,7 @@ mod tests {
             }
             if viewer == "aldric" {
                 return Ok(serde_json::json!({
-                    "viewer": "npc:aldric",
+                    "viewer": "aldric",
                     "place": "docks_shop",
                     "visible_actors": ["aldric", "mira", "pc_rowan"],
                     "known_facts": [{"id": "f", "text": "FACT-TEXT-SENTINEL", "body": "BODY-SENTINEL"}],

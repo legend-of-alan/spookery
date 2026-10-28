@@ -133,7 +133,7 @@ fn a_place_rule_teleports(world: &mut World) {
     edit_save(&pack, |now| {
         now.places.insert(
             "cellar".to_string(),
-            spookery_engine::model::PlaceLive {
+            spookery_engine::testing::PlaceLive {
                 items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
@@ -188,7 +188,7 @@ fn two_arrivals(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_engine::model::ActorLive::Pc {
+            spookery_engine::testing::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -197,9 +197,9 @@ fn two_arrivals(world: &mut World) {
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
                 act: {
-                    let mut act = spookery_engine::model::ActCounters::fresh();
+                    let mut act = spookery_engine::testing::ActCounters::fresh();
                     act.busy_until = Some(EVENING + 5);
-                    act.busy_for = Some(spookery_engine::model::PendingAction {
+                    act.busy_for = Some(spookery_engine::testing::PendingAction {
                         rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
                         target: "docks_street".to_string(),
@@ -286,7 +286,7 @@ fn the_next_tick_accepts_a_move(world: &mut World) {
 fn ticks_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
     let mut seated_world = spookery_engine::World::open(&seated).unwrap();
-    seated_world.set_presence(spookery_engine::model::Presence {
+    seated_world.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: Vec::new(),
     });
@@ -328,7 +328,7 @@ fn both_busy_without_a_gm(world: &mut World) {
         let meters = now.actors.get("pc_rowan").unwrap().meters().clone();
         now.actors.insert(
             "pc_nell".to_string(),
-            spookery_engine::model::ActorLive::Pc {
+            spookery_engine::testing::ActorLive::Pc {
                 place: "docks_shop".to_string(),
                 flags: Vec::new(),
                 meters,
@@ -336,7 +336,7 @@ fn both_busy_without_a_gm(world: &mut World) {
                 wielded: None,
                 known_facts: Vec::new(),
                 visited: vec!["docks_shop".to_string()],
-                act: spookery_engine::model::ActCounters::fresh(),
+                act: spookery_engine::testing::ActCounters::fresh(),
             },
         );
         set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");

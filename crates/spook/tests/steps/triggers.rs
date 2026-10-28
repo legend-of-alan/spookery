@@ -3,10 +3,11 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery_engine::model::{Clock, Now};
-use spookery_engine::store::{emit_save, load_save};
+use spookery_engine::testing::Clock;
 use spookery_engine::MeterLive;
+use spookery_engine::Now;
 use spookery_engine::RoundCause;
+use spookery_engine::{emit_save, load_save};
 use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
 
 use super::steps_run::read_steps_run;
@@ -573,7 +574,7 @@ Under the street.
         seat(now, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
-            spookery_engine::model::PlaceLive {
+            spookery_engine::testing::PlaceLive {
                 items: Default::default(),
                 notes: Vec::new(),
                 actors: Vec::new(),
@@ -960,7 +961,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         .unwrap_or_else(|err| {
             panic!("quiet: {err}");
         });
-    kernel.set_presence(spookery_engine::model::Presence {
+    kernel.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
     });
@@ -1223,16 +1224,16 @@ fn edit_save(world: &mut World, pack: &Path, edit: impl FnOnce(&mut Now)) {
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     edit(&mut now);
     remember_presence(world, pack, now.presence.clone());
-    now.pack_rev = spookery_engine::canon::pack_rev(pack).unwrap();
+    now.pack_rev = spookery_engine::pack_rev(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn remember_presence(world: &mut World, pack: &Path, presence: spookery_engine::model::Presence) {
+fn remember_presence(world: &mut World, pack: &Path, presence: spookery_engine::testing::Presence) {
     world.seated.retain(|(path, _)| path != pack);
     world.seated.push((pack.to_path_buf(), presence));
 }
 
-fn remembered_presence(world: &World, pack: &Path) -> Option<spookery_engine::model::Presence> {
+fn remembered_presence(world: &World, pack: &Path) -> Option<spookery_engine::testing::Presence> {
     world
         .seated
         .iter()
