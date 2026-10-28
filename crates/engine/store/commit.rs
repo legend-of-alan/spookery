@@ -329,20 +329,21 @@ fn memory_bodies(state: &Path, lines: &[MemoryLine]) -> Result<BTreeMap<String, 
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     use crate::draft::Draft;
     use crate::model::{MemoryLine, Presence};
     use crate::round::log::{RoundLine, RoundLog};
     use crate::round::stage::advance::Clock;
     use crate::store::durable::{self, Mark};
+    use crate::testing::temp_pack;
     use crate::world::World;
 
     use super::commit;
 
     #[test]
     fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
-        let root = temp_docks("journal-reopen");
+        let root = temp_pack("journal-reopen");
         let mut world = World::open(&root).unwrap();
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let mut draft = Draft::begin(&world);
@@ -400,7 +401,7 @@ mod tests {
 
     #[test]
     fn a_failed_gzip_keeps_the_round_and_the_next_commit_starts_a_bundle() {
-        let root = temp_docks("gzip-fail");
+        let root = temp_pack("gzip-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
         let mut world = World::open(&root).unwrap();
@@ -441,7 +442,7 @@ mod tests {
 
     #[test]
     fn a_failed_save_stays_committed_and_the_next_commit_starts_a_bundle() {
-        let root = temp_docks("save-fail");
+        let root = temp_pack("save-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
         let mut world = World::open(&root).unwrap();
@@ -610,34 +611,6 @@ mod tests {
             fast_forward: false,
             log: RoundLog::default(),
             queue: Vec::new(),
-        }
-    }
-
-    fn temp_docks(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "spook-{label}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-        copy_dir(&source, &root);
-        root
-    }
-
-    fn copy_dir(from: &Path, to: &Path) {
-        fs::create_dir_all(to).unwrap();
-        for entry in fs::read_dir(from).unwrap() {
-            let entry = entry.unwrap();
-            let dest = to.join(entry.file_name());
-            if entry.file_type().unwrap().is_dir() {
-                copy_dir(&entry.path(), &dest);
-            } else {
-                fs::copy(entry.path(), dest).unwrap();
-            }
         }
     }
 }

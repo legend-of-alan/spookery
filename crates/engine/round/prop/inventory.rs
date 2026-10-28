@@ -14,16 +14,15 @@
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
-
 use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
 use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
 use crate::model::Now;
+use crate::testing::temp_pack;
 use crate::world::World;
+
+use super::play::TempPack;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
@@ -45,17 +44,9 @@ struct ItemChange {
     max: Option<i64>,
 }
 
-struct TempPack(PathBuf);
-
-impl Drop for TempPack {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
-}
-
 #[test]
 fn random_item_changes_never_leave_a_negative_count() {
-    let pack = TempPack(copy_docks());
+    let pack = TempPack(temp_pack("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
     let actors: Vec<String> = world.now().actors.keys().cloned().collect();
     let places: Vec<String> = world.now().places.keys().cloned().collect();
@@ -287,28 +278,4 @@ fn pick_max() -> impl Strategy<Value = Option<i64>> {
         .prop_map(Some),
         2 => any::<i64>().prop_map(Some),
     ]
-}
-
-fn copy_docks() -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_nanos())
-        .unwrap_or(0);
-    let root = std::env::temp_dir().join(format!("spook-inventory-{}-{nanos}", std::process::id()));
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    copy_dir(&source, &root);
-    root
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).expect("temp pack directory");
-    for entry in fs::read_dir(from).expect("pack directory") {
-        let entry = entry.expect("pack entry");
-        let dest = to.join(entry.file_name());
-        if entry.file_type().expect("pack entry type").is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), dest).expect("copy pack file");
-        }
-    }
 }

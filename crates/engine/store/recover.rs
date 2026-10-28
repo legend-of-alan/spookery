@@ -259,18 +259,18 @@ fn delete_tmp(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use std::fs;
-    use std::path::{Path, PathBuf};
 
     use crate::commit::commit;
     use crate::draft::Draft;
     use crate::model::Presence;
     use crate::round::log::{RoundLine, RoundLog};
     use crate::round::stage::advance::Clock;
+    use crate::testing::temp_pack;
     use crate::world::World;
 
     #[test]
     fn a_torn_tail_is_cut_off_and_the_save_stays() {
-        let root = temp_docks("torn-tail");
+        let root = temp_pack("torn-tail");
         let mut world = World::open(&root).unwrap();
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let draft = Draft::begin(&world);
@@ -290,7 +290,7 @@ mod tests {
 
     #[test]
     fn an_old_one_file_record_is_refused() {
-        let root = temp_docks("old-layout");
+        let root = temp_pack("old-layout");
         let log = root.join("state/journal");
         fs::create_dir_all(&log).unwrap();
         fs::write(log.join("migrate-0001.json"), "{}\n").unwrap();
@@ -314,34 +314,6 @@ mod tests {
             fast_forward: false,
             log: RoundLog::default(),
             queue: Vec::new(),
-        }
-    }
-
-    fn temp_docks(label: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "spook-{label}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-        copy_dir(&source, &root);
-        root
-    }
-
-    fn copy_dir(from: &Path, to: &Path) {
-        fs::create_dir_all(to).unwrap();
-        for entry in fs::read_dir(from).unwrap() {
-            let entry = entry.unwrap();
-            let dest = to.join(entry.file_name());
-            if entry.file_type().unwrap().is_dir() {
-                copy_dir(&entry.path(), &dest);
-            } else {
-                fs::copy(entry.path(), dest).unwrap();
-            }
         }
     }
 }

@@ -188,6 +188,7 @@ fn next_steps(dir: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use spookery_engine::testing::fresh_dir;
 
     struct StopBefore;
 
@@ -202,19 +203,6 @@ mod tests {
         fn drop(&mut self) {
             STOP_BEFORE.with(|cell| cell.set(None));
         }
-    }
-
-    fn scratch(label: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!(
-            "spook-new-{label}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&path);
-        path
     }
 
     #[test]
@@ -236,8 +224,7 @@ mod tests {
 
     #[test]
     fn a_failed_write_leaves_an_existing_directory_empty() {
-        let dir = scratch("fail");
-        fs::create_dir(&dir).unwrap();
+        let dir = fresh_dir("new-fail");
         let stop = StopBefore::arm(2);
         let err = must_fail(&dir);
         drop(stop);
@@ -256,21 +243,25 @@ mod tests {
 
     #[test]
     fn a_failed_write_removes_a_directory_it_created() {
-        let dir = scratch("gone");
+        let root = fresh_dir("new-gone");
+        let dir = root.join("pack");
         let stop = StopBefore::arm(2);
         let err = must_fail(&dir);
         drop(stop);
         assert_eq!(err, "the starter write stopped");
         assert!(!dir.exists(), "{}", dir.display());
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
     fn a_missing_parent_is_a_sentence() {
-        let parent = scratch("missing");
+        let root = fresh_dir("new-missing");
+        let parent = root.join("missing");
         let dir = parent.join("pack");
         let err = must_fail(&dir);
         assert_eq!(err, format!("{} does not exist", parent.display()));
         assert!(!parent.exists(), "{}", parent.display());
         assert!(!dir.exists(), "{}", dir.display());
+        let _ = fs::remove_dir_all(&root);
     }
 }
