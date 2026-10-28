@@ -7,7 +7,6 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Reason;
-use crate::lock::lock_session;
 use crate::store::durable::fsync_dir;
 
 /// Hard cap for `state/journal/session.jsonl`.
@@ -38,13 +37,12 @@ pub fn record_line(record: &TapeRecord) -> String {
     serde_json::to_string(record).expect("tape json")
 }
 
-/// Append one tape record under `state/.session.lock`.
+/// Append one tape record. The pack lock makes the host the only writer.
 /// `body` receives the assigned `seq`. Drops a trailing partial line and does not open a `Draft`.
 pub fn append_record(
     root: &Path,
     body: impl FnOnce(u64) -> TapeRecord,
 ) -> Result<TapeRecord, Reason> {
-    let _lock = lock_session(root)?;
     let log_dir = root.join("state/journal");
     fs::create_dir_all(&log_dir).map_err(|_| Reason::CommitConflict)?;
     let path = log_dir.join("session.jsonl");
@@ -119,18 +117,9 @@ pub fn read_tail(root: &Path, player: &str, n: usize) -> Result<Vec<TapeRecord>,
     Ok(matched.split_off(skip))
 }
 
-/// Every complete record, oldest first, under `state/.session.lock`. A missing file is empty.
+/// Every complete record, oldest first. A missing file is empty. A trailing partial line is
+/// not a record. A complete line that does not parse is `SCHEMA`. Past 1 MiB is `OUT_OF_RANGE`.
 pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
-    if !root.join("state/journal/session.jsonl").is_file() {
-        return Ok(Vec::new());
-    }
-    let _lock = lock_session(root)?;
-    read_records_unlocked(root)
-}
-
-/// `read_records` without the lock, so it writes nothing. A trailing partial line is not
-/// a record. A complete line that does not parse is `SCHEMA`. Past 1 MiB is `OUT_OF_RANGE`.
-pub fn read_records_unlocked(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
     let path = root.join("state/journal/session.jsonl");
     if !path.is_file() {
         return Ok(Vec::new());

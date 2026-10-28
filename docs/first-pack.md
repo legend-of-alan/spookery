@@ -142,7 +142,7 @@ A habit is a rule on the cast file with `when: habit`. The cast file keeps a `# 
 
 ## Check, migrate, and play
 
-The canon changed, so `pack_rev` no longer matches. The save edit is also not the canonical text until migrate rewrites it. Stop `spook run` before migrate. The server keeps the save in memory.
+The canon changed, so `pack_rev` no longer matches. The save edit is also not the canonical text until migrate rewrites it. Stop `spook run` first. While it serves the pack, migrate exits 1 with `COMMIT_CONFLICT` and writes nothing.
 
 ```sh
 spook check --json /tmp/mypack

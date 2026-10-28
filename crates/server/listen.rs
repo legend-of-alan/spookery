@@ -48,14 +48,14 @@ impl Config {
     }
 }
 
-/// Take the serve lock, bind both ports, report them and serve on the
+/// Take the pack lock, bind both ports, report them and serve on the
 /// caller's runtime until `shutdown` resolves. Returns the world's result.
 pub async fn serve(
     mut world: spookery_engine::World,
     mut config: Config,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
-    let guard = spookery_engine::lock_serve(world.root()).map_err(Error::Reason)?;
+    let guard = spookery_engine::lock_pack(world.root()).map_err(Error::Reason)?;
     let listener = bind(config.addr).await?;
     let http_listener = bind(door_request(config.addr, config.door)?).await?;
     if world.clear_crashed().map_err(Error::Reason)? {

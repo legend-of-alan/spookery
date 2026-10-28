@@ -211,19 +211,6 @@ fn the_host_refuses_to_start(world: &mut World, code: String) {
     assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
-#[then(expr = "spook verify passes")]
-fn spook_verify_passes(world: &mut World) {
-    let pack = table::pack(world).to_path_buf();
-    table::run(world, &["verify", pack.to_str().unwrap()]);
-    assert_eq!(
-        world.code,
-        Some(0),
-        "stdout:\n{}\nstderr:\n{}",
-        world.stdout,
-        world.stderr
-    );
-}
-
 #[then(expr = "state_rev is 2")]
 fn state_rev_is_2(world: &mut World) {
     let now = table::now_of(table::pack(world));

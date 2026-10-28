@@ -241,6 +241,7 @@ pub(crate) fn open_at_tip(path: &Path) -> Result<World, Reason> {
 
 /// Migrate the journal tip. A save that the journal has not passed is migrated as it stands.
 pub fn migrate_pack(path: &Path) -> Result<(), Reason> {
+    let _lock = crate::lock::lock_pack(path)?;
     let now = journal_tip(path)?;
     crate::commit::migrate_journal(path, now)
 }

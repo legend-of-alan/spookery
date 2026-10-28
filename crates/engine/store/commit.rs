@@ -10,7 +10,6 @@ use crate::diagnostic::reason_of;
 use crate::draft::Draft;
 use crate::error::Reason;
 use crate::journal::{self, hash_now};
-use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
 use crate::round::log::RoundLine;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
@@ -86,6 +85,7 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
 }
 
 /// Seal a migrate record for `now`, which is already the journal tip or the on-disk save.
+/// The caller holds the pack lock.
 pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
@@ -94,7 +94,6 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
     let pack_rev_after = pack_rev(root)?;
     let pack_rev_before = now.pack_rev.clone();
     let state_rev_before = now.state_rev;
-    let _lock = lock_world(root)?;
     let state_rev_after = state_rev_before
         .checked_add(1)
         .ok_or(Reason::CommitConflict)?;
