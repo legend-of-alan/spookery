@@ -1,5 +1,6 @@
 //! Save migration and validation against the loaded pack.
 
+use crate::canon::lint::unknown_item;
 use crate::canon::{Canon, ItemCanon};
 use crate::diagnostic::{schema as schema_error, Diagnostic};
 use crate::meter::{self, MeterLive};
@@ -190,13 +191,4 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
     } else {
         Err(diags)
     }
-}
-
-pub(super) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
-    schema_error(
-        file,
-        &format!("unknown item '{id}'"),
-        &format!("add world/items/{id}.md"),
-    )
-    .with_path(path)
 }

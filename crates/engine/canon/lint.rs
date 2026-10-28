@@ -2,7 +2,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::canon::save::unknown_item;
 use crate::canon::source::{At, Problem, Source};
 use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
 use crate::check::CheckDef;
@@ -138,6 +137,15 @@ pub(super) fn unknown_rule_items(
         }
     }
     diags
+}
+
+pub(super) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
+    schema_error(
+        file,
+        &format!("unknown item '{id}'"),
+        &format!("add world/items/{id}.md"),
+    )
+    .with_path(path)
 }
 
 fn cond_items(cond: &Cond, ids: &mut Vec<String>) {
