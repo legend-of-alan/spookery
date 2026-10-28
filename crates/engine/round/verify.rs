@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::canon::{load_canon, Canon};
+use crate::canon::load_canon;
 use crate::diagnostic::reason_of;
 use crate::journal::{self, JournalEntry};
 use crate::store::codec::emit_save;
@@ -75,13 +75,7 @@ pub fn verify_quick(pack: &Path) -> Result<VerifyReport, ReplayError> {
         });
     };
     let (name, _) = bundles.last().expect("bundle");
-    let canon = Arc::new(load_canon(pack).map_err(|diags| ReplayError::Reason(reason_of(diags)))?);
-    let end = check_bundle_end(
-        pack,
-        name,
-        entries,
-        replay_bundle(pack, canon, &start, entries),
-    )?;
+    let end = check_bundle_end(pack, name, entries, replay_bundle(pack, &start, entries))?;
     verify_save_file(pack, &records, &genesis)?;
     Ok(VerifyReport {
         state_rev: state_rev_of(&end)?,
@@ -234,11 +228,12 @@ fn read_genesis(pack: &Path) -> Result<Vec<u8>, ReplayError> {
 
 fn replay_bundle(
     pack: &Path,
-    canon: Arc<Canon>,
     start: &[u8],
     entries: &[JournalEntry],
 ) -> Result<Vec<u8>, ReplayError> {
-    let mut world = World::open_for_replay(pack, canon, load_base(start)?);
+    let now = load_base(start)?;
+    let canon = Arc::new(load_canon(pack).map_err(|diags| ReplayError::Reason(reason_of(diags)))?);
+    let mut world = World::open_for_replay(pack, canon, now);
     let mut changed = false;
     for entry in entries {
         apply(&mut world, entry)?;
