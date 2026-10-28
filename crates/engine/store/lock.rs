@@ -11,7 +11,8 @@ pub struct LockGuard {
     _file: File,
 }
 
-/// Take `state/.pack.lock`. A second writer is refused with `COMMIT_CONFLICT`.
+/// Take `state/.pack.lock`. A path with no `state/` is `NOT_IN_SPEC`.
+/// A second writer is refused with `COMMIT_CONFLICT`.
 pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
     let file = OpenOptions::new()
         .read(true)
@@ -19,7 +20,7 @@ pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
         .create(true)
         .truncate(false)
         .open(root.join("state/.pack.lock"))
-        .map_err(|_| Reason::CommitConflict)?;
+        .map_err(|_| Reason::NotInSpec)?;
     file.try_lock().map_err(|_| Reason::CommitConflict)?;
     Ok(LockGuard { _file: file })
 }

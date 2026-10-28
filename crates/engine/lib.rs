@@ -38,7 +38,7 @@ pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::{Owner, TargetKind, When};
 pub use rules::{GateRefusal, MoveReport, RollResult};
-pub use store::{emit_save, load_save, lock_pack, record_line, TapeRecord};
+pub use store::{emit_save, load_save, lock_pack, record_line, LockGuard, TapeRecord};
 pub use visibility::RecipientLine;
 pub use world::{
     check_pack, handle_player_move, GmIntentSpec, Heard, MoveOutcome, QueuedMove, World,

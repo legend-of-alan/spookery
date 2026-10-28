@@ -47,3 +47,9 @@ fn a_seated_player_commits_a_move(world: &mut World) {
     table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
     table::expect_wait_from(&pack, "pc_rowan", 0);
 }
+
+#[when(expr = "the host runs spook {word} on a missing pack")]
+fn the_host_runs_spook_on_a_missing_pack(world: &mut World, command: String) {
+    let missing = std::env::temp_dir().join("spookery-no-such-pack");
+    table::run(world, &[&command, missing.to_str().unwrap()]);
+}
