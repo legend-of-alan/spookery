@@ -341,9 +341,6 @@ impl GmSession {
             emit(&event.raw);
             return;
         }
-        if matches!(event.body, EventBody::Pack(_)) {
-            return;
-        }
         let line = render_event(&event.body);
         if matches!(event.body, EventBody::Check(_)) && self.printed_checks.skip(&line) {
             return;
@@ -482,7 +479,6 @@ pub fn render_event(body: &EventBody) -> String {
             roll.target,
             roll.outcome.as_str(),
         ),
-        EventBody::Pack(_) => String::new(),
     }
 }
 
@@ -653,6 +649,7 @@ mod tests {
             queued,
             last_seq: 0,
             events: None,
+            pack: None,
         }
     }
 

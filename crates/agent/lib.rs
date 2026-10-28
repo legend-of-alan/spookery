@@ -13,6 +13,9 @@ use serde_json::{json, Value};
 
 use crate::protocol::{CommitBody, EventBody, GmSay, PlayerMessage, Roll, SessionStatus};
 
+/// A server built before the pack summary moved onto `session_status`.
+pub const OLDER_SERVER: &str = "this spook run is older than spook ai-gm, rebuild both";
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum AgentInput {
     GmEvent(EventBody),
@@ -45,7 +48,7 @@ pub struct Agent {
     pub high_water: u64,
     pub warning: Option<String>,
     phase: Phase,
-    pack: Option<PackSummary>,
+    pack: PackSummary,
     wakes: VecDeque<Wake>,
     buffer: Vec<HandledSay>,
     turn: Turn,
@@ -67,7 +70,6 @@ struct Turn {
 enum Phase {
     #[default]
     InitStatus,
-    InitPack(SessionStatus),
     Idle,
     TurnStatus,
     Perceive(String),
@@ -94,24 +96,16 @@ impl Agent {
     pub fn feed(&mut self, input: AgentInput) -> Result<AgentStep, String> {
         if let AgentInput::GmEvent(body) = input {
             self.absorb(body);
-            return match &self.phase {
-                Phase::InitPack(status) if self.pack.is_some() => {
-                    let status = status.clone();
-                    Ok(self.finish_init(status))
-                }
+            return match self.phase {
                 Phase::Idle => Ok(self.next_turn()),
                 _ => Ok(AgentStep::Idle),
             };
         }
         match (std::mem::replace(&mut self.phase, Phase::Idle), input) {
             (Phase::InitStatus, AgentInput::ToolResult { body, refused, raw }) => {
-                let status = parse_status(body, refused, raw)?;
-                if self.pack.is_some() {
-                    Ok(self.finish_init(status))
-                } else {
-                    self.phase = Phase::InitPack(status);
-                    Ok(AgentStep::Idle)
-                }
+                let mut status = parse_status(body, refused, raw)?;
+                self.pack = status.pack.take().ok_or(OLDER_SERVER)?;
+                Ok(self.finish_init(status))
             }
             (Phase::TurnStatus, AgentInput::ToolResult { body, refused, raw }) => {
                 self.turn.status = Some(parse_status(body, refused, raw)?);
@@ -182,7 +176,6 @@ impl Agent {
                 });
             }
             EventBody::Queued(_) => self.wakes.push_back(Wake::Queued),
-            EventBody::Pack(pack) => self.pack = Some(pack),
             EventBody::Say(_) | EventBody::Check(_) => {}
         }
     }
@@ -210,7 +203,7 @@ impl Agent {
     }
 
     fn advance_prepare(&mut self) -> AgentStep {
-        let pack = self.pack.as_ref().expect("pack");
+        let pack = &self.pack;
         let wake = self.turn.wake.as_ref().expect("wake");
         let status = self.turn.status.as_ref().expect("status");
         let views = &self.turn.views;
@@ -272,9 +265,8 @@ impl Agent {
             self.warning = Some("empty parse".into());
             return None;
         }
-        let pack = self.pack.as_ref().expect("pack");
         let scope = &self.turn.view.as_ref().expect("view").0.scope;
-        parse_actions(&text, says_only).map(|actions| keep_actions(actions, scope, &pack.menu))
+        parse_actions(&text, says_only).map(|actions| keep_actions(actions, scope, &self.pack.menu))
     }
 
     fn advance_actions(&mut self, epilogue: bool) -> AgentStep {
@@ -319,8 +311,7 @@ impl Agent {
             if let Some((turn_view, context)) = &mut self.turn.view {
                 context.buffer = self.buffer.clone();
                 context.checks = self.turn.checks.clone();
-                let pack = self.pack.as_ref().expect("pack");
-                let prompt = render_prompt(&pack.menu, context, turn_view, &self.turn.checks);
+                let prompt = render_prompt(&self.pack.menu, context, turn_view, &self.turn.checks);
                 return self.call_model(prompt, true);
             }
         }
@@ -375,10 +366,10 @@ mod tests {
 
     fn sit_queued(since: &AgentStep) -> Agent {
         let mut a = Agent::new_gm();
-        let p = r#"{"kind":"pack","menu":[],"kinds":{"pc":"pc_template"},"places":{},"cast":{}}"#;
-        let pack = serde_json::from_str(p).unwrap();
-        a.feed(AgentInput::GmEvent(pack)).unwrap();
-        assert_eq!(&ok(&mut a, Q_ST), since);
+        let mut first: Value = serde_json::from_str(Q_ST).unwrap();
+        first["pack"] =
+            json!({"menu": [], "kinds": {"pc": "pc_template"}, "places": {}, "cast": {}});
+        assert_eq!(&ok(&mut a, &first.to_string()), since);
         prep(&mut a, Q_ST);
         a
     }
@@ -416,5 +407,17 @@ mod tests {
         assert_eq!(a.feed(err).unwrap(), st);
         assert_eq!(a.warning.as_deref(), Some("boom"));
         assert_eq!(ok(&mut a, Q_ST), cm);
+    }
+
+    #[test]
+    fn a_first_status_without_a_pack_summary_is_an_older_server() {
+        let mut a = Agent::new_gm();
+        let first = AgentInput::ToolResult {
+            body: serde_json::from_str(E_ST).unwrap(),
+            refused: false,
+            raw: String::new(),
+        };
+        assert_eq!(a.feed(first), Err(OLDER_SERVER.to_string()));
+        assert_eq!(a.sit_seq, None);
     }
 }
