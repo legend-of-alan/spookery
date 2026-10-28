@@ -470,7 +470,7 @@ messages: []
     #[test]
     fn memory_and_migrate_lines_keep_their_key_order() {
         let memory = super::emit_memory_line(&MemoryLine {
-            tick_index: 3,
+            round_index: 3,
             actor_id: "mi\"ra".to_string(),
             intent_id: "abc".to_string(),
             fact_ids: vec!["f".to_string()],

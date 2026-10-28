@@ -147,7 +147,7 @@ fn arrival_intent(
 ) -> Intent {
     Intent {
         id: format!("arrival:{actor_id}"),
-        tick_index: round.tick_index,
+        round_index: round.round_index,
         actor_id: actor_id.to_string(),
         actor_kind: kind,
         source: pending.source,

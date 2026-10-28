@@ -197,7 +197,7 @@ fn expand_trigger(
 fn intent_for(round: &Round, actor_id: &str, kind: ActorKind, rule_id: &str) -> Intent {
     Intent {
         id: format!("trigger:{rule_id}:{actor_id}"),
-        tick_index: round.tick_index,
+        round_index: round.round_index,
         actor_id: actor_id.to_string(),
         actor_kind: kind,
         source: Source::Kernel,

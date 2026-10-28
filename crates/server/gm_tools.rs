@@ -380,7 +380,7 @@ fn queue_tool_intent(
     world.queue_gm_intent(
         GmIntentSpec {
             id: call.id,
-            tick_index: call.tick_index,
+            round_index: call.tick_index,
             actor_id: call.actor_id,
             move_name: call.move_name,
             target: call.target,

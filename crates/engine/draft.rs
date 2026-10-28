@@ -52,8 +52,8 @@ impl Draft {
         &mut self.state
     }
 
-    pub(crate) fn set_tick_clock(&mut self, tick_index: u64, world_time: u64, last_tick_at: &str) {
-        self.state.tick_index = tick_index;
+    pub(crate) fn stamp_round(&mut self, round_index: u64, world_time: u64, last_tick_at: &str) {
+        self.state.round_index = round_index;
         self.state.world_time = world_time;
         self.state.last_tick_at = last_tick_at.to_string();
     }
@@ -133,7 +133,7 @@ impl Draft {
     }
 
     pub(crate) fn stage_npc_counters(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
-        let tick_index = self.state.tick_index;
+        let round_index = self.state.round_index;
         let (current_idle, current_live, current_last) = {
             let counters = self
                 .state
@@ -150,7 +150,7 @@ impl Draft {
         let new_idle = current_idle.saturating_add(1);
         let new_live = current_live.saturating_add(1);
         let mut keys = Vec::new();
-        if tick_index != current_last {
+        if round_index != current_last {
             keys.push(StateKey::TickLastAct(actor_id.to_string()));
         }
         if humans == 0 && new_idle != current_idle {
@@ -166,7 +166,7 @@ impl Draft {
             .get_mut(actor_id)
             .ok_or(Reason::UnknownKey)?
             .act_mut();
-        counters.last_act_tick = tick_index;
+        counters.last_act_tick = round_index;
         if humans == 0 {
             counters.idle_acts_today = new_idle;
         } else {
@@ -417,7 +417,7 @@ mod tests {
         let mut draft = Draft::begin(&world);
         let intent = Intent {
             id: "i1".to_string(),
-            tick_index: 1,
+            round_index: 1,
             actor_id: "mira".to_string(),
             actor_kind: ActorKind::Npc,
             move_name: "leave_door_note".to_string(),

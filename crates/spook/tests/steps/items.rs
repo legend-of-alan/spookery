@@ -185,7 +185,7 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
     assert_eq!(hp(pack, "pc_nell"), 7);
     assert_eq!(count(pack, "pc_nell", "tonic"), 0);
     assert_eq!(
-        support::now_of(pack).tick_index,
+        support::now_of(pack).round_index,
         1,
         "the refusal committed another tick"
     );
@@ -251,7 +251,7 @@ fn lark_holds_a_latch_at_a_table(world: &mut World) {
 #[when(expr = "lark plays {string}")]
 fn lark_plays(world: &mut World, line: String) {
     let before = table::now_of(world.pack.as_ref().unwrap());
-    world.scratch = format!("{} {}", before.world_time, before.tick_index);
+    world.scratch = format!("{} {}", before.world_time, before.round_index);
     let (_mark, added) = table::player_send(world, &line, "\"kind\":\"refused\"");
     world.player_added = added;
 }
@@ -273,7 +273,7 @@ fn no_round_was_spent(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = table::now_of(pack);
     assert_eq!(
-        format!("{} {}", now.world_time, now.tick_index),
+        format!("{} {}", now.world_time, now.round_index),
         world.scratch,
         "a round was spent"
     );
@@ -285,7 +285,7 @@ fn no_round_was_spent(world: &mut World) {
 fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
-    assert_eq!(support::now_of(pack).tick_index, 0);
+    assert_eq!(support::now_of(pack).round_index, 0);
     assert!(spookery_engine::testing::journal::list_tick_keys(pack).is_empty());
 }
 
@@ -470,7 +470,7 @@ fn lark_drops_the_dagger(world: &mut World) {
 fn the_slot_clears_in_the_tick(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::now_of(pack);
-    assert_eq!(now.tick_index, 1);
+    assert_eq!(now.round_index, 1);
     assert_eq!(now.actors.get("pc_lark").unwrap().wielded(), None);
     assert_eq!(
         now.actors.get("pc_lark").unwrap().count("poisoned_dagger"),

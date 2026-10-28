@@ -24,7 +24,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::effect::EffectKind;
-use crate::journal::{self, JournalEntry, TickRecord};
+use crate::journal::{self, JournalEntry, RoundRecord};
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};
@@ -75,10 +75,10 @@ fn triggers_stop(pack: &Path, rules: &[RuleSpec], rounds: usize) -> Result<(), T
         .max_trigger_depth;
     let entries = journal::read_entries(pack)
         .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
-    let ticks: Vec<&TickRecord> = entries
+    let ticks: Vec<&RoundRecord> = entries
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Tick(tick) => Some(tick),
+            JournalEntry::Round(tick) => Some(tick),
             _ => None,
         })
         .collect();
@@ -97,7 +97,7 @@ fn triggers_stop(pack: &Path, rules: &[RuleSpec], rounds: usize) -> Result<(), T
 
 /// Trigger watches see the net write. Dropping the oil and gaining it back
 /// leaves no change, so the chain does not start.
-fn rowan_gained_oil(tick: &TickRecord) -> bool {
+fn rowan_gained_oil(tick: &RoundRecord) -> bool {
     let net: i64 = tick
         .effects
         .iter()
@@ -118,7 +118,7 @@ fn rowan_gained_oil(tick: &TickRecord) -> bool {
 }
 
 fn check_round(
-    tick: &TickRecord,
+    tick: &RoundRecord,
     rules: &[RuleSpec],
     max: u64,
     mut held: BTreeSet<String>,
@@ -140,14 +140,14 @@ fn check_round(
             if index != logged.len() {
                 return Err(fail_msg(format!(
                     "tick {} logged trigger rules after the chain stopped: {}",
-                    tick.tick_index,
+                    tick.round_index,
                     logged.join(",")
                 )));
             }
             if hit_cap {
                 return Err(fail_msg(format!(
                     "tick {} logged trigger_depth after {passes} passes, under the cap {max}",
-                    tick.tick_index
+                    tick.round_index
                 )));
             }
             return Ok(held);
@@ -156,14 +156,14 @@ fn check_round(
             if index != logged.len() {
                 return Err(fail_msg(format!(
                     "tick {} ran more than {max} trigger passes: {}",
-                    tick.tick_index,
+                    tick.round_index,
                     logged.join(",")
                 )));
             }
             if !hit_cap {
                 return Err(fail_msg(format!(
                     "tick {} hit the cap after {max} trigger passes without trigger_depth: {}",
-                    tick.tick_index,
+                    tick.round_index,
                     tick.steps_run.join(",")
                 )));
             }
@@ -176,7 +176,7 @@ fn check_round(
             let Some(got) = logged.get(index) else {
                 return Err(fail_msg(format!(
                     "tick {} stopped during pass {} before {}",
-                    tick.tick_index,
+                    tick.round_index,
                     passes + 1,
                     rule.id
                 )));
@@ -184,7 +184,7 @@ fn check_round(
             if *got != rule.id {
                 return Err(fail_msg(format!(
                     "tick {} pass {} expected {} but logged {got}",
-                    tick.tick_index,
+                    tick.round_index,
                     passes + 1,
                     rule.id
                 )));

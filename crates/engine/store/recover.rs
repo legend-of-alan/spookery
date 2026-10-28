@@ -122,14 +122,14 @@ fn rebuild_memory_files(root: &Path) -> Result<(), Reason> {
     let live_ticks: BTreeSet<u64> = records
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Tick(record) => Some(record.tick_index),
+            JournalEntry::Round(record) => Some(record.round_index),
             _ => None,
         })
         .collect();
     let fresh: Vec<MemoryLine> = records
         .iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Tick(record) => Some(record.memories.clone()),
+            JournalEntry::Round(record) => Some(record.memories.clone()),
             _ => None,
         })
         .flatten()
@@ -199,7 +199,7 @@ fn keep_tick(tick: u64, head: Option<&journal::BundleHead>, live_ticks: &BTreeSe
         return true;
     }
     match head {
-        Some(head) => tick <= head.tick_index,
+        Some(head) => tick <= head.round_index,
         None => false,
     }
 }
@@ -230,11 +230,12 @@ fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
 fn memory_tick(line: &str) -> Option<u64> {
     #[derive(serde::Deserialize)]
     struct MemoryTick {
-        tick_index: u64,
+        #[serde(rename = "tick_index")]
+        round_index: u64,
     }
     serde_json::from_str::<MemoryTick>(line)
         .ok()
-        .map(|row| row.tick_index)
+        .map(|row| row.round_index)
 }
 
 fn delete_tmp(dir: &Path) {
@@ -300,9 +301,9 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn journal_line() -> crate::journal::TickRecord {
-        crate::journal::TickRecord {
-            tick_index: 0,
+    fn journal_line() -> crate::journal::RoundRecord {
+        crate::journal::RoundRecord {
+            round_index: 0,
             rules_rev: 7,
             state_rev_before: 0,
             state_rev_after: 1,

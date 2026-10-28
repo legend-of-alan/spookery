@@ -308,7 +308,7 @@ pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&RollTracker) ->
         counts: Rc::clone(&counts),
         notes: Rc::clone(&notes),
         world_id: round.world_id.clone(),
-        round_index: round.tick_index,
+        round_index: round.round_index,
     };
     let out = body(&tracker);
     drop(tracker);

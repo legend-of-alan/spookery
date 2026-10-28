@@ -19,7 +19,8 @@ pub struct Now {
     #[serde(default)]
     pub rules_rev: u64,
     pub state_rev: u64,
-    pub tick_index: u64,
+    #[serde(rename = "tick_index")]
+    pub round_index: u64,
     pub world_time: u64,
     pub last_tick_at: String,
     /// Live seats. Memory only: never written to or read from the save.
@@ -380,7 +381,8 @@ pub fn sort_unique(items: &mut Vec<String>) {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryLine {
-    pub tick_index: u64,
+    #[serde(rename = "tick_index")]
+    pub round_index: u64,
     pub actor_id: String,
     pub intent_id: String,
     pub fact_ids: Vec<String>,

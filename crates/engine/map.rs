@@ -110,7 +110,7 @@ pub(crate) fn locked(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> b
     };
     let intent = Intent {
         id: String::new(),
-        tick_index: now.tick_index,
+        round_index: now.round_index,
         actor_id: actor_id.to_string(),
         actor_kind: actor.actor_kind(),
         source: Source::Player,
@@ -400,7 +400,7 @@ fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: Targe
         let token = hint.unwrap_or_default();
         let intent = Intent {
             id: String::new(),
-            tick_index: now.tick_index,
+            round_index: now.round_index,
             actor_id: actor_id.to_string(),
             actor_kind: kind,
             source: Source::Player,

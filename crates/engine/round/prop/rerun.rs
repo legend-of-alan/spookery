@@ -43,7 +43,7 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     let ticks: Vec<_> = records
         .into_iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Tick(record) => Some(record),
+            JournalEntry::Round(record) => Some(record),
             _ => None,
         })
         .collect();
@@ -71,9 +71,9 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
                 actors_present: record.actors_present.clone(),
             },
         )
-        .map_err(|err| fail_msg(format!("tick {} did not re-run: {err}", record.tick_index)))?;
+        .map_err(|err| fail_msg(format!("tick {} did not re-run: {err}", record.round_index)))?;
         if let Some(diff) = first_effect_difference(&record.effects, &effects) {
-            return Err(fail_msg(format!("tick {} {diff}", record.tick_index)));
+            return Err(fail_msg(format!("tick {} {diff}", record.round_index)));
         }
     }
     Ok(())

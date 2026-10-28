@@ -29,7 +29,7 @@ pub struct CommitOutcome {
 pub fn commit(
     world: &mut World,
     mut draft: Draft,
-    record: journal::TickRecord,
+    record: journal::RoundRecord,
 ) -> Result<CommitOutcome, Reason> {
     settle_open_checkpoint(world)?;
     draft.state.state_rev = draft
@@ -40,11 +40,11 @@ pub fn commit(
     canonicalize(&mut draft.state);
     let now_bytes = emit_save(&draft.state)?.into_bytes();
     let line = seal_tick(record, &now_bytes, &world.root, &draft.memories)?;
-    let due = checkpoint_due(world.canon().checkpoint_every, draft.state.tick_index);
+    let due = checkpoint_due(world.canon().checkpoint_every, draft.state.round_index);
     let (payload, chain) = if due {
         let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
         let mark = journal::checkpoint_entry(
-            draft.state.tick_index,
+            draft.state.round_index,
             draft.state.state_rev,
             &hash_now(&now_bytes),
         );
@@ -116,7 +116,7 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
 }
 
 fn seal_tick(
-    mut record: journal::TickRecord,
+    mut record: journal::RoundRecord,
     now_bytes: &[u8],
     root: &Path,
     memories: &[MemoryLine],
@@ -126,11 +126,11 @@ fn seal_tick(
     record.prev.clear();
     record.chain.clear();
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
-    Ok(journal::seal(&journal::JournalEntry::Tick(record), &prev))
+    Ok(journal::seal(&journal::JournalEntry::Round(record), &prev))
 }
 
-fn checkpoint_due(every: u64, tick_index: u64) -> bool {
-    every > 0 && tick_index > 0 && tick_index.is_multiple_of(every)
+fn checkpoint_due(every: u64, round_index: u64) -> bool {
+    every > 0 && round_index > 0 && round_index.is_multiple_of(every)
 }
 
 fn append_bundle(root: &Path, payload: &str) -> Result<String, Reason> {
@@ -167,12 +167,12 @@ fn store_checkpoint(
     root: &Path,
     now_bytes: &[u8],
     state_rev: u64,
-    tick_index: u64,
+    round_index: u64,
     chain: &str,
 ) -> Result<(), Reason> {
     let head = serde_json::to_string(&journal::BundleHead {
         state_rev,
-        tick_index,
+        round_index,
         state_hash: hash_now(now_bytes),
         chain: chain.to_string(),
     })
@@ -202,7 +202,7 @@ fn store_checkpoint(
 /// The journal line is already durable. `false` means `save.yaml` or the gzip did
 /// not finish. The round stays committed either way.
 fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> bool {
-    let (rev, tick) = (world.now.state_rev, world.now.tick_index);
+    let (rev, tick) = (world.now.state_rev, world.now.round_index);
     store_checkpoint(&world.root, now_bytes, rev, tick, chain).is_ok()
         && close_finished(&world.root).is_ok()
 }
@@ -236,7 +236,7 @@ pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
             &world.root,
             &now_bytes,
             mark.state_rev,
-            mark.tick_index,
+            mark.round_index,
             &mark.chain,
         )?;
     }
@@ -248,7 +248,7 @@ fn snapshot_memories(root: &Path) -> Result<(), Reason> {
     let entries = journal::read_live(root).map_err(|_| Reason::Schema)?;
     let mut lines = Vec::new();
     for entry in entries {
-        if let journal::JournalEntry::Tick(record) = entry {
+        if let journal::JournalEntry::Round(record) = entry {
             lines.extend(record.memories);
         }
     }
@@ -312,7 +312,7 @@ mod tests {
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let mut draft = Draft::begin(&world);
         draft.memories.push(MemoryLine {
-            tick_index: 0,
+            round_index: 0,
             actor_id: "mira".to_string(),
             intent_id: "rest".to_string(),
             fact_ids: vec![],
@@ -370,12 +370,12 @@ mod tests {
         set_checkpoint_every(&root, 1);
         let mut world = World::open(&root).unwrap();
         let mut draft = Draft::begin(&world);
-        draft.state.tick_index = 1;
+        draft.state.round_index = 1;
         durable::fail_next(".jsonl.gz.tmp");
         commit(&mut world, draft, journal_line(1, 0, 1)).unwrap();
         let live = crate::journal::read_live(&root).unwrap();
         let tick_rev = live.iter().rev().find_map(|entry| match entry {
-            crate::journal::JournalEntry::Tick(record) => Some(record.state_rev_after),
+            crate::journal::JournalEntry::Round(record) => Some(record.state_rev_after),
             _ => None,
         });
         let mark = crate::journal::latest_checkpoint(&live).unwrap();
@@ -386,7 +386,7 @@ mod tests {
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
         let mut again = Draft::begin(&world);
-        again.state.tick_index = 2;
+        again.state.round_index = 2;
         commit(&mut world, again, journal_line(2, 1, 2)).unwrap();
         assert!(world.take_warning().is_none());
         let bundles = crate::journal::bundle_entries(&root).unwrap();
@@ -411,11 +411,11 @@ mod tests {
         set_checkpoint_every(&root, 2);
         let mut world = World::open(&root).unwrap();
         let mut first = Draft::begin(&world);
-        first.state.tick_index = 1;
+        first.state.round_index = 1;
         commit(&mut world, first, journal_line(1, 0, 1)).unwrap();
 
         let mut second = Draft::begin(&world);
-        second.state.tick_index = 2;
+        second.state.round_index = 2;
         durable::fail_next("save.yaml.tmp");
         commit(&mut world, second, journal_line(2, 1, 2)).unwrap();
         let live = crate::journal::read_live(&root).unwrap();
@@ -424,7 +424,7 @@ mod tests {
         assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
 
         let mut third = Draft::begin(&world);
-        third.state.tick_index = 3;
+        third.state.round_index = 3;
         commit(&mut world, third, journal_line(3, 2, 3)).unwrap();
         let bundles = crate::journal::bundle_entries(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
@@ -433,7 +433,7 @@ mod tests {
         assert_eq!(count_checkpoints(first_entries), 1, "{first_name}");
         assert_eq!(count_checkpoints(second_entries), 0, "{second_name}");
         assert!(second_entries.iter().any(|entry| {
-            matches!(entry, crate::journal::JournalEntry::Tick(record) if record.tick_index == 3)
+            matches!(entry, crate::journal::JournalEntry::Round(record) if record.round_index == 3)
         }));
         let saved = fs::read(root.join("state/save.yaml")).unwrap();
         let kept = crate::journal::latest_checkpoint(first_entries).unwrap();
@@ -564,9 +564,9 @@ mod tests {
         }
     }
 
-    fn journal_line(tick_index: u64, before: u64, after: u64) -> crate::journal::TickRecord {
-        crate::journal::TickRecord {
-            tick_index,
+    fn journal_line(round_index: u64, before: u64, after: u64) -> crate::journal::RoundRecord {
+        crate::journal::RoundRecord {
+            round_index,
             rules_rev: 7,
             state_rev_before: before,
             state_rev_after: after,

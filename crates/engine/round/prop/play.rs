@@ -220,10 +220,10 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
     } else {
         format!("{verb} {token}")
     };
-    let tick = now.tick_index.saturating_add(1);
+    let tick = now.round_index.saturating_add(1);
     Intent {
         id: player_intent_id(&now.shard_id, tick, actor, &line),
-        tick_index: now.tick_index,
+        round_index: now.round_index,
         actor_id: actor.to_string(),
         actor_kind: ActorKind::Player,
         source: Source::Player,

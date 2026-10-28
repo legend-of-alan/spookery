@@ -7,7 +7,7 @@ use crate::canon::{check_save, migrate_save};
 use crate::commit::atomic_publish;
 use crate::diagnostic::reason_of;
 use crate::effect::Effect;
-use crate::journal::{self, hash_now, JournalEntry, MigrateRecord, TickRecord};
+use crate::journal::{self, hash_now, JournalEntry, MigrateRecord, RoundRecord};
 use crate::model::{Now, Presence};
 use crate::store::codec::{emit_effect, emit_save, load_save};
 use crate::store::require_rules_rev;
@@ -34,14 +34,14 @@ pub struct VerifyReport {
 pub struct ReplayDivergence {
     pub state_rev: u64,
     pub kind: String,
-    pub tick_index: Option<u64>,
+    pub round_index: Option<u64>,
     pub detail: String,
     pub replayed: Option<Vec<u8>>,
 }
 
 impl std::fmt::Display for ReplayDivergence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.tick_index {
+        match self.round_index {
             Some(tick) => write!(
                 f,
                 "state_rev {} {} {}: {}",
@@ -254,7 +254,7 @@ fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
         return Err(ReplayError::Diverged(diverge(
             mark.state_rev,
             "checkpoint",
-            Some(mark.tick_index),
+            Some(mark.round_index),
             "state hash differed".to_string(),
             Some(report.now_yaml),
         )));
@@ -390,7 +390,7 @@ fn bundle_starts<'a>(
             VerifyError::Replay(ReplayError::Diverged(diverge(
                 mark.state_rev,
                 "checkpoint",
-                Some(mark.tick_index),
+                Some(mark.round_index),
                 format!("{name}: missing snapshot"),
                 None,
             )))
@@ -399,7 +399,7 @@ fn bundle_starts<'a>(
             return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
                 mark.state_rev,
                 "checkpoint",
-                Some(mark.tick_index),
+                Some(mark.round_index),
                 format!("{name}: state hash differed"),
                 Some(current),
             ))));
@@ -423,7 +423,7 @@ fn check_bundle_end(
             return Err(VerifyError::Replay(ReplayError::Diverged(diverge(
                 mark.state_rev,
                 "checkpoint",
-                Some(mark.tick_index),
+                Some(mark.round_index),
                 format!("{name}: state hash differed"),
                 Some(end),
             ))));
@@ -468,7 +468,7 @@ fn verify_save_file(
                 diverge(
                     mark.state_rev,
                     "save",
-                    Some(mark.tick_index),
+                    Some(mark.round_index),
                     "state hash differed".to_string(),
                     snap,
                 ),
@@ -573,7 +573,7 @@ fn check_sequence(
             return Err(ReplayError::Diverged(diverge(
                 rev,
                 records[index].kind_name(),
-                records[index].tick_index(),
+                records[index].round_index(),
                 "state_rev differed".to_string(),
                 Some(base_bytes.to_vec()),
             )));
@@ -600,7 +600,7 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
         return Err(ReplayError::Diverged(diverge(
             entry.state_rev_after(),
             entry.kind_name(),
-            entry.tick_index(),
+            entry.round_index(),
             "base mark is not a migrate".to_string(),
             Some(base_bytes.to_vec()),
         )));
@@ -629,7 +629,7 @@ fn check_mark(entry: &JournalEntry, base_bytes: &[u8]) -> Result<(), ReplayError
 
 fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
     match entry {
-        JournalEntry::Tick(record) => apply_recorded_round(world, record),
+        JournalEntry::Round(record) => apply_recorded_round(world, record),
         JournalEntry::Migrate(record) => apply_migrate(world, record),
         JournalEntry::Checkpoint(record) => {
             let written = read_now_bytes(world)?;
@@ -637,7 +637,7 @@ fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
                 return Err(ReplayError::Diverged(diverge(
                     record.state_rev,
                     "checkpoint",
-                    Some(record.tick_index),
+                    Some(record.round_index),
                     "state hash differed".to_string(),
                     Some(written),
                 )));
@@ -647,23 +647,23 @@ fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), ReplayError> {
     }
 }
 
-fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), ReplayError> {
+fn apply_recorded_round(world: &mut World, record: &RoundRecord) -> Result<(), ReplayError> {
     require_rules_rev(record.rules_rev).map_err(ReplayError::Reason)?;
-    if world.now().tick_index + 1 != record.tick_index {
+    if world.now().round_index + 1 != record.round_index {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
-            Some(record.tick_index),
+            Some(record.round_index),
             "tick_index differed".to_string(),
             None,
         )));
     }
-    let seed = round_seed(&world.now().shard_id, record.tick_index);
+    let seed = round_seed(&world.now().shard_id, record.round_index);
     if record.seed != seed {
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
-            Some(record.tick_index),
+            Some(record.round_index),
             "seed differed".to_string(),
             None,
         )));
@@ -681,7 +681,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
-            Some(record.tick_index),
+            Some(record.round_index),
             code.token().to_string(),
             read_now_bytes(world).ok(),
         ))
@@ -691,7 +691,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
-            Some(record.tick_index),
+            Some(record.round_index),
             "state_rev differed".to_string(),
             read_now_bytes(world).ok(),
         )));
@@ -702,7 +702,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
-            Some(record.tick_index),
+            Some(record.round_index),
             detail,
             Some(written),
         )));
@@ -711,7 +711,7 @@ fn apply_recorded_round(world: &mut World, record: &TickRecord) -> Result<(), Re
         return Err(ReplayError::Diverged(diverge(
             record.state_rev_after,
             "tick",
-            Some(record.tick_index),
+            Some(record.round_index),
             detail,
             None,
         )));
@@ -791,14 +791,14 @@ fn read_now_bytes(world: &World) -> Result<Vec<u8>, ReplayError> {
 fn diverge(
     state_rev: u64,
     kind: &str,
-    tick_index: Option<u64>,
+    round_index: Option<u64>,
     detail: String,
     replayed: Option<Vec<u8>>,
 ) -> ReplayDivergence {
     ReplayDivergence {
         state_rev,
         kind: kind.to_string(),
-        tick_index,
+        round_index,
         detail,
         replayed,
     }

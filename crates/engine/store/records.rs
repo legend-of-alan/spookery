@@ -51,7 +51,8 @@ pub(crate) enum CheckpointKind {
 #[serde(deny_unknown_fields)]
 pub struct CheckpointRecord {
     pub(crate) kind: CheckpointKind,
-    pub tick_index: u64,
+    #[serde(rename = "tick_index")]
+    pub round_index: u64,
     pub state_rev: u64,
     pub state_hash: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -82,8 +83,9 @@ pub struct Arrival {
 /// that has not been stamped omits it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TickRecord<E = Effect> {
-    pub tick_index: u64,
+pub struct RoundRecord<E = Effect> {
+    #[serde(rename = "tick_index")]
+    pub round_index: u64,
     #[serde(default)]
     pub rules_rev: u64,
     pub state_rev_before: u64,
@@ -122,7 +124,7 @@ pub struct TickRecord<E = Effect> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
 pub enum JournalEntry {
-    Tick(TickRecord),
+    Round(RoundRecord),
     Migrate(MigrateRecord),
     Checkpoint(CheckpointRecord),
 }
@@ -130,7 +132,7 @@ pub enum JournalEntry {
 impl JournalEntry {
     pub fn state_rev_after(&self) -> u64 {
         match self {
-            Self::Tick(record) => record.state_rev_after,
+            Self::Round(record) => record.state_rev_after,
             Self::Migrate(record) => record.state_rev_after,
             Self::Checkpoint(record) => record.state_rev,
         }
@@ -138,7 +140,7 @@ impl JournalEntry {
 
     pub fn state_rev_before(&self) -> u64 {
         match self {
-            Self::Tick(record) => record.state_rev_before,
+            Self::Round(record) => record.state_rev_before,
             Self::Migrate(record) => record.state_rev_before,
             Self::Checkpoint(record) => record.state_rev,
         }
@@ -147,7 +149,7 @@ impl JournalEntry {
     #[allow(dead_code)]
     pub fn now_hash(&self) -> &str {
         match self {
-            Self::Tick(record) => &record.now_hash,
+            Self::Round(record) => &record.now_hash,
             Self::Migrate(record) => &record.now_hash,
             Self::Checkpoint(record) => &record.state_hash,
         }
@@ -155,7 +157,7 @@ impl JournalEntry {
 
     pub fn prev(&self) -> &str {
         match self {
-            Self::Tick(record) => &record.prev,
+            Self::Round(record) => &record.prev,
             Self::Migrate(record) => &record.prev,
             Self::Checkpoint(record) => &record.prev,
         }
@@ -163,7 +165,7 @@ impl JournalEntry {
 
     pub fn chain(&self) -> &str {
         match self {
-            Self::Tick(record) => &record.chain,
+            Self::Round(record) => &record.chain,
             Self::Migrate(record) => &record.chain,
             Self::Checkpoint(record) => &record.chain,
         }
@@ -171,7 +173,7 @@ impl JournalEntry {
 
     pub(crate) fn set_prev(&mut self, prev: String) {
         match self {
-            Self::Tick(record) => record.prev = prev,
+            Self::Round(record) => record.prev = prev,
             Self::Migrate(record) => record.prev = prev,
             Self::Checkpoint(record) => record.prev = prev,
         }
@@ -179,7 +181,7 @@ impl JournalEntry {
 
     pub(crate) fn set_chain(&mut self, chain: String) {
         match self {
-            Self::Tick(record) => record.chain = chain,
+            Self::Round(record) => record.chain = chain,
             Self::Migrate(record) => record.chain = chain,
             Self::Checkpoint(record) => record.chain = chain,
         }
@@ -187,16 +189,16 @@ impl JournalEntry {
 
     pub fn kind_name(&self) -> &'static str {
         match self {
-            Self::Tick(_) => "tick",
+            Self::Round(_) => "tick",
             Self::Migrate(_) => "migrate",
             Self::Checkpoint(_) => "checkpoint",
         }
     }
 
-    pub fn tick_index(&self) -> Option<u64> {
+    pub fn round_index(&self) -> Option<u64> {
         match self {
-            Self::Tick(record) => Some(record.tick_index),
-            Self::Checkpoint(record) => Some(record.tick_index),
+            Self::Round(record) => Some(record.round_index),
+            Self::Checkpoint(record) => Some(record.round_index),
             Self::Migrate(_) => None,
         }
     }

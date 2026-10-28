@@ -27,7 +27,7 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
         }
         candidates.extend(habit_intents(draft.canon(), draft.now()));
         let mut candidates =
-            order_intents(draft.now(), candidates, round.tick_index, &round.world_id);
+            order_intents(draft.now(), candidates, round.round_index, &round.world_id);
         let max_intents = draft.budget().max_intents_applied as usize;
         if candidates.len() > max_intents {
             candidates.truncate(max_intents);
@@ -47,12 +47,16 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
 fn order_intents(
     now: &Now,
     mut intents: Vec<Intent>,
-    tick_index: u64,
+    round_index: u64,
     world_id: &str,
 ) -> Vec<Intent> {
     intents.sort_by(|left, right| {
-        priority_key(now, left, tick_index, world_id)
-            .cmp(&priority_key(now, right, tick_index, world_id))
+        priority_key(now, left, round_index, world_id).cmp(&priority_key(
+            now,
+            right,
+            round_index,
+            world_id,
+        ))
     });
     intents
 }
@@ -60,7 +64,7 @@ fn order_intents(
 fn priority_key(
     now: &Now,
     intent: &Intent,
-    tick_index: u64,
+    round_index: u64,
     world_id: &str,
 ) -> (u8, u8, u8, [u8; 32]) {
     let kind = match intent.actor_kind {
@@ -74,7 +78,7 @@ fn priority_key(
     let shuffle = if intent.actor_kind == ActorKind::Player {
         [0u8; 32]
     } else {
-        shuffle_key(world_id, tick_index, &intent.actor_id)
+        shuffle_key(world_id, round_index, &intent.actor_id)
     };
     (kind, pc_clock, claimed, shuffle)
 }

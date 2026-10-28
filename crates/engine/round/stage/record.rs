@@ -1,7 +1,7 @@
 //! Write the round line and commit a live round.
 
 use crate::draft::Draft;
-use crate::journal::TickRecord;
+use crate::journal::RoundRecord;
 use crate::world::World;
 use crate::Reason;
 
@@ -18,8 +18,8 @@ pub(crate) fn run(
     if round.cause != RoundCause::Flush {
         round.steps_run.push("commit_round".to_string());
     }
-    let record = round.recorded.is_none().then(|| TickRecord {
-        tick_index: round.tick_index,
+    let record = round.recorded.is_none().then(|| RoundRecord {
+        round_index: round.round_index,
         rules_rev: crate::store::RULES_REV,
         state_rev_before: round.rev_before,
         state_rev_after: round.rev_before + 1,
@@ -27,7 +27,7 @@ pub(crate) fn run(
         world_time_after: round.world_time_after,
         presence_humans: round.humans,
         actors_present: world.presence().actors_present.clone(),
-        seed: round_seed(&round.world_id, round.tick_index),
+        seed: round_seed(&round.world_id, round.round_index),
         last_tick_at: round.now_wall.clone(),
         intents: std::mem::take(&mut round.applied),
         rejected: std::mem::take(&mut round.rejected),
@@ -103,7 +103,7 @@ fn trim_steps(steps: &[String]) -> Vec<String> {
 mod tests {
     use crate::effect::{Effect, EffectKind};
     use crate::intent::ViewerId;
-    use crate::journal::{emit_entry, JournalEntry, TickRecord};
+    use crate::journal::{emit_entry, JournalEntry, RoundRecord};
 
     use super::{trim_steps, STANDARD_STEPS};
 
@@ -120,8 +120,8 @@ mod tests {
             as_viewer: ViewerId::Npc("mira".to_string()),
             intent_id: "i".to_string(),
         };
-        let line = emit_entry(&JournalEntry::Tick(TickRecord {
-            tick_index: 1,
+        let line = emit_entry(&JournalEntry::Round(RoundRecord {
+            round_index: 1,
             rules_rev: crate::store::RULES_REV,
             state_rev_before: 0,
             state_rev_after: 1,

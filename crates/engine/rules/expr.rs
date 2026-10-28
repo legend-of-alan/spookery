@@ -255,7 +255,7 @@ mod tests {
     fn intent(actor: &str, target: &str) -> Intent {
         Intent {
             id: "t".to_string(),
-            tick_index: 0,
+            round_index: 0,
             actor_id: actor.to_string(),
             actor_kind: ActorKind::Player,
             source: Source::Player,
@@ -303,7 +303,7 @@ mod tests {
             pack_rev: String::new(),
             rules_rev: 0,
             state_rev: 0,
-            tick_index: 0,
+            round_index: 0,
             world_time: 0,
             last_tick_at: String::new(),
             presence: crate::model::Presence::default(),

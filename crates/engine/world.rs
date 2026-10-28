@@ -89,7 +89,7 @@ pub fn handle_player_move(
 
 pub struct GmIntentSpec {
     pub id: Option<String>,
-    pub tick_index: Option<u64>,
+    pub round_index: Option<u64>,
     pub actor_id: Option<String>,
     pub move_name: Option<String>,
     pub target: Option<String>,
@@ -262,7 +262,7 @@ impl World {
             Target::Actor(id) | Target::Place(id) => id.as_str(),
             Target::Clock(_) => return Err(Reason::Schema),
         };
-        let tick = self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?;
+        let tick = self.now.round_index.checked_add(1).ok_or(Reason::Schema)?;
         let id = player_intent_id(
             &self.now.shard_id,
             tick,
@@ -274,7 +274,7 @@ impl World {
         }
         Ok(Intent {
             id,
-            tick_index: tick,
+            round_index: tick,
             actor_id: actor_id.to_string(),
             actor_kind: ActorKind::Player,
             source: Source::Player,
@@ -324,16 +324,16 @@ impl World {
         if self.queue.iter().any(|intent| intent.id == id) {
             return Err(Reason::Schema);
         }
-        let tick_index = match spec.tick_index {
+        let round_index = match spec.round_index {
             Some(tick) => tick,
-            None => self.now.tick_index.checked_add(1).ok_or(Reason::Schema)?,
+            None => self.now.round_index.checked_add(1).ok_or(Reason::Schema)?,
         };
         let args = IntentArgs {
             message_to: spec.message_to,
         };
         self.queue(Intent {
             id: id.clone(),
-            tick_index,
+            round_index,
             actor_id: actor_id.clone(),
             actor_kind,
             source: Source::Player,
@@ -384,7 +384,7 @@ impl World {
             Heard::Actor(actor) => ("actor", None, Some(actor.to_string())),
         };
         let recipients = speech_recipients(&self.now, speaker, heard);
-        let tick_index = self.now.tick_index;
+        let round_index = self.now.round_index;
         let world_time = self.now.world_time;
         append_record(&self.root, |seq| TapeRecord {
             seq,
@@ -394,7 +394,7 @@ impl World {
             actor,
             recipients,
             text,
-            tick_index,
+            round_index,
             world_time,
         })
     }
@@ -494,19 +494,19 @@ impl World {
         let entries = journal::read_verified(&self.root).map_err(|fault| fault.reason)?;
         let mut effects = Vec::new();
         for entry in &entries {
-            let JournalEntry::Tick(record) = entry else {
+            let JournalEntry::Round(record) = entry else {
                 continue;
             };
             for effect in &record.effects {
-                effects.push((record.tick_index, effect));
+                effects.push((record.round_index, effect));
             }
         }
         Ok(self.format_host_lines(&effects))
     }
 
-    /// Effect rows for `outputs` (ending at this world's `tick_index`), then the clocks.
+    /// Effect rows for `outputs` (ending at this world's `round_index`), then the clocks.
     pub fn host_lines(&self, outputs: &[crate::RoundOutput]) -> String {
-        let start = self.now.tick_index + 1 - outputs.len() as u64;
+        let start = self.now.round_index + 1 - outputs.len() as u64;
         let mut effects = Vec::new();
         for (offset, output) in outputs.iter().enumerate() {
             let tick = start + offset as u64;
@@ -519,9 +519,9 @@ impl World {
 
     fn format_host_lines(&self, effects: &[(u64, &Effect)]) -> String {
         let mut rows = Vec::new();
-        for (tick_index, effect) in effects {
+        for (round_index, effect) in effects {
             rows.push(format!(
-                "effect {} {tick_index} {}",
+                "effect {} {round_index} {}",
                 effect.class_name(),
                 payload_json(effect)
             ));

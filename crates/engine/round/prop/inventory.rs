@@ -182,7 +182,7 @@ fn takes_more_than_held(held: u32, delta: i64) -> bool {
 fn npc_intent() -> Intent {
     Intent {
         id: "shift-item".to_string(),
-        tick_index: 0,
+        round_index: 0,
         actor_id: "mira".to_string(),
         actor_kind: ActorKind::Npc,
         source: Source::Kernel,

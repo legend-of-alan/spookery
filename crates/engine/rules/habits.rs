@@ -36,7 +36,7 @@ pub(crate) fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
         return false;
     }
     let counters = actor.act();
-    if counters.last_act_tick == now.tick_index {
+    if counters.last_act_tick == now.round_index {
         return false;
     }
     if now.presence.humans == 0 {
@@ -56,8 +56,8 @@ fn player_present_at(now: &Now, place: &str) -> bool {
 
 pub(crate) fn mint(now: &Now, actor_id: &str, local_id: &str) -> Intent {
     Intent {
-        id: kernel_intent_id(&now.shard_id, now.tick_index, actor_id, local_id),
-        tick_index: now.tick_index,
+        id: kernel_intent_id(&now.shard_id, now.round_index, actor_id, local_id),
+        round_index: now.round_index,
         actor_id: actor_id.to_string(),
         actor_kind: ActorKind::Npc,
         source: Source::Kernel,

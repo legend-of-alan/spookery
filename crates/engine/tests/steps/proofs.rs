@@ -81,7 +81,7 @@ fn no_self_win() {
         play_pack_once(&pack).unwrap_or_else(|err| panic!("tick {tick}: {err}"));
     }
     let now = now_of(&pack);
-    assert_eq!(now.tick_index, 12, "twelve empty-table ticks commit");
+    assert_eq!(now.round_index, 12, "twelve empty-table ticks commit");
     let clock = now
         .clocks
         .get("assassination_debt")
@@ -213,7 +213,7 @@ fn queue_gm(shard: &mut Shard, id: &str, actor: &str, move_name: &str) {
         .queue_gm_intent(
             GmIntentSpec {
                 id: None,
-                tick_index: None,
+                round_index: None,
                 actor_id: Some(actor.to_string()),
                 move_name: Some(move_name.to_string()),
                 target: None,
@@ -371,7 +371,7 @@ Rowan.
         pack_rev: rev,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
-        tick_index: 0,
+        round_index: 0,
         world_time: 0,
         last_tick_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
@@ -398,7 +398,7 @@ Rowan.
     let saved = Shard::resume(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
     let now = saved.now();
     assert_eq!(now.state_rev, ticks, "{hours} hours");
-    assert_eq!(now.tick_index, ticks);
+    assert_eq!(now.round_index, ticks);
     assert_eq!(now.world_time, ticks * 60);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(list_tick_keys(&pack).len() as u64, ticks);
@@ -434,9 +434,9 @@ fn busy_skip() {
 }
 
 fn sealed_tick(pack: &Path, state_rev: u64) -> String {
-    use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, TickRecord};
-    let entry = JournalEntry::Tick(TickRecord {
-        tick_index: 1,
+    use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, RoundRecord};
+    let entry = JournalEntry::Round(RoundRecord {
+        round_index: 1,
         rules_rev: 7,
         state_rev_before: state_rev.saturating_sub(1),
         state_rev_after: state_rev,
@@ -454,7 +454,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
         dice: Vec::new(),
         steps_run: Vec::new(),
         memories: vec![spookery_engine::testing::MemoryLine {
-            tick_index: 1,
+            round_index: 1,
             actor_id: "mira".to_string(),
             intent_id: String::new(),
             fact_ids: Vec::new(),
@@ -669,7 +669,7 @@ rules:
         pack_rev: rev,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
-        tick_index: 0,
+        round_index: 0,
         world_time: 0,
         last_tick_at: "2026-01-01T00:00:00Z".to_string(),
         presence: Presence {
@@ -688,7 +688,7 @@ rules:
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
-    assert_eq!(now.tick_index, 1);
+    assert_eq!(now.round_index, 1);
     assert_eq!(
         now.actors.values().filter(|actor| actor.is_npc()).count(),
         50

@@ -47,7 +47,7 @@ fn the_host_text_lists_the_clocks(world: &mut World) {
 fn the_host_text_lists_the_door_note(world: &mut World) {
     assert_eq!(world.stdout, HOST);
     let now = table::now_of(table::pack(world));
-    assert_eq!(now.tick_index, 13);
+    assert_eq!(now.round_index, 13);
     assert_eq!(now.world_time, 1860);
     assert_eq!(now.last_tick_at, "2026-01-01T00:00:00Z");
     assert_eq!(

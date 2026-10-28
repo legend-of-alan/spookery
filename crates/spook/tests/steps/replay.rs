@@ -216,7 +216,7 @@ fn each_journal_record_parses_back(world: &mut World) {
     });
     let ticks = entries
         .iter()
-        .filter(|entry| entry.tick_index().is_some())
+        .filter(|entry| entry.round_index().is_some())
         .count();
     assert!(ticks >= 3, "ticks {ticks}");
     for entry in &entries {

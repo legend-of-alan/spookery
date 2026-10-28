@@ -358,7 +358,7 @@ fn the_tick_log_records_both_waits(world: &mut World) {
 fn each_wait_committed_its_own_tick(world: &mut World) {
     let pack = table::pack(world);
     table::wait_world_time(pack, 1090);
-    assert_eq!(table::now_of(pack).tick_index, 2);
+    assert_eq!(table::now_of(pack).round_index, 2);
     assert_eq!(
         list_tick_keys(pack),
         vec!["tick-0001".to_string(), "tick-0002".to_string()]

@@ -387,7 +387,7 @@ fn apply_memory(
     tags.sort();
     tags.dedup();
     draft.stage_memory(MemoryLine {
-        tick_index: draft.now().tick_index,
+        round_index: draft.now().round_index,
         actor_id: actor_id.to_string(),
         intent_id: intent.id.clone(),
         fact_ids,

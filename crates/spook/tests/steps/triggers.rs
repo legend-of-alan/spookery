@@ -1302,7 +1302,7 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
 fn intent(id: &str, actor: &str, verb: &str, target: Target) -> Intent {
     Intent {
         id: id.to_string(),
-        tick_index: 1,
+        round_index: 1,
         actor_id: actor.to_string(),
         actor_kind: ActorKind::Player,
         source: Source::Player,

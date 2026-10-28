@@ -407,7 +407,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let rolled = faces(
         &RollKey {
             world_id: world.now().shard_id.clone(),
-            round_index: world.now().tick_index,
+            round_index: world.now().round_index,
             rule_id: "strike".to_string(),
             subject_id: actor_id.to_string(),
             roll_index,
@@ -518,7 +518,7 @@ fn play_queued(
 fn queued(id: &str, actor: &str, kind: ActorKind, move_name: &str, target: Target) -> Intent {
     Intent {
         id: id.to_string(),
-        tick_index: 1,
+        round_index: 1,
         actor_id: actor.to_string(),
         actor_kind: kind,
         source: Source::Player,

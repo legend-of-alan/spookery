@@ -116,7 +116,8 @@ pub struct IntentArgs {
 #[serde(deny_unknown_fields)]
 pub struct Intent {
     pub id: String,
-    pub tick_index: u64,
+    #[serde(rename = "tick_index")]
+    pub round_index: u64,
     pub actor_id: String,
     pub actor_kind: ActorKind,
     pub source: Source,
@@ -249,22 +250,22 @@ fn absent<T>(value: &Option<T>) -> bool {
 /// Blake2s of `shard|tick|actor|row`. The P37 preimage stays.
 pub(crate) fn kernel_intent_id(
     shard_id: &str,
-    tick_index: u64,
+    round_index: u64,
     actor_id: &str,
     row: &str,
 ) -> String {
-    crate::hash::blake2s_hex(format!("{shard_id}|{tick_index}|{actor_id}|{row}").as_bytes())
+    crate::hash::blake2s_hex(format!("{shard_id}|{round_index}|{actor_id}|{row}").as_bytes())
 }
 
-/// Blake2s of `shard|tick_index_plus_one|actor|canonical_line`.
+/// Blake2s of `shard|round_index_plus_one|actor|canonical_line`.
 pub(crate) fn player_intent_id(
     shard_id: &str,
-    tick_index_plus_one: u64,
+    round_index_plus_one: u64,
     actor_id: &str,
     line: &str,
 ) -> String {
     crate::hash::blake2s_hex(
-        format!("{shard_id}|{tick_index_plus_one}|{actor_id}|{line}").as_bytes(),
+        format!("{shard_id}|{round_index_plus_one}|{actor_id}|{line}").as_bytes(),
     )
 }
 

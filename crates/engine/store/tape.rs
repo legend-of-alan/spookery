@@ -29,7 +29,8 @@ pub struct TapeRecord {
     pub actor: Option<String>,
     pub recipients: Vec<String>,
     pub text: String,
-    pub tick_index: u64,
+    #[serde(rename = "tick_index")]
+    pub round_index: u64,
     pub world_time: u64,
 }
 
@@ -231,7 +232,7 @@ mod tests {
             actor: Some("pc_rowan".to_string()),
             recipients: vec!["pc_rowan".to_string()],
             text: "line0".to_string(),
-            tick_index: 0,
+            round_index: 0,
             world_time: 1080,
         })
         .unwrap();
@@ -322,7 +323,7 @@ mod tests {
             actor: Some(player.to_string()),
             recipients: vec![player.to_string()],
             text: text.to_string(),
-            tick_index: 0,
+            round_index: 0,
             world_time: 1080,
         }
     }

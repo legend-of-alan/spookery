@@ -21,7 +21,7 @@ use crate::hash::blake2s_hex;
 
 pub(crate) use super::records::{AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Rejected};
 use super::records::{CheckpointKind, MigrateKind};
-pub use super::records::{JournalEntry, TickRecord};
+pub use super::records::{JournalEntry, RoundRecord};
 
 pub fn hash_now(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
@@ -39,7 +39,8 @@ pub(crate) fn head_rel() -> &'static str {
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct BundleHead {
     pub state_rev: u64,
-    pub tick_index: u64,
+    #[serde(rename = "tick_index")]
+    pub round_index: u64,
     pub state_hash: String,
     pub chain: String,
 }
@@ -136,10 +137,10 @@ pub(crate) fn chain_hash(prev: &str, body: &str) -> String {
     hash_now(&bytes)
 }
 
-pub(crate) fn checkpoint_entry(tick_index: u64, state_rev: u64, state_hash: &str) -> JournalEntry {
+pub(crate) fn checkpoint_entry(round_index: u64, state_rev: u64, state_hash: &str) -> JournalEntry {
     JournalEntry::Checkpoint(CheckpointRecord {
         kind: CheckpointKind::Checkpoint,
-        tick_index,
+        round_index,
         state_rev,
         state_hash: state_hash.to_string(),
         prev: String::new(),
@@ -224,7 +225,7 @@ pub fn list_tick_keys(pack: &Path) -> Vec<String> {
     };
     let mut keys: Vec<String> = entries
         .iter()
-        .filter(|entry| matches!(entry, JournalEntry::Tick(_)))
+        .filter(|entry| matches!(entry, JournalEntry::Round(_)))
         .map(format_record_key)
         .collect();
     keys.sort();
@@ -339,7 +340,7 @@ pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
 
 pub fn emit_entry(entry: &JournalEntry) -> String {
     let json = match entry {
-        JournalEntry::Tick(record) => serde_json::to_string(record).expect("tick"),
+        JournalEntry::Round(record) => serde_json::to_string(record).expect("tick"),
         JournalEntry::Migrate(record) => serde_json::to_string(record).expect("migrate"),
         JournalEntry::Checkpoint(record) => serde_json::to_string(record).expect("checkpoint"),
     };
@@ -356,9 +357,9 @@ fn chain_of(entry: &JournalEntry) -> String {
 /// Key naming one record inside the bundles: `tick-0001`, `migrate-0002` or `checkpoint-0003`.
 pub fn format_record_key(entry: &JournalEntry) -> String {
     match entry {
-        JournalEntry::Tick(record) => format!("tick-{:04}", record.tick_index),
+        JournalEntry::Round(record) => format!("tick-{:04}", record.round_index),
         JournalEntry::Migrate(record) => format!("migrate-{:04}", record.state_rev_after),
-        JournalEntry::Checkpoint(record) => format!("checkpoint-{:04}", record.tick_index),
+        JournalEntry::Checkpoint(record) => format!("checkpoint-{:04}", record.round_index),
     }
 }
 
@@ -385,7 +386,7 @@ fn parse_line(name: &str, line: &str) -> Result<JournalEntry, JournalFault> {
     if kind == Some("migrate") {
         return Ok(JournalEntry::Migrate(read_json(name, line)?));
     }
-    Ok(JournalEntry::Tick(parse_tick(name, line)?))
+    Ok(JournalEntry::Round(parse_round(name, line)?))
 }
 
 fn refuse_old_layout(dir: &Path) -> Result<(), JournalFault> {
@@ -518,16 +519,16 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
     Ok(out)
 }
 
-pub(crate) fn parse_tick(name: &str, text: &str) -> Result<TickRecord, JournalFault> {
-    let raw: TickRecord<crate::effect::EffectRecord> = read_json(name, text)?;
+pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, JournalFault> {
+    let raw: RoundRecord<crate::effect::EffectRecord> = read_json(name, text)?;
     let effects = raw
         .effects
         .into_iter()
         .map(crate::effect::Effect::try_from)
         .collect::<Result<Vec<_>, _>>()
         .map_err(|reason| fault_coded(Path::new(name), reason, reason.token()))?;
-    Ok(TickRecord {
-        tick_index: raw.tick_index,
+    Ok(RoundRecord {
+        round_index: raw.round_index,
         rules_rev: raw.rules_rev,
         state_rev_before: raw.state_rev_before,
         state_rev_after: raw.state_rev_after,
@@ -610,8 +611,8 @@ mod tests {
     #[test]
     fn a_sealed_record_chains_to_the_one_before_it() {
         let tick = include_str!("../fixtures/tick.jsonl");
-        let parsed = parse_tick("tick.jsonl", tick).unwrap();
-        let entry = JournalEntry::Tick(parsed);
+        let parsed = parse_round("tick.jsonl", tick).unwrap();
+        let entry = JournalEntry::Round(parsed);
         let prev = hash_now(b"genesis");
         let line = seal(&entry, &prev);
         let again = parse_line("bundle-0000.jsonl", line.trim_end()).unwrap();
@@ -626,8 +627,8 @@ mod tests {
     #[test]
     fn golden_tick_and_migrate_round_trip() {
         let tick = include_str!("../fixtures/tick.jsonl");
-        let parsed = parse_tick("tick.jsonl", tick).unwrap();
-        assert_eq!(emit_entry(&JournalEntry::Tick(parsed.clone())), tick);
+        let parsed = parse_round("tick.jsonl", tick).unwrap();
+        assert_eq!(emit_entry(&JournalEntry::Round(parsed.clone())), tick);
         assert_eq!(parsed.arrivals[0].via, "stairs");
         assert_eq!(parsed.arrivals[0].arrived_at, 1082);
         assert!(parsed.effects.iter().any(|effect| {

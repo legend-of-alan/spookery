@@ -75,7 +75,7 @@ fn rowan_travels_via_stairs(world: &mut World) {
     world.scratch = format!(
         "{} {} {}",
         before.world_time,
-        before.tick_index,
+        before.round_index,
         before.actors.get("pc_rowan").unwrap().place()
     );
     let (_mark, added) = table::player_send(world, "travel stairs", "locked");
@@ -88,7 +88,7 @@ fn rowan_sees_locked_and_nothing_changes(world: &mut World, text: String) {
     let now = table::now_of(&pack_of(world));
     let mut parts = world.scratch.split(' ');
     assert_eq!(now.world_time.to_string(), parts.next().unwrap());
-    assert_eq!(now.tick_index.to_string(), parts.next().unwrap());
+    assert_eq!(now.round_index.to_string(), parts.next().unwrap());
     assert_eq!(
         now.actors.get("pc_rowan").unwrap().place(),
         parts.next().unwrap()

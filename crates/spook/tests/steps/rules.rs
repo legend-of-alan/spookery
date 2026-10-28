@@ -452,7 +452,7 @@ fn lark_attacks(world: &mut World) {
     let face = faces(
         &RollKey {
             world_id: loaded.shard_id.clone(),
-            round_index: loaded.tick_index + 1,
+            round_index: loaded.round_index + 1,
             rule_id: "attack".to_string(),
             subject_id: "pc_lark".to_string(),
             roll_index: 0,
@@ -668,7 +668,7 @@ fn the_refusal_is_cant_afford(world: &mut World) {
     );
     let now = now_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
-    assert_eq!(now.tick_index, 0);
+    assert_eq!(now.round_index, 0);
 }
 
 #[given(
@@ -727,7 +727,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
-    assert_eq!(now.tick_index, 0);
+    assert_eq!(now.round_index, 0);
     assert!(
         now.messages
             .iter()
@@ -804,7 +804,7 @@ fn the_queued_target_is_that_actor(world: &mut World) {
     let now = now_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
-    assert_eq!(now.tick_index, 0);
+    assert_eq!(now.round_index, 0);
 }
 
 #[given(expr = "a verb with a time cost and a resist roll")]
