@@ -10,8 +10,8 @@ pub fn seconds_since(last_round_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_round_at, Utc::now())
 }
 
-pub fn wall_now() -> Result<String, Reason> {
-    Ok(format_utc(Utc::now()))
+pub fn wall_now() -> String {
+    format_utc(Utc::now())
 }
 
 /// Test support: a UTC stamp `seconds` in the past. Not part of the API.
