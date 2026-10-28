@@ -20,6 +20,8 @@ use crate::rule::{Cond, Cost, Owner, Rule, RuleTable, TargetKind, When};
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
 mod check;
+#[cfg(test)]
+mod oracle;
 pub(crate) mod round_settings;
 mod save;
 mod schema;

@@ -26,3 +26,6 @@ __pycache__/
 
 # Private planning notes read by those skills
 /plans/
+
+# Refactor plans and oracle baselines, kept per machine and never committed
+/docs/refactor/
