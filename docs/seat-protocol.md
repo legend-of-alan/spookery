@@ -679,7 +679,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 }
 ```
 
-`include_tick: true` commits the queue in queue order, one round. An empty queue writes no tick file, unless every seated PC is busy, in which case the table fast-forwards.
+`include_tick: true` commits the queue in queue order, one round. An empty queue writes no round file, unless every seated PC is busy, in which case the table fast-forwards.
 
 <!-- example: commit-request -->
 ```json
@@ -722,7 +722,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 }
 ```
 
-`diff_summary` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `log_path` is the journal file for that round, or null when the round wrote no tick file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
+`diff_summary` is the state keys the round changed. The GM sees every changed key. A player is told only the changes they can see. `log_path` is the journal file for that round, or null when the round wrote no round file. `checks` are the rolls. Faces stay on this object and on the GM check event. They do not go to the player.
 
 #### close
 

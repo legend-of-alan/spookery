@@ -87,9 +87,7 @@ Tested in `features/seats/one_gm_and_three_players.feature`,
 
 A later move sees what an earlier move in that round already changed. One
 refused effect rolls the whole rule back. A rule over the effect cap is refused
-whole, not cut short, and the log records the refusal. A change rule whose
-effects are refused or exceed the cap rolls back whole and leaves no `rejected`
-entry; the log records only moves. A refused roll is not
+whole, not cut short, and the log records the refusal. A refused roll is not
 reported as a success. A place's verb rule beats the shared rule. A wielded
 weapon's attack beats the shared attack. With nothing wielded, the shared
 attack runs. Typing a full rule id is refused and the save stays put. A note
