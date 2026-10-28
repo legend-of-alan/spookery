@@ -865,7 +865,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     }
 }
 
-fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::RollResult {
+fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::Roll {
     reports
         .iter()
         .find_map(|report| match report {

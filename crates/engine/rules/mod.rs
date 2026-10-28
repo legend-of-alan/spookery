@@ -15,4 +15,4 @@ pub(crate) mod rule;
 
 pub use gate::GateRefusal;
 pub(crate) use roll::{faces_from, roll, RollInput, RollKey};
-pub use roll::{MoveReport, RollResult};
+pub use roll::{MoveReport, Roll};

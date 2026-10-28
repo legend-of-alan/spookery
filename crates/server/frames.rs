@@ -1,13 +1,13 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, GmSay, Missing, Outcome, OutgoingSay, PackSummary, PlayerMessage, QueueRow,
-    SessionStatus, StatusPause, StatusPresence, ViewScene, WireMessage,
+    CommitBody, GmSay, MessageView, Missing, Outcome, OutgoingSay, PackSummary, PlayerMessage,
+    QueueRow, SessionStatus, StatusPause, StatusPresence, ViewScene,
 };
 use serde_json::{Map, Value};
 use spookery_engine::{
-    record_line, Heard, Intent, Message, MoveReport, Now, Reason, RollResult, RoundOutput,
-    RunState, TapeRecord, View, World,
+    record_line, Heard, Intent, Message, MoveReport, Now, Reason, Roll, RoundOutput, RunState,
+    TapeRecord, View, World,
 };
 
 #[derive(Debug)]
@@ -90,7 +90,7 @@ pub fn player_check_line(outcome: Outcome) -> String {
     crate::protocol::write_player(&PlayerMessage::Check { outcome })
 }
 
-pub fn check_event(out: &RollResult) -> Vec<u8> {
+pub fn check_event(out: &Roll) -> Vec<u8> {
     crate::protocol::write_check_event(out)
 }
 
@@ -117,9 +117,7 @@ pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
     rolls(reports).map(check_event).collect()
 }
 
-fn rolls<'a>(
-    reports: impl IntoIterator<Item = &'a MoveReport>,
-) -> impl Iterator<Item = &'a RollResult> {
+fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator<Item = &'a Roll> {
     reports.into_iter().filter_map(|report| match report {
         MoveReport::Rolled { out, .. } => Some(out),
         MoveReport::Refused { .. } => None,
@@ -241,8 +239,8 @@ fn player_view(view: &View) -> PlayerMessage {
     }
 }
 
-fn wire_message(message: &Message) -> WireMessage {
-    WireMessage {
+fn wire_message(message: &Message) -> MessageView {
+    MessageView {
         id: message.id.clone(),
         to: message.to.clone(),
         place: message.place.clone(),

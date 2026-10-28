@@ -14,7 +14,7 @@ use crate::rules::cost;
 use crate::rules::expr::{Ctx, Dice};
 use crate::rules::gate::{self, GateRefusal};
 use crate::visibility::allows;
-pub use spookery_protocol::{exit_phrase, WireExit as ExitView};
+pub use spookery_protocol::{exit_phrase, ExitView};
 
 pub(crate) fn named<'a>(canon: &'a Canon, from: &str, name: &str) -> Option<&'a Exit> {
     canon

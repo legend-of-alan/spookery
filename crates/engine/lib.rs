@@ -37,7 +37,7 @@ pub use model::{Message, Now, RunState};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::When;
-pub use rules::{GateRefusal, MoveReport, RollResult};
+pub use rules::{GateRefusal, MoveReport, Roll};
 pub use store::{emit_save, load_save, lock_pack, record_line, LockGuard, TapeRecord};
 pub use visibility::RecipientLine;
 pub use world::{

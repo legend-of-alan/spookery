@@ -11,9 +11,7 @@ use crate::model::{Message, Now};
 use crate::rules::habits::habits_on;
 use crate::visibility::allows;
 use crate::world::World;
-pub use spookery_protocol::{
-    WireClock as ClockView, WireFact as KnownFact, WireItem as ItemStack, WireMeter as MeterView,
-};
+pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
 
 const BUDGET_TOKENS: usize = 800;
 

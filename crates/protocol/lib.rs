@@ -32,8 +32,8 @@ pub use gm::{
     StatusPresence,
 };
 pub use player::{
-    exit_phrase, read_player, read_player_hello, write_player, write_player_hello, Missing,
-    PlayerMessage, ViewScene, WireClock, WireExit, WireFact, WireItem, WireMessage, WireMeter,
+    exit_phrase, read_player, read_player_hello, write_player, write_player_hello, ClockView,
+    ExitView, ItemStack, KnownFact, MessageView, MeterView, Missing, PlayerMessage, ViewScene,
 };
 
 pub fn refusal(code: &str) -> String {
