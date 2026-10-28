@@ -19,7 +19,6 @@ use crate::round::state::Round;
 
 /// Change rules, edge-triggered, to a fixpoint.
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.steps_run.push("run_triggers".to_string());
     let max = draft.budget().max_trigger_depth;
     let rules = change_rules(draft);
     let mut depth = 0u64;

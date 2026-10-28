@@ -14,7 +14,7 @@ use crate::world::World;
 use crate::Reason;
 
 use crate::round::stage::advance::{self, plan_catchup};
-use crate::round::stage::{apply, complete, gather, observe, record, resolve, triggers};
+use crate::round::stage::{apply, gather, observe, record, resolve, triggers};
 use crate::round::state::Round;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -176,7 +176,6 @@ fn play_with(
     let mut draft = Draft::begin(world);
     let mut round = Round::prepare(world, &draft, cause, now_wall, recorded);
     advance::run(&mut round, &mut draft)?;
-    complete::run(&mut round, &mut draft)?;
     gather::run(&mut round, &mut draft)?;
     resolve::run(&mut round, &mut draft)?;
     apply::run(&mut round, &mut draft)?;

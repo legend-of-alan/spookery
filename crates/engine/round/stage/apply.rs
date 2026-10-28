@@ -16,7 +16,6 @@ use super::resolve::resist_outcome;
 use crate::round::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.steps_run.push("apply".to_string());
     let max_effects = draft.budget().max_effects_per_intent as usize;
     let max_npcs = draft.budget().max_npcs_acting;
     let mut slots = 0u64;

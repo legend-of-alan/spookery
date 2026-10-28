@@ -7,7 +7,6 @@ use crate::Reason;
 use crate::round::state::Round;
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.steps_run.push("advance".to_string());
     let world_before = draft.now().world_time;
     round.world_time_before = world_before;
     round.rev_before = draft.now().state_rev;

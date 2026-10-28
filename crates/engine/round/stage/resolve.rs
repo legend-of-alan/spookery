@@ -20,7 +20,6 @@ use crate::Reason;
 use crate::round::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.steps_run.push("resolve".to_string());
     round.frozen = draft.now().clone();
     let candidates = round.candidates.clone();
     for intent in candidates {

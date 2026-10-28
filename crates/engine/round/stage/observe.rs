@@ -11,7 +11,6 @@ use crate::round::state::Round;
 
 /// Deliver narrate lines and build each viewer's change summary.
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.steps_run.push("observe".to_string());
     let canon = draft.canon();
     let now = draft.now();
     let gm = visibility::observe(canon, now, &Seat::Gm, &round.changes, &round.effects);

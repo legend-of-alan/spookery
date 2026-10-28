@@ -5,7 +5,7 @@ use crate::journal::RoundRecord;
 use crate::world::World;
 use crate::Reason;
 
-use crate::round::play::{RoundCause, RoundOutput};
+use crate::round::play::RoundOutput;
 use crate::round::state::round_seed;
 use crate::round::state::Round;
 
@@ -14,10 +14,6 @@ pub(crate) fn run(
     round: &mut Round,
     draft: Draft,
 ) -> Result<RoundOutput, Reason> {
-    round.steps_run.push("record".to_string());
-    if round.cause != RoundCause::Flush {
-        round.steps_run.push("commit_round".to_string());
-    }
     let record = round.recorded.is_none().then(|| RoundRecord {
         round_index: round.round_index,
         rules_rev: crate::store::RULES_REV,
@@ -35,7 +31,7 @@ pub(crate) fn run(
         arrivals: std::mem::take(&mut round.arrivals),
         fast_forward: round.fast_forward,
         dice: round.dice.clone(),
-        steps_run: trim_steps(&round.steps_run),
+        steps_run: std::mem::take(&mut round.steps_run),
         memories: Vec::new(),
         now_hash: String::new(),
         prev: String::new(),
@@ -58,54 +54,11 @@ pub(crate) fn run(
     Ok(output)
 }
 
-/// Steps every round pushes, in order. `commit_round` may follow `record`.
-const STANDARD_STEPS: &[&str] = &[
-    "advance",
-    "complete",
-    "gather",
-    "session_status",
-    "resolve",
-    "apply",
-    "run_triggers",
-    "observe",
-    "record",
-];
-
-/// The part of `steps_run` worth storing. A list that skips or reorders the
-/// standard steps is kept whole, so a broken round stays visible.
-fn trim_steps(steps: &[String]) -> Vec<String> {
-    let mut index = 0usize;
-    let mut extras = Vec::new();
-    let mut commit_seen = false;
-    for step in steps {
-        let name = step.as_str();
-        if index < STANDARD_STEPS.len() && name == STANDARD_STEPS[index] {
-            index += 1;
-            continue;
-        }
-        if name == "commit_round" && index == STANDARD_STEPS.len() && !commit_seen {
-            commit_seen = true;
-            continue;
-        }
-        if name == "commit_round" || STANDARD_STEPS.contains(&name) {
-            return steps.to_vec();
-        }
-        extras.push(step.clone());
-    }
-    if index < STANDARD_STEPS.len() {
-        steps.to_vec()
-    } else {
-        extras
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use crate::effect::{Effect, EffectKind};
     use crate::intent::ViewerId;
     use crate::journal::{emit_entry, JournalEntry, RoundRecord};
-
-    use super::{trim_steps, STANDARD_STEPS};
 
     #[test]
     fn round_line_embeds_the_flat_effect() {
@@ -146,47 +99,5 @@ mod tests {
         let encoded = crate::store::codec::emit_effect(&effect);
         assert!(line.contains(&encoded), "{line}");
         assert!(!line.contains("\"payload\""));
-    }
-
-    #[test]
-    fn a_standard_order_stores_no_steps() {
-        let mut steps = STANDARD_STEPS
-            .iter()
-            .map(|step| step.to_string())
-            .collect::<Vec<_>>();
-        assert!(trim_steps(&steps).is_empty());
-        steps.push("commit_round".to_string());
-        assert!(trim_steps(&steps).is_empty());
-    }
-
-    #[test]
-    fn extra_steps_are_the_only_steps_stored() {
-        let steps = [
-            "advance",
-            "complete",
-            "gather",
-            "session_status",
-            "resolve",
-            "apply",
-            "apply_effect",
-            "cast:mira/leave_door_note",
-            "run_triggers",
-            "observe",
-            "record",
-            "commit_round",
-        ]
-        .map(String::from);
-        assert_eq!(
-            trim_steps(&steps),
-            ["apply_effect", "cast:mira/leave_door_note"]
-        );
-    }
-
-    #[test]
-    fn reordered_steps_are_stored_whole() {
-        let reordered = ["complete".to_string()];
-        assert_eq!(trim_steps(&reordered), reordered);
-        let partial = ["advance".to_string(), "apply_effect".to_string()];
-        assert_eq!(trim_steps(&partial), partial);
     }
 }

@@ -13,13 +13,6 @@ use crate::Reason;
 use super::resolve::{eval_roll_spec, resist_outcome};
 use crate::round::state::Round;
 
-/// The stage mark. Arrivals land in [`finish`], after this tick's intents,
-/// so a traveller acts again on the next tick.
-pub(crate) fn run(round: &mut Round, _draft: &mut Draft) -> Result<(), Reason> {
-    round.steps_run.push("complete".to_string());
-    Ok(())
-}
-
 /// Apply every journey whose minute has been reached, earliest first.
 pub(crate) fn finish(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     let due_actions = crate::map::take_due_actions(draft, round.world_time_after)?;
