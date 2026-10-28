@@ -14,9 +14,6 @@
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
-use std::fs;
-use std::path::PathBuf;
-
 use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
@@ -24,6 +21,8 @@ use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
 use crate::model::Now;
 use crate::testing::temp_pack;
 use crate::world::World;
+
+use super::play::TempPack;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
@@ -43,14 +42,6 @@ struct ItemChange {
     id: String,
     delta: i64,
     max: Option<i64>,
-}
-
-struct TempPack(PathBuf);
-
-impl Drop for TempPack {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
 }
 
 #[test]
