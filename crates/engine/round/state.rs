@@ -4,25 +4,16 @@ use std::collections::BTreeMap;
 
 use crate::draft::Draft;
 use crate::effect::Effect;
-use crate::hash::blake2s_256;
 use crate::intent::Intent;
 use crate::journal::{Arrival, Rejected};
 use crate::key::ChangeRecord;
 use crate::model::Now;
+use crate::round::dice::RoundDice;
 use crate::round::play::RoundKind;
 use crate::rules::gate::GateRefusal;
 use crate::rules::{MoveReport, RollResult};
 use crate::visibility::{RecipientLine, ViewerChanges};
 use crate::world::World;
-
-/// The round line's `seed` field. A roll uses `RollKey`, not this string.
-pub(crate) fn round_seed(world_id: &str, round_index: u64) -> String {
-    format!("{world_id}|{round_index}")
-}
-
-pub(crate) fn shuffle_key(world_id: &str, round_index: u64, actor_id: &str) -> [u8; 32] {
-    blake2s_256(format!("{world_id}|{round_index}|{actor_id}").as_bytes())
-}
 
 /// One pass of the rules over one tick.
 pub(crate) struct Round {
@@ -46,8 +37,7 @@ pub(crate) struct Round {
     pub lines: Vec<RecipientLine>,
     pub seen: Vec<ViewerChanges>,
     pub opposed: BTreeMap<String, RollResult>,
-    pub roll_counts: BTreeMap<(String, String), u32>,
-    pub dice: Vec<String>,
+    pub dice: RoundDice,
     pub resolutions: BTreeMap<String, Resolution>,
     pub frozen: Now,
     pub budget_stop: bool,
@@ -74,7 +64,7 @@ impl Round {
         kind: &RoundKind<'_>,
     ) -> Self {
         Self {
-            round_index: draft.now().round_index,
+            round_index: draft.now().round_index + 1,
             world_time_before: draft.now().world_time,
             world_time_after: draft.now().world_time,
             world_id: draft.now().shard_id.clone(),
@@ -97,8 +87,7 @@ impl Round {
             lines: Vec::new(),
             seen: Vec::new(),
             opposed: BTreeMap::new(),
-            roll_counts: BTreeMap::new(),
-            dice: Vec::new(),
+            dice: RoundDice::new(draft.now().shard_id.clone(), draft.now().round_index + 1),
             resolutions: BTreeMap::new(),
             frozen: draft.now().clone(),
             budget_stop: false,

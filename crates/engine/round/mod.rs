@@ -1,5 +1,6 @@
 //! Play one round and replay the journal.
 
+pub(crate) mod dice;
 pub(crate) mod play;
 pub(crate) mod replay;
 pub(crate) mod stage;

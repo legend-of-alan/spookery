@@ -5,8 +5,8 @@ use crate::journal::RoundRecord;
 use crate::world::World;
 use crate::Reason;
 
+use crate::round::dice::round_seed;
 use crate::round::play::RoundOutput;
-use crate::round::state::round_seed;
 use crate::round::state::Round;
 
 pub(crate) fn run(
@@ -30,7 +30,7 @@ pub(crate) fn run(
         effects: round.effects.clone(),
         arrivals: std::mem::take(&mut round.arrivals),
         fast_forward: round.fast_forward,
-        dice: round.dice.clone(),
+        dice: round.dice.lines.clone(),
         steps_run: std::mem::take(&mut round.steps_run),
         memories: Vec::new(),
         now_hash: String::new(),
@@ -39,7 +39,7 @@ pub(crate) fn run(
     });
     let mut output = RoundOutput {
         reports: std::mem::take(&mut round.move_reports),
-        dice: std::mem::take(&mut round.dice),
+        dice: std::mem::take(&mut round.dice.lines),
         summary: std::mem::take(&mut round.summary),
         lines: std::mem::take(&mut round.lines),
         seen: std::mem::take(&mut round.seen),

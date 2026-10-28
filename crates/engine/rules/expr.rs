@@ -1,6 +1,7 @@
 //! Dice and arithmetic inside a rule number.
 
 use crate::canon::Canon;
+use crate::check::Outcome;
 use crate::error::Reason;
 use crate::intent::{Intent, Target};
 use crate::model::Now;
@@ -15,6 +16,15 @@ pub trait Dice {
     fn begin(&mut self);
     fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason>;
     fn note(&mut self, text: String);
+    /// The band of `actor_id`'s resist roll against `target`.
+    fn resist(
+        &mut self,
+        canon: &Canon,
+        now: &Now,
+        actor_id: &str,
+        check_id: &str,
+        target: i64,
+    ) -> Result<Outcome, Reason>;
 }
 
 /// No dice. A rule that rolls here is refused.
@@ -28,6 +38,10 @@ impl Dice for NoDice {
     }
 
     fn note(&mut self, _text: String) {}
+
+    fn resist(&mut self, _: &Canon, _: &Now, _: &str, _: &str, _: i64) -> Result<Outcome, Reason> {
+        Err(Reason::Schema)
+    }
 }
 
 pub struct EvalOutput {
@@ -249,6 +263,17 @@ mod tests {
 
         fn note(&mut self, text: String) {
             self.notes.push(text);
+        }
+
+        fn resist(
+            &mut self,
+            _: &Canon,
+            _: &Now,
+            _: &str,
+            _: &str,
+            _: i64,
+        ) -> Result<crate::check::Outcome, Reason> {
+            Err(Reason::Schema)
         }
     }
 

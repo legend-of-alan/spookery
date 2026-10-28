@@ -1,22 +1,15 @@
 //! Gate each intent and roll the checks it asks for.
 
-use std::cell::RefCell;
-use std::collections::BTreeMap;
-use std::rc::Rc;
-
-use crate::canon::Canon;
-use crate::check::{classify, CheckDef, Outcome};
-use crate::meter::MeterDef;
-use crate::rule::RollSpec;
-use crate::rules::expr::{self, Ctx, Dice};
+use crate::check::classify;
+use crate::rules::expr::{self, Ctx};
 use crate::rules::gate::{self, gate};
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Source, Target, ViewerId};
-use crate::model::Now;
-use crate::rules::{faces_from, roll, MoveReport, RollInput, RollKey, RollResult};
+use crate::rules::{MoveReport, RollResult};
 use crate::Reason;
 
+use crate::round::dice::ResistKey;
 use crate::round::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
@@ -57,16 +50,18 @@ fn roll_check(
         Ok(total) => total,
         Err(code) => return Ok(refused_check(intent, code)),
     };
-    let frozen = round.frozen.clone();
-    let (target, partial_at) = with_dice(round, |tracker| {
-        let mut roller = tracker.roller(&intent.move_name, &intent.actor_id);
+    let (target, partial_at) = {
+        let mut roller = round
+            .dice
+            .roller(&intent.move_name, &intent.actor_id, ResistKey::Rule);
         let ctx = Ctx { intent };
         let partial_at = if opposed.is_some() {
             None
         } else {
             match roll.partial_at.as_ref() {
                 Some(expr) => Some(
-                    expr::eval_with_dice(draft.canon(), &frozen, &ctx, expr, &mut roller)?.value,
+                    expr::eval_with_dice(draft.canon(), &round.frozen, &ctx, expr, &mut roller)?
+                        .value,
                 ),
                 None => None,
             }
@@ -74,18 +69,32 @@ fn roll_check(
         let target = match opposed {
             Some(total) => total,
             None => {
-                expr::eval_with_dice(draft.canon(), &frozen, &ctx, &roll.target, &mut roller)?.value
+                expr::eval_with_dice(
+                    draft.canon(),
+                    &round.frozen,
+                    &ctx,
+                    &roll.target,
+                    &mut roller,
+                )?
+                .value
             }
         };
-        Ok::<_, Reason>((target, partial_at))
-    })?;
-    let check_id = roll.check.as_str();
+        (target, partial_at)
+    };
     if let Some(out) = round.opposed.get(&intent.id).cloned() {
         return Ok(Resolution::Ready {
             rolled: Some(reclassify(&out, target, partial_at)),
         });
     }
-    match roll_for(round, draft, intent, check_id, target, partial_at) {
+    let key = round.dice.key(&intent.move_name, &intent.actor_id);
+    match round.dice.check(
+        draft.canon(),
+        &round.frozen,
+        key,
+        &roll.check,
+        target,
+        partial_at,
+    ) {
         Ok(out) => {
             round.opposed.insert(intent.id.clone(), out.clone());
             Ok(Resolution::Ready { rolled: Some(out) })
@@ -127,144 +136,13 @@ fn supplied_target(
     else {
         return Ok(None);
     };
-    let out = roll_for(round, draft, &opposing, &check_id, 0, None)?;
+    let key = round.dice.key(&opposing.move_name, &opposing.actor_id);
+    let out = round
+        .dice
+        .check(draft.canon(), &round.frozen, key, &check_id, 0, None)?;
     let total = out.total;
     round.opposed.insert(opposing.id, out);
     Ok(Some(total))
-}
-
-pub(crate) struct SubjectRoll<'a> {
-    pub rule_id: &'a str,
-    pub actor_id: &'a str,
-    pub check_id: &'a str,
-    pub target: i64,
-    pub partial_at: Option<i64>,
-}
-
-/// The one `rules::roll` call. Action checks and resist rolls both come through here.
-pub(crate) fn roll_subject(
-    round: &mut Round,
-    checks: &BTreeMap<String, CheckDef>,
-    meters: &BTreeMap<String, MeterDef>,
-    spec: &SubjectRoll<'_>,
-) -> Result<RollResult, Reason> {
-    let key = next_key(round, spec.rule_id, spec.actor_id);
-    roll_with_key(&round.frozen, checks, meters, spec, &key)
-}
-
-pub(crate) fn roll_with_key(
-    now: &Now,
-    checks: &BTreeMap<String, CheckDef>,
-    meters: &BTreeMap<String, MeterDef>,
-    spec: &SubjectRoll<'_>,
-    key: &RollKey,
-) -> Result<RollResult, Reason> {
-    let actor = now.actors.get(spec.actor_id).ok_or(Reason::UnknownKey)?;
-    let viewer = now.actor_viewer(spec.actor_id).ok_or(Reason::UnknownKey)?;
-    let check = checks.get(spec.check_id).ok_or(Reason::UnknownKey)?;
-    roll(
-        RollInput {
-            check,
-            defs: meters,
-            actor_id: spec.actor_id,
-            actor,
-            viewer: &viewer,
-            target: spec.target,
-            partial_at: spec.partial_at,
-        },
-        key,
-    )
-}
-
-pub(crate) fn eval_roll_spec(
-    canon: &Canon,
-    now: &Now,
-    intent: &Intent,
-    spec: &RollSpec,
-    rule_id: &str,
-    tracker: &RollTracker,
-    roller: &mut Roller,
-) -> Result<RollResult, Reason> {
-    let ctx = Ctx { intent };
-    let target = expr::eval_with_dice(canon, now, &ctx, &spec.target, roller)?.value;
-    let partial_at = match &spec.partial_at {
-        Some(expr) => Some(expr::eval_with_dice(canon, now, &ctx, expr, roller)?.value),
-        None => None,
-    };
-    let key = tracker.key(rule_id, &intent.actor_id);
-    roll_with_key(
-        now,
-        &canon.checks,
-        &canon.meters,
-        &SubjectRoll {
-            rule_id,
-            actor_id: &intent.actor_id,
-            check_id: &spec.check,
-            target,
-            partial_at,
-        },
-        &key,
-    )
-}
-
-pub(crate) fn resist_outcome(
-    canon: &Canon,
-    now: &Now,
-    rule_id: &str,
-    actor_id: &str,
-    check_id: &str,
-    target: i64,
-    tracker: &RollTracker,
-) -> Result<(Outcome, MoveReport), Reason> {
-    let key = tracker.key(rule_id, actor_id);
-    let out = roll_with_key(
-        now,
-        &canon.checks,
-        &canon.meters,
-        &SubjectRoll {
-            rule_id,
-            actor_id,
-            check_id,
-            target,
-            partial_at: None,
-        },
-        &key,
-    )?;
-    let band = out.outcome;
-    Ok((
-        band,
-        MoveReport::Rolled {
-            actor_id: actor_id.to_string(),
-            out,
-        },
-    ))
-}
-
-fn roll_for(
-    round: &mut Round,
-    draft: &Draft,
-    intent: &Intent,
-    check_id: &str,
-    target: i64,
-    partial_at: Option<i64>,
-) -> Result<RollResult, Reason> {
-    let canon = draft.canon();
-    roll_subject(
-        round,
-        &canon.checks,
-        &canon.meters,
-        &SubjectRoll {
-            rule_id: &intent.move_name,
-            actor_id: &intent.actor_id,
-            check_id,
-            target,
-            partial_at,
-        },
-    )
-}
-
-pub(crate) fn next_key(round: &mut Round, rule: &str, subject: &str) -> RollKey {
-    with_dice(round, |tracker| tracker.key(rule, subject))
 }
 
 fn reclassify(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollResult {
@@ -290,117 +168,4 @@ fn refused_check(intent: &Intent, code: Reason) -> Resolution {
             missing: None,
         }),
     )
-}
-
-/// Shared counter and dice lines. A roller and a resist roll can both use it.
-pub(crate) struct RollTracker {
-    counts: Rc<RefCell<BTreeMap<(String, String), u32>>>,
-    notes: Rc<RefCell<Vec<String>>>,
-    world_id: String,
-    round_index: u64,
-}
-
-pub(crate) fn with_dice<T>(round: &mut Round, body: impl FnOnce(&RollTracker) -> T) -> T {
-    let counts = Rc::new(RefCell::new(std::mem::take(&mut round.roll_counts)));
-    let notes = Rc::new(RefCell::new(std::mem::take(&mut round.dice)));
-    let tracker = RollTracker {
-        counts: Rc::clone(&counts),
-        notes: Rc::clone(&notes),
-        world_id: round.world_id.clone(),
-        round_index: round.round_index,
-    };
-    let out = body(&tracker);
-    drop(tracker);
-    round.roll_counts = Rc::try_unwrap(counts)
-        .map(RefCell::into_inner)
-        .unwrap_or_default();
-    round.dice = Rc::try_unwrap(notes)
-        .map(RefCell::into_inner)
-        .unwrap_or_default();
-    out
-}
-
-impl RollTracker {
-    pub(crate) fn key(&self, rule: &str, subject: &str) -> RollKey {
-        alloc(
-            &self.counts,
-            &self.world_id,
-            self.round_index,
-            rule,
-            subject,
-        )
-    }
-
-    pub(crate) fn roller(&self, rule: &str, subject: &str) -> Roller {
-        Roller {
-            counts: Rc::clone(&self.counts),
-            notes: Rc::clone(&self.notes),
-            world_id: self.world_id.clone(),
-            round_index: self.round_index,
-            rule: rule.to_string(),
-            subject: subject.to_string(),
-            key: None,
-            drawn: 0,
-        }
-    }
-}
-
-pub(crate) struct Roller {
-    counts: Rc<RefCell<BTreeMap<(String, String), u32>>>,
-    notes: Rc<RefCell<Vec<String>>>,
-    world_id: String,
-    round_index: u64,
-    rule: String,
-    subject: String,
-    key: Option<RollKey>,
-    drawn: usize,
-}
-
-impl Dice for Roller {
-    fn begin(&mut self) {
-        self.key = None;
-        self.drawn = 0;
-    }
-
-    fn draw(&mut self, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
-        if self.key.is_none() {
-            self.key = Some(alloc(
-                &self.counts,
-                &self.world_id,
-                self.round_index,
-                &self.rule,
-                &self.subject,
-            ));
-        }
-        let key = self.key.as_ref().expect("draw allocates a key");
-        let faces = faces_from(key, self.drawn, count, sides)?;
-        self.drawn += count as usize;
-        Ok(faces)
-    }
-
-    fn note(&mut self, text: String) {
-        self.notes.borrow_mut().push(text);
-    }
-}
-
-fn alloc(
-    counts: &RefCell<BTreeMap<(String, String), u32>>,
-    world_id: &str,
-    round_index: u64,
-    rule: &str,
-    subject: &str,
-) -> RollKey {
-    let mut counts = counts.borrow_mut();
-    let index = counts
-        .entry((rule.to_string(), subject.to_string()))
-        .or_insert(0);
-    let roll_index = *index;
-    *index += 1;
-    RollKey {
-        world_id: world_id.to_string(),
-        round_index,
-        rule_id: rule.to_string(),
-        subject_id: subject.to_string(),
-        roll_index,
-    }
 }

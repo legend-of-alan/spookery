@@ -8,9 +8,6 @@ use crate::round::state::Round;
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
     let world_before = draft.now().world_time;
-    round.world_time_before = world_before;
-    round.round_index = draft.now().round_index + 1;
-    round.world_id = draft.now().shard_id.clone();
     draft.stamp_round(round.round_index, world_before, &round.now_wall);
     let minutes = minutes_for(draft.now().presence.humans, draft.budget());
     let world_after = world_before.saturating_add(minutes);

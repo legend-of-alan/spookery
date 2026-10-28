@@ -8,7 +8,7 @@ use crate::intent::{ActorKind, Intent, Target};
 use crate::model::Now;
 use crate::Reason;
 
-use crate::round::state::shuffle_key;
+use crate::round::dice::shuffle_key;
 use crate::round::state::Round;
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {

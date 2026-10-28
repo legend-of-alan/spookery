@@ -14,7 +14,7 @@ use crate::rules::expr::Ctx;
 use crate::rules::{MoveReport, RollResult};
 use crate::Reason;
 
-use super::resolve::{eval_roll_spec, resist_outcome};
+use crate::round::dice::ResistKey;
 use crate::round::state::Round;
 
 /// Change rules, edge-triggered, to a fixpoint.
@@ -157,39 +157,17 @@ fn expand_trigger(
     intent: &Intent,
     subject: &str,
 ) -> Option<TriggerExpansion> {
-    super::resolve::with_dice(round, |tracker| {
-        let mut roller = tracker.roller(&rule.id, subject);
-        let mut rolled = None;
-        let mut resist = Vec::new();
-        let outcome = if let Some(spec) = &rule.roll {
-            let out =
-                eval_roll_spec(canon, now, intent, spec, &rule.id, tracker, &mut roller).ok()?;
-            let band = out.outcome;
-            rolled = Some(out);
-            Some(band)
-        } else {
-            None
-        };
-        let effects = expand_rule(
-            canon,
-            now,
-            rule,
-            intent,
-            outcome,
-            &mut roller,
-            |actor_id, check_id, target| {
-                let (band, report) =
-                    resist_outcome(canon, now, &rule.id, actor_id, check_id, target, tracker)?;
-                resist.push(report);
-                Ok(band)
-            },
-        )
-        .ok()?;
-        Some(TriggerExpansion {
-            effects,
-            rolled,
-            resist,
-        })
+    let mut roller = round.dice.roller(&rule.id, subject, ResistKey::Rule);
+    let rolled = match &rule.roll {
+        Some(spec) => Some(roller.roll_spec(canon, now, intent, spec, &rule.id).ok()?),
+        None => None,
+    };
+    let outcome = rolled.as_ref().map(|out| out.outcome);
+    let effects = expand_rule(canon, now, rule, intent, outcome, &mut roller).ok()?;
+    Some(TriggerExpansion {
+        effects,
+        rolled,
+        resist: roller.finish(),
     })
 }
 

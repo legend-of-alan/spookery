@@ -15,41 +15,28 @@ use crate::rules::expr::{self, Ctx, Dice};
 use crate::rules::gate;
 use crate::rules::habits;
 
-/// A resist roll that does not shrug the effect off. Habit preview uses this.
-pub(crate) fn ignore_resist(_actor: &str, _check: &str, _target: i64) -> Result<Outcome, Reason> {
-    Ok(Outcome::Miss)
-}
-
 /// `outcome` selects `success`, `partial`, or `failure`. `None` means the rule did not roll.
-/// `do` is included either way. `resist_roll` returns the subject's band. Success shrugs the effect off.
-pub fn expand_outcome<F>(
+/// `do` is included either way. `dice.resist` returns the subject's band. Success shrugs the effect off.
+pub fn expand_outcome(
     canon: &Canon,
     now: &Now,
     intent: &Intent,
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
-    resist_roll: F,
-) -> Result<Vec<Effect>, Reason>
-where
-    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
-{
+) -> Result<Vec<Effect>, Reason> {
     let rule = gate::resolve(canon, now, intent)?;
-    expand_rule(canon, now, rule, intent, outcome, dice, resist_roll)
+    expand_rule(canon, now, rule, intent, outcome, dice)
 }
 
 /// Expand one rule's lists. Change rules are not verbs, so they pass the rule in.
-pub fn expand_rule<F>(
+pub fn expand_rule(
     canon: &Canon,
     now: &Now,
     rule: &Rule,
     intent: &Intent,
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
-    mut resist_roll: F,
-) -> Result<Vec<Effect>, Reason>
-where
-    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
-{
+) -> Result<Vec<Effect>, Reason> {
     let viewer = ViewerId::from_kind(intent.actor_kind, &intent.actor_id)?;
     let mut selected = Vec::new();
     selected.extend(rule.do_.iter());
@@ -69,14 +56,7 @@ where
     let mut effects = Vec::with_capacity(selected.len());
     let mut last_resist = None;
     for template in selected {
-        expand_template(
-            &expand,
-            template,
-            &mut effects,
-            &mut last_resist,
-            dice,
-            &mut resist_roll,
-        )?;
+        expand_template(&expand, template, &mut effects, &mut last_resist, dice)?;
     }
     Ok(effects)
 }
@@ -88,17 +68,13 @@ struct ExpandCtx<'a> {
     viewer: &'a ViewerId,
 }
 
-fn expand_template<F>(
+fn expand_template(
     expand: &ExpandCtx<'_>,
     template: &EffectTemplate,
     effects: &mut Vec<Effect>,
     last_resist: &mut Option<Outcome>,
     dice: &mut dyn Dice,
-    resist_roll: &mut F,
-) -> Result<(), Reason>
-where
-    F: FnMut(&str, &str, i64) -> Result<Outcome, Reason>,
-{
+) -> Result<(), Reason> {
     let canon = expand.canon;
     let now = expand.now;
     let ctx = expand.ctx;
@@ -118,11 +94,11 @@ where
             } => {
                 let actor = expr::resolve_who_id(now, ctx, who)?;
                 let number = expr::eval_with_dice(canon, now, ctx, target, dice)?.value;
-                let band = resist_roll(&actor, check, number)?;
+                let band = dice.resist(canon, now, &actor, check, number)?;
                 *last_resist = Some(band);
                 if band == Outcome::Success {
                     for alt in resisted {
-                        expand_template(expand, alt, effects, last_resist, dice, resist_roll)?;
+                        expand_template(expand, alt, effects, last_resist, dice)?;
                     }
                     return Ok(());
                 }
@@ -421,8 +397,7 @@ pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
 }
 
 pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    let Ok(effects) = expand_outcome(canon, now, intent, None, &mut PreviewDice, ignore_resist)
-    else {
+    let Ok(effects) = expand_outcome(canon, now, intent, None, &mut PreviewDice) else {
         return;
     };
     // A verb with no target must stay empty. Filling it from a location effect
@@ -459,7 +434,7 @@ fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
         if gate::gate(canon, now, &intent).is_err() {
             continue;
         }
-        match expand_outcome(canon, now, &intent, None, &mut PreviewDice, ignore_resist) {
+        match expand_outcome(canon, now, &intent, None, &mut PreviewDice) {
             Ok(effects) => {
                 let mut intent = intent;
                 stamp(&mut intent, &effects);
@@ -483,6 +458,11 @@ impl Dice for PreviewDice {
     }
 
     fn note(&mut self, _text: String) {}
+
+    /// A resist roll that does not shrug the effect off.
+    fn resist(&mut self, _: &Canon, _: &Now, _: &str, _: &str, _: i64) -> Result<Outcome, Reason> {
+        Ok(Outcome::Miss)
+    }
 }
 
 fn stamp(intent: &mut Intent, effects: &[Effect]) {

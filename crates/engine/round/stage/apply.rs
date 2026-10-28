@@ -12,7 +12,7 @@ use crate::rules::gate::{self, gate};
 use crate::rules::{MoveReport, RollResult};
 use crate::Reason;
 
-use super::resolve::resist_outcome;
+use crate::round::dice::ResistKey;
 use crate::round::state::{Resolution, Round};
 
 pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
@@ -70,30 +70,12 @@ pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
             }
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
-        let mut resist_reports = Vec::new();
-        let expanded = match super::resolve::with_dice(round, |tracker| {
-            let mut roller = tracker.roller(&intent.move_name, &intent.actor_id);
-            expand_outcome(
-                draft.canon(),
-                &frozen,
-                &intent,
-                outcome,
-                &mut roller,
-                |actor_id, check_id, target| {
-                    let (band, report) = resist_outcome(
-                        draft.canon(),
-                        &frozen,
-                        &intent.move_name,
-                        actor_id,
-                        check_id,
-                        target,
-                        tracker,
-                    )?;
-                    resist_reports.push(report);
-                    Ok(band)
-                },
-            )
-        }) {
+        let mut roller = round
+            .dice
+            .roller(&intent.move_name, &intent.actor_id, ResistKey::Rule);
+        let expanded = expand_outcome(draft.canon(), &frozen, &intent, outcome, &mut roller);
+        let resist_reports = roller.finish();
+        let expanded = match expanded {
             Ok(effects) => effects,
             Err(code) => {
                 refuse(round, &intent, code);
@@ -121,13 +103,16 @@ fn begin_timed(
 ) -> bool {
     let point = draft.savepoint();
     let at = round.world_time_before;
-    if let Err(code) = super::resolve::with_dice(round, |tracker| {
-        let mut roller = tracker.roller(&intent.move_name, &intent.actor_id);
-        if let Some(cost) = &rule.cost {
-            cost::pay(draft, intent, cost, &mut roller)?;
-        }
-        map::begin(draft, intent, rule, at, minutes, &mut roller)
-    }) {
+    let mut roller = round
+        .dice
+        .roller(&intent.move_name, &intent.actor_id, ResistKey::Rule);
+    let begun = match &rule.cost {
+        Some(cost) => cost::pay(draft, intent, cost, &mut roller),
+        None => Ok(()),
+    }
+    .and_then(|()| map::begin(draft, intent, rule, at, minutes, &mut roller));
+    drop(roller);
+    if let Err(code) = begun {
         draft.rollback(point);
         refuse(round, intent, code);
         return false;
@@ -151,10 +136,12 @@ fn commit_intent(
         Err(_) => (None, None),
     };
     if let Some(cost) = cost {
-        if let Err(code) = super::resolve::with_dice(round, |tracker| {
-            let mut roller = tracker.roller(&intent.move_name, &intent.actor_id);
-            cost::pay(draft, intent, &cost, &mut roller)
-        }) {
+        let mut roller = round
+            .dice
+            .roller(&intent.move_name, &intent.actor_id, ResistKey::Rule);
+        let paid = cost::pay(draft, intent, &cost, &mut roller);
+        drop(roller);
+        if let Err(code) = paid {
             draft.rollback(point);
             refuse(round, intent, code);
             return false;

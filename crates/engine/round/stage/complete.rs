@@ -10,7 +10,7 @@ use crate::model::PendingAction;
 use crate::rules::MoveReport;
 use crate::Reason;
 
-use super::resolve::{eval_roll_spec, resist_outcome};
+use crate::round::dice::ResistKey;
 use crate::round::state::Round;
 
 /// Apply every journey whose minute has been reached, earliest first.
@@ -81,46 +81,26 @@ fn resume(
     let roll_spec = crate::rules::gate::resolve(draft.canon(), draft.now(), &intent)?
         .roll
         .clone();
-    let canon = draft.canon().clone();
-    let snapshot = draft.now().clone();
-    let (effects, reports) = super::resolve::with_dice(round, |tracker| {
-        let mut roller = tracker.roller(&intent.move_name, actor_id);
-        let mut reports = Vec::new();
-        let outcome = match &roll_spec {
-            Some(spec) => {
-                let out = eval_roll_spec(
-                    &canon,
-                    &snapshot,
-                    &intent,
-                    spec,
-                    &spec.check,
-                    tracker,
-                    &mut roller,
-                )?;
-                let band = out.outcome;
-                reports.push(MoveReport::Rolled {
-                    actor_id: actor_id.to_string(),
-                    out,
-                });
-                Some(band)
-            }
-            None => None,
-        };
-        let effects = expand_outcome(
-            &canon,
-            &snapshot,
-            &intent,
-            outcome,
-            &mut roller,
-            |who, check_id, target| {
-                let (band, report) =
-                    resist_outcome(&canon, &snapshot, check_id, who, check_id, target, tracker)?;
-                reports.push(report);
-                Ok(band)
-            },
-        )?;
-        Ok::<_, Reason>((effects, reports))
-    })?;
+    let canon = draft.canon();
+    let snapshot = draft.now();
+    let mut roller = round
+        .dice
+        .roller(&intent.move_name, actor_id, ResistKey::Check);
+    let mut reports = Vec::new();
+    let outcome = match &roll_spec {
+        Some(spec) => {
+            let out = roller.roll_spec(canon, snapshot, &intent, spec, &spec.check)?;
+            let band = out.outcome;
+            reports.push(MoveReport::Rolled {
+                actor_id: actor_id.to_string(),
+                out,
+            });
+            Some(band)
+        }
+        None => None,
+    };
+    let effects = expand_outcome(canon, snapshot, &intent, outcome, &mut roller)?;
+    reports.extend(roller.finish());
     round.move_reports.extend(reports);
     for effect in effects {
         if matches!(effect.class, EffectKind::Location { .. }) {

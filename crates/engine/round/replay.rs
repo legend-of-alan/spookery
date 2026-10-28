@@ -14,8 +14,8 @@ use crate::store::require_rules_rev;
 use crate::world::World;
 use crate::Reason;
 
+use crate::round::dice::round_seed;
 use crate::round::play::{play_round, RoundKind};
-use crate::round::state::round_seed;
 
 #[derive(Debug)]
 pub struct ReplayReport {
