@@ -11,6 +11,9 @@ use crate::model::{Message, Now};
 use crate::rules::habits::habits_on;
 use crate::visibility::allows;
 use crate::world::World;
+pub use spookery_protocol::{
+    WireClock as ClockView, WireFact as KnownFact, WireItem as ItemStack, WireMeter as MeterView,
+};
 
 const BUDGET_TOKENS: usize = 800;
 
@@ -27,15 +30,12 @@ pub struct View {
     pub unknown_mentioned: Vec<String>,
     pub clocks: Vec<ClockView>,
     pub items: Vec<ItemStack>,
+    /// The viewer's own meters. A hidden meter is not here.
     pub meters: Vec<MeterView>,
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
     pub status: String,
 }
-
-pub use spookery_protocol::{
-    WireClock as ClockView, WireFact as KnownFact, WireItem as ItemStack, WireMeter as MeterView,
-};
 
 pub fn perceive(world: &World, as_arg: &str) -> Result<View, Reason> {
     perceive_budget(world, as_arg, BUDGET_TOKENS)
