@@ -74,32 +74,30 @@ fn gate_and_roll(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Resolution, R
         Ok(rule) => rule,
         Err(refusal) => return Ok(Resolution::Refused(refusal)),
     };
-    let rolled = match &rule.roll {
+    match &rule.roll {
         Some(roll) if crate::map::span(canon, snapshot, intent, rule) == 0 => {
             rolls.log.steps.push("resolve_check".to_string());
-            match roll_check(rolls, intent, roll)? {
-                Ok(out) => Some(out),
-                Err(code) => return Ok(Resolution::CannotRoll(code)),
-            }
+            roll_check(rolls, intent, rule, roll)
         }
-        _ => None,
-    };
-    let rule_id = rule.id.clone();
-    Ok(Resolution::Ready { rule_id, rolled })
+        _ => Ok(Resolution::Ready {
+            rule_id: rule.id.clone(),
+            rolled: None,
+        }),
+    }
 }
 
-/// The roll, or the reason the check could not be set up.
 fn roll_check(
     rolls: &mut Rolls<'_>,
     intent: &Intent,
+    rule: &crate::rule::Rule,
     roll: &crate::rule::RollSpec,
-) -> Result<Result<RollResult, Reason>, Reason> {
+) -> Result<Resolution, Reason> {
     if let Err(code) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
-        return Ok(Err(code));
+        return Ok(Resolution::CannotRoll(code));
     }
     let opposed = match opposing_total(rolls, intent) {
         Ok(total) => total,
-        Err(code) => return Ok(Err(code)),
+        Err(code) => return Ok(Resolution::CannotRoll(code)),
     };
     let (canon, snapshot) = (rolls.canon, rolls.snapshot);
     let (target, partial_at) = {
@@ -126,17 +124,27 @@ fn roll_check(
         };
         (target, partial_at)
     };
+    let rule_id = rule.id.clone();
     if let Some(out) = rolls.opposed.get(&intent.id) {
-        return Ok(Ok(reclassify(out, target, partial_at)));
+        return Ok(Resolution::Ready {
+            rule_id,
+            rolled: Some(reclassify(out, target, partial_at)),
+        });
     }
     let key = rolls.dice.key(&intent.move_name, &intent.actor_id);
-    let rolled = rolls
+    match rolls
         .dice
-        .check(canon, snapshot, key, &roll.check, target, partial_at);
-    if let Ok(out) = &rolled {
-        rolls.opposed.insert(intent.id.clone(), out.clone());
+        .check(canon, snapshot, key, &roll.check, target, partial_at)
+    {
+        Ok(out) => {
+            rolls.opposed.insert(intent.id.clone(), out.clone());
+            Ok(Resolution::Ready {
+                rule_id,
+                rolled: Some(out),
+            })
+        }
+        Err(code) => Ok(Resolution::CannotRoll(code)),
     }
-    Ok(rolled)
 }
 
 fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>, Reason> {
