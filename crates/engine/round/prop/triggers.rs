@@ -29,9 +29,8 @@ use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
-use super::play::{
-    configure_runner, copy_docks, fail_msg, pick_rounds, play_rounds, same_save, TempPack,
-};
+use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, same_save, TempPack};
+use crate::testing::temp_pack;
 
 #[derive(Clone, Debug)]
 struct Chain {
@@ -54,7 +53,7 @@ fn random_play_stops_trigger_chains_at_the_cap() {
     let chain = pick_chain();
     runner
         .run(&(rounds, chain), |(rounds, chain)| {
-            let pack = TempPack(copy_docks("prop-triggers"));
+            let pack = TempPack(temp_pack("prop-triggers"));
             let rules = install(&pack.0, &chain).map_err(fail_msg)?;
             play_rounds(&pack.0, &rounds).map_err(fail_msg)?;
             triggers_stop(&pack.0, &rules, rounds.len())

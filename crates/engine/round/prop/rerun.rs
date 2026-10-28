@@ -19,19 +19,18 @@ use crate::journal::{self, JournalEntry};
 use crate::world::World;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
-use super::play::{
-    configure_runner, copy_docks, copy_pack, fail_msg, pick_rounds, play_rounds, TempPack,
-};
+use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, TempPack};
 use crate::model::Presence;
 use crate::round::play::{play_round, RoundKind};
 use crate::round::replay::first_effect_difference;
+use crate::testing::{copy_dir, fresh_dir, temp_pack};
 
 #[test]
 fn running_a_round_again_matches_the_logged_effects() {
     let mut runner = TestRunner::new(configure_runner());
     runner
         .run(&pick_rounds(), |rounds| {
-            let played = TempPack(copy_docks("prop-rerun"));
+            let played = TempPack(temp_pack("prop-rerun"));
             play_rounds(&played.0, &rounds).map_err(fail_msg)?;
             rerun(&played.0)
         })
@@ -59,7 +58,8 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     }
     .map_err(|err| fail_msg(err.to_string()))?;
     // Same rules as the played copy, including the grit success effect, at the snapshot.
-    let pack = TempPack(copy_pack(played, "prop-rerun-again"));
+    let pack = TempPack(fresh_dir("prop-rerun-again"));
+    copy_dir(played, &pack.0);
     fs::write(pack.0.join("state/save.yaml"), snapshot).map_err(|err| fail_msg(err.to_string()))?;
     let mut world = World::open(&pack.0).map_err(|err| fail_msg(err.to_string()))?;
     for record in &round_records {

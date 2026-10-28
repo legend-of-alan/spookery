@@ -208,10 +208,11 @@ fn last_line_in_suffix(suffix: &[u8], at_start: bool) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::fresh_dir;
 
     #[test]
     fn an_appended_say_keeps_the_tape_bytes() {
-        let root = temp_root("bytes");
+        let root = fresh_dir("tape-bytes");
         let stored = append_record(&root, |seq| TapeRecord {
             seq,
             from: "gm".to_string(),
@@ -233,7 +234,7 @@ mod tests {
 
     #[test]
     fn read_tail_keeps_the_newest_lines_for_that_player() {
-        let root = temp_root("tail");
+        let root = fresh_dir("tape-tail");
         let mut lines = String::new();
         for index in 0..300 {
             lines.push_str(&record_line(&sample(
@@ -260,7 +261,7 @@ mod tests {
 
     #[test]
     fn read_tail_and_read_session_keep_the_256_line_cap() {
-        let root = temp_root("cap");
+        let root = fresh_dir("tape-cap");
         let mut lines = String::new();
         for index in 0..300 {
             lines.push_str(&record_line(&sample(
@@ -284,7 +285,7 @@ mod tests {
 
     #[test]
     fn a_tape_past_one_mib_is_out_of_range() {
-        let root = temp_root("cap-bytes");
+        let root = fresh_dir("tape-cap-bytes");
         let path = root.join("state/journal/session.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(&path, vec![b'\n'; (MAX_TAPE_BYTES as usize) + 1]).unwrap();
@@ -320,19 +321,5 @@ mod tests {
         let path = root.join("state/journal/session.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
         fs::write(path, lines).unwrap();
-    }
-
-    fn temp_root(label: &str) -> std::path::PathBuf {
-        let root = std::env::temp_dir().join(format!(
-            "spook-tape-{label}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        ));
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(root.join("state")).unwrap();
-        root
     }
 }

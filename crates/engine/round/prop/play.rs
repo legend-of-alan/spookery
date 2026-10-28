@@ -2,8 +2,6 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::canon::pack_rev;
 use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
@@ -101,25 +99,6 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
         .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
-}
-
-pub(crate) fn copy_docks(label: &str) -> PathBuf {
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
-    copy_pack(&source, label)
-}
-
-pub(crate) fn copy_pack(from: &Path, label: &str) -> PathBuf {
-    static NEXT: AtomicU64 = AtomicU64::new(1);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_nanos())
-        .unwrap_or(0);
-    let root =
-        std::env::temp_dir().join(format!("spook-{label}-{}-{n}-{nanos}", std::process::id()));
-    let _ = fs::remove_dir_all(&root);
-    copy_dir(from, &root);
-    root
 }
 
 fn pc_count(world: &World) -> usize {
@@ -236,19 +215,6 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
         target,
         args: IntentArgs::default(),
         rationale_code: String::new(),
-    }
-}
-
-fn copy_dir(from: &Path, to: &Path) {
-    fs::create_dir_all(to).expect("temp pack directory");
-    for entry in fs::read_dir(from).expect("pack directory") {
-        let entry = entry.expect("pack entry");
-        let dest = to.join(entry.file_name());
-        if entry.file_type().expect("pack entry type").is_dir() {
-            copy_dir(&entry.path(), &dest);
-        } else {
-            fs::copy(entry.path(), dest).expect("copy pack file");
-        }
     }
 }
 

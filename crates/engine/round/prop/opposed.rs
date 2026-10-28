@@ -8,7 +8,8 @@ use crate::model::Presence;
 use crate::world::{GmIntentSpec, World};
 use crate::Reason;
 
-use super::play::{copy_pack, TempPack};
+use super::play::TempPack;
+use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 const LUNGE: &str = "
   - id: lunge
@@ -30,8 +31,7 @@ fn a_rejected_opposing_roll_replays_the_same_way() {
 
 /// The d20 pack with one effect per intent, a two-effect lunge, and Briar's might at 30.
 fn lunge_pack() -> PathBuf {
-    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/sample-d20");
-    let pack = copy_pack(&source, "opposed-base");
+    let pack = copy_pack("sample-d20", "opposed-base");
     let tick = pack.join("rules/tick.yaml");
     let text = fs::read_to_string(&tick).unwrap();
     let capped = text.replacen("max_effects_per_intent: 4", "max_effects_per_intent: 1", 1);
@@ -47,7 +47,8 @@ fn lunge_pack() -> PathBuf {
 
 /// After `warmup` empty rounds, Lark lunges at Briar while Briar strikes Lark.
 fn fight(base: &Path, warmup: u32) -> Result<(), String> {
-    let pack = TempPack(copy_pack(base, "opposed"));
+    let pack = TempPack(fresh_dir("opposed"));
+    copy_dir(base, &pack.0);
     let fail = |what: &str, detail: String| format!("warm-up {warmup}: {what}: {detail}");
     let mut world = World::resume(&pack.0).map_err(|err| fail("resume", err.to_string()))?;
     world.set_presence_inner(Presence {
