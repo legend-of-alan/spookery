@@ -24,7 +24,11 @@ pub(super) fn load_meters(
         let path = format!("meters[{row}]");
         let mut found = Vec::new();
         let id_path = format!("{path}.id");
-        let id_at = At::Row { row, key: "id:" };
+        let id_at = At::Row {
+            list: "meters:",
+            row,
+            key: "id:",
+        };
         let empty = ("a meter id is empty", "set id to a short name");
         found.extend(source.required(&entry.id, &id_path, id_at, empty));
         if entry.min > entry.base_cap {
@@ -32,7 +36,11 @@ pub(super) fn load_meters(
                 Problem {
                     source: &source,
                     path: &format!("{path}.min"),
-                    at: At::Row { row, key: "min:" },
+                    at: At::Row {
+                        list: "meters:",
+                        row,
+                        key: "min:",
+                    },
                     problem: format!("meter '{}' has min above base_cap", entry.id),
                     hint: "set min at or below base_cap",
                 }
@@ -45,6 +53,7 @@ pub(super) fn load_meters(
                     source: &source,
                     path: &format!("{path}.base_cap"),
                     at: At::Row {
+                        list: "meters:",
                         row,
                         key: "base_cap:",
                     },
@@ -59,7 +68,11 @@ pub(super) fn load_meters(
                 Problem {
                     source: &source,
                     path: &format!("{path}.start"),
-                    at: At::Row { row, key: "start:" },
+                    at: At::Row {
+                        list: "meters:",
+                        row,
+                        key: "start:",
+                    },
                     problem: format!("meter '{}' has start outside min and base_cap", entry.id),
                     hint: "set start between min and base_cap",
                 }

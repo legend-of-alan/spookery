@@ -110,6 +110,16 @@ fn break_pack(pack: &Path, fault: &str) {
             "    name: docks_street\n",
             "    name: docks_street\n  - to: docks_street\n    name: docks_street\n",
         ),
+        "duplicate place fact" => replace_file(
+            &pack.join("world/places/docks_shop.md"),
+            "    text: Oil is on the shelf.\n    hidden: false\n",
+            "    text: \"She said: oil.\"\n    hidden: false\n  - id: fact_oil_on_shelf\n    text: Oil again.\n    hidden: false\n",
+        ),
+        "duplicate cast fact" => replace_file(
+            &pack.join("cast/pc-rowan.md"),
+            "facts: []\n",
+            "facts:\n  - id: fact_rowan_shop\n    text: \"He said: the shop.\"\n    hidden: false\n  - id: fact_rowan_shop\n    text: The shop again.\n    hidden: false\n",
+        ),
         "idle maybe" => replace_file(
             &pack.join("rules/tick.yaml"),
             "schema: tick\n",

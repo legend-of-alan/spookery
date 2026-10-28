@@ -43,6 +43,20 @@ Feature: spook check explains a broken pack
     And stdout is empty
     And the pack bytes are unchanged
 
+  Scenario Outline: A repeated fact points at its own row
+    Given a docks table
+    When the copy is broken by "<fault>"
+    And the operator runs spook check --json
+    Then the check exits 1
+    And a JSON diagnostic has code "SCHEMA" file "<file>" path "facts[1].id" at line <line> column 5
+    And stderr is empty
+    And the pack bytes are unchanged
+
+    Examples:
+      | fault                  | file                       | line |
+      | duplicate place fact   | world/places/docks_shop.md | 9    |
+      | duplicate cast fact    | cast/pc-rowan.md           | 10   |
+
   Scenario: A clean pack prints an empty JSON array
     Given a docks table
     When the operator runs spook check --json
