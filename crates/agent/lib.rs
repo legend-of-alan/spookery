@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use crate::protocol::{CommitBody, EventBody, GmSay, PlayerMessage, Roll, SessionStatus};
 
 /// A server built before the pack summary moved onto `session_status`.
-pub const OLDER_SERVER: &str = "this spook run is older than spook ai-gm, rebuild both";
+const OLDER_SERVER: &str = "this spook run is older than spook ai-gm, rebuild both";
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AgentInput {
