@@ -163,7 +163,7 @@ impl JournalEntry {
         }
     }
 
-    #[allow(dead_code)]
+    #[cfg(any(test, feature = "testing"))]
     pub fn now_hash(&self) -> &str {
         match self {
             Self::Round(record) => &record.now_hash,

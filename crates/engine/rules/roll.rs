@@ -74,7 +74,7 @@ pub struct RollInput<'a> {
 }
 
 /// The faces this key would roll, without a stat or a band.
-#[allow(dead_code)]
+#[cfg(any(test, feature = "testing"))]
 pub fn faces(key: &RollKey, count: u32, sides: u32) -> Result<Vec<u32>, Reason> {
     faces_from(key, 0, count, sides)
 }

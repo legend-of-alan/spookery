@@ -28,7 +28,7 @@ pub(crate) use store::lock;
 
 pub use canon::{load_canon, pack_rev};
 pub use check::Outcome;
-pub use diagnostic::{first_reason, reason_of, Diagnostic, Severity};
+pub use diagnostic::{reason_of, Diagnostic, Severity};
 pub use error::Reason;
 pub use intent::{Intent, IntentArgs, Source, Target, ViewerId};
 pub use map::ExitView;
@@ -36,7 +36,7 @@ pub use meter::MeterLive;
 pub use model::{Message, Now, RunState};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
-pub use rule::{Owner, TargetKind, When};
+pub use rule::When;
 pub use rules::{GateRefusal, MoveReport, RollResult};
 pub use store::{emit_save, load_save, lock_pack, record_line, LockGuard, TapeRecord};
 pub use visibility::RecipientLine;
