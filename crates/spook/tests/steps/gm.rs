@@ -3,7 +3,7 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -243,22 +243,25 @@ fn world_time_advanced(world: &mut World) {
 #[then(expr = "the tick log records Mira's restock")]
 fn the_tick_log_records_the_restock(world: &mut World) {
     let tick = tick_json(world);
-    let intents = tick["intents"]
-        .as_array()
-        .unwrap_or_else(|| panic!("{tick}"));
-    assert!(
-        intents
+    let ran = tick["steps_run"].as_array().is_some_and(|steps| {
+        steps
             .iter()
-            .any(|intent| { intent["move"] == "restock_lamp_oil" && intent["actor_id"] == "mira" }),
-        "{tick}"
-    );
+            .any(|step| step["rule"] == "cast:mira/restock_lamp_oil")
+    });
+    assert!(ran, "{tick}");
+    let stocked = tick["effects"].as_array().is_some_and(|effects| {
+        effects.iter().any(|effect| {
+            effect["class"] == "item" && effect["as"] == "npc:mira" && effect["id"] == "lamp_oil"
+        })
+    });
+    assert!(stocked, "{tick}");
 }
 
 #[then(expr = "the tick log records Rowan and Wren waiting")]
 fn the_tick_log_records_rowan_and_wren(world: &mut World) {
     let start = Instant::now();
     loop {
-        if list_tick_keys(table::pack(world)).is_empty() {
+        if list_round_keys(table::pack(world)).is_empty() {
             if start.elapsed() > Duration::from_secs(8) {
                 panic!("no tick log");
             }
@@ -274,8 +277,9 @@ fn the_tick_log_records_rowan_and_wren(world: &mut World) {
         .iter()
         .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
         .map(|intent| {
-            intent["actor_id"]
+            intent["actor"]
                 .as_str()
+                .and_then(|actor| actor.strip_prefix("player:"))
                 .unwrap_or_else(|| panic!("actor"))
                 .to_string()
         })
@@ -410,5 +414,5 @@ fn gm_stderr(world: &mut World) -> String {
 }
 
 fn tick_json(world: &mut World) -> serde_json::Value {
-    crate::support::read_tick(table::pack(world), "tick-0001")
+    crate::support::read_round(table::pack(world), "round-0001")
 }

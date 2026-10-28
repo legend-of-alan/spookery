@@ -6,7 +6,7 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::Now;
 
 use super::table;
@@ -383,14 +383,14 @@ fn the_gm_commits_the_round(world: &mut World) {
 #[then(expr = "a tick file was written")]
 fn a_tick_file_was_written(world: &mut World) {
     assert_eq!(
-        list_tick_keys(table::pack(world)),
-        vec!["tick-0001".to_string()]
+        list_round_keys(table::pack(world)),
+        vec!["round-0001".to_string()]
     );
 }
 
 #[then(expr = "no tick file was written")]
 fn no_tick_file(world: &mut World) {
-    assert!(list_tick_keys(table::pack(world)).is_empty());
+    assert!(list_round_keys(table::pack(world)).is_empty());
 }
 
 #[then(expr = "save.yaml is unchanged since the seat")]

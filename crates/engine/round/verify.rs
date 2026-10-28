@@ -255,7 +255,7 @@ mod tests {
     use crate::testing::temp_pack;
 
     #[test]
-    fn verify_names_a_tick_whose_hash_no_longer_matches() {
+    fn verify_names_a_round_whose_hash_no_longer_matches() {
         let pack = temp_pack("replay-tamper");
         play_pack_once(&pack).unwrap();
         let path = pack.join("state/journal/bundle-0000.jsonl");
@@ -266,7 +266,7 @@ mod tests {
         let err = verify_pack(&pack, None).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("state_rev 1"), "{message}");
-        assert!(message.contains("tick 1"), "{message}");
+        assert!(message.contains("round 1"), "{message}");
         assert!(message.contains("now_hash differed"), "{message}");
         let _ = fs::remove_dir_all(&pack);
     }

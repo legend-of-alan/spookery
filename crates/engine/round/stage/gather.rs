@@ -1,10 +1,10 @@
-//! Take queued intents and habits, in the order this tick will try them.
+//! Take queued intents and habits, in the order this round will try them.
 
 use std::collections::BTreeSet;
 
 use crate::draft::Draft;
 use crate::expand::{habit_intents, stamp_for_priority};
-use crate::intent::{ActorKind, Intent, Target};
+use crate::intent::{Intent, Target, ViewerId};
 use crate::model::Now;
 use crate::Reason;
 
@@ -24,11 +24,6 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
         candidates.truncate(max_intents);
     }
     unique(candidates)
-}
-
-/// A journal line's intents, as they were.
-pub(crate) fn as_recorded(intents: &[Intent]) -> Result<Vec<Intent>, Reason> {
-    unique(intents.to_vec())
 }
 
 fn unique(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
@@ -64,7 +59,6 @@ struct Priority {
 enum ActorRank {
     Player,
     Npc,
-    System,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -80,10 +74,9 @@ enum ClaimRank {
 }
 
 fn priority(now: &Now, intent: &Intent, round_index: u64, world_id: &str) -> Priority {
-    let actor = match intent.actor_kind {
-        ActorKind::Player => ActorRank::Player,
-        ActorKind::Npc => ActorRank::Npc,
-        ActorKind::System => ActorRank::System,
+    let actor = match intent.actor {
+        ViewerId::Player(_) => ActorRank::Player,
+        ViewerId::Npc(_) => ActorRank::Npc,
     };
     let clock = if targets_pc_clock(now, intent) {
         ClockRank::PcClock
@@ -96,10 +89,10 @@ fn priority(now: &Now, intent: &Intent, round_index: u64, world_id: &str) -> Pri
         ClaimRank::Unclaimed
     };
     // Player lines that share a priority keep the queue order. NPC ties still shuffle.
-    let shuffle = if intent.actor_kind == ActorKind::Player {
+    let shuffle = if actor == ActorRank::Player {
         [0u8; 32]
     } else {
-        shuffle_key(world_id, round_index, &intent.actor_id)
+        shuffle_key(world_id, round_index, intent.actor.actor_id())
     };
     Priority {
         actor,

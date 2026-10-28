@@ -21,9 +21,9 @@ use crate::round::stage::{advance, apply, deliver, finish, gather, record, resol
 pub(crate) enum RoundKind<'a> {
     /// Drain the queue, hold the lock, write the journal line.
     Live { fast_forward: bool },
-    /// Play the intents a journal line kept, in memory, with the seats it recorded.
+    /// Play the queue a journal line kept, in memory, with the seats it recorded.
     Replay {
-        intents: &'a [Intent],
+        queue: &'a [Intent],
         presence: Presence,
     },
 }
@@ -162,19 +162,17 @@ pub(crate) fn play_round(
     let clock = advance::run(&mut draft, wall)?;
     let mut dice = RoundDice::new(draft.now().shard_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
-    let (candidates, pool) = match &kind {
-        RoundKind::Live { .. } => (
-            gather::run(&draft, world.queued_intents())?,
-            world.queued_intents(),
-        ),
-        RoundKind::Replay { intents, .. } => (gather::as_recorded(intents)?, *intents),
+    let queue = match &kind {
+        RoundKind::Live { .. } => world.queued_intents(),
+        RoundKind::Replay { queue, .. } => queue,
     };
+    let candidates = gather::run(&draft, queue)?;
     let snapshot = draft.now().clone();
     let resolved = resolve::run(
         draft.canon(),
         &snapshot,
         candidates,
-        pool,
+        queue,
         &mut dice,
         &mut log,
     )?;

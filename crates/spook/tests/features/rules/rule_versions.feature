@@ -17,4 +17,4 @@ Feature: Rule versions
 
   Scenario: Divergence is named
     Given logged effects that differ from the re-run
-    Then spook verify names the tick and the first differing effect
+    Then spook verify names the round and the first differing effect

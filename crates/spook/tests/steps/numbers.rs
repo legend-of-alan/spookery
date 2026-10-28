@@ -4,7 +4,7 @@ use std::fs;
 
 use cucumber::{then, when};
 use serde_json::Value;
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use super::table;
 use crate::World;
@@ -176,7 +176,7 @@ fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
         .as_array()
         .unwrap_or_else(|| panic!("rejected\n{tick}"));
     assert!(
-        rejected.iter().any(|row| row["reason"] == "OUT_OF_RANGE"),
+        rejected.iter().any(|row| row["code"] == "OUT_OF_RANGE"),
         "{tick}"
     );
 }
@@ -210,7 +210,7 @@ fn grit_of(world: &World, actor: &str) -> i64 {
 
 fn latest_tick(world: &World) -> Value {
     let pack = table::pack(world);
-    let keys = list_tick_keys(pack);
+    let keys = list_round_keys(pack);
     let name = keys.last().unwrap_or_else(|| panic!("no tick"));
     let text = spookery_engine::testing::journal::read_record_line(pack, name)
         .unwrap_or_else(|err| panic!("read {name}: {}", err.detail));

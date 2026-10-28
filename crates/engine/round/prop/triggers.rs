@@ -24,7 +24,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::effect::EffectKind;
-use crate::journal::{self, JournalEntry, RoundRecord};
+use crate::journal::{self, JournalEntry, RoundRecord, Step};
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{TestCaseError, TestRunner};
@@ -127,10 +127,12 @@ fn check_round(
     let logged: Vec<&str> = tick
         .steps_run
         .iter()
-        .filter(|step| step.starts_with("story:chain/"))
-        .map(String::as_str)
+        .filter_map(|step| match step {
+            Step::Rule(id) if id.starts_with("story:chain/") => Some(id.as_str()),
+            _ => None,
+        })
         .collect();
-    let hit_cap = tick.steps_run.iter().any(|step| step == "trigger_depth");
+    let hit_cap = tick.steps_run.contains(&Step::TriggerDepth);
     let mut armed = BTreeSet::new();
     let mut index = 0usize;
     let mut passes = 0u64;
@@ -162,9 +164,8 @@ fn check_round(
             }
             if !hit_cap {
                 return Err(fail_msg(format!(
-                    "tick {} hit the cap after {max} trigger passes without trigger_depth: {}",
-                    tick.round_index,
-                    tick.steps_run.join(",")
+                    "tick {} hit the cap after {max} trigger passes without trigger_depth: {:?}",
+                    tick.round_index, tick.steps_run
                 )));
             }
             return Ok(held);

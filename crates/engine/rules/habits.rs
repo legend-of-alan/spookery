@@ -1,7 +1,7 @@
 //! Which habits an NPC may run on this tick.
 
 use crate::canon::Canon;
-use crate::intent::{kernel_intent_id, ActorKind, Intent, Source, Target};
+use crate::intent::{kernel_intent_id, Intent, Source, Target, ViewerId};
 use crate::model::Now;
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
@@ -36,7 +36,7 @@ pub(crate) fn is_eligible(canon: &Canon, now: &Now, npc_id: &str) -> bool {
         return false;
     }
     let counters = actor.act();
-    if counters.last_act_tick == now.round_index {
+    if counters.last_act_round == now.round_index {
         return false;
     }
     if now.presence.humans == 0 {
@@ -58,8 +58,7 @@ pub(crate) fn mint(now: &Now, actor_id: &str, local_id: &str) -> Intent {
     Intent::new(
         kernel_intent_id(&now.shard_id, now.round_index, actor_id, local_id),
         now.round_index,
-        actor_id,
-        ActorKind::Npc,
+        ViewerId::Npc(actor_id.to_string()),
         Source::Kernel,
         local_id,
         Target::Empty,

@@ -30,7 +30,7 @@ pub use canon::{load_canon, pack_rev};
 pub use check::Outcome;
 pub use diagnostic::{first_reason, reason_of, Diagnostic, Severity};
 pub use error::Reason;
-pub use intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+pub use intent::{Intent, IntentArgs, Source, Target, ViewerId};
 pub use map::ExitView;
 pub use meter::MeterLive;
 pub use model::{Message, Now, RunState};
@@ -76,7 +76,7 @@ pub mod testing {
     pub mod journal {
         pub use crate::store::journal::{
             bundles, emit_entry, find_live_bundle, format_record_key, genesis_hash, gunzip_bytes,
-            gzip_bytes, hash_now, latest_checkpoint, list_tick_keys, locate, read_entries,
+            gzip_bytes, hash_now, latest_checkpoint, list_round_keys, locate, read_entries,
             read_record_line, read_verified, seal, JournalEntry, RoundRecord,
         };
     }
@@ -240,7 +240,7 @@ pub mod testing {
         });
     }
 
-    pub fn read_tick(pack: &Path, key: &str) -> serde_json::Value {
+    pub fn read_round(pack: &Path, key: &str) -> serde_json::Value {
         let text = journal::read_record_line(pack, key)
             .unwrap_or_else(|err| panic!("{} {key}: {}", pack.display(), err.detail));
         serde_json::from_str(text.trim_end())

@@ -29,7 +29,6 @@ pub struct TapeRecord {
     pub actor: Option<String>,
     pub recipients: Vec<String>,
     pub text: String,
-    #[serde(rename = "tick_index")]
     pub round_index: u64,
     pub world_time: u64,
 }
@@ -237,7 +236,7 @@ mod tests {
         })
         .unwrap();
         let bytes = fs::read(root.join("state/journal/session.jsonl")).unwrap();
-        let line = "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"line0\",\"tick_index\":0,\"world_time\":1080}\n";
+        let line = "{\"seq\":1,\"from\":\"gm\",\"address\":\"actor\",\"place\":null,\"actor\":\"pc_rowan\",\"recipients\":[\"pc_rowan\"],\"text\":\"line0\",\"round_index\":0,\"world_time\":1080}\n";
         assert_eq!(bytes, line.as_bytes());
         assert_eq!(parse_record(line.trim_end()).unwrap(), stored);
         let _ = fs::remove_dir_all(&root);
@@ -306,11 +305,11 @@ mod tests {
 
     #[test]
     fn a_line_missing_place_or_actor_is_schema() {
-        let missing_place = r#"{"seq":1,"from":"gm","address":"table","actor":null,"recipients":[],"text":"hi","tick_index":0,"world_time":0}"#;
-        let missing_actor = r#"{"seq":1,"from":"gm","address":"table","place":null,"recipients":[],"text":"hi","tick_index":0,"world_time":0}"#;
+        let missing_place = r#"{"seq":1,"from":"gm","address":"table","actor":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
+        let missing_actor = r#"{"seq":1,"from":"gm","address":"table","place":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
         assert_eq!(parse_record(missing_place).unwrap_err(), Reason::Schema);
         assert_eq!(parse_record(missing_actor).unwrap_err(), Reason::Schema);
-        let present = r#"{"seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","tick_index":0,"world_time":0}"#;
+        let present = r#"{"seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","round_index":0,"world_time":0}"#;
         assert!(parse_record(present).is_ok());
     }
 

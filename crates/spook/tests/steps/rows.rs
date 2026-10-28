@@ -4,7 +4,7 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::Reason;
 
-use crate::support::{insert_nell, read_tick, stamp_pack_rev, temp_pack};
+use crate::support::{insert_nell, read_round, stamp_pack_rev, temp_pack};
 use crate::World;
 
 use super::table;
@@ -68,11 +68,11 @@ fn rowan_is_in_docks_street(world: &mut World) {
 
 #[then(expr = "the tick records the move to the street")]
 fn the_tick_records_the_move(world: &mut World) {
-    assert_location(table::pack(world), "tick-0001");
+    assert_location(table::pack(world), "round-0001");
 }
 
 fn assert_location(pack: &Path, name: &str) {
-    let tick = read_tick(pack, name);
+    let tick = read_round(pack, name);
     let hits: Vec<_> = tick["effects"]
         .as_array()
         .unwrap()

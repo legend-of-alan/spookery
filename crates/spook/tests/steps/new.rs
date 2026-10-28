@@ -138,7 +138,8 @@ fn the_travel_committed_a_tick(world: &mut World) {
     let now = table::now_of(pack);
     assert_eq!(now.actors.get("pc_ada").unwrap().place(), "lane");
     assert!(
-        spookery_engine::testing::journal::list_tick_keys(pack).contains(&"tick-0001".to_string()),
+        spookery_engine::testing::journal::list_round_keys(pack)
+            .contains(&"round-0001".to_string()),
         "no tick file"
     );
 }

@@ -38,7 +38,7 @@ pub enum DivergenceKind {
 impl DivergenceKind {
     pub fn as_str(&self) -> &'static str {
         match self {
-            Self::Round => "tick",
+            Self::Round => "round",
             Self::Migrate => "migrate",
             Self::Checkpoint => "checkpoint",
             Self::Save => "save",
@@ -97,8 +97,8 @@ impl ReplayDivergence {
 impl std::fmt::Display for ReplayDivergence {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "state_rev {} {}", self.state_rev, self.kind.as_str())?;
-        if let Some(tick) = self.round_index {
-            write!(f, " {tick}")?;
+        if let Some(round) = self.round_index {
+            write!(f, " {round}")?;
         }
         write!(f, ": {}", self.detail)?;
         if let Some((line_no, line)) = &self.save_line {
@@ -453,7 +453,7 @@ pub(crate) fn apply(world: &mut World, entry: &JournalEntry) -> Result<(), Repla
 fn apply_recorded_round(world: &mut World, record: &RoundRecord) -> Result<(), ReplayError> {
     require_rules_rev(record.rules_rev).map_err(ReplayError::Reason)?;
     if world.now().round_index + 1 != record.round_index {
-        return Err(round_diverged(record, "tick_index differed").into());
+        return Err(round_diverged(record, "round_index differed").into());
     }
     let seed = round_seed(&world.now().shard_id, record.round_index);
     if record.seed != seed {
@@ -463,7 +463,7 @@ fn apply_recorded_round(world: &mut World, record: &RoundRecord) -> Result<(), R
         world,
         &record.last_tick_at,
         RoundKind::Replay {
-            intents: &record.intents,
+            queue: &record.intents,
             presence: Presence {
                 humans: record.presence_humans,
                 actors_present: record.actors_present.clone(),

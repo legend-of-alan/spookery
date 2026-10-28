@@ -14,10 +14,10 @@ Feature: Journal records are typed
   Scenario: A field with the wrong type is named
     Given a docks table
     When the operator runs tick
-    And the tick record's tick_index is a string
+    And the round record's round_index is a string
     And the operator runs verify
     Then the command exits 1
-    And stderr names the tick record and the field tick_index
+    And stderr names the round record and the field round_index
 
   Scenario: An unknown key is refused
     Given a docks table
@@ -43,5 +43,5 @@ Feature: Journal records are typed
   Scenario: A quiet tick omits the standard steps
     Given a docks table
     When the operator runs 2 ticks
-    Then the first tick lists only apply_effect and cast:mira/leave_door_note
-    And the second tick omits steps_run
+    Then the first round lists only effect_applied and cast:mira/leave_door_note
+    And the second round omits steps_run

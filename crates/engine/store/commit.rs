@@ -134,7 +134,7 @@ fn seal(
         actors_present: line.presence.actors_present,
         seed: line.seed,
         last_tick_at: line.wall,
-        intents: line.log.applied,
+        intents: line.queue,
         rejected: line.log.rejected,
         effects: line.log.effects,
         arrivals: line.log.arrivals,
@@ -599,6 +599,7 @@ mod tests {
             wall: String::new(),
             fast_forward: false,
             log: RoundLog::default(),
+            queue: Vec::new(),
         }
     }
 

@@ -42,10 +42,10 @@ Feature: The journal verifies
     And stdout says the save was verified
     And stderr is empty
 
-  Scenario: A changed tick intent fails verify
+  Scenario: A changed round intent fails verify
     Given a docks table
     When the operator runs tick
-    And one intent in a tick record is changed
+    And a queued intent the round never had is written into its record
     And the operator runs verify
     Then the command exits 1
     And stderr names that record

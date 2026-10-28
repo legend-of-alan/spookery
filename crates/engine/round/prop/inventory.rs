@@ -21,7 +21,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
-use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target, ViewerId};
+use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
 use crate::model::Now;
 use crate::world::World;
 use proptest::prelude::*;
@@ -183,8 +183,7 @@ fn npc_intent() -> Intent {
     Intent {
         id: "shift-item".to_string(),
         round_index: 0,
-        actor_id: "mira".to_string(),
-        actor_kind: ActorKind::Npc,
+        actor: ViewerId::Npc("mira".to_string()),
         source: Source::Kernel,
         move_name: "shift_item".to_string(),
         target: Target::Empty,

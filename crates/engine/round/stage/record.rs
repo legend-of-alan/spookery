@@ -37,6 +37,7 @@ pub(crate) fn run(
                 wall: wall.to_string(),
                 fast_forward: *fast_forward,
                 log,
+                queue: world.queued_intents().to_vec(),
             };
             output.outcome = Some(crate::commit::commit(world, draft, line)?);
         }

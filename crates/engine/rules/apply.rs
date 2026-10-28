@@ -3,7 +3,7 @@
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind, WORLD};
 use crate::error::Reason;
-use crate::intent::{ActorKind, Intent, ViewerId};
+use crate::intent::Intent;
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
 use crate::model::{self, MemoryLine, Message, PlaceLive};
@@ -18,7 +18,7 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
             clock_id,
             delta,
             start,
-        } => apply_clock(draft, &intent.actor_id, &clock_id, delta, start),
+        } => apply_clock(draft, intent.actor.actor_id(), &clock_id, delta, start),
         EffectKind::Meter {
             actor_id,
             key,
@@ -60,11 +60,7 @@ pub fn apply_effect(draft: &mut Draft, intent: &Intent, effect: Effect) -> Resul
 }
 
 fn viewer_matches(intent: &Intent, effect: &Effect) -> bool {
-    match (intent.actor_kind, effect.as_viewer()) {
-        (ActorKind::Npc, ViewerId::Npc(id)) => id == &intent.actor_id,
-        (ActorKind::Player, ViewerId::Player(id)) => id == &intent.actor_id,
-        _ => false,
-    }
+    effect.as_viewer() == &intent.actor
 }
 
 fn apply_clock(
@@ -294,7 +290,7 @@ fn apply_location(
     from: &str,
     to: &str,
 ) -> Result<(), Reason> {
-    if actor_id != intent.actor_id {
+    if actor_id != intent.actor.actor_id() {
         return Err(Reason::ActorMismatch);
     }
     let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
@@ -339,19 +335,14 @@ fn apply_memory(
     tags: Vec<String>,
     text: Option<String>,
 ) -> Result<(), Reason> {
-    if actor_id != intent.actor_id {
+    if actor_id != intent.actor.actor_id() {
         return Err(Reason::ActorMismatch);
     }
     if text.as_ref().is_some_and(|text| text.chars().count() > 240) {
         return Err(Reason::Schema);
     }
-    let viewer = match intent.actor_kind {
-        ActorKind::Npc => ViewerId::Npc(actor_id.to_string()),
-        ActorKind::Player => ViewerId::Player(actor_id.to_string()),
-        ActorKind::System => return Err(Reason::ActorMismatch),
-    };
     for fact in &fact_ids {
-        if !allows(draft.canon(), draft.now(), &viewer, fact) {
+        if !allows(draft.canon(), draft.now(), &intent.actor, fact) {
             return Err(Reason::IllegalKnowledge);
         }
     }

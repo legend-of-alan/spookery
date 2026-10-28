@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use cucumber::{then, when};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use spookery::host::{OUTBOUND_BYTES, OUTBOUND_FRAMES, REQUESTED_SEND_BUFFER};
 use spookery::protocol::{write_player, PlayerMessage};
@@ -54,7 +54,7 @@ fn refused_and_disconnected(world: &mut World, code: String) {
 fn a_second_player_can_sit_and_wait(world: &mut World) {
     table::release_status_gm(world);
     let pack = table::pack(world).to_path_buf();
-    let before = list_tick_keys(&pack).len();
+    let before = list_round_keys(&pack).len();
     table::seat_actor(world, &pack, "pc_harbormouse");
     table::actor_line(world, "pc_harbormouse", "wait");
     table::expect_wait_from(&pack, "pc_harbormouse", before);
@@ -216,7 +216,7 @@ fn the_player_is_refused_with(world: &mut World, code: String) {
 #[then(expr = "the player can wait")]
 fn the_player_can_wait(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let before = list_tick_keys(&pack).len();
+    let before = list_round_keys(&pack).len();
     table::player_write(world, "wait");
     table::expect_wait_from(&pack, "pc_rowan", before);
 }
@@ -262,7 +262,7 @@ fn the_socket_is_closed_before_the_hello(world: &mut World) {
 #[when(expr = "one player sends 200 lines as fast as it can")]
 fn one_player_sends_200_lines(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    let before = list_tick_keys(&pack).len();
+    let before = list_round_keys(&pack).len();
     let started = Instant::now();
     for (actor_id, count) in [("pc_rowan", 200), ("pc_harbormouse", 1)] {
         let player = table::live_mut(world)

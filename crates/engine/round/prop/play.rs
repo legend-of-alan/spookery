@@ -6,7 +6,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::canon::pack_rev;
-use crate::intent::{player_intent_id, ActorKind, Intent, IntentArgs, Source, Target};
+use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::journal;
 use crate::map::visible;
 use crate::rules::gate::gate;
@@ -230,8 +230,7 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
     Intent {
         id: player_intent_id(&now.shard_id, tick, actor, &line),
         round_index: now.round_index,
-        actor_id: actor.to_string(),
-        actor_kind: ActorKind::Player,
+        actor: ViewerId::Player(actor.to_string()),
         source: Source::Player,
         move_name: verb.to_string(),
         target,

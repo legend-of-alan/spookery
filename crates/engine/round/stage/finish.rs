@@ -45,17 +45,11 @@ fn due_intent(
     verb: &str,
     target: Target,
 ) -> Result<Intent, Reason> {
-    let kind = draft
-        .now()
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownKey)?
-        .actor_kind();
+    let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     Ok(Intent::new(
         arrival_intent_id(actor_id),
         draft.now().round_index,
-        actor_id,
-        kind,
+        actor.viewer(actor_id),
         source,
         verb,
         target,
@@ -70,23 +64,23 @@ fn arrive(
     to: String,
     via: String,
 ) -> Result<(), Reason> {
-    let actor_id = &intent.actor_id;
+    let actor_id = intent.actor.actor_id();
     let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     let from = actor.place().to_string();
     let effect = Effect {
         class: EffectKind::Location {
-            actor_id: actor_id.clone(),
+            actor_id: actor_id.to_string(),
             from,
             to: to.clone(),
             arrived_at: Some(until),
         },
-        as_viewer: intent.viewer()?,
+        as_viewer: intent.actor.clone(),
         intent_id: intent.id.clone(),
     };
     apply_effect(draft, intent, effect.clone())?;
     log.effects.push(effect);
     log.arrivals.push(Arrival {
-        actor_id: actor_id.clone(),
+        actor_id: actor_id.to_string(),
         arrived_at: until,
         to,
         via,
@@ -100,7 +94,7 @@ fn perform(
     draft: &mut Draft,
     intent: &Intent,
 ) -> Result<(), Reason> {
-    let actor_id = &intent.actor_id;
+    let actor_id = intent.actor.actor_id();
     let canon = draft.canon();
     let snapshot = draft.now();
     let rule = crate::rules::gate::resolve(canon, snapshot, intent)?;
@@ -112,7 +106,7 @@ fn perform(
     let outcome = rolled.as_ref().map(|out| out.outcome);
     let effects = expand_rule(canon, snapshot, rule, intent, outcome, &mut roller)?;
     let resisted = roller.finish();
-    let actor_id = actor_id.clone();
+    let actor_id = actor_id.to_string();
     log.reports
         .extend(rolled.map(|out| MoveReport::Rolled { actor_id, out }));
     log.reports.extend(resisted);

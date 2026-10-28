@@ -211,7 +211,7 @@ pub fn session_status(
             .iter()
             .map(|intent| QueueRow {
                 id: intent.id.clone(),
-                actor_id: intent.actor_id.clone(),
+                actor_id: intent.actor.actor_id().to_string(),
                 move_name: intent.move_name.clone(),
             })
             .collect(),

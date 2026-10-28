@@ -38,14 +38,6 @@ impl ViewerId {
             ViewerId::Npc(id) => format!("npc:{id}"),
         }
     }
-
-    pub fn from_kind(kind: ActorKind, id: &str) -> Result<Self, Reason> {
-        match kind {
-            ActorKind::Npc => Ok(ViewerId::Npc(id.to_string())),
-            ActorKind::Player => Ok(ViewerId::Player(id.to_string())),
-            ActorKind::System => Err(Reason::UnscopedPerceive),
-        }
-    }
 }
 
 impl From<ViewerId> for String {
@@ -59,24 +51,6 @@ impl TryFrom<String> for ViewerId {
 
     fn try_from(raw: String) -> Result<Self, Self::Error> {
         ViewerId::parse(&raw)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ActorKind {
-    Npc,
-    Player,
-    System,
-}
-
-impl ActorKind {
-    pub fn token(self) -> &'static str {
-        match self {
-            ActorKind::Npc => "npc",
-            ActorKind::Player => "player",
-            ActorKind::System => "system",
-        }
     }
 }
 
@@ -123,10 +97,8 @@ pub struct IntentArgs {
 #[serde(deny_unknown_fields)]
 pub struct Intent {
     pub id: String,
-    #[serde(rename = "tick_index")]
     pub round_index: u64,
-    pub actor_id: String,
-    pub actor_kind: ActorKind,
+    pub actor: ViewerId,
     pub source: Source,
     #[serde(rename = "move")]
     pub move_name: String,
@@ -141,8 +113,7 @@ impl Intent {
     pub(crate) fn new(
         id: String,
         round_index: u64,
-        actor_id: &str,
-        actor_kind: ActorKind,
+        actor: ViewerId,
         source: Source,
         move_name: &str,
         target: Target,
@@ -150,19 +121,13 @@ impl Intent {
         Self {
             id,
             round_index,
-            actor_id: actor_id.to_string(),
-            actor_kind,
+            actor,
             source,
             move_name: move_name.to_string(),
             target,
             args: IntentArgs::default(),
             rationale_code: String::new(),
         }
-    }
-
-    /// The seat this intent acts from.
-    pub(crate) fn viewer(&self) -> Result<ViewerId, Reason> {
-        ViewerId::from_kind(self.actor_kind, &self.actor_id)
     }
 }
 

@@ -258,7 +258,7 @@ fn narrations(canon: &Canon, now: &Now, effects: &[Effect], viewer: Option<&str>
 }
 
 fn narrate_allowed(canon: &Canon, now: &Now, viewer: &str, fact_ids: &[String]) -> bool {
-    let Some(seat) = now.actor_viewer(viewer) else {
+    let Some(seat) = now.actors.get(viewer).map(|actor| actor.viewer(viewer)) else {
         return false;
     };
     fact_ids.iter().all(|fact| allows(canon, now, &seat, fact))
@@ -270,7 +270,9 @@ fn can_see(canon: &Canon, now: &Now, viewer: &str, change: &ChangeRecord) -> boo
     }
     match &change.key {
         StateKey::WorldFlag(_) => true,
-        StateKey::TickLastAct(_) | StateKey::TickIdleActs(_) | StateKey::TickLiveActs(_) => false,
+        StateKey::LastActRound(_) | StateKey::IdleActsToday(_) | StateKey::LiveActsThisHour(_) => {
+            false
+        }
         StateKey::ActorKnownFact(actor) => actor == viewer,
         StateKey::PlaceItem(place, _) => here(now, viewer) == Some(place.as_str()),
         StateKey::Message(id) => message_visible(canon, now, viewer, id),
@@ -322,7 +324,7 @@ fn message_visible(canon: &Canon, now: &Now, viewer: &str, id: &str) -> bool {
     if !in_room && !addressed {
         return false;
     }
-    let Some(seat) = now.actor_viewer(viewer) else {
+    let Some(seat) = now.actors.get(viewer).map(|actor| actor.viewer(viewer)) else {
         return false;
     };
     message

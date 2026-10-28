@@ -3,11 +3,11 @@
 use std::collections::BTreeMap;
 
 use crate::check::classify;
-use crate::rules::expr::{self, Ctx};
 use crate::rules::gate::{gate, GateRefusal};
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target};
+use crate::journal::Step;
 use crate::model::Now;
 use crate::rules::RollResult;
 use crate::Reason;
@@ -30,7 +30,7 @@ pub(crate) enum Resolution {
     },
     /// Refused by the gate: journaled, and told to a player.
     Refused(GateRefusal),
-    /// The check could not be set up (no viewer, check or meter): journaled, and told to the actor whoever it is.
+    /// The check could not be set up (no check or meter): journaled, and told to the actor whoever it is.
     CannotRoll(Reason),
 }
 
@@ -38,7 +38,7 @@ pub(crate) enum Resolution {
 struct Rolls<'a> {
     canon: &'a Canon,
     snapshot: &'a Now,
-    pool: &'a [Intent],
+    queue: &'a [Intent],
     opposed: BTreeMap<String, RollResult>,
     dice: &'a mut RoundDice,
     log: &'a mut RoundLog,
@@ -48,14 +48,14 @@ pub(crate) fn run(
     canon: &Canon,
     snapshot: &Now,
     candidates: Vec<Intent>,
-    pool: &[Intent],
+    queue: &[Intent],
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<Vec<Resolved>, Reason> {
     let mut rolls = Rolls {
         canon,
         snapshot,
-        pool,
+        queue,
         opposed: BTreeMap::new(),
         dice,
         log,
@@ -76,7 +76,7 @@ fn gate_and_roll(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Resolution, R
     };
     match &rule.roll {
         Some(roll) if crate::map::span(canon, snapshot, intent, rule) == 0 => {
-            rolls.log.steps.push("resolve_check".to_string());
+            rolls.log.steps.push(Step::CheckRolled);
             roll_check(rolls, intent, rule, roll)
         }
         _ => Ok(Resolution::Ready {
@@ -92,37 +92,18 @@ fn roll_check(
     rule: &crate::rule::Rule,
     roll: &crate::rule::RollSpec,
 ) -> Result<Resolution, Reason> {
-    if let Err(code) = intent.viewer() {
-        return Ok(Resolution::CannotRoll(code));
-    }
+    let actor_id = intent.actor.actor_id();
     let opposed = match opposing_total(rolls, intent) {
         Ok(total) => total,
         Err(code) => return Ok(Resolution::CannotRoll(code)),
     };
     let (canon, snapshot) = (rolls.canon, rolls.snapshot);
-    let (target, partial_at) = {
-        let mut roller = rolls.dice.roller(
-            rolls.log,
-            &intent.move_name,
-            &intent.actor_id,
-            ResistKey::Rule,
-        );
-        let ctx = Ctx { intent };
-        let partial_at = if opposed.is_some() {
-            None
-        } else {
-            match roll.partial_at.as_ref() {
-                Some(expr) => {
-                    Some(expr::eval_with_dice(canon, snapshot, &ctx, expr, &mut roller)?.value)
-                }
-                None => None,
-            }
-        };
-        let target = match opposed {
-            Some(total) => total,
-            None => expr::eval_with_dice(canon, snapshot, &ctx, &roll.target, &mut roller)?.value,
-        };
-        (target, partial_at)
+    let (target, partial_at) = match opposed {
+        Some(total) => (total, None),
+        None => rolls
+            .dice
+            .roller(rolls.log, &intent.move_name, actor_id, ResistKey::Rule)
+            .thresholds(canon, snapshot, intent, roll)?,
     };
     let rule_id = rule.id.clone();
     if let Some(out) = rolls.opposed.get(&intent.id) {
@@ -131,7 +112,7 @@ fn roll_check(
             rolled: Some(reclassify(out, target, partial_at)),
         });
     }
-    let key = rolls.dice.key(&intent.move_name, &intent.actor_id);
+    let key = rolls.dice.key(&intent.move_name, actor_id);
     match rolls
         .dice
         .check(canon, snapshot, key, &roll.check, target, partial_at)
@@ -151,9 +132,12 @@ fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>,
     let Target::Actor(named) = &intent.target else {
         return Ok(None);
     };
-    let (canon, snapshot, pool) = (rolls.canon, rolls.snapshot, rolls.pool);
-    let Some((opposing, check_id)) = pool.iter().find_map(|other| {
-        if other.id == intent.id || &other.actor_id != named || other.source != Source::Player {
+    let (canon, snapshot, queue) = (rolls.canon, rolls.snapshot, rolls.queue);
+    let Some((opposing, check_id)) = queue.iter().find_map(|other| {
+        if other.id == intent.id
+            || other.actor.actor_id() != named
+            || other.source != Source::Player
+        {
             return None;
         }
         let check_id = gate(canon, snapshot, other)
@@ -169,7 +153,9 @@ fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>,
     if let Some(out) = rolls.opposed.get(&opposing.id) {
         return Ok(Some(out.total));
     }
-    let key = rolls.dice.key(&opposing.move_name, &opposing.actor_id);
+    let key = rolls
+        .dice
+        .key(&opposing.move_name, opposing.actor.actor_id());
     let out = rolls.dice.check(canon, snapshot, key, &check_id, 0, None)?;
     let total = out.total;
     rolls.opposed.insert(opposing.id.clone(), out);

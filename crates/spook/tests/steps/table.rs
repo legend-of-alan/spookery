@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::Now;
 
 use crate::support::{self, Proc};
@@ -115,9 +115,10 @@ pub fn list_player_waits(pack: &Path, name: &str) -> Vec<String> {
         .iter()
         .filter(|intent| intent["move"] == "wait" && intent["source"] == "player")
         .map(|intent| {
-            intent["actor_id"]
+            intent["actor"]
                 .as_str()
-                .unwrap_or_else(|| panic!("actor_id"))
+                .and_then(|actor| actor.strip_prefix("player:"))
+                .unwrap_or_else(|| panic!("actor"))
                 .to_string()
         })
         .collect()
@@ -133,7 +134,7 @@ pub fn wait_ticks_until(pack: &Path, want: &str, done: impl Fn(&[String]) -> boo
     let mut seen = 0;
     let mut moved = Instant::now();
     loop {
-        let keys = list_tick_keys(pack);
+        let keys = list_round_keys(pack);
         if done(&keys) {
             return keys;
         }

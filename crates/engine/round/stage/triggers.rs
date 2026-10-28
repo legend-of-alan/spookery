@@ -4,7 +4,8 @@ use crate::apply::apply_effect;
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::expand::expand_rule;
-use crate::intent::{trigger_intent_id, ActorKind, Intent, Source, Target};
+use crate::intent::{trigger_intent_id, Intent, Source, Target, ViewerId};
+use crate::journal::Step;
 use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::Now;
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
@@ -38,7 +39,7 @@ pub(crate) fn run(
             break;
         }
         if depth >= max {
-            log.steps.push("trigger_depth".to_string());
+            log.steps.push(Step::TriggerDepth);
             break;
         }
         depth += 1;
@@ -101,15 +102,15 @@ fn triggered<'a>(
 }
 
 fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
-    let Some(kind) = draft
+    let Some(viewer) = draft
         .now()
         .actors
         .get(subject)
-        .map(|actor| actor.actor_kind())
+        .map(|actor| actor.viewer(subject))
     else {
         return;
     };
-    let intent = intent_for(draft.now().round_index, subject, kind, &rule.id);
+    let intent = intent_for(draft.now().round_index, viewer, &rule.id);
     if cond::holds(
         draft.canon(),
         draft.now(),
@@ -148,7 +149,7 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     }
     log.reports.extend(expanded.resisted);
     log.effects.extend(expanded.effects);
-    log.steps.push(rule.id.clone());
+    log.steps.push(Step::Rule(rule.id.clone()));
 }
 
 fn expand_trigger(
@@ -174,12 +175,11 @@ fn expand_trigger(
     })
 }
 
-fn intent_for(round_index: u64, actor_id: &str, kind: ActorKind, rule_id: &str) -> Intent {
+fn intent_for(round_index: u64, actor: ViewerId, rule_id: &str) -> Intent {
     Intent::new(
-        trigger_intent_id(rule_id, actor_id),
+        trigger_intent_id(rule_id, actor.actor_id()),
         round_index,
-        actor_id,
-        kind,
+        actor,
         Source::Kernel,
         rule_id,
         Target::Empty,

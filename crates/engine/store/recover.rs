@@ -230,7 +230,6 @@ fn cut_torn_tail(root: &Path) -> Result<(), Reason> {
 fn memory_tick(line: &str) -> Option<u64> {
     #[derive(serde::Deserialize)]
     struct MemoryTick {
-        #[serde(rename = "tick_index")]
         round_index: u64,
     }
     serde_json::from_str::<MemoryTick>(line)
@@ -282,7 +281,7 @@ mod tests {
         let bundle = root.join("state/journal/bundle-0000.jsonl");
         let kept = fs::read(&bundle).unwrap();
         let mut torn = kept.clone();
-        torn.extend(br#"{"tick_index":99,"#);
+        torn.extend(br#"{"round_index":99,"#);
         fs::write(&bundle, &torn).unwrap();
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
@@ -316,6 +315,7 @@ mod tests {
             wall: String::new(),
             fast_forward: false,
             log: RoundLog::default(),
+            queue: Vec::new(),
         }
     }
 

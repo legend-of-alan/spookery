@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use super::common::{add_trapdoor, edit_save, give_key, set_busy, EVENING};
 use super::table;
@@ -56,7 +56,7 @@ fn rejected_no_exit_and_stays(world: &mut World) {
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_street");
     assert_eq!(now.world_time, 1080);
     assert!(
-        list_tick_keys(&pack_of(world)).is_empty(),
+        list_round_keys(&pack_of(world)).is_empty(),
         "a refused exit ticked"
     );
 }
@@ -114,7 +114,7 @@ fn rowan_arrives_and_the_cost_is_stamped(world: &mut World) {
     let now = table::now_of(&pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert_eq!(now.world_time, 1085, "the tick shortened or skipped");
-    let tick = crate::support::read_tick(&pack, "tick-0001");
+    let tick = crate::support::read_round(&pack, "round-0001");
     assert_eq!(tick["arrivals"][0]["arrived_at"], 1082);
     assert_eq!(tick["world_time_after"], 1085);
     assert_eq!(tick["world_time_before"], 1080);
@@ -222,15 +222,15 @@ fn two_arrivals(world: &mut World) {
 fn arrivals_are_in_time_order(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
     let pack = pack_of(world);
-    let names = list_tick_keys(&pack);
+    let names = list_round_keys(&pack);
     assert!(names.len() >= 2, "{names:?}");
-    let first = crate::support::read_tick(&pack, &names[0]);
-    let second = crate::support::read_tick(&pack, &names[1]);
+    let first = crate::support::read_round(&pack, &names[0]);
+    let second = crate::support::read_round(&pack, &names[1]);
     assert_eq!(first["world_time_after"], EVENING + 5);
     assert_eq!(first["arrivals"][0]["actor_id"], "pc_nell");
     assert_eq!(second["world_time_after"], EVENING + 10);
     assert_eq!(second["arrivals"][0]["actor_id"], "pc_rowan");
-    assert!(first["tick_index"].as_u64() < second["tick_index"].as_u64());
+    assert!(first["round_index"].as_u64() < second["round_index"].as_u64());
 }
 
 #[given(expr = "ticks are 5 minutes while seated and the stairs exit costs 2 minutes")]
@@ -253,14 +253,14 @@ fn rowan_travels_in_the_evening_tick(world: &mut World) {
 
 #[then(expr = "the tick still ends at 21:35")]
 fn the_tick_ends_at_half(world: &mut World) {
-    let tick = crate::support::read_tick(&pack_of(world), "tick-0001");
+    let tick = crate::support::read_round(&pack_of(world), "round-0001");
     assert_eq!(tick["world_time_before"], EVENING);
     assert_eq!(tick["world_time_after"], EVENING + 5);
 }
 
 #[then(expr = "rowan's arrival is recorded with arrived_at 21:32 in that tick's line")]
 fn arrival_is_stamped(world: &mut World) {
-    let tick = crate::support::read_tick(&pack_of(world), "tick-0001");
+    let tick = crate::support::read_round(&pack_of(world), "round-0001");
     assert_eq!(tick["arrivals"][0]["actor_id"], "pc_rowan");
     assert_eq!(tick["arrivals"][0]["arrived_at"], EVENING + 2);
     let stamped = tick["effects"]
@@ -295,8 +295,8 @@ fn ticks_never_shorten(_world: &mut World) {
     drop(seated_world);
     let idle = temp_pack("idle-length");
     spookery_engine::play_pack_once(&idle).unwrap();
-    let seated_tick = crate::support::read_tick(&seated, "tick-0001");
-    let idle_tick = crate::support::read_tick(&idle, "tick-0001");
+    let seated_tick = crate::support::read_round(&seated, "round-0001");
+    let idle_tick = crate::support::read_round(&idle, "round-0001");
     assert_eq!(
         seated_tick["world_time_after"].as_u64().unwrap()
             - seated_tick["world_time_before"].as_u64().unwrap(),
@@ -349,11 +349,11 @@ fn both_busy_without_a_gm(world: &mut World) {
 fn the_shard_ticks_through_both_arrivals(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
     let pack = pack_of(world);
-    let names = list_tick_keys(&pack);
+    let names = list_round_keys(&pack);
     let ends: Vec<u64> = names
         .iter()
         .map(|name| {
-            crate::support::read_tick(&pack, name)["world_time_after"]
+            crate::support::read_round(&pack, name)["world_time_after"]
                 .as_u64()
                 .unwrap()
         })
@@ -365,11 +365,11 @@ fn the_shard_ticks_through_both_arrivals(world: &mut World) {
 #[then(expr = "an NPC habit due at 21:35 runs in that tick")]
 fn the_habit_runs_at_half(world: &mut World) {
     let pack = pack_of(world);
-    let tick = list_tick_keys(&pack)
+    let tick = list_round_keys(&pack)
         .into_iter()
-        .find(|name| crate::support::read_tick(&pack, name)["world_time_after"] == EVENING + 5)
+        .find(|name| crate::support::read_round(&pack, name)["world_time_after"] == EVENING + 5)
         .unwrap_or_else(|| panic!("no 21:35 tick"));
-    let steps = crate::support::read_tick(&pack, &tick)["steps_run"].to_string();
+    let steps = crate::support::read_round(&pack, &tick)["steps_run"].to_string();
     assert!(steps.contains("cast:bram/toll"), "{steps}");
 }
 
@@ -410,7 +410,7 @@ fn twelve_ticks_then_more(world: &mut World) {
     table::wait_tick_count(&pack, 12);
     let added = table::wait_player_from(world, mark, "BUSY");
     assert!(added.contains("BUSY"), "{added}");
-    assert_eq!(list_tick_keys(&pack).len(), 12, "first burst");
+    assert_eq!(list_round_keys(&pack).len(), 12, "first burst");
     let mid = table::now_of(&pack).world_time;
     assert_eq!(mid, EVENING + 12 * 5);
     assert!(table::now_of(&pack)
@@ -422,7 +422,7 @@ fn twelve_ticks_then_more(world: &mut World) {
     table::wait_tick_count(&pack, 24);
     let added = table::wait_player_from(world, mark, "BUSY");
     assert!(added.contains("BUSY"), "{added}");
-    assert_eq!(list_tick_keys(&pack).len(), 24, "second burst");
+    assert_eq!(list_round_keys(&pack).len(), 24, "second burst");
     assert_eq!(table::now_of(&pack).world_time, mid + 12 * 5);
 }
 

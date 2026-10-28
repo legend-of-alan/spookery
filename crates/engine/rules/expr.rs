@@ -214,14 +214,14 @@ pub(crate) fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reaso
 
 pub(crate) fn resolve_who_id(now: &Now, ctx: &Ctx<'_>, who: &Who) -> Result<String, Reason> {
     match who {
-        Who::Self_ => Ok(ctx.intent.actor_id.clone()),
+        Who::Self_ => Ok(ctx.intent.actor.actor_id().to_string()),
         Who::Target => match &ctx.intent.target {
             Target::Actor(id) | Target::Place(id) => Ok(id.clone()),
             _ => Err(Reason::Schema),
         },
         Who::Here => now
             .actors
-            .get(&ctx.intent.actor_id)
+            .get(ctx.intent.actor.actor_id())
             .map(|actor| actor.place().to_string())
             .ok_or(Reason::UnknownKey),
         Who::Actor(id) => Ok(id.clone()),
@@ -237,7 +237,7 @@ mod tests {
     use super::{eval_with_dice, Ctx, Dice};
     use crate::canon::Canon;
     use crate::error::Reason;
-    use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
+    use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
     use crate::meter::{MeterDef, MeterLive};
     use crate::model::{ActCounters, ActorLive, Now};
     use crate::rule::{parse_expr, Keep};
@@ -281,8 +281,7 @@ mod tests {
         Intent {
             id: "t".to_string(),
             round_index: 0,
-            actor_id: actor.to_string(),
-            actor_kind: ActorKind::Player,
+            actor: ViewerId::Player(actor.to_string()),
             source: Source::Player,
             move_name: "hit".to_string(),
             target: Target::Actor(target.to_string()),

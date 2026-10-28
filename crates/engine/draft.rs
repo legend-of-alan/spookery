@@ -108,7 +108,7 @@ impl Draft {
                 .map(|actor| actor.act().idle_acts_today)
                 .unwrap_or(0);
             if current != 0 {
-                self.track(StateKey::TickIdleActs(id.clone()))?;
+                self.track(StateKey::IdleActsToday(id.clone()))?;
             }
             if let Some(actor) = self.state.actors.get_mut(&id) {
                 actor.act_mut().idle_acts_today = 0;
@@ -127,7 +127,7 @@ impl Draft {
                 .map(|actor| actor.act().live_acts_this_hour)
                 .unwrap_or(0);
             if current != 0 {
-                self.track(StateKey::TickLiveActs(id.clone()))?;
+                self.track(StateKey::LiveActsThisHour(id.clone()))?;
             }
             if let Some(actor) = self.state.actors.get_mut(&id) {
                 actor.act_mut().live_acts_this_hour = 0;
@@ -148,20 +148,20 @@ impl Draft {
             (
                 counters.idle_acts_today,
                 counters.live_acts_this_hour,
-                counters.last_act_tick,
+                counters.last_act_round,
             )
         };
         let new_idle = current_idle.saturating_add(1);
         let new_live = current_live.saturating_add(1);
         let mut keys = Vec::new();
         if round_index != current_last {
-            keys.push(StateKey::TickLastAct(actor_id.to_string()));
+            keys.push(StateKey::LastActRound(actor_id.to_string()));
         }
         if humans == 0 && new_idle != current_idle {
-            keys.push(StateKey::TickIdleActs(actor_id.to_string()));
+            keys.push(StateKey::IdleActsToday(actor_id.to_string()));
         }
         if humans > 0 && new_live != current_live {
-            keys.push(StateKey::TickLiveActs(actor_id.to_string()));
+            keys.push(StateKey::LiveActsThisHour(actor_id.to_string()));
         }
         self.track_many(&keys)?;
         let counters = self
@@ -170,7 +170,7 @@ impl Draft {
             .get_mut(actor_id)
             .ok_or(Reason::UnknownKey)?
             .act_mut();
-        counters.last_act_tick = round_index;
+        counters.last_act_round = round_index;
         if humans == 0 {
             counters.idle_acts_today = new_idle;
         } else {
@@ -285,11 +285,13 @@ impl Draft {
                 .get(id)
                 .map(|actor| StateValue::List(actor.known_facts().to_vec()))
                 .unwrap_or(StateValue::Empty),
-            StateKey::TickLastAct(id) => self.act_number(id, |act| {
-                i64::try_from(act.last_act_tick).unwrap_or(i64::MAX)
+            StateKey::LastActRound(id) => self.act_number(id, |act| {
+                i64::try_from(act.last_act_round).unwrap_or(i64::MAX)
             }),
-            StateKey::TickIdleActs(id) => self.act_number(id, |act| i64::from(act.idle_acts_today)),
-            StateKey::TickLiveActs(id) => {
+            StateKey::IdleActsToday(id) => {
+                self.act_number(id, |act| i64::from(act.idle_acts_today))
+            }
+            StateKey::LiveActsThisHour(id) => {
                 self.act_number(id, |act| i64::from(act.live_acts_this_hour))
             }
             StateKey::ActorItem(id, item) => self
@@ -409,7 +411,7 @@ mod tests {
     use super::*;
     use crate::apply::apply_effect;
     use crate::effect::{Effect, EffectKind};
-    use crate::intent::{ActorKind, Intent, Source, Target, ViewerId};
+    use crate::intent::{Intent, Source, Target, ViewerId};
     use crate::World;
 
     #[test]
@@ -422,8 +424,7 @@ mod tests {
         let intent = Intent {
             id: "i1".to_string(),
             round_index: 1,
-            actor_id: "mira".to_string(),
-            actor_kind: ActorKind::Npc,
+            actor: ViewerId::Npc("mira".to_string()),
             move_name: "leave_door_note".to_string(),
             target: Target::Empty,
             args: Default::default(),

@@ -37,7 +37,6 @@ pub fn expand_rule(
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<Vec<Effect>, Reason> {
-    let viewer = intent.viewer()?;
     let mut selected = Vec::new();
     selected.extend(rule.do_.iter());
     match outcome {
@@ -51,7 +50,7 @@ pub fn expand_rule(
         canon,
         now,
         ctx: &ctx,
-        viewer: &viewer,
+        viewer: &intent.actor,
     };
     let mut effects = Vec::with_capacity(selected.len());
     let mut last_resist = None;
@@ -142,7 +141,7 @@ fn expand_template(
                     };
                     let from = now
                         .actors
-                        .get(&intent.actor_id)
+                        .get(intent.actor.actor_id())
                         .map(|actor| actor.place())
                         .ok_or(Reason::UnknownKey)?;
                     let exit = crate::map::named(canon, from, &name).ok_or(Reason::NoExit)?;
@@ -250,7 +249,7 @@ fn expand_template(
         } => {
             let to = match to {
                 NarrateTo::Here => resolve_actors_here(now, ctx)?,
-                NarrateTo::Self_ => vec![intent.actor_id.clone()],
+                NarrateTo::Self_ => vec![intent.actor.actor_id().to_string()],
                 NarrateTo::Actors(ids) => ids.clone(),
             };
             effects.push(wrap(
@@ -365,20 +364,19 @@ fn wrap(viewer: &ViewerId, intent_id: &str, class: EffectKind) -> Effect {
 }
 
 fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reason> {
-    let viewer = intent.viewer()?;
     let from = now
         .actors
-        .get(&intent.actor_id)
+        .get(intent.actor.actor_id())
         .map(|actor| actor.place().to_string())
         .ok_or(Reason::UnknownKey)?;
     Ok(Effect {
         class: EffectKind::Location {
-            actor_id: intent.actor_id.clone(),
+            actor_id: intent.actor.actor_id().to_string(),
             from,
             to: to.to_string(),
             arrived_at: None,
         },
-        as_viewer: viewer,
+        as_viewer: intent.actor.clone(),
         intent_id: intent.id.clone(),
     })
 }

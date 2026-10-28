@@ -55,7 +55,7 @@ fn play(
 }
 
 fn tick_text(pack: &Path) -> String {
-    spookery_engine::testing::journal::read_record_line(pack, "tick-0001")
+    spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
 
@@ -277,7 +277,7 @@ fn no_round_was_spent(world: &mut World) {
         world.scratch,
         "a round was spent"
     );
-    assert!(spookery_engine::testing::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
     assert_eq!(now.actors.get("pc_lark").unwrap().count("latch"), 1);
 }
 
@@ -286,7 +286,7 @@ fn the_line_is_refused_and_quiet(world: &mut World, code: String) {
     assert_eq!(world.scratch, code);
     let pack = world.pack.as_ref().unwrap();
     assert_eq!(support::now_of(pack).round_index, 0);
-    assert!(spookery_engine::testing::journal::list_tick_keys(pack).is_empty());
+    assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
 }
 
 #[given(expr = "docks_shop has no lamp_oil")]
@@ -312,7 +312,7 @@ fn tick_names_missing(pack: &Path) {
     let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
     let rejected = tick["rejected"].as_array().unwrap();
     assert!(
-        rejected.iter().any(|item| item["reason"] == "MISSING_ITEM"),
+        rejected.iter().any(|item| item["code"] == "MISSING_ITEM"),
         "{tick}"
     );
 }
@@ -406,7 +406,7 @@ fn tonic_is_not_a_weapon(world: &mut World) {
     let tick: Value = serde_json::from_str(tick_text(pack).trim()).unwrap();
     let rejected = tick["rejected"].as_array().unwrap();
     assert!(
-        rejected.iter().any(|item| item["reason"] == "NOT_A_WEAPON"),
+        rejected.iter().any(|item| item["code"] == "NOT_A_WEAPON"),
         "{tick}"
     );
     assert_eq!(wielded(pack, "pc_lark"), None);

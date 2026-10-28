@@ -3,8 +3,8 @@
 use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::expand::expand_rule;
-use crate::intent::{ActorKind, Intent};
-use crate::journal::Rejected;
+use crate::intent::{Intent, ViewerId};
+use crate::journal::{Rejected, Step};
 use crate::map;
 use crate::model::Now;
 use crate::rule::Rule;
@@ -37,7 +37,7 @@ pub(crate) fn run(
     let max_npcs = draft.budget().max_npcs_acting;
     let mut slots = 0u64;
     for Resolved { intent, resolution } in resolved {
-        let spends_slot = intent.actor_kind == ActorKind::Npc;
+        let spends_slot = matches!(intent.actor, ViewerId::Npc(_));
         if spends_slot && slots >= max_npcs {
             reject(log, &intent, Reason::Budget);
             continue;
@@ -73,7 +73,12 @@ pub(crate) fn run(
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let canon = draft.canon();
         let chosen = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
-        let mut roller = dice.roller(log, &intent.move_name, &intent.actor_id, ResistKey::Rule);
+        let mut roller = dice.roller(
+            log,
+            &intent.move_name,
+            intent.actor.actor_id(),
+            ResistKey::Rule,
+        );
         let expanded = expand_rule(canon, snapshot, chosen, &intent, outcome, &mut roller);
         let resisted = roller.finish();
         let effects = match expanded {
@@ -111,7 +116,12 @@ fn begin_timed(
     log: &mut RoundLog,
 ) -> bool {
     let point = draft.savepoint();
-    let mut roller = dice.roller(log, &intent.move_name, &intent.actor_id, ResistKey::Rule);
+    let mut roller = dice.roller(
+        log,
+        &intent.move_name,
+        intent.actor.actor_id(),
+        ResistKey::Rule,
+    );
     let begun = match &rule.cost {
         Some(cost) => cost::pay(draft, intent, cost, &mut roller),
         None => Ok(()),
@@ -123,8 +133,7 @@ fn begin_timed(
         reject(log, intent, code);
         return false;
     }
-    log.steps.push(rule.id.clone());
-    log.applied.push(intent.clone());
+    log.steps.push(Step::Rule(rule.id.clone()));
     true
 }
 
@@ -138,7 +147,12 @@ fn commit_intent(
 ) -> Landing {
     let point = draft.savepoint();
     if let Some(cost) = &rule.cost {
-        let mut roller = dice.roller(log, &intent.move_name, &intent.actor_id, ResistKey::Rule);
+        let mut roller = dice.roller(
+            log,
+            &intent.move_name,
+            intent.actor.actor_id(),
+            ResistKey::Rule,
+        );
         let paid = cost::pay(draft, intent, cost, &mut roller);
         drop(roller);
         if let Err(code) = paid {
@@ -149,12 +163,12 @@ fn commit_intent(
     }
     let staged = expansion.effects.iter().try_for_each(|effect| {
         apply_effect(draft, intent, effect.clone())?;
-        log.steps.push("apply_effect".to_string());
+        log.steps.push(Step::EffectApplied);
         Ok(())
     });
-    let staged = staged.and_then(|()| match intent.actor_kind {
-        ActorKind::Npc => draft.stage_npc_counters(&intent.actor_id, draft.now().presence.humans),
-        _ => Ok(()),
+    let staged = staged.and_then(|()| match &intent.actor {
+        ViewerId::Npc(id) => draft.stage_npc_counters(id, draft.now().presence.humans),
+        ViewerId::Player(_) => Ok(()),
     });
     if let Err(code) = staged {
         draft.rollback(point);
@@ -166,18 +180,17 @@ fn commit_intent(
         };
     }
     log.effects.extend_from_slice(&expansion.effects);
-    keep_roll(log, &expansion.rolled, &intent.actor_id);
+    keep_roll(log, &expansion.rolled, intent.actor.actor_id());
     log.reports.extend_from_slice(&expansion.resisted);
-    log.steps.push(rule.id.clone());
-    log.applied.push(intent.clone());
+    log.steps.push(Step::Rule(rule.id.clone()));
     Landing::Landed
 }
 
-/// Journal the refusal's word and tell a player its code and name.
+/// Journal the refusal and tell a player its code and what was missing.
 fn reject(log: &mut RoundLog, intent: &Intent, refusal: impl Into<GateRefusal>) {
     let refusal = refusal.into();
     log.rejected.push(rejected(intent, &refusal));
-    if intent.actor_kind == ActorKind::Player {
+    if matches!(intent.actor, ViewerId::Player(_)) {
         log.reports.push(refused_report(intent, &refusal));
     }
 }
@@ -185,13 +198,14 @@ fn reject(log: &mut RoundLog, intent: &Intent, refusal: impl Into<GateRefusal>) 
 fn rejected(intent: &Intent, refusal: &GateRefusal) -> Rejected {
     Rejected {
         id: intent.id.clone(),
-        reason: refusal.named(),
+        code: refusal.reason(),
+        missing: refusal.missing().map(str::to_string),
     }
 }
 
 fn refused_report(intent: &Intent, refusal: &GateRefusal) -> MoveReport {
     MoveReport::Refused {
-        actor_id: intent.actor_id.clone(),
+        actor_id: intent.actor.actor_id().to_string(),
         code: refusal.reason(),
         missing: refusal.missing().map(str::to_string),
     }

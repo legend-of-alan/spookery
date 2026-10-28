@@ -1,7 +1,7 @@
 use std::fs;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::journal::list_tick_keys;
+use spookery_engine::testing::journal::list_round_keys;
 
 use crate::World;
 
@@ -347,7 +347,7 @@ fn session_status_lists_both_queued_lines(world: &mut World) {
 
 #[then(expr = "the tick log records both waits")]
 fn the_tick_log_records_both_waits(world: &mut World) {
-    let actors = table::list_player_waits(table::pack(world), "tick-0001");
+    let actors = table::list_player_waits(table::pack(world), "round-0001");
     assert_eq!(
         actors,
         vec!["pc_rowan".to_string(), "pc_harbormouse".to_string()]
@@ -360,15 +360,15 @@ fn each_wait_committed_its_own_tick(world: &mut World) {
     table::wait_world_time(pack, 1090);
     assert_eq!(table::now_of(pack).round_index, 2);
     assert_eq!(
-        list_tick_keys(pack),
-        vec!["tick-0001".to_string(), "tick-0002".to_string()]
+        list_round_keys(pack),
+        vec!["round-0001".to_string(), "round-0002".to_string()]
     );
     assert_eq!(
-        table::list_player_waits(pack, "tick-0001"),
+        table::list_player_waits(pack, "round-0001"),
         vec!["pc_rowan".to_string()]
     );
     assert_eq!(
-        table::list_player_waits(pack, "tick-0002"),
+        table::list_player_waits(pack, "round-0002"),
         vec!["pc_harbormouse".to_string()]
     );
 }
@@ -477,7 +477,7 @@ fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
 #[then(expr = "the tick now_hash matches the save")]
 fn the_tick_now_hash_matches_the_save(world: &mut World) {
     let pack = table::pack(world);
-    let tick = spookery_engine::testing::journal::read_record_line(pack, "tick-0001")
+    let tick = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
     let value: serde_json::Value =
         serde_json::from_str(&tick).unwrap_or_else(|err| panic!("{err}"));

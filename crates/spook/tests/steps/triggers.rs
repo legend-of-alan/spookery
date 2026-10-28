@@ -7,7 +7,7 @@ use spookery_engine::testing::Clock;
 use spookery_engine::MeterLive;
 use spookery_engine::Now;
 use spookery_engine::{emit_save, load_save};
-use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_engine::{Intent, IntentArgs, Source, Target, ViewerId};
 
 use super::steps_run::read_steps_run;
 use crate::support::{self, temp_pack};
@@ -1013,9 +1013,9 @@ fn seen_of(world: &World, viewer: &str) -> Vec<String> {
 }
 
 fn is_tick_counter(key: &str) -> bool {
-    key.starts_with("tick_last_act ")
-        || key.starts_with("tick_idle_acts ")
-        || key.starts_with("tick_live_acts ")
+    key.starts_with("last_act_round ")
+        || key.starts_with("idle_acts_today ")
+        || key.starts_with("live_acts_this_hour ")
 }
 
 fn show(world: &mut World, pack: std::path::PathBuf, intents: Vec<Intent>) {
@@ -1300,8 +1300,7 @@ fn intent(id: &str, actor: &str, verb: &str, target: Target) -> Intent {
     Intent {
         id: id.to_string(),
         round_index: 1,
-        actor_id: actor.to_string(),
-        actor_kind: ActorKind::Player,
+        actor: ViewerId::Player(actor.to_string()),
         source: Source::Player,
         move_name: verb.to_string(),
         target,
@@ -1325,7 +1324,7 @@ fn load(pack: &Path) -> Now {
 }
 
 fn latest(pack: &Path) -> Value {
-    let names = spookery_engine::testing::journal::list_tick_keys(pack);
+    let names = spookery_engine::testing::journal::list_round_keys(pack);
     let name = names
         .last()
         .unwrap_or_else(|| panic!("no tick was written"));

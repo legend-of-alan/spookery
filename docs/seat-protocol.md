@@ -702,9 +702,9 @@ The result is the tape object. The same object follows as a `spook/event`, and e
   "state_rev": 1,
   "diff_summary": [
     "clock_paused assassination_debt",
-    "message note_mira_door",
-    "tick_last_act mira",
-    "tick_live_acts mira"
+    "last_act_round mira",
+    "live_acts_this_hour mira",
+    "message note_mira_door"
   ],
   "log_path": "state/journal/bundle-0000.jsonl",
   "checks": [

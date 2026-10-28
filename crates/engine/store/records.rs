@@ -3,6 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::effect::Effect;
+use crate::error::Reason;
 use crate::intent::Intent;
 use crate::model::MemoryLine;
 
@@ -46,12 +47,11 @@ pub(crate) enum CheckpointKind {
     Checkpoint,
 }
 
-/// Written at a checkpoint. `state_hash` is the Blake2s of `save.yaml` at that tick.
+/// Written at a checkpoint. `state_hash` is the Blake2s of `save.yaml` after that round.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointRecord {
     pub(crate) kind: CheckpointKind,
-    #[serde(rename = "tick_index")]
     pub round_index: u64,
     pub state_rev: u64,
     pub state_hash: String,
@@ -61,15 +61,28 @@ pub struct CheckpointRecord {
     pub chain: String,
 }
 
-/// One refusal stored on a tick line.
+/// One refusal stored on a round line.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rejected {
     pub id: String,
-    pub reason: String,
+    pub code: Reason,
+    /// The cost shortfall, or the sentence a locked exit shows.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub missing: Option<String>,
 }
 
-/// One timed arrival stored on a tick line.
+/// One step off the standard order of a round.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Step {
+    CheckRolled,
+    EffectApplied,
+    Rule(String),
+    TriggerDepth,
+}
+
+/// One timed arrival stored on a round line.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Arrival {
@@ -79,12 +92,11 @@ pub struct Arrival {
     pub via: String,
 }
 
-/// One tick line. `now_hash` is stamped after the save bytes exist, so a line
+/// One round line. `now_hash` is stamped after the save bytes exist, so a line
 /// that has not been stamped omits it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoundRecord<E = Effect> {
-    #[serde(rename = "tick_index")]
     pub round_index: u64,
     #[serde(default)]
     pub rules_rev: u64,
@@ -97,6 +109,7 @@ pub struct RoundRecord<E = Effect> {
     pub actors_present: Vec<String>,
     pub seed: String,
     pub last_tick_at: String,
+    /// The intents queued for this round, before stamping and habits, which replay plays again.
     pub intents: Vec<Intent>,
     pub rejected: Vec<Rejected>,
     pub effects: Vec<E>,
@@ -107,8 +120,8 @@ pub struct RoundRecord<E = Effect> {
     pub dice: Vec<String>,
     /// Steps off the standard order. Empty when the round followed it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub steps_run: Vec<String>,
-    /// Lines for this tick. Empty on a record that stored none.
+    pub steps_run: Vec<Step>,
+    /// Lines for this round. Empty on a record that stored none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memories: Vec<MemoryLine>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
@@ -195,7 +208,7 @@ impl JournalEntry {
         }
     }
 
-    /// A tick or migrate moves `state_rev`. A checkpoint marks the state just written.
+    /// A round or migrate moves `state_rev`. A checkpoint marks the state just written.
     pub fn changes_state(&self) -> bool {
         !matches!(self, Self::Checkpoint(_))
     }

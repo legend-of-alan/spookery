@@ -67,9 +67,7 @@ impl RoundDice {
         partial_at: Option<i64>,
     ) -> Result<RollResult, Reason> {
         let actor = now.actors.get(&key.subject_id).ok_or(Reason::UnknownKey)?;
-        let viewer = now
-            .actor_viewer(&key.subject_id)
-            .ok_or(Reason::UnknownKey)?;
+        let viewer = actor.viewer(&key.subject_id);
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownKey)?;
         roll(
             RollInput {
@@ -132,7 +130,7 @@ pub(crate) struct Roller<'a> {
 }
 
 impl Roller<'_> {
-    /// Evaluate a rule's `roll:` spec: target, then partial_at, then the check keyed by `rule_key`.
+    /// Evaluate a rule's `roll:` spec, then roll the check keyed by `rule_key`.
     pub(crate) fn roll_spec(
         &mut self,
         canon: &Canon,
@@ -141,15 +139,27 @@ impl Roller<'_> {
         spec: &RollSpec,
         rule_key: &str,
     ) -> Result<RollResult, Reason> {
+        let (target, partial_at) = self.thresholds(canon, now, intent, spec)?;
+        let key = self.dice.key(rule_key, intent.actor.actor_id());
+        self.dice
+            .check(canon, now, key, &spec.check, target, partial_at)
+    }
+
+    /// The one order a `roll:` spec's thresholds draw dice in: target, then partial_at.
+    pub(crate) fn thresholds(
+        &mut self,
+        canon: &Canon,
+        now: &Now,
+        intent: &Intent,
+        spec: &RollSpec,
+    ) -> Result<(i64, Option<i64>), Reason> {
         let ctx = Ctx { intent };
         let target = eval_with_dice(canon, now, &ctx, &spec.target, self)?.value;
         let partial_at = match &spec.partial_at {
             Some(expr) => Some(eval_with_dice(canon, now, &ctx, expr, self)?.value),
             None => None,
         };
-        let key = self.dice.key(rule_key, &intent.actor_id);
-        self.dice
-            .check(canon, now, key, &spec.check, target, partial_at)
+        Ok((target, partial_at))
     }
 
     /// The resist rolls this roller made, in order. Consumes the roller and ends its borrow.

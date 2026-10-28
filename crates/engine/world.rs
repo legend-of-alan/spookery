@@ -10,7 +10,7 @@ use crate::canon::{check_save, load_canon, pack_rev, Canon};
 use crate::diagnostic::{coded, locate_nth, reason_of, schema, Diagnostic, Severity};
 use crate::effect::{payload_json, Effect};
 use crate::error::Reason;
-use crate::intent::{player_intent_id, ActorKind, Intent, IntentArgs, Source, Target};
+use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::journal::{self, JournalEntry};
 use crate::model::{sort_unique, ActorLive, Now, Presence};
 use crate::rule::{TargetKind, When};
@@ -275,8 +275,7 @@ impl World {
         Ok(Intent::new(
             id,
             tick,
-            actor_id,
-            ActorKind::Player,
+            ViewerId::Player(actor_id.to_string()),
             Source::Player,
             verb,
             target,
@@ -297,9 +296,10 @@ impl World {
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
         let actor = self.now.actors.get(&actor_id).ok_or(Reason::UnknownKey)?;
-        let actor_kind = actor.actor_kind();
+        let viewer = actor.viewer(&actor_id);
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
-        let is_habit = actor_kind == ActorKind::Npc
+        let is_npc = matches!(viewer, ViewerId::Npc(_));
+        let is_habit = is_npc
             && self
                 .canon
                 .rules
@@ -309,7 +309,7 @@ impl World {
         let target = match (is_habit, token) {
             (true, None) => Target::Empty,
             (true, Some(_)) => return Err(Reason::Schema),
-            (false, _) if actor_kind == ActorKind::Npc => {
+            (false, _) if is_npc => {
                 self.verb_target(actor, &move_name, token, Reason::UnknownMove)?
             }
             (false, _) => self.verb_target(actor, &move_name, token, Reason::NotInSpec)?,
@@ -332,8 +332,7 @@ impl World {
         self.queue(Intent {
             id: id.clone(),
             round_index,
-            actor_id: actor_id.clone(),
-            actor_kind,
+            actor: viewer,
             source: Source::Player,
             move_name: move_name.clone(),
             target,

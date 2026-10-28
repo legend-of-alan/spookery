@@ -87,8 +87,8 @@ fn perceive_at_budget(
     {
         return Err(Reason::UnscopedPerceive);
     }
-    let viewer = now.actor_viewer(as_arg).ok_or(Reason::UnknownKey)?;
-    perceive_viewer_budget(canon, now, &viewer, budget_tokens)
+    let actor = now.actors.get(as_arg).ok_or(Reason::UnknownKey)?;
+    perceive_viewer_budget(canon, now, &actor.viewer(as_arg), budget_tokens)
 }
 
 fn perceive_viewer_budget(

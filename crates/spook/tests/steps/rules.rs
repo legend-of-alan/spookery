@@ -121,12 +121,12 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     world.pack = Some(pack.clone());
     table::run(world, &["tick", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
-    let located = spookery_engine::testing::journal::locate(&pack, "tick-0001")
+    let located = spookery_engine::testing::journal::locate(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
     let line = text
         .lines()
-        .find(|l| serde_json::from_str::<Value>(l).unwrap()["tick_index"] == 1)
+        .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
         .unwrap();
     let mut tick: Value = serde_json::from_str(line).unwrap();
     let effects = tick["effects"]
@@ -134,17 +134,17 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
         .unwrap_or_else(|| panic!("no effects\n{text}"));
     assert!(!effects.is_empty(), "{text}");
     effects[0]["intent_id"] = Value::String("not-the-replayed-effect".to_string());
-    let index = tick["tick_index"]
+    let index = tick["round_index"]
         .as_u64()
-        .unwrap_or_else(|| panic!("no tick_index\n{text}"));
-    world.scratch = format!("tick {index}");
+        .unwrap_or_else(|| panic!("no round_index\n{text}"));
+    world.scratch = format!("round {index}");
     let encoded = serde_json::to_string(&tick).unwrap_or_else(|err| panic!("encode: {err}"));
     let rewritten = text.replacen(line, &encoded, 1);
     assert_ne!(rewritten, text);
     fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write tick: {err}"));
 }
 
-#[then(expr = "spook verify names the tick and the first differing effect")]
+#[then(expr = "spook verify names the round and the first differing effect")]
 fn spook_verify_names_the_tick_and_the_first_differing_effect(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::run(world, &["verify", pack.to_str().unwrap()]);

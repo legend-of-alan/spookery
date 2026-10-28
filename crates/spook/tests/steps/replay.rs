@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::World;
 
-use super::steps_run::{read_steps_run, read_tick};
+use super::steps_run::{read_round, read_steps_run};
 use super::table;
 
 #[given(expr = "an empty directory")]
@@ -85,18 +85,27 @@ fn a_seated_player_is_killed_and_restarted(world: &mut World) {
     table::stop_server(world);
 }
 
-#[when(expr = "one intent in a tick record is changed")]
-fn one_intent_in_a_tick_record_is_changed(world: &mut World) {
+#[when(expr = "a queued intent the round never had is written into its record")]
+fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
     let mut scratch = String::new();
     edit_tick(world, |tick| {
         let intents = tick["intents"]
             .as_array_mut()
             .unwrap_or_else(|| panic!("no intents"));
-        assert!(!intents.is_empty());
-        intents[0]["move"] = Value::String("not_a_real_move".to_string());
+        assert!(intents.is_empty(), "a plain tick queued {intents:?}");
+        intents.push(serde_json::json!({
+            "id": "written-in",
+            "round_index": 1,
+            "actor": "player:pc_rowan",
+            "source": "player",
+            "move": "take",
+            "target": { "actor": "lamp_oil" },
+            "args": {},
+            "rationale_code": "",
+        }));
         let rev = tick["state_rev_after"].as_u64().unwrap();
-        let index = tick["tick_index"].as_u64().unwrap();
-        scratch = format!("state_rev {rev} tick {index}");
+        let index = tick["round_index"].as_u64().unwrap();
+        scratch = format!("state_rev {rev} round {index}");
     });
     world.scratch = scratch;
 }
@@ -136,10 +145,10 @@ fn stderr_names_the_first_differing_save_line(world: &mut World) {
     assert!(world.stderr.contains("save.yaml:"), "{}", world.stderr);
 }
 
-#[when(expr = "the tick record's tick_index is a string")]
-fn the_tick_index_is_a_string(world: &mut World) {
+#[when(expr = "the round record's round_index is a string")]
+fn the_round_index_is_a_string(world: &mut World) {
     edit_tick(world, |tick| {
-        tick["tick_index"] = Value::String("no".to_string());
+        tick["round_index"] = Value::String("no".to_string());
     });
 }
 
@@ -168,16 +177,16 @@ fn one_effect_class_is_need(world: &mut World) {
             effects[0]["class"] = Value::String("need".to_string());
         }
         let rev = tick["state_rev_after"].as_u64().unwrap();
-        let index = tick["tick_index"].as_u64().unwrap();
-        scratch = format!("state_rev {rev} tick {index}");
+        let index = tick["round_index"].as_u64().unwrap();
+        scratch = format!("state_rev {rev} round {index}");
     });
     world.scratch = scratch;
 }
 
-#[then(expr = "stderr names the tick record and the field tick_index")]
+#[then(expr = "stderr names the round record and the field round_index")]
 fn stderr_names_the_tick_field(world: &mut World) {
     assert!(world.stderr.contains("bundle-"), "{}", world.stderr);
-    assert!(world.stderr.contains("tick_index"), "{}", world.stderr);
+    assert!(world.stderr.contains("round_index"), "{}", world.stderr);
     assert!(world.stderr.contains("invalid type"), "{}", world.stderr);
     assert!(
         world.stderr.contains("line") && world.stderr.contains("column"),
@@ -233,12 +242,12 @@ fn each_journal_record_parses_back(world: &mut World) {
 }
 
 fn edit_tick(world: &mut World, edit: impl FnOnce(&mut Value)) {
-    let located = spookery_engine::testing::journal::locate(table::pack(world), "tick-0001")
+    let located = spookery_engine::testing::journal::locate(table::pack(world), "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&located.path).unwrap();
     let line = text
         .lines()
-        .find(|l| serde_json::from_str::<Value>(l).unwrap()["tick_index"] == 1)
+        .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
         .unwrap();
     let mut tick: Value = serde_json::from_str(line).unwrap();
     edit(&mut tick);
@@ -405,18 +414,18 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
     );
 }
 
-#[then(expr = "the first tick lists only apply_effect and cast:mira\\/leave_door_note")]
+#[then(expr = "the first round lists only effect_applied and cast:mira\\/leave_door_note")]
 fn the_first_tick_keeps_only_the_extra_steps(world: &mut World) {
-    let tick = read_tick(table::pack(world), "tick-0001");
+    let tick = read_round(table::pack(world), "round-0001");
     assert_eq!(
         read_steps_run(&tick),
-        ["apply_effect", "cast:mira/leave_door_note"]
+        ["effect_applied", "cast:mira/leave_door_note"]
     );
 }
 
-#[then(expr = "the second tick omits steps_run")]
+#[then(expr = "the second round omits steps_run")]
 fn the_second_tick_omits_steps_run(world: &mut World) {
-    let tick = read_tick(table::pack(world), "tick-0002");
+    let tick = read_round(table::pack(world), "round-0002");
     assert!(tick.get("steps_run").is_none(), "{tick}");
 }
 

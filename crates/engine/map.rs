@@ -62,16 +62,16 @@ pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), Gat
     };
     let from = now
         .actors
-        .get(&intent.actor_id)
+        .get(intent.actor.actor_id())
         .map(|actor| actor.place())
         .unwrap_or("");
     let Some(exit) = named(canon, from, &token) else {
         return Err(Reason::NoExit.into());
     };
-    if !revealed(canon, now, &intent.actor_id, exit) {
+    if !revealed(canon, now, intent.actor.actor_id(), exit) {
         return Err(Reason::NoExit.into());
     }
-    if locked(canon, now, &intent.actor_id, exit) {
+    if locked(canon, now, intent.actor.actor_id(), exit) {
         let text = if exit.locked_text.is_empty() {
             "The way is locked.".to_string()
         } else {
@@ -95,7 +95,7 @@ pub(crate) fn revealed(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) ->
     let Some(fact) = &exit.revealed_by else {
         return false;
     };
-    let Some(viewer) = now.actor_viewer(actor_id) else {
+    let Some(viewer) = now.actors.get(actor_id).map(|actor| actor.viewer(actor_id)) else {
         return false;
     };
     allows(canon, now, &viewer, fact)
@@ -111,8 +111,7 @@ pub(crate) fn locked(canon: &Canon, now: &Now, actor_id: &str, exit: &Exit) -> b
     let intent = Intent::new(
         String::new(),
         now.round_index,
-        actor_id,
-        actor.actor_kind(),
+        actor.viewer(actor_id),
         Source::Player,
         "travel",
         Target::Place(exit.name.clone()),
@@ -158,7 +157,7 @@ pub(crate) fn used_exit<'a>(
     rule: &Rule,
 ) -> Option<&'a Exit> {
     let token = token(rule, intent)?;
-    let from = now.actors.get(&intent.actor_id)?.place();
+    let from = now.actors.get(intent.actor.actor_id())?.place();
     named(canon, from, &token)
 }
 
@@ -237,11 +236,11 @@ pub fn begin(
         source: intent.source,
         kind,
     };
-    draft.track(StateKey::ActorBusy(intent.actor_id.clone()))?;
+    draft.track(StateKey::ActorBusy(intent.actor.actor_id().to_string()))?;
     let act = draft
         .now_mut()
         .actors
-        .get_mut(&intent.actor_id)
+        .get_mut(intent.actor.actor_id())
         .ok_or(Reason::UnknownKey)?
         .act_mut();
     act.busy_until = Some(until);
@@ -308,16 +307,10 @@ pub fn busy_line(now: &Now, actor_id: &str) -> Option<String> {
         return None;
     }
     let until = actor.act().busy_until?;
-    let Some(PendingAction {
-        kind: PendingKind::Arrive { via, .. },
-        ..
-    }) = &actor.act().busy_for
-    else {
-        return None;
+    let via = match actor.act().busy_for.as_ref().map(|pending| &pending.kind) {
+        Some(PendingKind::Arrive { via, .. }) if !via.is_empty() => via,
+        _ => return None,
     };
-    if via.is_empty() {
-        return None;
-    }
     Some(format!("on the {via} until {}", clock_face(until)))
 }
 
@@ -383,7 +376,7 @@ fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: Targe
     };
     let place = actor.place().to_string();
     let wielded = actor.wielded().map(str::to_string);
-    let kind = actor.actor_kind();
+    let viewer = actor.viewer(actor_id);
     for hint in verb_hints(canon, now, actor_id, target) {
         let Some(rule) = gate::verb_for(
             canon,
@@ -404,8 +397,7 @@ fn verb_open(canon: &Canon, now: &Now, actor_id: &str, verb: &str, target: Targe
         let intent = Intent::new(
             String::new(),
             now.round_index,
-            actor_id,
-            kind,
+            viewer.clone(),
             Source::Player,
             verb,
             chosen.store(&token),

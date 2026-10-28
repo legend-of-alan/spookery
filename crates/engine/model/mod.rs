@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use meter::MeterLive;
 
-use crate::intent::Target;
+use crate::intent::{Target, ViewerId};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -21,7 +21,6 @@ pub struct Now {
     #[serde(default)]
     pub rules_rev: u64,
     pub state_rev: u64,
-    #[serde(rename = "tick_index")]
     pub round_index: u64,
     pub world_time: u64,
     pub last_tick_at: String,
@@ -39,11 +38,6 @@ pub struct Now {
 }
 
 impl Now {
-    pub(crate) fn actor_viewer(&self, id: &str) -> Option<crate::intent::ViewerId> {
-        let actor = self.actors.get(id)?;
-        crate::intent::ViewerId::from_kind(actor.actor_kind(), id).ok()
-    }
-
     pub(crate) fn seated_pcs(&self) -> Vec<String> {
         self.presence
             .actors_present
@@ -215,11 +209,11 @@ impl ActorLive {
         matches!(self, ActorLive::Pc { .. })
     }
 
-    pub fn actor_kind(&self) -> crate::intent::ActorKind {
-        if self.is_pc() {
-            crate::intent::ActorKind::Player
-        } else {
-            crate::intent::ActorKind::Npc
+    /// The seat this actor acts from, given its own id.
+    pub fn viewer(&self, id: &str) -> ViewerId {
+        match self {
+            ActorLive::Pc { .. } => ViewerId::Player(id.to_string()),
+            ActorLive::Npc { .. } => ViewerId::Npc(id.to_string()),
         }
     }
 
@@ -318,7 +312,7 @@ pub(crate) fn shift_count(
 #[serde(deny_unknown_fields)]
 /// How many times an actor has acted, and the journey they are still on.
 pub struct ActCounters {
-    pub last_act_tick: u64,
+    pub last_act_round: u64,
     pub idle_acts_today: u32,
     pub live_acts_this_hour: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -330,7 +324,7 @@ pub struct ActCounters {
 impl ActCounters {
     pub fn fresh() -> Self {
         Self {
-            last_act_tick: 0,
+            last_act_round: 0,
             idle_acts_today: 0,
             live_acts_this_hour: 0,
             busy_until: None,
@@ -390,7 +384,6 @@ pub fn sort_unique(items: &mut Vec<String>) {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MemoryLine {
-    #[serde(rename = "tick_index")]
     pub round_index: u64,
     pub actor_id: String,
     pub intent_id: String,

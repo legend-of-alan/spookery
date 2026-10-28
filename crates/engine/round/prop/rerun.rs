@@ -67,7 +67,7 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
             &mut world,
             &record.last_tick_at,
             RoundKind::Replay {
-                intents: &record.intents,
+                queue: &record.intents,
                 presence: Presence {
                     humans: record.presence_humans,
                     actors_present: record.actors_present.clone(),

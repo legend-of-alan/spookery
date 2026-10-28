@@ -5,10 +5,10 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::MoveReport;
-use spookery_engine::{ActorKind, Intent, IntentArgs, Source, Target};
+use spookery_engine::{Intent, IntentArgs, Source, Target, ViewerId};
 
 use crate::World;
-use spookery_engine::testing::{self as support, read_tick};
+use spookery_engine::testing::{self as support, read_round};
 
 #[given(expr = "a round where Lark rolls grit")]
 fn a_round_where_lark_rolls_grit(world: &mut World) {
@@ -40,8 +40,7 @@ fn ten_rolling_intents_in_one_round(world: &mut World) {
         .map(|index| {
             queued(
                 &format!("grit-{index}"),
-                "pc_rowan",
-                ActorKind::Player,
+                player("pc_rowan"),
                 "grit",
                 Target::Empty,
             )
@@ -59,7 +58,7 @@ fn all_ten_resolve_and_none_is_refused_not_in_spec(world: &mut World) {
     let tick: Value = serde_json::from_str(&world.scratch).unwrap();
     let rejected = tick["rejected"].as_array().unwrap();
     assert!(
-        rejected.iter().all(|item| item["reason"] != "NOT_IN_SPEC"),
+        rejected.iter().all(|item| item["code"] != "NOT_IN_SPEC"),
         "{rejected:?}"
     );
 }
@@ -69,8 +68,7 @@ fn a_played_d20_fight(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "d20-fight");
     let intents = vec![queued(
         "strike-lark",
-        "pc_lark",
-        ActorKind::Player,
+        player("pc_lark"),
         "strike",
         Target::Actor("npc_briar".to_string()),
     )];
@@ -85,7 +83,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     spookery_engine::verify_pack(pack, None).expect("verify");
     let report = spookery_engine::testing::from_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err:?}"));
-    let line = spookery_engine::testing::journal::read_record_line(pack, "tick-0001")
+    let line = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let tick: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
@@ -153,13 +151,7 @@ fn mira_plays(world: &mut World, move_name: String) {
     let id = format!("{move_name}-1");
     let (now, rolls, tick) = play_queued(
         &pack,
-        vec![queued(
-            &id,
-            "mira",
-            ActorKind::Npc,
-            &move_name,
-            Target::Empty,
-        )],
+        vec![queued(&id, npc("mira"), &move_name, Target::Empty)],
     );
     let oil = now
         .places
@@ -203,8 +195,8 @@ fn two_kernel_waits_queued_for_mira(world: &mut World) {
 #[when(expr = "those waits are played")]
 fn those_waits_are_played(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let mut first = queued("wait-1", "mira", ActorKind::Npc, "wait", Target::Empty);
-    let mut second = queued("wait-2", "mira", ActorKind::Npc, "wait", Target::Empty);
+    let mut first = queued("wait-1", npc("mira"), "wait", Target::Empty);
+    let mut second = queued("wait-2", npc("mira"), "wait", Target::Empty);
     first.source = Source::Kernel;
     second.source = Source::Kernel;
     let (now, _rolls, tick) = play_queued(&pack, vec![first, second]);
@@ -215,26 +207,22 @@ fn those_waits_are_played(world: &mut World) {
 #[then(expr = "only the first wait lands and the second is INELIGIBLE")]
 fn only_the_first_wait_lands(world: &mut World) {
     let tick: Value = serde_json::from_str(&world.scratch).unwrap();
-    let applied: Vec<&str> = tick["intents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|item| item["id"].as_str())
-        .collect();
-    assert!(applied.contains(&"wait-1"), "{tick}");
-    assert!(!applied.contains(&"wait-2"), "{tick}");
     let rejected = tick["rejected"].as_array().unwrap();
+    assert!(
+        !rejected.iter().any(|item| item["id"] == "wait-1"),
+        "{tick}"
+    );
     assert!(
         rejected
             .iter()
-            .any(|item| item["id"] == "wait-2" && item["reason"] == "INELIGIBLE"),
+            .any(|item| item["id"] == "wait-2" && item["code"] == "INELIGIBLE"),
         "{tick}"
     );
     let now = spookery_engine::load_save(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
     assert_eq!(
         now.actors
             .get("mira")
-            .map(|actor| actor.act().last_act_tick),
+            .map(|actor| actor.act().last_act_round),
         Some(1)
     );
 }
@@ -247,15 +235,13 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
         vec![
             queued(
                 "lark-strike",
-                "pc_lark",
-                ActorKind::Player,
+                player("pc_lark"),
                 "strike",
                 Target::Actor("npc_briar".to_string()),
             ),
             queued(
                 "briar-strike",
-                "npc_briar",
-                ActorKind::Npc,
+                npc("npc_briar"),
                 "strike",
                 Target::Actor("pc_lark".to_string()),
             ),
@@ -329,13 +315,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     quiet_mira(&pack);
     let (now, _rolls, tick) = play_queued(
         &pack,
-        vec![queued(
-            "two-1",
-            "mira",
-            ActorKind::Npc,
-            "two_stock",
-            Target::Empty,
-        )],
+        vec![queued("two-1", npc("mira"), "two_stock", Target::Empty)],
     );
     world.now_bytes = format!(
         "{}",
@@ -360,7 +340,7 @@ fn no_effect_from_that_row_applies(world: &mut World) {
     assert!(
         rejected
             .iter()
-            .any(|item| item["id"] == "two-1" && item["reason"] == "budget"),
+            .any(|item| item["id"] == "two-1" && item["code"] == "BUDGET"),
         "{tick}"
     );
 }
@@ -375,16 +355,9 @@ fn a_docks_pack_where_aldric_holds_a_timed_verb(world: &mut World) {
     let rule = "  eligible: false
 rules:
   - id: ask
-    when:
-      verb: ask
-      target: actor
-    cost:
-      time: 10m
-    do:
-      - meter:
-          who: target
-          key: rest
-          add: -1
+    when: { verb: ask, target: actor }
+    cost: { time: 10m }
+    do: [meter: { who: target, key: rest, add: -1 }]
 ---";
     let next = text.replacen("  eligible: false\n---", rule, 1);
     assert_ne!(next, text, "aldric's front matter moved");
@@ -406,17 +379,14 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
         .queue_player_move("pc_rowan", "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
     let wall = table.now().last_tick_at.clone();
-    let mut rounds = 0;
-    loop {
-        rounds += 1;
-        table
-            .play(&wall)
-            .unwrap_or_else(|err| panic!("round {rounds}: {err}"));
+    for round in 1..=6 {
+        let output = table.play(&wall);
+        output.unwrap_or_else(|err| panic!("round {round}: {err}"));
         let now = table.now();
         if !now.actors["pc_rowan"].is_busy(now.world_time) {
             break;
         }
-        assert!(rounds < 6, "Rowan is still busy after {rounds} rounds");
+        assert!(round < 6, "Rowan is still busy after {round} rounds");
     }
     let now = table.now();
     world.mark =
@@ -436,7 +406,7 @@ fn assert_refusal(world: &World, oil: i64, reason: &str) {
     assert!(
         rejected
             .iter()
-            .any(|item| item["id"] == world.player_added && item["reason"] == reason),
+            .any(|item| item["id"] == world.player_added && item["code"] == reason),
         "{tick}"
     );
 }
@@ -531,16 +501,14 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
     if extra_first {
         intents.push(queued(
             "briar-strike",
-            "npc_briar",
-            ActorKind::Npc,
+            npc("npc_briar"),
             "strike",
             Target::Actor("npc_oden".to_string()),
         ));
     }
     intents.push(queued(
         "lark-grit",
-        "pc_lark",
-        ActorKind::Player,
+        player("pc_lark"),
         "grit",
         Target::Empty,
     ));
@@ -572,17 +540,24 @@ fn play_queued(
     let output = world
         .play(&wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    let tick = read_tick(pack, "tick-0001");
+    let tick = read_round(pack, "round-0001");
     let now = world.now().clone();
     (now, output.reports, tick)
 }
 
-fn queued(id: &str, actor: &str, kind: ActorKind, move_name: &str, target: Target) -> Intent {
+fn player(id: &str) -> ViewerId {
+    ViewerId::Player(id.to_string())
+}
+
+fn npc(id: &str) -> ViewerId {
+    ViewerId::Npc(id.to_string())
+}
+
+fn queued(id: &str, actor: ViewerId, move_name: &str, target: Target) -> Intent {
     Intent {
         id: id.to_string(),
         round_index: 1,
-        actor_id: actor.to_string(),
-        actor_kind: kind,
+        actor,
         source: Source::Player,
         move_name: move_name.to_string(),
         target,
