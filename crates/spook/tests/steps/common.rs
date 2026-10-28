@@ -112,28 +112,13 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "duplicate place fact" => replace_file(
             &pack.join("world/places/docks_shop.md"),
-            "    text: Oil is on the shelf.
-    hidden: false
-",
-            "    text: \"She said: oil.\"
-    hidden: false
-  - id: fact_oil_on_shelf
-    text: Oil again.
-    hidden: false
-",
+            "    text: Oil is on the shelf.\n    hidden: false\n",
+            "    text: \"She said: oil.\"\n    hidden: false\n  - id: fact_oil_on_shelf\n    text: Oil again.\n    hidden: false\n",
         ),
         "duplicate cast fact" => replace_file(
             &pack.join("cast/pc-rowan.md"),
-            "facts: []
-",
-            "facts:
-  - id: fact_rowan_shop
-    text: \"He said: the shop.\"
-    hidden: false
-  - id: fact_rowan_shop
-    text: The shop again.
-    hidden: false
-",
+            "facts: []\n",
+            "facts:\n  - id: fact_rowan_shop\n    text: \"He said: the shop.\"\n    hidden: false\n  - id: fact_rowan_shop\n    text: The shop again.\n    hidden: false\n",
         ),
         "idle maybe" => replace_file(
             &pack.join("rules/tick.yaml"),

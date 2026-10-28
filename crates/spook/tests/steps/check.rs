@@ -133,8 +133,7 @@ fn a_json_diagnostic_has_code_file_path_at_line(
     });
     assert!(
         found,
-        "missing {code} in {file} at {path} line {line} column {column}
-{}",
+        "missing {code} in {file} at {path} line {line} column {column}\n{}",
         world.stdout
     );
 }
