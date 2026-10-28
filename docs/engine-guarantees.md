@@ -40,11 +40,11 @@ the gzip does not land, the round stays committed and the host prints a
 warning. The next commit publishes that checkpoint and then starts a new
 bundle. A plain copy beside a finished gzip is removed. `save.yaml` is the latest
 checkpoint, taken every `checkpoint_every`
-ticks (100 when the pack omits it). Between checkpoints the current state is the
+rounds (100 when the pack omits it). Between checkpoints the current state is the
 journal replayed from that snapshot. A missing snapshot is rebuilt from the
 bundles. History is not deleted.
 
-Full verification (`spook verify`) replays the journal once from tick 0 and
+Full verification (`spook verify`) replays the journal once from round 0 and
 checks every closed bundle's checkpoint snapshot against its mark. Quick
 verification (`spook verify --quick`)
 checks the chain and replays only the latest bundle from the snapshot it starts
