@@ -62,7 +62,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 - `docs/engine-guarantees.md` states what the engine promises; every `##` section must cite feature files that exist (`engine_guarantees` test). The feature files win if the two disagree.
 - Every YAML fence in `docs/pack-reference.md` must form a pack that `spook check` accepts (`pack_reference` test), so pack schema changes need doc updates in the same PR.
 - `packs/sample-d20` is played to its ending by tests; `packs/oneshot-docks` is the multi-PC fixture the engine and seat tests rely on, so leave it unchanged. `spook new` writes the template in `crates/server/templates/starter/`.
-- Tests copy packs into temp dirs (`support::copy_pack`, `testing::fresh_dir`); never let a test write into `packs/`.
+- Tests copy packs into temp dirs (`testing::copy_pack`, `testing::fresh_dir`); never let a test write into `packs/`.
 
 ## Conventions
 
@@ -70,7 +70,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 - "Tick" means game time only. A batch of settled work is a "round". Keep names plain.
 - Issue and PR titles start with an area letter and end with a size, e.g. `R: Refactor the round module [L]`. Areas: `R` rules and rounds, `W` world model and pack schema, `E` engine plumbing (journal, save, replay, verify), `H` host, seats, CLI and agent clients, `N` naming, `D` docs, `T` tests and CI. Sizes: `[S]`, `[M]`, `[L]`.
 - In PR bodies, use `Closes #N` only for the closing keyword; elsewhere write "issue #N" / "PR #N", never a bare `#N`.
-- Never merge, force-push or rebase a pushed branch; merge `main` in instead.
-- PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/lock.rs`, `engine/store/durable.rs`, `server/gm_tools.rs` and `spook/src/main.rs`.
+- Never merge a PR. Never force-push or rebase a pushed branch; merge `main` into it instead.
+- PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/lock.rs`, `engine/store/durable.rs` and `server/gm_tools.rs`.
 - Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 - Pack authoring workflow (edit a copy, loop on `spook check --json`, `spook migrate` after canon edits) is in `.grok/skills/author-pack/SKILL.md`.
