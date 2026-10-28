@@ -18,7 +18,7 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
     }
     candidates.extend(habit_intents(draft.canon(), draft.now()));
     let now = draft.now();
-    let mut candidates = order_intents(now, candidates, now.round_index, &now.shard_id);
+    candidates.sort_by_cached_key(|intent| priority(now, intent));
     candidates.truncate(draft.budget().max_intents_applied as usize);
     unique(candidates)
 }
@@ -31,16 +31,6 @@ fn unique(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
         }
     }
     Ok(candidates)
-}
-
-fn order_intents(
-    now: &Now,
-    mut intents: Vec<Intent>,
-    round_index: u64,
-    world_id: &str,
-) -> Vec<Intent> {
-    intents.sort_by_cached_key(|intent| priority(now, intent, round_index, world_id));
-    intents
 }
 
 /// Who acts first: players, then a PC's clock, then a claimed target, then the shuffle.
@@ -70,7 +60,7 @@ enum ClaimRank {
     Unclaimed,
 }
 
-fn priority(now: &Now, intent: &Intent, round_index: u64, world_id: &str) -> Priority {
+fn priority(now: &Now, intent: &Intent) -> Priority {
     let actor = match intent.actor {
         ViewerId::Player(_) => ActorRank::Player,
         ViewerId::Npc(_) => ActorRank::Npc,
@@ -89,7 +79,7 @@ fn priority(now: &Now, intent: &Intent, round_index: u64, world_id: &str) -> Pri
     let shuffle = if actor == ActorRank::Player {
         [0u8; 32]
     } else {
-        shuffle_key(world_id, round_index, intent.actor.actor_id())
+        shuffle_key(&now.shard_id, now.round_index, intent.actor.actor_id())
     };
     Priority {
         actor,
