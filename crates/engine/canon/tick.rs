@@ -75,186 +75,72 @@ pub(crate) fn load_tick(text: &str) -> Result<Budget, Vec<Diagnostic>> {
         line_base: 0,
     };
     let mut diags = Vec::new();
-    let defaults = Budget::defaults();
-    let max_intents_applied = take(
-        &source,
-        "max_intents_applied",
-        file.max_intents_applied,
-        defaults.max_intents_applied,
-        &mut diags,
+    let mut budget = Budget::defaults();
+    // Each row is a counter key and the least value it allows, in report order.
+    macro_rules! counters {
+        ($($key:ident >= $least:literal),* $(,)?) => {$(
+            take(&source, stringify!($key), file.$key, &mut budget.$key, $least, &mut diags);
+        )*};
+    }
+    counters!(
+        max_intents_applied >= 0,
+        max_npcs_acting >= 0,
+        max_effects_per_intent >= 0,
+        max_state_keys_mutated >= 0,
+        max_memory_writes >= 0,
+        idle_acts_per_world_day >= 0,
+        live_acts_per_world_hour >= 0,
+        tick_every_real_seconds >= 1,
     );
-    let max_npcs_acting = take(
-        &source,
-        "max_npcs_acting",
-        file.max_npcs_acting,
-        defaults.max_npcs_acting,
-        &mut diags,
+    budget.idle_ticking = take_idle(&source, file.idle, &mut diags);
+    counters!(
+        idle_minutes_per_tick >= 1,
+        live_minutes_per_tick >= 0,
+        idle_catchup_max_ticks >= 0,
+        idle_max_world_hours_per_real_hour >= 0,
+        max_fastforward_ticks >= 0,
+        max_trigger_depth >= 0,
     );
-    let max_effects_per_intent = take(
-        &source,
-        "max_effects_per_intent",
-        file.max_effects_per_intent,
-        defaults.max_effects_per_intent,
-        &mut diags,
-    );
-    let max_state_keys_mutated = take(
-        &source,
-        "max_state_keys_mutated",
-        file.max_state_keys_mutated,
-        defaults.max_state_keys_mutated,
-        &mut diags,
-    );
-    let max_memory_writes = take(
-        &source,
-        "max_memory_writes",
-        file.max_memory_writes,
-        defaults.max_memory_writes,
-        &mut diags,
-    );
-    let idle_acts_per_world_day = take(
-        &source,
-        "idle_acts_per_world_day",
-        file.idle_acts_per_world_day,
-        defaults.idle_acts_per_world_day,
-        &mut diags,
-    );
-    let live_acts_per_world_hour = take(
-        &source,
-        "live_acts_per_world_hour",
-        file.live_acts_per_world_hour,
-        defaults.live_acts_per_world_hour,
-        &mut diags,
-    );
-    let tick_every_real_seconds = take_positive(
-        &source,
-        "tick_every_real_seconds",
-        file.tick_every_real_seconds,
-        defaults.tick_every_real_seconds,
-        &mut diags,
-    );
-    let idle_ticking = take_idle(&source, file.idle, &mut diags);
-    let idle_minutes_per_tick = take_positive(
-        &source,
-        "idle_minutes_per_tick",
-        file.idle_minutes_per_tick,
-        defaults.idle_minutes_per_tick,
-        &mut diags,
-    );
-    let live_minutes_per_tick = take(
-        &source,
-        "live_minutes_per_tick",
-        file.live_minutes_per_tick,
-        defaults.live_minutes_per_tick,
-        &mut diags,
-    );
-    let idle_catchup_max_ticks = take(
-        &source,
-        "idle_catchup_max_ticks",
-        file.idle_catchup_max_ticks,
-        defaults.idle_catchup_max_ticks,
-        &mut diags,
-    );
-    let idle_max_world_hours_per_real_hour = take(
-        &source,
-        "idle_max_world_hours_per_real_hour",
-        file.idle_max_world_hours_per_real_hour,
-        defaults.idle_max_world_hours_per_real_hour,
-        &mut diags,
-    );
-    let max_fastforward_ticks = take(
-        &source,
-        "max_fastforward_ticks",
-        file.max_fastforward_ticks,
-        defaults.max_fastforward_ticks,
-        &mut diags,
-    );
-    let max_trigger_depth = take(
-        &source,
-        "max_trigger_depth",
-        file.max_trigger_depth,
-        defaults.max_trigger_depth,
-        &mut diags,
-    );
+    budget.pause.named_plot_clocks = file.pause.named_plot_clocks;
     if !diags.is_empty() {
         return Err(diags);
     }
-    Ok(Budget {
-        max_intents_applied,
-        max_npcs_acting,
-        max_effects_per_intent,
-        max_state_keys_mutated,
-        max_memory_writes,
-        idle_acts_per_world_day,
-        live_acts_per_world_hour,
-        tick_every_real_seconds,
-        idle_ticking,
-        idle_minutes_per_tick,
-        live_minutes_per_tick,
-        idle_catchup_max_ticks,
-        idle_max_world_hours_per_real_hour,
-        max_fastforward_ticks,
-        max_trigger_depth,
-        pause: PausePolicies {
-            named_plot_clocks: file.pause.named_plot_clocks,
-        },
-    })
+    Ok(budget)
 }
 
+/// `value` into `slot` when it is at least `least`; otherwise `slot` keeps its default.
 fn take(
     source: &Source,
-    field: &str,
+    key: &str,
     value: Option<i64>,
-    default: u64,
+    slot: &mut u64,
+    least: i64,
     diags: &mut Vec<Diagnostic>,
-) -> u64 {
-    match value {
-        None => default,
-        Some(n) if n >= 0 => n as u64,
-        Some(n) => {
-            diags.push(
-                Problem {
-                    source,
-                    path: field,
-                    at: At::Key(&format!("{field}:")),
-                    problem: format!("{field} is {n}, which is below zero"),
-                    hint: "use a number that is zero or greater",
-                }
-                .schema(),
-            );
-            default
-        }
+) {
+    let Some(n) = value else { return };
+    if n >= least {
+        *slot = n as u64;
+        return;
     }
-}
-
-fn take_positive(
-    source: &Source,
-    field: &str,
-    value: Option<i64>,
-    default: u64,
-    diags: &mut Vec<Diagnostic>,
-) -> u64 {
-    match value {
-        None => default,
-        Some(n) if n > 0 => n as u64,
-        Some(n) => {
-            let problem = if n < 0 {
-                format!("{field} is {n}, which is below zero")
-            } else {
-                format!("{field} is 0, which is not a positive interval")
-            };
-            diags.push(
-                Problem {
-                    source,
-                    path: field,
-                    at: At::Key(&format!("{field}:")),
-                    problem,
-                    hint: "use a number greater than zero",
-                }
-                .schema(),
-            );
-            default
+    let problem = if n < 0 {
+        format!("{key} is {n}, which is below zero")
+    } else {
+        format!("{key} is 0, which is not a positive interval")
+    };
+    let hint = match least {
+        0 => "use a number that is zero or greater",
+        _ => "use a number greater than zero",
+    };
+    diags.push(
+        Problem {
+            source,
+            path: key,
+            at: At::Key(&format!("{key}:")),
+            problem,
+            hint,
         }
-    }
+        .schema(),
+    );
 }
 
 fn take_idle(source: &Source, value: Option<String>, diags: &mut Vec<Diagnostic>) -> bool {
@@ -296,9 +182,7 @@ struct TickFile {
     live_minutes_per_tick: Option<i64>,
     idle_catchup_max_ticks: Option<i64>,
     idle_max_world_hours_per_real_hour: Option<i64>,
-    #[serde(default)]
     max_fastforward_ticks: Option<i64>,
-    #[serde(default)]
     max_trigger_depth: Option<i64>,
     pause: PauseFile,
 }
