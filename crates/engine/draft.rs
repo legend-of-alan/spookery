@@ -40,6 +40,10 @@ impl Draft {
         &self.canon
     }
 
+    pub(crate) fn shared_canon(&self) -> Arc<Canon> {
+        Arc::clone(&self.canon)
+    }
+
     pub(crate) fn now(&self) -> &Now {
         &self.state
     }

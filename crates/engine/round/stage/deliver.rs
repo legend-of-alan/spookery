@@ -1,4 +1,4 @@
-//! Deliver narrate lines and build the change summary for each viewer.
+//! Decide what the GM and each seated viewer may see and hear.
 
 use std::collections::BTreeSet;
 

@@ -16,7 +16,7 @@ use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
-use crate::round::stage::{advance, apply, gather, observe, record, resolve, triggers};
+use crate::round::stage::{advance, apply, deliver, finish, gather, record, resolve, triggers};
 
 pub(crate) enum RoundKind<'a> {
     /// Drain the queue, hold the lock, write the journal line.
@@ -179,7 +179,8 @@ pub(crate) fn play_round(
         &mut log,
     )?;
     apply::run(&mut draft, &snapshot, resolved, &clock, &mut dice, &mut log)?;
+    finish::run(&mut draft, clock.world_time_after, &mut dice, &mut log)?;
     let changes = triggers::run(&mut draft, &mut dice, &mut log)?;
-    let delivered = observe::run(draft.canon(), draft.now(), &changes, &log.effects);
+    let delivered = deliver::run(draft.canon(), draft.now(), &changes, &log.effects);
     record::run(world, draft, &kind, wall, clock, log, delivered)
 }

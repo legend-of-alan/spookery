@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use crate::canon::Canon;
 use crate::check::Outcome;
+use crate::effect::Effect;
 use crate::hash::blake2s_256;
 use crate::intent::Intent;
 use crate::model::Now;
@@ -102,6 +103,13 @@ impl RoundDice {
             reports: Vec::new(),
         }
     }
+}
+
+/// What a rule's effects came to: the effects, the roll that picked them, and the resist rolls made on the way.
+pub(crate) struct Expansion {
+    pub effects: Vec<Effect>,
+    pub rolled: Option<RollResult>,
+    pub resisted: Vec<MoveReport>,
 }
 
 /// Which name seeds a resist roll. Kept per site so keys stay byte-identical.

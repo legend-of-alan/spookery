@@ -3,7 +3,6 @@
 use crate::apply::apply_effect;
 use crate::canon::Canon;
 use crate::draft::Draft;
-use crate::effect::Effect;
 use crate::expand::expand_rule;
 use crate::intent::{ActorKind, Intent, IntentArgs, Source, Target};
 use crate::key::{ChangeRecord, StateKey, StateValue};
@@ -11,10 +10,10 @@ use crate::model::Now;
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
-use crate::rules::{MoveReport, RollResult};
+use crate::rules::MoveReport;
 use crate::Reason;
 
-use crate::round::dice::{ResistKey, RoundDice};
+use crate::round::dice::{Expansion, ResistKey, RoundDice};
 use crate::round::log::RoundLog;
 
 /// Every change record of the round, pass by pass.
@@ -24,7 +23,8 @@ pub(crate) fn run(
     log: &mut RoundLog,
 ) -> Result<Vec<ChangeRecord>, Reason> {
     let max = draft.budget().max_trigger_depth;
-    let rules = change_rules(draft);
+    let canon = draft.shared_canon();
+    let rules = change_rules(&canon);
     let mut depth = 0u64;
     let mut all_changes = Vec::new();
     loop {
@@ -33,7 +33,7 @@ pub(crate) fn run(
             break;
         }
         all_changes.extend(changes.iter().cloned());
-        let matched_triggers = plan(draft, &rules, &changes);
+        let matched_triggers = triggered(draft, &rules, &changes);
         if matched_triggers.is_empty() {
             break;
         }
@@ -54,13 +54,11 @@ struct TriggerMatch<'a> {
     subject: String,
 }
 
-fn change_rules(draft: &Draft) -> Vec<Rule> {
-    let mut rules: Vec<Rule> = draft
-        .canon()
+fn change_rules(canon: &Canon) -> Vec<&Rule> {
+    let mut rules: Vec<&Rule> = canon
         .rules
         .iter()
         .filter(|rule| matches!(rule.when, When::Change(_)))
-        .cloned()
         .collect();
     rules.sort_by(|left, right| {
         left.owner
@@ -72,9 +70,14 @@ fn change_rules(draft: &Draft) -> Vec<Rule> {
     rules
 }
 
-fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<TriggerMatch<'a>> {
+/// Which rules a batch of changes triggers, and for whom.
+fn triggered<'a>(
+    draft: &Draft,
+    rules: &[&'a Rule],
+    changes: &[ChangeRecord],
+) -> Vec<TriggerMatch<'a>> {
     let mut matched_triggers = Vec::new();
-    for rule in rules {
+    for &rule in rules {
         let When::Change(watch) = &rule.when else {
             continue;
         };
@@ -95,12 +98,6 @@ fn plan<'a>(draft: &Draft, rules: &'a [Rule], changes: &[ChangeRecord]) -> Vec<T
         }
     }
     matched_triggers
-}
-
-struct TriggerExpansion {
-    effects: Vec<Effect>,
-    rolled: Option<RollResult>,
-    resist: Vec<MoveReport>,
 }
 
 fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
@@ -149,7 +146,7 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
             out,
         });
     }
-    log.reports.extend(expanded.resist);
+    log.reports.extend(expanded.resisted);
     log.effects.extend(expanded.effects);
     log.steps.push(rule.id.clone());
 }
@@ -162,7 +159,7 @@ fn expand_trigger(
     rule: &Rule,
     intent: &Intent,
     subject: &str,
-) -> Option<TriggerExpansion> {
+) -> Option<Expansion> {
     let mut roller = dice.roller(log, &rule.id, subject, ResistKey::Rule);
     let rolled = match &rule.roll {
         Some(spec) => Some(roller.roll_spec(canon, now, intent, spec, &rule.id).ok()?),
@@ -170,10 +167,10 @@ fn expand_trigger(
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
     let effects = expand_rule(canon, now, rule, intent, outcome, &mut roller).ok()?;
-    Some(TriggerExpansion {
+    Some(Expansion {
         effects,
         rolled,
-        resist: roller.finish(),
+        resisted: roller.finish(),
     })
 }
 

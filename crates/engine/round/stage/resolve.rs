@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 
 use crate::check::classify;
 use crate::rules::expr::{self, Ctx};
-use crate::rules::gate::{self, gate};
+use crate::rules::gate::{gate, GateRefusal};
 
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target, ViewerId};
 use crate::model::Now;
-use crate::rules::{MoveReport, RollResult};
+use crate::rules::RollResult;
 use crate::Reason;
 
 use crate::round::dice::{ResistKey, RoundDice};
@@ -23,13 +23,15 @@ pub(crate) struct Resolved {
 
 /// How resolve left an intent for apply.
 pub(crate) enum Resolution {
+    /// Gated; apply expands `rule_id`, the rule the gate chose against the snapshot.
     Ready {
+        rule_id: String,
         rolled: Option<RollResult>,
     },
-    Refused {
-        refusal: gate::GateRefusal,
-        report: Option<MoveReport>,
-    },
+    /// Refused by the gate: journaled, and told to a player.
+    Refused(GateRefusal),
+    /// The check could not be set up (no viewer, check or meter): journaled, and told to the actor whoever it is.
+    CannotRoll(Reason),
 }
 
 /// What every roll in the round shares.
@@ -60,38 +62,44 @@ pub(crate) fn run(
     };
     let mut resolved = Vec::with_capacity(candidates.len());
     for intent in candidates {
-        let resolution = consider(&mut rolls, &intent)?;
+        let resolution = gate_and_roll(&mut rolls, &intent)?;
         resolved.push(Resolved { intent, resolution });
     }
     Ok(resolved)
 }
 
-fn consider(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Resolution, Reason> {
-    let rule = match gate(rolls.canon, rolls.snapshot, intent) {
-        Ok(rule) => rule.clone(),
-        Err(refusal) => return Ok(refused(refusal, None)),
+fn gate_and_roll(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Resolution, Reason> {
+    let (canon, snapshot) = (rolls.canon, rolls.snapshot);
+    let rule = match gate(canon, snapshot, intent) {
+        Ok(rule) => rule,
+        Err(refusal) => return Ok(Resolution::Refused(refusal)),
     };
-    if crate::map::span(rolls.canon, rolls.snapshot, intent, &rule) > 0 {
-        return Ok(Resolution::Ready { rolled: None });
-    }
-    if let Some(roll) = rule.roll.clone() {
-        rolls.log.steps.push("resolve_check".to_string());
-        return roll_check(rolls, intent, &roll);
-    }
-    Ok(Resolution::Ready { rolled: None })
+    let rolled = match &rule.roll {
+        Some(roll) if crate::map::span(canon, snapshot, intent, rule) == 0 => {
+            rolls.log.steps.push("resolve_check".to_string());
+            match roll_check(rolls, intent, roll)? {
+                Ok(out) => Some(out),
+                Err(code) => return Ok(Resolution::CannotRoll(code)),
+            }
+        }
+        _ => None,
+    };
+    let rule_id = rule.id.clone();
+    Ok(Resolution::Ready { rule_id, rolled })
 }
 
+/// The roll, or the reason the check could not be set up.
 fn roll_check(
     rolls: &mut Rolls<'_>,
     intent: &Intent,
     roll: &crate::rule::RollSpec,
-) -> Result<Resolution, Reason> {
+) -> Result<Result<RollResult, Reason>, Reason> {
     if let Err(code) = ViewerId::from_kind(intent.actor_kind, &intent.actor_id) {
-        return Ok(refused_check(intent, code));
+        return Ok(Err(code));
     }
-    let opposed = match supplied_target(rolls, intent) {
+    let opposed = match opposing_total(rolls, intent) {
         Ok(total) => total,
-        Err(code) => return Ok(refused_check(intent, code)),
+        Err(code) => return Ok(Err(code)),
     };
     let (canon, snapshot) = (rolls.canon, rolls.snapshot);
     let (target, partial_at) = {
@@ -118,48 +126,41 @@ fn roll_check(
         };
         (target, partial_at)
     };
-    if let Some(out) = rolls.opposed.get(&intent.id).cloned() {
-        return Ok(Resolution::Ready {
-            rolled: Some(reclassify(&out, target, partial_at)),
-        });
+    if let Some(out) = rolls.opposed.get(&intent.id) {
+        return Ok(Ok(reclassify(out, target, partial_at)));
     }
     let key = rolls.dice.key(&intent.move_name, &intent.actor_id);
-    match rolls
+    let rolled = rolls
         .dice
-        .check(canon, snapshot, key, &roll.check, target, partial_at)
-    {
-        Ok(out) => {
-            rolls.opposed.insert(intent.id.clone(), out.clone());
-            Ok(Resolution::Ready { rolled: Some(out) })
-        }
-        Err(code) => Ok(refused_check(intent, code)),
+        .check(canon, snapshot, key, &roll.check, target, partial_at);
+    if let Ok(out) = &rolled {
+        rolls.opposed.insert(intent.id.clone(), out.clone());
     }
+    Ok(rolled)
 }
 
-fn supplied_target(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>, Reason> {
+fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>, Reason> {
     let Target::Actor(named) = &intent.target else {
         return Ok(None);
     };
     let (canon, snapshot, pool) = (rolls.canon, rolls.snapshot, rolls.pool);
-    let Some(opposing) = pool.iter().find(|other| {
-        other.id != intent.id
-            && &other.actor_id == named
-            && other.source == Source::Player
-            && gate(canon, snapshot, other)
-                .ok()
-                .is_some_and(|rule| rule.roll.is_some())
+    let Some((opposing, check_id)) = pool.iter().find_map(|other| {
+        if other.id == intent.id || &other.actor_id != named || other.source != Source::Player {
+            return None;
+        }
+        let check_id = gate(canon, snapshot, other)
+            .ok()?
+            .roll
+            .as_ref()?
+            .check
+            .clone();
+        Some((other, check_id))
     }) else {
         return Ok(None);
     };
     if let Some(out) = rolls.opposed.get(&opposing.id) {
         return Ok(Some(out.total));
     }
-    let Some(check_id) = gate(canon, snapshot, opposing)
-        .ok()
-        .and_then(|rule| rule.roll.as_ref().map(|roll| roll.check.clone()))
-    else {
-        return Ok(None);
-    };
     let key = rolls.dice.key(&opposing.move_name, &opposing.actor_id);
     let out = rolls.dice.check(canon, snapshot, key, &check_id, 0, None)?;
     let total = out.total;
@@ -175,19 +176,4 @@ fn reclassify(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollRes
         target,
         outcome: classify(out.total, target, partial_at),
     }
-}
-
-fn refused(refusal: gate::GateRefusal, report: Option<MoveReport>) -> Resolution {
-    Resolution::Refused { refusal, report }
-}
-
-fn refused_check(intent: &Intent, code: Reason) -> Resolution {
-    refused(
-        gate::GateRefusal::Code(code),
-        Some(MoveReport::Refused {
-            actor_id: intent.actor_id.clone(),
-            code,
-            missing: None,
-        }),
-    )
 }

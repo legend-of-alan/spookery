@@ -8,7 +8,7 @@ use crate::round::dice::round_seed;
 use crate::round::log::{RoundLine, RoundLog};
 use crate::round::play::{RoundKind, RoundOutput};
 use crate::round::stage::advance::Clock;
-use crate::round::stage::observe::Delivered;
+use crate::round::stage::deliver::Delivered;
 
 pub(crate) fn run(
     world: &mut World,
