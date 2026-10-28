@@ -11,6 +11,7 @@ path = "lib.rs"
 
 [dependencies]
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+chrono = { version = "0.4", default-features = false, features = ["now"] }
 futures-core = "0.3"
 rmcp = { version = "3.5.1", default-features = false, features = ["server", "transport-streamable-http-server"] }
 serde = { version = "1", features = ["derive"] }
@@ -19,6 +20,7 @@ socket2 = { version = "0.6", features = ["all"] }
 spookery-engine = { path = "../engine" }
 spookery-protocol = { path = "../protocol" }
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time", "net", "io-util", "sync"] }
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 spookery-engine = { path = "../engine", features = ["testing"] }

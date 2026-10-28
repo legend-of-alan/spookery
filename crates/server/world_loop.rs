@@ -14,7 +14,7 @@ use super::limits::{CancelTx, OutTx};
 /// Commit a queued round, then fast-forward while every seated PC is busy.
 /// An empty queue only fast-forwards.
 pub fn commit_then_fast_forward(world: &mut World) -> Result<Vec<RoundOutput>, Reason> {
-    let wall = wall_now()?;
+    let wall = wall_now();
     world.commit_then_fast_forward(&wall)
 }
 
@@ -569,14 +569,8 @@ fn on_mechanical(
     out: &mut dyn Write,
 ) -> Result<PlayerReply, Reason> {
     let gm_seated = seats.gm.is_some();
-    match spookery_engine::handle_player_move(
-        world,
-        actor_id,
-        verb,
-        target,
-        gm_seated,
-        &wall_now()?,
-    ) {
+    match spookery_engine::handle_player_move(world, actor_id, verb, target, gm_seated, &wall_now())
+    {
         Ok(MoveOutcome::Queued(queued)) => {
             send_gm(
                 seats,

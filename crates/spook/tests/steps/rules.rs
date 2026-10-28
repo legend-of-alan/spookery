@@ -290,7 +290,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
         humans: 1,
         actors_present: Vec::new(),
     });
-    let wall = wall_now().unwrap();
+    let wall = wall_now();
     let played = handle_player_move(
         &mut opened,
         "pc_rowan",
@@ -470,7 +470,7 @@ fn lark_attacks(world: &mut World) {
         might.offset = 0;
     });
     let mut opened = open_pack(&pack);
-    let wall = wall_now().unwrap();
+    let wall = wall_now();
     let reports = match handle_player_move(
         &mut opened,
         "pc_lark",
@@ -649,7 +649,7 @@ fn steady_costs_five_grit(world: &mut World) {
 fn the_sitter_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    let wall = wall_now().unwrap();
+    let wall = wall_now();
     let played = handle_player_move(&mut opened, "pc_rowan", "steady", None, false, &wall);
     world.scratch = match played {
         Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
@@ -778,7 +778,7 @@ A small bottle.
 fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    let wall = wall_now().unwrap();
+    let wall = wall_now();
     let played = handle_player_move(&mut opened, "pc_rowan", "use", Some("tonic"), true, &wall);
     world.scratch = match played {
         Ok(MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),

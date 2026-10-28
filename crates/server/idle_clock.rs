@@ -1,129 +1,55 @@
 //! Decide when an idle table ticks, and stamp the wall time.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use chrono::{DateTime, NaiveDateTime, TimeDelta, Utc};
 
 use spookery_engine::{Reason, World};
 
+const STAMP: &str = "%Y-%m-%dT%H:%M:%SZ";
+
 pub fn seconds_since(last_round_at: &str) -> Result<u64, Reason> {
-    elapsed_secs(last_round_at, SystemTime::now())
+    elapsed_secs(last_round_at, Utc::now())
 }
 
-pub fn wall_now() -> Result<String, Reason> {
-    format_utc(SystemTime::now())
+pub fn wall_now() -> String {
+    format_utc(Utc::now())
 }
 
 /// Test support: a UTC stamp `seconds` in the past. Not part of the API.
 #[doc(hidden)]
 pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| Reason::Schema)?
-        .as_secs();
-    format_utc(UNIX_EPOCH + Duration::from_secs(now.saturating_sub(seconds)))
+    let ago = i64::try_from(seconds)
+        .ok()
+        .and_then(TimeDelta::try_seconds)
+        .and_then(|ago| Utc::now().checked_sub_signed(ago))
+        .ok_or(Reason::Schema)?;
+    Ok(format_utc(ago))
 }
 
 pub fn idle_round_if_due(world: &mut World) -> Result<(), Reason> {
     if !world.budget().idle_ticking && world.now().presence.humans == 0 {
         return Ok(());
     }
-    let now = SystemTime::now();
+    let now = Utc::now();
     let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
-    world.catch_up(&format_utc(now)?, elapsed / 3600)
+    world.catch_up(&format_utc(now), elapsed / 3600)
 }
 
-fn elapsed_secs(last_round_at: &str, now: SystemTime) -> Result<u64, Reason> {
+fn elapsed_secs(last_round_at: &str, now: DateTime<Utc>) -> Result<u64, Reason> {
     let last = parse_utc(last_round_at)?;
-    let now = now
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| Reason::Schema)?
-        .as_secs();
-    Ok(now.saturating_sub(last))
+    Ok(u64::try_from((now - last).num_seconds()).unwrap_or(0))
 }
 
-fn parse_utc(text: &str) -> Result<u64, Reason> {
-    let bytes = text.as_bytes();
-    if bytes.len() != 20 || bytes[10] != b'T' || bytes[19] != b'Z' {
+fn parse_utc(text: &str) -> Result<DateTime<Utc>, Reason> {
+    if text.len() != 20 {
         return Err(Reason::Schema);
     }
-    let year = number(text, 0, 4)?;
-    let month = number(text, 5, 7)?;
-    let day = number(text, 8, 10)?;
-    let hour = number(text, 11, 13)?;
-    let minute = number(text, 14, 16)?;
-    let second = number(text, 17, 19)?;
-    if !(1..=12).contains(&month)
-        || !(1..=31).contains(&day)
-        || hour > 23
-        || minute > 59
-        || second > 59
-    {
-        return Err(Reason::Schema);
-    }
-    let days = days_from_civil(year as i64, month as i64, day as i64);
-    let secs = days
-        .checked_mul(86400)
-        .and_then(|days| days.checked_add(hour as i64 * 3600))
-        .and_then(|days| days.checked_add(minute as i64 * 60))
-        .and_then(|days| days.checked_add(second as i64))
-        .ok_or(Reason::Schema)?;
-    u64::try_from(secs).map_err(|_| Reason::Schema)
+    NaiveDateTime::parse_from_str(text, STAMP)
+        .map(|stamp| stamp.and_utc())
+        .map_err(|_| Reason::Schema)
 }
 
-fn format_utc(now: SystemTime) -> Result<String, Reason> {
-    let secs = now
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_| Reason::Schema)?
-        .as_secs();
-    let secs = i64::try_from(secs).map_err(|_| Reason::Schema)?;
-    let days = div_floor(secs, 86400);
-    let tod = secs - days * 86400;
-    let (year, month, day) = civil_from_days(days);
-    let hour = tod / 3600;
-    let minute = (tod % 3600) / 60;
-    let second = tod % 60;
-    Ok(format!(
-        "{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"
-    ))
-}
-
-fn days_from_civil(mut year: i64, month: i64, day: i64) -> i64 {
-    year -= i64::from(month <= 2);
-    let era = div_floor(year, 400);
-    let yoe = year - era * 400;
-    let mp = if month > 2 { month - 3 } else { month + 9 };
-    let doy = (153 * mp + 2) / 5 + day - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146097 + doe - 719468
-}
-
-fn civil_from_days(days: i64) -> (i64, i64, i64) {
-    let z = days + 719468;
-    let era = div_floor(z, 146097);
-    let doe = z - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let day = doy - (153 * mp + 2) / 5 + 1;
-    let month = mp + if mp < 10 { 3 } else { -9 };
-    let year = y + i64::from(month <= 2);
-    (year, month, day)
-}
-
-fn div_floor(a: i64, b: i64) -> i64 {
-    let d = a / b;
-    let r = a % b;
-    if r != 0 && (r < 0) != (b < 0) {
-        d - 1
-    } else {
-        d
-    }
-}
-
-fn number(text: &str, start: usize, end: usize) -> Result<u32, Reason> {
-    text.get(start..end)
-        .and_then(|slice| slice.parse().ok())
-        .ok_or(Reason::Schema)
+fn format_utc(now: DateTime<Utc>) -> String {
+    now.format(STAMP).to_string()
 }
 
 /// Seat check and interval check. A round that runs borrows this `World`.
@@ -154,9 +80,9 @@ mod tests {
 
     #[test]
     fn utc_stamps_round_trip() {
-        assert_eq!(parse_utc("1970-01-01T00:00:00Z").unwrap(), 0);
-        assert_eq!(parse_utc("2026-01-01T00:00:00Z").unwrap(), 1_767_225_600);
-        let docks = UNIX_EPOCH + Duration::from_secs(1_767_225_600);
-        assert_eq!(format_utc(docks).unwrap(), "2026-01-01T00:00:00Z");
+        assert_eq!(parse_utc("1970-01-01T00:00:00Z").unwrap().timestamp(), 0);
+        let docks = parse_utc("2026-01-01T00:00:00Z").unwrap();
+        assert_eq!(docks.timestamp(), 1_767_225_600);
+        assert_eq!(format_utc(docks), "2026-01-01T00:00:00Z");
     }
 }

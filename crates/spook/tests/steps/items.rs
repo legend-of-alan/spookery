@@ -50,7 +50,7 @@ fn play(
         )
     });
     let (verb, target) = support::split_move(line);
-    let wall = spookery::host::idle_clock::wall_now().unwrap();
+    let wall = spookery::host::idle_clock::wall_now();
     spookery_engine::handle_player_move(&mut world, actor, verb, target, false, &wall)
 }
 

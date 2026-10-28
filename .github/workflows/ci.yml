@@ -54,7 +54,7 @@ jobs:
 
       - name: clippy
         # macOS builds the same unix code as Linux, so it skips clippy. Windows keeps it
-        # for the cfg(windows) code in engine/store/lock.rs, engine/store/durable.rs, server/gm_tools.rs, and spook/src/main.rs.
+        # for the cfg(windows) code in engine/store/lock.rs, engine/store/durable.rs, and spook/src/main.rs.
         if: runner.os != 'macOS'
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
