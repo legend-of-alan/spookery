@@ -49,11 +49,14 @@ Feature: Hash-chained journal bundles
     Then the command exits 1
     And stderr names that bundle
 
-  Scenario: Parallel full verification matches serial replay
+  Scenario: A changed checkpoint snapshot fails verification
     Given a docks table
     And checkpoints are taken every 2 rounds
     When the operator runs 6 ticks
-    Then parallel full verification matches serial replay
+    And the first closed checkpoint snapshot is changed
+    And the operator runs verify
+    Then the command exits 1
+    And stderr names that bundle
 
   Scenario: A bundle left open after its checkpoint is closed on the next open
     Given a docks table

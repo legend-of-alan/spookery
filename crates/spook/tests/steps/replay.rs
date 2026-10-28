@@ -522,12 +522,26 @@ fn gunzip_closed(path: &std::path::Path) -> Vec<u8> {
         .unwrap_or_else(|err| panic!("gunzip: {err}"))
 }
 
-#[then(expr = "parallel full verification matches serial replay")]
-fn parallel_full_verification_matches_serial_replay(world: &mut World) {
-    let pack = table::pack(world);
-    let verified = spookery_engine::verify_pack(pack, None).unwrap_or_else(|err| panic!("{err}"));
-    let serial = spookery_engine::testing::replay_journal(pack, None, None)
-        .unwrap_or_else(|err| panic!("{err}"));
-    assert_eq!(verified.state_rev, serial.state_rev);
-    assert!(verified.applied > 0, "{verified:?}");
+#[when(expr = "the first closed checkpoint snapshot is changed")]
+fn the_first_closed_checkpoint_snapshot_is_changed(world: &mut World) {
+    let dir = table::pack(world).join("state/checkpoints");
+    let first = fs::read_dir(&dir)
+        .unwrap_or_else(|err| panic!("read checkpoints: {err}"))
+        .filter_map(|entry| {
+            entry
+                .ok()?
+                .path()
+                .file_stem()?
+                .to_str()?
+                .parse::<u64>()
+                .ok()
+        })
+        .min()
+        .unwrap_or_else(|| panic!("no checkpoint snapshot"));
+    let path = dir.join(format!("{first}.yaml"));
+    let mut text = fs::read(&path).unwrap();
+    text.extend_from_slice(b"# changed\n");
+    fs::write(&path, text).unwrap();
+    // verify names the bundle whose checkpoint it checked.
+    world.scratch = "bundle-0000.jsonl.gz: state hash differed".into();
 }
