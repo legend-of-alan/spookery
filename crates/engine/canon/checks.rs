@@ -8,7 +8,7 @@ use crate::canon::source::{load_headed, At, Diags, Problem, Source, CHECKS_SCHEM
 use crate::check::CheckDef;
 use crate::diagnostic::Diagnostic;
 
-pub(crate) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
+pub(super) fn load_checks(text: &str) -> Result<BTreeMap<String, CheckDef>, Vec<Diagnostic>> {
     const CHECKS_FILE: &str = "rules/checks.yaml";
     let file: ChecksFile = load_headed(CHECKS_FILE, text, CHECKS_SCHEMA, 0)?;
     let source = Source {

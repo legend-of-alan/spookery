@@ -223,6 +223,7 @@ fn lane_cost(pack: &Path) -> u64 {
         .iter()
         .find(|exit| exit.name == "mill_lane")
         .unwrap()
+        .cost
         .minutes
 }
 

@@ -585,19 +585,18 @@ fn project(canon: &Canon) -> String {
     out.push_str("places:\n");
     for (id, place) in places {
         let PlaceCanon {
-            name,
+            display_name,
             facts,
             body,
             exits,
         } = place;
         out.push_str(&format!(
-            "  {id:?}:\n    name: {name:?}\n    facts: {facts:?}\n    body: {body:?}\n"
+            "  {id:?}:\n    name: {display_name:?}\n    facts: {facts:?}\n    body: {body:?}\n"
         ));
         for exit in exits {
             let Exit {
                 name,
                 to,
-                minutes,
                 cost,
                 if_,
                 locked_text,
@@ -607,7 +606,8 @@ fn project(canon: &Canon) -> String {
                 index,
             } = exit;
             out.push_str(&format!(
-                "    exit {index} in {file:?}: name {name:?} to {to:?} minutes {minutes} hidden {hidden} revealed_by {revealed_by:?} locked_text {locked_text:?}\n    cost: {cost:#?}\n    if: {if_:#?}\n"
+                "    exit {index} in {file:?}: name {name:?} to {to:?} minutes {minutes} hidden {hidden} revealed_by {revealed_by:?} locked_text {locked_text:?}\n    cost: {cost:#?}\n    if: {if_:#?}\n",
+                minutes = cost.minutes
             ));
         }
     }

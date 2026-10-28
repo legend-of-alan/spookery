@@ -313,7 +313,7 @@ mod tests {
                 },
             )]),
             items: BTreeMap::new(),
-            budget: crate::canon::tick::Budget::defaults(),
+            budget: crate::canon::Budget::defaults(),
             checkpoint_every: 100,
         }
     }

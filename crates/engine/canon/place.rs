@@ -38,7 +38,7 @@ pub(super) fn add_place(
     places.insert(
         file.id.clone(),
         PlaceCanon {
-            name: file.display_name,
+            display_name: file.display_name,
             facts: ids,
             body: page.body,
             exits,
@@ -134,7 +134,6 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
         compiled.push(Exit {
             name: exit.name.clone(),
             to: exit.to.clone(),
-            minutes: cost.minutes,
             cost,
             if_,
             locked_text: exit.locked_text.clone(),

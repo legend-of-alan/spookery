@@ -18,7 +18,7 @@ use crate::rule::{
 
 const REPLACED: &str = "rules/moves.yaml was replaced by rules/verbs.yaml";
 
-pub(crate) fn replaced_moves_file() -> Diagnostic {
+pub(super) fn replaced_moves_file() -> Diagnostic {
     schema(
         "rules/moves.yaml",
         REPLACED,
@@ -686,7 +686,7 @@ fn if_of(yaml: &IfYaml) -> Result<Vec<Cond>, Fault> {
     }
 }
 
-pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
+pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     let mut found = 0u8;
     let mut cond = None;
     if let Some(item) = &yaml.has_item {
@@ -786,7 +786,7 @@ pub(crate) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
     Err("two conditions under one dash".into())
 }
 
-pub(crate) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
+pub(super) fn cost_of(yaml: &CostYaml) -> Result<Cost, Fault> {
     let minutes = match &yaml.time {
         Some(text) => duration_minutes(text)?,
         None => 0,
@@ -808,7 +808,7 @@ fn counts_of(yaml: &Counts) -> Result<Vec<(String, Expr)>, Fault> {
     }
 }
 
-pub(crate) fn duration_minutes(text: &str) -> Result<u64, String> {
+fn duration_minutes(text: &str) -> Result<u64, String> {
     let (count, unit) = text
         .char_indices()
         .find(|(_, ch)| !ch.is_ascii_digit())

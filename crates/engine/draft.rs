@@ -5,8 +5,8 @@ use std::marker::PhantomData;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use crate::canon::tick::{Budget, PausePolicy};
 use crate::canon::Canon;
+use crate::canon::{Budget, PausePolicy};
 use crate::error::Reason;
 use crate::key::{ChangeRecord, StateKey, StateValue};
 use crate::model::{MemoryLine, Now, RunState};

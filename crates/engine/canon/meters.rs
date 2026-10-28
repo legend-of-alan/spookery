@@ -8,7 +8,7 @@ use crate::canon::source::{load_headed, At, Diags, Problem, Source, METERS_SCHEM
 use crate::diagnostic::Diagnostic;
 use crate::meter::MeterDef;
 
-pub(crate) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
+pub(super) fn load_meters(text: &str) -> Result<BTreeMap<String, MeterDef>, Vec<Diagnostic>> {
     const FILE: &str = "rules/meters.yaml";
     let file: MetersFile = load_headed(FILE, text, METERS_SCHEMA, 0)?;
     let source = Source {

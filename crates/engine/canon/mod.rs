@@ -27,7 +27,7 @@ mod rule_list;
 mod save;
 mod source;
 mod story;
-pub(crate) mod tick;
+mod tick;
 
 use cast::add_cast;
 use checks::load_checks;
@@ -43,10 +43,10 @@ use pack::load_pack;
 use place::add_place;
 use rule_list::load_verbs;
 pub(crate) use save::{check_save, migrate_save, pending_meters};
-use source::{collect_files, markdown_files, read_text, split_frontmatter, At, Diags, Source};
+use source::{collect_files, markdown_files, read_text, At, Diags, Source};
 use story::load_stories;
 use tick::load_tick;
-pub use tick::Budget;
+pub(crate) use tick::{Budget, PausePolicy};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -81,12 +81,11 @@ pub struct FactCanon {
     pub owner_id: String,
 }
 
-/// One way out of a place. `minutes` is the world time the walk takes.
+/// One way out of a place. `cost.minutes` is the world time the walk takes.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Exit {
     pub name: String,
     pub to: String,
-    pub minutes: u64,
     pub cost: Cost,
     pub if_: Vec<Cond>,
     pub locked_text: String,
@@ -98,7 +97,7 @@ pub struct Exit {
 
 #[derive(Clone, Debug)]
 pub struct PlaceCanon {
-    pub name: String,
+    pub display_name: String,
     pub facts: Vec<String>,
     pub body: String,
     pub exits: Vec<Exit>,
@@ -168,7 +167,6 @@ impl Canon {
         self.cast
             .get(id)
             .map(|cast| cast.display_name.clone())
-            .filter(|name| !name.is_empty())
             .unwrap_or_else(|| id.to_string())
     }
 
@@ -307,9 +305,9 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
 }
 
 /// Markdown with the body removed. Frontmatter stays. The trailing delimiter is kept.
-#[allow(dead_code)]
+#[cfg(any(test, feature = "testing"))]
 pub fn strip_body(text: &str) -> Result<String, Reason> {
-    let (yaml, _) = split_frontmatter("", text).map_err(|_| Reason::Schema)?;
+    let (yaml, _) = source::split_frontmatter("", text).map_err(|_| Reason::Schema)?;
     Ok(format!("---\n{yaml}\n---\n"))
 }
 
