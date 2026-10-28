@@ -10,30 +10,35 @@ use crate::model::PendingAction;
 use crate::rules::MoveReport;
 use crate::Reason;
 
-use crate::round::dice::ResistKey;
-use crate::round::state::Round;
+use crate::round::dice::{ResistKey, RoundDice};
+use crate::round::log::RoundLog;
 
 /// Apply every journey whose minute has been reached, earliest first.
-pub(crate) fn finish(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    let due_actions = crate::map::take_due_actions(draft, round.world_time_after)?;
+pub(crate) fn finish(
+    draft: &mut Draft,
+    end: u64,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
+) -> Result<(), Reason> {
+    let due_actions = crate::map::take_due_actions(draft, end)?;
     for due_action in due_actions {
         if due_action.pending.arrive.is_some() {
             arrive(
-                round,
+                log,
                 draft,
                 &due_action.actor_id,
                 due_action.until,
                 &due_action.pending,
             )?;
         } else {
-            resume(round, draft, &due_action.actor_id, &due_action.pending)?;
+            resume(dice, log, draft, &due_action.actor_id, &due_action.pending)?;
         }
     }
     Ok(())
 }
 
 fn arrive(
-    round: &mut Round,
+    log: &mut RoundLog,
     draft: &mut Draft,
     actor_id: &str,
     until: u64,
@@ -43,7 +48,7 @@ fn arrive(
     let from = actor.place().to_string();
     let to = pending.arrive.clone().unwrap_or_default();
     let kind = actor.actor_kind();
-    let intent = arrival_intent(round, actor_id, kind, pending);
+    let intent = arrival_intent(draft.now().round_index, actor_id, kind, pending);
     let effect = Effect {
         class: EffectKind::Location {
             actor_id: actor_id.to_string(),
@@ -55,8 +60,8 @@ fn arrive(
         intent_id: intent.id.clone(),
     };
     apply_effect(draft, &intent, effect.clone())?;
-    round.effects.push(effect);
-    round.arrivals.push(Arrival {
+    log.effects.push(effect);
+    log.arrivals.push(Arrival {
         actor_id: actor_id.to_string(),
         arrived_at: until,
         to,
@@ -66,7 +71,8 @@ fn arrive(
 }
 
 fn resume(
-    round: &mut Round,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
     draft: &mut Draft,
     actor_id: &str,
     pending: &PendingAction,
@@ -77,15 +83,13 @@ fn resume(
         .get(actor_id)
         .ok_or(Reason::UnknownKey)?
         .actor_kind();
-    let intent = arrival_intent(round, actor_id, kind, pending);
+    let intent = arrival_intent(draft.now().round_index, actor_id, kind, pending);
     let roll_spec = crate::rules::gate::resolve(draft.canon(), draft.now(), &intent)?
         .roll
         .clone();
     let canon = draft.canon();
     let snapshot = draft.now();
-    let mut roller = round
-        .dice
-        .roller(&intent.move_name, actor_id, ResistKey::Check);
+    let mut roller = dice.roller(log, &intent.move_name, actor_id, ResistKey::Check);
     let mut reports = Vec::new();
     let outcome = match &roll_spec {
         Some(spec) => {
@@ -101,26 +105,26 @@ fn resume(
     };
     let effects = expand_outcome(canon, snapshot, &intent, outcome, &mut roller)?;
     reports.extend(roller.finish());
-    round.move_reports.extend(reports);
+    log.reports.extend(reports);
     for effect in effects {
         if matches!(effect.class, EffectKind::Location { .. }) {
             continue;
         }
         apply_effect(draft, &intent, effect.clone())?;
-        round.effects.push(effect);
+        log.effects.push(effect);
     }
     Ok(())
 }
 
 fn arrival_intent(
-    round: &Round,
+    round_index: u64,
     actor_id: &str,
     kind: ActorKind,
     pending: &PendingAction,
 ) -> Intent {
     Intent {
         id: format!("arrival:{actor_id}"),
-        round_index: round.round_index,
+        round_index,
         actor_id: actor_id.to_string(),
         actor_kind: kind,
         source: pending.source,

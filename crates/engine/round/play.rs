@@ -14,8 +14,9 @@ use crate::visibility::{RecipientLine, ViewerChanges};
 use crate::world::World;
 use crate::Reason;
 
+use crate::round::dice::RoundDice;
+use crate::round::log::RoundLog;
 use crate::round::stage::{advance, apply, gather, observe, record, resolve, triggers};
-use crate::round::state::Round;
 
 pub(crate) enum RoundKind<'a> {
     /// Drain the queue, hold the lock, write the journal line.
@@ -158,12 +159,27 @@ pub(crate) fn play_round(
         world.set_presence_inner(presence.clone());
     }
     let mut draft = Draft::begin(world);
-    let mut round = Round::prepare(world, &draft, wall, &kind);
-    advance::run(&mut round, &mut draft)?;
-    gather::run(&mut round, &mut draft)?;
-    resolve::run(&mut round, &mut draft)?;
-    apply::run(&mut round, &mut draft)?;
-    triggers::run(&mut round, &mut draft)?;
-    observe::run(&mut round, &mut draft)?;
-    record::run(world, &mut round, draft)
+    let clock = advance::run(&mut draft, wall)?;
+    let mut dice = RoundDice::new(draft.now().shard_id.clone(), clock.round_index);
+    let mut log = RoundLog::default();
+    let (candidates, pool) = match &kind {
+        RoundKind::Live { .. } => (
+            gather::run(&draft, world.queued_intents())?,
+            world.queued_intents(),
+        ),
+        RoundKind::Replay { intents, .. } => (gather::as_recorded(intents)?, *intents),
+    };
+    let snapshot = draft.now().clone();
+    let resolved = resolve::run(
+        draft.canon(),
+        &snapshot,
+        candidates,
+        pool,
+        &mut dice,
+        &mut log,
+    )?;
+    apply::run(&mut draft, &snapshot, resolved, &clock, &mut dice, &mut log)?;
+    let changes = triggers::run(&mut draft, &mut dice, &mut log)?;
+    let delivered = observe::run(draft.canon(), draft.now(), &changes, &log.effects);
+    record::run(world, draft, &kind, wall, clock, log, delivered)
 }

@@ -266,6 +266,9 @@ mod tests {
 
     use crate::commit::commit;
     use crate::draft::Draft;
+    use crate::model::Presence;
+    use crate::round::log::{RoundLine, RoundLog};
+    use crate::round::stage::advance::Clock;
     use crate::world::World;
 
     #[test]
@@ -301,29 +304,18 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    fn journal_line() -> crate::journal::RoundRecord {
-        crate::journal::RoundRecord {
-            round_index: 0,
-            rules_rev: 7,
-            state_rev_before: 0,
-            state_rev_after: 1,
-            world_time_before: 0,
-            world_time_after: 0,
-            presence_humans: 0,
-            actors_present: Vec::new(),
+    fn journal_line() -> RoundLine {
+        RoundLine {
+            clock: Clock {
+                round_index: 0,
+                world_time_before: 0,
+                world_time_after: 0,
+            },
+            presence: Presence::default(),
             seed: String::new(),
-            last_tick_at: String::new(),
-            intents: Vec::new(),
-            rejected: Vec::new(),
-            effects: Vec::new(),
-            arrivals: Vec::new(),
+            wall: String::new(),
             fast_forward: false,
-            dice: Vec::new(),
-            steps_run: Vec::new(),
-            memories: Vec::new(),
-            now_hash: String::new(),
-            prev: String::new(),
-            chain: String::new(),
+            log: RoundLog::default(),
         }
     }
 

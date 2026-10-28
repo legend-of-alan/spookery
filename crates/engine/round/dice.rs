@@ -7,6 +7,7 @@ use crate::check::Outcome;
 use crate::hash::blake2s_256;
 use crate::intent::Intent;
 use crate::model::Now;
+use crate::round::log::RoundLog;
 use crate::rule::RollSpec;
 use crate::rules::expr::{eval_with_dice, Ctx, Dice};
 use crate::rules::{faces_from, roll, MoveReport, RollInput, RollKey, RollResult};
@@ -21,12 +22,11 @@ pub(crate) fn shuffle_key(world_id: &str, round_index: u64, actor_id: &str) -> [
     blake2s_256(format!("{world_id}|{round_index}|{actor_id}").as_bytes())
 }
 
-/// Every roll key and dice line of one round.
+/// Every roll key of one round.
 pub(crate) struct RoundDice {
     world_id: String,
     round_index: u64,
     counts: BTreeMap<(String, String), u32>,
-    pub lines: Vec<String>,
 }
 
 impl RoundDice {
@@ -35,7 +35,6 @@ impl RoundDice {
             world_id,
             round_index,
             counts: BTreeMap::new(),
-            lines: Vec::new(),
         }
     }
 
@@ -87,12 +86,14 @@ impl RoundDice {
 
     pub(crate) fn roller<'a>(
         &'a mut self,
+        log: &'a mut RoundLog,
         rule: &'a str,
         subject: &'a str,
         resist: ResistKey,
     ) -> Roller<'a> {
         Roller {
             dice: self,
+            log,
             rule,
             subject,
             resist,
@@ -113,6 +114,7 @@ pub(crate) enum ResistKey {
 /// Expression dice and resist rolls for one rule and subject. `finish` is the only way out.
 pub(crate) struct Roller<'a> {
     dice: &'a mut RoundDice,
+    log: &'a mut RoundLog,
     rule: &'a str,
     subject: &'a str,
     resist: ResistKey,
@@ -164,7 +166,7 @@ impl Dice for Roller<'_> {
     }
 
     fn note(&mut self, text: String) {
-        self.dice.lines.push(text);
+        self.log.dice.push(text);
     }
 
     fn resist(

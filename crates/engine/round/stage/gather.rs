@@ -9,37 +9,36 @@ use crate::model::Now;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
-use crate::round::state::Round;
 
-pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    round.opposing_candidates = match &round.replayed {
-        Some(replayed) => replayed.clone(),
-        None => round.queued.clone(),
-    };
-    let candidates = if let Some(replayed) = &round.replayed {
-        replayed.clone()
-    } else {
-        let mut candidates = round.queued.clone();
-        for intent in &mut candidates {
-            stamp_for_priority(draft.canon(), draft.now(), intent);
-        }
-        candidates.extend(habit_intents(draft.canon(), draft.now()));
-        let mut candidates =
-            order_intents(draft.now(), candidates, round.round_index, &round.world_id);
-        let max_intents = draft.budget().max_intents_applied as usize;
-        if candidates.len() > max_intents {
-            candidates.truncate(max_intents);
-        }
-        candidates
-    };
+/// The queue stamped, with habits, in priority order, cut to the budget.
+pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason> {
+    let mut candidates = queue.to_vec();
+    for intent in &mut candidates {
+        stamp_for_priority(draft.canon(), draft.now(), intent);
+    }
+    candidates.extend(habit_intents(draft.canon(), draft.now()));
+    let now = draft.now();
+    let mut candidates = order_intents(now, candidates, now.round_index, &now.shard_id);
+    let max_intents = draft.budget().max_intents_applied as usize;
+    if candidates.len() > max_intents {
+        candidates.truncate(max_intents);
+    }
+    unique(candidates)
+}
+
+/// A journal line's intents, as they were.
+pub(crate) fn as_recorded(intents: &[Intent]) -> Result<Vec<Intent>, Reason> {
+    unique(intents.to_vec())
+}
+
+fn unique(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
     let mut seen = BTreeSet::new();
     for intent in &candidates {
         if !seen.insert(intent.id.clone()) {
             return Err(Reason::Schema);
         }
     }
-    round.candidates = candidates;
-    Ok(())
+    Ok(candidates)
 }
 
 fn order_intents(

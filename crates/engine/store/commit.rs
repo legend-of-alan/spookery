@@ -12,6 +12,7 @@ use crate::error::Reason;
 use crate::journal::{self, hash_now};
 use crate::lock::lock_world;
 use crate::model::{MemoryLine, Now};
+use crate::round::log::RoundLine;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 pub use crate::store::durable::atomic_publish;
 use crate::store::durable::{fsync_dir, fsync_file};
@@ -29,12 +30,12 @@ pub struct CommitOutcome {
 pub fn commit(
     world: &mut World,
     mut draft: Draft,
-    record: journal::RoundRecord,
+    line: RoundLine,
 ) -> Result<CommitOutcome, Reason> {
     settle_open_checkpoint(world)?;
     bump_state_rev(&mut draft)?;
     let now_bytes = emit_save(&draft.state)?.into_bytes();
-    let line = seal_tick(record, world.now.state_rev, &draft, &now_bytes, &world.root)?;
+    let line = seal(line, world.now.state_rev, &draft, &now_bytes, &world.root)?;
     let due = checkpoint_due(world.canon().checkpoint_every, draft.state.round_index);
     let (payload, chain) = if due {
         let prev = journal::sealed_chain(&line).map_err(|_| Reason::Schema)?;
@@ -115,19 +116,36 @@ pub fn migrate_journal(root: &Path, now: Now) -> Result<(), Reason> {
     Ok(())
 }
 
-fn seal_tick(
-    mut record: journal::RoundRecord,
+fn seal(
+    line: RoundLine,
     state_rev_before: u64,
     draft: &Draft,
     now_bytes: &[u8],
     root: &Path,
 ) -> Result<String, Reason> {
-    record.state_rev_before = state_rev_before;
-    record.state_rev_after = draft.state.state_rev;
-    record.now_hash = hash_now(now_bytes);
-    record.memories = draft.memories.clone();
-    record.prev.clear();
-    record.chain.clear();
+    let record = journal::RoundRecord {
+        round_index: line.clock.round_index,
+        rules_rev: crate::store::RULES_REV,
+        state_rev_before,
+        state_rev_after: draft.state.state_rev,
+        world_time_before: line.clock.world_time_before,
+        world_time_after: line.clock.world_time_after,
+        presence_humans: line.presence.humans,
+        actors_present: line.presence.actors_present,
+        seed: line.seed,
+        last_tick_at: line.wall,
+        intents: line.log.applied,
+        rejected: line.log.rejected,
+        effects: line.log.effects,
+        arrivals: line.log.arrivals,
+        fast_forward: line.fast_forward,
+        dice: line.log.dice,
+        steps_run: line.log.steps,
+        memories: draft.memories.clone(),
+        now_hash: hash_now(now_bytes),
+        prev: String::new(),
+        chain: String::new(),
+    };
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     Ok(journal::seal(&journal::JournalEntry::Round(record), &prev))
 }
@@ -302,7 +320,9 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     use crate::draft::Draft;
-    use crate::model::MemoryLine;
+    use crate::model::{MemoryLine, Presence};
+    use crate::round::log::{RoundLine, RoundLog};
+    use crate::round::stage::advance::Clock;
     use crate::store::durable::{self, Mark};
     use crate::world::World;
 
@@ -322,7 +342,7 @@ mod tests {
             tags: vec![],
             text: Some("kept".to_string()),
         });
-        let line = journal_line(0, 0, 1);
+        let line = journal_line(0);
         durable::start_trace();
         commit(&mut world, draft, line).unwrap();
         let marks = durable::take_trace();
@@ -360,7 +380,7 @@ mod tests {
         let mut again = World::open(&root).unwrap();
         let next = Draft::begin(&again);
         durable::start_trace();
-        commit(&mut again, next, journal_line(1, 0, 1)).unwrap();
+        commit(&mut again, next, journal_line(1)).unwrap();
         let marks = durable::take_trace();
         assert_eq!(labels(&marks), ["file bundle"], "{}", show(&marks));
         let _ = fs::remove_dir_all(&root);
@@ -375,7 +395,7 @@ mod tests {
         let mut draft = Draft::begin(&world);
         draft.state.round_index = 1;
         durable::fail_next(".jsonl.gz.tmp");
-        commit(&mut world, draft, journal_line(1, 0, 1)).unwrap();
+        commit(&mut world, draft, journal_line(1)).unwrap();
         let live = crate::journal::read_live(&root).unwrap();
         let tick_rev = live.iter().rev().find_map(|entry| match entry {
             crate::journal::JournalEntry::Round(record) => Some(record.state_rev_after),
@@ -390,7 +410,7 @@ mod tests {
 
         let mut again = Draft::begin(&world);
         again.state.round_index = 2;
-        commit(&mut world, again, journal_line(2, 1, 2)).unwrap();
+        commit(&mut world, again, journal_line(2)).unwrap();
         assert!(world.take_warning().is_none());
         let bundles = crate::journal::bundle_entries(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
@@ -415,12 +435,12 @@ mod tests {
         let mut world = World::open(&root).unwrap();
         let mut first = Draft::begin(&world);
         first.state.round_index = 1;
-        commit(&mut world, first, journal_line(1, 0, 1)).unwrap();
+        commit(&mut world, first, journal_line(1)).unwrap();
 
         let mut second = Draft::begin(&world);
         second.state.round_index = 2;
         durable::fail_next("save.yaml.tmp");
-        commit(&mut world, second, journal_line(2, 1, 2)).unwrap();
+        commit(&mut world, second, journal_line(2)).unwrap();
         let live = crate::journal::read_live(&root).unwrap();
         let mark = crate::journal::latest_checkpoint(&live).unwrap();
         assert_eq!(world.now().state_rev, mark.state_rev);
@@ -428,7 +448,7 @@ mod tests {
 
         let mut third = Draft::begin(&world);
         third.state.round_index = 3;
-        commit(&mut world, third, journal_line(3, 2, 3)).unwrap();
+        commit(&mut world, third, journal_line(3)).unwrap();
         let bundles = crate::journal::bundle_entries(&root).unwrap();
         assert_eq!(bundles.len(), 2, "{bundles:?}");
         let (first_name, first_entries) = &bundles[0];
@@ -567,29 +587,18 @@ mod tests {
         }
     }
 
-    fn journal_line(round_index: u64, before: u64, after: u64) -> crate::journal::RoundRecord {
-        crate::journal::RoundRecord {
-            round_index,
-            rules_rev: 7,
-            state_rev_before: before,
-            state_rev_after: after,
-            world_time_before: 0,
-            world_time_after: 0,
-            presence_humans: 0,
-            actors_present: Vec::new(),
+    fn journal_line(round_index: u64) -> RoundLine {
+        RoundLine {
+            clock: Clock {
+                round_index,
+                world_time_before: 0,
+                world_time_after: 0,
+            },
+            presence: Presence::default(),
             seed: String::new(),
-            last_tick_at: String::new(),
-            intents: Vec::new(),
-            rejected: Vec::new(),
-            effects: Vec::new(),
-            arrivals: Vec::new(),
+            wall: String::new(),
             fast_forward: false,
-            dice: Vec::new(),
-            steps_run: Vec::new(),
-            memories: Vec::new(),
-            now_hash: String::new(),
-            prev: String::new(),
-            chain: String::new(),
+            log: RoundLog::default(),
         }
     }
 

@@ -1,55 +1,46 @@
 //! Write the round line and commit a live round.
 
 use crate::draft::Draft;
-use crate::journal::RoundRecord;
 use crate::world::World;
 use crate::Reason;
 
 use crate::round::dice::round_seed;
-use crate::round::play::RoundOutput;
-use crate::round::state::Round;
+use crate::round::log::{RoundLine, RoundLog};
+use crate::round::play::{RoundKind, RoundOutput};
+use crate::round::stage::advance::Clock;
+use crate::round::stage::observe::Delivered;
 
 pub(crate) fn run(
     world: &mut World,
-    round: &mut Round,
     draft: Draft,
+    kind: &RoundKind<'_>,
+    wall: &str,
+    clock: Clock,
+    mut log: RoundLog,
+    delivered: Delivered,
 ) -> Result<RoundOutput, Reason> {
-    let record = round.replayed.is_none().then(|| RoundRecord {
-        round_index: round.round_index,
-        rules_rev: crate::store::RULES_REV,
-        state_rev_before: 0,
-        state_rev_after: 0,
-        world_time_before: round.world_time_before,
-        world_time_after: round.world_time_after,
-        presence_humans: draft.now().presence.humans,
-        actors_present: draft.now().presence.actors_present.clone(),
-        seed: round_seed(&round.world_id, round.round_index),
-        last_tick_at: round.now_wall.clone(),
-        intents: std::mem::take(&mut round.applied),
-        rejected: std::mem::take(&mut round.rejected),
-        effects: round.effects.clone(),
-        arrivals: std::mem::take(&mut round.arrivals),
-        fast_forward: round.fast_forward,
-        dice: round.dice.lines.clone(),
-        steps_run: std::mem::take(&mut round.steps_run),
-        memories: Vec::new(),
-        now_hash: String::new(),
-        prev: String::new(),
-        chain: String::new(),
-    });
     let mut output = RoundOutput {
-        reports: std::mem::take(&mut round.move_reports),
-        dice: std::mem::take(&mut round.dice.lines),
-        summary: std::mem::take(&mut round.summary),
-        lines: std::mem::take(&mut round.lines),
-        seen: std::mem::take(&mut round.seen),
-        effects: std::mem::take(&mut round.effects),
+        reports: std::mem::take(&mut log.reports),
+        dice: log.dice.clone(),
+        summary: delivered.summary,
+        lines: delivered.lines,
+        seen: delivered.seen,
+        effects: log.effects.clone(),
         outcome: None,
     };
-    if let Some(record) = record {
-        output.outcome = Some(crate::commit::commit(world, draft, record)?);
-    } else {
-        crate::commit::keep_in_memory(world, draft)?;
+    match kind {
+        RoundKind::Live { fast_forward } => {
+            let line = RoundLine {
+                presence: draft.now().presence.clone(),
+                seed: round_seed(&draft.now().shard_id, clock.round_index),
+                clock,
+                wall: wall.to_string(),
+                fast_forward: *fast_forward,
+                log,
+            };
+            output.outcome = Some(crate::commit::commit(world, draft, line)?);
+        }
+        RoundKind::Replay { .. } => crate::commit::keep_in_memory(world, draft)?,
     }
     Ok(output)
 }

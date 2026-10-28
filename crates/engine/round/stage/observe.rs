@@ -2,54 +2,57 @@
 
 use std::collections::BTreeSet;
 
-use crate::draft::Draft;
-use crate::effect::EffectKind;
+use crate::canon::Canon;
+use crate::effect::{Effect, EffectKind};
+use crate::key::ChangeRecord;
+use crate::model::Now;
 use crate::visibility::{self, RecipientLine, Seat, ViewerChanges};
-use crate::Reason;
 
-use crate::round::state::Round;
+/// What the GM and each viewer may see and hear.
+pub(crate) struct Delivered {
+    pub summary: Vec<String>,
+    pub lines: Vec<RecipientLine>,
+    pub seen: Vec<ViewerChanges>,
+}
 
 /// Deliver narrate lines and build each viewer's change summary.
 /// An empty table gets only the GM summary.
-pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
-    let canon = draft.canon();
-    let now = draft.now();
-    let gm = visibility::observe(canon, now, &Seat::Gm, &round.changes, &round.effects);
-    round.summary = gm.changes;
+pub(crate) fn run(
+    canon: &Canon,
+    now: &Now,
+    changes: &[ChangeRecord],
+    effects: &[Effect],
+) -> Delivered {
+    let gm = visibility::observe(canon, now, &Seat::Gm, changes, effects);
+    let mut delivered = Delivered {
+        summary: gm.changes,
+        lines: Vec::new(),
+        seen: Vec::new(),
+    };
     if now.presence.humans == 0 {
-        return Ok(());
+        return delivered;
     }
     let mut viewers: BTreeSet<String> = now.actors.keys().cloned().collect();
-    for effect in &round.effects {
+    for effect in effects {
         if let EffectKind::Narrate { to, .. } = &effect.class {
             viewers.extend(to.iter().cloned());
         }
     }
-    let mut lines = Vec::new();
-    let mut seen = Vec::new();
     for id in viewers {
-        let delivery = visibility::observe(
-            canon,
-            now,
-            &Seat::Actor(id.clone()),
-            &round.changes,
-            &round.effects,
-        );
+        let delivery = visibility::observe(canon, now, &Seat::Actor(id.clone()), changes, effects);
         for text in delivery.lines {
-            lines.push(RecipientLine {
+            delivered.lines.push(RecipientLine {
                 to: id.clone(),
                 text,
             });
         }
         if !delivery.changes.is_empty() {
-            seen.push(ViewerChanges {
+            delivered.seen.push(ViewerChanges {
                 viewer: id,
                 changes: delivery.changes,
                 line: delivery.line,
             });
         }
     }
-    round.lines = lines;
-    round.seen = seen;
-    Ok(())
+    delivered
 }

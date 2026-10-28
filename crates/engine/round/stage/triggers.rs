@@ -14,34 +14,39 @@ use crate::rules::expr::Ctx;
 use crate::rules::{MoveReport, RollResult};
 use crate::Reason;
 
-use crate::round::dice::ResistKey;
-use crate::round::state::Round;
+use crate::round::dice::{ResistKey, RoundDice};
+use crate::round::log::RoundLog;
 
-/// Change rules, edge-triggered, to a fixpoint.
-pub(crate) fn run(round: &mut Round, draft: &mut Draft) -> Result<(), Reason> {
+/// Every change record of the round, pass by pass.
+pub(crate) fn run(
+    draft: &mut Draft,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
+) -> Result<Vec<ChangeRecord>, Reason> {
     let max = draft.budget().max_trigger_depth;
     let rules = change_rules(draft);
     let mut depth = 0u64;
+    let mut all_changes = Vec::new();
     loop {
         let changes = draft.take_changes();
         if changes.is_empty() {
             break;
         }
-        round.changes.extend(changes.iter().cloned());
+        all_changes.extend(changes.iter().cloned());
         let matched_triggers = plan(draft, &rules, &changes);
         if matched_triggers.is_empty() {
             break;
         }
         if depth >= max {
-            round.steps_run.push("trigger_depth".to_string());
+            log.steps.push("trigger_depth".to_string());
             break;
         }
         depth += 1;
         for matched in matched_triggers {
-            fire(round, draft, matched.rule, &matched.subject);
+            fire(draft, dice, log, matched.rule, &matched.subject);
         }
     }
-    Ok(())
+    Ok(all_changes)
 }
 
 struct TriggerMatch<'a> {
@@ -98,7 +103,7 @@ struct TriggerExpansion {
     resist: Vec<MoveReport>,
 }
 
-fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
+fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule, subject: &str) {
     let Some(kind) = draft
         .now()
         .actors
@@ -107,7 +112,7 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
     else {
         return;
     };
-    let intent = intent_for(round, subject, kind, &rule.id);
+    let intent = intent_for(draft.now().round_index, subject, kind, &rule.id);
     if cond::holds(
         draft.canon(),
         draft.now(),
@@ -122,7 +127,7 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
     let expanded = {
         let now = draft.now();
         let canon = draft.canon();
-        expand_trigger(round, now, canon, rule, &intent, subject)
+        expand_trigger(dice, log, now, canon, rule, &intent, subject)
     };
     let Some(expanded) = expanded else {
         draft.rollback(point);
@@ -139,25 +144,26 @@ fn fire(round: &mut Round, draft: &mut Draft, rule: &Rule, subject: &str) {
         }
     }
     if let Some(out) = expanded.rolled {
-        round.move_reports.push(MoveReport::Rolled {
+        log.reports.push(MoveReport::Rolled {
             actor_id: subject.to_string(),
             out,
         });
     }
-    round.move_reports.extend(expanded.resist);
-    round.effects.extend(expanded.effects);
-    round.steps_run.push(rule.id.clone());
+    log.reports.extend(expanded.resist);
+    log.effects.extend(expanded.effects);
+    log.steps.push(rule.id.clone());
 }
 
 fn expand_trigger(
-    round: &mut Round,
+    dice: &mut RoundDice,
+    log: &mut RoundLog,
     now: &Now,
     canon: &Canon,
     rule: &Rule,
     intent: &Intent,
     subject: &str,
 ) -> Option<TriggerExpansion> {
-    let mut roller = round.dice.roller(&rule.id, subject, ResistKey::Rule);
+    let mut roller = dice.roller(log, &rule.id, subject, ResistKey::Rule);
     let rolled = match &rule.roll {
         Some(spec) => Some(roller.roll_spec(canon, now, intent, spec, &rule.id).ok()?),
         None => None,
@@ -171,10 +177,10 @@ fn expand_trigger(
     })
 }
 
-fn intent_for(round: &Round, actor_id: &str, kind: ActorKind, rule_id: &str) -> Intent {
+fn intent_for(round_index: u64, actor_id: &str, kind: ActorKind, rule_id: &str) -> Intent {
     Intent {
         id: format!("trigger:{rule_id}:{actor_id}"),
-        round_index: round.round_index,
+        round_index,
         actor_id: actor_id.to_string(),
         actor_kind: kind,
         source: Source::Kernel,
