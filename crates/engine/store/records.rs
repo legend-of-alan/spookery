@@ -187,14 +187,6 @@ impl JournalEntry {
         }
     }
 
-    pub fn kind_name(&self) -> &'static str {
-        match self {
-            Self::Round(_) => "tick",
-            Self::Migrate(_) => "migrate",
-            Self::Checkpoint(_) => "checkpoint",
-        }
-    }
-
     pub fn round_index(&self) -> Option<u64> {
         match self {
             Self::Round(record) => Some(record.round_index),

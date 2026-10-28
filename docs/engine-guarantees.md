@@ -44,9 +44,9 @@ ticks (100 when the pack omits it). Between checkpoints the current state is the
 journal replayed from that snapshot. A missing snapshot is rebuilt from the
 bundles. History is not deleted.
 
-Full verification (`spook verify`) replays every bundle from tick 0. Those
-bundles replay at the same time, each from the checkpoint it starts at, and the
-tip matches one serial replay. Quick verification (`spook verify --quick`)
+Full verification (`spook verify`) replays the journal once from tick 0 and
+checks every closed bundle's checkpoint snapshot against its mark. Quick
+verification (`spook verify --quick`)
 checks the chain and replays only the latest bundle from the snapshot it starts
 at. Startup uses that same snapshot and the live bundle, and does not open a
 closed bundle. Verify names the record and the first save line that

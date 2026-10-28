@@ -576,15 +576,15 @@ impl World {
 
     /// The pack's canon with a save from memory, for replay. Nothing is checked:
     /// each journal record's hash proves the state it reaches.
-    pub(crate) fn open_for_replay(pack: &Path, now: Now) -> Result<Self, Reason> {
-        Ok(Self {
+    pub(crate) fn open_for_replay(pack: &Path, canon: Arc<Canon>, now: Now) -> Self {
+        Self {
             root: pack.to_path_buf(),
-            canon: Arc::new(load_canon(pack).map_err(reason_of)?),
+            canon,
             now,
             queue: Vec::new(),
             next_session: 1,
             warning: None,
-        })
+        }
     }
 }
 

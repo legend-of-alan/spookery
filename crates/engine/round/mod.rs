@@ -5,10 +5,12 @@ pub(crate) mod log;
 pub(crate) mod play;
 pub(crate) mod replay;
 pub(crate) mod stage;
+pub(crate) mod verify;
 
 pub(crate) use play::{play_catch_up, play_round, play_while_busy};
 pub use play::{play_pack_once, RoundOutput};
-pub use replay::{migrate_pack, verify_pack, verify_quick};
+pub use replay::migrate_pack;
+pub use verify::{verify_pack, verify_quick};
 
 #[cfg(test)]
 mod prop;
