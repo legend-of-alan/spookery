@@ -1,7 +1,7 @@
 Feature: Rule versions
 
   Scenario: Mismatched save
-    Given a save with rules_rev 6 and an engine at 7
+    Given a save with rules_rev 7 and an engine at 8
     When spook run or spook verify opens it
     Then it refuses with RULES_REV and says to start a fresh save
 

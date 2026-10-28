@@ -12,18 +12,18 @@ use spookery_engine::Reason;
 use super::table;
 use crate::support::{append, copy_pack, edit_save, now_of, spook, temp_pack};
 use crate::World;
-#[given(expr = "a save with rules_rev 6 and an engine at 7")]
-fn a_save_with_rules_rev_6_and_an_engine_at_7(world: &mut World) {
+#[given(expr = "a save with rules_rev 7 and an engine at 8")]
+fn a_save_with_rules_rev_7_and_an_engine_at_8(world: &mut World) {
     assert_eq!(
         spookery_engine::testing::RULES_REV,
-        7,
-        "the engine rules version is 7"
+        8,
+        "the engine rules version is 8"
     );
     let pack = crate::support::temp_pack("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let stamped = text.replacen("rules_rev: 7\n", "rules_rev: 6\n", 1);
-    assert_ne!(stamped, text, "save did not carry rules_rev 7\n{text}");
+    let stamped = text.replacen("rules_rev: 8\n", "rules_rev: 7\n", 1);
+    assert_ne!(stamped, text, "save did not carry rules_rev 8\n{text}");
     fs::write(&path, stamped).unwrap_or_else(|err| panic!("write save: {err}"));
     world.pack = Some(pack);
 }
@@ -35,7 +35,7 @@ fn an_old_save_from_rules_rev_6(world: &mut World) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let old = text
-        .replacen("rules_rev: 7\n", "rules_rev: 6\n", 1)
+        .replacen("rules_rev: 8\n", "rules_rev: 6\n", 1)
         .replacen(
             "pause:\n",
             "presence:\n  humans: 1\n  actors_present:\n    - pc_rowan\npause:\n",
@@ -55,7 +55,7 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     let pack = crate::support::temp_pack("rules-rev-presence-record");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    assert!(text.contains("rules_rev: 7\n"), "{text}");
+    assert!(text.contains("rules_rev: 8\n"), "{text}");
     let journal = pack.join("state/journal");
     fs::create_dir_all(&journal).unwrap_or_else(|err| panic!("mkdir journal: {err}"));
     fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));

@@ -7,7 +7,7 @@ use crate::draft::Draft;
 use crate::error::Reason;
 use crate::intent::{Intent, Source, Target};
 use crate::key::StateKey;
-use crate::model::{Now, PendingAction};
+use crate::model::{Now, PendingAction, PendingKind};
 use crate::rule::{EffectTemplate, LocationTo, Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
@@ -219,22 +219,23 @@ pub fn begin(
     minutes: u64,
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
-    let travel = used_exit(draft.canon(), draft.now(), intent, rule)
-        .map(|exit| (exit.cost.clone(), exit.to.clone(), exit.name.clone()));
-    if let Some((cost, _, _)) = &travel {
-        cost::pay(draft, intent, cost, dice)?;
-    }
+    let kind = match used_exit(draft.canon(), draft.now(), intent, rule).cloned() {
+        Some(exit) => {
+            cost::pay(draft, intent, &exit.cost, dice)?;
+            PendingKind::Arrive {
+                place: exit.to,
+                via: exit.name,
+            }
+        }
+        None => PendingKind::Finish {
+            target: intent.target.clone(),
+        },
+    };
     let until = world_time_before.saturating_add(minutes);
     let pending = PendingAction {
-        rule: rule.id.clone(),
         verb: intent.move_name.clone(),
-        target: match &intent.target {
-            Target::Place(id) | Target::Actor(id) | Target::Clock(id) => id.clone(),
-            Target::Empty => String::new(),
-        },
-        arrive: travel.as_ref().map(|(_, to, _)| to.clone()),
-        via: travel.as_ref().map(|(_, _, name)| name.clone()),
         source: intent.source,
+        kind,
     };
     draft.track(StateKey::ActorBusy(intent.actor_id.clone()))?;
     let act = draft
@@ -307,12 +308,16 @@ pub fn busy_line(now: &Now, actor_id: &str) -> Option<String> {
         return None;
     }
     let until = actor.act().busy_until?;
-    let via = actor
-        .act()
-        .busy_for
-        .as_ref()
-        .and_then(|pending| pending.via.as_deref())
-        .filter(|name| !name.is_empty())?;
+    let Some(PendingAction {
+        kind: PendingKind::Arrive { via, .. },
+        ..
+    }) = &actor.act().busy_for
+    else {
+        return None;
+    };
+    if via.is_empty() {
+        return None;
+    }
     Some(format!("on the {via} until {}", clock_face(until)))
 }
 

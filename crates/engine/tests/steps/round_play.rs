@@ -365,6 +365,69 @@ fn no_effect_from_that_row_applies(world: &mut World) {
     );
 }
 
+#[given(
+    expr = "a docks pack where Aldric's cast file holds a ten-minute verb \"ask\" that lowers the target's rest"
+)]
+fn a_docks_pack_where_aldric_holds_a_timed_verb(world: &mut World) {
+    let pack = support::copy_pack("oneshot-docks", "timed-target");
+    let path = pack.join("cast/aldric.md");
+    let text = fs::read_to_string(&path).unwrap();
+    let rule = "  eligible: false
+rules:
+  - id: ask
+    when:
+      verb: ask
+      target: actor
+    cost:
+      time: 10m
+    do:
+      - meter:
+          who: target
+          key: rest
+          add: -1
+---";
+    let next = text.replacen("  eligible: false\n---", rule, 1);
+    assert_ne!(next, text, "aldric's front matter moved");
+    fs::write(&path, next).unwrap();
+    support::stamp_pack_rev(&pack);
+    quiet_mira(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan asks Aldric and the table plays until the action finishes")]
+fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
+    let pack = world.pack().to_path_buf();
+    let mut table = spookery_engine::World::resume(&pack).unwrap_or_else(|err| panic!("{err}"));
+    table.set_presence(support::Presence {
+        humans: 1,
+        actors_present: vec!["pc_rowan".to_string()],
+    });
+    table
+        .queue_player_move("pc_rowan", "ask", Some("aldric"))
+        .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
+    let wall = table.now().last_tick_at.clone();
+    let mut rounds = 0;
+    loop {
+        rounds += 1;
+        table
+            .play(&wall)
+            .unwrap_or_else(|err| panic!("round {rounds}: {err}"));
+        let now = table.now();
+        if !now.actors["pc_rowan"].is_busy(now.world_time) {
+            break;
+        }
+        assert!(rounds < 6, "Rowan is still busy after {rounds} rounds");
+    }
+    let now = table.now();
+    world.mark =
+        usize::try_from(now.meter_value(table.canon(), "aldric", "rest").unwrap()).unwrap();
+}
+
+#[then(expr = "Aldric's rest is {int}")]
+fn aldrics_rest_is(world: &mut World, rest: usize) {
+    assert_eq!(world.mark, rest);
+}
+
 fn assert_refusal(world: &World, oil: i64, reason: &str) {
     assert_eq!(String::from_utf8_lossy(&world.now_bytes), oil.to_string());
     let tick: Value = serde_json::from_str(&world.scratch).unwrap();

@@ -52,7 +52,8 @@ pub mod testing {
 
     pub use crate::canon::strip_body;
     pub use crate::model::{
-        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PlaceLive, Presence,
+        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PendingKind,
+        PlaceLive, Presence,
     };
     pub use crate::round::replay::from_journal;
     pub use crate::rules::roll::{faces, RollKey};

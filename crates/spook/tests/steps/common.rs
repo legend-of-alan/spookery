@@ -201,12 +201,12 @@ pub(crate) fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via
         .act_mut();
     act.busy_until = Some(until);
     act.busy_for = Some(spookery_engine::testing::PendingAction {
-        rule: "verb:travel".to_string(),
         verb: "travel".to_string(),
-        target: via.to_string(),
-        arrive: Some(arrive.to_string()),
-        via: Some(via.to_string()),
         source: spookery_engine::Source::Player,
+        kind: spookery_engine::testing::PendingKind::Arrive {
+            place: arrive.to_string(),
+            via: via.to_string(),
+        },
     });
 }
 

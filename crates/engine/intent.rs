@@ -98,13 +98,20 @@ impl Source {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(try_from = "TargetWire", into = "TargetWire")]
 pub enum Target {
     #[default]
     Empty,
     Place(String),
     Actor(String),
     Clock(String),
+}
+
+impl Target {
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Target::Empty)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -123,7 +130,6 @@ pub struct Intent {
     pub source: Source,
     #[serde(rename = "move")]
     pub move_name: String,
-    #[serde(with = "target_as")]
     pub target: Target,
     #[serde(with = "args_as")]
     pub args: IntentArgs,
@@ -171,8 +177,8 @@ pub(crate) struct TargetWire {
     clock: Option<String>,
 }
 
-impl From<&Target> for TargetWire {
-    fn from(target: &Target) -> Self {
+impl From<Target> for TargetWire {
+    fn from(target: Target) -> Self {
         match target {
             Target::Empty => Self {
                 place: None,
@@ -180,19 +186,19 @@ impl From<&Target> for TargetWire {
                 clock: None,
             },
             Target::Place(id) => Self {
-                place: Some(id.clone()),
+                place: Some(id),
                 actor: None,
                 clock: None,
             },
             Target::Actor(id) => Self {
                 place: None,
-                actor: Some(id.clone()),
+                actor: Some(id),
                 clock: None,
             },
             Target::Clock(id) => Self {
                 place: None,
                 actor: None,
-                clock: Some(id.clone()),
+                clock: Some(id),
             },
         }
     }
@@ -232,25 +238,6 @@ impl From<ArgsWire> for IntentArgs {
         Self {
             message_to: wire.message_to,
         }
-    }
-}
-
-pub(crate) mod target_as {
-    use super::TargetWire;
-    use crate::intent::Target;
-    use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-    pub(crate) fn serialize<S: Serializer>(
-        target: &Target,
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        TargetWire::from(target).serialize(serializer)
-    }
-
-    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Target, D::Error> {
-        Target::try_from(TargetWire::deserialize(deserializer)?).map_err(serde::de::Error::custom)
     }
 }
 

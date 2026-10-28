@@ -4,9 +4,9 @@ use crate::apply::apply_effect;
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
 use crate::expand::expand_rule;
-use crate::intent::{arrival_intent_id, ActorKind, Intent, Target};
+use crate::intent::{arrival_intent_id, Intent, Source, Target};
 use crate::journal::Arrival;
-use crate::model::PendingAction;
+use crate::model::{PendingAction, PendingKind};
 use crate::rules::MoveReport;
 use crate::Reason;
 
@@ -22,36 +22,60 @@ pub(crate) fn run(
 ) -> Result<(), Reason> {
     let due_actions = crate::map::take_due_actions(draft, end)?;
     for due_action in due_actions {
-        if due_action.pending.arrive.is_some() {
-            arrive(
-                log,
-                draft,
-                &due_action.actor_id,
-                due_action.until,
-                &due_action.pending,
-            )?;
-        } else {
-            perform(dice, log, draft, &due_action.actor_id, &due_action.pending)?;
+        let PendingAction { verb, source, kind } = due_action.pending;
+        let actor_id = &due_action.actor_id;
+        match kind {
+            PendingKind::Arrive { place, via } => {
+                let intent = due_intent(draft, actor_id, source, &verb, Target::Empty)?;
+                arrive(log, draft, &intent, due_action.until, place, via)?;
+            }
+            PendingKind::Finish { target } => {
+                let intent = due_intent(draft, actor_id, source, &verb, target)?;
+                perform(dice, log, draft, &intent)?;
+            }
         }
     }
     Ok(())
 }
 
+fn due_intent(
+    draft: &Draft,
+    actor_id: &str,
+    source: Source,
+    verb: &str,
+    target: Target,
+) -> Result<Intent, Reason> {
+    let kind = draft
+        .now()
+        .actors
+        .get(actor_id)
+        .ok_or(Reason::UnknownKey)?
+        .actor_kind();
+    Ok(Intent::new(
+        arrival_intent_id(actor_id),
+        draft.now().round_index,
+        actor_id,
+        kind,
+        source,
+        verb,
+        target,
+    ))
+}
+
 fn arrive(
     log: &mut RoundLog,
     draft: &mut Draft,
-    actor_id: &str,
+    intent: &Intent,
     until: u64,
-    pending: &PendingAction,
+    to: String,
+    via: String,
 ) -> Result<(), Reason> {
+    let actor_id = &intent.actor_id;
     let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
     let from = actor.place().to_string();
-    let to = pending.arrive.clone().unwrap_or_default();
-    let kind = actor.actor_kind();
-    let intent = due_intent(draft.now().round_index, actor_id, kind, pending);
     let effect = Effect {
         class: EffectKind::Location {
-            actor_id: actor_id.to_string(),
+            actor_id: actor_id.clone(),
             from,
             to: to.clone(),
             arrived_at: Some(until),
@@ -59,13 +83,13 @@ fn arrive(
         as_viewer: intent.viewer()?,
         intent_id: intent.id.clone(),
     };
-    apply_effect(draft, &intent, effect.clone())?;
+    apply_effect(draft, intent, effect.clone())?;
     log.effects.push(effect);
     log.arrivals.push(Arrival {
-        actor_id: actor_id.to_string(),
+        actor_id: actor_id.clone(),
         arrived_at: until,
         to,
-        via: pending.via.clone().unwrap_or_default(),
+        via,
     });
     Ok(())
 }
@@ -74,28 +98,21 @@ fn perform(
     dice: &mut RoundDice,
     log: &mut RoundLog,
     draft: &mut Draft,
-    actor_id: &str,
-    pending: &PendingAction,
+    intent: &Intent,
 ) -> Result<(), Reason> {
-    let kind = draft
-        .now()
-        .actors
-        .get(actor_id)
-        .ok_or(Reason::UnknownKey)?
-        .actor_kind();
-    let intent = due_intent(draft.now().round_index, actor_id, kind, pending);
+    let actor_id = &intent.actor_id;
     let canon = draft.canon();
     let snapshot = draft.now();
-    let rule = crate::rules::gate::resolve(canon, snapshot, &intent)?;
+    let rule = crate::rules::gate::resolve(canon, snapshot, intent)?;
     let mut roller = dice.roller(log, &intent.move_name, actor_id, ResistKey::Check);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, snapshot, &intent, spec, &spec.check)?),
+        Some(spec) => Some(roller.roll_spec(canon, snapshot, intent, spec, &spec.check)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_rule(canon, snapshot, rule, &intent, outcome, &mut roller)?;
+    let effects = expand_rule(canon, snapshot, rule, intent, outcome, &mut roller)?;
     let resisted = roller.finish();
-    let actor_id = actor_id.to_string();
+    let actor_id = actor_id.clone();
     log.reports
         .extend(rolled.map(|out| MoveReport::Rolled { actor_id, out }));
     log.reports.extend(resisted);
@@ -103,30 +120,8 @@ fn perform(
         if matches!(effect.class, EffectKind::Location { .. }) {
             continue;
         }
-        apply_effect(draft, &intent, effect.clone())?;
+        apply_effect(draft, intent, effect.clone())?;
         log.effects.push(effect);
     }
     Ok(())
-}
-
-fn due_intent(
-    round_index: u64,
-    actor_id: &str,
-    kind: ActorKind,
-    pending: &PendingAction,
-) -> Intent {
-    let target = if pending.target.is_empty() {
-        Target::Empty
-    } else {
-        Target::Place(pending.target.clone())
-    };
-    Intent::new(
-        arrival_intent_id(actor_id),
-        round_index,
-        actor_id,
-        kind,
-        pending.source,
-        &pending.verb,
-        target,
-    )
 }

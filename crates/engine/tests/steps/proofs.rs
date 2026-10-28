@@ -433,7 +433,7 @@ fn sealed_tick(pack: &Path, state_rev: u64) -> String {
     use spookery_engine::testing::journal::{genesis_hash, seal, JournalEntry, RoundRecord};
     let entry = JournalEntry::Round(RoundRecord {
         round_index: 1,
-        rules_rev: 7,
+        rules_rev: spookery_engine::testing::RULES_REV,
         state_rev_before: state_rev.saturating_sub(1),
         state_rev_after: state_rev,
         world_time_before: 0,

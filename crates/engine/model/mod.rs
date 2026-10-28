@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use meter::MeterLive;
 
+use crate::intent::Target;
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Now {
@@ -337,19 +339,26 @@ impl ActCounters {
     }
 }
 
-/// Work that finishes when `busy_until` is reached. Travel keeps the destination.
+/// Work that finishes when `busy_until` is reached.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PendingAction {
-    pub rule: String,
     pub verb: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub target: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub arrive: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub via: Option<String>,
     pub source: crate::intent::Source,
+    pub kind: PendingKind,
+}
+
+/// How a timed action finishes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub enum PendingKind {
+    /// A journey: the place it ends in, through the exit it took.
+    Arrive { place: String, via: String },
+    /// Any other timed verb, with the target it was queued against.
+    Finish {
+        #[serde(default, skip_serializing_if = "Target::is_empty")]
+        target: Target,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

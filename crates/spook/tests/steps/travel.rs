@@ -200,12 +200,12 @@ fn two_arrivals(world: &mut World) {
                     let mut act = spookery_engine::testing::ActCounters::fresh();
                     act.busy_until = Some(EVENING + 5);
                     act.busy_for = Some(spookery_engine::testing::PendingAction {
-                        rule: "verb:travel".to_string(),
                         verb: "travel".to_string(),
-                        target: "docks_street".to_string(),
-                        arrive: Some("docks_street".to_string()),
-                        via: Some("docks_street".to_string()),
                         source: spookery_engine::Source::Player,
+                        kind: spookery_engine::testing::PendingKind::Arrive {
+                            place: "docks_street".to_string(),
+                            via: "docks_street".to_string(),
+                        },
                     });
                     act
                 },
