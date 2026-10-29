@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::check::{classify, CheckDef, Outcome};
+use crate::check::{classify, CheckDef};
 use crate::error::Reason;
 use crate::hash::blake2s_256;
 use crate::intent::ViewerId;
@@ -10,14 +10,7 @@ use crate::meter::{self, MeterDef};
 use crate::model::ActorLive;
 
 /// One roll's dice, total, and band. Not stored in `Now`.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct RollResult {
-    pub faces: Vec<u32>,
-    pub stat: i64,
-    pub total: i64,
-    pub target: i64,
-    pub outcome: Outcome,
-}
+pub use spookery_protocol::Roll;
 
 /// What the round did with a player's move: the roll, or a refusal and its reason.
 /// Not stored in `Now` or the tick JSONL.
@@ -25,7 +18,7 @@ pub struct RollResult {
 pub enum MoveReport {
     Rolled {
         actor_id: String,
-        out: RollResult,
+        out: Roll,
     },
     Refused {
         actor_id: String,
@@ -90,7 +83,7 @@ pub fn faces_from(key: &RollKey, start: usize, count: u32, sides: u32) -> Result
 }
 
 /// The only roll. The viewer must be the actor. Each die reads this key's own seed.
-pub fn roll(input: RollInput<'_>, key: &RollKey) -> Result<RollResult, Reason> {
+pub fn roll(input: RollInput<'_>, key: &RollKey) -> Result<Roll, Reason> {
     if input.viewer.actor_id() != input.actor_id {
         return Err(Reason::UnknownKey);
     }
@@ -110,7 +103,7 @@ pub fn roll(input: RollInput<'_>, key: &RollKey) -> Result<RollResult, Reason> {
         faces.push(face_at(&seed, n as usize, input.check.dice_sides)?);
     }
     let total = faces.iter().map(|face| i64::from(*face)).sum::<i64>() + stat;
-    Ok(RollResult {
+    Ok(Roll {
         faces,
         stat,
         total,

@@ -11,6 +11,7 @@ use crate::model::{Message, Now};
 use crate::rules::habits::habits_on;
 use crate::visibility::allows;
 use crate::world::World;
+pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
 
 const BUDGET_TOKENS: usize = 800;
 
@@ -27,39 +28,11 @@ pub struct View {
     pub unknown_mentioned: Vec<String>,
     pub clocks: Vec<ClockView>,
     pub items: Vec<ItemStack>,
+    /// The viewer's own meters. A hidden meter is not here.
     pub meters: Vec<MeterView>,
     pub habits: Vec<String>,
     pub exits: Vec<ExitView>,
     pub status: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct KnownFact {
-    pub id: String,
-    pub text: String,
-    pub body: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ClockView {
-    pub id: String,
-    pub value: i64,
-    pub max: i64,
-    pub paused: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ItemStack {
-    pub id: String,
-    pub count: u32,
-}
-
-/// One of the viewer's own meters. A hidden meter is not here.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct MeterView {
-    pub id: String,
-    pub value: i64,
-    pub max: i64,
 }
 
 pub fn perceive(world: &World, as_arg: &str) -> Result<View, Reason> {

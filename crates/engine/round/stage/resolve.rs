@@ -9,7 +9,7 @@ use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target};
 use crate::journal::Step;
 use crate::model::Now;
-use crate::rules::RollResult;
+use crate::rules::Roll;
 use crate::Reason;
 
 use crate::round::dice::RoundDice;
@@ -26,7 +26,7 @@ pub(crate) enum Resolution {
     /// Gated; apply expands `rule_id`, the rule the gate chose against the snapshot.
     Ready {
         rule_id: String,
-        rolled: Option<RollResult>,
+        rolled: Option<Roll>,
     },
     /// Refused by the gate: journaled, and told to a player.
     Refused(GateRefusal),
@@ -39,7 +39,7 @@ struct Rolls<'a> {
     canon: &'a Canon,
     snapshot: &'a Now,
     queue: &'a [Intent],
-    opposed: BTreeMap<String, RollResult>,
+    opposed: BTreeMap<String, Roll>,
     dice: &'a mut RoundDice,
     log: &'a mut RoundLog,
 }
@@ -162,8 +162,8 @@ fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>,
     Ok(Some(total))
 }
 
-fn rescore(out: &RollResult, target: i64, partial_at: Option<i64>) -> RollResult {
-    RollResult {
+fn rescore(out: &Roll, target: i64, partial_at: Option<i64>) -> Roll {
+    Roll {
         faces: out.faces.clone(),
         stat: out.stat,
         total: out.total,

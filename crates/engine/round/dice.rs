@@ -11,7 +11,7 @@ use crate::model::Now;
 use crate::round::log::RoundLog;
 use crate::rule::RollSpec;
 use crate::rules::expr::{eval_with_dice, Ctx, Dice};
-use crate::rules::{faces_from, roll, MoveReport, RollInput, RollKey, RollResult};
+use crate::rules::{faces_from, roll, MoveReport, Roll, RollInput, RollKey};
 use crate::Reason;
 
 /// The round line's `seed` field. A roll uses `RollKey`, not this string.
@@ -65,7 +65,7 @@ impl RoundDice {
         check_id: &str,
         target: i64,
         partial_at: Option<i64>,
-    ) -> Result<RollResult, Reason> {
+    ) -> Result<Roll, Reason> {
         let actor = now.actors.get(&key.subject_id).ok_or(Reason::UnknownKey)?;
         let viewer = actor.viewer(&key.subject_id);
         let check = canon.checks.get(check_id).ok_or(Reason::UnknownKey)?;
@@ -104,7 +104,7 @@ impl RoundDice {
 /// What a rule's effects came to: the effects, the roll that picked them, and the resist rolls made on the way.
 pub(crate) struct Expansion {
     pub effects: Vec<Effect>,
-    pub rolled: Option<RollResult>,
+    pub rolled: Option<Roll>,
     pub resisted: Vec<MoveReport>,
 }
 
@@ -128,7 +128,7 @@ impl Roller<'_> {
         now: &Now,
         intent: &Intent,
         spec: &RollSpec,
-    ) -> Result<RollResult, Reason> {
+    ) -> Result<Roll, Reason> {
         let (target, partial_at) = self.thresholds(canon, now, intent, spec)?;
         let key = self.dice.key(self.rule, intent.actor.actor_id());
         self.dice

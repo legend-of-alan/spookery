@@ -10,7 +10,7 @@ use crate::model::Now;
 use crate::rule::Rule;
 use crate::rules::cost;
 use crate::rules::gate::{gate, GateRefusal};
-use crate::rules::{MoveReport, RollResult};
+use crate::rules::{MoveReport, Roll};
 use crate::Reason;
 
 use crate::round::dice::{Expansion, RoundDice};
@@ -196,7 +196,7 @@ fn refused_report(intent: &Intent, refusal: &GateRefusal) -> MoveReport {
     }
 }
 
-fn report_roll(log: &mut RoundLog, rolled: &Option<RollResult>, actor_id: &str) {
+fn report_roll(log: &mut RoundLog, rolled: &Option<Roll>, actor_id: &str) {
     if let Some(out) = rolled.clone() {
         log.reports.push(MoveReport::Rolled {
             actor_id: actor_id.to_string(),

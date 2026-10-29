@@ -1,14 +1,13 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, GmSay, Missing, Outcome, OutgoingSay, PackSummary, PlayerMessage, QueueRow, Roll,
-    SessionStatus, StatusPause, StatusPresence, ViewScene, WireClock, WireFact, WireItem,
-    WireMessage, WireMeter,
+    CommitBody, GmSay, MessageView, Missing, Outcome, OutgoingSay, PackSummary, PlayerMessage,
+    QueueRow, SessionStatus, StatusPause, StatusPresence, ViewScene,
 };
 use serde_json::{Map, Value};
 use spookery_engine::{
-    record_line, ClockView, ExitView, Heard, Intent, ItemStack, KnownFact, Message, MeterView,
-    MoveReport, Now, Reason, RollResult, RoundOutput, RunState, TapeRecord, View, World,
+    record_line, Heard, Intent, Message, MoveReport, Now, Reason, Roll, RoundOutput, RunState,
+    TapeRecord, View, World,
 };
 
 #[derive(Debug)]
@@ -91,8 +90,8 @@ pub fn player_check_line(outcome: Outcome) -> String {
     crate::protocol::write_player(&PlayerMessage::Check { outcome })
 }
 
-pub fn check_event(out: &RollResult) -> Vec<u8> {
-    crate::protocol::write_check_event(&roll_of(out))
+pub fn check_event(out: &Roll) -> Vec<u8> {
+    crate::protocol::write_check_event(out)
 }
 
 pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
@@ -115,13 +114,14 @@ pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
 }
 
 pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
-    reports
-        .iter()
-        .filter_map(|report| match report {
-            MoveReport::Rolled { out, .. } => Some(check_event(out)),
-            MoveReport::Refused { .. } => None,
-        })
-        .collect()
+    rolls(reports).map(check_event).collect()
+}
+
+fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator<Item = &'a Roll> {
+    reports.into_iter().filter_map(|report| match report {
+        MoveReport::Rolled { out, .. } => Some(out),
+        MoveReport::Refused { .. } => None,
+    })
 }
 
 pub fn player_resume_line(view: &View) -> String {
@@ -130,10 +130,12 @@ pub fn player_resume_line(view: &View) -> String {
         .messages
         .iter()
         .filter(|message| message.to.iter().any(|to| to == actor_id))
-        .map(wire_message)
+        .map(message_view)
         .collect();
-    let clocks = view.clocks.iter().map(wire_clock).collect();
-    crate::protocol::write_player(&PlayerMessage::Resume { messages, clocks })
+    crate::protocol::write_player(&PlayerMessage::Resume {
+        messages,
+        clocks: view.clocks.clone(),
+    })
 }
 
 pub fn player_lines(text: &str) -> String {
@@ -163,13 +165,8 @@ pub fn commit_reply(
     log_path: Option<&str>,
     outputs: &[RoundOutput],
 ) -> Value {
-    let checks = outputs
-        .iter()
-        .flat_map(|output| output.reports.iter())
-        .filter_map(|report| match report {
-            MoveReport::Rolled { out, .. } => Some(roll_of(out)),
-            MoveReport::Refused { .. } => None,
-        })
+    let checks = rolls(outputs.iter().flat_map(|output| &output.reports))
+        .cloned()
         .collect();
     let dice = outputs
         .iter()
@@ -231,76 +228,24 @@ fn player_view(view: &View) -> PlayerMessage {
             status: view.status.clone(),
         }),
         visible_actors: view.visible_actors.clone(),
-        known_facts: view.known_facts.iter().map(wire_fact).collect(),
-        messages: view.messages.iter().map(wire_message).collect(),
+        known_facts: view.known_facts.clone(),
+        messages: view.messages.iter().map(message_view).collect(),
         unknown_mentioned: view.unknown_mentioned.clone(),
-        clocks: view.clocks.iter().map(wire_clock).collect(),
-        items: view.items.iter().map(wire_item).collect(),
-        meters: view.meters.iter().map(wire_meter).collect(),
+        clocks: view.clocks.clone(),
+        items: view.items.clone(),
+        meters: view.meters.clone(),
         habits: view.habits.clone(),
-        exits: view.exits.iter().map(wire_exit).collect(),
+        exits: view.exits.clone(),
     }
 }
 
-fn wire_exit(exit: &ExitView) -> crate::protocol::WireExit {
-    crate::protocol::WireExit {
-        name: exit.name.clone(),
-        to: exit.to.clone(),
-        place_name: exit.place_name.clone(),
-        minutes: exit.minutes,
-        locked: exit.locked,
-    }
-}
-
-fn wire_fact(fact: &KnownFact) -> WireFact {
-    WireFact {
-        id: fact.id.clone(),
-        text: fact.text.clone(),
-        body: fact.body.clone(),
-    }
-}
-
-fn wire_message(message: &Message) -> WireMessage {
-    WireMessage {
+fn message_view(message: &Message) -> MessageView {
+    MessageView {
         id: message.id.clone(),
         to: message.to.clone(),
         place: message.place.clone(),
         fact_ids: message.fact_ids.clone(),
         text: message.text.clone(),
-    }
-}
-
-fn wire_clock(clock: &ClockView) -> WireClock {
-    WireClock {
-        id: clock.id.clone(),
-        value: clock.value,
-        max: clock.max,
-        paused: clock.paused,
-    }
-}
-
-fn wire_item(item: &ItemStack) -> WireItem {
-    WireItem {
-        id: item.id.clone(),
-        count: item.count,
-    }
-}
-
-fn wire_meter(meter: &MeterView) -> WireMeter {
-    WireMeter {
-        id: meter.id.clone(),
-        value: meter.value,
-        max: meter.max,
-    }
-}
-
-fn roll_of(out: &RollResult) -> Roll {
-    Roll {
-        faces: out.faces.clone(),
-        stat: out.stat,
-        total: out.total,
-        target: out.target,
-        outcome: out.outcome,
     }
 }
 

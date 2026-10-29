@@ -1,7 +1,7 @@
 //! Readable text for one player frame.
 
 use crate::protocol::{
-    exit_phrase, named_refusal, Outcome, PlayerMessage, WireClock, WireExit, WireMessage, WireMeter,
+    exit_phrase, named_refusal, ClockView, ExitView, MessageView, MeterView, Outcome, PlayerMessage,
 };
 
 /// Readable text for one player frame. A new [`PlayerMessage`] variant fails here until it is rendered.
@@ -93,7 +93,7 @@ impl PlayerFormatter {
     }
 }
 
-fn resume(messages: &[WireMessage], clocks: &[WireClock]) -> String {
+fn resume(messages: &[MessageView], clocks: &[ClockView]) -> String {
     let mut lines = Vec::new();
     for message in messages {
         let text = message.text.trim();
@@ -200,7 +200,7 @@ fn view_text(message: &PlayerMessage) -> String {
     sections.join("\n\n")
 }
 
-fn exit_section(exits: &[WireExit]) -> String {
+fn exit_section(exits: &[ExitView]) -> String {
     if exits.is_empty() {
         return "Exits:\nnone".to_string();
     }
@@ -223,11 +223,11 @@ fn push_lines<'a>(sections: &mut Vec<String>, title: &str, lines: impl Iterator<
     sections.push(format!("{title}\n{}", lines.join("\n")));
 }
 
-fn meter_line(meter: &WireMeter) -> String {
+fn meter_line(meter: &MeterView) -> String {
     format!("{}: {}/{}", humanize(&meter.id), meter.value, meter.max)
 }
 
-fn clock_line(clock: &WireClock) -> String {
+fn clock_line(clock: &ClockView) -> String {
     let name = humanize(&clock.id);
     if clock.paused {
         format!("{name}: {}/{}, paused", clock.value, clock.max)
@@ -256,7 +256,7 @@ pub(crate) fn humanize(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{WireFact, WireItem, WireMessage};
+    use crate::protocol::{ItemStack, KnownFact, MessageView};
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -331,8 +331,8 @@ mod tests {
         assert_readable(&miss);
     }
 
-    fn note(id: &str, text: &str) -> WireMessage {
-        WireMessage {
+    fn note(id: &str, text: &str) -> MessageView {
+        MessageView {
             id: id.to_string(),
             to: vec!["pc_rowan".to_string()],
             place: Some("docks_shop".to_string()),
@@ -415,13 +415,13 @@ mod tests {
         let text = render(&PlayerMessage::Resume {
             messages: vec![note("note_mira_door", "Back at dusk. Oil on the shelf.")],
             clocks: vec![
-                WireClock {
+                ClockView {
                     id: "assassination_debt".to_string(),
                     value: 2,
                     max: 6,
                     paused: true,
                 },
-                WireClock {
+                ClockView {
                     id: "shop_day".to_string(),
                     value: 1,
                     max: 1,
@@ -455,12 +455,12 @@ Shop day: 1/1"
                 status: String::new(),
             }),
             visible_actors: vec!["aldric".to_string(), "pc_rowan".to_string()],
-            known_facts: vec![WireFact {
+            known_facts: vec![KnownFact {
                 id: "fact_oil_on_shelf".to_string(),
                 text: "Oil is on the shelf.".to_string(),
                 body: "CANON-BODY".to_string(),
             }],
-            messages: vec![WireMessage {
+            messages: vec![MessageView {
                 id: "note_door".to_string(),
                 to: vec!["pc_rowan".to_string()],
                 place: Some("docks_shop".to_string()),
@@ -469,30 +469,30 @@ Shop day: 1/1"
             }],
             unknown_mentioned: vec!["secret_fact".to_string()],
             clocks: vec![
-                WireClock {
+                ClockView {
                     id: "assassination_debt".to_string(),
                     value: 2,
                     max: 6,
                     paused: true,
                 },
-                WireClock {
+                ClockView {
                     id: "shop_day".to_string(),
                     value: 1,
                     max: 1,
                     paused: false,
                 },
             ],
-            items: vec![WireItem {
+            items: vec![ItemStack {
                 id: "lamp_oil".to_string(),
                 count: 4,
             }],
-            meters: vec![WireMeter {
+            meters: vec![MeterView {
                 id: "grit".to_string(),
                 value: 1,
                 max: 110,
             }],
             habits: vec!["tend_shop".to_string()],
-            exits: vec![crate::protocol::WireExit {
+            exits: vec![crate::protocol::ExitView {
                 name: "stairs".to_string(),
                 to: "mira_rooms".to_string(),
                 place_name: "Mira's Rooms".to_string(),

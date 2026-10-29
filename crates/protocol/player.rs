@@ -36,9 +36,9 @@ pub enum PlayerMessage {
     },
     Resume {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        messages: Vec<WireMessage>,
+        messages: Vec<MessageView>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        clocks: Vec<WireClock>,
+        clocks: Vec<ClockView>,
     },
     /// Help, look, and map. The text is already the lines to print.
     Lines {
@@ -56,16 +56,16 @@ pub enum PlayerMessage {
         #[serde(flatten, default)]
         scene: Box<ViewScene>,
         visible_actors: Vec<String>,
-        known_facts: Vec<WireFact>,
-        messages: Vec<WireMessage>,
+        known_facts: Vec<KnownFact>,
+        messages: Vec<MessageView>,
         unknown_mentioned: Vec<String>,
-        clocks: Vec<WireClock>,
-        items: Vec<WireItem>,
+        clocks: Vec<ClockView>,
+        items: Vec<ItemStack>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        meters: Vec<WireMeter>,
+        meters: Vec<MeterView>,
         habits: Vec<String>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        exits: Vec<WireExit>,
+        exits: Vec<ExitView>,
     },
 }
 
@@ -86,7 +86,7 @@ impl Missing {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WireExit {
+pub struct ExitView {
     pub name: String,
     pub to: String,
     pub place_name: String,
@@ -95,14 +95,14 @@ pub struct WireExit {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WireFact {
+pub struct KnownFact {
     pub id: String,
     pub text: String,
     pub body: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WireMessage {
+pub struct MessageView {
     pub id: String,
     pub to: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -112,7 +112,7 @@ pub struct WireMessage {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WireClock {
+pub struct ClockView {
     pub id: String,
     pub value: i64,
     pub max: i64,
@@ -120,13 +120,13 @@ pub struct WireClock {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WireItem {
+pub struct ItemStack {
     pub id: String,
     pub count: u32,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct WireMeter {
+pub struct MeterView {
     pub id: String,
     pub value: i64,
     pub max: i64,
