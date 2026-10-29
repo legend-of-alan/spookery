@@ -285,7 +285,7 @@ The ferry waits at the dock.
 #[when(expr = "a PC at ferry_dock travels")]
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let (_lock, mut opened) = open_pack(&pack);
     opened.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: Vec::new(),
@@ -360,7 +360,7 @@ fn an_empty_round_at_hour_7(world: &mut World) {
         now.actors.insert("briar".to_string(), briar);
         *now.actors.get_mut("briar").unwrap().place_mut() = "docks_shop".to_string();
     });
-    let mut opened = open_pack(&pack);
+    let (_lock, mut opened) = open_pack(&pack);
     let wall = opened.now().last_round_at.clone();
     opened.play(&wall).unwrap_or_else(|err| {
         panic!(
@@ -469,7 +469,7 @@ fn lark_attacks(world: &mut World) {
         might.base = 21 - i64::from(face);
         might.offset = 0;
     });
-    let mut opened = open_pack(&pack);
+    let (_lock, mut opened) = open_pack(&pack);
     let wall = wall_now();
     let reports = match handle_player_move(
         &mut opened,
@@ -648,7 +648,7 @@ fn steady_costs_five_grit(world: &mut World) {
 #[when(expr = "the sitter plays steady")]
 fn the_sitter_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let (_lock, mut opened) = open_pack(&pack);
     let wall = wall_now();
     let played = handle_player_move(&mut opened, "pc_rowan", "steady", None, false, &wall);
     world.scratch = match played {
@@ -697,7 +697,7 @@ rules:
 #[when(expr = "a PC is gated on those full ids")]
 fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let (_lock, mut opened) = open_pack(&pack);
     let mut codes = Vec::new();
     for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
         match opened.queue_player_move("pc_rowan", move_name, None) {
@@ -777,7 +777,7 @@ A small bottle.
 #[when(expr = "the sitter lines up use tonic")]
 fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let (_lock, mut opened) = open_pack(&pack);
     let wall = wall_now();
     let played = handle_player_move(&mut opened, "pc_rowan", "use", Some("tonic"), true, &wall);
     world.scratch = match played {
@@ -923,8 +923,10 @@ fn run(world: &mut World, args: &[&str]) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
-fn open_pack(pack: &Path) -> spookery_engine::World {
-    spookery_engine::World::resume(pack).unwrap_or_else(|err| {
+/// Returns the lock with the world, so the caller writes while holding it.
+pub(super) fn open_pack(pack: &Path) -> (spookery_engine::LockGuard, spookery_engine::World) {
+    let lock = spookery_engine::lock_pack(pack).unwrap();
+    let world = spookery_engine::World::resume(pack, &lock).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
             err.token(),
@@ -934,7 +936,8 @@ fn open_pack(pack: &Path) -> spookery_engine::World {
                 .collect::<Vec<_>>()
                 .join("\n")
         )
-    })
+    });
+    (lock, world)
 }
 
 fn insert_before_fence(path: &Path, block: &str) {

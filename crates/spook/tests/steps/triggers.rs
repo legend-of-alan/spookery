@@ -607,7 +607,7 @@ fn nell_knows_the_trapdoor(world: &mut World) {
 #[then(expr = "pc_nell can see the trapdoor")]
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let world_now = spookery_engine::World::resume(pack).unwrap();
+    let world_now = spookery_engine::World::peek(pack).unwrap();
     let exits = world_now.perceive("pc_nell").unwrap().exits;
     assert!(
         exits.iter().any(|exit| exit.name == "trapdoor"),
@@ -1257,14 +1257,7 @@ fn play(
 }
 
 fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played {
-    let mut round = spookery_engine::World::resume(pack).unwrap_or_else(|err| {
-        let report = spookery_engine::check_pack(pack)
-            .iter()
-            .map(|diag| diag.report_line())
-            .collect::<Vec<_>>()
-            .join("\n");
-        panic!("open: {err}\n{report}");
-    });
+    let (_lock, mut round) = super::rules::open_pack(pack);
     if let Some(presence) = remembered_presence(scenario, pack) {
         round.set_presence(presence);
     }

@@ -126,7 +126,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let door = door_addr(mcp_http)?;
             // Lock before resume: taking the lock repairs a crashed pack, which is a write.
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
-            let world = spookery_engine::World::resume(&pack).map_err(|e| e.to_string())?;
+            let world = spookery_engine::World::resume(&pack, &lock).map_err(|e| e.to_string())?;
             let mut config = spookery_server::Config::new(addr);
             config.door = door;
             if let Some(ms) = std::env::var("SPOOK_HELLO_TIMEOUT_MS")

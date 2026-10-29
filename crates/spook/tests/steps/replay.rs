@@ -294,8 +294,8 @@ fn the_table_is_opened_again(world: &mut World) {
 
 /// Take the lock the way a host does, which recovers a crashed pack, then resume it.
 fn resume_as_writer(pack: &std::path::Path) {
-    let _lock = spookery_engine::lock_pack(pack).unwrap_or_else(|err| panic!("lock: {err}"));
-    spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("resume: {err}"));
+    let lock = spookery_engine::lock_pack(pack).unwrap_or_else(|err| panic!("lock: {err}"));
+    spookery_engine::World::resume(pack, &lock).unwrap_or_else(|err| panic!("resume: {err}"));
 }
 
 #[then(expr = "the torn tail is gone")]
@@ -380,7 +380,7 @@ fn every_closed_bundle_is_made_unreadable(world: &mut World) {
 
 #[then(expr = "the table still opens")]
 fn the_table_still_opens(world: &mut World) {
-    spookery_engine::World::resume(table::pack(world)).unwrap_or_else(|err| panic!("open: {err}"));
+    resume_as_writer(table::pack(world));
 }
 
 #[then(expr = "stderr names that bundle")]
