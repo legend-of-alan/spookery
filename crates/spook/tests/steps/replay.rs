@@ -289,7 +289,13 @@ fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
 
 #[when(expr = "the table is opened again")]
 fn the_table_is_opened_again(world: &mut World) {
-    spookery_engine::World::resume(table::pack(world)).unwrap_or_else(|err| panic!("open: {err}"));
+    resume_as_writer(table::pack(world));
+}
+
+/// Take the lock the way a host does, which recovers a crashed pack, then resume it.
+fn resume_as_writer(pack: &std::path::Path) {
+    let _lock = spookery_engine::lock_pack(pack).unwrap_or_else(|err| panic!("lock: {err}"));
+    spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("resume: {err}"));
 }
 
 #[then(expr = "the torn tail is gone")]
@@ -396,8 +402,7 @@ fn the_save_snapshot_is_removed(world: &mut World) {
 
 #[when(expr = "the operator rebuilds the snapshot")]
 fn the_operator_rebuilds_the_snapshot(world: &mut World) {
-    spookery_engine::World::resume(table::pack(world))
-        .unwrap_or_else(|err| panic!("rebuild: {err}"));
+    resume_as_writer(table::pack(world));
 }
 
 #[then(expr = "the save hash matches the latest checkpoint")]

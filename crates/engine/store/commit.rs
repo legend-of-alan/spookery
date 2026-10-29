@@ -336,6 +336,7 @@ mod tests {
     use crate::round::log::{RoundLine, RoundLog};
     use crate::round::stage::advance::Clock;
     use crate::store::durable::{self, Mark};
+    use crate::store::lock::lock_pack;
     use crate::testing::temp_pack;
     use crate::world::World;
 
@@ -384,6 +385,7 @@ mod tests {
         assert!(bundle_text.contains("kept"), "{bundle_text}");
         assert!(!memory.exists());
         drop(world);
+        drop(lock_pack(&root).unwrap());
         let opened = World::open(&root).unwrap();
         assert_eq!(opened.now().state_rev, 0);
         assert_eq!(fs::read(&bundle).unwrap(), bundle_bytes);

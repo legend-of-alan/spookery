@@ -16,7 +16,6 @@ use crate::model::{sort_unique, ActorLive, Now, Presence};
 use crate::rule::{TargetKind, When};
 use crate::rules::gate::{gate, verb_for, GateRefusal};
 use crate::store::codec::{emit_save, load_save};
-use crate::store::recover::recover;
 use crate::store::tape::{append_record, read_session, read_tail, session_end_seq, TapeRecord};
 
 use crate::draft::Draft;
@@ -431,8 +430,15 @@ impl World {
 
     /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
     /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
+    /// The caller holds the pack lock, because a checkpoint whose save did not land is published.
     pub fn resume(root: &Path) -> Result<Self, Reason> {
         crate::round::replay::open_at_tip(root)
+    }
+
+    /// Open the pack at the journal tip and write nothing, so no lock is needed.
+    /// A crash the writer has not recovered is read as it stands.
+    pub fn peek(root: &Path) -> Result<Self, Reason> {
+        crate::round::replay::peek_at_tip(root)
     }
 
     pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
@@ -542,7 +548,6 @@ impl World {
         if !root.join("pack.yaml").is_file() || !root.join("state/save.yaml").is_file() {
             return Err(Reason::NotInSpec);
         }
-        recover(root)?;
         let canon = Arc::new(load_canon(root).map_err(reason_of)?);
         let now_bytes = fs::read(root.join("state/save.yaml")).map_err(|_| Reason::NotInSpec)?;
         let now_text = std::str::from_utf8(&now_bytes).map_err(|_| Reason::Schema)?;

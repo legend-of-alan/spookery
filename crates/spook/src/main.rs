@@ -124,7 +124,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         #[cfg(feature = "server")]
         Command::Run { pack, mcp_http } => {
             let door = door_addr(mcp_http)?;
-            // Lock before resume: opening the pack repairs it, which is a write.
+            // Lock before resume: taking the lock repairs a crashed pack, which is a write.
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
             let world = spookery_engine::World::resume(&pack).map_err(|e| e.to_string())?;
             let mut config = spookery_server::Config::new(addr);
@@ -181,7 +181,8 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "server")]
         Command::Status { pack } => {
-            let world = spookery_engine::World::resume(&pack).map_err(|e| e.to_string())?;
+            // Status reads without the lock, so it must not write.
+            let world = spookery_engine::World::peek(&pack).map_err(|e| e.to_string())?;
             let text = world.host_summary().map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
