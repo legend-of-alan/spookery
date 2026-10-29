@@ -430,8 +430,7 @@ impl World {
 
     /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
     /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
-    /// The caller holds the pack lock, because a checkpoint whose save did not land is published.
-    pub fn resume(root: &Path) -> Result<Self, Reason> {
+    pub fn resume(root: &Path, _lock: &crate::LockGuard) -> Result<Self, Reason> {
         crate::round::replay::open_at_tip(root)
     }
 

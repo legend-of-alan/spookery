@@ -923,8 +923,9 @@ fn run(world: &mut World, args: &[&str]) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
-fn open_pack(pack: &Path) -> spookery_engine::World {
-    spookery_engine::World::resume(pack).unwrap_or_else(|err| {
+pub(super) fn open_pack(pack: &Path) -> spookery_engine::World {
+    let lock = spookery_engine::lock_pack(pack).unwrap();
+    spookery_engine::World::resume(pack, &lock).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
             err.token(),

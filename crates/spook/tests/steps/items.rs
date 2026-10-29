@@ -38,17 +38,7 @@ fn play(
     actor: &str,
     line: &str,
 ) -> Result<spookery::host::MoveOutcome, spookery_engine::GateRefusal> {
-    let mut world = spookery_engine::World::resume(pack).unwrap_or_else(|err| {
-        panic!(
-            "open {line}: {}\n{}",
-            err.token(),
-            spookery_engine::check_pack(pack)
-                .iter()
-                .map(|diag| diag.report_line())
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    });
+    let mut world = super::rules::open_pack(pack);
     let (verb, target) = support::split_move(line);
     let wall = spookery::host::idle_clock::wall_now();
     spookery_engine::handle_player_move(&mut world, actor, verb, target, false, &wall)

@@ -370,7 +370,8 @@ rules:
 #[when(expr = "Rowan asks Aldric and the table plays until the action finishes")]
 fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut table = spookery_engine::World::resume(&pack).unwrap_or_else(|err| panic!("{err}"));
+    let lock = spookery_engine::lock_pack(&pack).unwrap();
+    let mut table = spookery_engine::World::resume(&pack, &lock).unwrap_or_else(|e| panic!("{e}"));
     table.set_presence(support::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
@@ -426,7 +427,7 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 }
 
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
-    let world = spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
+    let world = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let actor = world
         .now()
         .actors
@@ -531,8 +532,9 @@ fn play_queued(
     pack: &Path,
     intents: Vec<Intent>,
 ) -> (spookery_engine::Now, Vec<MoveReport>, Value) {
+    let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut world =
-        spookery_engine::World::resume(pack).unwrap_or_else(|err| panic!("open: {err}"));
+        spookery_engine::World::resume(pack, &lock).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = world.now().last_round_at.clone();
     for intent in intents {
         world.queue(intent);

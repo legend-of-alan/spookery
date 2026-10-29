@@ -205,7 +205,7 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
 #[then(expr = "the perceive view for {string} does not list {string}")]
 fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
-    let shard = spookery_engine::World::resume(pack).unwrap();
+    let shard = spookery_engine::World::peek(pack).unwrap();
     let view = shard.perceive(&actor).unwrap();
     assert!(
         view.messages.iter().all(|message| message.id != note),
@@ -215,7 +215,7 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
 
 fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
-    let shard = spookery_engine::World::resume(pack).unwrap();
+    let shard = spookery_engine::World::peek(pack).unwrap();
     let view = shard.perceive(actor).unwrap();
     spookery::host::player_resume_line(&view)
         .trim_end()
@@ -234,7 +234,7 @@ fn rewrite_mira(pack: &Path, from: &str, to: &str) {
 #[then(expr = "the shop lists the oil and the rooms do not")]
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
-    let shard = spookery_engine::World::resume(pack).unwrap();
+    let shard = spookery_engine::World::peek(pack).unwrap();
     let shop = shard.perceive("pc_rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(
