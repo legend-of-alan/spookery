@@ -24,7 +24,7 @@ fn nell_travels_via_door(world: &mut World) {
     );
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
@@ -181,7 +181,7 @@ rules:
     )
     .unwrap();
     write_nell(&pack, &["found_key"]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.actors
             .get_mut("pc_nell")
@@ -274,7 +274,7 @@ rules:
 ",
     )
     .unwrap();
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
     });
     world.pack = Some(pack);
@@ -351,7 +351,7 @@ rules:
         ),
     )
     .unwrap();
-    edit_save(world, &pack, |_, _| {});
+    edit_table(world, &pack, |_, _| {});
     pack
 }
 
@@ -362,7 +362,7 @@ fn verify_passes_after_triggers(world: &mut World) {
     add_bell(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
@@ -429,7 +429,7 @@ The ground gives.
         "    stat: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    stat: grit\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     let (_now, rolls, round) = play(
@@ -474,7 +474,7 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     add_bell_narrate(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     let played = play_view(
@@ -569,7 +569,7 @@ Under the street.
         "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
@@ -646,7 +646,7 @@ rules:
     )
     .unwrap();
     write_nell(&pack, &["saw_tide"]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     world.pack = Some(pack);
@@ -718,7 +718,7 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
 fn a_round_runs(world: &mut World) {
     let pack = temp_pack("trigger-round-counter");
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     show(world, pack, Vec::new());
@@ -755,7 +755,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
         "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         sit(seated, &["pc_nell", "pc_wren"]);
     });
@@ -769,7 +769,7 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
 #[when(expr = "an item is taken from docks_shop")]
 fn an_item_is_taken_from_the_shop(world: &mut World) {
     let pack = temp_pack("trigger-place-item");
-    edit_save(world, &pack, |_, seated| {
+    edit_table(world, &pack, |_, seated| {
         sit(seated, &["pc_rowan"]);
     });
     show(
@@ -788,7 +788,7 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
 fn rowan_takes_an_item_beside_nell(world: &mut World) {
     let pack = temp_pack("trigger-actor-item");
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
         sit(seated, &["pc_rowan", "pc_nell", "pc_wren"]);
     });
@@ -812,7 +812,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
         "\n  - id: mark_tide\n    when:\n      verb: mark_tide\n    do:\n      - clock:\n          id: nell_tide\n          add: 1\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.clocks.insert(
             "nell_tide".to_string(),
@@ -837,7 +837,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = temp_pack("trigger-both-rooms");
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         put(now, "pc_harbormouse", "mira_rooms");
         sit(seated, &["pc_nell"]);
@@ -862,7 +862,7 @@ fn a_rule_sets_the_tide(world: &mut World) {
         "\n  - id: turn_tide\n    when:\n      verb: turn_tide\n    do:\n      - flag:\n          who: world\n          key: tide_turned\n          value: true\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
         put(now, "pc_rowan", "mira_rooms");
         sit(seated, &["pc_nell", "pc_wren", "pc_rowan"]);
@@ -878,7 +878,7 @@ fn a_rule_sets_the_tide(world: &mut World) {
 fn every_seated_summary_lists(world: &mut World, key: String) {
     let pack = world.pack.as_ref().unwrap();
     let now = load(pack);
-    // Seats live in memory, not in the save, so read the ones `edit_save` remembered.
+    // Seats live in memory, not in the save, so read the ones `edit_table` remembered.
     let presence = remembered_presence(world, pack).unwrap_or_default();
     let seated: Vec<String> = presence
         .actors_present
@@ -904,7 +904,7 @@ fn wrens_meter_changes_while_nell_is_elsewhere(world: &mut World) {
         "\n  - id: spend\n    when:\n      verb: spend\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: -1\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
         sit(seated, &["pc_nell", "pc_wren", "pc_harbormouse"]);
     });
@@ -923,7 +923,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
         "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - pc_nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         sit(seated, &["pc_nell", "pc_wren"]);
     });
@@ -950,7 +950,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         &pack,
         "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
     );
-    edit_save(world, &pack, |_, _| {});
+    edit_table(world, &pack, |_, _| {});
     let mut kernel = spookery_engine::testing::open(&pack);
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
     let wall = kernel.now().last_round_at.clone();
@@ -1000,7 +1000,7 @@ Reserved.
         &pack,
         "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          who: world\n          fact: missing_fact\n      - reveal:\n          who: self\n          fact: missing_fact\n",
     );
-    edit_save(world, &pack, |_, _| {});
+    edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);
 }
 
@@ -1116,7 +1116,7 @@ rules:
         ),
     )
     .unwrap();
-    edit_save(world, &pack, |now, seated| {
+    edit_table(world, &pack, |now, seated| {
         seat(now, seated, "aldric", "briar", "docks_shop");
         let briar = now.actors.get_mut("briar").unwrap();
         briar.meters_mut().insert(
@@ -1218,7 +1218,7 @@ fn seat(now: &mut Now, seated: &mut Presence, from: &str, id: &str, place: &str)
 }
 
 /// Edit the save, and remember who the edit seats for the rounds this pack plays.
-fn edit_save(world: &mut World, pack: &Path, edit: impl FnOnce(&mut Now, &mut Presence)) {
+fn edit_table(world: &mut World, pack: &Path, edit: impl FnOnce(&mut Now, &mut Presence)) {
     let path = pack.join("state/save.yaml");
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
     let mut seated = Presence::default();

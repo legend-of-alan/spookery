@@ -538,14 +538,9 @@ fn leaves_and_a_round_commits(world: &mut World, actor: String) {
 #[when(expr = "{string} leaves")]
 fn leaves(world: &mut World, actor: String) {
     table::close_actor(world, &actor);
-    let start = std::time::Instant::now();
-    while table::live_presence(world).1.contains(&actor) {
-        assert!(
-            start.elapsed() < std::time::Duration::from_secs(5),
-            "{actor} stayed seated"
-        );
-        std::thread::sleep(std::time::Duration::from_millis(20));
-    }
+    table::wait_presence(world, &format!("{actor} gone"), |_, actors| {
+        !actors.contains(&actor)
+    });
     table::live_mut(world)
         .players
         .retain(|player| player.actor_id != actor);

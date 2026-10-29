@@ -12,6 +12,8 @@ use spookery_engine::{Presence, World as Shard};
 use crate::support::{self, now_of, open, read_round as round_value, save_now, stamp_pack_rev};
 use crate::World;
 
+use super::table;
+
 fn player_waits(round: &Value) -> Vec<String> {
     round["intents"]
         .as_array()
@@ -45,20 +47,6 @@ fn queued_line_survives_a_dropped_seat() {
     assert_eq!(shard.now().round_index, 0);
     assert!(list_round_keys(&held).is_empty());
     let _ = fs::remove_dir_all(&held);
-}
-
-fn a_reseated_player_keeps_the_queued_wait() {
-    let dropped = support::temp_pack("drop-queue");
-    let mut shard = open(&dropped);
-    let queued = shard
-        .queue_player_move(&rowan(), "pc_rowan", "wait", None)
-        .unwrap();
-    assert_eq!(shard.now().world_time, 1080);
-    assert_eq!(shard.now().round_index, 0);
-    assert_eq!(shard.queued_intents().len(), 1);
-    assert_eq!(shard.queued_intents()[0].id, queued.id);
-    assert!(list_round_keys(&dropped).is_empty());
-    let _ = fs::remove_dir_all(&dropped);
 }
 
 fn early_wake_does_not_play_another_round() {
@@ -222,9 +210,32 @@ fn a_queued_wait_meets_a_wake(_world: &mut World) {
     queued_line_survives_a_dropped_seat();
 }
 
+/// With a GM seated, Rowan queues a wait, leaves, and sits again. The wait stays queued.
 #[when(expr = "the player drops and sits again with a queued wait")]
-fn the_player_drops_and_sits_again(_world: &mut World) {
-    a_reseated_player_keeps_the_queued_wait();
+fn the_player_drops_and_sits_again(world: &mut World) {
+    let pack = support::temp_pack("drop-queue");
+    world.pack = Some(pack.clone());
+    table::listen(world, &pack);
+    table::seat_gm(world);
+    table::seat_actor(world, &pack, "pc_rowan");
+    let queued = table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"queued\"");
+    table::close_actor(world, "pc_rowan");
+    table::wait_humans(world, &pack, 0);
+    table::live_mut(world).players.clear();
+    table::seat_actor(world, &pack, "pc_rowan");
+    let status = table::gm_call(world, 4, "session_status", "{}");
+    let value: Value = serde_json::from_str(&status).unwrap();
+    let rows = value["result"]["structuredContent"]["queued"]
+        .as_array()
+        .unwrap_or_else(|| panic!("no queue\n{status}"));
+    assert_eq!(rows.len(), 1, "{status}");
+    assert_eq!(rows[0]["actor_id"], "pc_rowan", "{status}");
+    let id = rows[0]["id"].as_str().unwrap();
+    assert!(
+        queued.contains(id),
+        "the queue holds another wait\n{queued}\n{status}"
+    );
+    assert!(list_round_keys(&pack).is_empty());
 }
 
 #[when(expr = "a committed wait wakes early")]

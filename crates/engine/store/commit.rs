@@ -363,13 +363,17 @@ mod tests {
 
     use super::commit;
 
+    static NOBODY: Presence = Presence {
+        humans: 0,
+        actors_present: Vec::new(),
+    };
+
     #[test]
     fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
         let root = temp_pack("journal-reopen");
         let mut world = crate::testing::open(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
-        let nobody = crate::model::Presence::default();
-        let mut draft = Draft::begin(&world, &nobody);
+        let mut draft = Draft::begin(&world, &NOBODY);
         draft.memories.push(MemoryLine {
             round_index: 0,
             actor_id: "mira".to_string(),
@@ -406,8 +410,7 @@ mod tests {
         );
         assert!(bundle_text.contains("kept"), "{bundle_text}");
         assert!(!memory.exists());
-        let nobody = crate::model::Presence::default();
-        let next = Draft::begin(&world, &nobody);
+        let next = Draft::begin(&world, &NOBODY);
         durable::start_trace();
         commit(&mut world, next, journal_line(1)).unwrap();
         let marks = durable::take_trace();
@@ -430,8 +433,7 @@ mod tests {
         let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
         let mut world = crate::testing::open(&root);
-        let nobody = crate::model::Presence::default();
-        let mut draft = Draft::begin(&world, &nobody);
+        let mut draft = Draft::begin(&world, &NOBODY);
         draft.state.round_index = 1;
         durable::fail_next(".jsonl.gz.tmp");
         commit(&mut world, draft, journal_line(1)).unwrap();
@@ -447,8 +449,7 @@ mod tests {
         assert!(root.join("state/journal/bundle-0000.jsonl").is_file());
         assert!(!root.join("state/journal/bundle-0000.jsonl.gz").is_file());
 
-        let nobody = crate::model::Presence::default();
-        let mut again = Draft::begin(&world, &nobody);
+        let mut again = Draft::begin(&world, &NOBODY);
         again.state.round_index = 2;
         commit(&mut world, again, journal_line(2)).unwrap();
         assert!(world.take_warning().is_none());
@@ -473,13 +474,11 @@ mod tests {
         let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
         let mut world = crate::testing::open(&root);
-        let nobody = crate::model::Presence::default();
-        let mut first = Draft::begin(&world, &nobody);
+        let mut first = Draft::begin(&world, &NOBODY);
         first.state.round_index = 1;
         commit(&mut world, first, journal_line(1)).unwrap();
 
-        let nobody = crate::model::Presence::default();
-        let mut second = Draft::begin(&world, &nobody);
+        let mut second = Draft::begin(&world, &NOBODY);
         second.state.round_index = 2;
         durable::fail_next("save.yaml.tmp");
         commit(&mut world, second, journal_line(2)).unwrap();
@@ -488,8 +487,7 @@ mod tests {
         assert_eq!(world.now().state_rev, mark.state_rev);
         assert_eq!(world.take_warning(), Some(super::CHECKPOINT_WARNING));
 
-        let nobody = crate::model::Presence::default();
-        let mut third = Draft::begin(&world, &nobody);
+        let mut third = Draft::begin(&world, &NOBODY);
         third.state.round_index = 3;
         commit(&mut world, third, journal_line(3)).unwrap();
         let bundles = crate::journal::bundle_entries(&root).unwrap();

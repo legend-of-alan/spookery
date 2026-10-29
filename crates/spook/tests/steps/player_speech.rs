@@ -1,5 +1,4 @@
 use std::fs;
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -122,17 +121,9 @@ fn the_gm_has_said_lines_then_more(
 #[when(expr = "{string} leaves and sits again")]
 fn leaves_and_sits_again(world: &mut World, actor: String) {
     table::close_actor(world, &actor);
-    let start = Instant::now();
-    loop {
-        let (_, present) = table::live_presence(world);
-        if !present.iter().any(|id| id == &actor) {
-            break;
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("{actor} stayed seated: {present:?}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    table::wait_presence(world, &format!("{actor} gone"), |_, actors| {
+        !actors.contains(&actor)
+    });
     table::live_mut(world)
         .players
         .retain(|player| player.actor_id != actor);

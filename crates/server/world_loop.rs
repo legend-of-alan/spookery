@@ -73,7 +73,7 @@ impl Seats {
             .collect();
         actors_present.sort();
         Presence {
-            humans: actors_present.len() as u32,
+            humans: u32::try_from(actors_present.len()).unwrap_or(u32::MAX),
             actors_present,
         }
     }
@@ -525,43 +525,38 @@ fn on_mechanical(
 ) {
     let gm_seated = seats.gm.is_some();
     let presence = seats.presence();
-    match world.queue_player_move(&presence, actor_id, verb, target) {
+    let busy = match world.queue_player_move(&presence, actor_id, verb, target) {
         Ok(queued) if gm_seated => {
             send_gm(
                 seats,
                 frames::queued_event(&queued.id, &queued.actor_id, &queued.move_name),
             );
-            send_player(
-                world,
-                seats,
-                conn,
-                frames::player_queued_line(&queued.id).into_bytes(),
-                out,
-            );
+            let line = frames::player_queued_line(&queued.id).into_bytes();
+            send_player(world, seats, conn, line, out);
+            return;
         }
-        Ok(_) => match commit_then_fast_forward(world, &presence) {
-            Ok(outputs) => {
-                if !outputs.is_empty() {
-                    bump_sleep(restart);
-                }
-                write_host(out, world, &outputs);
-                refresh_players(world, seats, &outputs, out);
-            }
-            Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
-        },
-        Err(busy) if !gm_seated && busy.reason() == Reason::Busy => {
-            match commit_then_fast_forward(world, &presence) {
-                Ok(outputs) => {
-                    send_player(world, seats, conn, refusal_line(&busy), out);
-                    if !outputs.is_empty() {
-                        refresh_players(world, seats, &outputs, out);
-                        write_host(out, world, &outputs);
-                    }
-                }
-                Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
-            }
+        Ok(_) => None,
+        Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
+        Err(refusal) => {
+            send_player(world, seats, conn, refusal_line(&refusal), out);
+            return;
         }
-        Err(refusal) => send_player(world, seats, conn, refusal_line(&refusal), out),
+    };
+    let outputs = match commit_then_fast_forward(world, &presence) {
+        Ok(outputs) => outputs,
+        Err(code) => {
+            send_player(world, seats, conn, refused_line(code).into_bytes(), out);
+            return;
+        }
+    };
+    match &busy {
+        Some(refusal) => send_player(world, seats, conn, refusal_line(refusal), out),
+        None if !outputs.is_empty() => bump_sleep(restart),
+        None => {}
+    }
+    if !outputs.is_empty() {
+        write_host(out, world, &outputs);
+        refresh_players(world, seats, &outputs, out);
     }
 }
 
