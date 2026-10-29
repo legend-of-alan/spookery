@@ -33,6 +33,12 @@ Feature: One GM seat and up to three player seats
     And save.yaml is unchanged since the table opened
     And humans is 0
 
+  Scenario: A hello for an NPC is refused
+    Given a docks table
+    When a socket sends player:mira
+    Then the hello is refused with "SCHEMA"
+    And save.yaml is unchanged since the table opened
+
   Scenario: A GM hello on the game port is refused
     Given a docks table
     When a socket sends gm on the game port

@@ -33,6 +33,12 @@ fn a_socket_sends_hello(world: &mut World, which: String) {
     world.scratch = table::second_hello(world, if which == "player:" { "player:" } else { "" });
 }
 
+#[when(expr = "a socket sends player:{word}")]
+fn a_socket_sends_player(world: &mut World, actor: String) {
+    listen_pack(world);
+    world.scratch = table::second_hello(world, &format!("player:{actor}"));
+}
+
 #[then(expr = "the hello is refused with {string} and the missing list is {string}")]
 fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: String) {
     the_hello_is_refused_with(world, code);
