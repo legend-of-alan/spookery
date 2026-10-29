@@ -83,7 +83,6 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 pub fn canonicalize(now: &mut Now) {
-    sort_unique(&mut now.presence.actors_present);
     now.messages.sort_by(|a, b| a.id.cmp(&b.id));
     for message in &mut now.messages {
         sort_unique(&mut message.to);

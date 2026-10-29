@@ -24,9 +24,6 @@ pub struct Now {
     pub round_index: u64,
     pub world_time: u64,
     pub last_round_at: String,
-    /// Live seats. Memory only: never written to or read from the save.
-    #[serde(skip)]
-    pub presence: Presence,
     pub pause: PauseView,
     pub places: BTreeMap<String, PlaceLive>,
     pub actors: BTreeMap<String, ActorLive>,
@@ -38,15 +35,6 @@ pub struct Now {
 }
 
 impl Now {
-    pub(crate) fn seated_pcs(&self) -> Vec<String> {
-        self.presence
-            .actors_present
-            .iter()
-            .filter(|id| self.actors.get(id.as_str()).is_some_and(ActorLive::is_pc))
-            .cloned()
-            .collect()
-    }
-
     pub fn meter_value(
         &self,
         canon: &crate::canon::Canon,
@@ -68,6 +56,7 @@ impl Now {
     }
 }
 
+/// Who is seated. The host's seats own it and hand it to each round; the save never holds it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Presence {

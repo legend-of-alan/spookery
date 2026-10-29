@@ -11,7 +11,7 @@ use std::time::Duration;
 use spookery_engine::Reason;
 
 use super::mcp_http;
-use super::world_loop::{self, HelloReply, PlayerReply, WorldMsg};
+use super::world_loop::{self, HelloReply, WorldMsg};
 
 #[derive(Debug)]
 pub enum Error {
@@ -52,15 +52,12 @@ impl Config {
 /// `shutdown` resolves. `world` owns the pack lock until the world loop ends.
 /// Returns the world's result.
 pub async fn serve(
-    mut world: spookery_engine::World,
+    world: spookery_engine::World,
     mut config: Config,
     shutdown: impl Future<Output = ()>,
 ) -> Result<(), Error> {
     let listener = bind(config.addr).await?;
     let http_listener = bind(door_request(config.addr, config.door)?).await?;
-    if world.clear_crashed().map_err(Error::Reason)? {
-        world_loop::write_host(&mut *config.out, &world, &[]);
-    }
     let game = listener.local_addr().map_err(Error::Io)?;
     let door = http_listener.local_addr().map_err(Error::Io)?;
     report_bound(&mut *config.out, game, door)?;
@@ -267,9 +264,9 @@ async fn player_session(
                 {
                     break;
                 }
-                match reply_rx.await {
-                    Ok(PlayerReply::Done) => {}
-                    Ok(PlayerReply::Hangup) | Err(_) => break,
+                // A seat the world loop dropped is cancelled, so the next wait ends the loop.
+                if reply_rx.await.is_err() {
+                    break;
                 }
             }
             Ok(None) | Err(super::limits::LineReadError::Io) => {

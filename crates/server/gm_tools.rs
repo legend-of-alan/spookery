@@ -1,7 +1,7 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_engine::{GmIntentSpec, QueuedMove, Reason, RoundOutput, World};
+use spookery_engine::{GmIntentSpec, Presence, QueuedMove, Reason, RoundOutput, World};
 
 use super::frames;
 use super::world_loop::commit_then_fast_forward;
@@ -40,7 +40,7 @@ pub(super) struct GmTool {
     pub(super) name: &'static str,
     pub(super) about: &'static str,
     pub(super) schema: fn() -> Map<String, Value>,
-    run: fn(&mut World, Option<Map<String, Value>>) -> GmToolReply,
+    run: fn(&mut World, &Presence, Option<Map<String, Value>>) -> GmToolReply,
 }
 
 const SEAT_FACTS: &str = "Player mechanical lines stay queued until commit_round. say appends speech and does not tick. perceive requires as set to an actor id. This seat does not call session_open or patch_entity. When a notification does not arrive, session_status with since returns player speech and the queue.";
@@ -90,40 +90,58 @@ pub(super) const GM_LIST: &[GmTool] = &[
     },
 ];
 
+/// Run one GM tool. `presence` is who the host's seats hold.
 pub fn call_gm_tool(
     world: &mut World,
+    presence: &Presence,
     name: &str,
     arguments: Option<Map<String, Value>>,
 ) -> GmToolReply {
     match GM_LIST.iter().find(|tool| tool.name == name) {
-        Some(tool) => (tool.run)(world, arguments),
-        None => refuse_not_in_spec(world, arguments),
+        Some(tool) => (tool.run)(world, presence, arguments),
+        None => refused_tool(Reason::NotInSpec),
     }
 }
 
-fn run_intent(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_intent(
+    world: &mut World,
+    _presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> GmToolReply {
     match queue_tool_intent(world, arguments) {
         Ok(queued) => GmToolReply::new(crate::protocol::queued_ack(&queued.id)),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_commit_round(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match commit_tool(world, arguments) {
+fn run_commit_round(
+    world: &mut World,
+    presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> GmToolReply {
+    match commit_tool(world, presence, arguments) {
         Ok(done) => done,
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_perceive(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match perceive_tool(world, arguments) {
+fn run_perceive(
+    world: &mut World,
+    presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> GmToolReply {
+    match perceive_tool(world, presence, arguments) {
         Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_say(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match frames::speak_tool(world, arguments) {
+fn run_say(
+    world: &mut World,
+    presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> GmToolReply {
+    match frames::speak_tool(world, presence, arguments) {
         Ok(spoken) => {
             let mut done = GmToolReply::new(spoken.tool);
             // Same object as the tool result, after that response. Ahead of it, the client stalls.
@@ -136,24 +154,28 @@ fn run_say(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolRe
     }
 }
 
-fn run_session_status(world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
-    match session_status_tool(world, arguments) {
+fn run_session_status(
+    world: &mut World,
+    presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> GmToolReply {
+    match session_status_tool(world, presence, arguments) {
         Ok(value) => GmToolReply::new(value),
         Err(code) => refused_tool(code),
     }
 }
 
-fn run_close(_world: &mut World, arguments: Option<Map<String, Value>>) -> GmToolReply {
+fn run_close(
+    _world: &mut World,
+    _presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> GmToolReply {
     if arguments.is_some_and(|args| !args.is_empty()) {
         return refused_tool(Reason::Schema);
     }
     let mut done = GmToolReply::new(crate::protocol::released_result());
     done.release_seat = true;
     done
-}
-
-fn refuse_not_in_spec(_world: &mut World, _arguments: Option<Map<String, Value>>) -> GmToolReply {
-    refused_tool(Reason::NotInSpec)
 }
 
 fn say_schema() -> Map<String, Value> {
@@ -279,6 +301,7 @@ fn schema_object(value: Value) -> Map<String, Value> {
 
 fn commit_tool(
     world: &mut World,
+    presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<GmToolReply, Reason> {
     let include_tick = commit_include_tick(arguments)?;
@@ -289,7 +312,7 @@ fn commit_tool(
         return Err(Reason::NotInSpec);
     }
     let committed = !world.queued_intents().is_empty();
-    let outputs = commit_then_fast_forward(world)?;
+    let outputs = commit_then_fast_forward(world, presence)?;
     let mut done = if committed {
         let output = &outputs[0];
         let outcome = output
@@ -326,17 +349,22 @@ fn refused_tool(code: Reason) -> GmToolReply {
     done
 }
 
-fn perceive_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Value, Reason> {
+fn perceive_tool(
+    world: &World,
+    presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> Result<Value, Reason> {
     let args =
         crate::protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
     let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
-    let view = world.perceive_budget(&as_arg, budget)?;
+    let view = world.perceive_budget(presence, &as_arg, budget)?;
     Ok(frames::perceive_value(&view))
 }
 
 fn session_status_tool(
     world: &World,
+    presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<Value, Reason> {
     let since = status_since(arguments)?;
@@ -347,6 +375,7 @@ fn session_status_tool(
     let last_seq = world.last_tape_seq()?;
     Ok(frames::session_status(
         world.now(),
+        presence,
         world.queued_intents(),
         last_seq,
         events.as_deref(),

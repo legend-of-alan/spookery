@@ -119,17 +119,6 @@ fn nobody_is_present(world: &mut World) {
     assert!(actors.is_empty(), "{actors:?}");
 }
 
-#[then(expr = "the session ids differ")]
-fn the_session_ids_differ(world: &mut World) {
-    let ids: Vec<&str> = world.scratch.lines().collect();
-    let [rowan, wren, again] = ids[..] else {
-        panic!("expected three session ids, got {:?}", world.scratch);
-    };
-    assert_ne!(rowan, wren);
-    assert_ne!(again, wren);
-    assert_ne!(again, rowan);
-}
-
 const DOCKS_PCS: [&str; 3] = ["pc_harbormouse", "pc_rowan", "pc_wren"];
 const HIDDEN_FACT: &str = "fact_wren_channel";
 const HIDDEN_TEXT: &str = "The tide chart marks a private channel.";
@@ -491,24 +480,6 @@ fn the_round_now_hash_matches_the_save(world: &mut World) {
         spookery_engine::testing::journal::hash_now(&report.now_yaml),
         expected
     );
-}
-
-#[when(expr = "two players sit, one drops, and that PC sits again")]
-fn two_players_sit_and_one_sits_again(world: &mut World) {
-    world.scratch = seat_drop_and_reseat().join("\n");
-}
-
-/// Seat Rowan and Wren, drop Rowan, seat Rowan again. Returns the three session ids in order.
-fn seat_drop_and_reseat() -> [String; 3] {
-    let pack = crate::support::temp_pack("session-ids");
-    let mut shard =
-        spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("World::open: {err}"));
-    let rowan = shard.seat_player("pc_rowan").unwrap();
-    let wren = shard.seat_player("pc_wren").unwrap();
-    assert!(shard.release_player_seat(&rowan, "pc_rowan").unwrap());
-    let again = shard.seat_player("pc_rowan").unwrap();
-    let _ = fs::remove_dir_all(&pack);
-    [rowan, wren, again]
 }
 
 const HUMMED_OIL: &str = "lamp_oil";

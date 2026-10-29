@@ -37,19 +37,20 @@ pub struct RoundOutput {
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
     let mut world = World::resume(path, lock_pack(path)?)?;
     let wall = world.now().last_round_at.clone();
-    play_round(&mut world, &wall, false)?;
+    play_round(&mut world, &Presence::default(), &wall, false)?;
     Ok(world.take_warning())
 }
 
-/// Play the rounds `hours` of absence earn. A short absence plays one.
+/// Play the rounds `hours` of absence earn, at an empty table. A short absence plays one.
 pub(crate) fn play_catch_up(world: &mut World, wall: &str, hours: u64) -> Result<(), Reason> {
     let rounds = if hours == 0 {
         1
     } else {
         planned_rounds(world.budget(), hours)?.max(1)
     };
+    let empty = Presence::default();
     for _ in 0..rounds {
-        play_round(world, wall, false)?;
+        play_round(world, &empty, wall, false)?;
     }
     Ok(())
 }
@@ -89,30 +90,32 @@ fn ceil_div(numerator: u64, denominator: u64) -> u64 {
 /// stops at `max_fastforward_ticks` including that round.
 pub(crate) fn play_while_busy(
     world: &mut World,
+    presence: &Presence,
     wall: &str,
     already: u32,
 ) -> Result<Vec<RoundOutput>, Reason> {
     let cap = world.budget().max_fastforward_ticks;
-    let busy = seated_busy(world);
+    let busy = seated_busy(world, presence);
     if busy.is_empty() || busy.contains(&false) {
         return Ok(Vec::new());
     }
     let mut ran = already;
     let mut outputs = Vec::new();
     while u64::from(ran) < cap
-        && seated_busy(world).contains(&true)
+        && seated_busy(world, presence).contains(&true)
         && world.queued_intents().is_empty()
     {
-        outputs.push(play_round(world, wall, true)?);
+        outputs.push(play_round(world, presence, wall, true)?);
         ran += 1;
     }
     Ok(outputs)
 }
 
 /// Whether each seated PC is busy at the current world time.
-fn seated_busy<L>(world: &World<L>) -> Vec<bool> {
+fn seated_busy<L>(world: &World<L>, presence: &Presence) -> Vec<bool> {
     let now = world.now();
-    now.seated_pcs()
+    presence
+        .actors_present
         .iter()
         .map(|id| {
             now.actors
@@ -125,10 +128,11 @@ fn seated_busy<L>(world: &World<L>) -> Vec<bool> {
 /// Play the queue and commit the round. Only a World that owns the pack lock can.
 pub(crate) fn play_round(
     world: &mut World,
+    presence: &Presence,
     wall: &str,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    let (draft, clock, log, delivered) = run_stages(world, wall, world.queued_intents())?;
+    let (draft, clock, log, delivered) = run_stages(world, presence, wall, world.queued_intents())?;
     record::commit_round(world, draft, wall, clock, log, delivered, fast_forward)
 }
 
@@ -137,21 +141,21 @@ pub(crate) fn replay_round(
     world: &mut World<()>,
     wall: &str,
     queue: &[Intent],
-    presence: Presence,
+    presence: &Presence,
 ) -> Result<RoundOutput, Reason> {
-    world.set_presence_inner(presence);
-    let (draft, _clock, mut log, delivered) = run_stages(world, wall, queue)?;
+    let (draft, _clock, mut log, delivered) = run_stages(world, presence, wall, queue)?;
     let output = record::take_output(&mut log, delivered);
     crate::commit::keep_in_memory(world, draft)?;
     Ok(output)
 }
 
-fn run_stages<L>(
+fn run_stages<'p, L>(
     world: &World<L>,
+    presence: &'p Presence,
     wall: &str,
     queue: &[Intent],
-) -> Result<(Draft, Clock, RoundLog, deliver::Delivered), Reason> {
-    let mut draft = Draft::begin(world);
+) -> Result<(Draft<'p>, Clock, RoundLog, deliver::Delivered), Reason> {
+    let mut draft = Draft::begin(world, presence);
     let clock = advance::run(&mut draft, wall)?;
     let mut dice = RoundDice::new(draft.now().shard_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
@@ -160,6 +164,7 @@ fn run_stages<L>(
     let resolved = resolve::run(
         draft.canon(),
         &snapshot,
+        presence,
         candidates,
         queue,
         &mut dice,
@@ -168,6 +173,12 @@ fn run_stages<L>(
     apply::run(&mut draft, &snapshot, resolved, &clock, &mut dice, &mut log)?;
     finish::run(&mut draft, clock.world_time_after, &mut dice, &mut log)?;
     let changes = triggers::run(&mut draft, &mut dice, &mut log)?;
-    let delivered = deliver::run(draft.canon(), draft.now(), &changes, &log.effects);
+    let delivered = deliver::run(
+        draft.canon(),
+        draft.now(),
+        draft.presence,
+        &changes,
+        &log.effects,
+    );
     Ok((draft, clock, log, delivered))
 }

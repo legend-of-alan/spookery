@@ -88,9 +88,6 @@ Feature: One GM seat and up to three player seats
     When three play clients sit on a free port
     Then each play client shows its first perceive
 
-  Scenario: A reseated player never reuses a held session id
-    When two players sit, one drops, and that PC sits again
-
   Scenario: An empty hello is refused with the free PCs
     Given a docks table
     When a socket sends an empty hello

@@ -6,7 +6,7 @@ use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
-use crate::model::{self, Now};
+use crate::model::{self, Now, Presence};
 use crate::rule::Cost;
 use crate::rules::expr::{self, Ctx, Dice};
 
@@ -19,11 +19,12 @@ pub struct CostShortfall {
 pub(crate) fn can_pay(
     canon: &Canon,
     now: &Now,
+    presence: &Presence,
     intent: &Intent,
     cost: &Cost,
 ) -> Result<(), CostShortfall> {
     let who = intent.actor.actor_id();
-    let ctx = Ctx { intent };
+    let ctx = Ctx { intent, presence };
     for (key, expr) in &cost.meters {
         if expr.needs_dice() {
             continue;
@@ -97,7 +98,10 @@ pub fn pay(
     dice: &mut dyn Dice,
 ) -> Result<(), Reason> {
     let who = intent.actor.actor_id();
-    let ctx = Ctx { intent };
+    let ctx = Ctx {
+        intent,
+        presence: draft.presence,
+    };
     for (key, expr) in &cost.meters {
         let amount = expr::eval_with_dice(draft.canon(), draft.now(), &ctx, expr, dice)?.value;
         if amount < 0 {

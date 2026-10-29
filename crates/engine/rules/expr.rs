@@ -4,11 +4,13 @@ use crate::canon::Canon;
 use crate::check::Outcome;
 use crate::error::Reason;
 use crate::intent::{Intent, Target};
-use crate::model::Now;
+use crate::model::{Now, Presence};
 use crate::rule::{arith, Arith, Expr, Fun, Keep, Who};
 
 pub struct Ctx<'a> {
     pub intent: &'a Intent,
+    /// Who is seated, for the `humans:` condition and NPC habits.
+    pub presence: &'a Presence,
 }
 
 /// Faces for one expression. `begin` starts a new roll seed. `note` records the shown line.
@@ -239,8 +241,13 @@ mod tests {
     use crate::error::Reason;
     use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
     use crate::meter::{MeterDef, MeterLive};
-    use crate::model::{ActCounters, ActorLive, Now};
+    use crate::model::{ActCounters, ActorLive, Now, Presence};
     use crate::rule::{parse_expr, Keep};
+
+    static EMPTY: Presence = Presence {
+        humans: 0,
+        actors_present: Vec::new(),
+    };
 
     struct Script {
         faces: Vec<u32>,
@@ -274,6 +281,13 @@ mod tests {
             _: i64,
         ) -> Result<crate::check::Outcome, Reason> {
             Err(Reason::Schema)
+        }
+    }
+
+    fn ctx(intent: &Intent) -> Ctx<'_> {
+        Ctx {
+            intent,
+            presence: &EMPTY,
         }
     }
 
@@ -330,7 +344,6 @@ mod tests {
             round_index: 0,
             world_time: 0,
             last_round_at: String::new(),
-            presence: crate::model::Presence::default(),
             pause: crate::model::PauseView {
                 named_plot_clocks: crate::model::RunState::Running,
             },
@@ -363,8 +376,7 @@ mod tests {
             at: 0,
             notes: Vec::new(),
         };
-        let evaluated =
-            eval_with_dice(&canon(), &now(), &Ctx { intent: &intent }, &expr, &mut dice).unwrap();
+        let evaluated = eval_with_dice(&canon(), &now(), &ctx(&intent), &expr, &mut dice).unwrap();
         assert_eq!(evaluated.value, 12);
         assert_eq!(dice.notes, vec!["2d6 → 4, 5 = 9 + 3".to_string()]);
     }
@@ -378,8 +390,7 @@ mod tests {
             at: 0,
             notes: Vec::new(),
         };
-        let evaluated =
-            eval_with_dice(&canon(), &now(), &Ctx { intent: &intent }, &expr, &mut dice).unwrap();
+        let evaluated = eval_with_dice(&canon(), &now(), &ctx(&intent), &expr, &mut dice).unwrap();
         assert_eq!(evaluated.value, 18);
         assert!(matches!(
             expr,
@@ -394,13 +405,7 @@ mod tests {
     fn overflow_is_an_error() {
         let expr = parse_expr("9223372036854775807 + 1").unwrap();
         let intent = intent("ada", "ada");
-        let err = eval_with_dice(
-            &canon(),
-            &now(),
-            &Ctx { intent: &intent },
-            &expr,
-            &mut super::NoDice,
-        );
+        let err = eval_with_dice(&canon(), &now(), &ctx(&intent), &expr, &mut super::NoDice);
         assert_eq!(
             err.map(|evaluated| evaluated.value),
             Err(Reason::OutOfRange)

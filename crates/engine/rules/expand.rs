@@ -6,7 +6,7 @@ use crate::effect::{Effect, EffectKind};
 use crate::error::Reason;
 use crate::intent::{Intent, Target, ViewerId};
 use crate::meter::MeterWrite;
-use crate::model::Now;
+use crate::model::{Now, Presence};
 use crate::rule::{
     EffectTemplate, Expr, LocationTo, NarrateTo, ResistSpec, Rule, TargetKind, When, Who,
 };
@@ -20,18 +20,20 @@ use crate::rules::habits;
 pub fn expand_outcome(
     canon: &Canon,
     now: &Now,
+    presence: &Presence,
     intent: &Intent,
     outcome: Option<Outcome>,
     dice: &mut dyn Dice,
 ) -> Result<Vec<Effect>, Reason> {
     let rule = gate::resolve(canon, now, intent)?;
-    expand_rule(canon, now, rule, intent, outcome, dice)
+    expand_rule(canon, now, presence, rule, intent, outcome, dice)
 }
 
 /// Expand one rule's lists. Change rules are not verbs, so they pass the rule in.
 pub fn expand_rule(
     canon: &Canon,
     now: &Now,
+    presence: &Presence,
     rule: &Rule,
     intent: &Intent,
     outcome: Option<Outcome>,
@@ -45,7 +47,7 @@ pub fn expand_rule(
         Some(Outcome::Miss) => selected.extend(rule.failure.iter()),
         None => {}
     }
-    let ctx = Ctx { intent };
+    let ctx = Ctx { intent, presence };
     let expand = ExpandCtx {
         canon,
         now,
@@ -381,21 +383,21 @@ fn location_effect(now: &Now, intent: &Intent, to: &str) -> Result<Effect, Reaso
     })
 }
 
-pub fn habit_intents(canon: &Canon, now: &Now) -> Vec<Intent> {
+pub fn habit_intents(canon: &Canon, now: &Now, presence: &Presence) -> Vec<Intent> {
     let mut intents = Vec::new();
     for actor_id in now.actors.keys() {
-        if !habits::is_eligible(canon, now, actor_id) {
+        if !habits::is_eligible(canon, now, presence, actor_id) {
             continue;
         }
-        if let Some(intent) = select_one(canon, now, actor_id) {
+        if let Some(intent) = select_one(canon, now, presence, actor_id) {
             intents.push(intent);
         }
     }
     intents
 }
 
-pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
-    let Ok(effects) = expand_outcome(canon, now, intent, None, &mut PreviewDice) else {
+pub fn stamp_for_priority(canon: &Canon, now: &Now, presence: &Presence, intent: &mut Intent) {
+    let Ok(effects) = expand_outcome(canon, now, presence, intent, None, &mut PreviewDice) else {
         return;
     };
     // A verb with no target must stay empty. Filling it from a location effect
@@ -420,19 +422,23 @@ pub fn stamp_for_priority(canon: &Canon, now: &Now, intent: &mut Intent) {
     stamp(intent, &effects);
 }
 
-fn select_one(canon: &Canon, now: &Now, actor_id: &str) -> Option<Intent> {
+fn select_one(canon: &Canon, now: &Now, presence: &Presence, actor_id: &str) -> Option<Intent> {
     for rule in canon.rules.habits_of(actor_id) {
         if !matches!(rule.when, When::Habit) {
             continue;
         }
         let intent = habits::mint(now, actor_id, &rule.local_id);
-        if cond::holds(canon, now, &Ctx { intent: &intent }, &rule.if_).is_err() {
+        let ctx = Ctx {
+            intent: &intent,
+            presence,
+        };
+        if cond::holds(canon, now, &ctx, &rule.if_).is_err() {
             continue;
         }
-        if gate::gate(canon, now, &intent).is_err() {
+        if gate::gate(canon, now, presence, &intent).is_err() {
             continue;
         }
-        match expand_outcome(canon, now, &intent, None, &mut PreviewDice) {
+        match expand_outcome(canon, now, presence, &intent, None, &mut PreviewDice) {
             Ok(effects) => {
                 let mut intent = intent;
                 stamp(&mut intent, &effects);

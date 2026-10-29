@@ -74,14 +74,14 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     let fail = |what: &str, detail: String| format!("warm-up {warmup}: {what}: {detail}");
     let lock = crate::lock_pack(&pack.0).map_err(|err| fail("lock", err.to_string()))?;
     let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
-    world.set_presence_inner(Presence {
+    let lark = Presence {
         humans: 1,
         actors_present: vec!["pc_lark".to_string()],
-    });
+    };
     let wall = world.now().last_round_at.clone();
     for _ in 0..warmup {
         world
-            .play(&wall)
+            .play(&lark, &wall)
             .map_err(|err| fail("warm-up", err.to_string()))?;
     }
     for (id, actor, verb, target) in [
@@ -102,7 +102,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
             .map_err(|err| fail(id, err.to_string()))?;
     }
     world
-        .play(&wall)
+        .play(&lark, &wall)
         .map_err(|err| fail("fight", err.to_string()))?;
     let entries = journal::read_entries(&pack.0).map_err(|fault| fail("journal", fault.detail))?;
     let Some(JournalEntry::Round(last)) = entries.iter().rev().find(|entry| entry.changes_state())

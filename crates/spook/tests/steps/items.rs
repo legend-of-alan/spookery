@@ -41,7 +41,8 @@ fn play(
     let mut world = super::rules::open_pack(pack);
     let (verb, target) = support::split_move(line);
     let wall = spookery::host::idle_clock::wall_now();
-    spookery_engine::handle_player_move(&mut world, actor, verb, target, false, &wall)
+    let nobody = spookery_engine::Presence::default();
+    spookery_engine::handle_player_move(&mut world, &nobody, actor, verb, target, false, &wall)
 }
 
 fn round_text(pack: &Path) -> String {

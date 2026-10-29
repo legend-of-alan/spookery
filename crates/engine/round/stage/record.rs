@@ -35,7 +35,7 @@ pub(crate) fn commit_round(
 ) -> Result<RoundOutput, Reason> {
     let mut output = take_output(&mut log, delivered);
     let line = RoundLine {
-        presence: draft.now().presence.clone(),
+        presence: draft.presence.clone(),
         seed: round_seed(&draft.now().shard_id, clock.round_index),
         clock,
         wall: wall.to_string(),

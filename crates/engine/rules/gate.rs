@@ -3,7 +3,7 @@
 use crate::canon::Canon;
 use crate::error::Reason;
 use crate::intent::{Intent, Source, Target, ViewerId};
-use crate::model::Now;
+use crate::model::{Now, Presence};
 use crate::rule::{Owner, Rule, TargetKind, When};
 use crate::rules::cond;
 use crate::rules::cost;
@@ -123,20 +123,31 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
 }
 
 /// Pick the rule for an intent, then `admit` it.
-pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, GateRefusal> {
+pub fn gate<'a>(
+    canon: &'a Canon,
+    now: &Now,
+    presence: &Presence,
+    intent: &Intent,
+) -> Result<&'a Rule, GateRefusal> {
     let rule = resolve(canon, now, intent)?;
-    admit(canon, now, intent, rule).map(|()| rule)
+    admit(canon, now, presence, intent, rule).map(|()| rule)
 }
 
 /// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
-pub fn admit(canon: &Canon, now: &Now, intent: &Intent, rule: &Rule) -> Result<(), GateRefusal> {
+pub fn admit(
+    canon: &Canon,
+    now: &Now,
+    presence: &Presence,
+    intent: &Intent,
+    rule: &Rule,
+) -> Result<(), GateRefusal> {
     if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Reason::Busy.into());
         }
     }
-    crate::map::admit(canon, now, intent, rule)?;
-    if intent.source == Source::Player && !sees(canon, now, intent) {
+    crate::map::admit(canon, now, presence, intent, rule)?;
+    if intent.source == Source::Player && !sees(canon, now, presence, intent) {
         return Err(Reason::NotInSpec.into());
     }
     if let When::Verb { target, .. } = &rule.when {
@@ -154,16 +165,16 @@ pub fn admit(canon: &Canon, now: &Now, intent: &Intent, rule: &Rule) -> Result<(
     }
     if intent.source == Source::Kernel
         && matches!(intent.actor, ViewerId::Npc(_))
-        && !is_eligible(canon, now, intent.actor.actor_id())
+        && !is_eligible(canon, now, presence, intent.actor.actor_id())
     {
         return Err(Reason::Ineligible.into());
     }
     let skip_if = intent.source == Source::Player && matches!(rule.when, When::Habit);
     if !skip_if {
-        cond::holds(canon, now, &Ctx { intent }, &rule.if_)?;
+        cond::holds(canon, now, &Ctx { intent, presence }, &rule.if_)?;
     }
     if let Some(cost) = &rule.cost {
-        if let Err(shortfall) = cost::can_pay(canon, now, intent, cost) {
+        if let Err(shortfall) = cost::can_pay(canon, now, presence, intent, cost) {
             return Err(GateRefusal::CantAfford(shortfall.missing));
         }
     }
@@ -171,7 +182,7 @@ pub fn admit(canon: &Canon, now: &Now, intent: &Intent, rule: &Rule) -> Result<(
 }
 
 /// A player names only what they hold or what `look` shows them.
-fn sees(canon: &Canon, now: &Now, intent: &Intent) -> bool {
+fn sees(canon: &Canon, now: &Now, presence: &Presence, intent: &Intent) -> bool {
     let id = match &intent.target {
         Target::Empty => return true,
         Target::Actor(id) | Target::Place(id) | Target::Clock(id) => id.as_str(),
@@ -183,7 +194,7 @@ fn sees(canon: &Canon, now: &Now, intent: &Intent) -> bool {
     {
         return true;
     }
-    let Ok(view) = perceive_viewer(canon, now, &intent.actor) else {
+    let Ok(view) = perceive_viewer(canon, now, presence, &intent.actor) else {
         return false;
     };
     view.place == id

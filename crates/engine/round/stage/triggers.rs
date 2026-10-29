@@ -113,7 +113,10 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     if cond::holds(
         draft.canon(),
         draft.now(),
-        &Ctx { intent: &intent },
+        &Ctx {
+            intent: &intent,
+            presence: draft.presence,
+        },
         &rule.if_,
     )
     .is_err()
@@ -160,14 +163,14 @@ fn expand_trigger(
     intent: &Intent,
     subject: &str,
 ) -> Result<Expansion, Reason> {
-    let (now, canon) = (draft.now(), draft.canon());
+    let (now, canon, presence) = (draft.now(), draft.canon(), draft.presence);
     let mut roller = dice.roller(log, &rule.id, subject);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, now, intent, spec)?),
+        Some(spec) => Some(roller.roll_spec(canon, now, presence, intent, spec)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_rule(canon, now, rule, intent, outcome, &mut roller)?;
+    let effects = expand_rule(canon, now, presence, rule, intent, outcome, &mut roller)?;
     if effects.len() > draft.budget().max_effects_per_intent as usize {
         return Err(Reason::Budget);
     }
@@ -192,7 +195,6 @@ fn trigger_intent(round_index: u64, actor: ViewerId, rule_id: &str) -> Intent {
 fn subjects_of(draft: &Draft, key: &StateKey) -> Vec<String> {
     if let StateKey::WorldFlag(_) = key {
         return draft
-            .now()
             .presence
             .actors_present
             .iter()

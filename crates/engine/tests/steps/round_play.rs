@@ -371,16 +371,16 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();
     let mut table = spookery_engine::World::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
-    table.set_presence(support::Presence {
+    let rowan = spookery_engine::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
-    });
+    };
     table
-        .queue_player_move("pc_rowan", "ask", Some("aldric"))
+        .queue_player_move(&rowan, "pc_rowan", "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
     let wall = table.now().last_round_at.clone();
     for round in 1..=6 {
-        let output = table.play(&wall);
+        let output = table.play(&rowan, &wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
         let now = table.now();
         if !now.actors["pc_rowan"].is_busy(now.world_time) {
@@ -655,18 +655,16 @@ fn play_queued(
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut world =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
-    if !seated.is_empty() {
-        world.set_presence(support::Presence {
-            humans: u32::try_from(seated.len()).unwrap(),
-            actors_present: seated.iter().map(|id| id.to_string()).collect(),
-        });
-    }
+    let presence = spookery_engine::Presence {
+        humans: u32::try_from(seated.len()).unwrap(),
+        actors_present: seated.iter().map(|id| id.to_string()).collect(),
+    };
     let wall = world.now().last_round_at.clone();
     for intent in intents {
         world.queue(intent);
     }
     let output = world
-        .play(&wall)
+        .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let round = read_round(pack, "round-0001");
     let now = world.now().clone();

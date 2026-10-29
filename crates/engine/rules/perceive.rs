@@ -7,7 +7,7 @@ use crate::error::Reason;
 use crate::intent::ViewerId;
 use crate::map::ExitView;
 use crate::meter;
-use crate::model::{Message, Now};
+use crate::model::{Message, Now, Presence};
 use crate::rules::habits::habits_on;
 use crate::visibility::allows;
 use crate::world::World;
@@ -35,25 +35,32 @@ pub struct View {
     pub status: String,
 }
 
-pub fn perceive<L>(world: &World<L>, as_arg: &str) -> Result<View, Reason> {
-    perceive_budget(world, as_arg, BUDGET_TOKENS)
+pub fn perceive<L>(world: &World<L>, presence: &Presence, as_arg: &str) -> Result<View, Reason> {
+    perceive_budget(world, presence, as_arg, BUDGET_TOKENS)
 }
 
 pub fn perceive_budget<L>(
     world: &World<L>,
+    presence: &Presence,
     as_arg: &str,
     budget_tokens: usize,
 ) -> Result<View, Reason> {
-    perceive_at_budget(world.canon(), world.now(), as_arg, budget_tokens)
+    perceive_at_budget(world.canon(), world.now(), presence, as_arg, budget_tokens)
 }
 
-pub(crate) fn perceive_viewer(canon: &Canon, now: &Now, viewer: &ViewerId) -> Result<View, Reason> {
-    perceive_viewer_budget(canon, now, viewer, BUDGET_TOKENS)
+pub(crate) fn perceive_viewer(
+    canon: &Canon,
+    now: &Now,
+    presence: &Presence,
+    viewer: &ViewerId,
+) -> Result<View, Reason> {
+    perceive_viewer_budget(canon, now, presence, viewer, BUDGET_TOKENS)
 }
 
 fn perceive_at_budget(
     canon: &Canon,
     now: &Now,
+    presence: &Presence,
     as_arg: &str,
     budget_tokens: usize,
 ) -> Result<View, Reason> {
@@ -65,12 +72,13 @@ fn perceive_at_budget(
         return Err(Reason::UnscopedPerceive);
     }
     let actor = now.actors.get(as_arg).ok_or(Reason::UnknownKey)?;
-    perceive_viewer_budget(canon, now, &actor.viewer(as_arg), budget_tokens)
+    perceive_viewer_budget(canon, now, presence, &actor.viewer(as_arg), budget_tokens)
 }
 
 fn perceive_viewer_budget(
     canon: &Canon,
     now: &Now,
+    presence: &Presence,
     viewer: &ViewerId,
     budget_tokens: usize,
 ) -> Result<View, Reason> {
@@ -185,9 +193,9 @@ fn perceive_viewer_budget(
 
     let habits = match viewer {
         ViewerId::Player(_) => Vec::new(),
-        ViewerId::Npc(id) => habits_on(canon, now, id),
+        ViewerId::Npc(id) => habits_on(canon, now, presence, id),
     };
-    let exits = crate::map::visible(canon, now, viewer.actor_id());
+    let exits = crate::map::visible(canon, now, presence, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.display_name(id))

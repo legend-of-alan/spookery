@@ -57,7 +57,7 @@ pub(crate) fn run(
         };
         let canon = draft.shared_canon();
         let rule = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
-        if let Err(refusal) = admit(&canon, draft.now(), &intent, rule) {
+        if let Err(refusal) = admit(&canon, draft.now(), draft.presence, &intent, rule) {
             reject(log, &intent, refusal);
             continue;
         }
@@ -71,7 +71,16 @@ pub(crate) fn run(
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
         let mut roller = dice.roller(log, &rule_id, intent.actor.actor_id());
-        let expanded = expand_rule(&canon, snapshot, rule, &intent, outcome, &mut roller);
+        let presence = draft.presence;
+        let expanded = expand_rule(
+            &canon,
+            snapshot,
+            presence,
+            rule,
+            &intent,
+            outcome,
+            &mut roller,
+        );
         let resisted = roller.finish();
         let effects = match expanded {
             Ok(effects) => effects,
@@ -149,7 +158,7 @@ fn apply_instant_intent(
         Ok(())
     });
     let staged = staged.and_then(|()| match &intent.actor {
-        ViewerId::Npc(id) => draft.stage_npc_counters(id, draft.now().presence.humans),
+        ViewerId::Npc(id) => draft.stage_npc_counters(id, draft.presence.humans),
         ViewerId::Player(_) => Ok(()),
     });
     if let Err(code) = staged {

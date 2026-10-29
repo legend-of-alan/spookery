@@ -67,7 +67,7 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
             &mut world,
             &record.last_round_at,
             &record.intents,
-            Presence {
+            &Presence {
                 humans: record.presence_humans,
                 actors_present: record.actors_present.clone(),
             },

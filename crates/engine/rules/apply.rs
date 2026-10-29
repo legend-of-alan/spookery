@@ -70,7 +70,7 @@ fn apply_clock(
     delta: i64,
     start: bool,
 ) -> Result<(), Reason> {
-    let humans = draft.now().presence.humans;
+    let humans = draft.presence.humans;
     let clock = draft.now().clocks.get(clock_id).ok_or(Reason::UnknownKey)?;
     if !clock.owners.iter().any(|owner| owner == actor_id) {
         return Err(Reason::UnknownKey);
@@ -294,7 +294,7 @@ fn apply_location(
         return Err(Reason::ActorMismatch);
     }
     let actor = draft.now().actors.get(actor_id).ok_or(Reason::UnknownKey)?;
-    if draft.now().presence.humans == 0 && actor.is_pc() {
+    if draft.presence.humans == 0 && actor.is_pc() {
         return Err(Reason::TableEmpty);
     }
     if actor.place() != from {

@@ -9,12 +9,14 @@ use crate::canon::Canon;
 use crate::canon::{Budget, PausePolicy};
 use crate::error::Reason;
 use crate::key::{ChangeRecord, StateKey, StateValue};
-use crate::model::{MemoryLine, Now, RunState};
+use crate::model::{MemoryLine, Now, Presence, RunState};
 
-pub(crate) struct Draft {
+pub(crate) struct Draft<'p> {
     canon: Arc<Canon>,
     budget: Budget,
     pub(crate) state: Now,
+    /// Who is seated for this round. The round reads it and never writes it.
+    pub(crate) presence: &'p Presence,
     keys: BTreeSet<StateKey>,
     pending: Vec<PriorValue>,
     pub(crate) memories: Vec<MemoryLine>,
@@ -22,12 +24,18 @@ pub(crate) struct Draft {
     _nosend: PhantomData<Rc<()>>,
 }
 
-impl Draft {
-    pub(crate) fn from_parts(canon: Arc<Canon>, budget: Budget, state: Now) -> Self {
+impl<'p> Draft<'p> {
+    pub(crate) fn from_parts(
+        canon: Arc<Canon>,
+        budget: Budget,
+        state: Now,
+        presence: &'p Presence,
+    ) -> Self {
         Self {
             canon,
             budget,
             state,
+            presence,
             keys: BTreeSet::new(),
             pending: Vec::new(),
             memories: Vec::new(),
@@ -63,7 +71,7 @@ impl Draft {
     }
 
     pub(crate) fn apply_pause_policy(&mut self) -> Result<(), Reason> {
-        let humans = self.state.presence.humans;
+        let humans = self.presence.humans;
         let policies = self.budget.pause;
         let clock_ids: Vec<String> = self.state.clocks.keys().cloned().collect();
         for clock_id in clock_ids {
@@ -420,7 +428,8 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
         let save_before = std::fs::read(pack.join("state/save.yaml")).expect("read save");
         let world = World::open(&pack).expect("open");
-        let mut draft = Draft::begin(&world);
+        let nobody = crate::model::Presence::default();
+        let mut draft = Draft::begin(&world, &nobody);
         let intent = Intent {
             id: "i1".to_string(),
             round_index: 1,

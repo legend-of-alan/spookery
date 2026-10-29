@@ -2,7 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{self as support, stamp_pack_rev, Presence};
+use spookery_engine::testing::{self as support, stamp_pack_rev};
+use spookery_engine::Presence;
 use spookery_engine::World as Shard;
 
 use crate::World;
@@ -223,29 +224,33 @@ fn one_line(text: &str) -> &str {
 }
 
 fn seat(pack: &Path) -> Shard {
-    let mut world =
-        match spookery_engine::lock_pack(pack).and_then(|lock| Shard::resume(pack, lock)) {
-            Ok(world) => world,
-            Err(err) => {
-                let report = spookery_engine::check_pack(pack)
-                    .iter()
-                    .map(|diag| diag.report_line())
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                panic!("open: {}\n{report}", err.token());
-            }
-        };
-    world.set_presence(Presence {
+    let world = match spookery_engine::lock_pack(pack).and_then(|lock| Shard::resume(pack, lock)) {
+        Ok(world) => world,
+        Err(err) => {
+            let report = spookery_engine::check_pack(pack)
+                .iter()
+                .map(|diag| diag.report_line())
+                .collect::<Vec<_>>()
+                .join("\n");
+            panic!("open: {}\n{report}", err.token());
+        }
+    };
+    world
+}
+
+/// Lark is the one seated player.
+fn lark() -> Presence {
+    Presence {
         humans: 1,
         actors_present: vec!["pc_lark".to_string()],
-    });
-    world
+    }
 }
 
 fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = support::split_move(line);
     let wall = world.now().last_round_at.clone();
-    match spookery_engine::handle_player_move(world, "pc_lark", verb, target, false, &wall) {
+    match spookery_engine::handle_player_move(world, &lark(), "pc_lark", verb, target, false, &wall)
+    {
         Ok(spookery_engine::MoveOutcome::Committed { outputs, .. }) => {
             outputs.into_iter().next().unwrap()
         }
@@ -265,7 +270,7 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
 
 fn shown_text(world: &Shard) -> String {
     let view = world
-        .perceive("pc_lark")
+        .perceive(&lark(), "pc_lark")
         .unwrap_or_else(|err| panic!("perceive: {}", err.token()));
     view.meters
         .iter()
