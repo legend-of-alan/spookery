@@ -532,7 +532,7 @@ impl<L> World<L> {
         }
     }
 
-    pub(crate) fn take_lock(self, lock: crate::LockGuard) -> World {
+    pub(crate) fn with_lock(self, lock: crate::LockGuard) -> World {
         let World {
             root,
             canon,
