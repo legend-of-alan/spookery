@@ -25,8 +25,12 @@ use super::table;
 
 #[when(expr = "the operator runs ai-gm with an extra argument")]
 fn the_operator_runs_host_with_an_extra_argument(world: &mut World) {
-    let addr = arm_listener(world);
-    table::run(world, &["ai-gm", "extra", "--addr", &addr]);
+    let ([addr, door], listeners) = bind_game_and_agent();
+    world.listeners = listeners;
+    table::run(
+        world,
+        &["ai-gm", "extra", "--addr", &addr, "--mcp-http", &door],
+    );
 }
 
 #[when(expr = "the operator runs ai-gm with nothing listening")]
@@ -44,9 +48,9 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
 
 #[when(expr = "the operator runs ai-gm without {string}")]
 fn the_operator_runs_host_without(world: &mut World, name: String) {
-    let (addr, listeners) = bind_game_and_agent();
+    let ([addr, door], listeners) = bind_game_and_agent();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(["ai-gm", "--addr", &addr]);
+    command.args(["ai-gm", "--addr", &addr, "--mcp-http", &door]);
     apply_model_env(&mut command, Some(&name));
     let output = command
         .output()
@@ -82,56 +86,12 @@ fn nothing_was_dialed(world: &mut World) {
     }
 }
 
-#[when(expr = "the host is pointed at a free loopback address")]
-fn the_host_is_pointed_at_a_free_loopback_address(world: &mut World) {
-    let (game, door) = bind_game_and_door();
-    let addr = game
-        .local_addr()
-        .unwrap_or_else(|err| panic!("local_addr: {err}"))
-        .to_string();
-    let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command
-        .args(["ai-gm", "--addr", &addr])
-        .stdin(Stdio::null());
-    apply_model_env(&mut command, None);
-    let child = command
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap_or_else(|err| panic!("spawn host: {err}"));
-    world.children.push(child);
-    let start = Instant::now();
-    loop {
-        match door.accept() {
-            Ok(_) => {
-                world.scratch = "dialed".to_string();
-                return;
-            }
-            Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => {
-                if start.elapsed() > Duration::from_secs(5) {
-                    panic!("ai-gm did not dial {addr}");
-                }
-                thread::sleep(Duration::from_millis(20));
-            }
-            Err(err) => panic!("accept: {err}"),
-        }
-    }
-}
-
 #[when(expr = "the host is pointed at an overridden agent door")]
 fn the_host_is_pointed_at_an_overridden_agent_door(world: &mut World) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-    listener
-        .set_nonblocking(true)
-        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
-    let door = listener
-        .local_addr()
-        .unwrap_or_else(|err| panic!("local_addr: {err}"))
-        .port();
+    let (listener, http) = free_listener();
     // Port 1's next port is 2, which an ephemeral door is not, so ignoring
     // `--mcp-http` and dialing the next port misses this listener.
     let addr = "127.0.0.1:1".to_string();
-    let http = format!("127.0.0.1:{door}");
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
         .args(["ai-gm", "--addr", &addr, "--mcp-http", &http])
@@ -490,42 +450,24 @@ fn tape_text(pack: &Path) -> String {
     fs::read_to_string(pack.join("state/journal/session.jsonl")).unwrap_or_default()
 }
 
-/// The agent door is the port after the game port. Own both.
-fn bind_game_and_door() -> (TcpListener, TcpListener) {
-    for _ in 0..64 {
-        let game = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
-        let port = game
-            .local_addr()
-            .unwrap_or_else(|err| panic!("local_addr: {err}"))
-            .port();
-        let Some(door_port) = port.checked_add(1) else {
-            continue;
-        };
-        if let Ok(door) = TcpListener::bind(("127.0.0.1", door_port)) {
-            for listener in [&game, &door] {
-                listener
-                    .set_nonblocking(true)
-                    .unwrap_or_else(|err| panic!("nonblocking: {err}"));
-            }
-            return (game, door);
-        }
-    }
-    panic!("no free game port and door");
+/// The game port and the agent door, each a free port of its own. Callers
+/// pass the door with `--mcp-http`, so no step needs two adjacent ports.
+fn bind_game_and_agent() -> ([String; 2], Vec<TcpListener>) {
+    let (game, game_addr) = free_listener();
+    let (door, door_addr) = free_listener();
+    ([game_addr, door_addr], vec![game, door])
 }
 
-fn arm_listener(world: &mut World) -> String {
-    let (addr, listeners) = bind_game_and_agent();
-    world.listeners = listeners;
-    addr
-}
-
-fn bind_game_and_agent() -> (String, Vec<TcpListener>) {
-    let (game, door) = bind_game_and_door();
-    let addr = game
+fn free_listener() -> (TcpListener, String) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap_or_else(|err| panic!("bind: {err}"));
+    listener
+        .set_nonblocking(true)
+        .unwrap_or_else(|err| panic!("nonblocking: {err}"));
+    let addr = listener
         .local_addr()
         .unwrap_or_else(|err| panic!("local_addr: {err}"))
         .to_string();
-    (addr, vec![game, door])
+    (listener, addr)
 }
 
 fn accepted_any(listeners: &[TcpListener]) -> bool {

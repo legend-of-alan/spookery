@@ -111,10 +111,7 @@ impl GmConnection {
 }
 
 fn door_for(addr: std::net::SocketAddr) -> Result<std::net::SocketAddr, Error> {
-    addr.port()
-        .checked_add(1)
-        .map(|p| std::net::SocketAddr::new(addr.ip(), p))
-        .ok_or_else(|| Error::Bad(addr.to_string()))
+    crate::protocol::default_door(addr).ok_or_else(|| Error::Bad(addr.to_string()))
 }
 
 async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
@@ -412,6 +409,13 @@ mod tests {
     fn params_of(line: &str) -> Value {
         let value: Value = serde_json::from_str(line.trim_end()).unwrap();
         value.get("params").cloned().unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn a_fixed_game_port_dials_the_next_port() {
+        let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
+        let door = door_for(game).ok().map(|door| format!("http://{door}/mcp"));
+        assert_eq!(door.as_deref(), Some("http://127.0.0.1:9738/mcp"));
     }
 
     #[test]
