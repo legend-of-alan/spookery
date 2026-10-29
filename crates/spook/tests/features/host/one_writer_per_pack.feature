@@ -27,6 +27,13 @@ Feature: One writer per pack
     And spook run stops
     Then spook verify passes
 
+  Scenario: A dropped writer lock frees the pack while a copy of its handle is open
+    Given a docks table
+    And a writer holds the pack lock
+    And a second handle to the lock file stays open, like a child that has not exec'd yet
+    When the writer drops its lock
+    Then a new writer can lock the pack
+
   Scenario Outline: spook <command> on a path that is not a pack says NOT_IN_SPEC
     When the host runs spook <command> on a missing pack
     Then spook <command> exits non-zero with NOT_IN_SPEC

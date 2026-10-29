@@ -8,10 +8,27 @@ use crate::store::recover::recover;
 
 const RW_LOCK: &str = "state/.pack.rw.lock";
 
+/// A locked file that unlocks on drop. Closing alone is not enough, since a child
+/// spawned by another thread holds a copy of the handle until it execs.
+struct Held(File);
+
+impl Drop for Held {
+    fn drop(&mut self) {
+        let _ = self.0.unlock();
+    }
+}
+
 /// Held for as long as a process has the pack open for writing.
-/// Dropping it closes the file, which releases the lock.
+/// Dropping it unlocks the file, which releases the lock.
 pub struct LockGuard {
-    _file: File,
+    held: Held,
+}
+
+#[cfg(feature = "testing")]
+impl LockGuard {
+    pub(crate) fn file(&self) -> &File {
+        &self.held.0
+    }
 }
 
 /// Held while the writer publishes, so no reader sees a write halfway done.
@@ -29,12 +46,12 @@ pub struct LockGuard {
 /// spookery_engine::testing::append_bundle(root, "{}\n", &write).unwrap();
 /// ```
 pub struct WriteGuard {
-    _file: File,
+    _held: Held,
 }
 
 /// Held while a reader builds a World from the files on disk.
 pub struct ReadGuard {
-    _file: File,
+    _held: Held,
 }
 
 /// Take `state/.pack.lock`, then finish or roll back a commit a crash left half done.
@@ -43,7 +60,7 @@ pub struct ReadGuard {
 pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
     let file = open_lock(root, "state/.pack.lock")?;
     file.try_lock().map_err(|_| Reason::CommitConflict)?;
-    let lock = LockGuard { _file: file };
+    let lock = LockGuard { held: Held(file) };
     recover(root, &write_guard(root, &lock)?)?;
     Ok(lock)
 }
@@ -53,7 +70,7 @@ pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
 pub fn write_guard(root: &Path, _lock: &LockGuard) -> Result<WriteGuard, Reason> {
     let file = open_lock(root, RW_LOCK)?;
     file.lock().map_err(|_| Reason::NotInSpec)?;
-    Ok(WriteGuard { _file: file })
+    Ok(WriteGuard { _held: Held(file) })
 }
 
 /// Wait out a write in progress, then hold the next one off until the guard drops.
@@ -72,7 +89,7 @@ pub fn read_guard(root: &Path) -> Result<ReadGuard, Reason> {
         }
         Err(TryLockError::Error(_)) => return Err(Reason::NotInSpec),
     }
-    Ok(ReadGuard { _file: file })
+    Ok(ReadGuard { _held: Held(file) })
 }
 
 fn open_lock(root: &Path, rel: &str) -> Result<File, Reason> {

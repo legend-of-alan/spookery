@@ -29,6 +29,8 @@ pub struct World {
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_engine::testing::Presence)>,
+    pub lock: Option<spookery_engine::LockGuard>,
+    pub lock_copy: Option<std::fs::File>,
     pub holder: Option<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>,
 }
 

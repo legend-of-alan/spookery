@@ -62,3 +62,26 @@ fn the_host_runs_spook_on_a_missing_pack(world: &mut World, command: String) {
     world.pack = Some(pack);
     table::run(world, &[&command, missing.to_str().unwrap()]);
 }
+
+#[given(expr = "a writer holds the pack lock")]
+fn a_writer_holds_the_pack_lock(world: &mut World) {
+    world.lock = Some(spookery_engine::lock_pack(table::pack(world)).unwrap());
+}
+
+#[given(expr = "a second handle to the lock file stays open, like a child that has not exec'd yet")]
+fn a_second_handle_stays_open(world: &mut World) {
+    let lock = world.lock.as_ref().unwrap();
+    world.lock_copy = Some(spookery_engine::testing::copy_lock_handle(lock));
+}
+
+#[when(expr = "the writer drops its lock")]
+fn the_writer_drops_its_lock(world: &mut World) {
+    world.lock = None;
+}
+
+#[then(expr = "a new writer can lock the pack")]
+fn a_new_writer_can_lock_the_pack(world: &mut World) {
+    if let Err(err) = spookery_engine::lock_pack(table::pack(world)) {
+        panic!("lock_pack: {err}");
+    }
+}
