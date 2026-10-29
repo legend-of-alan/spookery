@@ -1,9 +1,11 @@
 //! Serve the agent door over HTTP.
 
 use std::collections::HashMap;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 
 use futures_core::Stream;
 use rmcp::model::{ClientJsonRpcMessage, GetExtensions, ServerJsonRpcMessage};
@@ -14,6 +16,7 @@ use rmcp::transport::streamable_http_server::session::{
     ServerSseMessage, SessionId, SessionManager,
 };
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::oneshot;
 
 use super::gm_seat::GmSeatHandler;
@@ -26,7 +29,14 @@ pub(super) async fn serve(
     tx: Sender<WorldMsg>,
     next_conn: Arc<AtomicU64>,
 ) {
-    let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn));
+    let (hung_up, mut hang_ups) = unbounded_channel();
+    let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hung_up));
+    let closer = Arc::clone(&sessions);
+    tokio::spawn(async move {
+        while let Some(id) = hang_ups.recv().await {
+            let _ = closer.close_session(&id).await;
+        }
+    });
     let service = StreamableHttpService::new(
         move || Ok(GmSeatHandler::new(tx.clone())),
         sessions,
@@ -49,22 +59,53 @@ fn http_config() -> StreamableHttpServerConfig {
 pub(super) struct SeatConn(pub(super) u64);
 
 /// rmcp's local sessions. Closing one answers only after the shard thread has
-/// freed that session's GM seat.
+/// freed that session's GM seat. A session ends on DELETE or when the GM's
+/// event stream hangs up, never on an idle timer.
 struct SeatSessions {
     inner: LocalSessionManager,
     tx: Sender<WorldMsg>,
     next_conn: Arc<AtomicU64>,
     conns: Mutex<HashMap<SessionId, u64>>,
+    hung_up: UnboundedSender<SessionId>,
 }
 
 impl SeatSessions {
-    fn new(tx: Sender<WorldMsg>, next_conn: Arc<AtomicU64>) -> Self {
+    fn new(
+        tx: Sender<WorldMsg>,
+        next_conn: Arc<AtomicU64>,
+        hung_up: UnboundedSender<SessionId>,
+    ) -> Self {
+        let mut inner = LocalSessionManager::default();
+        inner.session_config.keep_alive = None;
         Self {
-            inner: LocalSessionManager::default(),
+            inner,
             tx,
             next_conn,
             conns: Mutex::new(HashMap::new()),
+            hung_up,
         }
+    }
+}
+
+/// The GM's event stream. The connection under it lives as long as the GM,
+/// so when it is dropped the session is closed.
+struct EventStream<S> {
+    inner: S,
+    id: SessionId,
+    hung_up: UnboundedSender<SessionId>,
+}
+
+impl<S: Stream + Unpin> Stream for EventStream<S> {
+    type Item = S::Item;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<S::Item>> {
+        Pin::new(&mut self.inner).poll_next(cx)
+    }
+}
+
+impl<S> Drop for EventStream<S> {
+    fn drop(&mut self) {
+        let _ = self.hung_up.send(self.id.clone());
     }
 }
 
@@ -133,7 +174,12 @@ impl SessionManager for SeatSessions {
         &self,
         id: &SessionId,
     ) -> Result<impl Stream<Item = ServerSseMessage> + Send + Sync + 'static, Self::Error> {
-        self.inner.create_standalone_stream(id).await
+        let inner = self.inner.create_standalone_stream(id).await?;
+        Ok(EventStream {
+            inner,
+            id: id.clone(),
+            hung_up: self.hung_up.clone(),
+        })
     }
 
     async fn resume(
@@ -265,6 +311,34 @@ mod tests {
         (session, raw)
     }
 
+    /// Opens the GM's event stream and leaves it open. Dropping the socket
+    /// hangs up, like a GM process that dies.
+    async fn open_event_stream(port: u16, session: &str, version: &str) -> tokio::net::TcpStream {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let request = format!(
+            "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nmcp-session-id: {session}\r\nMCP-Protocol-Version: {version}\r\nAccept: text/event-stream\r\n\r\n"
+        );
+        let mut stream = tokio::net::TcpStream::connect(("127.0.0.1", port))
+            .await
+            .unwrap_or_else(|err| panic!("connect: {err}"));
+        stream
+            .write_all(request.as_bytes())
+            .await
+            .unwrap_or_else(|err| panic!("write: {err}"));
+        let mut head = [0u8; 64];
+        let read = stream
+            .read(&mut head)
+            .await
+            .unwrap_or_else(|err| panic!("read: {err}"));
+        let head = String::from_utf8_lossy(&head[..read]).into_owned();
+        assert!(
+            head.contains(" 200 "),
+            "the event stream did not open\n{head}"
+        );
+        stream
+    }
+
     fn read_negotiated_version(body: &str) -> String {
         body.lines()
             .filter_map(|line| line.strip_prefix("data:"))
@@ -278,11 +352,11 @@ mod tests {
             .unwrap_or_else(|| panic!("no protocol version\n{body}"))
     }
 
-    // End to end over HTTP: the handler's drop reaches the shard thread, the
-    // DELETE reply waits for the release, and a GM that reconnects as soon as
-    // DELETE answers is not told the table is full (issue #214).
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn a_gm_can_sit_again_as_soon_as_delete_answers() {
+    async fn bind_door() -> (
+        u16,
+        tokio::sync::mpsc::UnboundedReceiver<()>,
+        mpsc::Sender<()>,
+    ) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .unwrap_or_else(|err| panic!("bind: {err}"));
@@ -291,10 +365,85 @@ mod tests {
             .unwrap_or_else(|err| panic!("addr: {err}"))
             .port();
         let (tx, rx) = mpsc::channel();
-        let (fault_tx, mut fault_seen) = tokio::sync::mpsc::unbounded_channel();
+        let (fault_tx, fault_seen) = tokio::sync::mpsc::unbounded_channel();
         let (let_go, held) = mpsc::channel();
         spawn_fake_world_loop(rx, fault_tx, held);
         tokio::spawn(serve(listener, tx, Arc::new(AtomicU64::new(1))));
+        (port, fault_seen, let_go)
+    }
+
+    async fn sit(port: u16) -> (String, String) {
+        let (session, body) = open(port).await;
+        let session = session.unwrap_or_else(|| panic!("no session\n{body}"));
+        let version = read_negotiated_version(&body);
+        let initialized = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        });
+        let reply = send_http(
+            port,
+            "POST",
+            Some(&session),
+            &version,
+            &initialized.to_string(),
+        )
+        .await;
+        assert!(reply.contains(" 202 "), "initialized was refused\n{reply}");
+        (session, version)
+    }
+
+    // A GM that dies without DELETE hangs up its event stream. That frees
+    // the seat, so the next GM sits at once (issue #313).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_gm_that_hangs_up_frees_the_seat() {
+        let (port, mut fault_seen, let_go) = bind_door().await;
+        let (session, version) = sit(port).await;
+        let events = open_event_stream(port, &session, &version).await;
+
+        drop(events);
+        assert!(
+            fault_seen.recv().await.is_some(),
+            "the seat was never released"
+        );
+        let_go
+            .send(())
+            .unwrap_or_else(|err| panic!("let go: {err}"));
+
+        let (again, body) = open(port).await;
+        assert!(again.is_some(), "the next GM could not sit\n{body}");
+        assert!(
+            !body.contains("The table is full"),
+            "the next GM could not sit\n{body}"
+        );
+    }
+
+    // A GM that holds its event stream open but sends nothing keeps the seat
+    // past rmcp's old 300 s idle window (issue #313).
+    #[tokio::test]
+    async fn a_quiet_gm_keeps_the_seat() {
+        let (port, mut fault_seen, _let_go) = bind_door().await;
+        let (session, version) = sit(port).await;
+        let _events = open_event_stream(port, &session, &version).await;
+
+        tokio::time::pause();
+        tokio::time::sleep(std::time::Duration::from_secs(301)).await;
+        tokio::time::resume();
+
+        let list = serde_json::json!({ "jsonrpc": "2.0", "id": 2, "method": "tools/list" });
+        let reply = send_http(port, "POST", Some(&session), &version, &list.to_string()).await;
+        assert!(
+            reply.contains("\"tools\""),
+            "the quiet GM lost its session\n{reply}"
+        );
+        assert!(fault_seen.try_recv().is_err(), "the quiet GM lost the seat");
+    }
+
+    // End to end over HTTP: the handler's drop reaches the shard thread, the
+    // DELETE reply waits for the release, and a GM that reconnects as soon as
+    // DELETE answers is not told the table is full (issue #214).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_gm_can_sit_again_as_soon_as_delete_answers() {
+        let (port, mut fault_seen, let_go) = bind_door().await;
 
         let (session, body) = open(port).await;
         let session = session.unwrap_or_else(|| panic!("no session\n{body}"));

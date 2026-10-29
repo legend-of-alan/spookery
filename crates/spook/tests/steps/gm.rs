@@ -144,6 +144,25 @@ fn another_gm_joins(world: &mut World) {
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
+#[when(expr = "the GM is killed")]
+fn the_gm_is_killed(world: &mut World) {
+    // Dropping the process kills it, so it never sends DELETE.
+    world.gm.take();
+}
+
+#[when(expr = "another GM sits in that seat")]
+fn another_gm_sits(world: &mut World) {
+    let addr = table::game_addr(world);
+    let door = table::door_addr(world);
+    world.gm = Some(support::spawn(&[
+        "gm",
+        "--addr",
+        &addr,
+        "--mcp-http",
+        &door,
+    ]));
+}
+
 #[when(expr = "the GM queues an unknown move")]
 fn the_gm_queues_an_unknown_move(world: &mut World) {
     write_gm(world, "queue mira not_a_move");

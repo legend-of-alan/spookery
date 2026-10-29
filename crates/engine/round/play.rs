@@ -41,9 +41,9 @@ pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
     Ok(world.take_warning())
 }
 
-/// Play the rounds `hours` of absence earn. A seated table or a short absence plays one.
+/// Play the rounds `hours` of absence earn. A short absence plays one.
 pub(crate) fn play_catch_up(world: &mut World, wall: &str, hours: u64) -> Result<(), Reason> {
-    let rounds = if hours == 0 || world.now().presence.humans > 0 {
+    let rounds = if hours == 0 {
         1
     } else {
         planned_rounds(world.budget(), hours)?.max(1)
