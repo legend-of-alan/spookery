@@ -6,6 +6,8 @@ use spookery_engine::{Reason, World};
 
 const STAMP: &str = "%Y-%m-%dT%H:%M:%SZ";
 
+/// Test support: seconds since a UTC stamp. Not part of the API.
+#[doc(hidden)]
 pub fn seconds_since(last_round_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_round_at, Utc::now())
 }
