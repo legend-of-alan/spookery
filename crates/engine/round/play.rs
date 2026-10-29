@@ -35,7 +35,7 @@ pub struct RoundOutput {
 /// Play one round from the save. `Some` is a warning the host prints: the round
 /// was committed, and the checkpoint bundle was not closed.
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
-    let mut world = crate::round::replay::open_at_tip(path, lock_pack(path)?)?;
+    let mut world = World::resume(path, lock_pack(path)?)?;
     let wall = world.now().last_round_at.clone();
     play_round(&mut world, &wall, false)?;
     Ok(world.take_warning())

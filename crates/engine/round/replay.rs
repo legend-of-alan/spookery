@@ -230,12 +230,12 @@ pub fn replay_journal(
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
-/// Takes the pack lock and hands it to the World.
-pub(crate) fn open_at_tip(path: &Path, lock: LockGuard) -> Result<World, Reason> {
-    rebuild_snapshot(path, &lock).map_err(replay_reason)?;
+/// The caller holds the pack lock, so a crash is repaired and the checkpoint settled.
+pub(crate) fn open_at_tip(path: &Path, lock: &LockGuard) -> Result<World<()>, Reason> {
+    rebuild_snapshot(path, lock).map_err(replay_reason)?;
     let world = peek_at_tip(path)?;
-    crate::commit::settle_open_checkpoint(&world, &lock)?;
-    Ok(world.into_writer(lock))
+    crate::commit::settle_open_checkpoint(&world, lock)?;
+    Ok(world)
 }
 
 /// The journal tip in memory. Writes nothing.

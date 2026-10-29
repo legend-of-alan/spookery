@@ -405,6 +405,12 @@ mod tests {
         );
         assert!(bundle_text.contains("kept"), "{bundle_text}");
         assert!(!memory.exists());
+        let next = Draft::begin(&world);
+        durable::start_trace();
+        commit(&mut world, next, journal_line(1)).unwrap();
+        let marks = durable::take_trace();
+        assert_eq!(labels(&marks), ["file bundle"], "{}", show(&marks));
+        let bundle_bytes = fs::read(&bundle).unwrap();
         drop(world);
         drop(lock_pack(&root).unwrap());
         let opened = World::open(&root).unwrap();
@@ -413,12 +419,6 @@ mod tests {
         assert!(fs::read_to_string(&memory).unwrap().contains("kept"));
         assert!(!root.join("state/.txn").exists());
 
-        let mut again = crate::testing::open(&root);
-        let next = Draft::begin(&again);
-        durable::start_trace();
-        commit(&mut again, next, journal_line(1)).unwrap();
-        let marks = durable::take_trace();
-        assert_eq!(labels(&marks), ["file bundle"], "{}", show(&marks));
         let _ = fs::remove_dir_all(&root);
     }
 
