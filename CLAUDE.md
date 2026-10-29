@@ -66,9 +66,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 
 ## Conventions
 
-- Write the BDD scenario first, then the code. Fix root causes; no sleeps, retries or longer timeouts to make tests pass.
-- "Tick" means game time only. A batch of settled work is a "round". Keep names plain.
-- Issue and PR titles start with an area letter and end with a size, e.g. `R: Refactor the round module [L]`. Areas: `R` rules and rounds, `W` world model and pack schema, `E` engine plumbing (journal, save, replay, verify), `H` host, seats, CLI and agent clients, `N` naming, `D` docs, `T` tests and CI. Sizes: `[S]`, `[M]`, `[L]`.
+- Follow the design principles and the issue and PR title format in `CONTRIBUTING.md`.
 - In PR bodies, use `Closes #N` only for the closing keyword; elsewhere write "issue #N" / "PR #N", never a bare `#N`.
 - Never merge a PR. Never force-push or rebase a pushed branch; merge `main` into it instead.
 - PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/lock.rs`, `engine/store/durable.rs` and `server/gm_tools.rs`.
