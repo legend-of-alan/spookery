@@ -43,7 +43,6 @@ pub struct QueuedMove {
 pub enum MoveOutcome {
     Queued(QueuedMove),
     Committed {
-        advanced: bool,
         outputs: Vec<crate::RoundOutput>,
     },
     Busy {
@@ -78,12 +77,8 @@ pub fn handle_player_move(
     if gm_seated {
         return Ok(MoveOutcome::Queued(queued));
     }
-    let before = world.now().world_time;
     let outputs = world.commit_then_fast_forward(wall)?;
-    Ok(MoveOutcome::Committed {
-        advanced: world.now().world_time != before,
-        outputs,
-    })
+    Ok(MoveOutcome::Committed { outputs })
 }
 
 pub struct GmIntentSpec {

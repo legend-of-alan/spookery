@@ -163,10 +163,10 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     shard.seat_player("pc_rowan").unwrap();
     let wall = wall_now();
     let played = handle_player_move(&mut shard, "pc_rowan", "wait", None, false, &wall).unwrap();
-    let MoveOutcome::Committed { advanced, .. } = played else {
+    let MoveOutcome::Committed { outputs, .. } = played else {
         panic!("wait stayed queued");
     };
-    assert!(advanced);
+    assert!(!outputs.is_empty());
     assert_eq!(shard.now().world_time, 1085);
     assert_eq!(shard.now().round_index, 1);
     drop(shard);

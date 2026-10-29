@@ -571,8 +571,8 @@ fn on_mechanical(
                 out,
             )?;
         }
-        Ok(MoveOutcome::Committed { advanced, outputs }) => {
-            if advanced {
+        Ok(MoveOutcome::Committed { outputs }) => {
+            if !outputs.is_empty() {
                 bump_sleep(restart);
             }
             write_host(out, world, &outputs);
