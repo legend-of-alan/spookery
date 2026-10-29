@@ -408,7 +408,7 @@ POST the initialize body. Send `Accept` and `Content-Type` as in Connect. The re
 }
 ```
 
-The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it. Dropping the session releases it too. Neither of those waits until the seat is free. `close` does. Its result is sent after the seat is free.
+The result's `protocolVersion` is the negotiated version. Use that version on `MCP-Protocol-Version` for the rest of the session, including DELETE. A DELETE that names `2026-07-28` is HTTP 405 and does not release the seat. DELETE with the negotiated version, and the session id, releases it and answers after the seat is free. So does `close`. Hanging up the event stream (the GM's open GET on `/mcp`) also frees the seat. There is no idle timeout.
 
 A second initialize, while a GM is sat, does not sit:
 
