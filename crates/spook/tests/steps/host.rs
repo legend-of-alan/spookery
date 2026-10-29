@@ -236,8 +236,13 @@ fn play_and_host_and_a_stub(world: &mut World) {
     assert!(second.contains("act"), "{second}");
     assert!(second.contains("CASTBODYONLY-FIXTURE"), "{second}");
     assert_chat_post(&second);
-    thread::sleep(Duration::from_millis(200));
+    // The world loop answers this look after any round queued before it.
+    let mark = support::text_of(&play.stdout).len();
+    writeln!(play_in, "look").unwrap();
+    play_in.flush().unwrap();
+    table::wait_suffix(&play.stdout, mark, "Exits:");
     assert_eq!(world_time(&pack), 1085, "travel played two rounds");
+    assert_eq!(posts.lock().unwrap().len(), 2);
     assert!(
         support::text_of(&host_stdout).is_empty(),
         "{}",
@@ -262,7 +267,9 @@ fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
         let tape = tape_text(pack);
         assert!(tape.contains("\"from\":\"gm\""), "{tape}");
         assert!(tape.contains("evening"), "{tape}");
-        thread::sleep(Duration::from_millis(200));
+        // The world loop answers this look after it sent the GM its own say.
+        table::player_send(world, "look", table::LINES);
+        wait_idle(watch, model, 1);
         assert_eq!(model.calls().len(), 1, "a gm say called the model");
         assert!(!watch.busy.load(Ordering::Acquire));
         assert_eq!(world_time(pack), sit);
@@ -288,7 +295,9 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
         table::player_send(world, "travel docks_street", "\"kind\":\"queued\"");
         table::wait_world_time(pack, sit + 5);
         wait_idle(watch, model, 1);
-        thread::sleep(Duration::from_millis(200));
+        // The world loop answers this look after any second round or GM event queued before it.
+        table::player_send(world, "look", table::LINES);
+        wait_idle(watch, model, 1);
         assert_eq!(world_time(pack), sit + 5, "travel ran twice");
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
         assert_eq!(
@@ -326,7 +335,9 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
                 "{}",
                 calls[1].prompt
             );
-            thread::sleep(Duration::from_millis(200));
+            // The world loop answers this look after the epilogue say and any round it caused.
+            table::player_send(world, "look", table::LINES);
+            wait_idle(watch, model, 2);
             assert_eq!(world_time(pack), sit + 5, "epilogue played a round");
             assert_eq!(model.calls().len(), 2);
         },
@@ -343,7 +354,8 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     assert_eq!(world_time(&pack), 1080);
     table::release_gm(world);
     let model = ScriptedModel::new();
-    let (handle, watch) = start_after_gm(world, &model);
+    model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
+    let (handle, watch) = start_host(world, &model);
     table::wait_world_time(&pack, 1085);
     wait_idle(&watch, &model, 1);
     assert_eq!(
@@ -352,7 +364,9 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
         "sit moved the high water"
     );
     assert!(watch.sit_seq.load(Ordering::Acquire) > 0);
-    thread::sleep(Duration::from_millis(200));
+    // The world loop answers this look after the sit's commit and any GM event it sent.
+    table::player_send(world, "look", table::LINES);
+    wait_idle(&watch, &model, 1);
     assert_eq!(world_time(&pack), 1085);
     assert_eq!(model.calls().len(), 1);
     stop_host(world, handle);
@@ -368,17 +382,7 @@ fn with_host(
     table::listen(world, &pack);
     let port = table::live_mut(world).port;
     let model = ScriptedModel::new();
-    let watch = Arc::new(TurnWatch::default());
-    let watch_bg = Arc::clone(&watch);
-    let model_bg = model.clone();
-    let addr = table::game_addr(world).parse().unwrap();
-    let door = table::door_addr(world).parse().unwrap();
-    let runtime = tokio::runtime::Handle::current();
-    let handle = thread::spawn(move || {
-        let mut model = model_bg;
-        runtime.block_on(run_gm(addr, Some(door), &mut model, &watch_bg))
-    });
-    wait_listening(&watch);
+    let (handle, watch) = start_host(world, &model);
     body(world, &pack, port, &model, &watch);
     stop_host(world, handle);
     let _ = fs::remove_dir_all(&pack);
@@ -389,14 +393,13 @@ fn stop_host(world: &mut World, handle: thread::JoinHandle<Result<(), spookery::
     let _ = handle.join();
 }
 
-fn start_after_gm(
+fn start_host(
     world: &mut World,
     model: &ScriptedModel,
 ) -> (
     thread::JoinHandle<Result<(), spookery::ai::Error>>,
     Arc<TurnWatch>,
 ) {
-    model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
     let model_bg = model.clone();

@@ -321,6 +321,10 @@ fn play_joins_the_sample_table(world: &mut World) {
 
 #[when(expr = "play types {string}")]
 fn play_types(world: &mut World, line: String) {
+    play_line(world, &line);
+}
+
+pub(crate) fn play_line(world: &mut World, line: &str) {
     let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
     let stdin = play
         .stdin

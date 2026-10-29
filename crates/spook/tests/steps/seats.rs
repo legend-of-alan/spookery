@@ -414,7 +414,8 @@ fn the_shop_player_speaks_to_the_place(world: &mut World) {
 fn only_the_shop_players_receive_the_say(world: &mut World) {
     assert!(table::actor_text(world, "pc_rowan").contains("the blue rope is tied"));
     assert!(table::actor_text(world, "pc_harbormouse").contains("the blue rope is tied"));
-    std::thread::sleep(std::time::Duration::from_millis(200));
+    // The world loop handled the say before Wren's look, so Wren's seat gets any say first.
+    let _ = table::actor_send(world, "pc_wren", "look", table::LINES);
     let wren = table::actor_text(world, "pc_wren");
     assert!(!wren.contains("the blue rope is tied"), "{wren}");
 }

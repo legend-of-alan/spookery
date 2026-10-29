@@ -407,6 +407,9 @@ pub fn player_text(world: &World) -> String {
     support::text_of(&live_ref(world).player_text)
 }
 
+/// The reply to a player `look`, which takes no round.
+pub const LINES: &str = "\"kind\":\"lines\"";
+
 pub fn player_send(world: &mut World, line: &str, needle: &str) -> (usize, String) {
     let mark = player_write(world, line);
     (mark, wait_player_from(world, mark, needle))
@@ -777,7 +780,7 @@ fn wait_text(slot: &Arc<Mutex<String>>, needle: &str) {
     let _ = wait_suffix(slot, 0, needle);
 }
 
-fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> String {
+pub fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> String {
     let start = Instant::now();
     loop {
         let text = support::text_of(slot);
