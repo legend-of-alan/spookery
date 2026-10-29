@@ -6,6 +6,8 @@ use std::path::Path;
 use crate::error::Reason;
 use crate::store::recover::recover;
 
+const RW_LOCK: &str = "state/.pack.rw.lock";
+
 /// Held for as long as a process has the pack open for writing.
 /// Dropping it closes the file, which releases the lock.
 pub struct LockGuard {
@@ -48,7 +50,7 @@ pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
 /// Wait for readers to finish, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
 pub fn write_guard(root: &Path) -> Result<WriteGuard, Reason> {
-    let file = open_lock(root, "state/.pack.rw.lock")?;
+    let file = open_lock(root, RW_LOCK)?;
     file.lock().map_err(|_| Reason::CommitConflict)?;
     Ok(WriteGuard { _file: file })
 }
@@ -56,9 +58,9 @@ pub fn write_guard(root: &Path) -> Result<WriteGuard, Reason> {
 /// Wait out a write in progress, then hold the next one off until the guard drops.
 /// An existing lock file opens read-only, so a reader needs no write access to `state/`.
 pub fn read_guard(root: &Path) -> Result<ReadGuard, Reason> {
-    let file = match File::open(root.join("state/.pack.rw.lock")) {
+    let file = match File::open(root.join(RW_LOCK)) {
         Ok(file) => file,
-        Err(_) => open_lock(root, "state/.pack.rw.lock")?,
+        Err(_) => open_lock(root, RW_LOCK)?,
     };
     match file.try_lock_shared() {
         Ok(()) => {}
