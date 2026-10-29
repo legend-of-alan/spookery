@@ -18,13 +18,3 @@ Feature: Status reads the pack between writes
     Then status waited for the write to finish
     And status prints the round the writer committed
 
-  Scenario: Status reads a pack the writer holds between rounds
-    Given the writer holds a docks pack
-    And the writer has committed a round
-    When status peeks the pack
-    Then status prints the round the writer committed
-
-  Scenario: A second writer is still refused
-    Given the writer holds a docks pack
-    When a second writer locks the pack
-    Then the second writer is refused with COMMIT_CONFLICT

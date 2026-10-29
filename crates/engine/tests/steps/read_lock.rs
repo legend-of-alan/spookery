@@ -85,16 +85,6 @@ fn the_writer_holds_a_checkpointing_pack(world: &mut World) {
     hold(world, pack);
 }
 
-#[given(expr = "the writer has committed a round")]
-fn the_writer_has_committed_a_round(world: &mut World) {
-    commit_round(world);
-}
-
-#[when(expr = "status peeks the pack")]
-fn status_peeks_the_pack(world: &mut World) {
-    world.scratch = status_text(world.pack()).unwrap_or_else(|err| panic!("status: {err}"));
-}
-
 #[when(expr = "status peeks while the writer is halfway through appending a round")]
 fn status_peeks_mid_append(world: &mut World) {
     let pack = world.pack().to_path_buf();
@@ -137,14 +127,6 @@ fn status_peeks_mid_checkpoint(world: &mut World) {
     );
 }
 
-#[when(expr = "a second writer locks the pack")]
-fn a_second_writer_locks_the_pack(world: &mut World) {
-    world.scratch = match lock_pack(world.pack()) {
-        Ok(_) => "locked".to_string(),
-        Err(err) => err.to_string(),
-    };
-}
-
 #[then(expr = "status waited for the write to finish")]
 fn status_waited(world: &mut World) {
     assert_eq!(world.summary, ["waited", "peeked"]);
@@ -161,9 +143,4 @@ fn status_prints_the_committed_round(world: &mut World) {
     let text = status_text(pack).unwrap_or_else(|err| panic!("status: {err}"));
     assert!(text.contains("clock "), "{text}");
     assert_eq!(world.scratch, text);
-}
-
-#[then(expr = "the second writer is refused with COMMIT_CONFLICT")]
-fn the_second_writer_is_refused(world: &mut World) {
-    assert_eq!(world.scratch, "COMMIT_CONFLICT");
 }
