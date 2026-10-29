@@ -380,7 +380,7 @@ fn every_closed_bundle_is_made_unreadable(world: &mut World) {
 
 #[then(expr = "the table still opens")]
 fn the_table_still_opens(world: &mut World) {
-    spookery_engine::World::peek(table::pack(world)).unwrap_or_else(|err| panic!("open: {err}"));
+    resume_as_writer(table::pack(world));
 }
 
 #[then(expr = "stderr names that bundle")]

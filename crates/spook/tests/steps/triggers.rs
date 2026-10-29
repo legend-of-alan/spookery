@@ -1257,7 +1257,7 @@ fn play(
 }
 
 fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played {
-    let mut round = super::rules::open_pack(pack);
+    let (_lock, mut round) = super::rules::open_pack(pack);
     if let Some(presence) = remembered_presence(scenario, pack) {
         round.set_presence(presence);
     }

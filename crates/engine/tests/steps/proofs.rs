@@ -395,7 +395,7 @@ Rowan.
     shard
         .catch_up(&wall, hours)
         .unwrap_or_else(|err| panic!("catch-up: {err}"));
-    let saved = Shard::peek(&pack).unwrap_or_else(|err| panic!("resume: {err}"));
+    let saved = Shard::peek(&pack).unwrap_or_else(|err| panic!("peek: {err}"));
     let now = saved.now();
     assert_eq!(now.state_rev, rounds, "{hours} hours");
     assert_eq!(now.round_index, rounds);
