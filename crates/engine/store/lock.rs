@@ -1,6 +1,6 @@
 //! Lock the pack for one writer, and keep readers out while it writes.
 
-use std::fs::{File, OpenOptions, TryLockError};
+use std::fs::{File, OpenOptions};
 use std::path::Path;
 
 use crate::error::Reason;
@@ -8,13 +8,56 @@ use crate::store::recover::recover;
 
 const RW_LOCK: &str = "state/.pack.rw.lock";
 
-/// A locked file that unlocks on drop. Closing alone is not enough, since a child
-/// spawned by another thread holds a copy of the handle until it execs.
-struct LockedFile(File);
+use locked::LockedFile;
 
-impl Drop for LockedFile {
-    fn drop(&mut self) {
-        let _ = self.0.unlock();
+mod locked {
+    use std::fs::{File, TryLockError};
+
+    use crate::error::Reason;
+
+    /// A locked file that unlocks on drop. Closing alone is not enough, since a child
+    /// spawned by another thread holds a copy of the handle until it execs.
+    /// The field is private to this module, so the only way to build one is a
+    /// constructor below that takes the lock first.
+    pub(super) struct LockedFile(File);
+
+    impl LockedFile {
+        /// Lock without waiting. A lock held elsewhere is `COMMIT_CONFLICT`.
+        pub(super) fn try_exclusive(file: File) -> Result<Self, Reason> {
+            file.try_lock().map_err(|_| Reason::CommitConflict)?;
+            Ok(Self(file))
+        }
+
+        /// Wait for the exclusive lock.
+        pub(super) fn exclusive(file: File) -> Result<Self, Reason> {
+            file.lock().map_err(|_| Reason::NotInSpec)?;
+            Ok(Self(file))
+        }
+
+        /// Wait for a shared lock, noting the wait for tests.
+        pub(super) fn shared(file: File) -> Result<Self, Reason> {
+            match file.try_lock_shared() {
+                Ok(()) => {}
+                Err(TryLockError::WouldBlock) => {
+                    #[cfg(feature = "testing")]
+                    super::note_reader_wait();
+                    file.lock_shared().map_err(|_| Reason::NotInSpec)?;
+                }
+                Err(TryLockError::Error(_)) => return Err(Reason::NotInSpec),
+            }
+            Ok(Self(file))
+        }
+
+        #[cfg(feature = "testing")]
+        pub(super) fn file(&self) -> &File {
+            &self.0
+        }
+    }
+
+    impl Drop for LockedFile {
+        fn drop(&mut self) {
+            let _ = self.0.unlock();
+        }
     }
 }
 
@@ -27,7 +70,7 @@ pub struct LockGuard {
 #[cfg(feature = "testing")]
 impl LockGuard {
     pub(crate) fn file(&self) -> &File {
-        &self._file.0
+        self._file.file()
     }
 }
 
@@ -59,9 +102,8 @@ pub struct ReadGuard {
 /// A path with no `state/` is `NOT_IN_SPEC`. A second writer is refused with `COMMIT_CONFLICT`.
 pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
     let file = open_lock(root, "state/.pack.lock")?;
-    file.try_lock().map_err(|_| Reason::CommitConflict)?;
     let lock = LockGuard {
-        _file: LockedFile(file),
+        _file: LockedFile::try_exclusive(file)?,
     };
     recover(root, &write_guard(root, &lock)?)?;
     Ok(lock)
@@ -70,10 +112,8 @@ pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
 /// Wait for readers to finish, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
 pub fn write_guard(root: &Path, _lock: &LockGuard) -> Result<WriteGuard, Reason> {
-    let file = open_lock(root, RW_LOCK)?;
-    file.lock().map_err(|_| Reason::NotInSpec)?;
     Ok(WriteGuard {
-        _file: LockedFile(file),
+        _file: LockedFile::exclusive(open_lock(root, RW_LOCK)?)?,
     })
 }
 
@@ -84,17 +124,8 @@ pub fn read_guard(root: &Path) -> Result<ReadGuard, Reason> {
         Ok(file) => file,
         Err(_) => open_lock(root, RW_LOCK)?,
     };
-    match file.try_lock_shared() {
-        Ok(()) => {}
-        Err(TryLockError::WouldBlock) => {
-            #[cfg(feature = "testing")]
-            note_reader_wait();
-            file.lock_shared().map_err(|_| Reason::NotInSpec)?;
-        }
-        Err(TryLockError::Error(_)) => return Err(Reason::NotInSpec),
-    }
     Ok(ReadGuard {
-        _file: LockedFile(file),
+        _file: LockedFile::shared(file)?,
     })
 }
 
