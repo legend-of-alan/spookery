@@ -36,6 +36,12 @@ pub use player::{
     ExitView, ItemStack, KnownFact, MessageView, MeterView, Missing, PlayerMessage, ViewScene,
 };
 
+/// The agent door for a fixed game port: the next port, on the same address.
+pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> {
+    let port = game.port().checked_add(1)?;
+    Some(std::net::SocketAddr::new(game.ip(), port))
+}
+
 pub fn refusal(code: &str) -> String {
     named_refusal(code, None)
 }
