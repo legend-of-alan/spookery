@@ -235,7 +235,7 @@ pub(crate) fn open_at_tip(path: &Path, lock: LockGuard) -> Result<World, Reason>
     rebuild_snapshot(path, &lock).map_err(replay_reason)?;
     let world = peek_at_tip(path)?;
     crate::commit::settle_open_checkpoint(&world, &lock)?;
-    Ok(world.with_lock(lock))
+    Ok(world.into_writer(lock))
 }
 
 /// The journal tip in memory. Writes nothing.

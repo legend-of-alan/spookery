@@ -73,7 +73,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
     let mut world = World::open(pack)
         .map_err(|err| err.to_string())?
-        .with_lock(lock);
+        .into_writer(lock);
     let grit = VERBS.iter().position(|verb| *verb == "grit").expect("grit");
     for (index, round) in rounds.iter().enumerate() {
         for plan in &round.moves {

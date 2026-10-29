@@ -175,7 +175,7 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
         crate::World::open(pack)
             .unwrap_or_else(|err| panic!("World::open {}: {err}", pack.display()))
-            .with_lock(lock)
+            .into_writer(lock)
     }
 
     pub fn now_of(pack: &Path) -> crate::model::Now {

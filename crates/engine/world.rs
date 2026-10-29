@@ -532,7 +532,10 @@ impl<L> World<L> {
         }
     }
 
-    pub(crate) fn with_lock(self, lock: crate::LockGuard) -> World {
+    /// Turn a read-only World into the pack's writer by taking a lock already held.
+    /// Test helpers open with `World::open` (save only, no journal replay) on purpose, since tests
+    /// like `a_reopen_keeps_every_journal_record_the_commit_wrote` write synthetic lines `resume` would replay.
+    pub(crate) fn into_writer(self, lock: crate::LockGuard) -> World {
         let World {
             root,
             canon,
