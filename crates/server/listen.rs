@@ -49,10 +49,9 @@ impl Config {
 }
 
 /// Bind both ports, report them and serve on the caller's runtime until
-/// `shutdown` resolves. `lock` is the pack lock the caller took before it
-/// opened `world`; it is held until the world loop ends. Returns the world's result.
+/// `shutdown` resolves. `world` owns the pack lock until the world loop ends.
+/// Returns the world's result.
 pub async fn serve(
-    lock: spookery_engine::LockGuard,
     mut world: spookery_engine::World,
     mut config: Config,
     shutdown: impl Future<Output = ()>,
@@ -106,7 +105,6 @@ pub async fn serve(
         });
     }
     let mut world_loop = tokio::task::spawn_blocking(move || {
-        let _lock = lock;
         world_loop::run_world_loop(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
     });
     // A world loop that ends on its own (a store fault) ends `serve` too.

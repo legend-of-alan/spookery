@@ -21,7 +21,7 @@ use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, TempPack};
 use crate::model::Presence;
-use crate::round::play::{play_round, RoundKind};
+use crate::round::play::replay_round;
 use crate::round::replay::first_effect_difference;
 use crate::testing::{copy_dir, fresh_dir, temp_pack};
 
@@ -63,15 +63,13 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     fs::write(pack.0.join("state/save.yaml"), snapshot).map_err(|err| fail_msg(err.to_string()))?;
     let mut world = World::open(&pack.0).map_err(|err| fail_msg(err.to_string()))?;
     for record in &round_records {
-        let effects = play_round(
+        let effects = replay_round(
             &mut world,
             &record.last_round_at,
-            RoundKind::Replay {
-                queue: &record.intents,
-                presence: Presence {
-                    humans: record.presence_humans,
-                    actors_present: record.actors_present.clone(),
-                },
+            &record.intents,
+            Presence {
+                humans: record.presence_humans,
+                actors_present: record.actors_present.clone(),
             },
         )
         .map(|output| output.effects)

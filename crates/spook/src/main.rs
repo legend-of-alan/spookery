@@ -126,7 +126,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let door = door_addr(mcp_http)?;
             // Lock before resume: taking the lock repairs a crashed pack, which is a write.
             let lock = spookery_engine::lock_pack(&pack).map_err(|e| e.to_string())?;
-            let world = spookery_engine::World::resume(&pack, &lock).map_err(|e| e.to_string())?;
+            let world = spookery_engine::World::resume(&pack, lock).map_err(|e| e.to_string())?;
             let mut config = spookery_server::Config::new(addr);
             config.door = door;
             if let Some(ms) = std::env::var("SPOOK_HELLO_TIMEOUT_MS")
@@ -150,7 +150,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                     std::process::exit(130);
                 });
             };
-            spookery_server::serve(lock, world, config, shutdown)
+            spookery_server::serve(world, config, shutdown)
                 .await
                 .map_err(|e| e.to_string())
         }
@@ -181,9 +181,8 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "server")]
         Command::Status { pack } => {
-            // Status reads without the lock, so it must not write.
-            let world = spookery_engine::World::peek(&pack).map_err(|e| e.to_string())?;
-            let text = world.host_summary().map_err(|e| e.to_string())?;
+            // Status holds a read guard, not the pack lock, and writes nothing but that lock file.
+            let text = spookery_engine::World::peek_summary(&pack).map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
         }

@@ -120,7 +120,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
     let pack = world.pack();
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut opened =
-        spookery_engine::World::resume(pack, &lock).unwrap_or_else(|err| panic!("resume: {err}"));
+        spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     opened.set_presence(Presence {
         humans: 1,
         actors_present: vec![actor.to_string()],

@@ -15,6 +15,7 @@ use crate::round::log::RoundLine;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 pub use crate::store::durable::atomic_publish;
 use crate::store::durable::{fsync_dir, fsync_file};
+use crate::store::lock::{lock_write, LockGuard, WriteGuard};
 use crate::store::recover::close_finished;
 use crate::world::World;
 
@@ -31,7 +32,8 @@ pub fn commit(
     mut draft: Draft,
     line: RoundLine,
 ) -> Result<CommitOutcome, Reason> {
-    settle_open_checkpoint(world)?;
+    let write = lock_write(&world.root, &world.lock)?;
+    settle(world, &write)?;
     bump_state_rev(&mut draft)?;
     let now_bytes = emit_save(&draft.state)?.into_bytes();
     let line = seal(line, world.now.state_rev, &draft, &now_bytes, &world.root)?;
@@ -42,11 +44,11 @@ pub fn commit(
     } else {
         (line, None)
     };
-    let mut log_path = append_bundle(&world.root, &payload)?;
+    let mut log_path = append_bundle(&world.root, &payload, &write)?;
     world.now = draft.state;
     world.queue.clear();
     if let Some(chain) = chain {
-        if finish_checkpoint(world, &now_bytes, &chain) {
+        if finish_checkpoint(world, &now_bytes, &chain, &write) {
             if !log_path.ends_with(".gz") {
                 log_path.push_str(".gz");
             }
@@ -61,7 +63,7 @@ pub fn commit(
 }
 
 /// The journal already has this round. Keep the new state in memory.
-pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason> {
+pub fn keep_in_memory(world: &mut World<()>, mut draft: Draft) -> Result<(), Reason> {
     bump_state_rev(&mut draft)?;
     world.now = draft.state;
     Ok(())
@@ -81,7 +83,12 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
 /// `edited` means `now` is a hand edit of the checkpoint head. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. The caller holds the pack lock.
-pub fn migrate_journal(root: &Path, now: Now, edited: bool) -> Result<(), Reason> {
+pub fn migrate_journal(
+    root: &Path,
+    now: Now,
+    edited: bool,
+    lock: &LockGuard,
+) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -105,19 +112,27 @@ pub fn migrate_journal(root: &Path, now: Now, edited: bool) -> Result<(), Reason
         &added,
         edited,
     );
+    let write = lock_write(root, lock)?;
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&entry, &prev);
     if !edited {
-        append_bundle(root, &line)?;
+        append_bundle(root, &line, &write)?;
         return Ok(());
     }
     // The snapshot lands before the record, so a crash after the append still replays.
     atomic_publish(&journal::checkpoint_path(root, now.state_rev), &emitted)?;
     let (payload, chain) = seal_checkpoint(line, &now, &emitted)?;
-    append_bundle(root, &payload)?;
-    store_checkpoint(root, &emitted, now.state_rev, now.round_index, &chain)?;
+    append_bundle(root, &payload, &write)?;
+    store_checkpoint(
+        root,
+        &emitted,
+        now.state_rev,
+        now.round_index,
+        &chain,
+        &write,
+    )?;
     // The migrate is committed. A bundle left open is closed by the next append.
-    let _ = close_finished(root);
+    let _ = close_finished(root, &write);
     Ok(())
 }
 
@@ -168,9 +183,9 @@ fn checkpoint_due(every: u64, round_index: u64) -> bool {
     every > 0 && round_index > 0 && round_index.is_multiple_of(every)
 }
 
-fn append_bundle(root: &Path, payload: &str) -> Result<String, Reason> {
+pub fn append_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<String, Reason> {
     // A failed close must not refuse this round or append into the closed bundle.
-    let _ = close_finished(root);
+    let _ = close_finished(root, write);
     let path = journal::next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
@@ -204,6 +219,7 @@ fn store_checkpoint(
     state_rev: u64,
     round_index: u64,
     chain: &str,
+    write: &WriteGuard,
 ) -> Result<(), Reason> {
     let head = serde_json::to_string(&journal::BundleHead {
         rules_rev: crate::store::RULES_REV,
@@ -217,7 +233,7 @@ fn store_checkpoint(
         &root.join("state").join(journal::head_rel()),
         head.as_bytes(),
     )?;
-    snapshot_memories(root)?;
+    snapshot_memories(root, write)?;
     let state = root.join("state");
     let save = state.join("save.yaml");
     let base = state.join(journal::base_rel());
@@ -237,15 +253,19 @@ fn store_checkpoint(
 
 /// The journal line is already durable. `false` means `save.yaml` or the gzip did
 /// not finish. The round stays committed either way.
-fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> bool {
+fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str, write: &WriteGuard) -> bool {
     let (rev, round) = (world.now.state_rev, world.now.round_index);
-    store_checkpoint(&world.root, now_bytes, rev, round, chain).is_ok()
-        && close_finished(&world.root).is_ok()
+    store_checkpoint(&world.root, now_bytes, rev, round, chain, write).is_ok()
+        && close_finished(&world.root, write).is_ok()
 }
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
-pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
+pub fn settle_open_checkpoint<L>(world: &World<L>, lock: &LockGuard) -> Result<(), Reason> {
+    settle(world, &lock_write(&world.root, lock)?)
+}
+
+fn settle<L>(world: &World<L>, write: &WriteGuard) -> Result<(), Reason> {
     let Some(path) = journal::find_live_bundle(&world.root) else {
         return Ok(());
     };
@@ -271,13 +291,14 @@ pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
             mark.state_rev,
             mark.round_index,
             &mark.chain,
+            write,
         )?;
     }
-    let _ = close_finished(&world.root);
+    let _ = close_finished(&world.root, write);
     Ok(())
 }
 
-fn snapshot_memories(root: &Path) -> Result<(), Reason> {
+fn snapshot_memories(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
     let entries = journal::read_live(root).map_err(|_| Reason::Schema)?;
     let mut lines = Vec::new();
     for entry in entries {
@@ -345,7 +366,7 @@ mod tests {
     #[test]
     fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
         let root = temp_pack("journal-reopen");
-        let mut world = World::open(&root).unwrap();
+        let mut world = crate::testing::open(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let mut draft = Draft::begin(&world);
         draft.memories.push(MemoryLine {
@@ -392,7 +413,7 @@ mod tests {
         assert!(fs::read_to_string(&memory).unwrap().contains("kept"));
         assert!(!root.join("state/.txn").exists());
 
-        let mut again = World::open(&root).unwrap();
+        let mut again = crate::testing::open(&root);
         let next = Draft::begin(&again);
         durable::start_trace();
         commit(&mut again, next, journal_line(1)).unwrap();
@@ -406,7 +427,7 @@ mod tests {
         let root = temp_pack("gzip-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
-        let mut world = World::open(&root).unwrap();
+        let mut world = crate::testing::open(&root);
         let mut draft = Draft::begin(&world);
         draft.state.round_index = 1;
         durable::fail_next(".jsonl.gz.tmp");
@@ -447,7 +468,7 @@ mod tests {
         let root = temp_pack("save-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
-        let mut world = World::open(&root).unwrap();
+        let mut world = crate::testing::open(&root);
         let mut first = Draft::begin(&world);
         first.state.round_index = 1;
         commit(&mut world, first, journal_line(1)).unwrap();

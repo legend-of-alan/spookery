@@ -371,7 +371,7 @@ rules:
 fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     let pack = world.pack().to_path_buf();
     let lock = spookery_engine::lock_pack(&pack).unwrap();
-    let mut table = spookery_engine::World::resume(&pack, &lock).unwrap_or_else(|e| panic!("{e}"));
+    let mut table = spookery_engine::World::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
     table.set_presence(support::Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
@@ -534,7 +534,7 @@ fn play_queued(
 ) -> (spookery_engine::Now, Vec<MoveReport>, Value) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut world =
-        spookery_engine::World::resume(pack, &lock).unwrap_or_else(|err| panic!("open: {err}"));
+        spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let wall = world.now().last_round_at.clone();
     for intent in intents {
         world.queue(intent);

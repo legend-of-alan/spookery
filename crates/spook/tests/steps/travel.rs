@@ -285,7 +285,7 @@ fn the_next_round_accepts_a_move(world: &mut World) {
 )]
 fn rounds_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
-    let mut seated_world = spookery_engine::World::open(&seated).unwrap();
+    let mut seated_world = spookery_engine::testing::open(&seated);
     seated_world.set_presence(spookery_engine::testing::Presence {
         humans: 1,
         actors_present: Vec::new(),

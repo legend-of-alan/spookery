@@ -295,7 +295,7 @@ fn the_table_is_opened_again(world: &mut World) {
 /// Take the lock the way a host does, which recovers a crashed pack, then resume it.
 fn resume_as_writer(pack: &std::path::Path) {
     let lock = spookery_engine::lock_pack(pack).unwrap_or_else(|err| panic!("lock: {err}"));
-    spookery_engine::World::resume(pack, &lock).unwrap_or_else(|err| panic!("resume: {err}"));
+    spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
 }
 
 #[then(expr = "the torn tail is gone")]

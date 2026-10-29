@@ -172,7 +172,7 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     drop(shard);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     let lock = spookery_engine::lock_pack(&pack).unwrap();
-    let mut again = Shard::resume(&pack, &lock).unwrap_or_else(|err| panic!("resume: {err}"));
+    let mut again = Shard::resume(&pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     again.seat_player("pc_rowan").unwrap();
     let wall = again.now().last_round_at.clone();
     again

@@ -10,8 +10,8 @@ use spookery_engine::testing::{
     PlaceLive, Presence,
 };
 use spookery_engine::{
-    emit_save, handle_player_move, lock_pack, play_pack_once, GmIntentSpec, Message, MeterLive,
-    MoveOutcome, MoveReport, Now, Outcome, RunState, World as Shard,
+    emit_save, handle_player_move, play_pack_once, GmIntentSpec, Message, MeterLive, MoveOutcome,
+    MoveReport, Now, Outcome, RunState, World as Shard,
 };
 
 use crate::World;
@@ -491,12 +491,6 @@ fn an_open_transaction_writes_nothing() {
     let _ = fs::remove_dir_all(&dropped);
 }
 
-/// Take the lock the way a host does, which recovers a crashed pack, then open it.
-fn open_as_writer(pack: &Path) -> Shard {
-    let _lock = lock_pack(pack).unwrap_or_else(|err| panic!("lock {}: {err}", pack.display()));
-    open(pack)
-}
-
 fn an_incomplete_transaction_is_discarded() {
     let incomplete = support::temp_pack("incomplete");
     let now_path = incomplete.join("state/save.yaml");
@@ -504,7 +498,7 @@ fn an_incomplete_transaction_is_discarded() {
     let txn = incomplete.join("state/.txn");
     fs::create_dir_all(txn.join("prev")).unwrap();
     fs::write(txn.join("prev/save.yaml"), b"not-yaml\n").unwrap();
-    let opened = open_as_writer(&incomplete);
+    let opened = open(&incomplete);
     assert_eq!(fs::read(&now_path).unwrap(), before);
     assert_eq!(
         lamp_oil(opened.now()),
@@ -533,7 +527,7 @@ fn the_same_revision_restores_the_previous_save() {
     fs::create_dir_all(txn.join("prev")).unwrap();
     fs::write(txn.join("prev/save.yaml"), &original).unwrap();
     fs::write(txn.join("COMPLETE"), b"").unwrap();
-    let opened = open_as_writer(&same);
+    let opened = open(&same);
     assert_eq!(fs::read(&now_path).unwrap(), dirty_bytes.as_bytes());
     assert_eq!(lamp_oil(opened.now()), 999);
     assert!(!txn.exists());
@@ -572,7 +566,7 @@ fn the_next_revision_keeps_the_new_save() {
         "{\"round_index\":1,\"text\":\"kept-line\"}\n{\"round_index\":99,\"text\":\"orphan-line\"}\n",
     )
     .unwrap();
-    let opened = open_as_writer(&next);
+    let opened = open(&next);
     assert_eq!(opened.now().state_rev, live.state_rev);
     assert_eq!(lamp_oil(opened.now()), kept_oil);
     assert!(!txn.exists());
@@ -718,7 +712,7 @@ rules:
 fn tool_scope() {
     let pack = support::temp_pack("scope");
     let before = snapshot(&pack);
-    let shard = open(&pack);
+    let shard = Shard::open(&pack).unwrap();
     let call = |as_viewer: &str, budget: usize| shard.perceive_budget(as_viewer, budget);
     let kernel = shard.perceive("mira").unwrap();
     assert_eq!(call("mira", 800).unwrap(), kernel);

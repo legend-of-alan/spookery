@@ -6,20 +6,13 @@ use crate::Reason;
 
 use crate::round::dice::round_seed;
 use crate::round::log::{RoundLine, RoundLog};
-use crate::round::play::{RoundKind, RoundOutput};
+use crate::round::play::RoundOutput;
 use crate::round::stage::advance::Clock;
 use crate::round::stage::deliver::Delivered;
 
-pub(crate) fn run(
-    world: &mut World,
-    draft: Draft,
-    kind: &RoundKind<'_>,
-    wall: &str,
-    clock: Clock,
-    mut log: RoundLog,
-    delivered: Delivered,
-) -> Result<RoundOutput, Reason> {
-    let mut output = RoundOutput {
+/// What the round showed. A live round adds its commit outcome.
+pub(crate) fn take_output(log: &mut RoundLog, delivered: Delivered) -> RoundOutput {
+    RoundOutput {
         reports: std::mem::take(&mut log.reports),
         dice: log.dice.clone(),
         summary: delivered.summary,
@@ -27,22 +20,30 @@ pub(crate) fn run(
         seen: delivered.seen,
         effects: log.effects.clone(),
         outcome: None,
-    };
-    match kind {
-        RoundKind::Live { fast_forward } => {
-            let line = RoundLine {
-                presence: draft.now().presence.clone(),
-                seed: round_seed(&draft.now().shard_id, clock.round_index),
-                clock,
-                wall: wall.to_string(),
-                fast_forward: *fast_forward,
-                log,
-                queue: world.queued_intents().to_vec(),
-            };
-            output.outcome = Some(crate::commit::commit(world, draft, line)?);
-        }
-        RoundKind::Replay { .. } => crate::commit::keep_in_memory(world, draft)?,
     }
+}
+
+/// Write the round line and commit it. The World owns the pack lock.
+pub(crate) fn commit_round(
+    world: &mut World,
+    draft: Draft,
+    wall: &str,
+    clock: Clock,
+    mut log: RoundLog,
+    delivered: Delivered,
+    fast_forward: bool,
+) -> Result<RoundOutput, Reason> {
+    let mut output = take_output(&mut log, delivered);
+    let line = RoundLine {
+        presence: draft.now().presence.clone(),
+        seed: round_seed(&draft.now().shard_id, clock.round_index),
+        clock,
+        wall: wall.to_string(),
+        fast_forward,
+        log,
+        queue: world.queued_intents().to_vec(),
+    };
+    output.outcome = Some(crate::commit::commit(world, draft, line)?);
     Ok(output)
 }
 

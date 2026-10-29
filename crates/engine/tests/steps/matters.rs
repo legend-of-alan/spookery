@@ -223,17 +223,18 @@ fn one_line(text: &str) -> &str {
 }
 
 fn seat(pack: &Path) -> Shard {
-    let mut world = match Shard::open(pack) {
-        Ok(world) => world,
-        Err(err) => {
-            let report = spookery_engine::check_pack(pack)
-                .iter()
-                .map(|diag| diag.report_line())
-                .collect::<Vec<_>>()
-                .join("\n");
-            panic!("open: {}\n{report}", err.token());
-        }
-    };
+    let mut world =
+        match spookery_engine::lock_pack(pack).and_then(|lock| Shard::resume(pack, lock)) {
+            Ok(world) => world,
+            Err(err) => {
+                let report = spookery_engine::check_pack(pack)
+                    .iter()
+                    .map(|diag| diag.report_line())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                panic!("open: {}\n{report}", err.token());
+            }
+        };
     world.set_presence(Presence {
         humans: 1,
         actors_present: vec!["pc_lark".to_string()],

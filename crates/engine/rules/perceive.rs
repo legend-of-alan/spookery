@@ -35,11 +35,15 @@ pub struct View {
     pub status: String,
 }
 
-pub fn perceive(world: &World, as_arg: &str) -> Result<View, Reason> {
+pub fn perceive<L>(world: &World<L>, as_arg: &str) -> Result<View, Reason> {
     perceive_budget(world, as_arg, BUDGET_TOKENS)
 }
 
-pub fn perceive_budget(world: &World, as_arg: &str, budget_tokens: usize) -> Result<View, Reason> {
+pub fn perceive_budget<L>(
+    world: &World<L>,
+    as_arg: &str,
+    budget_tokens: usize,
+) -> Result<View, Reason> {
     perceive_at_budget(world.canon(), world.now(), as_arg, budget_tokens)
 }
 

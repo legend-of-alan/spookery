@@ -13,7 +13,7 @@ use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
 
-use crate::round::play::{play_round, RoundKind};
+use crate::round::play::play_round;
 use crate::round::replay::replay_journal;
 
 pub(crate) const CASES: u32 = 64;
@@ -70,7 +70,10 @@ fn pick_move() -> impl Strategy<Value = MovePlan> {
 /// Queue the moves `gate` accepts, then play the round. Habits are gathered with them.
 pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), String> {
     arm_check(pack)?;
-    let mut world = World::open(pack).map_err(|err| err.to_string())?;
+    let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
+    let mut world = World::open(pack)
+        .map_err(|err| err.to_string())?
+        .take_lock(lock);
     let grit = VERBS.iter().position(|verb| *verb == "grit").expect("grit");
     for (index, round) in rounds.iter().enumerate() {
         for plan in &round.moves {
@@ -89,14 +92,8 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
             );
         }
         let wall = world.now().last_round_at.clone();
-        play_round(
-            &mut world,
-            &wall,
-            RoundKind::Live {
-                fast_forward: false,
-            },
-        )
-        .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
+        play_round(&mut world, &wall, false)
+            .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
 }

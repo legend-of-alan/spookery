@@ -57,7 +57,19 @@ pub mod testing {
     };
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
+    pub use crate::store::commit::append_bundle;
+    pub use crate::store::lock::{on_reader_wait, WriteGuard};
+
+    /// The write guard of the pack `world` holds the lock on.
+    pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
+        crate::store::lock::lock_write(world.root(), &world.lock)
+    }
     pub use crate::store::RULES_REV;
+
+    /// A second handle on the lock file, like the copy a spawned child holds until it execs.
+    pub fn clone_lock_file(world: &crate::World) -> std::fs::File {
+        world.lock.file().try_clone().unwrap()
+    }
 
     pub const HOST: &[&str] = &["tests/features/seats"];
 
@@ -81,7 +93,7 @@ pub mod testing {
         };
     }
 
-    impl crate::World {
+    impl<L> crate::World<L> {
         pub fn set_presence(&mut self, presence: crate::model::Presence) -> bool {
             self.set_presence_inner(presence)
         }
@@ -157,9 +169,13 @@ pub mod testing {
         *now.actors.get_mut(actor).unwrap().place_mut() = place.to_string();
     }
 
+    /// Lock the pack and open its save, for a test that plays rounds on it.
     pub fn open(pack: &Path) -> crate::World {
+        let lock = crate::lock_pack(pack)
+            .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
         crate::World::open(pack)
             .unwrap_or_else(|err| panic!("World::open {}: {err}", pack.display()))
+            .take_lock(lock)
     }
 
     pub fn now_of(pack: &Path) -> crate::model::Now {
