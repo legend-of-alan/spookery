@@ -37,48 +37,6 @@ pub struct QueuedMove {
     pub move_name: String,
 }
 
-pub enum MoveOutcome {
-    Queued(QueuedMove),
-    Committed {
-        outputs: Vec<crate::RoundOutput>,
-    },
-    Busy {
-        code: Reason,
-        missing: Option<String>,
-        outputs: Vec<crate::RoundOutput>,
-    },
-}
-
-pub fn handle_player_move(
-    world: &mut World,
-    presence: &Presence,
-    actor_id: &str,
-    verb: &str,
-    target: Option<&str>,
-    gm_seated: bool,
-    wall: &str,
-) -> Result<MoveOutcome, GateRefusal> {
-    let queued = match world.queue_player_move(presence, actor_id, verb, target) {
-        Ok(queued) => queued,
-        Err(refusal) => {
-            if !gm_seated && refusal.reason() == Reason::Busy {
-                let outputs = world.commit_then_fast_forward(presence, wall)?;
-                return Ok(MoveOutcome::Busy {
-                    code: refusal.reason(),
-                    missing: refusal.missing().map(str::to_string),
-                    outputs,
-                });
-            }
-            return Err(refusal);
-        }
-    };
-    if gm_seated {
-        return Ok(MoveOutcome::Queued(queued));
-    }
-    let outputs = world.commit_then_fast_forward(presence, wall)?;
-    Ok(MoveOutcome::Committed { outputs })
-}
-
 pub struct GmIntentSpec {
     pub id: Option<String>,
     pub round_index: Option<u64>,

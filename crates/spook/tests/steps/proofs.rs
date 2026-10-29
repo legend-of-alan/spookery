@@ -4,9 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{json, Value};
-use spookery::host::idle_clock::{on_scheduled_wake, wall_now};
-use spookery::host::{call_gm_tool, commit_then_fast_forward, MoveOutcome};
-use spookery_engine::handle_player_move;
+use spookery::host::idle_clock::on_scheduled_wake;
+use spookery::host::{call_gm_tool, commit_then_fast_forward};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::{Presence, World as Shard};
 
@@ -51,18 +50,12 @@ fn queued_line_survives_a_dropped_seat() {
 fn a_reseated_player_keeps_the_queued_wait() {
     let dropped = support::temp_pack("drop-queue");
     let mut shard = open(&dropped);
-    let wall = wall_now();
-    let outcome =
-        handle_player_move(&mut shard, &rowan(), "pc_rowan", "wait", None, true, &wall).unwrap();
-    let MoveOutcome::Queued(queued) = outcome else {
-        panic!("queued wait committed");
-    };
+    let queued = shard
+        .queue_player_move(&rowan(), "pc_rowan", "wait", None)
+        .unwrap();
     assert_eq!(shard.now().world_time, 1080);
     assert_eq!(shard.now().round_index, 0);
     assert_eq!(shard.queued_intents().len(), 1);
-    assert!(list_round_keys(&dropped).is_empty());
-    assert_eq!(shard.now().world_time, 1080);
-    assert_eq!(shard.now().round_index, 0);
     assert_eq!(shard.queued_intents()[0].id, queued.id);
     assert!(list_round_keys(&dropped).is_empty());
     let _ = fs::remove_dir_all(&dropped);
@@ -161,12 +154,8 @@ fn idle_off_seated_line_and_spook_tick_still_advance() {
     let pack = support::temp_pack("idle-off-play");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
-    let wall = wall_now();
-    let played =
-        handle_player_move(&mut shard, &rowan(), "pc_rowan", "wait", None, false, &wall).unwrap();
-    let MoveOutcome::Committed { outputs, .. } = played else {
-        panic!("wait stayed queued");
-    };
+    shard.queue_wait(&rowan(), "pc_rowan").unwrap();
+    let outputs = commit_then_fast_forward(&mut shard, &rowan()).unwrap();
     assert!(!outputs.is_empty());
     assert_eq!(shard.now().world_time, 1085);
     assert_eq!(shard.now().round_index, 1);
@@ -192,12 +181,7 @@ fn idle_off_commit_round_still_commits() {
     let pack = support::temp_pack("idle-off-commit");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
-    let wall = wall_now();
-    let queued =
-        handle_player_move(&mut shard, &rowan(), "pc_rowan", "wait", None, true, &wall).unwrap();
-    let MoveOutcome::Queued(_) = queued else {
-        panic!("wait committed with a GM seated");
-    };
+    shard.queue_wait(&rowan(), "pc_rowan").unwrap();
     assert_eq!(shard.now().world_time, 1080);
     assert!(list_round_keys(&pack).is_empty());
     let done = call_gm_tool(

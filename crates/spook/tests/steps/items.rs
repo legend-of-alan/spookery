@@ -33,16 +33,19 @@ fn wielded(pack: &Path, actor: &str) -> Option<String> {
         .and_then(|actor| actor.wielded().map(str::to_string))
 }
 
+/// One line at a table with no GM: queue it, then commit its round.
 fn play(
     pack: &Path,
     actor: &str,
     line: &str,
-) -> Result<spookery::host::MoveOutcome, spookery_engine::GateRefusal> {
+) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::GateRefusal> {
     let mut world = super::rules::open_pack(pack);
     let (verb, target) = support::split_move(line);
-    let wall = spookery::host::idle_clock::wall_now();
     let nobody = spookery_engine::Presence::default();
-    spookery_engine::handle_player_move(&mut world, &nobody, actor, verb, target, false, &wall)
+    world.queue_player_move(&nobody, actor, verb, target)?;
+    Ok(spookery::host::commit_then_fast_forward(
+        &mut world, &nobody,
+    )?)
 }
 
 fn round_text(pack: &Path) -> String {
@@ -583,11 +586,8 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
 #[when(expr = "lark hits nell with poisoned_dagger")]
 fn lark_hits_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let played =
+    let outputs =
         play(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
-    let spookery::host::MoveOutcome::Committed { outputs, .. } = played else {
-        panic!("the hit stayed queued");
-    };
     let output = &outputs[0];
     let nell = output.reports.iter().find_map(|report| match report {
         spookery_engine::MoveReport::Rolled { actor_id, out } if actor_id == "pc_nell" => {

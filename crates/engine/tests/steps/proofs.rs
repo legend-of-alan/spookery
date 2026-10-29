@@ -10,8 +10,8 @@ use spookery_engine::testing::{
     PlaceLive,
 };
 use spookery_engine::{
-    emit_save, handle_player_move, play_pack_once, GmIntentSpec, Message, MeterLive, MoveOutcome,
-    MoveReport, Now, Outcome, Presence, RunState, World as Shard,
+    emit_save, play_pack_once, GmIntentSpec, Message, MeterLive, MoveReport, Now, Outcome,
+    Presence, RunState, World as Shard,
 };
 
 use crate::World;
@@ -805,19 +805,11 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
 fn play_mark(pack: &Path) -> Now {
     let mut shard = open(pack);
     let wall = shard.now().last_round_at.clone();
-    let played = handle_player_move(
-        &mut shard,
-        &rowan(),
-        "pc_rowan",
-        "mark",
-        Some("mira"),
-        false,
-        &wall,
-    )
-    .unwrap();
-    let MoveOutcome::Committed { .. } = played else {
-        panic!("mark mira stayed queued");
-    };
+    shard
+        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("mira"))
+        .unwrap();
+    let played = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
+    assert!(!played.is_empty(), "mark mira did not commit");
     shard.now().clone()
 }
 
@@ -894,19 +886,9 @@ fn opposing_total_reused() {
             queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
         }
         let wall = shard.now().last_round_at.clone();
-        let mark = handle_player_move(
-            &mut shard,
-            &rowan(),
-            "pc_rowan",
-            "mark",
-            Some("pc_nell"),
-            true,
-            &wall,
-        )
-        .unwrap();
-        let MoveOutcome::Queued(_) = mark else {
-            panic!("mark committed while a gm seat was requested");
-        };
+        shard
+            .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
+            .unwrap();
         assert_eq!(shard.now().world_time, 1080);
         let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
         let reports = outputs.into_iter().next().unwrap().reports;
@@ -962,19 +944,9 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let mut shard = open(&held);
     queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
     let wall = shard.now().last_round_at.clone();
-    let queued = handle_player_move(
-        &mut shard,
-        &rowan(),
-        "pc_rowan",
-        "mark",
-        Some("pc_nell"),
-        true,
-        &wall,
-    )
-    .unwrap();
-    let MoveOutcome::Queued(_) = queued else {
-        panic!("held mark committed before the round");
-    };
+    shard
+        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
+        .unwrap();
     let before = shard.now().world_time;
     let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert_ne!(shard.now().world_time, before);

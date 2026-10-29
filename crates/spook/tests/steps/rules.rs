@@ -3,8 +3,7 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery::host::{idle_clock::wall_now, MoveOutcome};
-use spookery_engine::handle_player_move;
+use spookery::host::idle_clock::wall_now;
 use spookery_engine::testing::{faces, PlaceLive, RollKey};
 use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
@@ -290,17 +289,12 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
         humans: 1,
         actors_present: Vec::new(),
     };
-    let wall = wall_now();
-    let played = handle_player_move(
-        &mut opened,
-        &one_human,
-        "pc_rowan",
-        "travel",
-        Some("ferry_dock"),
-        false,
-        &wall,
-    );
-    played.unwrap_or_else(|err| panic!("travel {}", err.token()));
+    opened
+        .queue_player_move(&one_human, "pc_rowan", "travel", Some("ferry_dock"))
+        .unwrap_or_else(|err| panic!("travel {}", err.token()));
+    opened
+        .commit_then_fast_forward(&one_human, &wall_now())
+        .unwrap_or_else(|err| panic!("travel {err}"));
 }
 
 #[then(expr = "place:ferry_dock\\/travel runs and verb:travel does not")]
@@ -473,21 +467,14 @@ fn lark_attacks(world: &mut World) {
         might.offset = 0;
     });
     let mut opened = open_pack(&pack);
-    let wall = wall_now();
-    let reports = match handle_player_move(
-        &mut opened,
-        &Presence::default(),
-        "pc_lark",
-        "attack",
-        Some("npc_briar"),
-        false,
-        &wall,
-    ) {
-        Ok(MoveOutcome::Committed { outputs, .. }) => outputs.into_iter().next().unwrap().reports,
-        Ok(MoveOutcome::Queued(_)) => panic!("attack queued"),
-        Ok(MoveOutcome::Busy { .. }) => panic!("attack was busy"),
-        Err(err) => panic!("attack {}", err.token()),
-    };
+    let nobody = Presence::default();
+    opened
+        .queue_player_move(&nobody, "pc_lark", "attack", Some("npc_briar"))
+        .unwrap_or_else(|err| panic!("attack {}", err.token()));
+    let outputs = opened
+        .commit_then_fast_forward(&nobody, &wall_now())
+        .unwrap_or_else(|err| panic!("attack {err}"));
+    let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {
         MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some(out),
         _ => None,
@@ -653,17 +640,7 @@ fn steady_costs_five_grit(world: &mut World) {
 fn the_sitter_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    let wall = wall_now();
-    let nobody = Presence::default();
-    let played = handle_player_move(
-        &mut opened,
-        &nobody,
-        "pc_rowan",
-        "steady",
-        None,
-        false,
-        &wall,
-    );
+    let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "steady", None);
     world.scratch = match played {
         Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
         Ok(_) => "queued".to_string(),
@@ -791,20 +768,9 @@ A small bottle.
 fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    let wall = wall_now();
-    let nobody = Presence::default();
-    let played = handle_player_move(
-        &mut opened,
-        &nobody,
-        "pc_rowan",
-        "use",
-        Some("tonic"),
-        true,
-        &wall,
-    );
+    let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "use", Some("tonic"));
     world.scratch = match played {
-        Ok(MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
-        Ok(MoveOutcome::Queued(queued)) => {
+        Ok(queued) => {
             let intent = opened
                 .queued_intents()
                 .iter()
@@ -812,7 +778,6 @@ fn the_sitter_lines_up_use_tonic(world: &mut World) {
                 .unwrap();
             format!("{:?} {}", intent.target, intent.move_name)
         }
-        Ok(MoveOutcome::Committed { .. }) => "committed".to_string(),
         Err(err) => err.token().to_string(),
     };
 }

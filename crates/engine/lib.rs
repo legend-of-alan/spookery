@@ -40,9 +40,7 @@ pub use rule::When;
 pub use rules::{GateRefusal, MoveReport, Roll};
 pub use store::{emit_save, load_save, lock_pack, record_line, LockGuard, TapeRecord};
 pub use visibility::RecipientLine;
-pub use world::{
-    check_pack, handle_player_move, GmIntentSpec, Heard, MoveOutcome, QueuedMove, World,
-};
+pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World};
 
 #[cfg(feature = "testing")]
 pub mod testing {

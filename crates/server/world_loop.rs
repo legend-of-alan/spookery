@@ -2,8 +2,7 @@
 
 use std::io::Write;
 
-pub use spookery_engine::MoveOutcome;
-use spookery_engine::{Heard, Presence, Reason, RecipientLine, RoundOutput, World};
+use spookery_engine::{GateRefusal, Heard, Presence, Reason, RecipientLine, RoundOutput, World};
 
 use crate::protocol::Missing;
 
@@ -187,7 +186,7 @@ fn handle(
             }
         },
         WorldMsg::Player { conn, line, reply } => {
-            on_player(world, seats, restart, conn, &line, out)?;
+            on_player(world, seats, restart, conn, &line, out);
             let _ = reply.send(());
         }
         WorldMsg::Fault { conn, ack } => on_fault(world, seats, conn, ack, out),
@@ -469,13 +468,13 @@ fn on_player(
     conn: u64,
     line: &str,
     out: &mut dyn Write,
-) -> Result<(), Reason> {
+) {
     if split_token(line) == ("close", "") {
         drop_conn(world, seats, conn, out);
-        return Ok(());
+        return;
     }
     let Some(actor_id) = seats.player(conn).map(|player| player.actor_id.clone()) else {
-        return Ok(());
+        return;
     };
     let presence = seats.presence();
     match parse_player_command(world, &presence, &actor_id, line) {
@@ -507,13 +506,14 @@ fn on_player(
             );
         }
         Ok(PlayerCommand::Turn(verb, target)) => {
-            on_mechanical(world, seats, restart, conn, &actor_id, (verb, target), out)?;
+            on_mechanical(world, seats, restart, conn, &actor_id, (verb, target), out);
         }
         Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
     }
-    Ok(())
 }
 
+/// With a GM seated, a line waits for `commit_round`. Without one it commits its
+/// own round, and a busy PC's line plays the rounds its action still needs.
 fn on_mechanical(
     world: &mut World,
     seats: &mut Seats,
@@ -522,14 +522,11 @@ fn on_mechanical(
     actor_id: &str,
     (verb, target): (&str, Option<&str>),
     out: &mut dyn Write,
-) -> Result<(), Reason> {
+) {
     let gm_seated = seats.gm.is_some();
     let presence = seats.presence();
-    let wall = wall_now();
-    match spookery_engine::handle_player_move(
-        world, &presence, actor_id, verb, target, gm_seated, &wall,
-    ) {
-        Ok(MoveOutcome::Queued(queued)) => {
+    match world.queue_player_move(&presence, actor_id, verb, target) {
+        Ok(queued) if gm_seated => {
             send_gm(
                 seats,
                 frames::queued_event(&queued.id, &queued.actor_id, &queued.move_name),
@@ -542,43 +539,35 @@ fn on_mechanical(
                 out,
             );
         }
-        Ok(MoveOutcome::Committed { outputs }) => {
-            if !outputs.is_empty() {
-                bump_sleep(restart);
-            }
-            write_host(out, world, &outputs);
-            refresh_players(world, seats, &outputs, out);
-        }
-        Ok(MoveOutcome::Busy {
-            code,
-            missing,
-            outputs,
-        }) => {
-            send_player(
-                world,
-                seats,
-                conn,
-                frames::player_refused(code.token(), missing.map(Missing::One)).into_bytes(),
-                out,
-            );
-            if !outputs.is_empty() {
-                refresh_players(world, seats, &outputs, out);
+        Ok(_) => match commit_then_fast_forward(world, &presence) {
+            Ok(outputs) => {
+                if !outputs.is_empty() {
+                    bump_sleep(restart);
+                }
                 write_host(out, world, &outputs);
+                refresh_players(world, seats, &outputs, out);
+            }
+            Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
+        },
+        Err(busy) if !gm_seated && busy.reason() == Reason::Busy => {
+            match commit_then_fast_forward(world, &presence) {
+                Ok(outputs) => {
+                    send_player(world, seats, conn, refusal_line(&busy), out);
+                    if !outputs.is_empty() {
+                        refresh_players(world, seats, &outputs, out);
+                        write_host(out, world, &outputs);
+                    }
+                }
+                Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
             }
         }
-        Err(refusal) => send_player(
-            world,
-            seats,
-            conn,
-            frames::player_refused(
-                refusal.token(),
-                refusal.missing().map(|text| Missing::One(text.to_string())),
-            )
-            .into_bytes(),
-            out,
-        ),
+        Err(refusal) => send_player(world, seats, conn, refusal_line(&refusal), out),
     }
-    Ok(())
+}
+
+fn refusal_line(refusal: &GateRefusal) -> Vec<u8> {
+    let missing = refusal.missing().map(|text| Missing::One(text.to_string()));
+    frames::player_refused(refusal.token(), missing).into_bytes()
 }
 
 /// A full or closed queue drops that seat. The world thread does not wait.

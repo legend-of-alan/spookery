@@ -249,14 +249,13 @@ fn lark() -> Presence {
 fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = support::split_move(line);
     let wall = world.now().last_round_at.clone();
-    match spookery_engine::handle_player_move(world, &lark(), "pc_lark", verb, target, false, &wall)
-    {
-        Ok(spookery_engine::MoveOutcome::Committed { outputs, .. }) => {
-            outputs.into_iter().next().unwrap()
-        }
-        Ok(_) => panic!("{line} did not commit"),
-        Err(err) => panic!("{line}: {}", err.token()),
-    }
+    world
+        .queue_player_move(&lark(), "pc_lark", verb, target)
+        .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
+    let outputs = world
+        .commit_then_fast_forward(&lark(), &wall)
+        .unwrap_or_else(|err| panic!("{line}: {err}"));
+    outputs.into_iter().next().unwrap()
 }
 
 fn change_line(output: &spookery_engine::RoundOutput) -> String {

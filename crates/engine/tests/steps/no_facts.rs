@@ -128,8 +128,12 @@ fn play(world: &mut World, actor: &str, line: &str) {
     };
     let (verb, target) = support::split_move(line);
     let wall = opened.now().last_round_at.clone();
-    spookery_engine::handle_player_move(&mut opened, &seated, actor, verb, target, false, &wall)
+    opened
+        .queue_player_move(&seated, actor, verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
+    opened
+        .commit_then_fast_forward(&seated, &wall)
+        .unwrap_or_else(|err| panic!("{line}: {err}"));
 }
 
 fn strip_room_facts(pack: &Path) {
