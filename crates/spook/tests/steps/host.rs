@@ -268,7 +268,7 @@ fn speech_leaves_world_time_and_a_gm_say_does_not_call(world: &mut World) {
         assert!(tape.contains("\"from\":\"gm\""), "{tape}");
         assert!(tape.contains("evening"), "{tape}");
         // The world loop answers this look after it sent the GM its own say.
-        table::player_send(world, "look", LINES);
+        table::player_send(world, "look", table::LINES);
         wait_idle(watch, model, 1);
         assert_eq!(model.calls().len(), 1, "a gm say called the model");
         assert!(!watch.busy.load(Ordering::Acquire));
@@ -296,7 +296,7 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
         table::wait_world_time(pack, sit + 5);
         wait_idle(watch, model, 1);
         // The world loop answers this look after any second round or GM event queued before it.
-        table::player_send(world, "look", LINES);
+        table::player_send(world, "look", table::LINES);
         wait_idle(watch, model, 1);
         assert_eq!(world_time(pack), sit + 5, "travel ran twice");
         assert_eq!(model.calls().len(), 1, "{}", model.calls().len());
@@ -336,7 +336,7 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
                 calls[1].prompt
             );
             // The world loop answers this look after the epilogue say and any round it caused.
-            table::player_send(world, "look", LINES);
+            table::player_send(world, "look", table::LINES);
             wait_idle(watch, model, 2);
             assert_eq!(world_time(pack), sit + 5, "epilogue played a round");
             assert_eq!(model.calls().len(), 2);
@@ -355,7 +355,7 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     table::release_gm(world);
     let model = ScriptedModel::new();
     model.push(Ok(Some(r#"{"says":[],"intents":[]}"#.to_string())));
-    let (handle, watch) = start_gm(world, &model);
+    let (handle, watch) = start_host(world, &model);
     table::wait_world_time(&pack, 1085);
     wait_idle(&watch, &model, 1);
     assert_eq!(
@@ -365,7 +365,7 @@ fn sit_commits_the_waiting_queue(world: &mut World) {
     );
     assert!(watch.sit_seq.load(Ordering::Acquire) > 0);
     // The world loop answers this look after the sit's commit and any GM event it sent.
-    table::player_send(world, "look", LINES);
+    table::player_send(world, "look", table::LINES);
     wait_idle(&watch, &model, 1);
     assert_eq!(world_time(&pack), 1085);
     assert_eq!(model.calls().len(), 1);
@@ -382,7 +382,7 @@ fn with_host(
     table::listen(world, &pack);
     let port = table::live_mut(world).port;
     let model = ScriptedModel::new();
-    let (handle, watch) = start_gm(world, &model);
+    let (handle, watch) = start_host(world, &model);
     body(world, &pack, port, &model, &watch);
     stop_host(world, handle);
     let _ = fs::remove_dir_all(&pack);
@@ -393,7 +393,7 @@ fn stop_host(world: &mut World, handle: thread::JoinHandle<Result<(), spookery::
     let _ = handle.join();
 }
 
-fn start_gm(
+fn start_host(
     world: &mut World,
     model: &ScriptedModel,
 ) -> (
@@ -413,9 +413,6 @@ fn start_gm(
     wait_listening(&watch);
     (handle, watch)
 }
-
-/// The reply to a player `look`, which takes no round.
-const LINES: &str = "\"kind\":\"lines\"";
 
 fn wait_listening(watch: &TurnWatch) {
     let start = Instant::now();
