@@ -173,9 +173,8 @@ pub mod testing {
     pub fn open(pack: &Path) -> crate::World {
         let lock = crate::lock_pack(pack)
             .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
-        crate::World::open(pack)
-            .unwrap_or_else(|err| panic!("World::open {}: {err}", pack.display()))
-            .take_lock(lock)
+        crate::World::resume(pack, lock)
+            .unwrap_or_else(|err| panic!("World::resume {}: {err}", pack.display()))
     }
 
     pub fn now_of(pack: &Path) -> crate::model::Now {

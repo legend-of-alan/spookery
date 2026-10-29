@@ -110,7 +110,24 @@ impl World {
     /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
     /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
     pub fn resume(root: &Path, lock: crate::LockGuard) -> Result<Self, Reason> {
-        crate::round::replay::open_at_tip(root, lock)
+        let World {
+            root,
+            canon,
+            now,
+            queue,
+            next_session,
+            warning,
+            lock: (),
+        } = crate::round::replay::open_at_tip(root, &lock)?;
+        Ok(World {
+            root,
+            canon,
+            now,
+            queue,
+            next_session,
+            warning,
+            lock,
+        })
     }
 
     pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
@@ -529,27 +546,6 @@ impl<L> World<L> {
             String::new()
         } else {
             rows.join("\n") + "\n"
-        }
-    }
-
-    pub(crate) fn take_lock(self, lock: crate::LockGuard) -> World {
-        let World {
-            root,
-            canon,
-            now,
-            queue,
-            next_session,
-            warning,
-            lock: _,
-        } = self;
-        World {
-            root,
-            canon,
-            now,
-            queue,
-            next_session,
-            warning,
-            lock,
         }
     }
 }
