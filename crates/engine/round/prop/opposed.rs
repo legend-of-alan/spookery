@@ -24,38 +24,39 @@ const LUNGE: &str = "
 fn a_refused_or_dropped_opposing_roll_replays_the_same_way() {
     let cases = [
         // Two effects over a cap of one.
-        ("max_effects_per_intent: 1", "", Some(Reason::Budget)),
+        (Some("max_effects_per_intent: 1"), "", Some(Reason::Budget)),
         // A failed gate: Lark holds no chock.
         (
-            "",
+            None,
             "    if: [has_item: { who: self, id: chock }]\n",
             Some(Reason::MissingItem),
         ),
         // A dice cost passes the gate, then goes unpaid in apply.
         (
-            "",
+            None,
             "    cost: { items: { chock: 1d4 } }\n",
             Some(Reason::CantAfford),
         ),
         // Players go first, so the strike is cut and the lunge reads it from the raw queue.
-        ("max_intents_applied: 1", "", None),
+        (Some("max_intents_applied: 1"), "", None),
     ];
     let mut failures = Vec::new();
-    for (tick, rule, refused) in cases {
-        let base = TempPack(lunge_pack(tick, rule));
+    for (limit, rule, refused) in cases {
+        let base = TempPack(lunge_pack(limit, rule));
         failures.extend((0..12).filter_map(|warmup| fight(&base.0, warmup, refused).err()));
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
-/// The d20 pack with `tick` set, a two-effect lunge with `rule` added, and Briar's might at 30.
-fn lunge_pack(tick: &str, rule: &str) -> PathBuf {
+/// The d20 pack with one round `limit` line set, the lunge plus `rule`, and Briar's might at 30.
+fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     let pack = copy_pack("sample-d20", "opposed-base");
-    if let Some((key, _)) = tick.split_once(':') {
+    if let Some(limit) = limit {
+        let (key, _) = limit.split_once(':').expect("a `key: value` line");
         let path = pack.join("rules/tick.yaml");
         let text = fs::read_to_string(&path).unwrap();
         let old = text.lines().find(|line| line.starts_with(key));
-        fs::write(&path, text.replacen(old.expect("tick key"), tick, 1)).unwrap();
+        fs::write(&path, text.replacen(old.expect("limit key"), limit, 1)).unwrap();
     }
     crate::testing::append(&pack.join("rules/verbs.yaml"), &format!("{LUNGE}{rule}"));
     crate::testing::edit_save(&pack, |now| {
