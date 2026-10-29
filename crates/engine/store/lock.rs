@@ -51,7 +51,7 @@ pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
 /// Only the pack's writer takes it, and never inside another write guard.
 pub fn write_guard(root: &Path) -> Result<WriteGuard, Reason> {
     let file = open_lock(root, RW_LOCK)?;
-    file.lock().map_err(|_| Reason::CommitConflict)?;
+    file.lock().map_err(|_| Reason::NotInSpec)?;
     Ok(WriteGuard { _file: file })
 }
 
