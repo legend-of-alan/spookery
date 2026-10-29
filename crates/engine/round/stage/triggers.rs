@@ -5,9 +5,8 @@ use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::expand::expand_rule;
 use crate::intent::{trigger_intent_id, Intent, Source, Target, ViewerId};
-use crate::journal::Step;
+use crate::journal::{Rejected, Step};
 use crate::key::{ChangeRecord, StateKey, StateValue};
-use crate::model::Now;
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::cond;
 use crate::rules::expr::Ctx;
@@ -122,25 +121,25 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
         return;
     }
     let point = draft.savepoint();
-    let expanded = {
-        let now = draft.now();
-        let canon = draft.canon();
-        expand_trigger(dice, log, now, canon, rule, &intent, subject)
-    };
-    let Some(expanded) = expanded else {
-        draft.rollback(point);
-        return;
-    };
-    if expanded.effects.len() > draft.budget().max_effects_per_intent as usize {
-        draft.rollback(point);
-        return;
-    }
-    for effect in &expanded.effects {
-        if apply_effect(draft, &intent, effect.clone()).is_err() {
+    let expanded = expand_trigger(dice, log, draft, rule, &intent, subject);
+    let landed = expanded.and_then(|expanded| {
+        for effect in &expanded.effects {
+            apply_effect(draft, &intent, effect.clone())?;
+        }
+        Ok(expanded)
+    });
+    let expanded = match landed {
+        Ok(expanded) => expanded,
+        Err(code) => {
             draft.rollback(point);
+            log.rejected.push(Rejected {
+                id: intent.id,
+                code,
+                missing: None,
+            });
             return;
         }
-    }
+    };
     if let Some(out) = expanded.rolled {
         log.reports.push(MoveReport::Rolled {
             actor_id: subject.to_string(),
@@ -152,23 +151,27 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     log.steps.push(Step::Rule(rule.id.clone()));
 }
 
+/// A change rule's effects, or why it is refused. Over the effect cap is `BUDGET`.
 fn expand_trigger(
     dice: &mut RoundDice,
     log: &mut RoundLog,
-    now: &Now,
-    canon: &Canon,
+    draft: &Draft,
     rule: &Rule,
     intent: &Intent,
     subject: &str,
-) -> Option<Expansion> {
+) -> Result<Expansion, Reason> {
+    let (now, canon) = (draft.now(), draft.canon());
     let mut roller = dice.roller(log, &rule.id, subject);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, now, intent, spec).ok()?),
+        Some(spec) => Some(roller.roll_spec(canon, now, intent, spec)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_rule(canon, now, rule, intent, outcome, &mut roller).ok()?;
-    Some(Expansion {
+    let effects = expand_rule(canon, now, rule, intent, outcome, &mut roller)?;
+    if effects.len() > draft.budget().max_effects_per_intent as usize {
+        return Err(Reason::Budget);
+    }
+    Ok(Expansion {
         effects,
         rolled,
         resisted: roller.finish(),

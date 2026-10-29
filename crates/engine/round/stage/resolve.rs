@@ -23,7 +23,7 @@ pub(crate) struct Resolved {
 
 /// How resolve left an intent for apply.
 pub(crate) enum Resolution {
-    /// Gated; apply expands `rule_id`, the rule the gate chose against the snapshot.
+    /// Gated; apply pays for and expands `rule_id`, the rule the gate chose against the snapshot.
     Ready {
         rule_id: String,
         rolled: Option<Roll>,
@@ -133,30 +133,23 @@ fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>,
         return Ok(None);
     };
     let (canon, snapshot, queue) = (rolls.canon, rolls.snapshot, rolls.queue);
-    let Some((opposing, check_id)) = queue.iter().find_map(|other| {
+    let Some((opposing, rule_id, check_id)) = queue.iter().find_map(|other| {
         if other.id == intent.id
             || other.actor.actor_id() != named
             || other.source != Source::Player
         {
             return None;
         }
-        let check_id = gate(canon, snapshot, other)
-            .ok()?
-            .roll
-            .as_ref()?
-            .check
-            .clone();
-        Some((other, check_id))
+        let rule = gate(canon, snapshot, other).ok()?;
+        Some((other, &rule.id, &rule.roll.as_ref()?.check))
     }) else {
         return Ok(None);
     };
     if let Some(out) = rolls.opposed.get(&opposing.id) {
         return Ok(Some(out.total));
     }
-    let key = rolls
-        .dice
-        .key(&opposing.move_name, opposing.actor.actor_id());
-    let out = rolls.dice.check(canon, snapshot, key, &check_id, 0, None)?;
+    let key = rolls.dice.key(rule_id, opposing.actor.actor_id());
+    let out = rolls.dice.check(canon, snapshot, key, check_id, 0, None)?;
     let total = out.total;
     rolls.opposed.insert(opposing.id.clone(), out);
     Ok(Some(total))

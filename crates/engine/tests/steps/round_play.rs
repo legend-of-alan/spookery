@@ -46,7 +46,7 @@ fn ten_rolling_intents_in_one_round(world: &mut World) {
             )
         })
         .collect();
-    let (_now, rolls, round) = play_queued(&pack, intents);
+    let (_now, rolls, round) = play_queued(&pack, &[], intents);
     world.scratch = round.to_string();
     world.player_added = rolls.len().to_string();
     world.pack = Some(pack);
@@ -72,7 +72,7 @@ fn a_played_d20_fight(world: &mut World) {
         "strike",
         Target::Actor("npc_briar".to_string()),
     )];
-    let (now, _rolls, _round) = play_queued(&pack, intents);
+    let (now, _rolls, _round) = play_queued(&pack, &[], intents);
     world.now_bytes = spookery_engine::emit_save(&now).unwrap().into_bytes();
     world.pack = Some(pack);
 }
@@ -151,6 +151,7 @@ fn mira_plays(world: &mut World, move_name: String) {
     let id = format!("{move_name}-1");
     let (now, rolls, round) = play_queued(
         &pack,
+        &[],
         vec![queued(&id, npc("mira"), &move_name, Target::Empty)],
     );
     let oil = now
@@ -199,7 +200,7 @@ fn those_waits_are_played(world: &mut World) {
     let mut second = queued("wait-2", npc("mira"), "wait", Target::Empty);
     first.source = Source::Kernel;
     second.source = Source::Kernel;
-    let (now, _rolls, round) = play_queued(&pack, vec![first, second]);
+    let (now, _rolls, round) = play_queued(&pack, &[], vec![first, second]);
     world.scratch = round.to_string();
     world.now_bytes = spookery_engine::emit_save(&now).unwrap().into_bytes();
 }
@@ -232,6 +233,7 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "mutual-strike");
     let (_now, rolls, _round) = play_queued(
         &pack,
+        &[],
         vec![
             queued(
                 "lark-strike",
@@ -289,11 +291,7 @@ fn each_strike_is_scored_on_the_others_own_roll(world: &mut World) {
 #[given(expr = "max_effects_per_intent is 1 and a row with 2 effects")]
 fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "effect-cap");
-    let tick_path = pack.join("rules/tick.yaml");
-    let text = fs::read_to_string(&tick_path).unwrap();
-    let next = text.replacen("max_effects_per_intent: 4", "max_effects_per_intent: 1", 1);
-    assert_ne!(next, text, "cap was not lowered");
-    fs::write(&tick_path, next).unwrap();
+    lower_effect_cap(&pack);
     support::append(
         &pack.join("rules/verbs.yaml"),
         "
@@ -315,6 +313,7 @@ fn max_effects_per_intent_is_1_and_a_row_with_2_effects(world: &mut World) {
     quiet_mira(&pack);
     let (now, _rolls, round) = play_queued(
         &pack,
+        &[],
         vec![queued("two-1", npc("mira"), "two_stock", Target::Empty)],
     );
     world.now_bytes = format!(
@@ -397,6 +396,125 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
 #[then(expr = "Aldric's rest is {int}")]
 fn aldrics_rest_is(world: &mut World, rest: usize) {
     assert_eq!(world.mark, rest);
+}
+
+#[given(
+    expr = "a docks pack where the shop's \"rummage\" costs {int} rest and the shared \"rummage\" costs {int}"
+)]
+fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64) {
+    let pack = support::copy_pack("oneshot-docks", "rummage");
+    let rule = format!(
+        "  - id: rummage
+    when: {{ verb: rummage }}
+    cost: {{ meter: {{ rest: {shop} }} }}
+    roll: {{ check: grit, target: 0 }}
+    do: []"
+    );
+    place_rules(&pack, "docks_shop", &rule);
+    let rule = format!(
+        "
+  - id: rummage
+    when: {{ verb: rummage }}
+    cost: {{ meter: {{ rest: {shared} }} }}
+    do: []
+"
+    );
+    support::append(&pack.join("rules/verbs.yaml"), &rule);
+    support::stamp_pack_rev(&pack);
+    quiet_mira(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan walks to the street and rummages in the same round")]
+fn rowan_walks_and_rummages(world: &mut World) {
+    let rummage = queued("rummage", player("pc_rowan"), "rummage", Target::Empty);
+    let (now, round) = rowan_walks(world.pack(), vec![rummage]);
+    let rest = &now.actors["pc_rowan"].meters()["rest"];
+    world.mark = usize::try_from(rest.base + rest.offset).unwrap();
+    world.scratch = round.to_string();
+}
+
+#[then(expr = "Rowan's rest is {int}")]
+fn rowans_rest_is(world: &mut World, rest: usize) {
+    assert_eq!(world.mark, rest, "{}", world.scratch);
+}
+
+#[then(expr = "the journal records {string} and not {string}")]
+fn the_journal_records_and_not(world: &mut World, ran: String, skipped: String) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    let rules: Vec<&str> = round["steps_run"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|step| step["rule"].as_str())
+        .collect();
+    assert!(rules.contains(&ran.as_str()), "{round}");
+    assert!(!rules.contains(&skipped.as_str()), "{round}");
+}
+
+#[given(
+    expr = "max_effects_per_intent is 1 and a street rule that sets 2 flags when Rowan arrives"
+)]
+fn a_street_rule_over_the_cap(world: &mut World) {
+    let pack = support::copy_pack("oneshot-docks", "trigger-cap");
+    lower_effect_cap(&pack);
+    let rule = "  - id: greeted
+    when: { change: { arrive: here, who: pc_rowan } }
+    do:
+      - flag: { who: self, key: greeted, value: true }
+      - flag: { who: self, key: welcomed, value: true }";
+    place_rules(&pack, "docks_street", rule);
+    support::stamp_pack_rev(&pack);
+    quiet_mira(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan walks to the street")]
+fn rowan_walks_to_the_street(world: &mut World) {
+    let (now, round) = rowan_walks(world.pack(), Vec::new());
+    world.mark = now.actors["pc_rowan"].flags().len();
+    world.scratch = round.to_string();
+}
+
+#[then(expr = "neither flag is set and the round log names the change rule's {word} refusal")]
+fn neither_flag_is_set(world: &mut World, code: String) {
+    assert_eq!(world.mark, 0, "flags were set");
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    let rejected = round["rejected"].as_array().unwrap();
+    let id = "trigger:place:docks_street/greeted:pc_rowan";
+    assert!(
+        rejected
+            .iter()
+            .any(|item| item["id"] == id && item["code"] == code),
+        "{round}"
+    );
+}
+
+/// Rowan, seated, takes the street exit, then plays `then` in the same round.
+fn rowan_walks(pack: &Path, then: Vec<Intent>) -> (spookery_engine::Now, Value) {
+    let walk = Target::Place("docks_street".to_string());
+    let mut intents = vec![queued("walk", player("pc_rowan"), "travel", walk)];
+    intents.extend(then);
+    let (now, _rolls, round) = play_queued(pack, &["pc_rowan"], intents);
+    assert_eq!(now.actors["pc_rowan"].place(), "docks_street", "{round}");
+    (now, round)
+}
+
+/// Give `place` its own `rules:` list, written just before its exits.
+fn place_rules(pack: &Path, place: &str, rules: &str) {
+    let path = pack.join(format!("world/places/{place}.md"));
+    let text = fs::read_to_string(&path).unwrap();
+    let next = text.replacen("exits:", &format!("rules:\n{rules}\nexits:"), 1);
+    assert_ne!(next, text, "{place} has no exits");
+    fs::write(&path, next).unwrap();
+}
+
+fn lower_effect_cap(pack: &Path) {
+    let tick_path = pack.join("rules/tick.yaml");
+    let text = fs::read_to_string(&tick_path).unwrap();
+    let next = text.replacen("max_effects_per_intent: 4", "max_effects_per_intent: 1", 1);
+    assert_ne!(next, text, "cap was not lowered");
+    fs::write(&tick_path, next).unwrap();
 }
 
 fn assert_refusal(world: &World, oil: i64, reason: &str) {
@@ -513,7 +631,7 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
         "grit",
         Target::Empty,
     ));
-    let (_now, rolls, _round) = play_queued(pack, intents);
+    let (_now, rolls, _round) = play_queued(pack, &[], intents);
     let rolled = rolls.into_iter().find_map(|report| match report {
         MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some((
             out.faces
@@ -528,13 +646,21 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
     rolled.unwrap_or_else(|| panic!("Lark did not roll"))
 }
 
+/// Play one round of `intents`. Any `seated` players are at the table for it.
 fn play_queued(
     pack: &Path,
+    seated: &[&str],
     intents: Vec<Intent>,
 ) -> (spookery_engine::Now, Vec<MoveReport>, Value) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut world =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
+    if !seated.is_empty() {
+        world.set_presence(support::Presence {
+            humans: u32::try_from(seated.len()).unwrap(),
+            actors_present: seated.iter().map(|id| id.to_string()).collect(),
+        });
+    }
     let wall = world.now().last_round_at.clone();
     for intent in intents {
         world.queue(intent);

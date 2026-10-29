@@ -44,10 +44,12 @@ pub(crate) fn token(rule: &Rule, intent: &Intent) -> Option<String> {
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
-pub(crate) fn admit(canon: &Canon, now: &Now, intent: &Intent) -> Result<(), GateRefusal> {
-    let Ok(rule) = gate::resolve(canon, now, intent) else {
-        return Ok(());
-    };
+pub(crate) fn admit(
+    canon: &Canon,
+    now: &Now,
+    intent: &Intent,
+    rule: &Rule,
+) -> Result<(), GateRefusal> {
     let Some(token) = token(rule, intent) else {
         return Ok(());
     };
@@ -219,6 +221,7 @@ pub fn begin(
         }
         None => PendingKind::Finish {
             target: intent.target.clone(),
+            rule: rule.id.clone(),
         },
     };
     let until = world_time_before.saturating_add(minutes);

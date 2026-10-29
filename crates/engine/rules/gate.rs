@@ -122,15 +122,20 @@ fn owner_verb<'a>(canon: &'a Canon, owner: &Owner, verb: &str) -> Option<&'a Rul
     })
 }
 
-/// Gate every intent. A player-sourced habit skips its `if`. Cost is checked for every rule.
+/// Pick the rule for an intent, then `admit` it.
 pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule, GateRefusal> {
     let rule = resolve(canon, now, intent)?;
+    admit(canon, now, intent, rule).map(|()| rule)
+}
+
+/// Check a rule already picked. A player-sourced habit skips its `if`. Cost is checked for every rule.
+pub fn admit(canon: &Canon, now: &Now, intent: &Intent, rule: &Rule) -> Result<(), GateRefusal> {
     if let Some(actor) = now.actors.get(intent.actor.actor_id()) {
         if actor.is_busy(now.world_time) && matches!(rule.when, When::Verb { .. }) {
             return Err(Reason::Busy.into());
         }
     }
-    crate::map::admit(canon, now, intent)?;
+    crate::map::admit(canon, now, intent, rule)?;
     if intent.source == Source::Player && !sees(canon, now, intent) {
         return Err(Reason::NotInSpec.into());
     }
@@ -162,7 +167,7 @@ pub fn gate<'a>(canon: &'a Canon, now: &Now, intent: &Intent) -> Result<&'a Rule
             return Err(GateRefusal::CantAfford(shortfall.missing));
         }
     }
-    Ok(rule)
+    Ok(())
 }
 
 /// A player names only what they hold or what `look` shows them.

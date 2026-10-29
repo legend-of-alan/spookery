@@ -348,10 +348,11 @@ pub struct PendingAction {
 pub enum PendingKind {
     /// A journey: the place it ends in, through the exit it took.
     Arrive { place: String, via: String },
-    /// Any other timed verb, with the target it was queued against.
+    /// Any other timed verb, with the target it was queued against and the rule it started with.
     Finish {
         #[serde(default, skip_serializing_if = "Target::is_empty")]
         target: Target,
+        rule: String,
     },
 }
 
