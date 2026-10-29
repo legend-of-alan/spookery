@@ -29,9 +29,9 @@ pub(crate) fn run(
                 let intent = due_intent(draft, actor_id, source, &verb, Target::Empty)?;
                 arrive(log, draft, &intent, due_action.until, place, via)?;
             }
-            PendingKind::Finish { target } => {
+            PendingKind::Finish { target, rule } => {
                 let intent = due_intent(draft, actor_id, source, &verb, target)?;
-                perform(dice, log, draft, &intent)?;
+                perform(dice, log, draft, &intent, &rule)?;
             }
         }
     }
@@ -93,11 +93,12 @@ fn perform(
     log: &mut RoundLog,
     draft: &mut Draft,
     intent: &Intent,
+    rule_id: &str,
 ) -> Result<(), Reason> {
     let actor_id = intent.actor.actor_id();
     let canon = draft.canon();
     let snapshot = draft.now();
-    let rule = crate::rules::gate::resolve(canon, snapshot, intent)?;
+    let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
     let mut roller = dice.roller(log, &rule.id, actor_id);
     let rolled = match &rule.roll {
         Some(spec) => Some(roller.roll_spec(canon, snapshot, intent, spec)?),

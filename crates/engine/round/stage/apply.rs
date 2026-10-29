@@ -9,7 +9,7 @@ use crate::map;
 use crate::model::Now;
 use crate::rule::Rule;
 use crate::rules::cost;
-use crate::rules::gate::{gate, GateRefusal};
+use crate::rules::gate::{admit, GateRefusal};
 use crate::rules::{MoveReport, Roll};
 use crate::Reason;
 
@@ -55,26 +55,23 @@ pub(crate) fn run(
                 continue;
             }
         };
-        let rule = match gate(draft.canon(), draft.now(), &intent) {
-            Ok(rule) => rule.clone(),
-            Err(refusal) => {
-                reject(log, &intent, refusal);
-                continue;
-            }
-        };
-        let minutes = map::span(draft.canon(), draft.now(), &intent, &rule);
+        let canon = draft.shared_canon();
+        let rule = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
+        if let Err(refusal) = admit(&canon, draft.now(), &intent, rule) {
+            reject(log, &intent, refusal);
+            continue;
+        }
+        let minutes = map::span(&canon, draft.now(), &intent, rule);
         if minutes > 0 {
             let at = clock.world_time_before;
-            if start_timed_action(draft, &intent, &rule, at, minutes, dice, log) && spends_slot {
+            if start_timed_action(draft, &intent, rule, at, minutes, dice, log) && spends_slot {
                 slots += 1;
             }
             continue;
         }
         let outcome = rolled.as_ref().map(|out| out.outcome);
-        let canon = draft.canon();
-        let chosen = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
         let mut roller = dice.roller(log, &rule_id, intent.actor.actor_id());
-        let expanded = expand_rule(canon, snapshot, chosen, &intent, outcome, &mut roller);
+        let expanded = expand_rule(&canon, snapshot, rule, &intent, outcome, &mut roller);
         let resisted = roller.finish();
         let effects = match expanded {
             Ok(effects) => effects,
@@ -92,7 +89,7 @@ pub(crate) fn run(
             rolled,
             resisted,
         };
-        match apply_instant_intent(draft, &intent, &rule, &expansion, dice, log) {
+        match apply_instant_intent(draft, &intent, rule, &expansion, dice, log) {
             Landing::Landed if spends_slot => slots += 1,
             Landing::Landed | Landing::Refused => {}
             Landing::BudgetSpent => break,
