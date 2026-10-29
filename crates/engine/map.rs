@@ -44,7 +44,12 @@ pub(crate) fn token(rule: &Rule, intent: &Intent) -> Option<String> {
 }
 
 /// Refuse a missing, hidden, locked, or unpaid exit. A clear exit is `Ok`.
-pub fn admit(canon: &Canon, now: &Now, intent: &Intent, rule: &Rule) -> Result<(), GateRefusal> {
+pub(crate) fn admit(
+    canon: &Canon,
+    now: &Now,
+    intent: &Intent,
+    rule: &Rule,
+) -> Result<(), GateRefusal> {
     let Some(token) = token(rule, intent) else {
         return Ok(());
     };
