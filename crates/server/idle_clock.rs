@@ -6,6 +6,8 @@ use spookery_engine::{Reason, World};
 
 const STAMP: &str = "%Y-%m-%dT%H:%M:%SZ";
 
+/// Test support: seconds since a UTC stamp. Not part of the API.
+#[doc(hidden)]
 pub fn seconds_since(last_round_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_round_at, Utc::now())
 }
@@ -23,15 +25,6 @@ pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
         .and_then(|ago| Utc::now().checked_sub_signed(ago))
         .ok_or(Reason::Schema)?;
     Ok(format_utc(ago))
-}
-
-pub fn idle_round_if_due(world: &mut World) -> Result<(), Reason> {
-    if !world.budget().idle_ticking && world.now().presence.humans == 0 {
-        return Ok(());
-    }
-    let now = Utc::now();
-    let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
-    world.catch_up(&format_utc(now), elapsed / 3600)
 }
 
 fn elapsed_secs(last_round_at: &str, now: DateTime<Utc>) -> Result<u64, Reason> {
@@ -65,12 +58,13 @@ pub fn on_scheduled_wake(
     if !world.budget().idle_ticking {
         return Ok(false);
     }
-    let every = world.budget().tick_every_real_seconds;
-    if seconds_since(&world.now().last_round_at)? < every {
+    let now = Utc::now();
+    let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
+    if elapsed < world.budget().tick_every_real_seconds {
         return Ok(false);
     }
     let before = world.now().world_time;
-    idle_round_if_due(world)?;
+    world.catch_up(&format_utc(now), elapsed / 3600)?;
     Ok(world.now().world_time != before)
 }
 
