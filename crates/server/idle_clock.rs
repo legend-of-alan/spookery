@@ -25,15 +25,6 @@ pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
     Ok(format_utc(ago))
 }
 
-pub fn idle_round_if_due(world: &mut World) -> Result<(), Reason> {
-    if !world.budget().idle_ticking && world.now().presence.humans == 0 {
-        return Ok(());
-    }
-    let now = Utc::now();
-    let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
-    world.catch_up(&format_utc(now), elapsed / 3600)
-}
-
 fn elapsed_secs(last_round_at: &str, now: DateTime<Utc>) -> Result<u64, Reason> {
     let last = parse_utc(last_round_at)?;
     Ok(u64::try_from((now - last).num_seconds()).unwrap_or(0))
@@ -65,12 +56,13 @@ pub fn on_scheduled_wake(
     if !world.budget().idle_ticking {
         return Ok(false);
     }
-    let every = world.budget().tick_every_real_seconds;
-    if seconds_since(&world.now().last_round_at)? < every {
+    let now = Utc::now();
+    let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
+    if elapsed < world.budget().tick_every_real_seconds {
         return Ok(false);
     }
     let before = world.now().world_time;
-    idle_round_if_due(world)?;
+    world.catch_up(&format_utc(now), elapsed / 3600)?;
     Ok(world.now().world_time != before)
 }
 
