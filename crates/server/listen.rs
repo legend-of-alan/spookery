@@ -131,11 +131,7 @@ pub fn door_request(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<So
     if game.port() == 0 {
         return Ok(SocketAddr::new(game.ip(), 0));
     }
-    let port = game
-        .port()
-        .checked_add(1)
-        .ok_or(Error::Reason(Reason::NotInSpec))?;
-    Ok(SocketAddr::new(game.ip(), port))
+    spookery_protocol::default_door(game).ok_or(Error::Reason(Reason::NotInSpec))
 }
 
 fn report_bound(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Result<(), Error> {

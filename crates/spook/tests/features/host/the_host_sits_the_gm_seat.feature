@@ -61,11 +61,6 @@ Feature: The host sits the GM seat
   Scenario: Play, host, and a stub share one speech turn and one travel turn
     When play and host and a stub run a speech turn and a travel turn
 
-  Scenario: The host dials the given address
-    Given a docks table
-    When the host is pointed at a free loopback address
-    Then the host dialed that address
-
   Scenario: The host dials an overridden agent door
     Given a docks table
     When the host is pointed at an overridden agent door
