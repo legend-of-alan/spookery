@@ -4,7 +4,7 @@ id: keeper
 kind: npc
 display_name: Keeper
 facts: []
-tick:
+idle:
   eligible: true
   flags:
     - tended

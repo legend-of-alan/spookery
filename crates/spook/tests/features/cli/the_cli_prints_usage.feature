@@ -4,6 +4,8 @@ Feature: The CLI prints usage
     When the operator asks spook for help
     Then the command exits 0
     And stdout shows usage
+    And stdout lists the "round" command
+    And stdout lists no "tick" command
     And stderr is empty
 
   Scenario Outline: A command's help prints usage
@@ -18,7 +20,7 @@ Feature: The CLI prints usage
       | play    |
       | gm      |
       | ai-gm   |
-      | tick    |
+      | round   |
       | status  |
       | migrate |
       | check   |
@@ -27,6 +29,12 @@ Feature: The CLI prints usage
 
   Scenario: A mistyped command is a usage error
     When the operator runs the arguments "rnu" and "x"
+    Then the command exits 2
+    And stderr shows usage
+    And stdout is empty
+
+  Scenario: The old tick command is a usage error
+    When the operator runs the arguments "tick" and "x"
     Then the command exits 2
     And stderr shows usage
     And stdout is empty

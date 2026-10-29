@@ -64,7 +64,7 @@ fn the_player_hits_and_the_gm_commits(world: &mut World) {
     table::seat_gm(world);
     let _ = table::player_send(world, "hit", "\"kind\":\"queued\"");
     world.mark = table::player_len(world);
-    world.stdout = table::gm_call(world, 7, "commit_round", r#"{"include_tick":true}"#);
+    world.stdout = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
 }
 
 #[then(expr = "Rowan's grit is {int}")]

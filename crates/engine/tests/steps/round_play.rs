@@ -510,11 +510,11 @@ fn place_rules(pack: &Path, place: &str, rules: &str) {
 }
 
 fn lower_effect_cap(pack: &Path) {
-    let tick_path = pack.join("rules/tick.yaml");
-    let text = fs::read_to_string(&tick_path).unwrap();
+    let budget_path = pack.join("rules/budget.yaml");
+    let text = fs::read_to_string(&budget_path).unwrap();
     let next = text.replacen("max_effects_per_intent: 4", "max_effects_per_intent: 1", 1);
     assert_ne!(next, text, "cap was not lowered");
-    fs::write(&tick_path, next).unwrap();
+    fs::write(&budget_path, next).unwrap();
 }
 
 fn assert_refusal(world: &World, oil: i64, reason: &str) {

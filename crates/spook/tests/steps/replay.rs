@@ -48,7 +48,7 @@ fn the_operator_plays_n_rounds(world: &mut World, count: usize) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap().to_string();
     for _ in 0..count {
-        table::run(world, &["tick", &arg]);
+        table::run(world, &["round", &arg]);
         assert_eq!(world.code, Some(0), "{}", world.stderr);
     }
 }
@@ -63,7 +63,7 @@ fn two_players_play_a_round(world: &mut World) {
     let _ = table::actor_send(world, "pc_harbormouse", "wait", "\"kind\":");
     table::seat_gm(world);
     let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
-    let _ = table::gm_call(world, 7, "commit_round", r#"{"include_tick":true}"#);
+    let _ = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
     table::close_actor(world, "pc_harbormouse");
     table::wait_humans(world, &pack, 1);
     table::close_actor(world, "pc_rowan");

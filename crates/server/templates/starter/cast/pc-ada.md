@@ -4,7 +4,7 @@ id: pc_ada
 kind: pc_template
 display_name: Ada
 facts: []
-tick:
+idle:
   eligible: false
 ---
 Ada starts in the yard.

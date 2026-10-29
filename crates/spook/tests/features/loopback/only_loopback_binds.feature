@@ -14,8 +14,8 @@ Feature: Only loopback binds
       | play    | 0.0.0.0       |
       | gm      | 0.0.0.0       |
       | ai-gm   | 0.0.0.0       |
-      | tick    | 0.0.0.0       |
-      | tick    | 10.0.0.1:9737 |
+      | round   | 0.0.0.0       |
+      | round   | 10.0.0.1:9737 |
       | status  | 0.0.0.0       |
       | status  | 10.0.0.1:9737 |
       | migrate | 0.0.0.0       |

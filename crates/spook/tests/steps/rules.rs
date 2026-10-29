@@ -118,7 +118,7 @@ fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
 fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     let pack = crate::support::temp_pack("rules-diverge");
     world.pack = Some(pack.clone());
-    table::run(world, &["tick", pack.to_str().unwrap()]);
+    table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let located = spookery_engine::testing::journal::locate(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
@@ -262,8 +262,8 @@ The ferry waits at the dock.
     let rowan = pack.join("cast/pc-rowan.md");
     let text = fs::read_to_string(&rowan).unwrap();
     let next = text.replace(
-        "tick:\n  eligible: false\n",
-        "tick:\n  eligible: false\n  flags:\n    - took_the_ferry\n",
+        "idle:\n  eligible: false\n",
+        "idle:\n  eligible: false\n  flags:\n    - took_the_ferry\n",
     );
     assert_ne!(text, next, "rowan profile was not found");
     fs::write(&rowan, next).unwrap();
@@ -321,7 +321,7 @@ id: briar
 kind: npc
 display_name: Briar
 facts: []
-tick:
+idle:
   eligible: true
 rules:
   - id: restock

@@ -308,10 +308,10 @@ fn write_flags(pack: &Path, flags: &[String]) -> Result<(), String> {
     for flag in flags {
         listed.push_str(&format!("    - {flag}\n"));
     }
-    let needle = "tick:\n  eligible: false\n";
+    let needle = "idle:\n  eligible: false\n";
     if !text.contains(needle) {
-        return Err("pc_rowan tick block was not where the property expected".to_string());
+        return Err("pc_rowan idle block was not where the property expected".to_string());
     }
-    let replacement = format!("tick:\n  eligible: false\n{listed}");
+    let replacement = format!("idle:\n  eligible: false\n{listed}");
     fs::write(&path, text.replacen(needle, &replacement, 1)).map_err(|err| err.to_string())
 }

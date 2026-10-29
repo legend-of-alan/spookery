@@ -147,7 +147,7 @@ id: pc_lark
 kind: pc_template
 display_name: Lark
 facts: []
-tick:
+idle:
   eligible: false
 ---
 Lark watches the street from a dry doorway.
@@ -511,8 +511,8 @@ rules:
 ---
 ";
     let next = text.replacen(
-        "tick:\n  eligible: true\n---\n",
-        &format!("tick:\n  eligible: true\n{habit}"),
+        "idle:\n  eligible: true\n---\n",
+        &format!("idle:\n  eligible: true\n{habit}"),
         1,
     );
     assert_ne!(text, next, "bram's cast did not take the habit");
@@ -556,7 +556,7 @@ fn a_round_commits(world: &mut World) {
     let before = list_round_keys(&pack).len();
     let queued = table::gm_call(world, 5, "intent", r#"{"actor_id":"aldric","move":"wait"}"#);
     assert!(queued.contains("\"queued\""), "{queued}");
-    let committed = table::gm_call(world, 6, "commit_round", r#"{"include_tick":true}"#);
+    let committed = table::gm_call(world, 6, "commit_round", r#"{"include_round":true}"#);
     assert_eq!(list_round_keys(&pack).len(), before + 1, "{committed}");
 }
 

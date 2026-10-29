@@ -35,6 +35,24 @@ fn stderr_shows_usage(world: &mut World) {
     assert_ne!(world.stderr.trim(), "NOT_IN_SPEC", "{}", world.stderr);
 }
 
+#[then(expr = "stdout lists the {string} command")]
+fn stdout_lists_the_command(world: &mut World, command: String) {
+    assert!(lists_command(&world.stdout, &command), "{}", world.stdout);
+}
+
+#[then(expr = "stdout lists no {string} command")]
+fn stdout_lists_no_command(world: &mut World, command: String) {
+    assert!(!lists_command(&world.stdout, &command), "{}", world.stdout);
+}
+
+/// Whether a line of clap's `Commands:` list starts with `command`.
+fn lists_command(help: &str, command: &str) -> bool {
+    help.lines()
+        .skip_while(|line| !line.starts_with("Commands:"))
+        .take_while(|line| !line.is_empty())
+        .any(|line| line.split_whitespace().next() == Some(command))
+}
+
 #[then(expr = "stdout names the default loopback address")]
 fn stdout_names_the_default_loopback_address(world: &mut World) {
     assert!(world.stdout.contains("127.0.0.1:9737"), "{}", world.stdout);

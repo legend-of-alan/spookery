@@ -53,7 +53,7 @@ fn lunge_pack(limit: Option<&str>, rule: &str) -> PathBuf {
     let pack = copy_pack("sample-d20", "opposed-base");
     if let Some(limit) = limit {
         let (key, _) = limit.split_once(':').expect("a `key: value` line");
-        let path = pack.join("rules/tick.yaml");
+        let path = pack.join("rules/budget.yaml");
         let text = fs::read_to_string(&path).unwrap();
         let old = text.lines().find(|line| line.starts_with(key));
         fs::write(&path, text.replacen(old.expect("limit key"), limit, 1)).unwrap();

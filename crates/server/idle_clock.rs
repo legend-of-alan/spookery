@@ -60,7 +60,7 @@ pub fn on_scheduled_wake(
     }
     let now = Utc::now();
     let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
-    if elapsed < world.budget().tick_every_real_seconds {
+    if elapsed < world.budget().round_every_real_seconds {
         return Ok(false);
     }
     let before = world.now().world_time;

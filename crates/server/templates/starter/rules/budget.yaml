@@ -1,4 +1,5 @@
-schema: tick
+schema: budget
+idle: on
 max_intents_applied: 12
 max_npcs_acting: 8
 max_effects_per_intent: 4
@@ -6,10 +7,10 @@ max_state_keys_mutated: 24
 max_memory_writes: 8
 idle_acts_per_world_day: 3
 live_acts_per_world_hour: 6
-tick_every_real_seconds: 300
-idle_minutes_per_tick: 60
-live_minutes_per_tick: 5
-idle_catchup_max_ticks: 12
+round_every_real_seconds: 300
+idle_minutes_per_round: 60
+live_minutes_per_round: 5
+idle_catchup_max_rounds: 12
 idle_max_world_hours_per_real_hour: 8
 pause:
   named_plot_clocks: pause_when_empty

@@ -1,9 +1,9 @@
 Feature: One writer per pack
 
-  Scenario: spook tick is refused while spook run holds the pack
+  Scenario: spook round is refused while spook run holds the pack
     Given spook run is serving a docks table
-    When the host runs spook tick on that pack
-    Then spook tick exits non-zero with COMMIT_CONFLICT
+    When the host runs spook round on that pack
+    Then spook round exits non-zero with COMMIT_CONFLICT
     And the journal is unchanged
 
   Scenario: spook migrate is refused while spook run holds the pack
@@ -20,9 +20,9 @@ Feature: One writer per pack
     And the host text lists the clocks
     And the journal is unchanged
 
-  Scenario: the table keeps a verifiable journal after a refused tick
+  Scenario: the table keeps a verifiable journal after a refused round
     Given spook run is serving a docks table
-    And spook tick was refused
+    And spook round was refused
     When a seated player commits a move
     And spook run stops
     Then spook verify passes
@@ -33,5 +33,5 @@ Feature: One writer per pack
 
     Examples:
       | command |
-      | tick    |
+      | round   |
       | migrate |

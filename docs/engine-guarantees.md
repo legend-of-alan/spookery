@@ -20,7 +20,7 @@ cast, or rules file that no longer matches the save is refused, and that round
 writes nothing, until migrate stores the new hash. An ordinary commit appends
 one bundle and flushes that file once. The first record in a new bundle also
 flushes the journal directory. `save.yaml` is written at a checkpoint, not on
-every commit. One process writes a pack at a time. `spook run`, `spook tick`
+every commit. One process writes a pack at a time. `spook run`, `spook round`
 and `spook migrate` each hold `state/.pack.lock` for as long as they have the
 pack open, and a second one is refused with `COMMIT_CONFLICT` and writes
 nothing. Crash recovery runs when a writer takes that lock: a torn last line in

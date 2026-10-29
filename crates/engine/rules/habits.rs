@@ -35,7 +35,7 @@ pub(crate) fn is_eligible(canon: &Canon, now: &Now, presence: &Presence, npc_id:
     if !actor.is_npc() {
         return false;
     }
-    let Some(profile) = canon.profile(npc_id) else {
+    let Some(profile) = canon.idle_profile(npc_id) else {
         return false;
     };
     if !profile.eligible {

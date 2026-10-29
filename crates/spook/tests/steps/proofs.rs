@@ -64,15 +64,15 @@ fn early_wake_does_not_play_another_round() {
 }
 
 fn write_idle(pack: &Path, value: &str) {
-    let path = pack.join("rules/tick.yaml");
+    let path = pack.join("rules/budget.yaml");
     let text = fs::read_to_string(&path).unwrap();
-    assert!(!text.contains("\nidle:"), "tick.yaml already sets idle");
+    assert!(!text.contains("\nidle:"), "budget.yaml already sets idle");
     let next = text.replacen(
-        "schema: tick\n",
-        &format!("schema: tick\nidle: {value}\n"),
+        "schema: budget\n",
+        &format!("schema: budget\nidle: {value}\n"),
         1,
     );
-    assert_ne!(next, text, "tick.yaml has no schema line");
+    assert_ne!(next, text, "budget.yaml has no schema line");
     fs::write(&path, next).unwrap();
     stamp_pack_rev(pack);
 }
@@ -82,7 +82,7 @@ fn idle_off_past_due_wake_writes_nothing() {
     write_idle(&pack, "off");
     let (world_time, state_rev, round_index, stamp) = {
         let shard = open(&pack);
-        let every = shard.budget().tick_every_real_seconds;
+        let every = shard.budget().round_every_real_seconds;
         assert!(
             every > 0 && every + 60 < 3600,
             "interval {every} is not inside one hour"
@@ -100,7 +100,7 @@ fn idle_off_past_due_wake_writes_nothing() {
     };
     let mut shard = open(&pack);
     let elapsed = spookery::host::idle_clock::seconds_since(&stamp).unwrap();
-    assert!(elapsed >= shard.budget().tick_every_real_seconds);
+    assert!(elapsed >= shard.budget().round_every_real_seconds);
     assert!(elapsed < 3600);
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
     assert_eq!(shard.now().world_time, world_time);
@@ -138,7 +138,7 @@ fn idle_off_long_absence_writes_no_catchup() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn idle_off_seated_line_and_spook_tick_still_advance() {
+fn idle_off_seated_line_and_spook_round_still_advance() {
     let pack = support::temp_pack("idle-off-play");
     write_idle(&pack, "off");
     let mut shard = open(&pack);
@@ -176,7 +176,12 @@ fn idle_off_commit_round_still_commits() {
         &mut shard,
         &rowan(),
         "commit_round",
-        Some(json!({ "include_tick": true }).as_object().unwrap().clone()),
+        Some(
+            json!({ "include_round": true })
+                .as_object()
+                .unwrap()
+                .clone(),
+        ),
     );
     assert!(done.value.get("code").is_none(), "{}", done.value);
     assert!(!done.outputs.is_empty());
@@ -258,9 +263,9 @@ fn idle_is_off_and_a_long_absence_wakes(_world: &mut World) {
     idle_off_long_absence_writes_no_catchup();
 }
 
-#[when(expr = "idle is off and a player waits and spook tick runs")]
+#[when(expr = "idle is off and a player waits and spook round runs")]
 fn idle_is_off_and_a_player_waits(_world: &mut World) {
-    idle_off_seated_line_and_spook_tick_still_advance();
+    idle_off_seated_line_and_spook_round_still_advance();
 }
 
 #[when(expr = "idle is off and the GM commits a queued wait")]

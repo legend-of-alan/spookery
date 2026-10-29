@@ -989,7 +989,7 @@ id: world
 kind: npc
 display_name: World
 facts: []
-tick:
+idle:
   eligible: false
 ---
 Reserved.
@@ -1085,7 +1085,7 @@ id: briar
 kind: npc
 display_name: Briar
 facts: []
-tick:
+idle:
   eligible: false
   flags:
     - downed
@@ -1199,7 +1199,7 @@ id: pc_nell
 kind: pc_template
 display_name: Nell
 facts: []
-tick:
+idle:
   eligible: false
 {flags}---
 Nell walks the docks.

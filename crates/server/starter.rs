@@ -37,8 +37,8 @@ const FILES: &[(&str, &str)] = &[
         include_str!("templates/starter/rules/meters.yaml"),
     ),
     (
-        "rules/tick.yaml",
-        include_str!("templates/starter/rules/tick.yaml"),
+        "rules/budget.yaml",
+        include_str!("templates/starter/rules/budget.yaml"),
     ),
     (
         "state/save.yaml",

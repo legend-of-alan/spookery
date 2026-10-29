@@ -30,10 +30,10 @@ fn the_host_runs_spook_on_that_pack(world: &mut World, command: String) {
     table::run(world, &[&command, pack.to_str().unwrap()]);
 }
 
-#[given(expr = "spook tick was refused")]
-fn spook_tick_was_refused(world: &mut World) {
-    the_host_runs_spook_on_that_pack(world, "tick".to_string());
-    spook_exits_non_zero_with(world, "tick".to_string(), "COMMIT_CONFLICT".to_string());
+#[given(expr = "spook round was refused")]
+fn spook_round_was_refused(world: &mut World) {
+    the_host_runs_spook_on_that_pack(world, "round".to_string());
+    spook_exits_non_zero_with(world, "round".to_string(), "COMMIT_CONFLICT".to_string());
 }
 
 #[then(expr = "spook {word} exits non-zero with {word}")]

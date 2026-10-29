@@ -78,7 +78,7 @@ pub(super) const GM_LIST: &[GmTool] = &[
     },
     GmTool {
         name: "commit_round",
-        about: "commit_round requires include_tick. session_id may be a string.",
+        about: "commit_round requires include_round. session_id may be a string.",
         schema: commit_schema,
         run: run_commit_round,
     },
@@ -249,10 +249,10 @@ fn commit_schema() -> Map<String, Value> {
     schema_object(serde_json::json!({
         "type": "object",
         "properties": {
-            "include_tick": { "type": "boolean" },
+            "include_round": { "type": "boolean" },
             "session_id": { "type": "string" }
         },
-        "required": ["include_tick"],
+        "required": ["include_round"],
         "additionalProperties": false
     }))
 }
@@ -282,7 +282,7 @@ fn intent_schema() -> Map<String, Value> {
             "actor_id": { "type": "string" },
             "move": { "type": "string" },
             "id": { "type": "string" },
-            "tick_index": { "type": "integer", "minimum": 0 },
+            "round_index": { "type": "integer", "minimum": 0 },
             "target": { "type": "string" },
             "args": { "type": "object" },
             "rationale_code": { "type": "string" }
@@ -304,8 +304,8 @@ fn commit_tool(
     presence: &Presence,
     arguments: Option<Map<String, Value>>,
 ) -> Result<GmToolReply, Reason> {
-    let include_tick = commit_include_tick(arguments)?;
-    if !include_tick {
+    let include_round = commit_include_round(arguments)?;
+    if !include_round {
         if world.queued_intents().is_empty() {
             return Ok(noop(world));
         }
@@ -388,9 +388,9 @@ fn status_since(arguments: Option<Map<String, Value>>) -> Result<Option<u64>, Re
     Ok(args.since)
 }
 
-fn commit_include_tick(arguments: Option<Map<String, Value>>) -> Result<bool, Reason> {
+fn commit_include_round(arguments: Option<Map<String, Value>>) -> Result<bool, Reason> {
     let args = crate::protocol::read_commit_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
-    Ok(args.include_tick)
+    Ok(args.include_round)
 }
 
 fn queue_tool_intent(
@@ -401,7 +401,7 @@ fn queue_tool_intent(
     world.queue_gm_intent(
         GmIntentSpec {
             id: call.id,
-            round_index: call.tick_index,
+            round_index: call.round_index,
             actor_id: call.actor_id,
             move_name: call.move_name,
             target: call.target,

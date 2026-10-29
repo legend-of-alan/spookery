@@ -334,8 +334,8 @@ fn insert_flags(pack: &Path, flags: &str) {
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
-        "tick:\n  eligible: true\n",
-        &format!("tick:\n  eligible: true\n  flags:\n{flags}"),
+        "idle:\n  eligible: true\n",
+        &format!("idle:\n  eligible: true\n  flags:\n{flags}"),
         1,
     );
     assert_ne!(next, text, "mira flags were not inserted");

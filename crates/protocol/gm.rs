@@ -62,7 +62,7 @@ pub fn read_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<Perc
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CommitArgs {
-    pub include_tick: bool,
+    pub include_round: bool,
     #[serde(default)]
     pub session_id: Option<String>,
 }
@@ -133,7 +133,7 @@ pub struct IntentCall {
     #[serde(default)]
     pub id: Option<String>,
     #[serde(default)]
-    pub tick_index: Option<u64>,
+    pub round_index: Option<u64>,
     #[serde(default)]
     pub actor_id: Option<String>,
     #[serde(rename = "move", default)]
@@ -172,10 +172,10 @@ pub struct SessionStatus {
     pub presence: StatusPresence,
     pub pause: StatusPause,
     pub world_time: u64,
-    pub tick_index: u64,
+    pub round_index: u64,
     pub state_rev: u64,
     pub pack_rev: String,
-    pub last_tick_at: String,
+    pub last_round_at: String,
     pub queued: Vec<QueueRow>,
     pub last_seq: u64,
     #[serde(
@@ -339,7 +339,7 @@ mod tests {
             assert_eq!(back, v);
         }
         rt::<SessionStatus>(
-            r#"{"presence":{"humans":1,"actors_present":["pc_rowan"],"x":1},"pause":{"named_plot_clocks":"running","x":1},"world_time":10,"tick_index":1,"state_rev":2,"pack_rev":"p","last_tick_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
+            r#"{"presence":{"humans":1,"actors_present":["pc_rowan"],"x":1},"pause":{"named_plot_clocks":"running","x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         rt::<CommitBody>(
             r#"{"state_rev":3,"diff_summary":["d"],"log_path":null,"checks":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,

@@ -22,3 +22,10 @@ Feature: A line waits for the GM
     When the GM commits the round
     Then no round file was written
     And world_time is 1080
+
+  Scenario: spook round plays one round
+    Given a docks table
+    When the operator runs spook round
+    Then the command exits 0
+    And round index is 1
+    And a round file was written

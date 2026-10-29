@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::canon::fact::{FactFile, Facts};
 use crate::canon::rule_list::{self, RuleEntry};
 use crate::canon::source::{load_headed, At, Diags, Page, Problem, Source, CAST_SCHEMA};
-use crate::canon::{CastCanon, CastKind, TickProfile};
+use crate::canon::{CastCanon, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
 use crate::rule::{Owner, Rule};
 
@@ -47,7 +47,7 @@ pub(super) fn add_cast(
             display_name: file.display_name,
             facts: ids,
             body: page.body,
-            tick: file.tick,
+            idle: file.idle,
         },
     );
     diags.keep(rule_list::compile(&page.file, file.rules, &Owner::Cast(id)))
@@ -100,7 +100,7 @@ struct CastFile {
     kind: String,
     display_name: String,
     facts: Vec<FactFile>,
-    tick: Option<TickProfile>,
+    idle: Option<IdleProfile>,
     #[serde(default)]
     rules: Vec<RuleEntry>,
 }

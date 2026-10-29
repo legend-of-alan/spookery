@@ -47,7 +47,7 @@ Each commit that changes the save appends one journal record under `state/journa
 
 ```sh
 cp -r packs/oneshot-docks /tmp/docks
-spook tick /tmp/docks
+spook round /tmp/docks
 spook verify /tmp/docks
 ```
 

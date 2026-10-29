@@ -1,6 +1,6 @@
 schema: now
 shard_id: sample-d20
-pack_rev: blake2s:02f86c17e890574432cb533294581156dffdd633d751afb1022287715fb34b46
+pack_rev: blake2s:26dc204fedc4cc0894992da7b7e48e0d98591741d40ecd85f3d510c0d506f459
 rules_rev: 9
 state_rev: 0
 round_index: 0

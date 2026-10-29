@@ -27,7 +27,7 @@ Commands:
   queue <actor> <move> [target]
       Queue a move. A target is a place id or an actor id.
   commit
-      Commit the queue and tick.
+      Commit the queue as one round.
   help
       Show these commands.
   quit
@@ -207,7 +207,7 @@ impl GmSession {
 
     async fn on_commit(&mut self) -> Result<(), super::Error> {
         let Some(outcome) = self
-            .call_tool("commit_round", json!({ "include_tick": true }))
+            .call_tool("commit_round", json!({ "include_round": true }))
             .await?
         else {
             return Ok(());
@@ -642,10 +642,10 @@ mod tests {
                 named_plot_clocks: "running".to_string(),
             },
             world_time: 0,
-            tick_index: 0,
+            round_index: 0,
             state_rev: 0,
             pack_rev: String::new(),
-            last_tick_at: String::new(),
+            last_round_at: String::new(),
             queued,
             last_seq: 0,
             events: None,
