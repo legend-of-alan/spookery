@@ -5,7 +5,7 @@ use std::thread;
 
 use cucumber::{given, then, when};
 
-use spookery_engine::testing::{journal, on_reader_wait, temp_pack, write_guard};
+use spookery_engine::testing::{journal, lock_write, on_reader_wait, temp_pack};
 use spookery_engine::{emit_save, lock_pack, World as Shard};
 
 use crate::{World, Writer};
@@ -38,7 +38,7 @@ fn commit_round(world: &mut World) {
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
-fn status_text(pack: &Path) -> Result<String, String> {
+fn peek_status(pack: &Path) -> Result<String, String> {
     Shard::peek_summary(pack).map_err(|err| err.to_string())
 }
 
@@ -48,11 +48,11 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
     let pack = world.pack().to_path_buf();
     let (tx, rx) = mpsc::channel();
     on_reader_wait(tx.clone());
-    let write = write_guard(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
+    let write = lock_write(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
     halfway();
     let peeked = thread::scope(|scope| {
         let status = scope.spawn(|| {
-            let peeked = status_text(&pack);
+            let peeked = peek_status(&pack);
             let _ = tx.send("peeked");
             peeked
         });
@@ -140,14 +140,14 @@ fn status_prints_the_committed_round(world: &mut World) {
     assert!(now.state_rev > 0, "the writer committed nothing");
     let tip = Shard::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
     assert_eq!(emit_save(tip.now()).unwrap(), emit_save(now).unwrap());
-    let text = status_text(pack).unwrap_or_else(|err| panic!("status: {err}"));
+    let text = peek_status(pack).unwrap_or_else(|err| panic!("status: {err}"));
     assert!(text.contains("clock "), "{text}");
     assert_eq!(world.scratch, text);
 }
 
 #[given(expr = "a second handle to the lock file stays open, like a child that has not exec'd yet")]
 fn a_second_handle_stays_open(world: &mut World) {
-    world.lock_copy = Some(spookery_engine::testing::copy_lock_handle(writer(world)));
+    world.lock_clone = Some(spookery_engine::testing::clone_lock_file(writer(world)));
 }
 
 #[when(expr = "the writer drops its lock")]

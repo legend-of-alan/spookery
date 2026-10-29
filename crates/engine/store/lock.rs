@@ -23,19 +23,19 @@ mod locked {
 
     impl LockedFile {
         /// Lock without waiting. A lock held elsewhere is `COMMIT_CONFLICT`.
-        pub(super) fn try_exclusive(file: File) -> Result<Self, Reason> {
+        pub(super) fn try_lock(file: File) -> Result<Self, Reason> {
             file.try_lock().map_err(|_| Reason::CommitConflict)?;
             Ok(Self(file))
         }
 
         /// Wait for the exclusive lock.
-        pub(super) fn exclusive(file: File) -> Result<Self, Reason> {
+        pub(super) fn lock(file: File) -> Result<Self, Reason> {
             file.lock().map_err(|_| Reason::NotInSpec)?;
             Ok(Self(file))
         }
 
         /// Wait for a shared lock, noting the wait for tests.
-        pub(super) fn shared(file: File) -> Result<Self, Reason> {
+        pub(super) fn lock_shared(file: File) -> Result<Self, Reason> {
             match file.try_lock_shared() {
                 Ok(()) => {}
                 Err(TryLockError::WouldBlock) => {
@@ -85,7 +85,7 @@ impl LockGuard {
 /// ```no_run
 /// # let root = std::path::Path::new("pack");
 /// let world = spookery_engine::testing::open(root);
-/// let write = spookery_engine::testing::write_guard(&world).unwrap();
+/// let write = spookery_engine::testing::lock_write(&world).unwrap();
 /// spookery_engine::testing::append_bundle(root, "{}\n", &write).unwrap();
 /// ```
 pub struct WriteGuard {
@@ -103,29 +103,29 @@ pub struct ReadGuard {
 pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
     let file = open_lock(root, "state/.pack.lock")?;
     let lock = LockGuard {
-        _file: LockedFile::try_exclusive(file)?,
+        _file: LockedFile::try_lock(file)?,
     };
-    recover(root, &write_guard(root, &lock)?)?;
+    recover(root, &lock_write(root, &lock)?)?;
     Ok(lock)
 }
 
 /// Wait for readers to finish, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
-pub fn write_guard(root: &Path, _lock: &LockGuard) -> Result<WriteGuard, Reason> {
+pub fn lock_write(root: &Path, _lock: &LockGuard) -> Result<WriteGuard, Reason> {
     Ok(WriteGuard {
-        _file: LockedFile::exclusive(open_lock(root, RW_LOCK)?)?,
+        _file: LockedFile::lock(open_lock(root, RW_LOCK)?)?,
     })
 }
 
 /// Wait out a write in progress, then hold the next one off until the guard drops.
 /// An existing lock file opens read-only, so a reader needs no write access to `state/`.
-pub fn read_guard(root: &Path) -> Result<ReadGuard, Reason> {
+pub fn lock_read(root: &Path) -> Result<ReadGuard, Reason> {
     let file = match File::open(root.join(RW_LOCK)) {
         Ok(file) => file,
         Err(_) => open_lock(root, RW_LOCK)?,
     };
     Ok(ReadGuard {
-        _file: LockedFile::shared(file)?,
+        _file: LockedFile::lock_shared(file)?,
     })
 }
 

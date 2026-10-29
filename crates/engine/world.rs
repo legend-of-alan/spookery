@@ -532,7 +532,7 @@ impl<L> World<L> {
         }
     }
 
-    pub(crate) fn locked(self, lock: crate::LockGuard) -> World {
+    pub(crate) fn take_lock(self, lock: crate::LockGuard) -> World {
         let World {
             root,
             canon,
@@ -566,14 +566,14 @@ impl World<()> {
     /// spookery_engine::World::peek(root).unwrap().play("");
     /// ```
     pub fn peek(root: &Path) -> Result<World<()>, Reason> {
-        let _read = crate::store::lock::read_guard(root)?;
+        let _read = crate::store::lock::lock_read(root)?;
         crate::round::replay::peek_at_tip(root)
     }
 
     /// The host text at the journal tip: effect rows from the journal, then the clocks.
     /// One read guard covers the World and the journal read, so both come from one state.
     pub fn peek_summary(root: &Path) -> Result<String, Reason> {
-        let _read = crate::store::lock::read_guard(root)?;
+        let _read = crate::store::lock::lock_read(root)?;
         crate::round::replay::peek_at_tip(root)?.host_summary()
     }
 

@@ -61,13 +61,13 @@ pub mod testing {
     pub use crate::store::lock::{on_reader_wait, WriteGuard};
 
     /// The write guard of the pack `world` holds the lock on.
-    pub fn write_guard(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
-        crate::store::lock::write_guard(world.root(), &world.lock)
+    pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
+        crate::store::lock::lock_write(world.root(), &world.lock)
     }
     pub use crate::store::RULES_REV;
 
     /// A second handle on the lock file, like the copy a spawned child holds until it execs.
-    pub fn copy_lock_handle(world: &crate::World) -> std::fs::File {
+    pub fn clone_lock_file(world: &crate::World) -> std::fs::File {
         world.lock.file().try_clone().unwrap()
     }
 
@@ -175,7 +175,7 @@ pub mod testing {
             .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
         crate::World::open(pack)
             .unwrap_or_else(|err| panic!("World::open {}: {err}", pack.display()))
-            .locked(lock)
+            .take_lock(lock)
     }
 
     pub fn now_of(pack: &Path) -> crate::model::Now {

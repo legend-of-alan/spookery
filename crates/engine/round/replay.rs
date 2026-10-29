@@ -9,7 +9,7 @@ use crate::commit::atomic_publish;
 use crate::diagnostic::reason_of;
 use crate::effect::Effect;
 use crate::journal::{self, hash_now, JournalEntry, MigrateRecord, RoundRecord};
-use crate::lock::{lock_pack, write_guard, LockGuard};
+use crate::lock::{lock_pack, lock_write, LockGuard};
 use crate::model::{Now, Presence};
 use crate::store::codec::{emit_effect, emit_save, load_save};
 use crate::store::require_rules_rev;
@@ -235,7 +235,7 @@ pub(crate) fn open_at_tip(path: &Path, lock: LockGuard) -> Result<World, Reason>
     rebuild_snapshot(path, &lock).map_err(replay_reason)?;
     let world = peek_at_tip(path)?;
     crate::commit::settle_open_checkpoint(&world, &lock)?;
-    Ok(world.locked(lock))
+    Ok(world.take_lock(lock))
 }
 
 /// The journal tip in memory. Writes nothing.
@@ -359,7 +359,7 @@ fn rebuild_snapshot(path: &Path, lock: &LockGuard) -> Result<(), ReplayError> {
                 .into(),
         );
     }
-    let _write = write_guard(path, lock).map_err(ReplayError::Reason)?;
+    let _write = lock_write(path, lock).map_err(ReplayError::Reason)?;
     atomic_publish(&save, &report.now_yaml).map_err(ReplayError::Reason)?;
     Ok(())
 }

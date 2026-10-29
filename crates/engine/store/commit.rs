@@ -15,7 +15,7 @@ use crate::round::log::RoundLine;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 pub use crate::store::durable::atomic_publish;
 use crate::store::durable::{fsync_dir, fsync_file};
-use crate::store::lock::{write_guard, LockGuard, WriteGuard};
+use crate::store::lock::{lock_write, LockGuard, WriteGuard};
 use crate::store::recover::close_finished;
 use crate::world::World;
 
@@ -32,7 +32,7 @@ pub fn commit(
     mut draft: Draft,
     line: RoundLine,
 ) -> Result<CommitOutcome, Reason> {
-    let write = write_guard(&world.root, &world.lock)?;
+    let write = lock_write(&world.root, &world.lock)?;
     settle(world, &write)?;
     bump_state_rev(&mut draft)?;
     let now_bytes = emit_save(&draft.state)?.into_bytes();
@@ -112,7 +112,7 @@ pub fn migrate_journal(
         &added,
         edited,
     );
-    let write = write_guard(root, lock)?;
+    let write = lock_write(root, lock)?;
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&entry, &prev);
     if !edited {
@@ -262,7 +262,7 @@ fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str, write: &W
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
 pub fn settle_open_checkpoint<L>(world: &World<L>, lock: &LockGuard) -> Result<(), Reason> {
-    settle(world, &write_guard(&world.root, lock)?)
+    settle(world, &lock_write(&world.root, lock)?)
 }
 
 fn settle<L>(world: &World<L>, write: &WriteGuard) -> Result<(), Reason> {

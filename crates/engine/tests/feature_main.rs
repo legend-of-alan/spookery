@@ -13,7 +13,7 @@ pub struct World {
     pub now_bytes: Vec<u8>,
     pub summary: Vec<String>,
     pub writer: Option<Writer>,
-    pub lock_copy: Option<std::fs::File>,
+    pub lock_clone: Option<std::fs::File>,
 }
 
 /// The World a scenario holds open as the pack's writer. It owns the pack lock.
@@ -43,7 +43,7 @@ async fn main() {
             .after(|_, _, _, _, world| {
                 let pack = world.and_then(|w| {
                     w.writer = None;
-                    w.lock_copy = None;
+                    w.lock_clone = None;
                     w.pack.take()
                 });
                 if let Some(pack) = pack {
