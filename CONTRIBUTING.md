@@ -32,6 +32,15 @@ Sizes: `[S]` about one sitting, `[M]` a focused PR, `[L]` likely split into sub-
 
 Every issue gets a priority label from `P0` (most urgent) to `P4` (a parked idea). It also gets a type label, which is `enhancement`, `bug` or `documentation`. Phases are milestones.
 
+## Design principles
+
+- **Keep it simple.** The best fix is often deleting code, not adding it. Before you write something new, check whether you can remove, reuse or derive what you need from what's already there. Build only as much as the job needs. In your PR, say how many lines it adds or removes, and if it grows the code, say why.
+- **Say it once.** Each message, rule, check or format should live in one place. If you find the same thing in two places, merge them instead of adding a flag to keep them in sync.
+- **No side doors.** Tests should use the same code path as the real program. If a test needs a shortcut, fix the test or the design.
+- **Use the words people already know.** Good code reads the way people expect, so it needs no tutorial, like WASD in a game. Borrow names from Rust, its standard library and this codebase (`try_lock`, `lock_shared`, `into_inner`) rather than inventing new ones. Types are nouns and functions are verbs, though a getter can be a noun as in std. Don't repeat the module name inside a name. "Tick" means game time only, and a batch of work is a "round".
+- **Fix the cause.** When something fails, find out why. Don't paper over it with sleeps, retries or longer timeouts.
+- **Scenario first.** Write the BDD scenario that describes the behavior, then the code.
+
 ## Prove the log
 
 Each commit that changes the save appends one journal record under `state/journal`, and the first commit stores a replay base there. `spook verify` replays that journal and checks the save byte for byte. It does not write the pack, take the lock, or bind a port. A later commit from a running server is ignored, because verify reads the save once and stops at that counter.
