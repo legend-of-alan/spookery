@@ -63,7 +63,7 @@ pub fn commit(
 }
 
 /// The journal already has this round. Keep the new state in memory.
-pub fn keep_in_memory<L>(world: &mut World<L>, mut draft: Draft) -> Result<(), Reason> {
+pub fn keep_in_memory(world: &mut World<()>, mut draft: Draft) -> Result<(), Reason> {
     bump_state_rev(&mut draft)?;
     world.now = draft.state;
     Ok(())

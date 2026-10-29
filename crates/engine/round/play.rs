@@ -141,7 +141,7 @@ pub(crate) fn replay_round(
 ) -> Result<RoundOutput, Reason> {
     world.set_presence_inner(presence);
     let (draft, _clock, mut log, delivered) = run_stages(world, wall, queue)?;
-    let output = record::output(&mut log, delivered);
+    let output = record::take_output(&mut log, delivered);
     crate::commit::keep_in_memory(world, draft)?;
     Ok(output)
 }

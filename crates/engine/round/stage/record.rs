@@ -11,7 +11,7 @@ use crate::round::stage::advance::Clock;
 use crate::round::stage::deliver::Delivered;
 
 /// What the round showed. A live round adds its commit outcome.
-pub(crate) fn output(log: &mut RoundLog, delivered: Delivered) -> RoundOutput {
+pub(crate) fn take_output(log: &mut RoundLog, delivered: Delivered) -> RoundOutput {
     RoundOutput {
         reports: std::mem::take(&mut log.reports),
         dice: log.dice.clone(),
@@ -33,7 +33,7 @@ pub(crate) fn commit_round(
     delivered: Delivered,
     fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    let mut output = output(&mut log, delivered);
+    let mut output = take_output(&mut log, delivered);
     let line = RoundLine {
         presence: draft.now().presence.clone(),
         seed: round_seed(&draft.now().shard_id, clock.round_index),

@@ -230,7 +230,7 @@ pub fn replay_journal(
 
 /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
 /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
-/// The caller holds the pack lock.
+/// Takes the pack lock and hands it to the World.
 pub(crate) fn open_at_tip(path: &Path, lock: LockGuard) -> Result<World, Reason> {
     rebuild_snapshot(path, &lock).map_err(replay_reason)?;
     let world = peek_at_tip(path)?;
