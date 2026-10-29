@@ -46,6 +46,13 @@ Feature: A human GM runs a round
     Then the command exits 1
     And stderr shows "The table is full. [SESSION_FULL]"
 
+  Scenario: A killed GM frees the seat for the next GM
+    Given a docks table
+    When a human GM sits on a free loopback port
+    And the GM is killed
+    And another GM sits in that seat
+    Then the GM shows "Commands:"
+
   Scenario: An unknown move is refused in a sentence
     Given a docks table
     When a human GM sits on a free loopback port
