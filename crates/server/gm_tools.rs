@@ -8,9 +8,6 @@ use super::world_loop::commit_then_fast_forward;
 
 pub struct GmToolReply {
     pub value: Value,
-    pub advanced: bool,
-    pub played_round: bool,
-    pub gm_event: Option<Vec<u8>>,
     /// Written on the GM socket after this call's response line.
     pub after: Vec<Vec<u8>>,
     pub player_line: Option<(Vec<String>, Vec<u8>)>,
@@ -27,9 +24,6 @@ impl GmToolReply {
     fn new(value: Value) -> Self {
         Self {
             value,
-            advanced: false,
-            played_round: false,
-            gm_event: None,
             after: Vec::new(),
             player_line: None,
             tape: None,
@@ -294,7 +288,6 @@ fn commit_tool(
         }
         return Err(Reason::NotInSpec);
     }
-    let before = world.now().world_time;
     let committed = !world.queued_intents().is_empty();
     let outputs = commit_then_fast_forward(world)?;
     let mut done = if committed {
@@ -320,8 +313,6 @@ fn commit_tool(
         ))
     };
     done.outputs = outputs;
-    done.advanced = world.now().world_time != before;
-    done.played_round = true;
     Ok(done)
 }
 

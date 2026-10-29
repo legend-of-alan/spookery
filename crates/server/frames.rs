@@ -1,8 +1,8 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, GmSay, MessageView, Missing, Outcome, OutgoingSay, PackSummary, PlayerMessage,
-    QueueRow, SessionStatus, StatusPause, StatusPresence, ViewScene,
+    CommitBody, EventBody, GmSay, MessageView, Missing, Outcome, OutgoingSay, PackSummary,
+    PlayerMessage, QueueRow, SessionStatus, StatusPause, StatusPresence, ViewScene,
 };
 use serde_json::{Map, Value};
 use spookery_engine::{
@@ -34,22 +34,14 @@ pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Resul
 pub(super) fn spoken_from(stored: &TapeRecord) -> Spoken {
     Spoken {
         tape: record_line(stored),
-        player_event: player_say_line(stored),
+        player_event: say_line(stored, false),
         gm_event: say_event(stored),
         tool: say_value(stored),
         recipients: stored.recipients.clone(),
     }
 }
 
-pub fn player_say_line(tape: &TapeRecord) -> String {
-    say_line(tape, false)
-}
-
-pub fn player_replay_line(tape: &TapeRecord) -> String {
-    say_line(tape, true)
-}
-
-fn say_line(tape: &TapeRecord, replay: bool) -> String {
+pub fn say_line(tape: &TapeRecord, replay: bool) -> String {
     crate::protocol::write_player(&PlayerMessage::Say {
         from: tape.from.clone(),
         address: tape.address.clone(),
@@ -63,7 +55,7 @@ pub fn say_value(tape: &TapeRecord) -> Value {
 }
 
 pub fn say_event(tape: &TapeRecord) -> Vec<u8> {
-    crate::protocol::write_say_event(&gm_say(tape))
+    serde_json::to_vec(&EventBody::Say(gm_say(tape))).expect("say event")
 }
 
 fn gm_say(tape: &TapeRecord) -> GmSay {
@@ -83,7 +75,12 @@ pub fn player_queued_line(id: &str) -> String {
 }
 
 pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
-    crate::protocol::write_queued_event(id, actor_id, move_name)
+    let row = QueueRow {
+        id: id.to_string(),
+        actor_id: actor_id.to_string(),
+        move_name: move_name.to_string(),
+    };
+    serde_json::to_vec(&EventBody::Queued(row)).expect("queued event")
 }
 
 pub fn player_check_line(outcome: Outcome) -> String {
@@ -91,7 +88,7 @@ pub fn player_check_line(outcome: Outcome) -> String {
 }
 
 pub fn check_event(out: &Roll) -> Vec<u8> {
-    crate::protocol::write_check_event(out)
+    serde_json::to_vec(&EventBody::Check(out.clone())).expect("check event")
 }
 
 pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {

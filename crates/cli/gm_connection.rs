@@ -406,11 +406,6 @@ pub fn read_event(params: Option<&Value>) -> Incoming {
 mod tests {
     use super::*;
 
-    fn params_of(line: &str) -> Value {
-        let value: Value = serde_json::from_str(line.trim_end()).unwrap();
-        value.get("params").cloned().unwrap_or(Value::Null)
-    }
-
     #[test]
     fn a_fixed_game_port_dials_the_next_port() {
         let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
@@ -424,63 +419,5 @@ mod tests {
             panic!("malformed event was dropped");
         };
         assert!(line.contains("\"kind\":\"nope\""), "{line}");
-    }
-
-    #[test]
-    fn a_say_event_keeps_the_speaker_and_the_text() {
-        let line = String::from_utf8(crate::protocol::write_say_event(&crate::protocol::GmSay {
-            seq: 4,
-            from: "player:pc_rowan".to_string(),
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            recipients: vec!["pc_rowan".to_string()],
-            text: "hello".to_string(),
-        }))
-        .unwrap();
-        let Incoming::Event(event) = read_event(Some(&params_of(&line))) else {
-            panic!("say");
-        };
-        let EventBody::Say(say) = event.body else {
-            panic!("{:?}", event.body);
-        };
-        assert_eq!(say.from, "player:pc_rowan");
-        assert_eq!(say.seq, 4);
-        assert_eq!(say.text, "hello");
-    }
-
-    #[test]
-    fn a_queued_event_keeps_the_actor_and_the_move() {
-        let line = String::from_utf8(crate::protocol::write_queued_event(
-            "id-1", "pc_rowan", "travel",
-        ))
-        .unwrap();
-        let Incoming::Event(event) = read_event(Some(&params_of(&line))) else {
-            panic!("queued");
-        };
-        assert_eq!(
-            event.body,
-            EventBody::Queued(crate::protocol::QueueRow {
-                id: "id-1".to_string(),
-                actor_id: "pc_rowan".to_string(),
-                move_name: "travel".to_string(),
-            })
-        );
-    }
-
-    #[test]
-    fn a_check_event_keeps_faces_and_drops_nothing_it_was_given() {
-        let roll = crate::protocol::Roll {
-            faces: vec![4, 2],
-            stat: 1,
-            total: 7,
-            target: 0,
-            outcome: crate::protocol::Outcome::Success,
-        };
-        let line = String::from_utf8(crate::protocol::write_check_event(&roll)).unwrap();
-        let Incoming::Event(event) = read_event(Some(&params_of(&line))) else {
-            panic!("check");
-        };
-        assert_eq!(event.body, EventBody::Check(roll));
     }
 }

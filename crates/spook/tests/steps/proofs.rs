@@ -206,7 +206,7 @@ fn idle_off_commit_round_still_commits() {
         Some(json!({ "include_tick": true }).as_object().unwrap().clone()),
     );
     assert!(done.value.get("code").is_none(), "{}", done.value);
-    assert!(done.played_round);
+    assert!(!done.outputs.is_empty());
     assert_eq!(shard.now().world_time, 1085);
     assert_eq!(shard.now().round_index, 1);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);

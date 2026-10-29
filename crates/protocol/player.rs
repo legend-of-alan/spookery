@@ -147,7 +147,7 @@ pub fn write_player(message: &PlayerMessage) -> String {
 }
 
 pub fn read_player(line: &str) -> Result<PlayerMessage, Error> {
-    serde_json::from_str(trim_line(line)).map_err(|_| Error)
+    serde_json::from_str(line).map_err(|_| Error)
 }
 
 /// `player:{id}\n`. An empty id, or an id with whitespace, is not a hello.
@@ -162,10 +162,6 @@ pub fn read_player_hello(line: &str) -> Option<&str> {
     } else {
         Some(id)
     }
-}
-
-fn trim_line(line: &str) -> &str {
-    line.trim_end_matches(['\n', '\r'])
 }
 
 fn skip_false(value: &bool) -> bool {
@@ -225,7 +221,7 @@ mod tests {
     fn a_player_hello_round_trips() {
         let line = write_player_hello("rowan");
         assert_eq!(line, "player:rowan\n");
-        assert_eq!(read_player_hello(trim_line(&line)), Some("rowan"));
+        assert_eq!(read_player_hello(line.trim_end()), Some("rowan"));
         assert_eq!(read_player_hello("player:"), None);
         assert_eq!(read_player_hello("player:row an"), None);
     }
