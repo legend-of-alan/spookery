@@ -16,7 +16,7 @@ Feature: One writer per pack
     Given spook run is serving a docks table
     And a commit folder is left in the pack
     When the host runs spook status on that pack
-    Then spook status exits 0
+    Then the command exits 0
     And the host text lists the clocks
     And the journal is unchanged
 

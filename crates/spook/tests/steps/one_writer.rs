@@ -42,11 +42,6 @@ fn spook_exits_non_zero_with(world: &mut World, command: String, code: String) {
     assert!(world.stderr.contains(&code), "{}", world.stderr);
 }
 
-#[then(expr = "spook {word} exits 0")]
-fn spook_exits_0(world: &mut World, command: String) {
-    assert_eq!(world.code, Some(0), "spook {command}: {}", world.stderr);
-}
-
 #[then(expr = "the journal is unchanged")]
 fn the_journal_is_unchanged(world: &mut World) {
     assert_eq!(state_files(world), world.state_files, "state/ changed");
