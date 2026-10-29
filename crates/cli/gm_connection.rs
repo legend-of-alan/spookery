@@ -414,8 +414,8 @@ mod tests {
     #[test]
     fn a_fixed_game_port_dials_the_next_port() {
         let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
-        let door = door_for(game).ok().map(|door| format!("http://{door}/mcp"));
-        assert_eq!(door.as_deref(), Some("http://127.0.0.1:9738/mcp"));
+        let door = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
+        assert_eq!(door_for(game).ok(), Some(door));
     }
 
     #[test]
