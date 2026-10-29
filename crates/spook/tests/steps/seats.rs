@@ -510,3 +510,170 @@ fn seat_drop_and_reseat() -> [String; 3] {
     let _ = fs::remove_dir_all(&pack);
     [rowan, wren, again]
 }
+
+const HUMMED_OIL: &str = "lamp_oil";
+
+#[given(expr = "a pack with a habit rule that requires humans == 0")]
+fn a_pack_with_a_humans_habit(world: &mut World) {
+    let pack = crate::support::temp_pack("humans-habit");
+    let path = pack.join("cast/bram.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
+    let habit = "\
+rules:
+  - id: stock_the_street
+    when: habit
+    if:
+      - humans:
+          op: \"==\"
+          value: 0
+    do:
+      - item:
+          who: place:docks_street
+          id: lamp_oil
+          add: 1
+---
+";
+    let next = text.replacen(
+        "tick:\n  eligible: true\n---\n",
+        &format!("tick:\n  eligible: true\n{habit}"),
+        1,
+    );
+    assert_ne!(text, next, "bram's cast did not take the habit");
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write bram: {err}"));
+    crate::support::stamp_pack_rev(&pack);
+    table::listen(world, &pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "{string} sits and a round commits")]
+fn sits_and_a_round_commits(world: &mut World, actor: String) {
+    let pack = table::pack(world).to_path_buf();
+    table::seat_actor(world, &pack, &actor);
+    a_round_commits(world);
+}
+
+#[when(expr = "{string} leaves and a round commits")]
+fn leaves_and_a_round_commits(world: &mut World, actor: String) {
+    leaves(world, actor);
+    a_round_commits(world);
+}
+
+#[when(expr = "{string} leaves")]
+fn leaves(world: &mut World, actor: String) {
+    table::close_actor(world, &actor);
+    let start = std::time::Instant::now();
+    while table::live_presence(world).1.contains(&actor) {
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(5),
+            "{actor} stayed seated"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    table::live_mut(world)
+        .players
+        .retain(|player| player.actor_id != actor);
+}
+
+/// The GM queues one NPC wait and commits, so a round runs whoever is seated.
+#[when(expr = "a round commits")]
+fn a_round_commits(world: &mut World) {
+    if table::live_mut(world).gm.is_none() {
+        table::seat_gm(world);
+    }
+    let pack = table::pack(world).to_path_buf();
+    let before = list_round_keys(&pack).len();
+    let queued = table::gm_call(world, 5, "intent", r#"{"actor_id":"aldric","move":"wait"}"#);
+    assert!(queued.contains("\"queued\""), "{queued}");
+    let committed = table::gm_call(world, 6, "commit_round", r#"{"include_tick":true}"#);
+    assert_eq!(list_round_keys(&pack).len(), before + 1, "{committed}");
+}
+
+fn street_oil(world: &World) -> u32 {
+    let now = table::now_of(table::pack(world));
+    now.places
+        .get("docks_street")
+        .and_then(|place| place.items.get(HUMMED_OIL))
+        .copied()
+        .unwrap_or(0)
+}
+
+#[then(expr = "the habit does not fire")]
+fn the_habit_does_not_fire(world: &mut World) {
+    assert_eq!(street_oil(world), 0);
+}
+
+#[then(expr = "the habit fires")]
+fn the_habit_fires(world: &mut World) {
+    assert_eq!(street_oil(world), 1);
+}
+
+#[then(expr = "the requires_presence clock is {word}")]
+fn the_requires_presence_clock_is(world: &mut World, state: String) {
+    let now = table::now_of(table::pack(world));
+    let clock = now
+        .clocks
+        .get("assassination_debt")
+        .unwrap_or_else(|| panic!("assassination_debt"));
+    assert!(clock.requires_presence);
+    assert_eq!(clock.paused, state == "paused", "{state}: {clock:?}");
+}
+
+const TABLE_LINE: &str = "the tide turns at the quay";
+
+#[given(expr = "a docks table with {string} seated and {string} not seated")]
+fn a_docks_table_with_one_seated_and_one_not(world: &mut World, seated: String, free: String) {
+    let pack = crate::support::temp_pack("say-seated");
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, &seated);
+    world.pack = Some(pack);
+    assert!(!table::live_presence(world).1.contains(&free));
+}
+
+#[when(expr = "the GM says a line to the table")]
+fn the_gm_says_a_line_to_the_table(world: &mut World) {
+    if table::live_mut(world).gm.is_none() {
+        table::seat_gm(world);
+    }
+    let args = format!(r#"{{"address":"table","text":"{TABLE_LINE}"}}"#);
+    world.scratch = table::gm_call(world, 3, "say", &args);
+}
+
+#[then(expr = "{string} hears it and {string} does not")]
+fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
+    let said: serde_json::Value = serde_json::from_str(&world.scratch)
+        .unwrap_or_else(|err| panic!("say json: {err}: {}", world.scratch));
+    assert_eq!(
+        said["result"]["structuredContent"]["recipients"],
+        serde_json::json!([seated]),
+        "{said}"
+    );
+    let _ = table::wait_actor_from(world, &seated, 0, TABLE_LINE);
+    let pack = table::pack(world).to_path_buf();
+    table::seat_actor(world, &pack, &free);
+    let text = table::actor_text(world, &free);
+    assert!(!text.contains(TABLE_LINE), "{free} heard the line\n{text}");
+}
+
+#[then(expr = "session_status shows humans {int} and actors_present {string}")]
+fn session_status_shows(world: &mut World, humans: u32, actor: String) {
+    assert_eq!(table::live_presence(world), (humans, vec![actor]));
+}
+
+#[then(expr = "the round's presence_humans is {int} and actors_present is {string}")]
+fn the_rounds_presence_is(world: &mut World, humans: u64, actor: String) {
+    let pack = table::pack(world);
+    let last = list_round_keys(pack)
+        .pop()
+        .unwrap_or_else(|| panic!("no round was written"));
+    let round = crate::support::read_round(pack, &last);
+    assert_eq!(
+        round["presence_humans"],
+        serde_json::json!(humans),
+        "{round}"
+    );
+    assert_eq!(
+        round["actors_present"],
+        serde_json::json!([actor]),
+        "{round}"
+    );
+}
