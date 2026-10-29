@@ -31,8 +31,6 @@ Feature: spook check explains a broken pack
       | pack_rev mismatch             | state/save.yaml              | PACK_REV_MISMATCH   | pack_rev            |
       | exit to an unknown place      | world/places/docks_shop.md   | SCHEMA              | not a place         |
       | duplicate exit                | world/places/docks_shop.md   | SCHEMA              | listed twice        |
-      | old round interval key        | rules/budget.yaml            | SCHEMA              | rename it to round_every_real_seconds |
-      | old cast idle key             | cast/pc-rowan.md             | SCHEMA              | rename it to idle   |
 
   Scenario: Two problems in two files are both reported
     Given a docks table

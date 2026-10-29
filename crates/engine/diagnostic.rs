@@ -192,26 +192,6 @@ pub(crate) fn tag_diagnostic(
     )
 }
 
-/// Pack keys that said tick where they meant a round: the files they sit in (a path
-/// prefix), the old key, and the key that replaced it. The old key is still refused.
-#[rustfmt::skip]
-pub(crate) const RENAMED_KEYS: &[(&str, &str, &str)] = &[
-    ("rules/budget.yaml", "tick_every_real_seconds", "round_every_real_seconds"),
-    ("rules/budget.yaml", "idle_minutes_per_tick", "idle_minutes_per_round"),
-    ("rules/budget.yaml", "live_minutes_per_tick", "live_minutes_per_round"),
-    ("rules/budget.yaml", "idle_catchup_max_ticks", "idle_catchup_max_rounds"),
-    ("rules/budget.yaml", "max_fastforward_ticks", "max_fastforward_rounds"),
-    ("cast/", "tick", "idle"),
-];
-
-/// The key that replaced `field` in `file`, when `field` is an old one.
-fn renamed_key(file: &str, field: &str) -> Option<&'static str> {
-    RENAMED_KEYS
-        .iter()
-        .find(|(files, old, _)| file.starts_with(files) && *old == field)
-        .map(|(_, _, new)| *new)
-}
-
 pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Diagnostic {
     let err = err.without_snippet();
     let spot = err.location().and_then(|loc| {
@@ -228,10 +208,7 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
         YamlError::SerdeUnknownField { field, .. } => (
             Some(field.clone()),
             format!("unknown field '{field}'"),
-            match renamed_key(file, field) {
-                Some(new) => format!("rename it to {new}"),
-                None => "remove it or spell a field this file allows".to_string(),
-            },
+            "remove it or spell a field this file allows".to_string(),
         ),
         YamlError::SerdeMissingField { field, .. } => (
             Some((*field).to_string()),

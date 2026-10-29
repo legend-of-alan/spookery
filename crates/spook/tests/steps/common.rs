@@ -135,16 +135,6 @@ fn break_pack(pack: &Path, fault: &str) {
             "idle_minutes_per_round: 60\n",
             "idle_minutes_per_round: 0\n",
         ),
-        "old round interval key" => replace_file(
-            &pack.join("rules/budget.yaml"),
-            "round_every_real_seconds: 300\n",
-            "tick_every_real_seconds: 300\n",
-        ),
-        "old cast idle key" => replace_file(
-            &pack.join("cast/pc-rowan.md"),
-            "idle:\n",
-            "tick:\n",
-        ),
         other => panic!("unknown fault {other}"),
     }
 }

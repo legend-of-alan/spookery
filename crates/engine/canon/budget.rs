@@ -238,30 +238,12 @@ mod tests {
     }
 
     #[test]
-    fn an_old_tick_key_is_refused_and_a_renamed_one_names_its_new_key() {
-        use crate::diagnostic::{reason_of, RENAMED_KEYS};
+    fn the_removed_live_tick_key_is_refused() {
+        use crate::diagnostic::reason_of;
         let mut stale = text("budget");
         stale.push_str("live_tick_every_real_seconds: 60\n");
         let err = load_budget(&stale).unwrap_err();
-        assert!(err[0].message.contains("remove it"), "{err:?}");
         assert_eq!(reason_of(err), Reason::Schema);
-        let renamed = RENAMED_KEYS
-            .iter()
-            .filter(|(files, _, _)| *files == "rules/budget.yaml");
-        for (_, old, new) in renamed {
-            let mut stale = text("budget");
-            stale.push_str(&format!("{old}: 12\n"));
-            let err = load_budget(&stale).unwrap_err();
-            assert!(
-                err[0].message.contains(&format!("rename it to {new}")),
-                "{err:?}"
-            );
-            assert!(err[0].line.is_some(), "{err:?}");
-            assert_eq!(reason_of(err), Reason::Schema);
-            let mut fresh = text("budget");
-            fresh.push_str(&format!("{new}: 12\n"));
-            assert!(load_budget(&fresh).is_ok(), "{new} does not load");
-        }
     }
 
     #[test]
