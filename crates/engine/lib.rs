@@ -67,8 +67,8 @@ pub mod testing {
     pub use crate::store::RULES_REV;
 
     /// A second handle on the lock file, like the copy a spawned child holds until it execs.
-    pub fn copy_lock_handle(lock: &crate::LockGuard) -> std::fs::File {
-        lock.file().try_clone().unwrap()
+    pub fn copy_lock_handle(world: &crate::World) -> std::fs::File {
+        world.lock.file().try_clone().unwrap()
     }
 
     pub const HOST: &[&str] = &["tests/features/seats"];

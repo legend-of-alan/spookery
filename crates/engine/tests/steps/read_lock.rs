@@ -144,3 +144,20 @@ fn status_prints_the_committed_round(world: &mut World) {
     assert!(text.contains("clock "), "{text}");
     assert_eq!(world.scratch, text);
 }
+
+#[given(expr = "a second handle to the lock file stays open, like a child that has not exec'd yet")]
+fn a_second_handle_stays_open(world: &mut World) {
+    world.lock_copy = Some(spookery_engine::testing::copy_lock_handle(writer(world)));
+}
+
+#[when(expr = "the writer drops its lock")]
+fn the_writer_drops_its_lock(world: &mut World) {
+    world.writer = None;
+}
+
+#[then(expr = "a new writer can lock the pack")]
+fn a_new_writer_can_lock_the_pack(world: &mut World) {
+    if let Err(err) = lock_pack(world.pack()) {
+        panic!("lock_pack: {err}");
+    }
+}
