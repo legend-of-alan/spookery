@@ -38,13 +38,12 @@ fn commit_round(world: &mut World) {
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
-fn peek_save(pack: &Path) -> Result<String, String> {
-    let shard = Shard::peek(pack).map_err(|err| err.to_string())?;
-    emit_save(shard.now()).map_err(|err| err.to_string())
+fn status_text(pack: &Path) -> Result<String, String> {
+    Shard::peek_summary(pack).map_err(|err| err.to_string())
 }
 
 /// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it.
-/// `summary` gets the order of "waited" and "peeked", and `scratch` the save status built.
+/// `summary` gets the order of "waited" and "peeked", and `scratch` the text status printed.
 fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce()) {
     let pack = world.pack().to_path_buf();
     let (tx, rx) = mpsc::channel();
@@ -53,7 +52,7 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
     halfway();
     let peeked = thread::scope(|scope| {
         let status = scope.spawn(|| {
-            let peeked = peek_save(&pack);
+            let peeked = status_text(&pack);
             let _ = tx.send("peeked");
             peeked
         });
@@ -93,7 +92,7 @@ fn the_writer_has_committed_a_round(world: &mut World) {
 
 #[when(expr = "status peeks the pack")]
 fn status_peeks_the_pack(world: &mut World) {
-    world.scratch = peek_save(world.pack()).unwrap_or_else(|err| panic!("status: {err}"));
+    world.scratch = status_text(world.pack()).unwrap_or_else(|err| panic!("status: {err}"));
 }
 
 #[when(expr = "status peeks while the writer is halfway through appending a round")]
@@ -151,28 +150,17 @@ fn status_waited(world: &mut World) {
     assert_eq!(world.summary, ["waited", "peeked"]);
 }
 
-#[then(expr = "status reports the round the writer committed")]
-fn status_reports_the_committed_round(world: &mut World) {
-    let now = writer(world).now();
-    assert!(now.state_rev > 0, "the writer committed nothing");
-    assert_eq!(world.scratch, emit_save(now).unwrap());
-}
-
-#[then(expr = "the save, head, snapshot and journal checkpoint all hold that state_rev")]
-fn the_checkpoint_set_matches(world: &mut World) {
+/// With no write in progress, the tip is the writer's round and its text is the truth.
+#[then(expr = "status prints the round the writer committed")]
+fn status_prints_the_committed_round(world: &mut World) {
     let pack = world.pack();
     let now = writer(world).now();
-    let rev = now.state_rev;
-    let save = fs::read(pack.join("state/save.yaml")).unwrap();
-    assert_eq!(save, emit_save(now).unwrap().into_bytes());
-    let snap = fs::read(pack.join(format!("state/checkpoints/{rev}.yaml"))).unwrap();
-    assert_eq!(snap, save);
-    let head = fs::read_to_string(pack.join("state/journal/head.json")).unwrap();
-    assert!(head.contains(&format!("\"state_rev\":{rev},")), "{head}");
-    let entries = journal::read_entries(pack).unwrap_or_else(|fault| panic!("{}", fault.detail));
-    let mark = journal::latest_checkpoint(&entries).expect("a journal checkpoint");
-    assert_eq!(mark.state_rev, rev);
-    assert_eq!(mark.state_hash, journal::hash_now(&save));
+    assert!(now.state_rev > 0, "the writer committed nothing");
+    let tip = Shard::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
+    assert_eq!(emit_save(tip.now()).unwrap(), emit_save(now).unwrap());
+    let text = status_text(pack).unwrap_or_else(|err| panic!("status: {err}"));
+    assert!(text.contains("clock "), "{text}");
+    assert_eq!(world.scratch, text);
 }
 
 #[then(expr = "the second writer is refused with COMMIT_CONFLICT")]

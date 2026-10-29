@@ -54,16 +54,20 @@ pub fn write_guard(root: &Path) -> Result<WriteGuard, Reason> {
 }
 
 /// Wait out a write in progress, then hold the next one off until the guard drops.
+/// An existing lock file opens read-only, so a reader needs no write access to `state/`.
 pub fn read_guard(root: &Path) -> Result<ReadGuard, Reason> {
-    let file = open_lock(root, "state/.pack.rw.lock")?;
+    let file = match File::open(root.join("state/.pack.rw.lock")) {
+        Ok(file) => file,
+        Err(_) => open_lock(root, "state/.pack.rw.lock")?,
+    };
     match file.try_lock_shared() {
         Ok(()) => {}
         Err(TryLockError::WouldBlock) => {
             #[cfg(feature = "testing")]
             note_reader_wait();
-            file.lock_shared().map_err(|_| Reason::CommitConflict)?;
+            file.lock_shared().map_err(|_| Reason::NotInSpec)?;
         }
-        Err(TryLockError::Error(_)) => return Err(Reason::CommitConflict),
+        Err(TryLockError::Error(_)) => return Err(Reason::NotInSpec),
     }
     Ok(ReadGuard { _file: file })
 }

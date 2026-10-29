@@ -442,6 +442,13 @@ impl World {
         crate::round::replay::peek_at_tip(root)
     }
 
+    /// The host text at the journal tip: effect rows from the journal, then the clocks.
+    /// One read guard covers the World and the journal read, so both come from one state.
+    pub fn peek_summary(root: &Path) -> Result<String, Reason> {
+        let _read = crate::store::lock::read_guard(root)?;
+        crate::round::replay::peek_at_tip(root)?.host_summary()
+    }
+
     pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
         crate::round::play_round(
             self,
@@ -496,7 +503,7 @@ impl World {
         crate::map::player_lines(&self.canon, &self.now, actor_id)
     }
 
-    pub fn host_summary(&self) -> Result<String, Reason> {
+    fn host_summary(&self) -> Result<String, Reason> {
         let entries = journal::read_verified(&self.root).map_err(|fault| fault.reason)?;
         let mut effects = Vec::new();
         for entry in &entries {

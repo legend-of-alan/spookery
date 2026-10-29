@@ -27,8 +27,9 @@ nothing. Crash recovery runs when a writer takes that lock: a torn last line in
 the live bundle is cut off, and a leftover transaction directory is removed.
 The save on disk stays. A write also holds `state/.pack.rw.lock` while it
 publishes. `spook status` only reads. It holds a shared lock on that file
-while it builds the world, so it waits out a write in progress and never sees a
-round or checkpoint halfway published. It does not take `state/.pack.lock`.
+while it builds the world and reads the journal, so it waits out a write in
+progress and never sees a round or checkpoint halfway published. It does not
+take `state/.pack.lock`.
 Apart from creating an empty `state/.pack.rw.lock` when it is missing, it
 writes nothing under `state/`, and it leaves a running host's commit alone.
 

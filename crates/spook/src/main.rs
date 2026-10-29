@@ -181,9 +181,8 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
         }
         #[cfg(feature = "server")]
         Command::Status { pack } => {
-            // Status reads without the lock, so it must not write.
-            let world = spookery_engine::World::peek(&pack).map_err(|e| e.to_string())?;
-            let text = world.host_summary().map_err(|e| e.to_string())?;
+            // Status holds a read guard, not the pack lock, and writes nothing but that lock file.
+            let text = spookery_engine::World::peek_summary(&pack).map_err(|e| e.to_string())?;
             print!("{text}");
             Ok(())
         }
