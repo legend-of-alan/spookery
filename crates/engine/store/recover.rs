@@ -9,9 +9,10 @@ use crate::journal::{self, JournalEntry};
 use crate::model::MemoryLine;
 use crate::store::codec::emit_memory_line;
 use crate::store::durable::{atomic_publish, fsync_dir, fsync_file, rename, tmp_path};
+use crate::store::lock::WriteGuard;
 
 /// Run by `lock_pack` before the writer reads a pack that a crash may have left mid-commit.
-pub fn recover(root: &Path) -> Result<(), Reason> {
+pub fn recover(root: &Path, write: &WriteGuard) -> Result<(), Reason> {
     let state = root.join("state");
     let txn = state.join(".txn");
     if txn.is_dir() {
@@ -19,14 +20,14 @@ pub fn recover(root: &Path) -> Result<(), Reason> {
     }
     cut_torn_tail(root)?;
     rebuild_memory_files(root)?;
-    close_finished(root)?;
+    close_finished(root, write)?;
     delete_tmp(&state);
     Ok(())
 }
 
 /// Gzip every plain bundle that ends in a published checkpoint.
 /// When the gzip is already complete, only the plain file is removed.
-pub(crate) fn close_finished(root: &Path) -> Result<(), Reason> {
+pub(crate) fn close_finished(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
     let mut failed = Ok(());
     for plain in plain_bundles(root) {
         if journal::trailing_checkpoint(&plain).is_none() {

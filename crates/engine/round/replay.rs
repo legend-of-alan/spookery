@@ -9,7 +9,7 @@ use crate::commit::atomic_publish;
 use crate::diagnostic::reason_of;
 use crate::effect::Effect;
 use crate::journal::{self, hash_now, JournalEntry, MigrateRecord, RoundRecord};
-use crate::lock::lock_pack;
+use crate::lock::{lock_pack, write_guard};
 use crate::model::{Now, Presence};
 use crate::store::codec::{emit_effect, emit_save, load_save};
 use crate::store::require_rules_rev;
@@ -359,6 +359,7 @@ fn rebuild_snapshot(path: &Path) -> Result<(), ReplayError> {
                 .into(),
         );
     }
+    let _write = write_guard(path).map_err(ReplayError::Reason)?;
     atomic_publish(&save, &report.now_yaml).map_err(ReplayError::Reason)?;
     Ok(())
 }

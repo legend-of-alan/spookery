@@ -12,6 +12,19 @@ pub struct World {
     pub player_added: String,
     pub now_bytes: Vec<u8>,
     pub summary: Vec<String>,
+    pub writer: Option<Writer>,
+}
+
+/// The pack lock and the World a scenario holds open as the pack's writer.
+pub struct Writer {
+    pub world: spookery_engine::World,
+    pub lock: spookery_engine::LockGuard,
+}
+
+impl std::fmt::Debug for Writer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Writer")
+    }
 }
 
 impl World {
@@ -28,7 +41,11 @@ async fn main() {
             .max_concurrent_scenarios(1)
             .fail_on_skipped()
             .after(|_, _, _, _, world| {
-                if let Some(pack) = world.and_then(|w| w.pack.take()) {
+                let pack = world.and_then(|w| {
+                    w.writer = None;
+                    w.pack.take()
+                });
+                if let Some(pack) = pack {
                     let _ = std::fs::remove_dir_all(pack);
                 }
                 Box::pin(async {})

@@ -434,9 +434,11 @@ impl World {
         crate::round::replay::open_at_tip(root)
     }
 
-    /// Open the pack at the journal tip and write nothing, so no lock is needed.
+    /// Open the pack at the journal tip and write nothing, so the pack lock is not needed.
+    /// A read guard waits out a write in progress and drops once the World is built.
     /// A crash the writer has not recovered is read as it stands.
     pub fn peek(root: &Path) -> Result<Self, Reason> {
+        let _read = crate::store::lock::read_guard(root)?;
         crate::round::replay::peek_at_tip(root)
     }
 

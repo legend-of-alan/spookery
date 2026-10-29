@@ -2,6 +2,8 @@
 mod no_facts;
 #[path = "steps/proofs.rs"]
 mod proofs;
+#[path = "steps/read_lock.rs"]
+mod read_lock;
 #[path = "steps/round_play.rs"]
 mod round_play;
 

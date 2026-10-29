@@ -57,6 +57,8 @@ pub mod testing {
     };
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
+    pub use crate::store::commit::append_bundle;
+    pub use crate::store::lock::{on_reader_wait, write_guard, WriteGuard};
     pub use crate::store::RULES_REV;
 
     pub const HOST: &[&str] = &["tests/features/seats"];

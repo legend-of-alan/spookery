@@ -15,6 +15,7 @@ use crate::round::log::RoundLine;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 pub use crate::store::durable::atomic_publish;
 use crate::store::durable::{fsync_dir, fsync_file};
+use crate::store::lock::{write_guard, WriteGuard};
 use crate::store::recover::close_finished;
 use crate::world::World;
 
@@ -31,7 +32,8 @@ pub fn commit(
     mut draft: Draft,
     line: RoundLine,
 ) -> Result<CommitOutcome, Reason> {
-    settle_open_checkpoint(world)?;
+    let write = write_guard(&world.root)?;
+    settle(world, &write)?;
     bump_state_rev(&mut draft)?;
     let now_bytes = emit_save(&draft.state)?.into_bytes();
     let line = seal(line, world.now.state_rev, &draft, &now_bytes, &world.root)?;
@@ -42,11 +44,11 @@ pub fn commit(
     } else {
         (line, None)
     };
-    let mut log_path = append_bundle(&world.root, &payload)?;
+    let mut log_path = append_bundle(&world.root, &payload, &write)?;
     world.now = draft.state;
     world.queue.clear();
     if let Some(chain) = chain {
-        if finish_checkpoint(world, &now_bytes, &chain) {
+        if finish_checkpoint(world, &now_bytes, &chain, &write) {
             if !log_path.ends_with(".gz") {
                 log_path.push_str(".gz");
             }
@@ -105,19 +107,27 @@ pub fn migrate_journal(root: &Path, now: Now, edited: bool) -> Result<(), Reason
         &added,
         edited,
     );
+    let write = write_guard(root)?;
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&entry, &prev);
     if !edited {
-        append_bundle(root, &line)?;
+        append_bundle(root, &line, &write)?;
         return Ok(());
     }
     // The snapshot lands before the record, so a crash after the append still replays.
     atomic_publish(&journal::checkpoint_path(root, now.state_rev), &emitted)?;
     let (payload, chain) = seal_checkpoint(line, &now, &emitted)?;
-    append_bundle(root, &payload)?;
-    store_checkpoint(root, &emitted, now.state_rev, now.round_index, &chain)?;
+    append_bundle(root, &payload, &write)?;
+    store_checkpoint(
+        root,
+        &emitted,
+        now.state_rev,
+        now.round_index,
+        &chain,
+        &write,
+    )?;
     // The migrate is committed. A bundle left open is closed by the next append.
-    let _ = close_finished(root);
+    let _ = close_finished(root, &write);
     Ok(())
 }
 
@@ -168,9 +178,9 @@ fn checkpoint_due(every: u64, round_index: u64) -> bool {
     every > 0 && round_index > 0 && round_index.is_multiple_of(every)
 }
 
-fn append_bundle(root: &Path, payload: &str) -> Result<String, Reason> {
+pub fn append_bundle(root: &Path, payload: &str, write: &WriteGuard) -> Result<String, Reason> {
     // A failed close must not refuse this round or append into the closed bundle.
-    let _ = close_finished(root);
+    let _ = close_finished(root, write);
     let path = journal::next_bundle_path(root);
     let created = !path.is_file();
     if let Some(parent) = path.parent() {
@@ -204,6 +214,7 @@ fn store_checkpoint(
     state_rev: u64,
     round_index: u64,
     chain: &str,
+    write: &WriteGuard,
 ) -> Result<(), Reason> {
     let head = serde_json::to_string(&journal::BundleHead {
         rules_rev: crate::store::RULES_REV,
@@ -217,7 +228,7 @@ fn store_checkpoint(
         &root.join("state").join(journal::head_rel()),
         head.as_bytes(),
     )?;
-    snapshot_memories(root)?;
+    snapshot_memories(root, write)?;
     let state = root.join("state");
     let save = state.join("save.yaml");
     let base = state.join(journal::base_rel());
@@ -237,15 +248,19 @@ fn store_checkpoint(
 
 /// The journal line is already durable. `false` means `save.yaml` or the gzip did
 /// not finish. The round stays committed either way.
-fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str) -> bool {
+fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str, write: &WriteGuard) -> bool {
     let (rev, round) = (world.now.state_rev, world.now.round_index);
-    store_checkpoint(&world.root, now_bytes, rev, round, chain).is_ok()
-        && close_finished(&world.root).is_ok()
+    store_checkpoint(&world.root, now_bytes, rev, round, chain, write).is_ok()
+        && close_finished(&world.root, write).is_ok()
 }
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
 pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
+    settle(world, &write_guard(&world.root)?)
+}
+
+fn settle(world: &World, write: &WriteGuard) -> Result<(), Reason> {
     let Some(path) = journal::find_live_bundle(&world.root) else {
         return Ok(());
     };
@@ -271,13 +286,14 @@ pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
             mark.state_rev,
             mark.round_index,
             &mark.chain,
+            write,
         )?;
     }
-    let _ = close_finished(&world.root);
+    let _ = close_finished(&world.root, write);
     Ok(())
 }
 
-fn snapshot_memories(root: &Path) -> Result<(), Reason> {
+fn snapshot_memories(root: &Path, _write: &WriteGuard) -> Result<(), Reason> {
     let entries = journal::read_live(root).map_err(|_| Reason::Schema)?;
     let mut lines = Vec::new();
     for entry in entries {
