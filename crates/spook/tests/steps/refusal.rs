@@ -1,7 +1,6 @@
 //! A move refused while its round runs tells that player why.
 
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -9,7 +8,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
 
-use super::common::{edit_save, play_stdout, wait_play, wait_play_until};
+use super::common::{edit_save, play_line, play_stdout, wait_play, wait_play_until};
 use super::table;
 use crate::support::{self, text_of};
 use crate::World;
@@ -32,17 +31,14 @@ fn play_error_shows_once(world: &mut World, text: String) {
         }
         std::thread::sleep(Duration::from_millis(20));
     }
-    // Keep watching briefly so a late duplicate still fails the step.
-    let settle = Instant::now();
-    while settle.elapsed() < Duration::from_millis(300) {
-        let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
-        let stderr = text_of(&play.stderr);
-        let count = stderr.matches(&text).count();
-        if count != 1 {
-            panic!("saw {text} {count} times\n{stderr}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    // The world loop answers this look after every frame it sent before, and play prints in order.
+    let mark = play_stdout(world).len();
+    play_line(world, "look");
+    wait_play_until(world, |stdout| stdout[mark..].contains("Exits:"), "look");
+    let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
+    let stderr = text_of(&play.stderr);
+    let count = stderr.matches(&text).count();
+    assert_eq!(count, 1, "saw {text} {count} times\n{stderr}");
 }
 
 #[given(expr = "Oden's habit takes a tonic that is not there")]
@@ -196,15 +192,7 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
 #[when(expr = "play queues {string}")]
 fn play_queues(world: &mut World, line: String) {
     let before = play_stdout(world).matches("Your action is queued.").count();
-    {
-        let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
-        let stdin = play
-            .stdin
-            .as_mut()
-            .unwrap_or_else(|| panic!("play stdin is closed"));
-        writeln!(stdin, "{line}").unwrap_or_else(|err| panic!("type: {err}"));
-        stdin.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    }
+    play_line(world, &line);
     wait_play_until(
         world,
         |stdout| stdout.matches("Your action is queued.").count() > before,

@@ -777,7 +777,7 @@ fn wait_text(slot: &Arc<Mutex<String>>, needle: &str) {
     let _ = wait_suffix(slot, 0, needle);
 }
 
-fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> String {
+pub fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> String {
     let start = Instant::now();
     loop {
         let text = support::text_of(slot);
