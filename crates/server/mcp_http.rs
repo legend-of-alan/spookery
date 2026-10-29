@@ -16,7 +16,8 @@ use rmcp::transport::streamable_http_server::session::{
     ServerSseMessage, SessionId, SessionManager,
 };
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
+use tokio::sync::oneshot;
 
 use super::gm_seat::GmSeatHandler;
 use super::limits::GM_BODY_CAP;
@@ -28,7 +29,7 @@ pub(super) async fn serve(
     tx: Sender<WorldMsg>,
     next_conn: Arc<AtomicU64>,
 ) {
-    let (hung_up, mut hang_ups) = mpsc::unbounded_channel();
+    let (hung_up, mut hang_ups) = unbounded_channel();
     let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hung_up));
     let closer = Arc::clone(&sessions);
     tokio::spawn(async move {
@@ -65,14 +66,14 @@ struct SeatSessions {
     tx: Sender<WorldMsg>,
     next_conn: Arc<AtomicU64>,
     conns: Mutex<HashMap<SessionId, u64>>,
-    hung_up: mpsc::UnboundedSender<SessionId>,
+    hung_up: UnboundedSender<SessionId>,
 }
 
 impl SeatSessions {
     fn new(
         tx: Sender<WorldMsg>,
         next_conn: Arc<AtomicU64>,
-        hung_up: mpsc::UnboundedSender<SessionId>,
+        hung_up: UnboundedSender<SessionId>,
     ) -> Self {
         let mut inner = LocalSessionManager::default();
         inner.session_config.keep_alive = None;
@@ -91,7 +92,7 @@ impl SeatSessions {
 struct EventStream<S> {
     inner: S,
     id: SessionId,
-    hung_up: mpsc::UnboundedSender<SessionId>,
+    hung_up: UnboundedSender<SessionId>,
 }
 
 impl<S: Stream + Unpin> Stream for EventStream<S> {
