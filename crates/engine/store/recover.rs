@@ -273,7 +273,7 @@ mod tests {
     #[test]
     fn a_torn_tail_is_cut_off_and_the_save_stays() {
         let root = temp_pack("torn-tail");
-        let mut world = World::open(&root).unwrap();
+        let mut world = crate::testing::open(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let draft = Draft::begin(&world);
         commit(&mut world, draft, journal_line()).unwrap();

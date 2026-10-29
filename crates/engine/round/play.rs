@@ -16,17 +16,8 @@ use crate::Reason;
 
 use crate::round::dice::RoundDice;
 use crate::round::log::RoundLog;
+use crate::round::stage::advance::Clock;
 use crate::round::stage::{advance, apply, deliver, finish, pick, record, resolve, triggers};
-
-pub(crate) enum RoundKind<'a> {
-    /// Drain the queue and write the journal line.
-    Live { fast_forward: bool },
-    /// Play the queue a journal line kept, in memory, with the seats it recorded.
-    Replay {
-        queue: &'a [Intent],
-        presence: Presence,
-    },
-}
 
 /// What one round showed. Lines and seen are empty when no human was seated.
 #[derive(Default)]
@@ -44,16 +35,9 @@ pub struct RoundOutput {
 /// Play one round from the save. `Some` is a warning the host prints: the round
 /// was committed, and the checkpoint bundle was not closed.
 pub fn play_pack_once(path: &Path) -> Result<Option<&'static str>, Reason> {
-    let _lock = lock_pack(path)?;
-    let mut world = crate::round::replay::open_at_tip(path)?;
+    let mut world = crate::round::replay::open_at_tip(path, lock_pack(path)?)?;
     let wall = world.now().last_round_at.clone();
-    play_round(
-        &mut world,
-        &wall,
-        RoundKind::Live {
-            fast_forward: false,
-        },
-    )?;
+    play_round(&mut world, &wall, false)?;
     Ok(world.take_warning())
 }
 
@@ -65,13 +49,7 @@ pub(crate) fn play_catch_up(world: &mut World, wall: &str, hours: u64) -> Result
         planned_rounds(world.budget(), hours)?.max(1)
     };
     for _ in 0..rounds {
-        play_round(
-            world,
-            wall,
-            RoundKind::Live {
-                fast_forward: false,
-            },
-        )?;
+        play_round(world, wall, false)?;
     }
     Ok(())
 }
@@ -125,18 +103,14 @@ pub(crate) fn play_while_busy(
         && seated_busy(world).contains(&true)
         && world.queued_intents().is_empty()
     {
-        outputs.push(play_round(
-            world,
-            wall,
-            RoundKind::Live { fast_forward: true },
-        )?);
+        outputs.push(play_round(world, wall, true)?);
         ran += 1;
     }
     Ok(outputs)
 }
 
 /// Whether each seated PC is busy at the current world time.
-fn seated_busy(world: &World) -> Vec<bool> {
+fn seated_busy<L>(world: &World<L>) -> Vec<bool> {
     let now = world.now();
     now.seated_pcs()
         .iter()
@@ -148,22 +122,39 @@ fn seated_busy(world: &World) -> Vec<bool> {
         .collect()
 }
 
+/// Play the queue and commit the round. Only a World that owns the pack lock can.
 pub(crate) fn play_round(
     world: &mut World,
     wall: &str,
-    kind: RoundKind<'_>,
+    fast_forward: bool,
 ) -> Result<RoundOutput, Reason> {
-    if let RoundKind::Replay { presence, .. } = &kind {
-        world.set_presence_inner(presence.clone());
-    }
+    let (draft, clock, log, delivered) = run_stages(world, wall, world.queued_intents())?;
+    record::commit_round(world, draft, wall, clock, log, delivered, fast_forward)
+}
+
+/// Play the queue a journal line kept, in memory, with the seats it recorded.
+pub(crate) fn replay_round(
+    world: &mut World<()>,
+    wall: &str,
+    queue: &[Intent],
+    presence: Presence,
+) -> Result<RoundOutput, Reason> {
+    world.set_presence_inner(presence);
+    let (draft, _clock, mut log, delivered) = run_stages(world, wall, queue)?;
+    let output = record::output(&mut log, delivered);
+    crate::commit::keep_in_memory(world, draft)?;
+    Ok(output)
+}
+
+fn run_stages<L>(
+    world: &World<L>,
+    wall: &str,
+    queue: &[Intent],
+) -> Result<(Draft, Clock, RoundLog, deliver::Delivered), Reason> {
     let mut draft = Draft::begin(world);
     let clock = advance::run(&mut draft, wall)?;
     let mut dice = RoundDice::new(draft.now().shard_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
-    let queue = match &kind {
-        RoundKind::Live { .. } => world.queued_intents(),
-        RoundKind::Replay { queue, .. } => queue,
-    };
     let candidates = pick::run(&draft, queue)?;
     let snapshot = draft.now().clone();
     let resolved = resolve::run(
@@ -178,5 +169,5 @@ pub(crate) fn play_round(
     finish::run(&mut draft, clock.world_time_after, &mut dice, &mut log)?;
     let changes = triggers::run(&mut draft, &mut dice, &mut log)?;
     let delivered = deliver::run(draft.canon(), draft.now(), &changes, &log.effects);
-    record::run(world, draft, &kind, wall, clock, log, delivered)
+    Ok((draft, clock, log, delivered))
 }

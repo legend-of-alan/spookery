@@ -15,7 +15,7 @@ use crate::round::log::RoundLine;
 use crate::store::codec::{canonicalize, emit_memory_line, emit_save};
 pub use crate::store::durable::atomic_publish;
 use crate::store::durable::{fsync_dir, fsync_file};
-use crate::store::lock::{write_guard, WriteGuard};
+use crate::store::lock::{write_guard, LockGuard, WriteGuard};
 use crate::store::recover::close_finished;
 use crate::world::World;
 
@@ -32,7 +32,7 @@ pub fn commit(
     mut draft: Draft,
     line: RoundLine,
 ) -> Result<CommitOutcome, Reason> {
-    let write = write_guard(&world.root)?;
+    let write = write_guard(&world.root, &world.lock)?;
     settle(world, &write)?;
     bump_state_rev(&mut draft)?;
     let now_bytes = emit_save(&draft.state)?.into_bytes();
@@ -63,7 +63,7 @@ pub fn commit(
 }
 
 /// The journal already has this round. Keep the new state in memory.
-pub fn keep_in_memory(world: &mut World, mut draft: Draft) -> Result<(), Reason> {
+pub fn keep_in_memory<L>(world: &mut World<L>, mut draft: Draft) -> Result<(), Reason> {
     bump_state_rev(&mut draft)?;
     world.now = draft.state;
     Ok(())
@@ -83,7 +83,12 @@ fn bump_state_rev(draft: &mut Draft) -> Result<(), Reason> {
 /// `edited` means `now` is a hand edit of the checkpoint head. The journal does not hold
 /// that edit, so a checkpoint of the migrated save follows the record and replay restarts
 /// from it. The caller holds the pack lock.
-pub fn migrate_journal(root: &Path, now: Now, edited: bool) -> Result<(), Reason> {
+pub fn migrate_journal(
+    root: &Path,
+    now: Now,
+    edited: bool,
+    lock: &LockGuard,
+) -> Result<(), Reason> {
     if !root.join("pack.yaml").is_file() {
         return Err(Reason::NotInSpec);
     }
@@ -107,7 +112,7 @@ pub fn migrate_journal(root: &Path, now: Now, edited: bool) -> Result<(), Reason
         &added,
         edited,
     );
-    let write = write_guard(root)?;
+    let write = write_guard(root, lock)?;
     let prev = journal::read_chain_tip(root).map_err(|_| Reason::Schema)?;
     let line = journal::seal(&entry, &prev);
     if !edited {
@@ -256,11 +261,11 @@ fn finish_checkpoint(world: &mut World, now_bytes: &[u8], chain: &str, write: &W
 
 /// Publish `save.yaml` and the snapshot for a checkpoint that is already in the
 /// journal, then close that bundle. The next round can then start a new file.
-pub fn settle_open_checkpoint(world: &World) -> Result<(), Reason> {
-    settle(world, &write_guard(&world.root)?)
+pub fn settle_open_checkpoint<L>(world: &World<L>, lock: &LockGuard) -> Result<(), Reason> {
+    settle(world, &write_guard(&world.root, lock)?)
 }
 
-fn settle(world: &World, write: &WriteGuard) -> Result<(), Reason> {
+fn settle<L>(world: &World<L>, write: &WriteGuard) -> Result<(), Reason> {
     let Some(path) = journal::find_live_bundle(&world.root) else {
         return Ok(());
     };
@@ -361,7 +366,7 @@ mod tests {
     #[test]
     fn a_reopen_keeps_every_journal_record_the_commit_wrote() {
         let root = temp_pack("journal-reopen");
-        let mut world = World::open(&root).unwrap();
+        let mut world = crate::testing::open(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
         let mut draft = Draft::begin(&world);
         draft.memories.push(MemoryLine {
@@ -408,7 +413,7 @@ mod tests {
         assert!(fs::read_to_string(&memory).unwrap().contains("kept"));
         assert!(!root.join("state/.txn").exists());
 
-        let mut again = World::open(&root).unwrap();
+        let mut again = crate::testing::open(&root);
         let next = Draft::begin(&again);
         durable::start_trace();
         commit(&mut again, next, journal_line(1)).unwrap();
@@ -422,7 +427,7 @@ mod tests {
         let root = temp_pack("gzip-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 1);
-        let mut world = World::open(&root).unwrap();
+        let mut world = crate::testing::open(&root);
         let mut draft = Draft::begin(&world);
         draft.state.round_index = 1;
         durable::fail_next(".jsonl.gz.tmp");
@@ -463,7 +468,7 @@ mod tests {
         let root = temp_pack("save-fail");
         let _clear = FailGuard;
         set_checkpoint_every(&root, 2);
-        let mut world = World::open(&root).unwrap();
+        let mut world = crate::testing::open(&root);
         let mut first = Draft::begin(&world);
         first.state.round_index = 1;
         commit(&mut world, first, journal_line(1)).unwrap();

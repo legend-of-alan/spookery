@@ -12,9 +12,9 @@ use crate::{World, Writer};
 
 fn hold(world: &mut World, pack: PathBuf) {
     let lock = lock_pack(&pack).unwrap_or_else(|err| panic!("lock {}: {err}", pack.display()));
-    let shard = Shard::resume(&pack, &lock)
-        .unwrap_or_else(|err| panic!("resume {}: {err}", pack.display()));
-    world.writer = Some(Writer { world: shard, lock });
+    let shard =
+        Shard::resume(&pack, lock).unwrap_or_else(|err| panic!("resume {}: {err}", pack.display()));
+    world.writer = Some(Writer { world: shard });
     world.pack = Some(pack);
 }
 
@@ -48,7 +48,7 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
     let pack = world.pack().to_path_buf();
     let (tx, rx) = mpsc::channel();
     on_reader_wait(tx.clone());
-    let write = write_guard(&pack).unwrap_or_else(|err| panic!("write guard: {err}"));
+    let write = write_guard(writer(world)).unwrap_or_else(|err| panic!("write guard: {err}"));
     halfway();
     let peeked = thread::scope(|scope| {
         let status = scope.spawn(|| {

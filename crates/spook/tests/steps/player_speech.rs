@@ -17,8 +17,7 @@ fn the_player_says(world: &mut World, text: String) {
 #[when(expr = "say to mira is submitted on an empty table saying {string}")]
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
-    let shard =
-        spookery_engine::World::open(pack).unwrap_or_else(|err| panic!("World::open: {err}"));
+    let shard = spookery_engine::testing::open(pack);
     assert_eq!(shard.now().presence.humans, 0);
     world.now_bytes = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));

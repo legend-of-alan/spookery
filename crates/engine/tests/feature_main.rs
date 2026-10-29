@@ -15,10 +15,9 @@ pub struct World {
     pub writer: Option<Writer>,
 }
 
-/// The pack lock and the World a scenario holds open as the pack's writer.
+/// The World a scenario holds open as the pack's writer. It owns the pack lock.
 pub struct Writer {
     pub world: spookery_engine::World,
-    pub lock: spookery_engine::LockGuard,
 }
 
 impl std::fmt::Debug for Writer {

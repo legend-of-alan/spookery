@@ -24,8 +24,8 @@ pub struct LockGuard {
 ///
 /// ```no_run
 /// # let root = std::path::Path::new("pack");
-/// let _lock = spookery_engine::lock_pack(root).unwrap();
-/// let write = spookery_engine::testing::write_guard(root).unwrap();
+/// let world = spookery_engine::testing::open(root);
+/// let write = spookery_engine::testing::write_guard(&world).unwrap();
 /// spookery_engine::testing::append_bundle(root, "{}\n", &write).unwrap();
 /// ```
 pub struct WriteGuard {
@@ -43,13 +43,14 @@ pub struct ReadGuard {
 pub fn lock_pack(root: &Path) -> Result<LockGuard, Reason> {
     let file = open_lock(root, "state/.pack.lock")?;
     file.try_lock().map_err(|_| Reason::CommitConflict)?;
-    recover(root, &write_guard(root)?)?;
-    Ok(LockGuard { _file: file })
+    let lock = LockGuard { _file: file };
+    recover(root, &write_guard(root, &lock)?)?;
+    Ok(lock)
 }
 
 /// Wait for readers to finish, then keep new ones out until the guard drops.
 /// Only the pack's writer takes it, and never inside another write guard.
-pub fn write_guard(root: &Path) -> Result<WriteGuard, Reason> {
+pub fn write_guard(root: &Path, _lock: &LockGuard) -> Result<WriteGuard, Reason> {
     let file = open_lock(root, RW_LOCK)?;
     file.lock().map_err(|_| Reason::NotInSpec)?;
     Ok(WriteGuard { _file: file })

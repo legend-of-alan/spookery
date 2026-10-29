@@ -70,7 +70,7 @@ fn configure_runner() -> Config {
     }
 }
 
-fn apply_changes(world: &World, steps: &[ItemChange]) -> Result<(), TestCaseError> {
+fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCaseError> {
     let mut draft = Draft::begin(world);
     let intent = npc_intent();
     for step in steps {

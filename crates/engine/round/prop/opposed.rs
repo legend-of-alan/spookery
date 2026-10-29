@@ -51,7 +51,7 @@ fn fight(base: &Path, warmup: u32) -> Result<(), String> {
     copy_dir(base, &pack.0);
     let fail = |what: &str, detail: String| format!("warm-up {warmup}: {what}: {detail}");
     let lock = crate::lock_pack(&pack.0).map_err(|err| fail("lock", err.to_string()))?;
-    let mut world = World::resume(&pack.0, &lock).map_err(|err| fail("resume", err.to_string()))?;
+    let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
     world.set_presence_inner(Presence {
         humans: 1,
         actors_present: vec!["pc_lark".to_string()],
@@ -94,6 +94,11 @@ fn fight(base: &Path, warmup: u32) -> Result<(), String> {
         "warm-up {warmup}: the lunge was not rejected for its budget: {last:?}"
     );
     crate::round::verify_pack(&pack.0, None).map_err(|err| fail("verify", err.to_string()))?;
-    crate::round::replay::open_at_tip(&pack.0).map_err(|err| fail("resume", err.to_string()))?;
+    drop(world);
+    World::resume(
+        &pack.0,
+        crate::lock_pack(&pack.0).map_err(|err| fail("lock", err.to_string()))?,
+    )
+    .map_err(|err| fail("resume", err.to_string()))?;
     Ok(())
 }

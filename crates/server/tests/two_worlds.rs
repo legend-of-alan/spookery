@@ -26,9 +26,8 @@ fn host(
     let mut config = Config::new("127.0.0.1:0".parse().unwrap());
     config.out = Box::new(writer);
     let (stop, stopped) = oneshot::channel::<()>();
-    let lock = lock_pack(dir).unwrap();
-    let world = World::resume(dir, &lock).unwrap();
-    let served = tokio::spawn(spookery_server::serve(lock, world, config, async {
+    let world = World::resume(dir, lock_pack(dir).unwrap()).unwrap();
+    let served = tokio::spawn(spookery_server::serve(world, config, async {
         stopped.await.unwrap()
     }));
     let mut line = String::new();

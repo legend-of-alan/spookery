@@ -96,16 +96,99 @@ pub struct GmIntentSpec {
     pub rationale_code: String,
 }
 
-pub struct World {
+pub struct World<L = crate::LockGuard> {
     pub(crate) root: PathBuf,
     canon: Arc<Canon>,
     pub(crate) now: Now,
     pub(crate) queue: Vec<Intent>,
     next_session: u64,
     warning: Option<&'static str>,
+    pub(crate) lock: L,
 }
 
 impl World {
+    /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
+    /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
+    pub fn resume(root: &Path, lock: crate::LockGuard) -> Result<Self, Reason> {
+        crate::round::replay::open_at_tip(root, lock)
+    }
+
+    pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
+        crate::round::play_round(self, now_wall, false)
+    }
+
+    /// Commit a queued round, then fast-forward while every seated PC is busy.
+    /// An empty queue only fast-forwards.
+    pub fn commit_then_fast_forward(
+        &mut self,
+        wall: &str,
+    ) -> Result<Vec<crate::RoundOutput>, Reason> {
+        let mut outputs = Vec::new();
+        let committed = !self.queue.is_empty();
+        if committed {
+            outputs.push(self.play(wall)?);
+        }
+        let already = u32::from(committed);
+        outputs.extend(crate::round::play_while_busy(self, wall, already)?);
+        Ok(outputs)
+    }
+
+    pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
+        crate::round::play_catch_up(self, now_wall, downtime_hours)
+    }
+
+    pub fn speak_player(
+        &self,
+        actor_id: &str,
+        heard: Heard<'_>,
+        text: &str,
+    ) -> Result<TapeRecord, Reason> {
+        if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
+            return Err(Reason::Schema);
+        }
+        self.append_speech(&format!("player:{actor_id}"), Some(actor_id), heard, text)
+    }
+
+    pub fn speak_gm(&self, heard: Heard<'_>, text: &str) -> Result<TapeRecord, Reason> {
+        self.append_speech("gm", None, heard, text)
+    }
+
+    fn append_speech(
+        &self,
+        from: &str,
+        speaker: Option<&str>,
+        heard: Heard<'_>,
+        text: &str,
+    ) -> Result<TapeRecord, Reason> {
+        let text = one_line(text)?.to_string();
+        if let Heard::Actor(actor) = heard {
+            if !self.now.actors.contains_key(actor) {
+                return Err(Reason::Schema);
+            }
+        }
+        let (address, place, actor) = match heard {
+            Heard::Table => ("table", None, None),
+            Heard::Place(place) => ("place", Some(place.to_string()), None),
+            Heard::Actor(actor) => ("actor", None, Some(actor.to_string())),
+        };
+        let recipients = speech_recipients(&self.now, speaker, heard);
+        let round_index = self.now.round_index;
+        let world_time = self.now.world_time;
+        append_record(&self.root, |seq| TapeRecord {
+            seq,
+            from: from.to_string(),
+            address: address.to_string(),
+            place,
+            actor,
+            recipients,
+            text,
+            round_index,
+            world_time,
+        })
+    }
+}
+
+impl<L> World<L> {
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -345,56 +428,6 @@ impl World {
         })
     }
 
-    pub fn speak_player(
-        &self,
-        actor_id: &str,
-        heard: Heard<'_>,
-        text: &str,
-    ) -> Result<TapeRecord, Reason> {
-        if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
-            return Err(Reason::Schema);
-        }
-        self.append_speech(&format!("player:{actor_id}"), Some(actor_id), heard, text)
-    }
-
-    pub fn speak_gm(&self, heard: Heard<'_>, text: &str) -> Result<TapeRecord, Reason> {
-        self.append_speech("gm", None, heard, text)
-    }
-
-    fn append_speech(
-        &self,
-        from: &str,
-        speaker: Option<&str>,
-        heard: Heard<'_>,
-        text: &str,
-    ) -> Result<TapeRecord, Reason> {
-        let text = one_line(text)?.to_string();
-        if let Heard::Actor(actor) = heard {
-            if !self.now.actors.contains_key(actor) {
-                return Err(Reason::Schema);
-            }
-        }
-        let (address, place, actor) = match heard {
-            Heard::Table => ("table", None, None),
-            Heard::Place(place) => ("place", Some(place.to_string()), None),
-            Heard::Actor(actor) => ("actor", None, Some(actor.to_string())),
-        };
-        let recipients = speech_recipients(&self.now, speaker, heard);
-        let round_index = self.now.round_index;
-        let world_time = self.now.world_time;
-        append_record(&self.root, |seq| TapeRecord {
-            seq,
-            from: from.to_string(),
-            address: address.to_string(),
-            place,
-            actor,
-            recipients,
-            text,
-            round_index,
-            world_time,
-        })
-    }
-
     pub fn player_scrollback(&self, actor_id: &str) -> Result<Vec<TapeRecord>, Reason> {
         read_tail(&self.root, actor_id, 256)
     }
@@ -426,57 +459,6 @@ impl World {
 
     pub(crate) fn note_warning(&mut self, text: &'static str) {
         self.warning = Some(text);
-    }
-
-    /// Open the pack at the journal tip. `save.yaml` stays the last checkpoint.
-    /// Records after that checkpoint are in the live bundle, so closed bundles stay unread.
-    pub fn resume(root: &Path, _lock: &crate::LockGuard) -> Result<Self, Reason> {
-        crate::round::replay::open_at_tip(root)
-    }
-
-    /// Open the pack at the journal tip and write nothing, so the pack lock is not needed.
-    /// A read guard waits out a write in progress and drops once the World is built.
-    /// A crash the writer has not recovered is read as it stands.
-    pub fn peek(root: &Path) -> Result<Self, Reason> {
-        let _read = crate::store::lock::read_guard(root)?;
-        crate::round::replay::peek_at_tip(root)
-    }
-
-    /// The host text at the journal tip: effect rows from the journal, then the clocks.
-    /// One read guard covers the World and the journal read, so both come from one state.
-    pub fn peek_summary(root: &Path) -> Result<String, Reason> {
-        let _read = crate::store::lock::read_guard(root)?;
-        crate::round::replay::peek_at_tip(root)?.host_summary()
-    }
-
-    pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
-        crate::round::play_round(
-            self,
-            now_wall,
-            crate::round::play::RoundKind::Live {
-                fast_forward: false,
-            },
-        )
-    }
-
-    /// Commit a queued round, then fast-forward while every seated PC is busy.
-    /// An empty queue only fast-forwards.
-    pub fn commit_then_fast_forward(
-        &mut self,
-        wall: &str,
-    ) -> Result<Vec<crate::RoundOutput>, Reason> {
-        let mut outputs = Vec::new();
-        let committed = !self.queue.is_empty();
-        if committed {
-            outputs.push(self.play(wall)?);
-        }
-        let already = u32::from(committed);
-        outputs.extend(crate::round::play_while_busy(self, wall, already)?);
-        Ok(outputs)
-    }
-
-    pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
-        crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
     pub fn perceive(&self, as_arg: &str) -> Result<crate::perceive::View, Reason> {
@@ -550,6 +532,51 @@ impl World {
         }
     }
 
+    pub(crate) fn locked(self, lock: crate::LockGuard) -> World {
+        let World {
+            root,
+            canon,
+            now,
+            queue,
+            next_session,
+            warning,
+            lock: _,
+        } = self;
+        World {
+            root,
+            canon,
+            now,
+            queue,
+            next_session,
+            warning,
+            lock,
+        }
+    }
+}
+
+impl World<()> {
+    /// Open the pack at the journal tip and write nothing, so the pack lock is not needed.
+    /// A read guard waits out a write in progress and drops once the World is built.
+    /// A crash the writer has not recovered is read as it stands.
+    ///
+    /// A peeked World holds no lock, so it cannot play a round:
+    ///
+    /// ```compile_fail
+    /// # let root = std::path::Path::new("pack");
+    /// spookery_engine::World::peek(root).unwrap().play("");
+    /// ```
+    pub fn peek(root: &Path) -> Result<World<()>, Reason> {
+        let _read = crate::store::lock::read_guard(root)?;
+        crate::round::replay::peek_at_tip(root)
+    }
+
+    /// The host text at the journal tip: effect rows from the journal, then the clocks.
+    /// One read guard covers the World and the journal read, so both come from one state.
+    pub fn peek_summary(root: &Path) -> Result<String, Reason> {
+        let _read = crate::store::lock::read_guard(root)?;
+        crate::round::replay::peek_at_tip(root)?.host_summary()
+    }
+
     /// Open the pack. A save that later journal records continue is a checkpoint,
     /// and resume checks the tip instead.
     pub fn open(root: &Path) -> Result<Self, Reason> {
@@ -581,6 +608,7 @@ impl World {
             queue: Vec::new(),
             next_session: 1,
             warning: None,
+            lock: (),
         })
     }
 
@@ -594,12 +622,13 @@ impl World {
             queue: Vec::new(),
             next_session: 1,
             warning: None,
+            lock: (),
         }
     }
 }
 
 impl Draft {
-    pub(crate) fn begin(world: &World) -> Self {
+    pub(crate) fn begin<L>(world: &World<L>) -> Self {
         Self::from_parts(
             Arc::clone(&world.canon),
             world.canon.budget,
