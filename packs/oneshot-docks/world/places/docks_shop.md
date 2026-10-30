@@ -5,7 +5,9 @@ display_name: Docks Shop
 facts:
   - id: fact_oil_on_shelf
     text: Oil is on the shelf.
-    hidden: false
+  - id: fact_ledger_short
+    text: The lamp-oil ledger is short.
+    hidden: true
 exits:
   - to: docks_street
     name: docks_street

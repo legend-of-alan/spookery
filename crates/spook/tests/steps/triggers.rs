@@ -150,8 +150,8 @@ fn nell_arrives_with_the_key(world: &mut World) {
     add_rooms(&pack);
     replace_in_file(
         &pack.join("world/places/mira_rooms.md"),
-        "    hidden: false\n",
-        "    hidden: false\n  - id: fact_ledger\n    text: The ledger is in the desk.\n    hidden: false\n",
+        "    text: A lamp burns in the room.\n",
+        "    text: A lamp burns in the room.\n  - id: fact_ledger\n    text: The ledger is in the desk.\n",
     );
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
@@ -548,8 +548,8 @@ fn the_street_has_a_hidden_trapdoor(world: &mut World) {
     );
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
-        "    hidden: false\n",
-        "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
+        "    text: The street is quiet.\n",
+        "    text: The street is quiet.\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
     );
     fs::write(
         pack.join("world/places/cellar.md"),
@@ -748,8 +748,8 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     let pack = copy_docks("trigger-known-fact");
     replace_in_file(
         &pack.join("world/places/docks_street.md"),
-        "    hidden: false\n",
-        "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
+        "    text: The street is quiet.\n",
+        "    text: The street is quiet.\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
     );
     add_verb(
         &pack,
@@ -989,7 +989,6 @@ schema: cast
 id: world
 kind: npc
 display_name: World
-facts: []
 idle:
   eligible: false
 ---
@@ -1085,7 +1084,6 @@ schema: cast
 id: briar
 kind: npc
 display_name: Briar
-facts: []
 flags:
   - downed
 idle:
@@ -1199,7 +1197,6 @@ schema: cast
 id: pc_nell
 kind: pc_template
 display_name: Nell
-facts: []
 idle:
   eligible: false
 {flags}---

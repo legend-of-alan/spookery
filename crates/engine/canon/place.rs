@@ -25,7 +25,7 @@ pub(super) fn add_place(
         text: &page.text,
         line_base: 0,
     };
-    let ids = diags.keep(facts.add(&whole, file.facts, &file.id))?;
+    diags.keep(facts.add(&whole, file.facts, &file.id))?;
     let exits = diags
         .keep(compile_exits(&page.file, &file.exits))
         .unwrap_or_default();
@@ -41,7 +41,6 @@ pub(super) fn add_place(
         file.id.clone(),
         PlaceDef {
             display_name: file.display_name,
-            facts: ids,
             body: page.body,
             exits,
         },

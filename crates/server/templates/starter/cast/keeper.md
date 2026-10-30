@@ -3,7 +3,6 @@ schema: cast
 id: keeper
 kind: npc
 display_name: Keeper
-facts: []
 flags:
   - tended
 idle:

@@ -76,7 +76,7 @@ pub struct ItemDef {
 pub struct FactDef {
     pub text: String,
     pub hidden: bool,
-    pub owner_id: String,
+    pub place_id: String,
 }
 
 /// One way out of a place. `cost.minutes` is the world time the walk takes.
@@ -96,7 +96,6 @@ pub struct Exit {
 #[derive(Clone, Debug)]
 pub struct PlaceDef {
     pub display_name: String,
-    pub facts: Vec<String>,
     pub body: String,
     pub exits: Vec<Exit>,
 }
@@ -105,7 +104,6 @@ pub struct PlaceDef {
 pub struct CastDef {
     pub kind: CastKind,
     pub display_name: String,
-    pub facts: Vec<String>,
     /// The flags an effect may set on this actor.
     pub flags: Vec<String>,
     pub body: String,
@@ -171,13 +169,9 @@ impl Canon {
         let Some(fact) = self.facts.get(fact_id) else {
             return "";
         };
-        if let Some(place) = self.places.get(&fact.owner_id) {
-            return &place.body;
-        }
-        if let Some(cast) = self.cast.get(&fact.owner_id) {
-            return &cast.body;
-        }
-        ""
+        self.places
+            .get(&fact.place_id)
+            .map_or("", |place| &place.body)
     }
 }
 
@@ -226,7 +220,7 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         let Some(page) = diags.keep(page) else {
             continue;
         };
-        loaded.extend(add_cast(page, &mut facts, &mut cast, &mut diags).unwrap_or_default());
+        loaded.extend(add_cast(page, &mut cast, &mut diags).unwrap_or_default());
     }
     // 4. rules/moves.yaml is refused.
     if root.join("rules/moves.yaml").is_file() {

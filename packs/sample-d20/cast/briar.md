@@ -3,7 +3,6 @@ schema: cast
 id: npc_briar
 kind: npc
 display_name: Briar
-facts: []
 idle:
   eligible: true
 rules:

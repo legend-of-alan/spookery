@@ -3,7 +3,6 @@ schema: cast
 id: pc_wren
 kind: pc_template
 display_name: Wren
-facts: []
 idle:
   eligible: false
 ---

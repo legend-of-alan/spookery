@@ -58,7 +58,6 @@ display_name: Porch
 facts:
   - id: fact_porch_dry
     text: The porch is dry.
-    hidden: false
 exits:
   - to: yard
     name: yard

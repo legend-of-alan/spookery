@@ -312,7 +312,6 @@ display_name: Gate
 facts:
   - id: fact_gate
     text: The gate is shut.
-    hidden: false
 ---
 A gate.
 ",
@@ -325,7 +324,6 @@ schema: cast
 id: pc_rowan
 kind: pc_template
 display_name: Rowan
-facts: []
 ---
 Rowan.
 ",
@@ -598,7 +596,6 @@ display_name: Yard
 facts:
   - id: fact_yard
     text: The yard is open.
-    hidden: false
 ---
 A yard.
 ",
@@ -615,7 +612,6 @@ schema: cast
 id: {id}
 kind: npc
 display_name: {id}
-facts: []
 idle:
   eligible: true
 rules:
@@ -773,8 +769,8 @@ fn strip_bodies() {
         assert!(!stripped.contains("Bram walks"), "{}", path.display());
         fs::write(path, stripped).unwrap();
     }
-    let mira = fs::read_to_string(pack.join("cast/mira.md")).unwrap();
-    assert!(mira.contains(LEDGER), "frontmatter secret removed");
+    let shop = fs::read_to_string(pack.join("world/places/docks_shop.md")).unwrap();
+    assert!(shop.contains(LEDGER), "frontmatter secret removed");
     assert!(!fs::read_to_string(pack.join("cast/aldric.md"))
         .unwrap()
         .contains(LEDGER));

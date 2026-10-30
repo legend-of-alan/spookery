@@ -1,6 +1,6 @@
 schema: save
 world_id: sample-d20
-pack_rev: blake2s:668621b610adc69d390369826cc57cb94e06fffd602ad5e309657dbc7f1e482f
+pack_rev: blake2s:71888f479a5daf7c3f9d188a9760dfceb467490505aba8c9953e3d341328ca67
 rules_rev: 10
 state_rev: 0
 round_index: 0

@@ -29,8 +29,8 @@ pub(crate) fn add_trapdoor(pack: &Path) {
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replace(
-        "    hidden: false\n",
-        "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor is under the rug.\n    hidden: true\n",
+        "    text: Oil is on the shelf.\n",
+        "    text: Oil is on the shelf.\n  - id: fact_trapdoor\n    text: A trapdoor is under the rug.\n    hidden: true\n",
     );
     let next = next.replace(
         "    locked_text: The stair door is locked.\n",
@@ -117,13 +117,13 @@ fn break_pack(pack: &Path, fault: &str) {
         ),
         "duplicate place fact" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
-            "    text: Oil is on the shelf.\n    hidden: false\n",
-            "    text: \"She said: oil.\"\n    hidden: false\n  - id: fact_oil_on_shelf\n    text: Oil again.\n    hidden: false\n",
+            "    text: Oil is on the shelf.\n",
+            "    text: \"She said: oil.\"\n  - id: fact_oil_on_shelf\n    text: Oil again.\n",
         ),
-        "duplicate cast fact" => replace_in_file(
+        "cast facts" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
-            "facts: []\n",
-            "facts:\n  - id: fact_rowan_shop\n    text: \"He said: the shop.\"\n    hidden: false\n  - id: fact_rowan_shop\n    text: The shop again.\n    hidden: false\n",
+            "display_name: Rowan\n",
+            "display_name: Rowan\nfacts: []\n",
         ),
         "a target alias" => replace_in_file(
             &pack.join("rules/verbs.yaml"),

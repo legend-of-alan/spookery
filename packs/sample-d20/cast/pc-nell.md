@@ -3,7 +3,6 @@ schema: cast
 id: pc_nell
 kind: pc_template
 display_name: Nell
-facts: []
 idle:
   eligible: false
 ---

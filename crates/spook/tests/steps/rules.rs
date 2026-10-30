@@ -200,7 +200,6 @@ display_name: Ferry Dock
 facts:
   - id: fact_ferry_waits
     text: The ferry waits.
-    hidden: false
 rules:
   - id: travel
     when:
@@ -276,7 +275,6 @@ schema: cast
 id: briar
 kind: npc
 display_name: Briar
-facts: []
 idle:
   eligible: true
 rules:
