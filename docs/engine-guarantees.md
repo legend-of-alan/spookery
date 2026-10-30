@@ -112,8 +112,9 @@ its verb would pick. A place's verb rule beats the shared rule. A wielded
 weapon's attack beats the shared attack. With nothing wielded, the shared
 attack runs. Typing a full rule id is refused and the save stays put. A note
 addressed to someone present runs before an unclaimed wait, even if the wait
-was queued first. An NPC habit stays quiet while a player shares the room. The
-GM can still queue it.
+was queued first. So does a move through an exit into a seated player's room.
+An NPC habit stays quiet while a player shares the room. The GM can still
+queue it.
 
 Tested in `features/round/a_rules_effects_are_all_or_nothing.feature`,
 `features/round/apply_pays_the_rule_that_rolled.feature`,
