@@ -22,8 +22,7 @@ use crate::hash::blake2s_hex;
 pub(crate) use super::records::{
     AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Refusal, Step,
 };
-use super::records::{CheckpointKind, MigrateKind};
-pub use super::records::{Record, RoundKind, RoundRecord};
+pub use super::records::{Record, RoundRecord};
 
 pub fn blake2s_tagged(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
@@ -85,7 +84,6 @@ pub(crate) fn migrate_record(
     edited: bool,
 ) -> Record {
     Record::Migrate(MigrateRecord {
-        kind: MigrateKind::Migrate,
         pack_rev_before: pack_rev_before.to_string(),
         pack_rev_after: pack_rev_after.to_string(),
         state_rev_before,
@@ -161,7 +159,6 @@ pub(crate) fn chain_hash(prev: &str, body: &str) -> String {
 
 pub(crate) fn checkpoint_record(round_index: u64, state_rev: u64, state_hash: &str) -> Record {
     Record::Checkpoint(CheckpointRecord {
-        kind: CheckpointKind::Checkpoint,
         round_index,
         state_rev,
         state_hash: state_hash.to_string(),
@@ -355,11 +352,7 @@ pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
 }
 
 pub fn emit_record(entry: &Record) -> String {
-    let json = match entry {
-        Record::Round(record) => serde_json::to_string(record).expect("round"),
-        Record::Migrate(record) => serde_json::to_string(record).expect("migrate"),
-        Record::Checkpoint(record) => serde_json::to_string(record).expect("checkpoint"),
-    };
+    let json = serde_json::to_string(entry).expect("record");
     format!("{json}\n")
 }
 
@@ -391,26 +384,36 @@ fn bundle_name_of(pack: &Path, entry: &Record) -> String {
 }
 
 fn parse_line(name: &str, line: &str) -> Result<Record, Error> {
-    let value: serde_json::Value =
-        serde_json::from_str(line).map_err(|err| fault(Path::new(name), &err.to_string()))?;
-    let kind = value.get("kind").and_then(|kind| kind.as_str());
-    if kind == Some("checkpoint") {
-        return Ok(Record::Checkpoint(parse_json(name, line)?));
-    }
-    if kind == Some("migrate") {
-        return Ok(Record::Migrate(parse_json(name, line)?));
-    }
-    let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
-    parse_round(name, line).map(Record::Round).map_err(|fault| {
-        match super::require_rules_rev(rules_rev.unwrap_or(0)) {
-            Ok(()) => fault,
-            Err(reason) => fault_coded(
+    parse_json(name, line).map_err(|fault| {
+        let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
+        let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
+        if let Some(Err(reason)) = rules_rev.map(super::require_rules_rev) {
+            return fault_coded(
                 Path::new(name),
                 reason,
                 "RULES_REV_MISMATCH: this record was written by older rules; start a fresh save",
-            ),
+            );
         }
+        name_the_field(name, line, &value).unwrap_or(fault)
     })
+}
+
+/// Serde buffers a tagged line, so its error loses the field and the column.
+/// Blank the leading tag and read the body as that record to get them back.
+fn name_the_field(name: &str, line: &str, value: &serde_json::Value) -> Option<Error> {
+    let kind = value.get("kind")?.as_str()?;
+    let tag = format!(r#"{{"kind":"{kind}","#);
+    let body = format!(
+        "{{{}{}",
+        " ".repeat(tag.len() - 1),
+        line.strip_prefix(&tag)?
+    );
+    match kind {
+        "round" => parse_json::<RoundRecord>(name, &body).err(),
+        "migrate" => parse_json::<MigrateRecord>(name, &body).err(),
+        "checkpoint" => parse_json::<CheckpointRecord>(name, &body).err(),
+        _ => None,
+    }
 }
 
 fn refuse_old_layout(dir: &Path) -> Result<(), Error> {
@@ -543,40 +546,6 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
     Ok(out)
 }
 
-pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, Error> {
-    let raw: RoundRecord<crate::effect::EffectRecord> = parse_json(name, text)?;
-    let effects = raw
-        .effects
-        .into_iter()
-        .map(crate::effect::Effect::try_from)
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|reason| fault_coded(Path::new(name), reason, reason.as_str()))?;
-    Ok(RoundRecord {
-        kind: raw.kind,
-        round_index: raw.round_index,
-        rules_rev: raw.rules_rev,
-        state_rev_before: raw.state_rev_before,
-        state_rev_after: raw.state_rev_after,
-        world_time_before: raw.world_time_before,
-        world_time_after: raw.world_time_after,
-        presence_players: raw.presence_players,
-        actors_present: raw.actors_present,
-        seed: raw.seed,
-        last_round_at: raw.last_round_at,
-        intents: raw.intents,
-        refused: raw.refused,
-        effects,
-        arrivals: raw.arrivals,
-        fast_forward: raw.fast_forward,
-        dice: raw.dice,
-        extra_steps: raw.extra_steps,
-        memories: raw.memories,
-        state_hash: raw.state_hash,
-        prev: raw.prev,
-        chain: raw.chain,
-    })
-}
-
 fn parse_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, Error> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
     serde_path_to_error::deserialize(&mut de).map_err(|err| Error {
@@ -628,8 +597,7 @@ mod tests {
     #[test]
     fn a_sealed_record_chains_to_the_one_before_it() {
         let round = include_str!("../fixtures/round.jsonl");
-        let parsed = parse_round("round.jsonl", round).unwrap();
-        let entry = Record::Round(parsed);
+        let entry = parse_line("round.jsonl", round.trim_end()).unwrap();
         let prev = blake2s_tagged(b"genesis");
         let line = seal(&entry, &prev);
         let again = parse_line("bundle-0000.jsonl", line.trim_end()).unwrap();
@@ -643,11 +611,30 @@ mod tests {
 
     #[test]
     fn a_record_and_head_from_older_rules_are_rules_rev() {
-        let old = r#"{"round_index":1,"rules_rev":7,"state_rev_before":0}"#;
-        assert_eq!(
-            parse_line("bundle-0000.jsonl", old).unwrap_err().reason,
-            Reason::RulesRevMismatch
+        for old in [
+            r#"{"round_index":1,"rules_rev":7,"state_rev_before":0}"#,
+            r#"{"kind":"round","round_index":1,"rules_rev":7,"state_rev_before":0}"#,
+        ] {
+            assert_eq!(
+                parse_line("bundle-0000.jsonl", old).unwrap_err().reason,
+                Reason::RulesRevMismatch
+            );
+        }
+        let unknown = format!(
+            r#"{{"kind":"tick","rules_rev":{}}}"#,
+            super::super::RULES_REV
         );
+        let refused = parse_line("bundle-0000.jsonl", &unknown).unwrap_err();
+        assert_eq!(refused.reason, Reason::Schema);
+        assert!(refused.detail.contains("tick"), "{}", refused.detail);
+        let broken = r#"{"kind":"checkpoint","round_index":"x","state_rev":1,"state_hash":""}"#;
+        let refused = parse_line("bundle-0000.jsonl", broken).unwrap_err();
+        assert_eq!(refused.reason, Reason::Schema);
+        assert!(refused.detail.contains("round_index"), "{}", refused.detail);
+        for torn in ["garbage", r#"{"kind":"round","round_ind"#] {
+            let refused = parse_line("bundle-0000.jsonl", torn).unwrap_err();
+            assert_eq!(refused.reason, Reason::Schema, "{torn}");
+        }
         let pack = crate::testing::copy_docks("old-head");
         let head = pack.join("state").join(head_path());
         fs::create_dir_all(head.parent().unwrap()).unwrap();
@@ -666,7 +653,9 @@ mod tests {
     #[test]
     fn golden_round_and_migrate_round_trip() {
         let round = include_str!("../fixtures/round.jsonl");
-        let parsed = parse_round("round.jsonl", round).unwrap();
+        let Record::Round(parsed) = parse_line("round.jsonl", round.trim_end()).unwrap() else {
+            panic!("not a round record");
+        };
         assert_eq!(emit_record(&Record::Round(parsed.clone())), round);
         assert_eq!(parsed.arrivals[0].via, "stairs");
         assert_eq!(parsed.arrivals[0].arrived_at, 1082);

@@ -158,7 +158,6 @@ fn seal_round(
     root: &Path,
 ) -> Result<String, Reason> {
     let record = journal::RoundRecord {
-        kind: journal::RoundKind::Round,
         round_index: line.clock.round_index,
         rules_rev: crate::store::RULES_REV,
         state_rev_before,

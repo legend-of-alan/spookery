@@ -427,9 +427,8 @@ fn a_busy_npc_skips() {
 }
 
 fn sealed_round(pack: &Path, state_rev: u64) -> String {
-    use spookery_engine::testing::journal::{genesis_hash, seal, Record, RoundKind, RoundRecord};
+    use spookery_engine::testing::journal::{genesis_hash, seal, Record, RoundRecord};
     let entry = Record::Round(RoundRecord {
-        kind: RoundKind::Round,
         round_index: 1,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev_before: state_rev.saturating_sub(1),
