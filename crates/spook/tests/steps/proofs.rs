@@ -87,7 +87,7 @@ fn idle_off_past_due_wake_writes_nothing() {
             every > 0 && every + 60 < 3600,
             "interval {every} is not inside one hour"
         );
-        assert!(!shard.budget().idle_ticking);
+        assert!(!shard.budget().idle_rounds);
         let stamp = spookery::host::idle_clock::wall_ago(every + 60).unwrap();
         let mut now = shard.now().clone();
         let world_time = now.world_time;

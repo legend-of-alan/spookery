@@ -16,7 +16,7 @@ pub struct Budget {
     pub live_acts_per_world_hour: u64,
     pub round_every_real_seconds: u64,
     /// Empty-table wakes. `false` leaves an empty table still.
-    pub idle_ticking: bool,
+    pub idle_rounds: bool,
     pub idle_minutes_per_round: u64,
     pub live_minutes_per_round: u64,
     pub idle_catchup_max_rounds: u64,
@@ -51,7 +51,7 @@ impl Budget {
             idle_acts_per_world_day: 3,
             live_acts_per_world_hour: 6,
             round_every_real_seconds: 300,
-            idle_ticking: true,
+            idle_rounds: true,
             idle_minutes_per_round: 60,
             live_minutes_per_round: 5,
             idle_catchup_max_rounds: 12,
@@ -90,7 +90,7 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
         live_acts_per_world_hour >= 0,
         round_every_real_seconds >= 1,
     );
-    budget.idle_ticking = take_idle(&source, file.idle, &mut diags);
+    budget.idle_rounds = take_idle(&source, file.idle, &mut diags);
     counters!(
         idle_minutes_per_round >= 1,
         live_minutes_per_round >= 0,
@@ -249,13 +249,13 @@ mod tests {
     #[test]
     fn idle_defaults_to_on_and_off_is_loaded() {
         let on = load_budget(&text("budget")).unwrap();
-        assert!(on.idle_ticking);
+        assert!(on.idle_rounds);
         let mut explicit = text("budget");
         explicit.push_str("idle: on\n");
-        assert!(load_budget(&explicit).unwrap().idle_ticking);
+        assert!(load_budget(&explicit).unwrap().idle_rounds);
         let mut off = text("budget");
         off.push_str("idle: off\n");
-        assert!(!load_budget(&off).unwrap().idle_ticking);
+        assert!(!load_budget(&off).unwrap().idle_rounds);
     }
 
     #[test]
@@ -264,7 +264,7 @@ mod tests {
             .join("../../packs/oneshot-docks/rules/budget.yaml");
         let text = std::fs::read_to_string(path).unwrap();
         let budget = load_budget(&text).unwrap();
-        assert!(budget.idle_ticking);
+        assert!(budget.idle_rounds);
         assert_eq!(budget.round_every_real_seconds, 300);
         assert_eq!(budget.idle_minutes_per_round, 60);
     }
