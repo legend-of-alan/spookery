@@ -18,14 +18,14 @@
 use proptest::test_runner::TestRunner;
 
 use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, same_save, TempPack};
-use crate::testing::temp_pack;
+use crate::testing::copy_docks;
 
 #[test]
 fn random_play_replays_to_the_same_save() {
     let mut runner = TestRunner::new(configure_runner());
     runner
         .run(&pick_rounds(), |rounds| {
-            let pack = TempPack(temp_pack("prop-replay"));
+            let pack = TempPack(copy_docks("prop-replay"));
             play_rounds(&pack.0, &rounds).map_err(fail_msg)?;
             same_save(&pack.0)
         })

@@ -9,12 +9,12 @@ use crate::rule::TargetKind;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
-pub enum ViewerId {
+pub enum Viewer {
     Player(String),
     Npc(String),
 }
 
-impl ViewerId {
+impl Viewer {
     pub fn parse(raw: &str) -> Result<Self, Reason> {
         let Some((kind, id)) = raw.split_once(':') else {
             return Err(Reason::UnscopedPerceive);
@@ -23,39 +23,39 @@ impl ViewerId {
             return Err(Reason::UnscopedPerceive);
         }
         match kind {
-            "player" => Ok(ViewerId::Player(id.to_string())),
-            "npc" => Ok(ViewerId::Npc(id.to_string())),
+            "player" => Ok(Viewer::Player(id.to_string())),
+            "npc" => Ok(Viewer::Npc(id.to_string())),
             _ => Err(Reason::UnscopedPerceive),
         }
     }
 
     pub fn actor_id(&self) -> &str {
         match self {
-            ViewerId::Player(id) | ViewerId::Npc(id) => id,
+            Viewer::Player(id) | Viewer::Npc(id) => id,
         }
     }
 }
 
-impl fmt::Display for ViewerId {
+impl fmt::Display for Viewer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ViewerId::Player(id) => write!(f, "player:{id}"),
-            ViewerId::Npc(id) => write!(f, "npc:{id}"),
+            Viewer::Player(id) => write!(f, "player:{id}"),
+            Viewer::Npc(id) => write!(f, "npc:{id}"),
         }
     }
 }
 
-impl From<ViewerId> for String {
-    fn from(id: ViewerId) -> Self {
+impl From<Viewer> for String {
+    fn from(id: Viewer) -> Self {
         id.to_string()
     }
 }
 
-impl TryFrom<String> for ViewerId {
+impl TryFrom<String> for Viewer {
     type Error = Reason;
 
     fn try_from(raw: String) -> Result<Self, Self::Error> {
-        ViewerId::parse(&raw)
+        Viewer::parse(&raw)
     }
 }
 
@@ -68,7 +68,7 @@ pub enum Source {
 }
 
 impl Source {
-    pub fn token(self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Source::Kernel => "kernel",
             Source::Player => "player",
@@ -112,12 +112,12 @@ pub struct IntentArgs {
 pub struct Intent {
     pub id: String,
     pub round_index: u64,
-    pub actor: ViewerId,
+    pub actor: Viewer,
     pub source: Source,
     #[serde(rename = "move")]
     pub move_name: String,
     pub target: Target,
-    #[serde(with = "args_as")]
+    #[serde(with = "args_wire")]
     pub args: IntentArgs,
     pub rationale_code: String,
 }
@@ -127,7 +127,7 @@ impl Intent {
     pub(crate) fn new(
         id: String,
         round_index: u64,
-        actor: ViewerId,
+        actor: Viewer,
         source: Source,
         move_name: &str,
         target: Target,
@@ -220,7 +220,7 @@ impl From<ArgsWire> for IntentArgs {
     }
 }
 
-pub(crate) mod args_as {
+pub(crate) mod args_wire {
     use super::ArgsWire;
     use crate::intent::IntentArgs;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -262,7 +262,7 @@ pub(crate) fn player_intent_id(
 }
 
 /// The id of the intent that finishes `actor_id`'s timed action.
-pub(crate) fn arrival_intent_id(actor_id: &str) -> String {
+pub(crate) fn due_intent_id(actor_id: &str) -> String {
     format!("arrival:{actor_id}")
 }
 

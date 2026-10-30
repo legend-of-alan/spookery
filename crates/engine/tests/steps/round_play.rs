@@ -5,7 +5,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::{faces, RollKey};
 use spookery_engine::MoveReport;
-use spookery_engine::{Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_engine::{Intent, IntentArgs, Source, Target, Viewer};
 
 use crate::World;
 use spookery_engine::testing::{self as support, read_round};
@@ -87,7 +87,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let round: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
-        spookery_engine::testing::journal::hash_now(&report.now_yaml),
+        spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
         round["now_hash"].as_str().unwrap()
     );
 }
@@ -219,7 +219,7 @@ fn only_the_first_wait_lands(world: &mut World) {
             .any(|item| item["id"] == "wait-2" && item["code"] == "INELIGIBLE"),
         "{round}"
     );
-    let now = spookery_engine::load_save(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
+    let now = spookery_engine::parse_save(std::str::from_utf8(&world.now_bytes).unwrap()).unwrap();
     assert_eq!(
         now.actors
             .get("mira")
@@ -253,15 +253,15 @@ fn lark_and_briar_strike_each_other(world: &mut World) {
     world.scratch = rolls
         .iter()
         .filter_map(|report| match report {
-            MoveReport::Rolled { actor_id, out } => Some(format!(
+            MoveReport::Rolled { actor_id, roll } => Some(format!(
                 "{actor_id}={}:{}:{}",
-                out.faces
+                roll.faces
                     .iter()
                     .map(|face| face.to_string())
                     .collect::<Vec<_>>()
                     .join(","),
-                out.total,
-                out.target
+                roll.total,
+                roll.target
             )),
             MoveReport::Refused { .. } => None,
         })
@@ -378,17 +378,17 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     table
         .queue_player_move(&rowan, "pc_rowan", "ask", Some("aldric"))
         .unwrap_or_else(|refusal| panic!("ask aldric: {refusal:?}"));
-    let wall = table.now().last_round_at.clone();
+    let wall = table.state().last_round_at.clone();
     for round in 1..=6 {
         let output = table.play(&rowan, &wall);
         output.unwrap_or_else(|err| panic!("round {round}: {err}"));
-        let now = table.now();
+        let now = table.state();
         if !now.actors["pc_rowan"].is_busy(now.world_time) {
             break;
         }
         assert!(round < 6, "Rowan is still busy after {round} rounds");
     }
-    let now = table.now();
+    let now = table.state();
     world.mark =
         usize::try_from(now.meter_value(table.canon(), "aldric", "rest").unwrap()).unwrap();
 }
@@ -406,7 +406,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
     let rule = format!(
         "  - id: rummage
     when: {{ verb: rummage }}
-    cost: {{ meter: {{ rest: {shop} }} }}
+    cost: {{ meters: {{ rest: {shop} }} }}
     roll: {{ check: grit, target: 0 }}
     do: []"
     );
@@ -415,7 +415,7 @@ fn a_docks_pack_with_two_rummage_rules(world: &mut World, shop: i64, shared: i64
         "
   - id: rummage
     when: {{ verb: rummage }}
-    cost: {{ meter: {{ rest: {shared} }} }}
+    cost: {{ meters: {{ rest: {shared} }} }}
     do: []
 "
     );
@@ -491,7 +491,7 @@ fn neither_flag_is_set(world: &mut World, code: String) {
 }
 
 /// Rowan, seated, takes the street exit, then plays `then` in the same round.
-fn rowan_walks(pack: &Path, then: Vec<Intent>) -> (spookery_engine::Now, Value) {
+fn rowan_walks(pack: &Path, then: Vec<Intent>) -> (spookery_engine::State, Value) {
     let walk = Target::Place("docks_street".to_string());
     let mut intents = vec![queued("walk", player("pc_rowan"), "travel", walk)];
     intents.extend(then);
@@ -547,7 +547,7 @@ fn strike_line(scratch: &str, actor: &str) -> (String, i64, i64) {
 fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let world = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("open: {err}"));
     let actor = world
-        .now()
+        .state()
         .actors
         .get(actor_id)
         .unwrap_or_else(|| panic!("missing {actor_id}"));
@@ -557,11 +557,11 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let stat = (live.base + live.offset).clamp(def.min, def.max);
     let rolled = faces(
         &RollKey {
-            world_id: world.now().shard_id.clone(),
-            round_index: world.now().round_index,
+            world_id: world.state().shard_id.clone(),
+            round_index: world.state().round_index,
             rule_id: "verb:strike".to_string(),
             subject_id: actor_id.to_string(),
-            roll_index,
+            index: roll_index,
         },
         check.dice_count,
         check.dice_sides,
@@ -585,7 +585,7 @@ fn lark_pack() -> PathBuf {
     min: 0
     base_cap: 100
     max: 110
-    start: 1
+    base: 1
 ",
     );
     support::append(
@@ -595,7 +595,7 @@ fn lark_pack() -> PathBuf {
     dice:
       count: 2
       sides: 6
-    stat: grit
+    meter: grit
 ",
     );
     support::append(
@@ -633,7 +633,10 @@ fn lark_roll(pack: &Path, extra_first: bool) -> (String, i64) {
     ));
     let (_now, rolls, _round) = play_queued(pack, &[], intents);
     let rolled = rolls.into_iter().find_map(|report| match report {
-        MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some((
+        MoveReport::Rolled {
+            actor_id,
+            roll: out,
+        } if actor_id == "pc_lark" => Some((
             out.faces
                 .iter()
                 .map(|face| face.to_string())
@@ -651,7 +654,7 @@ fn play_queued(
     pack: &Path,
     seated: &[&str],
     intents: Vec<Intent>,
-) -> (spookery_engine::Now, Vec<MoveReport>, Value) {
+) -> (spookery_engine::State, Vec<MoveReport>, Value) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut world =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
@@ -659,27 +662,27 @@ fn play_queued(
         humans: u32::try_from(seated.len()).unwrap(),
         actors_present: seated.iter().map(|id| id.to_string()).collect(),
     };
-    let wall = world.now().last_round_at.clone();
+    let wall = world.state().last_round_at.clone();
     for intent in intents {
-        world.queue(intent);
+        world.queue_intent(intent);
     }
     let output = world
         .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let round = read_round(pack, "round-0001");
-    let now = world.now().clone();
+    let now = world.state().clone();
     (now, output.reports, round)
 }
 
-fn player(id: &str) -> ViewerId {
-    ViewerId::Player(id.to_string())
+fn player(id: &str) -> Viewer {
+    Viewer::Player(id.to_string())
 }
 
-fn npc(id: &str) -> ViewerId {
-    ViewerId::Npc(id.to_string())
+fn npc(id: &str) -> Viewer {
+    Viewer::Npc(id.to_string())
 }
 
-fn queued(id: &str, actor: ViewerId, move_name: &str, target: Target) -> Intent {
+fn queued(id: &str, actor: Viewer, move_name: &str, target: Target) -> Intent {
     Intent {
         id: id.to_string(),
         round_index: 1,

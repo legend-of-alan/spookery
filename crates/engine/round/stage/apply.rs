@@ -1,33 +1,33 @@
 //! Pay each intent cost and write the effects it earned.
 
 use crate::draft::Draft;
-use crate::intent::{Intent, ViewerId};
+use crate::intent::{Intent, Viewer};
 use crate::journal::{Rejected, Step};
-use crate::map;
-use crate::model::Now;
+use crate::model::State;
 use crate::rule::Rule;
 use crate::rules::cost;
 use crate::rules::gate::{admit, GateRefusal};
 use crate::rules::{MoveReport, Roll};
+use crate::travel;
 use crate::Reason;
 
 use crate::round::dice::{Expansion, RoundDice};
 use crate::round::log::RoundLog;
-use crate::round::stage::advance::Clock;
+use crate::round::stage::advance::RoundTime;
 use crate::round::stage::resolve::{Resolution, Resolved};
 
 /// What became of one intent in apply.
 enum Landing {
-    Landed,
+    Applied,
     Refused,
     BudgetSpent,
 }
 
 pub(crate) fn run(
     draft: &mut Draft,
-    snapshot: &Now,
+    snapshot: &State,
     resolved: Vec<Resolved>,
-    clock: &Clock,
+    clock: &RoundTime,
     dice: &mut RoundDice,
     log: &mut RoundLog,
 ) -> Result<(), Reason> {
@@ -35,7 +35,7 @@ pub(crate) fn run(
     let max_npcs = draft.budget().max_npcs_acting;
     let mut slots = 0u64;
     for Resolved { intent, resolution } in resolved {
-        let spends_slot = matches!(intent.actor, ViewerId::Npc(_));
+        let spends_slot = matches!(intent.actor, Viewer::Npc(_));
         if spends_slot && slots >= max_npcs {
             reject(log, &intent, Reason::Budget);
             continue;
@@ -55,11 +55,11 @@ pub(crate) fn run(
         };
         let canon = draft.shared_canon();
         let rule = canon.rules.get(&rule_id).ok_or(Reason::UnknownMove)?;
-        if let Err(refusal) = admit(&canon, draft.now(), draft.presence, &intent, rule) {
+        if let Err(refusal) = admit(&canon, draft.state(), draft.presence, &intent, rule) {
             reject(log, &intent, refusal);
             continue;
         }
-        let minutes = map::span(&canon, draft.now(), &intent, rule);
+        let minutes = travel::span(&canon, draft.state(), &intent, rule);
         if minutes > 0 {
             let at = clock.world_time_before;
             if start_timed_action(draft, &intent, rule, at, minutes, dice, log) && spends_slot {
@@ -71,7 +71,7 @@ pub(crate) fn run(
         let mut roller = dice.roller(log, &rule_id, intent.actor.actor_id());
         let presence = draft.presence;
         let expanded = rule.expand(&canon, snapshot, presence, &intent, outcome, &mut roller);
-        let resisted = roller.finish();
+        let resisted = roller.into_reports();
         let effects = match expanded {
             Ok(effects) => effects,
             Err(code) => {
@@ -89,8 +89,8 @@ pub(crate) fn run(
             resisted,
         };
         match apply_instant_intent(draft, &intent, rule, &expansion, dice, log) {
-            Landing::Landed if spends_slot => slots += 1,
-            Landing::Landed | Landing::Refused => {}
+            Landing::Applied if spends_slot => slots += 1,
+            Landing::Applied | Landing::Refused => {}
             Landing::BudgetSpent => break,
         }
     }
@@ -112,7 +112,7 @@ fn start_timed_action(
         Some(cost) => cost::pay(draft, intent, cost, &mut roller),
         None => Ok(()),
     }
-    .and_then(|()| map::begin(draft, intent, rule, at, minutes, &mut roller));
+    .and_then(|()| travel::begin_action(draft, intent, rule, at, minutes, &mut roller));
     drop(roller);
     if let Err(code) = begun {
         draft.rollback(point);
@@ -148,8 +148,8 @@ fn apply_instant_intent(
         Ok(())
     });
     let staged = staged.and_then(|()| match &intent.actor {
-        ViewerId::Npc(id) => draft.stage_npc_counters(id, draft.presence.humans),
-        ViewerId::Player(_) => Ok(()),
+        Viewer::Npc(id) => draft.count_npc_act(id, draft.presence.humans),
+        Viewer::Player(_) => Ok(()),
     });
     if let Err(code) = staged {
         draft.rollback(point);
@@ -164,14 +164,14 @@ fn apply_instant_intent(
     report_roll(log, &expansion.rolled, intent.actor.actor_id());
     log.reports.extend_from_slice(&expansion.resisted);
     log.steps.push(Step::Rule(rule.id.clone()));
-    Landing::Landed
+    Landing::Applied
 }
 
 /// Journal the refusal and tell a player its code and what was missing.
 fn reject(log: &mut RoundLog, intent: &Intent, refusal: impl Into<GateRefusal>) {
     let refusal = refusal.into();
     log.rejected.push(Rejected::new(intent, &refusal));
-    if matches!(intent.actor, ViewerId::Player(_)) {
+    if matches!(intent.actor, Viewer::Player(_)) {
         log.reports.push(refused_report(intent, &refusal));
     }
 }
@@ -188,7 +188,7 @@ fn report_roll(log: &mut RoundLog, rolled: &Option<Roll>, actor_id: &str) {
     if let Some(out) = rolled.clone() {
         log.reports.push(MoveReport::Rolled {
             actor_id: actor_id.to_string(),
-            out,
+            roll: out,
         });
     }
 }

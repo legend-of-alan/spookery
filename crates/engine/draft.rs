@@ -8,17 +8,17 @@ use std::sync::Arc;
 use crate::canon::Canon;
 use crate::canon::{Budget, PausePolicy};
 use crate::error::Reason;
-use crate::key::{ChangeRecord, StateKey, StateValue};
-use crate::model::{MemoryLine, Now, Presence, RunState};
+use crate::key::{Change, StateKey, StateValue};
+use crate::model::{MemoryLine, Presence, RunState, State};
 
 pub(crate) struct Draft<'p> {
     canon: Arc<Canon>,
     budget: Budget,
-    pub(crate) state: Now,
+    pub(crate) state: State,
     /// Who is seated for this round. The round reads it and never writes it.
     pub(crate) presence: &'p Presence,
     keys: BTreeSet<StateKey>,
-    pending: Vec<PriorValue>,
+    priors: Vec<PriorValue>,
     pub(crate) memories: Vec<MemoryLine>,
     memory_writes: u32,
     _nosend: PhantomData<Rc<()>>,
@@ -28,7 +28,7 @@ impl<'p> Draft<'p> {
     pub(crate) fn from_parts(
         canon: Arc<Canon>,
         budget: Budget,
-        state: Now,
+        state: State,
         presence: &'p Presence,
     ) -> Self {
         Self {
@@ -37,7 +37,7 @@ impl<'p> Draft<'p> {
             state,
             presence,
             keys: BTreeSet::new(),
-            pending: Vec::new(),
+            priors: Vec::new(),
             memories: Vec::new(),
             memory_writes: 0,
             _nosend: PhantomData,
@@ -52,7 +52,7 @@ impl<'p> Draft<'p> {
         Arc::clone(&self.canon)
     }
 
-    pub(crate) fn now(&self) -> &Now {
+    pub(crate) fn state(&self) -> &State {
         &self.state
     }
 
@@ -60,7 +60,7 @@ impl<'p> Draft<'p> {
         &self.budget
     }
 
-    pub(crate) fn now_mut(&mut self) -> &mut Now {
+    pub(crate) fn state_mut(&mut self) -> &mut State {
         &mut self.state
     }
 
@@ -81,7 +81,7 @@ impl<'p> Draft<'p> {
             if !clock.requires_presence {
                 continue;
             }
-            let paused = humans == 0 && policies.named_plot_clocks == PausePolicy::PauseWhenEmpty;
+            let paused = humans == 0 && policies.named_plot_clocks == PausePolicy::WhenEmpty;
             if humans > 0 {
                 self.set_clock_paused(&clock_id, false)?;
             } else if paused {
@@ -89,8 +89,8 @@ impl<'p> Draft<'p> {
             }
         }
         self.state.pause.named_plot_clocks = match policies.named_plot_clocks {
-            PausePolicy::PauseWhenEmpty if humans == 0 => RunState::Paused,
-            PausePolicy::PauseWhenEmpty | PausePolicy::AlwaysRun => RunState::Running,
+            PausePolicy::WhenEmpty if humans == 0 => RunState::Paused,
+            PausePolicy::WhenEmpty | PausePolicy::AlwaysRun => RunState::Running,
         };
         Ok(())
     }
@@ -144,7 +144,7 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    pub(crate) fn stage_npc_counters(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
+    pub(crate) fn count_npc_act(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
         let round_index = self.state.round_index;
         let (current_idle, current_live, current_last) = {
             let counters = self
@@ -201,9 +201,9 @@ impl<'p> Draft<'p> {
         let mut added = Vec::new();
         for key in keys {
             self.admit(key, &mut added, max)?;
-            if !self.pending.iter().any(|prior| &prior.key == key) {
+            if !self.priors.iter().any(|prior| &prior.key == key) {
                 let before = self.read_value(key);
-                self.pending.push(PriorValue {
+                self.priors.push(PriorValue {
                     key: key.clone(),
                     before,
                 });
@@ -216,9 +216,9 @@ impl<'p> Draft<'p> {
         let max = self.budget.max_state_keys_mutated as usize;
         let mut added = Vec::new();
         self.admit(&key, &mut added, max)?;
-        if !self.pending.iter().any(|prior| prior.key == key) {
+        if !self.priors.iter().any(|prior| prior.key == key) {
             let before = before.unwrap_or_else(|| self.read_value(&key));
-            self.pending.push(PriorValue { key, before });
+            self.priors.push(PriorValue { key, before });
         }
         Ok(())
     }
@@ -235,7 +235,7 @@ impl<'p> Draft<'p> {
         if self.keys.len() >= max {
             for key in added {
                 self.keys.remove(key);
-                self.pending.retain(|prior| &prior.key != key);
+                self.priors.retain(|prior| &prior.key != key);
             }
             return Err(Reason::Budget);
         }
@@ -245,15 +245,15 @@ impl<'p> Draft<'p> {
     }
 
     /// Changes since the last take. The cumulative key set used by `changes` stays.
-    pub(crate) fn take_changes(&mut self) -> Vec<ChangeRecord> {
-        let pending = std::mem::take(&mut self.pending);
+    pub(crate) fn take_changes(&mut self) -> Vec<Change> {
+        let pending = std::mem::take(&mut self.priors);
         let mut records = Vec::new();
         for prior in pending {
             let after = self.read_value(&prior.key);
             if after == prior.before {
                 continue;
             }
-            records.push(ChangeRecord {
+            records.push(Change {
                 key: prior.key,
                 before: prior.before,
                 after,
@@ -275,7 +275,7 @@ impl<'p> Draft<'p> {
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::Mark(actor.flags().iter().any(|item| item == flag)))
+                .map(|actor| StateValue::Bool(actor.flags().iter().any(|item| item == flag)))
                 .unwrap_or(StateValue::Empty),
             StateKey::ActorMeter(id, meter) => self.meter_value(id, meter),
             StateKey::ActorBusy(id) => self
@@ -306,7 +306,7 @@ impl<'p> Draft<'p> {
                 .state
                 .actors
                 .get(id)
-                .map(|actor| StateValue::Number(i64::from(actor.count(item))))
+                .map(|actor| StateValue::Number(i64::from(actor.item_count(item))))
                 .unwrap_or(StateValue::Empty),
             StateKey::PlaceItem(place, item) => self
                 .state
@@ -335,17 +335,17 @@ impl<'p> Draft<'p> {
                 .state
                 .clocks
                 .get(id)
-                .map(|clock| StateValue::Mark(clock.paused))
+                .map(|clock| StateValue::Bool(clock.paused))
                 .unwrap_or(StateValue::Empty),
             StateKey::Message(id) => {
                 if self.state.messages.iter().any(|message| &message.id == id) {
-                    StateValue::Mark(true)
+                    StateValue::Bool(true)
                 } else {
                     StateValue::Empty
                 }
             }
             StateKey::WorldFlag(key) => {
-                StateValue::Mark(self.state.flags.iter().any(|flag| flag == key))
+                StateValue::Bool(self.state.flags.iter().any(|flag| flag == key))
             }
         }
     }
@@ -360,7 +360,7 @@ impl<'p> Draft<'p> {
     fn act_number(
         &self,
         actor_id: &str,
-        read: impl FnOnce(&crate::model::ActCounters) -> i64,
+        read: impl FnOnce(&crate::model::Act) -> i64,
     ) -> StateValue {
         self.state
             .actors
@@ -369,7 +369,7 @@ impl<'p> Draft<'p> {
             .unwrap_or(StateValue::Empty)
     }
 
-    pub(crate) fn bump_memory(&mut self) -> Result<(), Reason> {
+    pub(crate) fn count_memory_write(&mut self) -> Result<(), Reason> {
         if u64::from(self.memory_writes) >= self.budget.max_memory_writes {
             return Err(Reason::Budget);
         }
@@ -377,24 +377,24 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    pub(crate) fn stage_memory(&mut self, line: MemoryLine) {
+    pub(crate) fn push_memory(&mut self, line: MemoryLine) {
         self.memories.push(line);
     }
 
-    pub(crate) fn savepoint(&self) -> DraftPoint {
-        DraftPoint {
+    pub(crate) fn savepoint(&self) -> Savepoint {
+        Savepoint {
             state: self.state.clone(),
             keys: self.keys.clone(),
-            pending: self.pending.clone(),
+            pending: self.priors.clone(),
             memories: self.memories.clone(),
             memory_writes: self.memory_writes,
         }
     }
 
-    pub(crate) fn rollback(&mut self, point: DraftPoint) {
+    pub(crate) fn rollback(&mut self, point: Savepoint) {
         self.state = point.state;
         self.keys = point.keys;
-        self.pending = point.pending;
+        self.priors = point.pending;
         self.memories = point.memories;
         self.memory_writes = point.memory_writes;
     }
@@ -406,8 +406,8 @@ struct PriorValue {
     before: StateValue,
 }
 
-pub(crate) struct DraftPoint {
-    state: Now,
+pub(crate) struct Savepoint {
+    state: State,
     keys: BTreeSet<StateKey>,
     pending: Vec<PriorValue>,
     memories: Vec<MemoryLine>,
@@ -418,7 +418,7 @@ pub(crate) struct DraftPoint {
 mod tests {
     use super::*;
     use crate::effect::{Effect, EffectKind};
-    use crate::intent::{Intent, Source, Target, ViewerId};
+    use crate::intent::{Intent, Source, Target, Viewer};
     use crate::World;
 
     #[test]
@@ -432,7 +432,7 @@ mod tests {
         let intent = Intent {
             id: "i1".to_string(),
             round_index: 1,
-            actor: ViewerId::Npc("mira".to_string()),
+            actor: Viewer::Npc("mira".to_string()),
             move_name: "leave_door_note".to_string(),
             target: Target::Empty,
             args: Default::default(),
@@ -445,7 +445,7 @@ mod tests {
                 delta: -1,
                 start: false,
             },
-            as_viewer: ViewerId::Npc("mira".to_string()),
+            viewer: Viewer::Npc("mira".to_string()),
             intent_id: "i1".to_string(),
         }
         .apply(&mut draft, &intent)

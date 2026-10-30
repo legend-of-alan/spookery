@@ -140,11 +140,11 @@ fn hp_of(pack: &Path, actor_id: &str) -> i64 {
     let canon = spookery_engine::load_canon(pack).unwrap_or_else(|err| {
         panic!(
             "load canon: {}",
-            spookery_engine::first_reason(&err).token()
+            spookery_engine::first_reason(&err).as_str()
         )
     });
     now.meter_value(&canon, actor_id, "hp")
-        .unwrap_or_else(|err| panic!("hp: {}", err.token()))
+        .unwrap_or_else(|err| panic!("hp: {}", err.as_str()))
 }
 
 fn wait_hp(world: &mut World, actor_id: &str, expected: i64) {

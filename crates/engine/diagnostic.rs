@@ -1,6 +1,6 @@
 //! One problem a loader or pack check can show.
 //!
-//! `code` is an [`Error`](Severity::Error) [`Reason`] or a [`Warning`](Severity::Warning).
+//! `code` is an [`Error`](Code::Error) [`Reason`] or a [`Warning`](Code::Warning).
 //! The struct is plain data so a later JSON printer can serialize it as it stands.
 
 use std::fmt;
@@ -11,23 +11,23 @@ use serde_saphyr::Error as YamlError;
 use crate::error::Reason;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Severity {
+pub enum Code {
     Error(Reason),
     Warning,
 }
 
-impl Severity {
-    pub fn token(self) -> &'static str {
+impl Code {
+    pub fn as_str(self) -> &'static str {
         match self {
-            Severity::Error(reason) => reason.token(),
-            Severity::Warning => "WARNING",
+            Code::Error(reason) => reason.as_str(),
+            Code::Warning => "WARNING",
         }
     }
 }
 
-impl Serialize for Severity {
+impl Serialize for Code {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.token())
+        serializer.serialize_str(self.as_str())
     }
 }
 
@@ -76,13 +76,13 @@ pub struct Diagnostic {
     pub column: Option<u32>,
     /// Key path such as `rules[0].when`.
     pub path: Option<String>,
-    pub code: Severity,
+    pub code: Code,
     pub message: String,
     pub hint: Option<String>,
 }
 
 impl Diagnostic {
-    pub fn new(file: &str, code: Severity, problem: &str, hint: &str) -> Self {
+    pub fn new(file: &str, code: Code, problem: &str, hint: &str) -> Self {
         Self {
             file: file.replace('\\', "/"),
             line: None,
@@ -95,7 +95,7 @@ impl Diagnostic {
     }
 
     pub fn is_error(&self) -> bool {
-        matches!(self.code, Severity::Error(_))
+        matches!(self.code, Code::Error(_))
     }
 
     pub(crate) fn at_line(mut self, line: u32, column: Option<u32>) -> Self {
@@ -112,7 +112,7 @@ impl Diagnostic {
         }
     }
 
-    pub(crate) fn with_path(mut self, path: impl Into<String>) -> Self {
+    pub(crate) fn at_path(mut self, path: impl Into<String>) -> Self {
         self.path = Some(path.into());
         self
     }
@@ -126,7 +126,7 @@ impl fmt::Display for Diagnostic {
             (None, Some(path)) => write!(f, "{}: {path}", self.file)?,
             (None, None) => f.write_str(&self.file)?,
         }
-        write!(f, ": {} ({})", self.message, self.code.token())
+        write!(f, ": {} ({})", self.message, self.code.as_str())
     }
 }
 
@@ -134,22 +134,22 @@ pub fn first_reason(diagnostics: &[Diagnostic]) -> Reason {
     diagnostics
         .iter()
         .find_map(|diag| match diag.code {
-            Severity::Error(reason) => Some(reason),
-            Severity::Warning => None,
+            Code::Error(reason) => Some(reason),
+            Code::Warning => None,
         })
         .unwrap_or(Reason::Schema)
 }
 
-pub(crate) fn schema(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    coded(file, Reason::Schema, problem, hint)
+pub(crate) fn schema_error(file: &str, problem: &str, hint: &str) -> Diagnostic {
+    error(file, Reason::Schema, problem, hint)
 }
 
-pub(crate) fn coded(file: &str, code: Reason, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Severity::Error(code), problem, hint)
+pub(crate) fn error(file: &str, code: Reason, problem: &str, hint: &str) -> Diagnostic {
+    Diagnostic::new(file, Code::Error(code), problem, hint)
 }
 
 pub(crate) fn warning(file: &str, problem: &str, hint: &str) -> Diagnostic {
-    Diagnostic::new(file, Severity::Warning, problem, hint)
+    Diagnostic::new(file, Code::Warning, problem, hint)
 }
 
 /// Line and column of the `nth` match of `needle` in `text`. Both are 1-based.
@@ -171,7 +171,7 @@ pub(crate) fn locate_nth(text: &str, needle: &str, nth: usize) -> Option<(u32, u
 }
 
 /// Wrong or missing `schema` tag. `None` means the tag is the one this file uses.
-pub(crate) fn tag_diagnostic(
+pub(crate) fn check_tag(
     text: &str,
     expected: &str,
     file: &str,
@@ -180,8 +180,8 @@ pub(crate) fn tag_diagnostic(
     let hint = format!("write 'schema: {expected}' with no version suffix");
     let Some(found) = find_schema(text) else {
         return Some(
-            schema(file, "the schema tag is missing", &hint)
-                .with_path("schema")
+            schema_error(file, "the schema tag is missing", &hint)
+                .at_path("schema")
                 .at_line(1 + line_base, Some(1)),
         );
     };
@@ -194,8 +194,8 @@ pub(crate) fn tag_diagnostic(
         format!("schema is '{}', which this file does not use", found.value)
     };
     Some(
-        schema(file, &problem, &hint)
-            .with_path("schema")
+        schema_error(file, &problem, &hint)
+            .at_path("schema")
             .at_line(found.line + line_base, Some(1)),
     )
 }
@@ -257,9 +257,9 @@ pub(crate) fn yaml_diagnostic(file: &str, err: &YamlError, line_base: u32) -> Di
             "fix the syntax at this spot and try again".to_string(),
         ),
     };
-    let mut diag = schema(file, &problem, &hint);
+    let mut diag = schema_error(file, &problem, &hint);
     if let Some(path) = path {
-        diag = diag.with_path(path);
+        diag = diag.at_path(path);
     }
     if let Some((line, column)) = spot {
         diag = diag.at_line(line, column);
@@ -281,12 +281,12 @@ mod tests {
 
     #[test]
     fn a_diagnostic_serializes_and_prints_the_line_form() {
-        let diag = schema(
+        let diag = schema_error(
             "rules/verbs.yaml",
             "rule 'grit' is missing when",
             "add when",
         )
-        .with_path("rules[0].when")
+        .at_path("rules[0].when")
         .at_line(14, Some(5));
         assert_eq!(
             diag.to_string(),
@@ -304,13 +304,13 @@ mod tests {
 
     #[test]
     fn a_path_is_the_location_when_the_line_is_unknown() {
-        let diag = coded(
+        let diag = error(
             "state/save.yaml",
             Reason::PackRevMismatch,
             "pack_rev does not match the canon hash",
             "run spook migrate to store the current hash",
         )
-        .with_path("pack_rev");
+        .at_path("pack_rev");
         assert_eq!(
             diag.to_string(),
             "state/save.yaml: pack_rev: pack_rev does not match the canon hash; run spook migrate to store the current hash (PACK_REV_MISMATCH)"
@@ -320,10 +320,10 @@ mod tests {
     #[test]
     fn an_old_tag_names_the_schema_line() {
         let text = "\n# note\nschema: moves/v0\nmoves: []\n";
-        let diag = tag_diagnostic(text, "moves", "rules/moves.yaml", 0).unwrap();
+        let diag = check_tag(text, "moves", "rules/moves.yaml", 0).unwrap();
         assert_eq!(diag.line, Some(3));
         assert!(diag.message.contains("old versioned tag"));
         assert!(diag.message.contains("no version"));
-        assert_eq!(diag.code, Severity::Error(Reason::Schema));
+        assert_eq!(diag.code, Code::Error(Reason::Schema));
     }
 }

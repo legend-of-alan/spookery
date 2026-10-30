@@ -23,13 +23,13 @@ pub(crate) use super::records::{
     AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Rejected, Step,
 };
 use super::records::{CheckpointKind, MigrateKind};
-pub use super::records::{JournalEntry, RoundRecord};
+pub use super::records::{Record, RoundRecord};
 
-pub fn hash_now(bytes: &[u8]) -> String {
+pub fn blake2s_tagged(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
 }
 
-pub(crate) fn base_rel() -> &'static str {
+pub(crate) fn base_path() -> &'static str {
     "journal/base.yaml"
 }
 
@@ -39,13 +39,13 @@ pub(crate) fn checkpoint_path(pack: &Path, state_rev: u64) -> PathBuf {
         .join(format!("{state_rev}.yaml"))
 }
 
-pub(crate) fn head_rel() -> &'static str {
+pub(crate) fn head_path() -> &'static str {
     "journal/head.json"
 }
 
 /// The latest checkpoint, written beside the bundles so startup can skip them.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub(crate) struct BundleHead {
+pub(crate) struct CheckpointHead {
     /// Missing on heads written before rules rev 8, which are refused.
     #[serde(default)]
     pub rules_rev: u64,
@@ -55,8 +55,8 @@ pub(crate) struct BundleHead {
     pub chain: String,
 }
 
-pub(crate) fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault> {
-    let path = pack.join("state").join(head_rel());
+pub(crate) fn read_head(pack: &Path) -> Result<Option<CheckpointHead>, Error> {
+    let path = pack.join("state").join(head_path());
     if !path.is_file() {
         return Ok(None);
     }
@@ -69,13 +69,13 @@ pub(crate) fn read_head(pack: &Path) -> Result<Option<BundleHead>, JournalFault>
         return Err(fault_coded(
             &path,
             reason,
-            "RULES_REV: the checkpoint head was written by older rules; start a fresh save",
+            "RULES_REV_MISMATCH: the checkpoint head was written by older rules; start a fresh save",
         ));
     }
-    Ok(Some(read_json("head.json", &text)?))
+    Ok(Some(parse_json("head.json", &text)?))
 }
 
-pub(crate) fn migrate_entry(
+pub(crate) fn migrate_record(
     pack_rev_before: &str,
     pack_rev_after: &str,
     state_rev_before: u64,
@@ -83,8 +83,8 @@ pub(crate) fn migrate_entry(
     now_hash: &str,
     meters: &[AddedMeter],
     edited: bool,
-) -> JournalEntry {
-    JournalEntry::Migrate(MigrateRecord {
+) -> Record {
+    Record::Migrate(MigrateRecord {
         kind: MigrateKind::Migrate,
         pack_rev_before: pack_rev_before.to_string(),
         pack_rev_after: pack_rev_after.to_string(),
@@ -99,34 +99,34 @@ pub(crate) fn migrate_entry(
 }
 
 #[derive(Debug)]
-pub struct JournalFault {
+pub struct Error {
     pub file: String,
     pub detail: String,
     pub reason: Reason,
 }
 
 /// Parse every complete record. A torn last line is left unread. The chain is not checked.
-pub fn read_entries(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
+pub fn read_records(pack: &Path) -> Result<Vec<Record>, Error> {
     let dir = pack.join("state/journal");
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
     refuse_old_layout(&dir)?;
     let mut entries = Vec::new();
-    for (name, path) in bundle_files(&dir)? {
+    for (name, path) in list_bundles(&dir)? {
         entries.extend(parse_complete(&name, &read_bundle(&name, &path)?)?);
     }
     Ok(entries)
 }
 
 /// Read the bundles and check that each record's chain matches the one before it.
-pub fn read_verified(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
-    let entries = read_entries(pack)?;
+pub fn read_verified(pack: &Path) -> Result<Vec<Record>, Error> {
+    let entries = read_records(pack)?;
     check_chain(pack, &entries)?;
     Ok(entries)
 }
 
-pub(crate) fn check_chain(pack: &Path, entries: &[JournalEntry]) -> Result<(), JournalFault> {
+pub(crate) fn check_chain(pack: &Path, entries: &[Record]) -> Result<(), Error> {
     if entries.is_empty() {
         return Ok(());
     }
@@ -156,11 +156,11 @@ pub(crate) fn chain_hash(prev: &str, body: &str) -> String {
     bytes.extend(prev.as_bytes());
     bytes.push(0);
     bytes.extend(body.as_bytes());
-    hash_now(&bytes)
+    blake2s_tagged(&bytes)
 }
 
-pub(crate) fn checkpoint_entry(round_index: u64, state_rev: u64, state_hash: &str) -> JournalEntry {
-    JournalEntry::Checkpoint(CheckpointRecord {
+pub(crate) fn checkpoint_record(round_index: u64, state_rev: u64, state_hash: &str) -> Record {
+    Record::Checkpoint(CheckpointRecord {
         kind: CheckpointKind::Checkpoint,
         round_index,
         state_rev,
@@ -171,24 +171,24 @@ pub(crate) fn checkpoint_entry(round_index: u64, state_rev: u64, state_hash: &st
 }
 
 /// Chain field of one sealed line.
-pub(crate) fn sealed_chain(line: &str) -> Result<String, JournalFault> {
+pub(crate) fn sealed_chain(line: &str) -> Result<String, Error> {
     let entry = parse_line("bundle", line.trim_end())?;
     Ok(entry.chain().to_string())
 }
 
 /// `prev` is the chain to continue. The returned line ends with a newline.
-pub fn seal(entry: &JournalEntry, prev: &str) -> String {
+pub fn seal(entry: &Record, prev: &str) -> String {
     let mut sealed = entry.clone();
     sealed.set_prev(prev.to_string());
     sealed.set_chain(String::new());
-    let body = emit_entry(&sealed);
+    let body = emit_record(&sealed);
     let chain = chain_hash(prev, body.trim_end());
     sealed.set_chain(chain);
-    emit_entry(&sealed)
+    emit_record(&sealed)
 }
 
 /// Chain of the last live record, or of the checkpoint head when the live bundle is empty.
-pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, JournalFault> {
+pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
     if let Some(path) = find_live_bundle(pack) {
         let name = path
             .file_name()
@@ -206,7 +206,7 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, JournalFault> {
 }
 
 /// Records in the plain live bundle. Closed bundles stay unread.
-pub(crate) fn read_live(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> {
+pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<Record>, Error> {
     let dir = pack.join("state/journal");
     if dir.is_dir() {
         refuse_old_layout(&dir)?;
@@ -221,20 +221,20 @@ pub(crate) fn read_live(pack: &Path) -> Result<Vec<JournalEntry>, JournalFault> 
     parse_complete(&name, &read_bundle(&name, &path)?)
 }
 
-pub fn genesis_hash(pack: &Path) -> Result<String, JournalFault> {
-    let base = pack.join("state").join(base_rel());
+pub fn genesis_hash(pack: &Path) -> Result<String, Error> {
+    let base = pack.join("state").join(base_path());
     let path = if base.is_file() {
         base
     } else {
         pack.join("state/save.yaml")
     };
     let bytes = fs::read(&path).map_err(|_| fault(&path, "the snapshot could not be read"))?;
-    Ok(hash_now(&bytes))
+    Ok(blake2s_tagged(&bytes))
 }
 
-pub fn latest_checkpoint(entries: &[JournalEntry]) -> Option<&CheckpointRecord> {
+pub fn latest_checkpoint(entries: &[Record]) -> Option<&CheckpointRecord> {
     entries.iter().rev().find_map(|entry| match entry {
-        JournalEntry::Checkpoint(record) => Some(record),
+        Record::Checkpoint(record) => Some(record),
         _ => None,
     })
 }
@@ -242,12 +242,12 @@ pub fn latest_checkpoint(entries: &[JournalEntry]) -> Option<&CheckpointRecord> 
 /// Keys of every round record, such as `round-0001`, in order.
 #[cfg(any(test, feature = "testing"))]
 pub fn list_round_keys(pack: &Path) -> Vec<String> {
-    let Ok(entries) = read_entries(pack) else {
+    let Ok(entries) = read_records(pack) else {
         return Vec::new();
     };
     let mut keys: Vec<String> = entries
         .iter()
-        .filter(|entry| matches!(entry, JournalEntry::Round(_)))
+        .filter(|entry| matches!(entry, Record::Round(_)))
         .map(format_record_key)
         .collect();
     keys.sort();
@@ -256,21 +256,21 @@ pub fn list_round_keys(pack: &Path) -> Vec<String> {
 
 /// The stored line for a record key such as `round-0001` or `migrate-0002`, without a newline.
 #[cfg(any(test, feature = "testing"))]
-pub fn read_record_line(pack: &Path, key: &str) -> Result<String, JournalFault> {
-    let entries = read_entries(pack)?;
+pub fn read_record_line(pack: &Path, key: &str) -> Result<String, Error> {
+    let entries = read_records(pack)?;
     let found = entries
         .into_iter()
         .find(|entry| format_record_key(entry) == key);
     match found {
-        Some(entry) => Ok(emit_entry(&entry).trim_end().to_string()),
+        Some(entry) => Ok(emit_record(&entry).trim_end().to_string()),
         None => Err(fault(Path::new(key), "the journal record is missing")),
     }
 }
 
 /// The bundle a logical record lives in, so a test can edit that line.
-pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, JournalFault> {
+pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, Error> {
     let dir = pack.join("state/journal");
-    for (file_name, path) in bundle_files(&dir)? {
+    for (file_name, path) in list_bundles(&dir)? {
         let text = read_bundle(&file_name, &path)?;
         for raw in text.lines() {
             if raw.is_empty() {
@@ -286,21 +286,19 @@ pub fn locate(pack: &Path, key: &str) -> Result<PathBuf, JournalFault> {
 }
 
 #[cfg(any(test, feature = "testing"))]
-pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, JournalFault> {
-    bundle_files(&pack.join("state/journal"))
+pub fn bundles(pack: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
+    list_bundles(&pack.join("state/journal"))
 }
 
 /// Records in each bundle, in file order. A torn tail is not included.
-pub(crate) fn bundle_entries(
-    pack: &Path,
-) -> Result<Vec<(String, Vec<JournalEntry>)>, JournalFault> {
+pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record>)>, Error> {
     let dir = pack.join("state/journal");
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
     refuse_old_layout(&dir)?;
     let mut out = Vec::new();
-    for (name, path) in bundle_files(&dir)? {
+    for (name, path) in list_bundles(&dir)? {
         let entries = parse_complete(&name, &read_bundle(&name, &path)?)?;
         out.push((name, entries));
     }
@@ -309,7 +307,7 @@ pub(crate) fn bundle_entries(
 
 /// Plain live bundle, if one is open.
 pub fn find_live_bundle(pack: &Path) -> Option<PathBuf> {
-    let files = bundle_files(&pack.join("state/journal")).ok()?;
+    let files = list_bundles(&pack.join("state/journal")).ok()?;
     let (name, path) = files.last()?;
     if name.ends_with(".jsonl") {
         Some(path.clone())
@@ -323,7 +321,7 @@ pub(crate) fn trailing_checkpoint(path: &Path) -> Option<CheckpointRecord> {
     let text = fs::read_to_string(path).ok()?;
     let line = find_last_line(&text)?;
     match parse_line("bundle", line).ok()? {
-        JournalEntry::Checkpoint(record) => Some(record),
+        Record::Checkpoint(record) => Some(record),
         _ => None,
     }
 }
@@ -337,7 +335,7 @@ pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
     let Ok(bytes) = fs::read(pack.join("state/save.yaml")) else {
         return false;
     };
-    hash_now(&bytes) == mark.state_hash
+    blake2s_tagged(&bytes) == mark.state_hash
 }
 
 /// Next append lands here. The file may not exist yet.
@@ -345,7 +343,7 @@ pub(crate) fn is_published(pack: &Path, path: &Path) -> bool {
 /// failed gzip cannot take the next round.
 pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
     let dir = pack.join("state/journal");
-    let files = bundle_files(&dir).unwrap_or_default();
+    let files = list_bundles(&dir).unwrap_or_default();
     match files.last() {
         Some((name, path)) if name.ends_with(".jsonl") && !is_published(pack, path) => path.clone(),
         Some((name, _)) => {
@@ -356,32 +354,32 @@ pub(crate) fn next_bundle_path(pack: &Path) -> PathBuf {
     }
 }
 
-pub fn emit_entry(entry: &JournalEntry) -> String {
+pub fn emit_record(entry: &Record) -> String {
     let json = match entry {
-        JournalEntry::Round(record) => serde_json::to_string(record).expect("round"),
-        JournalEntry::Migrate(record) => serde_json::to_string(record).expect("migrate"),
-        JournalEntry::Checkpoint(record) => serde_json::to_string(record).expect("checkpoint"),
+        Record::Round(record) => serde_json::to_string(record).expect("round"),
+        Record::Migrate(record) => serde_json::to_string(record).expect("migrate"),
+        Record::Checkpoint(record) => serde_json::to_string(record).expect("checkpoint"),
     };
     format!("{json}\n")
 }
 
-fn chain_of(entry: &JournalEntry) -> String {
+fn chain_of(entry: &Record) -> String {
     let mut bare = entry.clone();
     bare.set_chain(String::new());
-    let body = emit_entry(&bare);
+    let body = emit_record(&bare);
     chain_hash(entry.prev(), body.trim_end())
 }
 
 /// Key naming one record inside the bundles: `round-0001`, `migrate-0002` or `checkpoint-0003`.
-pub fn format_record_key(entry: &JournalEntry) -> String {
+pub fn format_record_key(entry: &Record) -> String {
     match entry {
-        JournalEntry::Round(record) => format!("round-{:04}", record.round_index),
-        JournalEntry::Migrate(record) => format!("migrate-{:04}", record.state_rev_after),
-        JournalEntry::Checkpoint(record) => format!("checkpoint-{:04}", record.round_index),
+        Record::Round(record) => format!("round-{:04}", record.round_index),
+        Record::Migrate(record) => format!("migrate-{:04}", record.state_rev_after),
+        Record::Checkpoint(record) => format!("checkpoint-{:04}", record.round_index),
     }
 }
 
-fn bundle_name_of(pack: &Path, entry: &JournalEntry) -> String {
+fn bundle_name_of(pack: &Path, entry: &Record) -> String {
     locate(pack, &format_record_key(entry))
         .map(|path| {
             path.file_name()
@@ -392,30 +390,30 @@ fn bundle_name_of(pack: &Path, entry: &JournalEntry) -> String {
         .unwrap_or_else(|_| "bundle".to_string())
 }
 
-fn parse_line(name: &str, line: &str) -> Result<JournalEntry, JournalFault> {
+fn parse_line(name: &str, line: &str) -> Result<Record, Error> {
     let value: serde_json::Value =
         serde_json::from_str(line).map_err(|err| fault(Path::new(name), &err.to_string()))?;
     let kind = value.get("kind").and_then(|kind| kind.as_str());
     if kind == Some("checkpoint") {
-        return Ok(JournalEntry::Checkpoint(read_json(name, line)?));
+        return Ok(Record::Checkpoint(parse_json(name, line)?));
     }
     if kind == Some("migrate") {
-        return Ok(JournalEntry::Migrate(read_json(name, line)?));
+        return Ok(Record::Migrate(parse_json(name, line)?));
     }
     let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
-    parse_round(name, line).map(JournalEntry::Round).map_err(
-        |fault| match super::require_rules_rev(rules_rev.unwrap_or(0)) {
+    parse_round(name, line).map(Record::Round).map_err(|fault| {
+        match super::require_rules_rev(rules_rev.unwrap_or(0)) {
             Ok(()) => fault,
             Err(reason) => fault_coded(
                 Path::new(name),
                 reason,
-                "RULES_REV: this record was written by older rules; start a fresh save",
+                "RULES_REV_MISMATCH: this record was written by older rules; start a fresh save",
             ),
-        },
-    )
+        }
+    })
 }
 
-fn refuse_old_layout(dir: &Path) -> Result<(), JournalFault> {
+fn refuse_old_layout(dir: &Path) -> Result<(), Error> {
     let entries =
         fs::read_dir(dir).map_err(|_| fault(dir, "the log directory could not be read"))?;
     for entry in entries {
@@ -425,8 +423,8 @@ fn refuse_old_layout(dir: &Path) -> Result<(), JournalFault> {
         if name.starts_with("presence-") && name.ends_with(".json") {
             return Err(fault_coded(
                 &entry.path(),
-                Reason::RulesRev,
-                "RULES_REV: presence records were written by older rules; start a fresh save",
+                Reason::RulesRevMismatch,
+                "RULES_REV_MISMATCH: presence records were written by older rules; start a fresh save",
             ));
         }
         if (name.starts_with("tick-") && name.ends_with(".jsonl"))
@@ -434,15 +432,15 @@ fn refuse_old_layout(dir: &Path) -> Result<(), JournalFault> {
         {
             return Err(fault_coded(
                 &entry.path(),
-                Reason::RulesRev,
-                "RULES_REV: one-file journal records were written by older rules; start a fresh save",
+                Reason::RulesRevMismatch,
+                "RULES_REV_MISMATCH: one-file journal records were written by older rules; start a fresh save",
             ));
         }
     }
     Ok(())
 }
 
-fn bundle_files(dir: &Path) -> Result<Vec<(String, PathBuf)>, JournalFault> {
+fn list_bundles(dir: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
@@ -483,7 +481,7 @@ fn find_last_line(text: &str) -> Option<&str> {
     complete.lines().rev().find(|line| !line.is_empty())
 }
 
-fn check_line_chain(name: &str, line: &str) -> Result<String, JournalFault> {
+fn check_line_chain(name: &str, line: &str) -> Result<String, Error> {
     let entry = parse_line(name, line)?;
     let expect = chain_of(&entry);
     if entry.chain() != expect {
@@ -506,7 +504,7 @@ fn trim_torn_tail(text: &str) -> &str {
     }
 }
 
-fn parse_complete(name: &str, text: &str) -> Result<Vec<JournalEntry>, JournalFault> {
+fn parse_complete(name: &str, text: &str) -> Result<Vec<Record>, Error> {
     let mut entries = Vec::new();
     for line in trim_torn_tail(text).lines() {
         if line.is_empty() {
@@ -517,7 +515,7 @@ fn parse_complete(name: &str, text: &str) -> Result<Vec<JournalEntry>, JournalFa
     Ok(entries)
 }
 
-fn read_bundle(name: &str, path: &Path) -> Result<String, JournalFault> {
+fn read_bundle(name: &str, path: &Path) -> Result<String, Error> {
     if name.ends_with(".gz") {
         let file =
             File::open(path).map_err(|_| fault(path, "the journal bundle could not be read"))?;
@@ -545,14 +543,14 @@ pub fn gunzip_bytes(bytes: &[u8]) -> Result<Vec<u8>, Reason> {
     Ok(out)
 }
 
-pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, JournalFault> {
-    let raw: RoundRecord<crate::effect::EffectRecord> = read_json(name, text)?;
+pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, Error> {
+    let raw: RoundRecord<crate::effect::EffectRecord> = parse_json(name, text)?;
     let effects = raw
         .effects
         .into_iter()
         .map(crate::effect::Effect::try_from)
         .collect::<Result<Vec<_>, _>>()
-        .map_err(|reason| fault_coded(Path::new(name), reason, reason.token()))?;
+        .map_err(|reason| fault_coded(Path::new(name), reason, reason.as_str()))?;
     Ok(RoundRecord {
         round_index: raw.round_index,
         rules_rev: raw.rules_rev,
@@ -578,21 +576,21 @@ pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, Journal
     })
 }
 
-fn read_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, JournalFault> {
+fn parse_json<T: DeserializeOwned>(name: &str, text: &str) -> Result<T, Error> {
     let mut de = serde_json::Deserializer::from_str(text.trim_end());
-    serde_path_to_error::deserialize(&mut de).map_err(|err| JournalFault {
+    serde_path_to_error::deserialize(&mut de).map_err(|err| Error {
         file: name.to_string(),
         detail: err.to_string(),
         reason: Reason::Schema,
     })
 }
 
-fn fault(path: &Path, detail: &str) -> JournalFault {
+fn fault(path: &Path, detail: &str) -> Error {
     fault_coded(path, Reason::Schema, detail)
 }
 
-fn fault_coded(path: &Path, reason: Reason, detail: &str) -> JournalFault {
-    JournalFault {
+fn fault_coded(path: &Path, reason: Reason, detail: &str) -> Error {
+    Error {
         file: path.to_string_lossy().replace('\\', "/"),
         detail: detail.to_string(),
         reason,
@@ -605,7 +603,7 @@ mod tests {
 
     #[test]
     fn migrate_records_round_trip() {
-        let migrate = emit_entry(&migrate_entry(
+        let migrate = emit_record(&migrate_record(
             "blake2s:aa",
             "blake2s:bb",
             1,
@@ -614,8 +612,7 @@ mod tests {
             &[],
             false,
         ));
-        let JournalEntry::Migrate(parsed) =
-            parse_line("migrate-0002.json", migrate.trim_end()).unwrap()
+        let Record::Migrate(parsed) = parse_line("migrate-0002.json", migrate.trim_end()).unwrap()
         else {
             panic!("not a migrate record");
         };
@@ -624,15 +621,15 @@ mod tests {
         assert_eq!(parsed.state_rev_before, 1);
         assert_eq!(parsed.state_rev_after, 2);
         assert_eq!(parsed.now_hash, "blake2s:cc");
-        assert_eq!(emit_entry(&JournalEntry::Migrate(parsed)), migrate);
+        assert_eq!(emit_record(&Record::Migrate(parsed)), migrate);
     }
 
     #[test]
     fn a_sealed_record_chains_to_the_one_before_it() {
         let round = include_str!("../fixtures/round.jsonl");
         let parsed = parse_round("round.jsonl", round).unwrap();
-        let entry = JournalEntry::Round(parsed);
-        let prev = hash_now(b"genesis");
+        let entry = Record::Round(parsed);
+        let prev = blake2s_tagged(b"genesis");
         let line = seal(&entry, &prev);
         let again = parse_line("bundle-0000.jsonl", line.trim_end()).unwrap();
         assert_eq!(again.prev(), prev);
@@ -648,17 +645,20 @@ mod tests {
         let old = r#"{"round_index":1,"rules_rev":7,"state_rev_before":0}"#;
         assert_eq!(
             parse_line("bundle-0000.jsonl", old).unwrap_err().reason,
-            Reason::RulesRev
+            Reason::RulesRevMismatch
         );
-        let pack = crate::testing::temp_pack("old-head");
-        let head = pack.join("state").join(head_rel());
+        let pack = crate::testing::copy_docks("old-head");
+        let head = pack.join("state").join(head_path());
         fs::create_dir_all(head.parent().unwrap()).unwrap();
         fs::write(
             &head,
             r#"{"state_rev":1,"round_index":1,"state_hash":"","chain":""}"#,
         )
         .unwrap();
-        assert_eq!(read_head(&pack).unwrap_err().reason, Reason::RulesRev);
+        assert_eq!(
+            read_head(&pack).unwrap_err().reason,
+            Reason::RulesRevMismatch
+        );
         let _ = fs::remove_dir_all(&pack);
     }
 
@@ -666,7 +666,7 @@ mod tests {
     fn golden_round_and_migrate_round_trip() {
         let round = include_str!("../fixtures/round.jsonl");
         let parsed = parse_round("round.jsonl", round).unwrap();
-        assert_eq!(emit_entry(&JournalEntry::Round(parsed.clone())), round);
+        assert_eq!(emit_record(&Record::Round(parsed.clone())), round);
         assert_eq!(parsed.arrivals[0].via, "stairs");
         assert_eq!(parsed.arrivals[0].arrived_at, 1082);
         assert!(parsed.effects.iter().any(|effect| {
@@ -681,6 +681,6 @@ mod tests {
 
         let migrate = include_str!("../fixtures/migrate.json");
         let parsed = parse_line("migrate.json", migrate.trim_end()).unwrap();
-        assert_eq!(emit_entry(&parsed), migrate);
+        assert_eq!(emit_record(&parsed), migrate);
     }
 }

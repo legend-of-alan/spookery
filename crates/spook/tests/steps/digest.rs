@@ -64,7 +64,7 @@ fn the_host_text_lists_the_door_note(world: &mut World) {
 
 #[given(expr = "a docks table with {string} seated and no GM")]
 fn a_docks_table_with_one_pc_and_no_gm(world: &mut World, actor: String) {
-    let pack = crate::support::temp_pack("host-round");
+    let pack = crate::support::copy_docks("host-round");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &actor);
     world.pack = Some(pack);
@@ -150,7 +150,7 @@ fn the_hosts_last_printout_lists_the_clocks(world: &mut World) {
 
 #[given(expr = "the docks pack where Mira's door note carries the hidden fact {string}")]
 fn the_docks_pack_where_miras_door_note_carries(world: &mut World, fact_id: String) {
-    let pack = crate::support::temp_pack("hidden-note");
+    let pack = crate::support::copy_docks("hidden-note");
     rewrite_mira(
         &pack,
         "          fact_ids: []\n",

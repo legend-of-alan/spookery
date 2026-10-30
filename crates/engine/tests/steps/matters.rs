@@ -23,7 +23,7 @@ fn lark_has_a_hidden_meter(world: &mut World) {
     let pack = world.pack();
     let mut meters = fs::read_to_string(pack.join("rules/meters.yaml")).unwrap();
     meters.push_str(
-        "  - id: omen\n    min: 0\n    base_cap: 5\n    max: 5\n    start: 1\n    hidden: true\n",
+        "  - id: omen\n    min: 0\n    base_cap: 5\n    max: 5\n    base: 1\n    hidden: true\n",
     );
     fs::write(pack.join("rules/meters.yaml"), meters).unwrap();
     stamp_pack_rev(pack);
@@ -232,7 +232,7 @@ fn seat(pack: &Path) -> Shard {
                 .map(|diag| diag.to_string())
                 .collect::<Vec<_>>()
                 .join("\n");
-            panic!("open: {}\n{report}", err.token());
+            panic!("open: {}\n{report}", err.as_str());
         }
     };
     world
@@ -248,7 +248,7 @@ fn lark() -> Presence {
 
 fn play(world: &mut Shard, line: &str) -> spookery_engine::RoundOutput {
     let (verb, target) = support::split_move(line);
-    let wall = world.now().last_round_at.clone();
+    let wall = world.state().last_round_at.clone();
     world
         .queue_player_move(&lark(), "pc_lark", verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
@@ -270,7 +270,7 @@ fn change_line(output: &spookery_engine::RoundOutput) -> String {
 fn shown_text(world: &Shard) -> String {
     let view = world
         .perceive(&lark(), "pc_lark")
-        .unwrap_or_else(|err| panic!("perceive: {}", err.token()));
+        .unwrap_or_else(|err| panic!("perceive: {}", err.as_str()));
     view.meters
         .iter()
         .map(|meter| format!("{}: {}", meter.id, meter.value))

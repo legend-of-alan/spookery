@@ -54,7 +54,7 @@ fn the_gm_queues_restock_and_commits(world: &mut World) {
 
 #[given(expr = "a docks table with a GM and {string} seated")]
 fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
-    let pack = support::temp_pack("typed-gm");
+    let pack = support::copy_docks("typed-gm");
     world.pack = Some(pack);
     let pack = table::pack(world).to_path_buf();
     // Stock grit rolls a check and notes no expression dice. A 2d6 on the

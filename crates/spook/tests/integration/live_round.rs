@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use crate::support::{pack_arg, temp_pack, text_of, Proc};
+use crate::support::{copy_docks, pack_arg, text_of, Proc};
 
 /// Long enough for one call, one retry, and a slow CPU-only model.
 const ROUND_BOUND: Duration = Duration::from_secs(240);
@@ -41,7 +41,7 @@ fn a_live_model_plays_one_round() {
     let model = setting("SPOOK_GM_MODEL");
     println!("live round: model {model} at {upstream}");
 
-    let pack = temp_pack("live-round");
+    let pack = copy_docks("live-round");
     let pack_text = pack_arg(&pack);
     let port = free_port();
     let addr = format!("127.0.0.1:{port}");
@@ -278,7 +278,7 @@ fn wait_text(proc: &Proc, slot: &Arc<Mutex<String>>, needle: &str, bound: Durati
 fn world_time(pack: &Path) -> u64 {
     let report = spookery_engine::testing::replay_journal(pack, None, None).expect("replay");
     let text = std::str::from_utf8(&report.now_yaml).expect("save text");
-    spookery_engine::load_save(text)
+    spookery_engine::parse_save(text)
         .expect("load now")
         .world_time
 }
@@ -288,7 +288,7 @@ fn wait_advance(pack: &Path, sit: u64, host: &mut Proc) -> bool {
     while start.elapsed() < ROUND_BOUND {
         if let Ok(report) = spookery_engine::testing::replay_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
-                if let Ok(now) = spookery_engine::load_save(text) {
+                if let Ok(now) = spookery_engine::parse_save(text) {
                     if now.world_time > sit {
                         return true;
                     }

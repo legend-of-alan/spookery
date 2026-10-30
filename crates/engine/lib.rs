@@ -6,11 +6,11 @@ pub(crate) mod draft;
 pub(crate) mod error;
 pub(crate) mod hash;
 pub(crate) mod intent;
-pub(crate) mod map;
 pub(crate) mod model;
 pub(crate) mod round;
 pub(crate) mod rules;
 pub(crate) mod store;
+pub(crate) mod travel;
 pub(crate) mod visibility;
 pub(crate) mod world;
 
@@ -25,19 +25,19 @@ pub(crate) use store::journal;
 pub(crate) use store::lock;
 
 pub use canon::{load_canon, pack_rev};
-pub use diagnostic::{first_reason, Diagnostic, Severity};
+pub use diagnostic::{first_reason, Code, Diagnostic};
 pub use error::Reason;
-pub use intent::{Intent, IntentArgs, Source, Target, ViewerId};
-pub use map::ExitView;
+pub use intent::{Intent, IntentArgs, Source, Target, Viewer};
 pub use meter::MeterLive;
-pub use model::{Message, Now, Presence, RunState};
+pub use model::{Message, Presence, RunState, State};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::When;
 pub use rules::{GateRefusal, MoveReport, Outcome, Roll};
-pub use store::{emit_save, load_save, lock_pack, record_line, LockGuard, TapeRecord};
+pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
+pub use travel::ExitView;
 pub use visibility::RecipientLine;
-pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World};
+pub use world::{check_pack, Address, IntentCall, QueuedMove, World};
 
 #[cfg(feature = "testing")]
 pub mod testing {
@@ -46,12 +46,12 @@ pub mod testing {
 
     pub use crate::canon::strip_body;
     pub use crate::model::{
-        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PendingKind, PlaceLive,
+        Act, ActorLive, Clock, MemoryLine, Pause, PendingAction, PendingKind, PlaceLive,
     };
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
-    pub use crate::store::commit::append_bundle;
-    pub use crate::store::lock::{on_reader_wait, WriteGuard};
+    pub use crate::store::commit::append_to_bundle;
+    pub use crate::store::lock::{watch_reader_wait, WriteGuard};
 
     /// The write guard of the pack `world` holds the lock on.
     pub fn lock_write(world: &crate::World) -> Result<WriteGuard, crate::Reason> {
@@ -80,9 +80,9 @@ pub mod testing {
 
     pub mod journal {
         pub use crate::store::journal::{
-            bundles, emit_entry, find_live_bundle, format_record_key, genesis_hash, gunzip_bytes,
-            gzip_bytes, hash_now, latest_checkpoint, list_round_keys, locate, read_entries,
-            read_record_line, read_verified, seal, JournalEntry, RoundRecord,
+            blake2s_tagged, bundles, emit_record, find_live_bundle, format_record_key,
+            genesis_hash, gunzip_bytes, gzip_bytes, latest_checkpoint, list_round_keys, locate,
+            read_record_line, read_records, read_verified, seal, Record, RoundRecord,
         };
     }
 
@@ -133,7 +133,7 @@ pub mod testing {
         panic!("no fresh dir for {label}");
     }
 
-    pub fn temp_pack(label: &str) -> PathBuf {
+    pub fn copy_docks(label: &str) -> PathBuf {
         copy_pack("oneshot-docks", label)
     }
 
@@ -144,7 +144,7 @@ pub mod testing {
         pack
     }
 
-    pub fn place_of(now: &mut crate::model::Now, actor: &str, place: &str) {
+    pub fn set_actor_place(now: &mut crate::model::State, actor: &str, place: &str) {
         let from = now.actors.get(actor).unwrap().place().to_string();
         if from == place {
             return;
@@ -160,39 +160,39 @@ pub mod testing {
     }
 
     /// Lock the pack and open its save, for a test that plays rounds on it.
-    pub fn open(pack: &Path) -> crate::World {
+    pub fn resume(pack: &Path) -> crate::World {
         let lock = crate::lock_pack(pack)
             .unwrap_or_else(|err| panic!("lock_pack {}: {err}", pack.display()));
         crate::World::resume(pack, lock)
             .unwrap_or_else(|err| panic!("World::resume {}: {err}", pack.display()))
     }
 
-    pub fn now_of(pack: &Path) -> crate::model::Now {
+    pub fn state_of(pack: &Path) -> crate::model::State {
         let report = replay_journal(pack, None, None)
             .unwrap_or_else(|err| panic!("replay_journal {}: {err}", pack.display()));
         let yaml = std::str::from_utf8(&report.now_yaml)
             .unwrap_or_else(|err| panic!("utf-8 {}: {err}", pack.display()));
-        crate::store::load_save(yaml)
+        crate::store::parse_save(yaml)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", pack.display()))
     }
 
-    pub fn save_now(pack: &Path, now: &crate::model::Now) {
+    pub fn write_save(pack: &Path, now: &crate::model::State) {
         let path = pack.join("state/save.yaml");
         let bytes = crate::store::emit_save(now)
             .unwrap_or_else(|err| panic!("emit {}: {err}", path.display()));
         fs::write(&path, bytes).unwrap_or_else(|err| panic!("write {}: {err}", path.display()));
     }
 
-    pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::Now)) {
+    pub fn edit_save(pack: &Path, edit: impl FnOnce(&mut crate::model::State)) {
         let path = pack.join("state/save.yaml");
         let text = fs::read_to_string(&path)
             .unwrap_or_else(|err| panic!("read {}: {err}", path.display()));
-        let mut now = crate::store::load_save(&text)
+        let mut now = crate::store::parse_save(&text)
             .unwrap_or_else(|err| panic!("load {}: {err:?}", path.display()));
         edit(&mut now);
         now.pack_rev = crate::canon::pack_rev(pack)
             .unwrap_or_else(|err| panic!("rev {}: {err}", pack.display()));
-        save_now(pack, &now);
+        write_save(pack, &now);
     }
 
     pub fn stamp_pack_rev(pack: &Path) {
@@ -239,7 +239,7 @@ pub mod testing {
                     wielded: None,
                     known_facts: Vec::new(),
                     visited: vec!["docks_shop".to_string()],
-                    act: crate::model::ActCounters::default(),
+                    act: crate::model::Act::default(),
                 },
             );
         });

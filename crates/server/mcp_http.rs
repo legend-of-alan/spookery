@@ -222,7 +222,7 @@ mod tests {
                         reply,
                     } => {
                         if seat.is_some() {
-                            let _ = reply.send(Err(spookery_engine::Reason::SessionFull));
+                            let _ = reply.send(Err(spookery_engine::Reason::TableFull));
                         } else {
                             seat = Some(conn);
                             kept.push((out, cancel));

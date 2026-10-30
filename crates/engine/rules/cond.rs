@@ -2,14 +2,14 @@
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::model::Now;
+use crate::model::State;
 use crate::rule::{Cond, Who};
 use crate::rules::expr::{self, Ctx};
 
 /// Every condition holds. A failed `has_item` is [`Reason::MissingItem`].
-pub fn holds(canon: &Canon, now: &Now, ctx: &Ctx<'_>, conds: &[Cond]) -> Result<(), Reason> {
+pub fn holds(canon: &Canon, now: &State, ctx: &Ctx<'_>, conds: &[Cond]) -> Result<(), Reason> {
     for cond in conds {
-        if !one(canon, now, ctx, cond)? {
+        if !holds_one(canon, now, ctx, cond)? {
             return Err(reason_of(cond));
         }
     }
@@ -27,7 +27,7 @@ fn reason_of(cond: &Cond) -> Reason {
     }
 }
 
-fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Reason> {
+fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Reason> {
     match cond {
         Cond::HasItem { who, id, count } => {
             let actor = expr::resolve_who_id(now, ctx, who)?;
@@ -35,7 +35,7 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
             let held = now
                 .actors
                 .get(&actor)
-                .map(|actor| actor.count(&id))
+                .map(|actor| actor.item_count(&id))
                 .unwrap_or(0);
             Ok(held >= *count)
         }
@@ -89,12 +89,12 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
             let right = expr::eval(canon, now, ctx, value)?;
             Ok(!clock.paused && op.holds(clock.value, right))
         }
-        Cond::Hour { from, to } => Ok(hour_in(*from, *to, world_hour(now.world_time))),
+        Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(now.world_time))),
         Cond::Humans { op, value } => Ok(op.holds(i64::from(ctx.presence.humans), *value)),
         Cond::NoteExists(id) => Ok(now.messages.iter().any(|message| &message.id == id)),
         Cond::All(inner) => {
             for cond in inner {
-                if !one(canon, now, ctx, cond)? {
+                if !holds_one(canon, now, ctx, cond)? {
                     return Ok(false);
                 }
             }
@@ -102,13 +102,13 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
         }
         Cond::Any(inner) => {
             for cond in inner {
-                if one(canon, now, ctx, cond)? {
+                if holds_one(canon, now, ctx, cond)? {
                     return Ok(true);
                 }
             }
             Ok(false)
         }
-        Cond::Not(inner) => Ok(!one(canon, now, ctx, inner)?),
+        Cond::Not(inner) => Ok(!holds_one(canon, now, ctx, inner)?),
     }
 }
 
@@ -116,7 +116,7 @@ pub(crate) fn world_hour(world_time: u64) -> i64 {
     ((world_time / 60) % 24) as i64
 }
 
-pub(crate) fn hour_in(start: i64, end: i64, hour: i64) -> bool {
+pub(crate) fn is_hour_in(start: i64, end: i64, hour: i64) -> bool {
     if start < end {
         start <= hour && hour < end
     } else if start > end {
@@ -135,14 +135,14 @@ mod tests {
         assert_eq!(world_hour(1080), 18);
         assert_eq!(world_hour(0), 0);
         assert_eq!(world_hour(1440), 0);
-        assert!(hour_in(8, 16, 8));
-        assert!(hour_in(8, 16, 15));
-        assert!(!hour_in(8, 16, 16));
-        assert!(!hour_in(8, 16, 7));
-        assert!(hour_in(18, 6, 18));
-        assert!(hour_in(18, 6, 5));
-        assert!(!hour_in(18, 6, 6));
-        assert!(!hour_in(18, 6, 12));
-        assert!(!hour_in(8, 8, 8));
+        assert!(is_hour_in(8, 16, 8));
+        assert!(is_hour_in(8, 16, 15));
+        assert!(!is_hour_in(8, 16, 16));
+        assert!(!is_hour_in(8, 16, 7));
+        assert!(is_hour_in(18, 6, 18));
+        assert!(is_hour_in(18, 6, 5));
+        assert!(!is_hour_in(18, 6, 6));
+        assert!(!is_hour_in(18, 6, 12));
+        assert!(!is_hour_in(8, 8, 8));
     }
 }

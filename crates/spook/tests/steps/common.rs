@@ -7,17 +7,17 @@ use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::Now;
+use spookery_engine::State;
 
 use super::table;
-use crate::support::{self, temp_pack};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 pub(crate) const EVENING: u64 = 21 * 60 + 30;
 
 pub(crate) use crate::support::edit_save;
 
-pub(crate) fn give_key(now: &mut Now) {
+pub(crate) fn give_key(now: &mut State) {
     now.actors
         .get_mut("pc_rowan")
         .unwrap()
@@ -218,7 +218,7 @@ pub(crate) fn play_stdout(world: &mut World) -> String {
     text
 }
 
-pub(crate) fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via: &str) {
+pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, arrive: &str, via: &str) {
     let act = now
         .actors
         .get_mut(actor)
@@ -237,7 +237,7 @@ pub(crate) fn set_busy(now: &mut Now, actor: &str, until: u64, arrive: &str, via
 
 #[given(expr = "a docks table")]
 fn a_docks_table(world: &mut World) {
-    let pack = crate::support::temp_pack("status");
+    let pack = crate::support::copy_docks("status");
     world.before = table::files(&pack);
     world.pack = Some(pack);
 }
@@ -257,7 +257,7 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
 
 #[given(expr = "a docks table with a seated GM")]
 fn a_docks_table_with_a_seated_gm(world: &mut World) {
-    let pack = temp_pack("gm-seat");
+    let pack = copy_docks("gm-seat");
     let opened = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     table::listen(world, &pack);
@@ -268,7 +268,7 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
 
 #[given(expr = "a docks table with a seated player")]
 fn a_docks_table_with_a_seated_player(world: &mut World) {
-    let pack = temp_pack("speech");
+    let pack = copy_docks("speech");
     table::listen(world, &pack);
     table::seat_player(world, &pack);
     world.pack = Some(pack);
@@ -451,7 +451,7 @@ fn the_operator_runs_verify(world: &mut World) {
 
 #[given(expr = "the trapdoor is hidden and rowan does not know fact_trapdoor")]
 fn the_trapdoor_is_hidden(world: &mut World) {
-    let pack = temp_pack("trapdoor");
+    let pack = copy_docks("trapdoor");
     add_trapdoor(&pack);
     edit_save(&pack, |_| {});
     table::listen(world, &pack);
@@ -474,7 +474,7 @@ fn perceive_and_help_hide_the_trapdoor(world: &mut World) {
 
 #[given(expr = "the stairs exit costs 10 minutes")]
 fn the_stairs_cost_ten_minutes(world: &mut World) {
-    let pack = temp_pack("ten-minutes");
+    let pack = copy_docks("ten-minutes");
     let path = pack.join("world/places/docks_shop.md");
     let text = fs::read_to_string(&path)
         .unwrap()

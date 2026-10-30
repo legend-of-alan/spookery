@@ -7,13 +7,13 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Reason;
-use crate::store::durable::fsync_dir;
+use crate::store::durability::fsync_dir;
 
 /// Hard cap for `state/tape.jsonl`.
-pub const MAX_TAPE_BYTES: u64 = 1024 * 1024;
+pub const MAX_BYTES: u64 = 1024 * 1024;
 
-const DEFAULT_TAPE_LIMIT: usize = 64;
-const MAX_TAPE_LIMIT: usize = 256;
+const DEFAULT_LIMIT: usize = 64;
+const MAX_LIMIT: usize = 256;
 
 /// One tape line. Field order is the order of the bytes on disk.
 /// `place` and `actor` may be null. A missing key is not a record.
@@ -33,7 +33,7 @@ pub struct TapeRecord {
 }
 
 /// The JSON object written as one tape line, without the trailing newline.
-pub fn record_line(record: &TapeRecord) -> String {
+pub fn emit_tape_record(record: &TapeRecord) -> String {
     serde_json::to_string(record).expect("tape json")
 }
 
@@ -54,19 +54,19 @@ pub fn append_record(
         .open(&path)
         .map_err(|_| Reason::CommitConflict)?;
     let len = file.metadata().map_err(|_| Reason::CommitConflict)?.len();
-    if len > MAX_TAPE_BYTES {
+    if len > MAX_BYTES {
         return Err(Reason::OutOfRange);
     }
     let (end, last_seq) = tail_seq(&mut file, len)?;
     let seq = last_seq.checked_add(1).ok_or(Reason::CommitConflict)?;
     let record = body(seq);
-    let mut line = record_line(&record);
+    let mut line = emit_tape_record(&record);
     if line.is_empty() || line.bytes().any(|byte| byte == b'\n' || byte == b'\r') {
         return Err(Reason::Schema);
     }
     line.push('\n');
     let next_len = end + line.len() as u64;
-    if next_len > MAX_TAPE_BYTES {
+    if next_len > MAX_BYTES {
         return Err(Reason::OutOfRange);
     }
     if end != len {
@@ -85,14 +85,14 @@ pub fn append_record(
 /// `limit` defaults to 64 and is clamped to 256. A missing file is empty.
 /// A trailing partial line is not a record. A complete line that does not
 /// parse is `SCHEMA` for the whole read. A file past 1 MiB is `OUT_OF_RANGE`.
-pub fn read_session(
+pub fn read_after(
     root: &Path,
     after_seq: u64,
     limit: Option<usize>,
 ) -> Result<Vec<TapeRecord>, Reason> {
     let limit = match limit {
-        Some(limit) => limit.min(MAX_TAPE_LIMIT),
-        None => DEFAULT_TAPE_LIMIT,
+        Some(limit) => limit.min(MAX_LIMIT),
+        None => DEFAULT_LIMIT,
     };
     let mut out = Vec::new();
     for record in read_records(root)? {
@@ -106,7 +106,7 @@ pub fn read_session(
 /// The newest `n` records whose recipients include `player`, oldest first.
 /// `n` is clamped to 256. The filter runs before the limit.
 pub fn read_tail(root: &Path, player: &str, n: usize) -> Result<Vec<TapeRecord>, Reason> {
-    let n = n.min(MAX_TAPE_LIMIT);
+    let n = n.min(MAX_LIMIT);
     let mut matched = Vec::new();
     for record in read_records(root)? {
         if record.recipients.iter().any(|id| id == player) {
@@ -127,7 +127,7 @@ pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
     let len = fs::metadata(&path)
         .map_err(|_| Reason::CommitConflict)?
         .len();
-    if len > MAX_TAPE_BYTES {
+    if len > MAX_BYTES {
         return Err(Reason::OutOfRange);
     }
     let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
@@ -145,7 +145,7 @@ pub fn read_records(root: &Path) -> Result<Vec<TapeRecord>, Reason> {
 }
 
 /// Last complete `seq`, or 0 when the tape has no record.
-pub fn session_end_seq(root: &Path) -> Result<u64, Reason> {
+pub fn last_seq(root: &Path) -> Result<u64, Reason> {
     Ok(read_records(root)?
         .last()
         .map(|record| record.seq)
@@ -177,7 +177,7 @@ fn tail_seq(file: &mut File, len: u64) -> Result<(u64, u64), Reason> {
             .map_err(|_| Reason::CommitConflict)?;
         chunk.append(&mut suffix);
         suffix = chunk;
-        if last_line_in_suffix(&suffix, start == 0) {
+        if has_last_line(&suffix, start == 0) {
             break;
         }
     }
@@ -198,7 +198,7 @@ fn tail_seq(file: &mut File, len: u64) -> Result<(u64, u64), Reason> {
     Ok((kept_end, seq))
 }
 
-fn last_line_in_suffix(suffix: &[u8], at_start: bool) -> bool {
+fn has_last_line(suffix: &[u8], at_start: bool) -> bool {
     let Some(last_nl) = suffix.iter().rposition(|byte| *byte == b'\n') else {
         return at_start;
     };
@@ -237,7 +237,7 @@ mod tests {
         let root = fresh_dir("tape-tail");
         let mut lines = String::new();
         for index in 0..300 {
-            lines.push_str(&record_line(&sample(
+            lines.push_str(&emit_tape_record(&sample(
                 index as u64 + 1,
                 "pc_wren",
                 &format!("w{index}"),
@@ -245,7 +245,7 @@ mod tests {
             lines.push('\n');
         }
         for index in 0..3 {
-            lines.push_str(&record_line(&sample(
+            lines.push_str(&emit_tape_record(&sample(
                 301 + index,
                 "pc_rowan",
                 &format!("line{index}"),
@@ -264,7 +264,7 @@ mod tests {
         let root = fresh_dir("tape-cap");
         let mut lines = String::new();
         for index in 0..300 {
-            lines.push_str(&record_line(&sample(
+            lines.push_str(&emit_tape_record(&sample(
                 index as u64 + 1,
                 "pc_rowan",
                 &format!("line{index}"),
@@ -276,7 +276,7 @@ mod tests {
         assert_eq!(tail.len(), 256);
         assert_eq!(tail[0].text, "line44");
         assert_eq!(tail[255].text, "line299");
-        let window = read_session(&root, 0, Some(1000)).unwrap();
+        let window = read_after(&root, 0, Some(1000)).unwrap();
         assert_eq!(window.len(), 256);
         assert_eq!(window[0].text, "line0");
         assert_eq!(window[255].text, "line255");
@@ -288,7 +288,7 @@ mod tests {
         let root = fresh_dir("tape-cap-bytes");
         let path = root.join("state/tape.jsonl");
         fs::create_dir_all(path.parent().unwrap()).unwrap();
-        fs::write(&path, vec![b'\n'; (MAX_TAPE_BYTES as usize) + 1]).unwrap();
+        fs::write(&path, vec![b'\n'; (MAX_BYTES as usize) + 1]).unwrap();
         assert_eq!(read_records(&root).unwrap_err(), Reason::OutOfRange);
         let _ = fs::remove_dir_all(&root);
     }

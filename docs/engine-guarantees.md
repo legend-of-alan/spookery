@@ -171,7 +171,7 @@ Tested in `features/map/travel_follows_the_map.feature` and
 ## Rules version
 
 The save carries the engine's rules version. `spook run` and `spook verify`
-refuse a different version. The refusal prints `RULES_REV` and says to start a
+refuse a different version. The refusal prints `RULES_REV_MISMATCH` and says to start a
 fresh save. Saves and journals from older rules are refused, not migrated. A
 journal that still holds `presence-NNNN.json` records is refused the same way.
 
@@ -186,7 +186,7 @@ A refusal names one code, and the refused change is not kept.
 there, or dropping one they do not hold. `OUT_OF_RANGE` is a removal that would
 pass below zero from a count above zero, and the rest of that rule is not kept.
 `NOT_A_WEAPON` is wielding an item that is not a weapon. `UNKNOWN_MOVE` is a
-move the actor does not have. `SESSION_FULL` is a fourth player or a second GM.
+move the actor does not have. `TABLE_FULL` is a fourth player or a second GM.
 `SEAT_TAKEN` is a hello for a character another seat holds. `LINE_TOO_LONG`
 closes the connection. `NOT_IN_SPEC` is a full rule id used as a move, a GM
 hello on the game port, an address that is not loopback, or a verb no rule

@@ -1,7 +1,7 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_engine::{GmIntentSpec, Heard, Presence, QueuedMove, Reason, RoundOutput, World};
+use spookery_engine::{Address, IntentCall, Presence, QueuedMove, Reason, RoundOutput, World};
 
 use super::frames::{self, Spoken};
 use super::world_loop::commit_then_fast_forward;
@@ -163,11 +163,11 @@ fn try_say(
 ) -> Result<Spoken, Reason> {
     let say = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let heard = match &say {
-        OutgoingSay::Table { .. } => Heard::Table,
-        OutgoingSay::Place { place, .. } => Heard::Place(place),
-        OutgoingSay::Actor { actor, .. } => Heard::Actor(actor),
+        OutgoingSay::Table { .. } => Address::Table,
+        OutgoingSay::Place { place, .. } => Address::Place(place),
+        OutgoingSay::Actor { actor, .. } => Address::Actor(actor),
     };
-    let stored = world.speak_gm(presence, heard, say.text())?;
+    let stored = world.say_as_gm(presence, heard, say.text())?;
     Ok(Spoken::from(&stored))
 }
 
@@ -332,7 +332,7 @@ fn commit_tool(
     let mut done = if committed {
         let output = &outputs[0];
         let outcome = output
-            .outcome
+            .commit
             .as_ref()
             .expect("a flush round writes the journal");
         GmToolReply::new(frames::commit_reply(
@@ -345,7 +345,7 @@ fn commit_tool(
         return Ok(noop(world));
     } else {
         GmToolReply::new(frames::commit_reply(
-            world.now().state_rev,
+            world.state().state_rev,
             &[],
             None,
             &outputs,
@@ -356,11 +356,16 @@ fn commit_tool(
 }
 
 fn noop(world: &World) -> GmToolReply {
-    GmToolReply::new(frames::commit_reply(world.now().state_rev, &[], None, &[]))
+    GmToolReply::new(frames::commit_reply(
+        world.state().state_rev,
+        &[],
+        None,
+        &[],
+    ))
 }
 
 fn refused_tool(code: Reason) -> GmToolReply {
-    let mut done = GmToolReply::new(crate::protocol::code_result(code.token()));
+    let mut done = GmToolReply::new(crate::protocol::code_result(code.as_str()));
     done.refused = Some(code);
     done
 }
@@ -374,7 +379,7 @@ fn perceive_tool(
         crate::protocol::read_perceive_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let as_arg = args.as_viewer.ok_or(Reason::UnscopedPerceive)?;
     let budget = usize::try_from(args.budget_tokens.unwrap_or(800)).map_err(|_| Reason::Schema)?;
-    let view = world.perceive_budget(presence, &as_arg, budget)?;
+    let view = world.perceive_trimmed(presence, &as_arg, budget)?;
     Ok(frames::perceive_value(&view))
 }
 
@@ -390,7 +395,7 @@ fn session_status_tool(
     };
     let last_seq = world.last_tape_seq()?;
     Ok(frames::session_status(
-        world.now(),
+        world.state(),
         presence,
         world.queued_intents(),
         last_seq,
@@ -415,7 +420,7 @@ fn queue_tool_intent(
 ) -> Result<QueuedMove, Reason> {
     let call = crate::protocol::read_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     world.queue_gm_intent(
-        GmIntentSpec {
+        IntentCall {
             id: call.id,
             round_index: call.round_index,
             actor_id: call.actor_id,

@@ -98,7 +98,7 @@ fn a_coding_agent_tries_to_sit_that_door(world: &mut World) {
 #[then(expr = "the agent is told the table is full")]
 fn the_agent_is_told_the_table_is_full(world: &mut World) {
     assert!(
-        world.scratch.contains("SESSION_FULL"),
+        world.scratch.contains("TABLE_FULL"),
         "refusal:\n{}",
         world.scratch
     );
@@ -200,7 +200,7 @@ fn http_port(world: &World) -> u16 {
 
 #[given(expr = "a docks table with a seated player and an open HTTP door")]
 fn seated_player_on_the_http_door(world: &mut World) {
-    world.pack = Some(support::temp_pack("http-say"));
+    world.pack = Some(support::copy_docks("http-say"));
     let (_tcp, http) = listen_http(world);
     let pack = table::pack(world).to_path_buf();
     table::seat_player(world, &pack);
@@ -244,7 +244,7 @@ fn another_gm_tries_http(world: &mut World) {
 #[then(expr = "the newcomer is told the table is full")]
 fn newcomer_is_told_full(world: &mut World) {
     assert!(
-        world.scratch.contains("SESSION_FULL"),
+        world.scratch.contains("TABLE_FULL"),
         "refusal:\n{}",
         world.scratch
     );

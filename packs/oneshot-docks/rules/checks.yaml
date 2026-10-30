@@ -4,4 +4,4 @@ checks:
     dice:
       count: 2
       sides: 6
-    stat: grit
+    meter: grit

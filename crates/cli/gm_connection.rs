@@ -366,7 +366,7 @@ fn refusal_of(err: &ClientInitializeError) -> Option<Error> {
 }
 
 fn refused_message(raw: &str) -> Error {
-    let code = bracket_code(raw).unwrap_or_else(|| "SESSION_FULL".to_string());
+    let code = bracket_code(raw).unwrap_or_else(|| "TABLE_FULL".to_string());
     Error::Refused {
         code,
         raw: raw.to_string(),

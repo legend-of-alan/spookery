@@ -171,7 +171,7 @@ fn restamp(dir: &Path) -> Result<(), StarterError> {
         .map_err(|_| StarterError::Message("the starter canon could not be hashed".to_string()))?;
     let path = dir.join("state/save.yaml");
     let text = fs::read_to_string(&path).map_err(StarterError::Io)?;
-    let mut now = spookery_engine::load_save(&text)
+    let mut now = spookery_engine::parse_save(&text)
         .map_err(|_| StarterError::Message("the starter save could not be read".to_string()))?;
     now.pack_rev = rev;
     let emitted = spookery_engine::emit_save(&now)

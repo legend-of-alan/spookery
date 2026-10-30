@@ -1,7 +1,7 @@
 ---
 schema: item
 id: tonic
-name: Bitter tonic
+display_name: Bitter tonic
 tags:
   - consumable
   - healing

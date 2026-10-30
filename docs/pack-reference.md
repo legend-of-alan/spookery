@@ -156,7 +156,7 @@ An item file is Markdown with the same frontmatter shape. `tags` may include `we
 ---
 schema: item
 id: oil
-name: Oil
+display_name: Oil
 tags: []
 rules:
   - id: use
@@ -176,7 +176,7 @@ A tin of oil.
 ---
 schema: item
 id: knife
-name: Knife
+display_name: Knife
 tags:
   - weapon
 rules: []
@@ -230,7 +230,7 @@ rules:
               value: 0
           - meter:
               who: self
-              key: nerve
+              id: nerve
               op: ">="
               value: 1
       - any:
@@ -262,7 +262,7 @@ rules:
           value: 3
       - meter:
           who: pc_ada
-          key: nerve
+          id: nerve
           op: ">"
           value:
             meter:
@@ -311,7 +311,7 @@ rules:
 
 ## Rules
 
-A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `roll`, `success`, `partial`, and `failure`.
+A rule has `id`, `when`, and `do`. It may have `if`, `cost`, `roll`, `success`, `partial`, and `miss`.
 
 `when` is `habit`, a map with `verb` and `target`, or a map with `change`. `target` is `none`, `actor`, `place`, `exit`, or `item`. An omitted `target` means `none`. `say` is speech, so that id is not a rule and not a verb. `when` has one of `verb` or `change`, not both.
 
@@ -333,9 +333,9 @@ Matching change rules run in owner order (shared verbs, then place, item, cast, 
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
 
-`cost` may name `time`, `meter`, and `items`. `time` uses the duration words from exits. A cost the actor cannot pay is refused when the move is played, and the world stays as it was.
+`cost` may name `time`, `meters`, and `items`. `time` uses the duration words from exits. A cost the actor cannot pay is refused when the move is played, and the world stays as it was.
 
-`roll` names a `check` and a `target`. `partial_at` is an absolute total, strictly below a literal target, and it needs a `partial` list. `do` runs on every band. `success`, `partial`, and `failure` run on that band. `failure` is the miss. A yield is `do: []` with no outcome lists.
+`roll` names a `check` and a `target`. `partial_at` is an absolute total, strictly below a literal target, and it needs a `partial` list. `do` runs on every band. `success`, `partial`, and `miss` run on that band. A yield is `do: []` with no outcome lists.
 
 A number is an integer or an [expression](spec.md). A meter plus an integer still loads.
 
@@ -391,7 +391,7 @@ rules:
       verb: press
     cost:
       time: 30s
-      meter:
+      meters:
         nerve: 1
       items:
         oil: 1
@@ -414,7 +414,7 @@ rules:
           who: self
           key: pressed
           value: false
-    failure:
+    miss:
       - narrate:
           to: self
           text: The press slips.
@@ -489,7 +489,7 @@ rules:
       - clock:
           id: shop_day
           add: 1
-          start: true
+          unpause: true
 
   - id: remember
     when:
@@ -548,7 +548,7 @@ rules:
 
 ## Meters
 
-`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `start` is the base a new meter takes on every existing actor when `spook migrate` runs. A save that lacks a meter the rules define, with no migrate to add it, is refused. Current is base plus offset, and it is not stored. `hidden: true` keeps that meter off the player's view. Leave it out and the player sees the meter.
+`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `base` is the base a new meter takes on every existing actor when `spook migrate` runs. A save that lacks a meter the rules define, with no migrate to add it, is refused. Current is base plus offset, and it is not stored. `hidden: true` keeps that meter off the player's view. Leave it out and the player sees the meter.
 
 ```yaml file=rules/meters.yaml
 schema: meters
@@ -557,12 +557,12 @@ meters:
     min: 0
     base_cap: 100
     max: 110
-    start: 1
+    base: 1
 ```
 
 ## Checks
 
-`stat` is a meter id. `dice.count` and `dice.sides` are the check's dice. A rule's target and partial band are expressions.
+`meter` is a meter id. `dice.count` and `dice.sides` are the check's dice. A rule's target and partial band are expressions.
 
 ```yaml file=rules/checks.yaml
 schema: checks
@@ -571,7 +571,7 @@ checks:
     dice:
       count: 2
       sides: 6
-    stat: nerve
+    meter: nerve
 ```
 
 ## Budget
@@ -622,7 +622,7 @@ The message and the hint can change. The code stays.
 | `SCHEMA` | The diagnostic's `hint`. A bad shape, an unknown key, or an unknown id. |
 | `NOT_IN_SPEC` | `add <file>` when a file the loader requires is missing. |
 | `PACK_REV_MISMATCH` | `run spook migrate to store the current hash` |
-| `RULES_REV` | `start a fresh save` |
+| `RULES_REV_MISMATCH` | `start a fresh save` |
 | `HAND_EDIT` | `run spook migrate to keep the edit, or restore the file` |
 | `TRIGGER_LEAK` | `address that output to self, or to here when the room can see the change` |
 | `WARNING` | An unreachable place: `add an exit that reaches it`. `teleport: true` in `rules/verbs.yaml`: `teleport belongs on an author rule, not in verbs.yaml`. A trigger cycle: `stop one rule in the cycle from setting the next watched value`. |

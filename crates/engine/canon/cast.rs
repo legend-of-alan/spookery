@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::fact::{FactFile, Facts};
-use crate::canon::rule_list::{self, RuleEntry};
-use crate::canon::source::{load_headed, At, Diags, Page, Problem, Source, CAST_SCHEMA};
-use crate::canon::{CastCanon, CastKind, IdleProfile};
+use crate::canon::fact::{FactYaml, Facts};
+use crate::canon::rule_list::{self, RuleYaml};
+use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
+use crate::canon::{CastDef, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
 use crate::rule::{Owner, Rule};
 
@@ -16,11 +16,11 @@ use crate::rule::{Owner, Rule};
 pub(super) fn add_cast(
     page: Page,
     facts: &mut Facts,
-    cast: &mut BTreeMap<String, CastCanon>,
+    cast: &mut BTreeMap<String, CastDef>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(load_cast(&page.file, &page.yaml, 1))?;
-    let whole = Source {
+    let whole = FileText {
         file: &page.file,
         text: &page.text,
         line_base: 0,
@@ -35,14 +35,16 @@ pub(super) fn add_cast(
     let hint = "keep one cast file with this id";
     let twice = ("cast id", "is already defined", hint);
     let taken = cast.contains_key(&file.id);
-    if let Some(diag) = taken.then(|| whole.repeat(&file.id, "id", At::Nowhere, twice)) {
+    if let Some(diag) =
+        taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
+    {
         diags.push(diag);
         return None;
     }
     let id = file.id.clone();
     cast.insert(
         id.clone(),
-        CastCanon {
+        CastDef {
             kind,
             display_name: file.display_name,
             facts: ids,
@@ -55,41 +57,41 @@ pub(super) fn add_cast(
 }
 
 fn load_cast(file: &str, yaml: &str, line_base: u32) -> Result<CastFile, Vec<Diagnostic>> {
-    let parsed: CastFile = load_headed(file, yaml, CAST_SCHEMA, line_base)?;
-    let source = Source {
+    let parsed: CastFile = load_tagged(file, yaml, CAST_SCHEMA, line_base)?;
+    let source = FileText {
         file,
         text: yaml,
         line_base,
     };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short cast id");
-    diags.extend(source.required(&parsed.id, "id", At::Key("id:"), empty));
+    diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
     if parsed.id == crate::effect::WORLD {
         diags.push(
             Problem {
                 source: &source,
                 path: "id",
-                at: At::Key("id:"),
-                problem: "id world is reserved".into(),
+                at: Locator::Key("id:"),
+                message: "id world is reserved".into(),
                 hint: "rename this cast member",
             }
-            .schema(),
+            .into_diagnostic(),
         );
     }
-    diags.extend(source.display_name(&parsed.display_name));
+    diags.extend(source.refuse_empty_display_name(&parsed.display_name));
     if parsed.kind != "npc" && parsed.kind != "pc_template" {
         diags.push(
             Problem {
                 source: &source,
                 path: "kind",
-                at: At::Key("kind:"),
-                problem: format!("kind is '{}', which is not npc or pc_template", parsed.kind),
+                at: Locator::Key("kind:"),
+                message: format!("kind is '{}', which is not npc or pc_template", parsed.kind),
                 hint: "set kind to npc or pc_template",
             }
-            .schema(),
+            .into_diagnostic(),
         );
     }
-    diags.result(parsed)
+    diags.into_result(parsed)
 }
 
 #[derive(Deserialize)]
@@ -100,12 +102,12 @@ struct CastFile {
     id: String,
     kind: String,
     display_name: String,
-    facts: Vec<FactFile>,
+    facts: Vec<FactYaml>,
     #[serde(default)]
     flags: Vec<String>,
     idle: Option<IdleProfile>,
     #[serde(default)]
-    rules: Vec<RuleEntry>,
+    rules: Vec<RuleYaml>,
 }
 
 #[cfg(test)]

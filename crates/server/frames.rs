@@ -6,7 +6,7 @@ use crate::protocol::{
 };
 use serde_json::Value;
 use spookery_engine::{
-    record_line, Intent, Message, MoveReport, Now, Presence, Roll, RoundOutput, RunState,
+    emit_tape_record, Intent, Message, MoveReport, Presence, Roll, RoundOutput, RunState, State,
     TapeRecord, View,
 };
 
@@ -22,7 +22,7 @@ pub struct Spoken {
 impl From<&TapeRecord> for Spoken {
     fn from(stored: &TapeRecord) -> Self {
         Spoken {
-            tape: record_line(stored),
+            tape: emit_tape_record(stored),
             player_event: say_line(stored, false),
             gm_event: say_event(stored),
             tool: say_value(stored),
@@ -88,11 +88,11 @@ pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
             continue;
         }
         match report {
-            MoveReport::Rolled { out: rolled, .. } => {
+            MoveReport::Rolled { roll: rolled, .. } => {
                 out.push_str(&player_check_line(rolled.outcome))
             }
             MoveReport::Refused { code, missing, .. } => out.push_str(&player_refused(
-                code.token(),
+                code.as_str(),
                 missing.as_ref().map(|text| Missing::One(text.clone())),
             )),
         }
@@ -106,7 +106,7 @@ pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
 
 fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator<Item = &'a Roll> {
     reports.into_iter().filter_map(|report| match report {
-        MoveReport::Rolled { out, .. } => Some(out),
+        MoveReport::Rolled { roll: out, .. } => Some(out),
         MoveReport::Refused { .. } => None,
     })
 }
@@ -170,7 +170,7 @@ pub fn commit_reply(
 }
 
 pub fn session_status(
-    now: &Now,
+    now: &State,
     presence: &Presence,
     queued: &[Intent],
     last_seq: u64,

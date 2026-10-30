@@ -48,7 +48,7 @@ fn the_packs_hit_requires(world: &mut World, value: String) {
     let path = pack.join("rules/verbs.yaml");
     let mut text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read verbs: {err}"));
     text.push_str(&format!(
-        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          who: self\n          key: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: 1\n"
+        "\n  - id: hit\n    when:\n      verb: hit\n    if:\n      - meter:\n          who: self\n          id: grit\n          op: \">=\"\n          value: \"{value}\"\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: 1\n"
     ));
     fs::write(&path, text).unwrap_or_else(|err| panic!("write verbs: {err}"));
 }

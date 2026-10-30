@@ -15,22 +15,22 @@
 use std::fs;
 use std::path::Path;
 
-use crate::journal::{self, JournalEntry};
+use crate::journal::{self, Record};
 use crate::world::World;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
 use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, TempPack};
 use crate::model::Presence;
 use crate::round::play::replay_round;
-use crate::round::replay::first_effect_difference;
-use crate::testing::{copy_dir, fresh_dir, temp_pack};
+use crate::round::replay::first_effect_diff;
+use crate::testing::{copy_dir, copy_docks, fresh_dir};
 
 #[test]
 fn running_a_round_again_matches_the_logged_effects() {
     let mut runner = TestRunner::new(configure_runner());
     runner
         .run(&pick_rounds(), |rounds| {
-            let played = TempPack(temp_pack("prop-rerun"));
+            let played = TempPack(copy_docks("prop-rerun"));
             play_rounds(&played.0, &rounds).map_err(fail_msg)?;
             rerun(&played.0)
         })
@@ -43,14 +43,14 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     let round_records: Vec<_> = records
         .into_iter()
         .filter_map(|entry| match entry {
-            JournalEntry::Round(record) => Some(record),
+            Record::Round(record) => Some(record),
             _ => None,
         })
         .collect();
     if round_records.is_empty() {
         return Err(fail_msg("the rounds wrote no record".to_string()));
     }
-    let base = played.join("state").join(journal::base_rel());
+    let base = played.join("state").join(journal::base_path());
     let snapshot = if base.is_file() {
         fs::read(&base)
     } else {
@@ -74,7 +74,7 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
         )
         .map(|output| output.effects)
         .map_err(|err| fail_msg(format!("round {} failed: {err}", record.round_index)))?;
-        if let Some(diff) = first_effect_difference(&record.effects, &effects) {
+        if let Some(diff) = first_effect_diff(&record.effects, &effects) {
             return Err(fail_msg(format!("round {} {diff}", record.round_index)));
         }
     }

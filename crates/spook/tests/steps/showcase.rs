@@ -201,8 +201,8 @@ fn commit_line(world: &mut World, line: &str) {
     table::wait_round_count(table::pack(world), before + 1);
 }
 
-fn tonic_of(now: &spookery_engine::Now) -> u32 {
-    now.actors.get("pc_lark").unwrap().count("tonic")
+fn tonic_of(now: &spookery_engine::State) -> u32 {
+    now.actors.get("pc_lark").unwrap().item_count("tonic")
 }
 
 fn finished(pack: &Path) -> bool {

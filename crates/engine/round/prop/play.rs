@@ -4,12 +4,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::canon::pack_rev;
-use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
+use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, Viewer};
 use crate::journal;
-use crate::map::visible;
 use crate::model::Presence;
 use crate::rules::gate::gate;
-use crate::store::codec::{emit_save, load_save};
+use crate::store::codec::{emit_save, parse_save};
+use crate::travel::visible_exits;
 use crate::world::World;
 use proptest::prelude::*;
 use proptest::test_runner::{Config, RngSeed, TestCaseError};
@@ -90,7 +90,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
                 },
             );
         }
-        let wall = world.now().last_round_at.clone();
+        let wall = world.state().last_round_at.clone();
         play_round(&mut world, &Presence::default(), &wall, false)
             .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
@@ -99,7 +99,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
 
 fn pc_count(world: &World) -> usize {
     world
-        .now()
+        .state()
         .actors
         .values()
         .filter(|actor| actor.is_pc())
@@ -120,7 +120,7 @@ fn arm_check(pack: &Path) -> Result<(), String> {
     let rev = pack_rev(pack).map_err(|err| err.to_string())?;
     let save_path = pack.join("state/save.yaml");
     let save_text = fs::read_to_string(&save_path).map_err(|err| err.to_string())?;
-    let mut now = load_save(&save_text).map_err(|err| format!("{err:?}"))?;
+    let mut now = parse_save(&save_text).map_err(|err| format!("{err:?}"))?;
     now.pack_rev = rev;
     fs::write(&save_path, emit_save(&now).map_err(|err| err.to_string())?)
         .map_err(|err| err.to_string())
@@ -128,7 +128,7 @@ fn arm_check(pack: &Path) -> Result<(), String> {
 
 fn queue_move(world: &mut World, plan: &MovePlan) {
     let pcs: Vec<String> = world
-        .now()
+        .state()
         .actors
         .iter()
         .filter(|(_, actor)| actor.is_pc())
@@ -142,7 +142,7 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     let Some(target) = target_for(world, actor, verb, plan.token) else {
         return;
     };
-    let intent = player_intent(world.now(), actor, verb, target);
+    let intent = player_intent(world.state(), actor, verb, target);
     if world
         .queued_intents()
         .iter()
@@ -150,17 +150,17 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     {
         return;
     }
-    if gate(world.canon(), world.now(), &Presence::default(), &intent).is_err() {
+    if gate(world.canon(), world.state(), &Presence::default(), &intent).is_err() {
         return;
     }
-    world.queue(intent);
+    world.queue_intent(intent);
 }
 
 fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Target> {
     match verb {
         "wait" | "grit" | "unwield" => Some(Target::Empty),
         "travel" => {
-            let exits = visible(world.canon(), world.now(), &Presence::default(), actor);
+            let exits = visible_exits(world.canon(), world.state(), &Presence::default(), actor);
             if exits.is_empty() {
                 return None;
             }
@@ -179,9 +179,9 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
 
 fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     let mut ids: Vec<String> = world.canon().items.keys().cloned().collect();
-    if let Some(actor) = world.now().actors.get(actor) {
+    if let Some(actor) = world.state().actors.get(actor) {
         ids.extend(actor.inventory().keys().cloned());
-        if let Some(place) = world.now().places.get(actor.place()) {
+        if let Some(place) = world.state().places.get(actor.place()) {
             ids.extend(place.items.keys().cloned());
         }
     }
@@ -190,7 +190,7 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
     ids
 }
 
-fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Target) -> Intent {
+fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Target) -> Intent {
     let token = match &target {
         Target::Empty => "",
         Target::Actor(id) | Target::Place(id) => id.as_str(),
@@ -205,7 +205,7 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
     Intent {
         id: player_intent_id(&now.shard_id, round_index, actor, &line),
         round_index: now.round_index,
-        actor: ViewerId::Player(actor.to_string()),
+        actor: Viewer::Player(actor.to_string()),
         source: Source::Player,
         move_name: verb.to_string(),
         target,
@@ -217,12 +217,12 @@ fn player_intent(now: &crate::model::Now, actor: &str, verb: &str, target: Targe
 /// Replay the journal and compare it with the state hash on the last record.
 pub(crate) fn same_save(pack: &Path) -> Result<(), TestCaseError> {
     let report = replay_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
-    let entries = journal::read_entries(pack)
+    let entries = journal::read_records(pack)
         .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
     let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {
         return Err(fail_msg("the rounds wrote no record".to_string()));
     };
-    let replayed = journal::hash_now(&report.now_yaml);
+    let replayed = journal::blake2s_tagged(&report.now_yaml);
     if replayed == last.now_hash() {
         return Ok(());
     }

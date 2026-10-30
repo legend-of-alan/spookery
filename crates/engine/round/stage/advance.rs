@@ -5,15 +5,15 @@ use crate::draft::Draft;
 use crate::Reason;
 
 /// Where the round's clock stands: its index and the world minutes it spans.
-pub(crate) struct Clock {
+pub(crate) struct RoundTime {
     pub round_index: u64,
     pub world_time_before: u64,
     pub world_time_after: u64,
 }
 
-pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<Clock, Reason> {
-    let round_index = draft.now().round_index + 1;
-    let world_before = draft.now().world_time;
+pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
+    let round_index = draft.state().round_index + 1;
+    let world_before = draft.state().world_time;
     let minutes = minutes_for(draft.presence.humans, draft.budget());
     let world_after = world_before.saturating_add(minutes);
     let day_changed = world_before / 1440 != world_after / 1440;
@@ -26,7 +26,7 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<Clock, Reason> {
         draft.reset_live_acts()?;
     }
     draft.apply_pause_policy()?;
-    Ok(Clock {
+    Ok(RoundTime {
         round_index,
         world_time_before: world_before,
         world_time_after: world_after,

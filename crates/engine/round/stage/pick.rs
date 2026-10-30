@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 
 use crate::draft::Draft;
 use crate::expand::stamp_for_priority;
-use crate::intent::{Intent, Target, ViewerId};
-use crate::model::{Now, Presence};
+use crate::intent::{Intent, Target, Viewer};
+use crate::model::{Presence, State};
 use crate::rules::habits::habit_intents;
 use crate::Reason;
 
@@ -15,16 +15,16 @@ use crate::round::dice::shuffle_key;
 pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason> {
     let mut candidates = queue.to_vec();
     for intent in &mut candidates {
-        stamp_for_priority(draft.canon(), draft.now(), draft.presence, intent);
+        stamp_for_priority(draft.canon(), draft.state(), draft.presence, intent);
     }
-    candidates.extend(habit_intents(draft.canon(), draft.now(), draft.presence));
-    let (now, presence) = (draft.now(), draft.presence);
+    candidates.extend(habit_intents(draft.canon(), draft.state(), draft.presence));
+    let (now, presence) = (draft.state(), draft.presence);
     candidates.sort_by_cached_key(|intent| priority(now, presence, intent));
     candidates.truncate(draft.budget().max_intents_applied as usize);
-    unique(candidates)
+    check_unique_ids(candidates)
 }
 
-fn unique(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
+fn check_unique_ids(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
     let mut seen = BTreeSet::new();
     for intent in &candidates {
         if !seen.insert(intent.id.clone()) {
@@ -39,7 +39,7 @@ fn unique(candidates: Vec<Intent>) -> Result<Vec<Intent>, Reason> {
 struct Priority {
     actor: ActorRank,
     clock: ClockRank,
-    claim: ClaimRank,
+    claim: SeatedRank,
     shuffle: [u8; 32],
 }
 
@@ -51,30 +51,30 @@ enum ActorRank {
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 enum ClockRank {
-    PcClock,
+    Pc,
     Other,
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
-enum ClaimRank {
+enum SeatedRank {
     Claimed,
     Unclaimed,
 }
 
-fn priority(now: &Now, presence: &Presence, intent: &Intent) -> Priority {
+fn priority(now: &State, presence: &Presence, intent: &Intent) -> Priority {
     let actor = match intent.actor {
-        ViewerId::Player(_) => ActorRank::Player,
-        ViewerId::Npc(_) => ActorRank::Npc,
+        Viewer::Player(_) => ActorRank::Player,
+        Viewer::Npc(_) => ActorRank::Npc,
     };
     let clock = if targets_pc_clock(now, intent) {
-        ClockRank::PcClock
+        ClockRank::Pc
     } else {
         ClockRank::Other
     };
     let claim = if touches_seated_player(now, presence, intent) {
-        ClaimRank::Claimed
+        SeatedRank::Claimed
     } else {
-        ClaimRank::Unclaimed
+        SeatedRank::Unclaimed
     };
     // Player lines that share a priority keep the queue order. NPC ties still shuffle.
     let shuffle = if actor == ActorRank::Player {
@@ -90,7 +90,7 @@ fn priority(now: &Now, presence: &Presence, intent: &Intent) -> Priority {
     }
 }
 
-fn targets_pc_clock(now: &Now, intent: &Intent) -> bool {
+fn targets_pc_clock(now: &State, intent: &Intent) -> bool {
     let Target::Clock(id) = &intent.target else {
         return false;
     };
@@ -102,7 +102,7 @@ fn targets_pc_clock(now: &Now, intent: &Intent) -> bool {
     })
 }
 
-fn touches_seated_player(now: &Now, presence: &Presence, intent: &Intent) -> bool {
+fn touches_seated_player(now: &State, presence: &Presence, intent: &Intent) -> bool {
     let present = &presence.actors_present;
     let target_hit = match &intent.target {
         Target::Actor(id) => present.iter().any(|actor| actor == id),

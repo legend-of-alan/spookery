@@ -68,7 +68,7 @@ pub fn named_refusal(code: &str, missing: Option<&Missing>) -> String {
         "HAND_EDIT" => "The save was edited by hand.",
         "SCHEMA" => "That line is not valid.",
         "NOT_IN_SPEC" => "The table does not understand that. Type help.",
-        "SESSION_FULL" => "The table is full.",
+        "TABLE_FULL" => "The table is full.",
         "SEAT_TAKEN" => "That character is already taken.",
         "MISSING_ITEM" => "You do not have that.",
         "NOT_A_WEAPON" => "That is not a weapon.",
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn a_refusal_is_a_sentence_with_the_code() {
-        assert_eq!(refusal("SESSION_FULL"), "The table is full. [SESSION_FULL]");
+        assert_eq!(refusal("TABLE_FULL"), "The table is full. [TABLE_FULL]");
         assert!(refusal("SEAT_TAKEN") == "That character is already taken. [SEAT_TAKEN]");
         assert!(refusal("LINE_TOO_LONG") == "That line is too long. [LINE_TOO_LONG]");
         assert_eq!(refusal("NEW_CODE"), "The table refused that. [NEW_CODE]");

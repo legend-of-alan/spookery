@@ -25,11 +25,11 @@ fn docks_rev() -> String {
 }
 
 fn migrate_state_revs(pack: &Path) -> Vec<u64> {
-    use spookery_engine::testing::journal::{read_entries, JournalEntry};
-    let entries = read_entries(pack).unwrap_or_else(|err| panic!("{}", err.detail));
+    use spookery_engine::testing::journal::{read_records, Record};
+    let entries = read_records(pack).unwrap_or_else(|err| panic!("{}", err.detail));
     let mut revs = Vec::new();
     for entry in &entries {
-        let JournalEntry::Migrate(record) = entry else {
+        let Record::Migrate(record) = entry else {
             continue;
         };
         revs.push(record.state_rev_after);
@@ -110,7 +110,7 @@ fn the_pack_adds_meter(world: &mut World, id: String, start: i64) {
     let path = table::pack(world).join("rules/meters.yaml");
     let mut text = fs::read_to_string(&path).unwrap();
     text.push_str(&format!(
-        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    start: {start}\n"
+        "  - id: {id}\n    min: 0\n    base_cap: 10\n    max: 10\n    base: {start}\n"
     ));
     fs::write(&path, text).unwrap();
 }

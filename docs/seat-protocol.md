@@ -161,7 +161,7 @@ A fourth player, after three are sat:
 ```json
 {
   "kind": "refused",
-  "code": "SESSION_FULL"
+  "code": "TABLE_FULL"
 }
 ```
 
@@ -369,7 +369,7 @@ A player connection may send 5 lines a second, and it may burst to 10. A line pa
 
 ## GM seat
 
-The GM seat is the agent door. One GM. Initialize claims it. A second GM is `SESSION_FULL`.
+The GM seat is the agent door. One GM. Initialize claims it. A second GM is `TABLE_FULL`.
 
 POST the initialize body. Send `Accept` and `Content-Type` as in Connect. The response is an SSE event. The JSON-RPC object is the `data` line. Keep the `mcp-session-id` response header on later requests.
 
@@ -421,7 +421,7 @@ A second initialize, while a GM is sat, does not sit:
   "id": 1,
   "error": {
     "code": -32603,
-    "message": "The table is full. [SESSION_FULL]"
+    "message": "The table is full. [TABLE_FULL]"
   }
 }
 ```
@@ -466,7 +466,7 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
   "world_time": 1080,
   "round_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:5599af7634e836f6a07ff4cbb20fc46ba29f3a74967b9a7c6f6e0fead076ebac",
+  "pack_rev": "blake2s:770a9922b8093d1bf17f33cd33c8d68b4588ee9d3cc0ffba3c7cb2f78a4aabb5",
   "last_round_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 0,
@@ -577,7 +577,7 @@ After the two says above, `since` 0 returns them:
   "world_time": 1080,
   "round_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:5599af7634e836f6a07ff4cbb20fc46ba29f3a74967b9a7c6f6e0fead076ebac",
+  "pack_rev": "blake2s:770a9922b8093d1bf17f33cd33c8d68b4588ee9d3cc0ffba3c7cb2f78a4aabb5",
   "last_round_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 2,
@@ -937,7 +937,7 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 
 | Code | What the client should do |
 |---|---|
-| `SESSION_FULL` | Stop. Three players are sat, or the GM seat is held. Connect again only after that seat is free. Do not retry the same hello in a loop. |
+| `TABLE_FULL` | Stop. Three players are sat, or the GM seat is held. Connect again only after that seat is free. Do not retry the same hello in a loop. |
 | `SEAT_TAKEN` | That PC is held. Connect again as a different live PC. |
 | `CHOOSE_PC` | The hello was empty. Pick one id from the JSON list in `missing` and connect again as `player:<id>`. An empty list means no PC is free. |
 | `SCHEMA` | The line or the arguments are the wrong shape. `player:` with an empty id is `SCHEMA`. On a seated player, send a corrected line. On hello, connect again with `player:<id>` of a live PC. |
@@ -964,7 +964,7 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `COMMIT_CONFLICT` | The table was already writing. Send `commit_round` again. |
 | `HAND_EDIT` | The save was edited by hand. Stop sending moves until it is migrated. |
 | `PACK_REV_MISMATCH` | The save does not match the pack. Stop. |
-| `RULES_REV` | The save was written by different rules. Start a fresh save. This fails at pack open, before a seat exists. |
+| `RULES_REV_MISMATCH` | The save was written by different rules. Start a fresh save. This fails at pack open, before a seat exists. |
 
 HTTP statuses, before a seat token:
 

@@ -9,7 +9,7 @@ use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
 
 use super::table;
-use crate::support::{append, copy_pack, edit_save, now_of, spook, temp_pack};
+use crate::support::{append, copy_docks, copy_pack, edit_save, spook, state_of};
 use crate::World;
 #[given(expr = "a save with rules_rev 8 and an engine at 9")]
 fn a_save_with_rules_rev_8_and_an_engine_at_9(world: &mut World) {
@@ -18,7 +18,7 @@ fn a_save_with_rules_rev_8_and_an_engine_at_9(world: &mut World) {
         9,
         "the engine rules version is 9"
     );
-    let pack = crate::support::temp_pack("rules-rev");
+    let pack = crate::support::copy_docks("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let stamped = text.replacen("rules_rev: 9\n", "rules_rev: 8\n", 1);
@@ -30,7 +30,7 @@ fn a_save_with_rules_rev_8_and_an_engine_at_9(world: &mut World) {
 /// The save shape rules_rev 6 wrote, with `presence` still in the save.
 #[given(expr = "an old save from rules_rev 6 with seat presence in it")]
 fn an_old_save_from_rules_rev_6(world: &mut World) {
-    let pack = crate::support::temp_pack("rules-rev-old-save");
+    let pack = crate::support::copy_docks("rules-rev-old-save");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let old = text
@@ -51,7 +51,7 @@ fn an_old_save_from_rules_rev_6(world: &mut World) {
 /// A current save whose journal still holds a `presence-NNNN.json` from rules_rev 6.
 #[given(expr = "a current save with a stray presence-0001.json in its journal")]
 fn a_current_save_with_a_stray_presence_record(world: &mut World) {
-    let pack = crate::support::temp_pack("rules-rev-presence-record");
+    let pack = crate::support::copy_docks("rules-rev-presence-record");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     assert!(text.contains("rules_rev: 9\n"), "{text}");
@@ -60,7 +60,7 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
     let live = text.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
     fs::write(&path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
-    let hash = spookery_engine::testing::journal::hash_now(live.as_bytes());
+    let hash = spookery_engine::testing::journal::blake2s_tagged(live.as_bytes());
     fs::write(
         journal.join("presence-0001.json"),
         format!(
@@ -92,7 +92,7 @@ fn spook_run_or_spook_verify_opens_it(world: &mut World) {
     world.stderr = format!("run:\n{run_err}\nverify:\n{verify_err}");
 }
 
-#[then(expr = "it refuses with RULES_REV and says to start a fresh save")]
+#[then(expr = "it refuses with RULES_REV_MISMATCH and says to start a fresh save")]
 fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
     assert_eq!(world.code, Some(1), "{}", world.stderr);
     let rest = world
@@ -104,8 +104,8 @@ fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
         .unwrap_or_else(|| panic!("missing verify stderr\n{}", world.stderr));
     for (command, err) in [("spook run", run_err), ("spook verify", verify_err)] {
         assert!(
-            err.contains("RULES_REV"),
-            "{command} did not refuse with RULES_REV\n{err}"
+            err.contains("RULES_REV_MISMATCH"),
+            "{command} did not refuse with RULES_REV_MISMATCH\n{err}"
         );
         assert!(
             err.contains("start a fresh save"),
@@ -116,7 +116,7 @@ fn it_refuses_with_rules_rev_and_says_to_start_a_fresh_save(world: &mut World) {
 
 #[given(expr = "logged effects that differ from the re-run")]
 fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
-    let pack = crate::support::temp_pack("rules-diverge");
+    let pack = crate::support::copy_docks("rules-diverge");
     world.pack = Some(pack.clone());
     table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
@@ -165,7 +165,7 @@ fn spook_verify_names_the_round_and_the_first_differing_effect(world: &mut World
 
 #[given(expr = "a place rule \"bell\" in docks_shop and a story rule \"bell\"")]
 fn a_place_rule_and_a_story_rule(world: &mut World) {
-    let pack = temp_pack("rules-ids");
+    let pack = copy_docks("rules-ids");
     insert_before_fence(
         &pack.join("world/places/docks_shop.md"),
         "\
@@ -182,7 +182,7 @@ rules:
 ---
 schema: item
 id: tonic
-name: Tonic
+display_name: Tonic
 tags: []
 rules:
   - id: use
@@ -233,7 +233,7 @@ fn check_rules_lists_both_bells(world: &mut World) {
 
 #[given(expr = "verb:travel and place:ferry_dock\\/travel")]
 fn verb_travel_and_the_ferry_rule(world: &mut World) {
-    let pack = temp_pack("rules-ferry");
+    let pack = copy_docks("rules-ferry");
     write(
         &pack.join("world/places/ferry_dock.md"),
         "\
@@ -299,7 +299,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
 
 #[then(expr = "place:ferry_dock\\/travel runs and verb:travel does not")]
 fn the_ferry_rule_runs(world: &mut World) {
-    let now = now_of(world.pack.as_ref().unwrap());
+    let now = state_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place(), "ferry_dock", "verb:travel moved the PC");
     assert!(
@@ -311,7 +311,7 @@ fn the_ferry_rule_runs(world: &mut World) {
 
 #[given(expr = "cast:briar\\/restock with hour 6..9 and humans == 0")]
 fn briar_restocks_before_the_shop_opens(world: &mut World) {
-    let pack = temp_pack("rules-briar");
+    let pack = copy_docks("rules-briar");
     write(
         &pack.join("cast/briar.md"),
         "\
@@ -356,13 +356,13 @@ fn an_empty_round_at_hour_7(world: &mut World) {
         *now.actors.get_mut("briar").unwrap().place_mut() = "docks_shop".to_string();
     });
     let mut opened = open_pack(&pack);
-    let wall = opened.now().last_round_at.clone();
+    let wall = opened.state().last_round_at.clone();
     opened
         .play(&Presence::default(), &wall)
         .unwrap_or_else(|err| {
             panic!(
                 "empty round {}: {}",
-                err.token(),
+                err.as_str(),
                 spookery_engine::check_pack(&pack)
                     .iter()
                     .map(|diag| diag.to_string())
@@ -374,7 +374,7 @@ fn an_empty_round_at_hour_7(world: &mut World) {
 
 #[then(expr = "docks_shop lamp_oil increases by 4")]
 fn lamp_oil_increases_by_4(world: &mut World) {
-    let now = now_of(world.pack.as_ref().unwrap());
+    let now = state_of(world.pack.as_ref().unwrap());
     let oil = now
         .places
         .get("docks_shop")
@@ -405,7 +405,7 @@ fn attack_targets_defense(world: &mut World) {
           who: target
           key: hit
           value: true
-    failure:
+    miss:
       - flag:
           who: target
           key: missed
@@ -442,19 +442,19 @@ fn attack_targets_defense(world: &mut World) {
 #[when(expr = "lark attacks with a seeded total of 21")]
 fn lark_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let loaded = now_of(&pack);
+    let loaded = state_of(&pack);
     let face = faces(
         &RollKey {
             world_id: loaded.shard_id.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),
             subject_id: "pc_lark".to_string(),
-            roll_index: 0,
+            index: 0,
         },
         1,
         20,
     )
-    .unwrap_or_else(|err| panic!("faces {}", err.token()))[0];
+    .unwrap_or_else(|err| panic!("faces {}", err.as_str()))[0];
     edit_save(&pack, |now| {
         let might = now
             .actors
@@ -476,7 +476,7 @@ fn lark_attacks(world: &mut World) {
         .unwrap_or_else(|err| panic!("attack {err}"));
     let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {
-        MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some(out),
+        MoveReport::Rolled { actor_id, roll } if actor_id == "pc_lark" => Some(roll),
         _ => None,
     });
     let rolled = rolled.unwrap_or_else(|| panic!("Lark did not roll"));
@@ -493,7 +493,7 @@ fn lark_attacks(world: &mut World) {
 #[then(expr = "the outcome is a miss")]
 fn the_outcome_is_a_miss(world: &mut World) {
     assert_eq!(world.scratch, "miss");
-    let now = now_of(world.pack.as_ref().unwrap());
+    let now = state_of(world.pack.as_ref().unwrap());
     let flags = now.actors.get("npc_briar").unwrap().flags();
     assert!(flags.iter().any(|flag| flag == "missed"), "{flags:?}");
     assert!(!flags.iter().any(|flag| flag == "hit"), "{flags:?}");
@@ -501,7 +501,7 @@ fn the_outcome_is_a_miss(world: &mut World) {
 
 #[given(expr = "a pack with rules\\/moves.yaml")]
 fn a_pack_with_moves_yaml(world: &mut World) {
-    let pack = temp_pack("rules-moves");
+    let pack = copy_docks("rules-moves");
     fs::write(pack.join("rules/moves.yaml"), "schema: moves\n").unwrap();
     world.pack = Some(pack);
 }
@@ -521,7 +521,7 @@ fn check_says_moves_was_replaced(world: &mut World) {
 
 #[given(expr = "a verb file where the word bogus appears in earlier text")]
 fn bogus_appears_in_earlier_text(world: &mut World) {
-    let pack = temp_pack("rules-bogus");
+    let pack = copy_docks("rules-bogus");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -574,7 +574,7 @@ fn check_reports_the_key(world: &mut World) {
 
 #[given(expr = "a verb whose if dash holds two conditions")]
 fn two_conditions_under_one_dash(world: &mut World) {
-    let pack = temp_pack("rules-two");
+    let pack = copy_docks("rules-two");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -609,7 +609,7 @@ fn check_reports_two_conditions(world: &mut World) {
 
 #[given(expr = "steady costs 5 grit and the sitter has 1")]
 fn steady_costs_five_grit(world: &mut World) {
-    let pack = temp_pack("rules-cost");
+    let pack = copy_docks("rules-cost");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -617,7 +617,7 @@ fn steady_costs_five_grit(world: &mut World) {
     when:
       verb: steady
     cost:
-      meter:
+      meters:
         grit: 5
     do: []
 "#,
@@ -651,9 +651,9 @@ fn the_sitter_plays_steady(world: &mut World) {
 fn the_refusal_is_cant_afford(world: &mut World) {
     assert_eq!(
         world.scratch,
-        format!("{} grit", Reason::CantAfford.token())
+        format!("{} grit", Reason::CantAfford.as_str())
     );
-    let now = now_of(world.pack.as_ref().unwrap());
+    let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
 }
@@ -662,7 +662,7 @@ fn the_refusal_is_cant_afford(world: &mut World) {
     expr = "a habit cast:mira\\/leave_door_note and a place rule place:docks_street\\/travel while the PC stays in the shop"
 )]
 fn a_far_place_rule_while_the_pc_stays(world: &mut World) {
-    let pack = temp_pack("rules-full-id");
+    let pack = copy_docks("rules-full-id");
     insert_before_fence(
         &pack.join("world/places/docks_street.md"),
         "\
@@ -679,7 +679,7 @@ rules:
 ",
     );
     edit_save(&pack, |_| {});
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     world.pack = Some(pack);
 }
@@ -706,11 +706,11 @@ fn both_full_ids_are_refused(world: &mut World) {
         world.scratch,
         format!(
             "{} {}",
-            Reason::NotInSpec.token(),
-            Reason::NotInSpec.token()
+            Reason::NotInSpec.as_str(),
+            Reason::NotInSpec.as_str()
         )
     );
-    let now = now_of(world.pack.as_ref().unwrap());
+    let now = state_of(world.pack.as_ref().unwrap());
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(rowan.place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
@@ -729,14 +729,14 @@ fn both_full_ids_are_refused(world: &mut World) {
 
 #[given(expr = "use on tonic targets an actor and the shared use takes no target")]
 fn use_on_tonic_names_the_next_token(world: &mut World) {
-    let pack = temp_pack("rules-owned");
+    let pack = copy_docks("rules-owned");
     write(
         &pack.join("world/items/tonic.md"),
         "\
 ---
 schema: item
 id: tonic
-name: Tonic
+display_name: Tonic
 tags: []
 rules:
   - id: use
@@ -785,7 +785,7 @@ fn the_sitter_lines_up_use_tonic(world: &mut World) {
 #[then(expr = "the queued target is that actor and the save is unchanged")]
 fn the_queued_target_is_that_actor(world: &mut World) {
     assert_eq!(world.scratch, "Actor(\"tonic\") use");
-    let now = now_of(world.pack.as_ref().unwrap());
+    let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
@@ -793,7 +793,7 @@ fn the_queued_target_is_that_actor(world: &mut World) {
 
 #[given(expr = "a verb with a time cost and a resist roll")]
 fn a_verb_with_time_and_resist(world: &mut World) {
-    let pack = temp_pack("rules-unused");
+    let pack = copy_docks("rules-unused");
     append(
         &pack.join("rules/verbs.yaml"),
         r#"
@@ -862,7 +862,7 @@ const SAME_AFTER_ROLL: &str = "
 
 #[given(expr = "a verb whose only resist is same")]
 fn a_verb_whose_only_resist_is_same(world: &mut World) {
-    let pack = temp_pack("rules-bare-same");
+    let pack = copy_docks("rules-bare-same");
     append(&pack.join("rules/verbs.yaml"), BARE_SAME);
     edit_save(&pack, |_| {});
     world.pack = Some(pack);
@@ -882,7 +882,7 @@ fn check_reports_bare_resist_same(world: &mut World) {
 
 #[given(expr = "a verb whose resist same follows a roll")]
 fn a_verb_whose_resist_same_follows_a_roll(world: &mut World) {
-    let pack = temp_pack("rules-same-after");
+    let pack = copy_docks("rules-same-after");
     append(&pack.join("rules/verbs.yaml"), SAME_AFTER_ROLL);
     edit_save(&pack, |_| {});
     world.pack = Some(pack);
@@ -916,7 +916,7 @@ pub(super) fn open_pack(pack: &Path) -> spookery_engine::World {
     spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| {
         panic!(
             "open {}: {}",
-            err.token(),
+            err.as_str(),
             spookery_engine::check_pack(pack)
                 .iter()
                 .map(|diag| diag.to_string())

@@ -23,10 +23,10 @@ meters:
     min: 0
     base_cap: 100
     max: 110
-    start: 1
+    base: 1
 ```
 
-`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `start` is the base a new actor stores. Current is base plus offset, and it is not a field in the save.
+`min` is the floor, `base_cap` is the trained cap, and `max` is as high as current can go. `base` is the base a new actor stores. Current is base plus offset, and it is not a field in the save.
 
 `rules/checks.yaml` rolls that meter:
 
@@ -37,10 +37,10 @@ checks:
     dice:
       count: 2
       sides: 6
-    stat: nerve
+    meter: nerve
 ```
 
-`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or failure list. `travel` follows an exit of the current place: `travel lane` uses the exit named `lane`. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
+`rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or miss list. `travel` follows an exit of the current place: `travel lane` uses the exit named `lane`. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
 
 `rules/budget.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
 

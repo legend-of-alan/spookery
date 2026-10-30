@@ -2,9 +2,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::canon::source::{At, Problem, Source};
-use crate::canon::{Canon, CastCanon, FactCanon, ItemCanon, PlaceCanon};
-use crate::diagnostic::{coded, schema as schema_error, warning, Diagnostic};
+use crate::canon::source::{FileText, Locator, Problem};
+use crate::canon::{Canon, CastDef, FactDef, ItemDef, PlaceDef};
+use crate::diagnostic::{error, schema_error, warning, Diagnostic};
 use crate::error::Reason;
 use crate::meter::MeterDef;
 use crate::rule::{
@@ -12,13 +12,13 @@ use crate::rule::{
     RuleTable, When, Who,
 };
 use crate::rules::expr::Expr;
-use crate::rules::roll::CheckDef;
+use crate::rules::roll::Check;
 
 /// Exits whose `to` is not a place, and facts or items an exit names but the pack does not.
 pub(super) fn broken_exits(
-    places: &BTreeMap<String, PlaceCanon>,
-    facts: &BTreeMap<String, FactCanon>,
-    items: &BTreeMap<String, ItemCanon>,
+    places: &BTreeMap<String, PlaceDef>,
+    facts: &BTreeMap<String, FactDef>,
+    items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for place in places.values() {
@@ -33,7 +33,7 @@ pub(super) fn broken_exits(
                         ),
                         "set to: to a place id",
                     )
-                    .with_path(format!("exits[{}].to", exit.index)),
+                    .at_path(format!("exits[{}].to", exit.index)),
                 );
             }
             if exit.hidden && exit.revealed_by.is_none() {
@@ -43,7 +43,7 @@ pub(super) fn broken_exits(
                         &format!("hidden exit '{}' has no revealed_by fact", exit.name),
                         "set revealed_by to a fact id",
                     )
-                    .with_path(format!("exits[{}].revealed_by", exit.index)),
+                    .at_path(format!("exits[{}].revealed_by", exit.index)),
                 );
             }
             if let Some(fact) = &exit.revealed_by {
@@ -54,7 +54,7 @@ pub(super) fn broken_exits(
                             &format!("exit '{}' reveals '{fact}', which is not a fact", exit.name),
                             "use a fact id from this pack",
                         )
-                        .with_path(format!("exits[{}].revealed_by", exit.index)),
+                        .at_path(format!("exits[{}].revealed_by", exit.index)),
                     );
                 }
             }
@@ -65,7 +65,7 @@ pub(super) fn broken_exits(
                 }
             }
             for cond in &exit.if_ {
-                exit_cond_items(cond, &mut named);
+                push_exit_cond_items(cond, &mut named);
             }
             named.sort();
             named.dedup();
@@ -77,7 +77,7 @@ pub(super) fn broken_exits(
                             &format!("exit '{}' names unknown item '{id}'", exit.name),
                             &format!("add world/items/{id}.md"),
                         )
-                        .with_path(format!("exits[{}]", exit.index)),
+                        .at_path(format!("exits[{}]", exit.index)),
                     );
                 }
             }
@@ -86,28 +86,28 @@ pub(super) fn broken_exits(
     diags
 }
 
-fn exit_cond_items(cond: &Cond, ids: &mut Vec<String>) {
+fn push_exit_cond_items(cond: &Cond, ids: &mut Vec<String>) {
     match cond {
         Cond::HasItem { id, .. } if id != "target" => ids.push(id.clone()),
         Cond::All(inner) | Cond::Any(inner) => {
             for cond in inner {
-                exit_cond_items(cond, ids);
+                push_exit_cond_items(cond, ids);
             }
         }
-        Cond::Not(inner) => exit_cond_items(inner, ids),
+        Cond::Not(inner) => push_exit_cond_items(inner, ids),
         _ => {}
     }
 }
 
 pub(super) fn unknown_rule_items(
     rules: &RuleTable,
-    items: &BTreeMap<String, ItemCanon>,
+    items: &BTreeMap<String, ItemDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let mut ids = Vec::new();
         for cond in &rule.if_ {
-            cond_items(cond, &mut ids);
+            push_cond_items(cond, &mut ids);
         }
         if let Some(cost) = &rule.cost {
             for (id, _) in &cost.items {
@@ -116,7 +116,7 @@ pub(super) fn unknown_rule_items(
                 }
             }
         }
-        rule.visit_effects(|effect| match effect {
+        rule.visit_templates(|effect| match effect {
             EffectTemplate::Item { id, .. } | EffectTemplate::Wield { id, .. }
                 if id != "target" =>
             {
@@ -146,10 +146,10 @@ pub(super) fn unknown_item(file: &str, id: &str, path: &str) -> Diagnostic {
         &format!("unknown item '{id}'"),
         &format!("add world/items/{id}.md"),
     )
-    .with_path(path)
+    .at_path(path)
 }
 
-fn cond_items(cond: &Cond, ids: &mut Vec<String>) {
+fn push_cond_items(cond: &Cond, ids: &mut Vec<String>) {
     match cond {
         Cond::HasItem { id, .. } | Cond::Wielding { id, .. } => {
             if id != "target" {
@@ -158,15 +158,15 @@ fn cond_items(cond: &Cond, ids: &mut Vec<String>) {
         }
         Cond::All(inner) | Cond::Any(inner) => {
             for cond in inner {
-                cond_items(cond, ids);
+                push_cond_items(cond, ids);
             }
         }
-        Cond::Not(inner) => cond_items(inner, ids),
+        Cond::Not(inner) => push_cond_items(inner, ids),
         _ => {}
     }
 }
 
-pub(super) fn find_bare_resist(rules: &RuleTable) -> Vec<Diagnostic> {
+pub(super) fn resist_same_without_roll(rules: &RuleTable) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
         let after_do = scan_resist(&rule.do_, false, rule, &mut diags);
@@ -195,7 +195,7 @@ fn scan_resist(
                         ),
                         "put a resist roll before it, or name the check on this effect",
                     )
-                    .with_path(format!("rules[{}]", rule.index)),
+                    .at_path(format!("rules[{}]", rule.index)),
                 );
             }
             Some(ResistSpec::Roll { resisted, .. }) => {
@@ -210,11 +210,11 @@ fn scan_resist(
 
 pub(super) fn reveal_problems(
     rules: &RuleTable,
-    facts: &BTreeMap<String, FactCanon>,
+    facts: &BTreeMap<String, FactDef>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
-        rule.visit_effects(|effect| {
+        rule.visit_templates(|effect| {
             let EffectTemplate::Reveal { who, fact } = effect else {
                 return;
             };
@@ -225,7 +225,7 @@ pub(super) fn reveal_problems(
                         &format!("rule '{}' reveals to the world", rule.local_id),
                         "name the actor who learns the fact",
                     )
-                    .with_path(format!("rules[{}]", rule.index)),
+                    .at_path(format!("rules[{}]", rule.index)),
                 );
             }
             if !facts.contains_key(fact) {
@@ -238,7 +238,7 @@ pub(super) fn reveal_problems(
                         ),
                         "name a fact from this pack",
                     )
-                    .with_path(format!("rules[{}]", rule.index)),
+                    .at_path(format!("rules[{}]", rule.index)),
                 );
             }
         });
@@ -248,7 +248,7 @@ pub(super) fn reveal_problems(
 
 pub(super) fn unknown_checks(
     rules: &RuleTable,
-    checks: &BTreeMap<String, CheckDef>,
+    checks: &BTreeMap<String, Check>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in rules.iter() {
@@ -265,19 +265,19 @@ pub(super) fn unknown_checks(
                 ),
                 "add the check or name one that exists",
             )
-            .with_path(format!("rules[{}].roll.check", rule.index)),
+            .at_path(format!("rules[{}].roll.check", rule.index)),
         );
     }
     diags
 }
 
-pub(super) fn unknown_exprs(
+pub(super) fn unknown_reads(
     meters: &BTreeMap<String, MeterDef>,
-    cast: &BTreeMap<String, CastCanon>,
-    places: &BTreeMap<String, PlaceCanon>,
+    cast: &BTreeMap<String, CastDef>,
+    places: &BTreeMap<String, PlaceDef>,
     rules: &RuleTable,
 ) -> Vec<Diagnostic> {
-    let known = Known {
+    let known = ExprScope {
         meters,
         cast,
         places,
@@ -287,7 +287,7 @@ pub(super) fn unknown_exprs(
         let mut exprs = Vec::new();
         push_rule_exprs(rule, &mut exprs);
         let path = format!("rules[{}]", rule.index);
-        known.check(&Source::named(&rule.file), &path, &exprs, &mut diags);
+        known.push_unknown_reads(&FileText::named(&rule.file), &path, &exprs, &mut diags);
     }
     for place in places.values() {
         for exit in &place.exits {
@@ -297,34 +297,40 @@ pub(super) fn unknown_exprs(
                 push_cond(cond, &mut exprs);
             }
             let path = format!("exits[{}]", exit.index);
-            known.check(&Source::named(&exit.file), &path, &exprs, &mut diags);
+            known.push_unknown_reads(&FileText::named(&exit.file), &path, &exprs, &mut diags);
         }
     }
     diags
 }
 
 /// What an expression may read: the pack's meters, and the cast and places it may name.
-struct Known<'a> {
+struct ExprScope<'a> {
     meters: &'a BTreeMap<String, MeterDef>,
-    cast: &'a BTreeMap<String, CastCanon>,
-    places: &'a BTreeMap<String, PlaceCanon>,
+    cast: &'a BTreeMap<String, CastDef>,
+    places: &'a BTreeMap<String, PlaceDef>,
 }
 
-impl Known<'_> {
+impl ExprScope<'_> {
     /// The unknown reads in `exprs`, at `path` in `source` and at each read's spot.
-    fn check(&self, source: &Source, path: &str, exprs: &[&Expr], diags: &mut Vec<Diagnostic>) {
+    fn push_unknown_reads(
+        &self,
+        source: &FileText,
+        path: &str,
+        exprs: &[&Expr],
+        diags: &mut Vec<Diagnostic>,
+    ) {
         for expr in exprs {
             for (who, key, spot) in expr.meter_reads() {
-                let at = At::Spot(spot);
+                let at = Locator::Spot(spot);
                 let refuse = |problem, hint| {
                     Problem {
                         source,
                         path,
                         at,
-                        problem,
+                        message: problem,
                         hint,
                     }
-                    .schema()
+                    .into_diagnostic()
                 };
                 if matches!(who, Who::World) {
                     diags.push(refuse(
@@ -354,8 +360,8 @@ impl Known<'_> {
 
 fn unknown_who(
     who: &Who,
-    cast: &BTreeMap<String, CastCanon>,
-    places: &BTreeMap<String, PlaceCanon>,
+    cast: &BTreeMap<String, CastDef>,
+    places: &BTreeMap<String, PlaceDef>,
 ) -> Option<String> {
     match who {
         Who::Self_ | Who::Target | Who::Here | Who::World => None,
@@ -379,7 +385,7 @@ fn push_rule_exprs<'a>(rule: &'a Rule, exprs: &mut Vec<&'a Expr>) {
     for cond in &rule.if_ {
         push_cond(cond, exprs);
     }
-    rule.visit_effects(|effect| {
+    rule.visit_templates(|effect| {
         if let EffectTemplate::Meter { add, set, .. } = effect {
             if let Some(expr) = add {
                 exprs.push(expr);
@@ -415,7 +421,7 @@ fn push_cond<'a>(cond: &'a Cond, exprs: &mut Vec<&'a Expr>) {
 
 pub(super) fn unknown_meters(
     meters: &BTreeMap<String, MeterDef>,
-    checks: &BTreeMap<String, CheckDef>,
+    checks: &BTreeMap<String, Check>,
     rules: &RuleTable,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
@@ -427,16 +433,16 @@ pub(super) fn unknown_meters(
             schema_error(
                 "rules/checks.yaml",
                 &format!(
-                    "check '{id}' uses stat '{}', which is not in rules/meters.yaml",
+                    "check '{id}' uses meter '{}', which is not in rules/meters.yaml",
                     check.stat
                 ),
                 "add the meter or name one that exists",
             )
-            .with_path(format!("checks.{id}.stat")),
+            .at_path(format!("checks.{id}.meter")),
         );
     }
     for rule in rules.iter() {
-        for effect in rule.top_effects() {
+        for effect in rule.top_templates() {
             let EffectTemplate::Meter { key, .. } = effect else {
                 continue;
             };
@@ -452,7 +458,7 @@ pub(super) fn unknown_meters(
                     ),
                     "add the meter or name one that exists",
                 )
-                .with_path(format!("rules[{}].do", rule.index)),
+                .at_path(format!("rules[{}].do", rule.index)),
             );
         }
     }
@@ -460,8 +466,8 @@ pub(super) fn unknown_meters(
 }
 
 /// Static warnings and trigger-reach errors on a loaded `Canon`.
-pub(crate) fn check_canon(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnostic> {
-    let mut diags = unreachable(canon);
+pub(crate) fn check_canon(canon: &Canon, now: Option<&crate::model::State>) -> Vec<Diagnostic> {
+    let mut diags = unreachable_places(canon);
     diags.extend(teleport_in_verbs(canon));
     diags.extend(trigger_cycles(canon));
     diags.extend(trigger_leaks(canon, now));
@@ -469,7 +475,7 @@ pub(crate) fn check_canon(canon: &Canon, now: Option<&crate::model::Now>) -> Vec
 }
 
 /// Places no exit path reaches from the start, including hidden and locked exits.
-fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
+fn unreachable_places(canon: &Canon) -> Vec<Diagnostic> {
     let mut seen = BTreeSet::new();
     let mut queue = vec![canon.start_place.clone()];
     while let Some(place) = queue.pop() {
@@ -493,7 +499,7 @@ fn unreachable(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("place '{id}' has no path from {}", canon.start_place),
                 "add an exit that reaches it",
             )
-            .with_path(id.clone()),
+            .at_path(id.clone()),
         );
     }
     diags
@@ -507,7 +513,7 @@ fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
         .filter(|rule| {
             rule.owner == Owner::Verb
                 && rule
-                    .top_effects()
+                    .top_templates()
                     .any(|effect| matches!(effect, EffectTemplate::Location { teleport: true, .. }))
         })
         .map(|rule| {
@@ -516,7 +522,7 @@ fn teleport_in_verbs(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("verb '{}' teleports", rule.local_id),
                 "teleport belongs on an author rule, not in verbs.yaml",
             )
-            .with_path(format!("rules[{}]", rule.index))
+            .at_path(format!("rules[{}]", rule.index))
         })
         .collect()
 }
@@ -528,11 +534,11 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
         .iter()
         .filter(|rule| matches!(rule.when, When::Change(_)))
         .collect();
-    let written: Vec<Vec<Mark>> = rules
+    let written: Vec<Vec<Change>> = rules
         .iter()
         .map(|rule| {
             let mut marks = Vec::new();
-            rule.visit_effects(|effect| marks_of(effect, &mut marks));
+            rule.visit_templates(|effect| push_changes(effect, &mut marks));
             marks
         })
         .collect();
@@ -562,13 +568,13 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
                 &format!("rule '{}' is in a trigger cycle", rule.local_id),
                 "stop one rule in the cycle from setting the next watched value",
             )
-            .with_path(format!("rules[{}]", rule.index))
+            .at_path(format!("rules[{}]", rule.index))
         })
         .collect()
 }
 
 /// Narrate and note on a change rule that can reach a viewer who cannot see the change.
-fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnostic> {
+fn trigger_leaks(canon: &Canon, now: Option<&crate::model::State>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for rule in canon.rules.iter() {
         let When::Change(watch) = &rule.when else {
@@ -576,8 +582,8 @@ fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnost
         };
         let sight = sight_of(canon, now, watch);
         let mut leak = false;
-        rule.visit_effects(|effect| {
-            if reach_of(effect).is_some_and(|reach| too_wide(&sight, &reach)) {
+        rule.visit_templates(|effect| {
+            if reach_of(effect).is_some_and(|reach| is_too_wide(&sight, &reach)) {
                 leak = true;
             }
         });
@@ -585,7 +591,7 @@ fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnost
             continue;
         }
         diags.push(
-            coded(
+            error(
                 &rule.file,
                 Reason::TriggerLeak,
                 &format!(
@@ -594,14 +600,14 @@ fn trigger_leaks(canon: &Canon, now: Option<&crate::model::Now>) -> Vec<Diagnost
                 ),
                 "address that output to self, or to here when the room can see the change",
             )
-            .with_path(format!("rules[{}]", rule.index)),
+            .at_path(format!("rules[{}]", rule.index)),
         );
     }
     diags
 }
 
 #[derive(Clone)]
-enum Mark {
+enum Change {
     Flag { key: String, value: bool },
     Meter(String),
     Item { id: String, gained: bool },
@@ -614,7 +620,7 @@ enum Reach {
     Subject,
     Room,
     Named(Vec<String>),
-    Wider,
+    Place,
 }
 
 enum Sight {
@@ -624,72 +630,72 @@ enum Sight {
     Everyone,
 }
 
-fn marks_of(effect: &EffectTemplate, out: &mut Vec<Mark>) {
+fn push_changes(effect: &EffectTemplate, out: &mut Vec<Change>) {
     match effect {
         EffectTemplate::Flag { key, value, .. } => {
-            out.push(Mark::Flag {
+            out.push(Change::Flag {
                 key: key.clone(),
                 value: *value,
             });
         }
-        EffectTemplate::Meter { key, .. } => out.push(Mark::Meter(key.clone())),
+        EffectTemplate::Meter { key, .. } => out.push(Change::Meter(key.clone())),
         EffectTemplate::Item { id, add, .. } => {
             if *add > 0 {
-                out.push(Mark::Item {
+                out.push(Change::Item {
                     id: id.clone(),
                     gained: true,
                 });
             } else if *add < 0 {
-                out.push(Mark::Item {
+                out.push(Change::Item {
                     id: id.clone(),
                     gained: false,
                 });
             }
         }
         EffectTemplate::Clock { id, add, .. } if add.is_some() => {
-            out.push(Mark::Clock(id.clone()));
+            out.push(Change::Clock(id.clone()));
         }
         EffectTemplate::Location {
             to: LocationTo::Place(id),
             ..
-        } => out.push(Mark::Arrive(id.clone())),
-        EffectTemplate::Reveal { fact, .. } => out.push(Mark::Knows(fact.clone())),
+        } => out.push(Change::Arrive(id.clone())),
+        EffectTemplate::Reveal { fact, .. } => out.push(Change::Knows(fact.clone())),
         EffectTemplate::Memory { fact_ids, .. } => {
             for fact in fact_ids {
-                out.push(Mark::Knows(fact.clone()));
+                out.push(Change::Knows(fact.clone()));
             }
         }
         _ => {}
     }
 }
 
-fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Mark) -> bool {
+fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Change) -> bool {
     match (watch, mark) {
         (
             ChangeWatch::Flag { key, becomes },
-            Mark::Flag {
+            Change::Flag {
                 key: written,
                 value,
             },
         ) => key == written && becomes == value,
-        (ChangeWatch::Meter { key, .. }, Mark::Meter(written)) => key == written,
+        (ChangeWatch::Meter { key, .. }, Change::Meter(written)) => key == written,
         (
             ChangeWatch::Item { id, gained },
-            Mark::Item {
+            Change::Item {
                 id: written,
                 gained: up,
             },
         ) => id == written && gained == up,
-        (ChangeWatch::Clock { id }, Mark::Clock(written)) => id == written,
-        (ChangeWatch::Arrive { place, .. }, Mark::Arrive(dest)) => {
+        (ChangeWatch::Clock { id }, Change::Clock(written)) => id == written,
+        (ChangeWatch::Arrive { place, .. }, Change::Arrive(dest)) => {
             rule.watched_place(place) == dest
         }
-        (ChangeWatch::Knows { fact }, Mark::Knows(written)) => fact == written,
+        (ChangeWatch::Knows { fact }, Change::Knows(written)) => fact == written,
         _ => false,
     }
 }
 
-fn sight_of(canon: &Canon, now: Option<&crate::model::Now>, watch: &ChangeWatch) -> Sight {
+fn sight_of(canon: &Canon, now: Option<&crate::model::State>, watch: &ChangeWatch) -> Sight {
     match watch {
         ChangeWatch::Knows { .. } => Sight::Subject,
         ChangeWatch::Clock { id } => Sight::Owners(
@@ -710,7 +716,7 @@ fn flag_is_public(canon: &Canon, key: &str) -> bool {
     let mut world = false;
     let mut actor = false;
     for rule in canon.rules.iter() {
-        rule.visit_effects(|effect| {
+        rule.visit_templates(|effect| {
             if let EffectTemplate::Flag { who, key: flag, .. } = effect {
                 if flag == key {
                     if matches!(who, Who::World) {
@@ -734,7 +740,7 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
         }),
         EffectTemplate::Note { to, place, .. } => {
             if place.is_some() {
-                Some(Reach::Wider)
+                Some(Reach::Place)
             } else {
                 Some(Reach::Named(to.clone()))
             }
@@ -743,7 +749,7 @@ fn reach_of(effect: &EffectTemplate) -> Option<Reach> {
     }
 }
 
-fn too_wide(sight: &Sight, reach: &Reach) -> bool {
+fn is_too_wide(sight: &Sight, reach: &Reach) -> bool {
     match sight {
         Sight::Everyone => false,
         Sight::Subject => !matches!(reach, Reach::Subject),
@@ -751,7 +757,7 @@ fn too_wide(sight: &Sight, reach: &Reach) -> bool {
         Sight::Owners(owners) => match reach {
             Reach::Subject => false,
             Reach::Named(ids) => ids.iter().any(|id| !owners.iter().any(|owner| owner == id)),
-            Reach::Room | Reach::Wider => true,
+            Reach::Room | Reach::Place => true,
         },
     }
 }

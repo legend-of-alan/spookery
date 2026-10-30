@@ -95,7 +95,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
     when:
       verb: push
     cost:
-      meter:
+      meters:
         grit: 1
     do: []
 
@@ -103,7 +103,7 @@ fn push_and_shove_cost_grit(world: &mut World) {
     when:
       verb: shove
     cost:
-      meter:
+      meters:
         grit: 1
     do: []
 ",
@@ -248,7 +248,7 @@ rules:
   - id: heave
     when: habit
     cost:
-      meter:
+      meters:
         grit: 1
     do:
       - flag:
@@ -314,7 +314,7 @@ fn add_grit(pack: &Path) {
     min: 0
     base_cap: 5
     max: 5
-    start: 1
+    base: 1
 ",
     );
 }

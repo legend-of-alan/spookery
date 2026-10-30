@@ -4,7 +4,7 @@ use std::net::{SocketAddr, TcpStream};
 
 use cucumber::{then, when};
 
-use crate::support::{self, temp_pack};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 use super::table;
@@ -58,7 +58,7 @@ fn the_player_receives_a_perceive_line(world: &mut World) {
 #[when(expr = "two tables listen on port 0 at the same time")]
 fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let first = table::pack(world).to_path_buf();
-    let second = temp_pack("ports-other");
+    let second = copy_docks("ports-other");
     world.scratch = second.to_string_lossy().into_owned();
     let started_first = table::spawn_table(&first, &["--addr", "127.0.0.1:0"], &[]);
     let started_second = table::spawn_table(&second, &["--addr", "127.0.0.1:0"], &[]);

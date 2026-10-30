@@ -16,9 +16,9 @@
 
 use crate::draft::Draft;
 use crate::effect::{Effect, EffectKind};
-use crate::intent::{Intent, IntentArgs, Source, Target, ViewerId};
-use crate::model::Now;
-use crate::testing::temp_pack;
+use crate::intent::{Intent, IntentArgs, Source, Target, Viewer};
+use crate::model::State;
+use crate::testing::copy_docks;
 use crate::world::World;
 
 use super::play::TempPack;
@@ -45,10 +45,10 @@ struct ItemChange {
 
 #[test]
 fn random_item_changes_never_leave_a_negative_count() {
-    let pack = TempPack(temp_pack("inventory"));
+    let pack = TempPack(copy_docks("inventory"));
     let world = World::open(&pack.0).expect("docks pack opens");
-    let actors: Vec<String> = world.now().actors.keys().cloned().collect();
-    let places: Vec<String> = world.now().places.keys().cloned().collect();
+    let actors: Vec<String> = world.state().actors.keys().cloned().collect();
+    let places: Vec<String> = world.state().places.keys().cloned().collect();
     assert!(
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
@@ -74,23 +74,23 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
     let mut draft = Draft::begin(world, &nobody);
     let intent = npc_intent();
     for step in steps {
-        let before = draft.now().clone();
-        let known = holder_known(draft.now(), &step.holder);
-        let held = count_of(draft.now(), &step.holder, &step.id);
+        let before = draft.state().clone();
+        let known = holder_known(draft.state(), &step.holder);
+        let held = count_of(draft.state(), &step.holder, &step.id);
         let outcome = item_effect(step).apply(&mut draft, &intent);
-        assert_no_stored_zero(draft.now())?;
+        assert_no_stored_zero(draft.state())?;
         if !known {
             if outcome.is_ok() {
                 return fail("an unknown holder accepted an item effect");
             }
-            assert_same_save(draft.now(), &before)?;
+            assert_same_save(draft.state(), &before)?;
             continue;
         }
         if outcome.is_err() {
-            assert_same_save(draft.now(), &before)?;
+            assert_same_save(draft.state(), &before)?;
             continue;
         }
-        let got = count_of(draft.now(), &step.holder, &step.id);
+        let got = count_of(draft.state(), &step.holder, &step.id);
         if takes_more_than_held(held, step.delta) {
             return fail(format!(
                 "taking {} from {held} of {} was accepted and the count is {got}",
@@ -113,7 +113,7 @@ fn fail(message: impl Into<String>) -> Result<(), TestCaseError> {
     Err(TestCaseError::fail(message.into()))
 }
 
-fn assert_same_save(now: &Now, before: &Now) -> Result<(), TestCaseError> {
+fn assert_same_save(now: &State, before: &State) -> Result<(), TestCaseError> {
     if now == before {
         Ok(())
     } else {
@@ -122,7 +122,7 @@ fn assert_same_save(now: &Now, before: &Now) -> Result<(), TestCaseError> {
 }
 
 /// A stored count is a `u32`, so it cannot be negative. A count of 0 is omitted.
-fn assert_no_stored_zero(now: &Now) -> Result<(), TestCaseError> {
+fn assert_no_stored_zero(now: &State) -> Result<(), TestCaseError> {
     for (actor_id, actor) in &now.actors {
         for (item_id, count) in actor.inventory() {
             if *count == 0 {
@@ -140,19 +140,19 @@ fn assert_no_stored_zero(now: &Now) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn holder_known(now: &Now, holder: &Holder) -> bool {
+fn holder_known(now: &State, holder: &Holder) -> bool {
     match holder {
         Holder::Actor(id) => now.actors.contains_key(id),
         Holder::Place(id) => now.places.contains_key(id),
     }
 }
 
-fn count_of(now: &Now, holder: &Holder, id: &str) -> u32 {
+fn count_of(now: &State, holder: &Holder, id: &str) -> u32 {
     match holder {
         Holder::Actor(actor_id) => now
             .actors
             .get(actor_id)
-            .map(|actor| actor.count(id))
+            .map(|actor| actor.item_count(id))
             .unwrap_or(0),
         Holder::Place(place_id) => now
             .places
@@ -174,7 +174,7 @@ fn npc_intent() -> Intent {
     Intent {
         id: "shift-item".to_string(),
         round_index: 0,
-        actor: ViewerId::Npc("mira".to_string()),
+        actor: Viewer::Npc("mira".to_string()),
         source: Source::Kernel,
         move_name: "shift_item".to_string(),
         target: Target::Empty,
@@ -196,7 +196,7 @@ fn item_effect(step: &ItemChange) -> Effect {
             delta: step.delta,
             max: step.max,
         },
-        as_viewer: ViewerId::Npc("mira".to_string()),
+        viewer: Viewer::Npc("mira".to_string()),
         intent_id: "shift-item".to_string(),
     }
 }

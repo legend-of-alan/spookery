@@ -4,14 +4,14 @@ use std::path::Path;
 use cucumber::{given, then, when};
 use spookery_engine::Reason;
 
-use crate::support::{insert_nell, read_round, stamp_pack_rev, temp_pack};
+use crate::support::{copy_docks, insert_nell, read_round, stamp_pack_rev};
 use crate::World;
 
 use super::table;
 
 #[given(expr = "a docks table where mark needs a knife")]
 fn mark_needs_a_knife(world: &mut World) {
-    let pack = temp_pack("item");
+    let pack = copy_docks("item");
     add_knife_row(&pack);
     insert_nell(&pack);
     stamp_pack_rev(&pack);
@@ -100,12 +100,12 @@ fn add_knife_row(pack: &Path) {
     fs::create_dir_all(item.parent().unwrap()).unwrap();
     fs::write(
         &item,
-        "---\nschema: item\nid: knife\nname: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
+        "---\nschema: item\nid: knife\ndisplay_name: Knife\ntags: []\nrules: []\n---\n\nA knife.\n",
     )
     .unwrap();
     let mut moves = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     moves.push_str(
-        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    failure:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
+        "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    if:\n      - has_item:\n          who: self\n          id: knife\n    roll:\n      check: grit\n      target: 0\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
     );
     fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
 }

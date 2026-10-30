@@ -78,7 +78,7 @@ These are the host options and the commands that touch a save.
 
 While `spook run` serves a pack, `round` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
 
-If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [SESSION_FULL]`.
+If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [TABLE_FULL]`.
 
 `spook` builds with both the `server` and `client` features by default. To build just one, pass `--no-default-features --features server` or `--no-default-features --features client`.
 

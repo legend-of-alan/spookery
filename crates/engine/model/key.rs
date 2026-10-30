@@ -74,7 +74,7 @@ pub enum StateValue {
     Empty,
     Text(String),
     Number(i64),
-    Mark(bool),
+    Bool(bool),
     List(Vec<String>),
 }
 
@@ -93,22 +93,22 @@ impl StateValue {
         }
     }
 
-    pub(crate) fn as_mark(&self) -> Option<bool> {
+    pub(crate) fn as_bool(&self) -> Option<bool> {
         match self {
-            StateValue::Mark(mark) => Some(*mark),
+            StateValue::Bool(mark) => Some(*mark),
             _ => None,
         }
     }
 
     /// Whether this is a list that holds `id`.
-    pub(crate) fn lists(&self, id: &str) -> bool {
+    pub(crate) fn contains(&self, id: &str) -> bool {
         matches!(self, StateValue::List(ids) if ids.iter().any(|listed| listed == id))
     }
 }
 
 /// A key that changed, with the value before the change and the value after it.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ChangeRecord {
+pub struct Change {
     pub key: StateKey,
     pub before: StateValue,
     pub after: StateValue,

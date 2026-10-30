@@ -18,7 +18,7 @@ use spookery::ai::{
 };
 use spookery::gm_connection::GmConnection;
 
-use crate::support::{self, temp_pack};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 use super::table;
@@ -183,7 +183,7 @@ fn the_scripted_host_plays_the_turn_checks(world: &mut World) {
 
 #[when(expr = "play and host and a stub run a speech turn and a travel turn")]
 fn play_and_host_and_a_stub(world: &mut World) {
-    let pack = temp_pack("host-stub");
+    let pack = copy_docks("host-stub");
     let aldric = pack.join("cast/aldric.md");
     let mut body = fs::read_to_string(&aldric).unwrap();
     body.push_str("\nCASTBODYONLY-FIXTURE\n");
@@ -345,7 +345,7 @@ fn epilogue_does_not_play_another_round(world: &mut World) {
 }
 
 fn sit_commits_the_waiting_queue(world: &mut World) {
-    let pack = temp_pack("host-sit");
+    let pack = copy_docks("host-sit");
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_player(world, &pack);
@@ -378,7 +378,7 @@ fn with_host(
     label: &str,
     body: impl FnOnce(&mut World, &Path, u16, &ScriptedModel, &TurnWatch),
 ) {
-    let pack = temp_pack(label);
+    let pack = copy_docks(label);
     table::listen(world, &pack);
     let port = table::live_mut(world).port;
     let model = ScriptedModel::new();
@@ -446,7 +446,7 @@ fn world_time(pack: &Path) -> u64 {
     let report = spookery_engine::testing::replay_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     let text = std::str::from_utf8(&report.now_yaml).unwrap();
-    spookery_engine::load_save(text).unwrap().world_time
+    spookery_engine::parse_save(text).unwrap().world_time
 }
 
 fn tape_text(pack: &Path) -> String {
@@ -641,7 +641,7 @@ fn status_turn(world: &mut World, label: &str, replies: Vec<(u16, String)>) {
 }
 
 fn queued_travel(world: &mut World, label: &str) -> (std::path::PathBuf, u64) {
-    let pack = temp_pack(label);
+    let pack = copy_docks(label);
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_player(world, &pack);
@@ -749,7 +749,7 @@ fn wait_time(pack: &Path, expected: u64, bound: Duration) -> bool {
     while start.elapsed() < bound {
         if let Ok(report) = spookery_engine::testing::replay_journal(pack, None, None) {
             if let Ok(text) = std::str::from_utf8(&report.now_yaml) {
-                if let Ok(now) = spookery_engine::load_save(text) {
+                if let Ok(now) = spookery_engine::parse_save(text) {
                     if now.world_time == expected {
                         return true;
                     }

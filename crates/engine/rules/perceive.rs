@@ -4,20 +4,20 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::error::Reason;
-use crate::intent::ViewerId;
-use crate::map::ExitView;
+use crate::intent::Viewer;
 use crate::meter;
-use crate::model::{Message, Now, Presence};
-use crate::rules::habits::habits_on;
-use crate::visibility::allows;
+use crate::model::{Message, Presence, State};
+use crate::rules::habits::habits_that_hold;
+use crate::travel::ExitView;
+use crate::visibility::can_see_fact;
 use crate::world::World;
 pub use spookery_protocol::{ClockView, ItemStack, KnownFact, MeterView};
 
-const BUDGET_TOKENS: usize = 800;
+const MAX_BODY_CHARS: usize = 800;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct View {
-    pub viewer: ViewerId,
+    pub viewer: Viewer,
     pub place: String,
     pub place_name: String,
     pub prose: String,
@@ -36,7 +36,7 @@ pub struct View {
 }
 
 pub fn perceive<L>(world: &World<L>, presence: &Presence, as_arg: &str) -> Result<View, Reason> {
-    perceive_budget(world, presence, as_arg, BUDGET_TOKENS)
+    perceive_budget(world, presence, as_arg, MAX_BODY_CHARS)
 }
 
 pub fn perceive_budget<L>(
@@ -52,25 +52,25 @@ pub fn perceive_budget<L>(
     {
         return Err(Reason::UnscopedPerceive);
     }
-    let (canon, now) = (world.canon(), world.now());
+    let (canon, now) = (world.canon(), world.state());
     let actor = now.actors.get(as_arg).ok_or(Reason::UnknownKey)?;
     perceive_viewer_budget(canon, now, presence, &actor.viewer(as_arg), budget_tokens)
 }
 
-pub(crate) fn perceive_viewer(
+pub(crate) fn perceive_as(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     presence: &Presence,
-    viewer: &ViewerId,
+    viewer: &Viewer,
 ) -> Result<View, Reason> {
-    perceive_viewer_budget(canon, now, presence, viewer, BUDGET_TOKENS)
+    perceive_viewer_budget(canon, now, presence, viewer, MAX_BODY_CHARS)
 }
 
 fn perceive_viewer_budget(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     presence: &Presence,
-    viewer: &ViewerId,
+    viewer: &Viewer,
     budget_tokens: usize,
 ) -> Result<View, Reason> {
     let actor = now
@@ -96,7 +96,7 @@ fn perceive_viewer_budget(
     let mut known_facts = Vec::new();
     let mut public_flags = Vec::new();
     for id in ids {
-        if !allows(canon, now, viewer, &id) {
+        if !can_see_fact(canon, now, viewer, &id) {
             continue;
         }
         let text = canon
@@ -129,7 +129,7 @@ fn perceive_viewer_budget(
         if message
             .fact_ids
             .iter()
-            .any(|fact| !allows(canon, now, viewer, fact))
+            .any(|fact| !can_see_fact(canon, now, viewer, fact))
         {
             continue;
         }
@@ -183,17 +183,17 @@ fn perceive_viewer_budget(
         .collect();
 
     let habits = match viewer {
-        ViewerId::Player(_) => Vec::new(),
-        ViewerId::Npc(id) => habits_on(canon, now, presence, id),
+        Viewer::Player(_) => Vec::new(),
+        Viewer::Npc(id) => habits_that_hold(canon, now, presence, id),
     };
-    let exits = crate::map::visible(canon, now, presence, viewer.actor_id());
+    let exits = crate::travel::visible_exits(canon, now, presence, viewer.actor_id());
     let actor_names = visible_actors
         .iter()
         .map(|id| canon.display_name(id))
         .collect();
-    let place_name = crate::map::place_name(canon, &place);
-    let prose = crate::map::place_prose(canon, now, viewer.actor_id());
-    let status = crate::map::busy_line(now, viewer.actor_id()).unwrap_or_default();
+    let place_name = crate::travel::place_name(canon, &place);
+    let prose = crate::travel::place_prose(canon, now, viewer.actor_id());
+    let status = crate::travel::busy_line(now, viewer.actor_id()).unwrap_or_default();
 
     Ok(View {
         viewer: viewer.clone(),

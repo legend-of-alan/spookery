@@ -1,15 +1,15 @@
 //! Save migration and validation against the loaded pack.
 
 use crate::canon::lint::unknown_item;
-use crate::canon::{Canon, ItemCanon};
-use crate::diagnostic::{schema as schema_error, Diagnostic};
+use crate::canon::{Canon, ItemDef};
+use crate::diagnostic::{schema_error, Diagnostic};
 use crate::meter::{self, MeterLive};
-use crate::model::Now;
-use crate::store::codec::canonicalize;
+use crate::model::State;
+use crate::store::codec::normalize;
 use crate::store::records::AddedMeter;
 
 /// Meters the pack defines that at least one actor lacks, each at its `start`.
-pub(crate) fn pending_meters(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
+pub(crate) fn missing_meters(canon: &Canon, now: &State) -> Vec<AddedMeter> {
     canon
         .meters
         .iter()
@@ -28,7 +28,12 @@ pub(crate) fn pending_meters(canon: &Canon, now: &Now) -> Vec<AddedMeter> {
 /// Migrate a save: give each actor the `meters` it lacks, at their `start`, then
 /// stamp `pack_rev` and `state_rev`. Live migrate and replay both call this.
 /// It does not touch the disk.
-pub fn migrate_save(mut now: Now, pack_rev: &str, state_rev: u64, meters: &[AddedMeter]) -> Now {
+pub fn migrate_save(
+    mut now: State,
+    pack_rev: &str,
+    state_rev: u64,
+    meters: &[AddedMeter],
+) -> State {
     for actor in now.actors.values_mut() {
         let live = actor.meters_mut();
         for meter in meters {
@@ -40,14 +45,14 @@ pub fn migrate_save(mut now: Now, pack_rev: &str, state_rev: u64, meters: &[Adde
     }
     now.pack_rev = pack_rev.to_string();
     now.state_rev = state_rev;
-    canonicalize(&mut now);
+    normalize(&mut now);
     now
 }
 
 /// Check the save against the pack without changing it. Refuse every meter,
 /// item and wielded slot the pack does not define, every meter the pack defines
 /// that an actor lacks, every meter outside its rules and every empty id or zero count.
-pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
+pub fn check_save(canon: &Canon, now: &State) -> Result<(), Vec<Diagnostic>> {
     let mut diags = Vec::new();
     for (id, actor) in &now.actors {
         for key in canon.meters.keys() {
@@ -60,7 +65,7 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
                     &format!("actor '{id}' lacks meter '{key}', which rules/meters.yaml defines"),
                     "run spook migrate to add the meter",
                 )
-                .with_path(format!("actors.{id}.meters.{key}")),
+                .at_path(format!("actors.{id}.meters.{key}")),
             );
         }
         for key in actor.meters().keys() {
@@ -75,14 +80,14 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
                     ),
                     "remove the meter or add it to the rules",
                 )
-                .with_path(format!("actors.{id}.meters.{key}")),
+                .at_path(format!("actors.{id}.meters.{key}")),
             );
         }
         for (key, meter) in actor.meters() {
             let Some(def) = canon.meters.get(key) else {
                 continue;
             };
-            if meter::stored(def, meter.base, meter.offset) {
+            if meter::is_storable(def, meter.base, meter.offset) {
                 continue;
             }
             diags.push(
@@ -91,7 +96,7 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
                     &format!("actor '{id}' meter '{key}' is outside the rules"),
                     "set base and offset so the stored pair fits the meter",
                 )
-                .with_path(format!("actors.{id}.meters.{key}")),
+                .at_path(format!("actors.{id}.meters.{key}")),
             );
         }
     }
@@ -104,7 +109,7 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
                         &format!("actor '{id}' lists an empty item id"),
                         "give the item a non-empty id",
                     )
-                    .with_path(format!("actors.{id}.inventory")),
+                    .at_path(format!("actors.{id}.inventory")),
                 );
             }
             if *count == 0 {
@@ -114,7 +119,7 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
                         &format!("actor '{id}' lists item '{item}' with a count of 0"),
                         "omit an item the actor does not hold",
                     )
-                    .with_path(format!("actors.{id}.inventory.{item}")),
+                    .at_path(format!("actors.{id}.inventory.{item}")),
                 );
             }
         }
@@ -128,7 +133,7 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
                         &format!("place '{place}' lists item '{item}' with a count of 0"),
                         "omit an item that is not there",
                     )
-                    .with_path(format!("places.{place}.items.{item}")),
+                    .at_path(format!("places.{place}.items.{item}")),
                 );
             }
         }
@@ -153,7 +158,7 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
             } else if !canon
                 .items
                 .get(wielded)
-                .is_some_and(|item: &ItemCanon| item.tags.iter().any(|tag| tag == "weapon"))
+                .is_some_and(|item: &ItemDef| item.tags.iter().any(|tag| tag == "weapon"))
             {
                 diags.push(
                     schema_error(
@@ -161,16 +166,16 @@ pub fn check_save(canon: &Canon, now: &Now) -> Result<(), Vec<Diagnostic>> {
                         &format!("actor '{actor_id}' wields '{wielded}', which is not a weapon"),
                         "wield an item tagged weapon, or leave the slot empty",
                     )
-                    .with_path(format!("actors.{actor_id}.wielded")),
+                    .at_path(format!("actors.{actor_id}.wielded")),
                 );
-            } else if actor.count(wielded) == 0 {
+            } else if actor.item_count(wielded) == 0 {
                 diags.push(
                     schema_error(
                         "state/save.yaml",
                         &format!("actor '{actor_id}' wields '{wielded}' without holding it"),
                         "put the item in inventory or clear wielded",
                     )
-                    .with_path(format!("actors.{actor_id}.wielded")),
+                    .at_path(format!("actors.{actor_id}.wielded")),
                 );
             }
         }

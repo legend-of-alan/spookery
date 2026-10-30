@@ -6,39 +6,39 @@ use crate::error::Reason;
 use crate::intent::Intent;
 use crate::key::{StateKey, StateValue};
 use crate::meter::{self, MeterWrite};
-use crate::model::{self, Now, Presence};
+use crate::model::{self, Presence, State};
 use crate::rule::Cost;
 use crate::rules::expr::{self, Ctx, Dice};
 
 /// What the actor cannot pay. The token is `CANT_AFFORD`; `missing` names the shortfall.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CostShortfall {
+pub struct Shortfall {
     pub missing: String,
 }
 
-pub(crate) fn can_pay(
+pub(crate) fn afford(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     presence: &Presence,
     intent: &Intent,
     cost: &Cost,
-) -> Result<(), CostShortfall> {
+) -> Result<(), Shortfall> {
     let who = intent.actor.actor_id();
     let ctx = Ctx { intent, presence };
     for (key, expr) in &cost.meters {
         if expr.needs_dice() {
             continue;
         }
-        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| CostShortfall {
+        let amount = expr::eval(canon, now, &ctx, expr).map_err(|_| Shortfall {
             missing: key.clone(),
         })?;
         if amount < 0 {
-            return Err(CostShortfall {
+            return Err(Shortfall {
                 missing: key.clone(),
             });
         }
         let Some(def) = canon.meters.get(key) else {
-            return Err(CostShortfall {
+            return Err(Shortfall {
                 missing: key.clone(),
             });
         };
@@ -47,15 +47,15 @@ pub(crate) fn can_pay(
             .get(who)
             .and_then(|actor| actor.meters().get(key))
         else {
-            return Err(CostShortfall {
+            return Err(Shortfall {
                 missing: key.clone(),
             });
         };
-        let current = meter::current(def, live).map_err(|_| CostShortfall {
+        let current = meter::current(def, live).map_err(|_| Shortfall {
             missing: key.clone(),
         })?;
         if current < amount {
-            return Err(CostShortfall {
+            return Err(Shortfall {
                 missing: key.clone(),
             });
         }
@@ -64,21 +64,19 @@ pub(crate) fn can_pay(
         if expr.needs_dice() {
             continue;
         }
-        let count = item_count(
-            expr::eval(canon, now, &ctx, expr).map_err(|_| CostShortfall {
-                missing: id.clone(),
-            })?,
-        )
-        .map_err(|_| CostShortfall {
+        let count = item_count(expr::eval(canon, now, &ctx, expr).map_err(|_| Shortfall {
+            missing: id.clone(),
+        })?)
+        .map_err(|_| Shortfall {
             missing: id.clone(),
         })?;
         let held = now
             .actors
             .get(who)
-            .map(|actor| actor.count(id))
+            .map(|actor| actor.item_count(id))
             .unwrap_or(0);
         if held < count {
-            return Err(CostShortfall {
+            return Err(Shortfall {
                 missing: id.clone(),
             });
         }
@@ -103,13 +101,13 @@ pub fn pay(
         presence: draft.presence,
     };
     for (key, expr) in &cost.meters {
-        let amount = expr::eval_with_dice(draft.canon(), draft.now(), &ctx, expr, dice)?.value;
+        let amount = expr::eval_with_dice(draft.canon(), draft.state(), &ctx, expr, dice)?.value;
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
         let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownKey)?;
         let mut live = draft
-            .now()
+            .state()
             .actors
             .get(who)
             .ok_or(Reason::UnknownKey)?
@@ -120,7 +118,7 @@ pub fn pay(
         meter::write(&def, &mut live, MeterWrite::Offset(-amount))?;
         draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
         *draft
-            .now_mut()
+            .state_mut()
             .actors
             .get_mut(who)
             .ok_or(Reason::UnknownKey)?
@@ -129,19 +127,20 @@ pub fn pay(
             .ok_or(Reason::UnknownKey)? = live;
     }
     for (id, expr) in &cost.items {
-        let count =
-            item_count(expr::eval_with_dice(draft.canon(), draft.now(), &ctx, expr, dice)?.value)?;
+        let count = item_count(
+            expr::eval_with_dice(draft.canon(), draft.state(), &ctx, expr, dice)?.value,
+        )?;
         let before = i64::from(
             draft
-                .now()
+                .state()
                 .actors
                 .get(who)
                 .ok_or(Reason::UnknownKey)?
-                .count(id),
+                .item_count(id),
         );
         let changed = {
             let inventory = draft
-                .now_mut()
+                .state_mut()
                 .actors
                 .get_mut(who)
                 .ok_or(Reason::UnknownKey)?
@@ -157,14 +156,14 @@ pub fn pay(
         }
     }
     let wielded = draft
-        .now()
+        .state()
         .actors
         .get(who)
         .ok_or(Reason::UnknownKey)?
         .wielded()
         .map(str::to_string);
     let released = draft
-        .now_mut()
+        .state_mut()
         .actors
         .get_mut(who)
         .ok_or(Reason::UnknownKey)?

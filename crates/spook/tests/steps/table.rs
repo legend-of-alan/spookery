@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 use spookery::gm_connection::{GmConnection, Incoming};
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::Now;
+use spookery_engine::State;
 
 use crate::support::{self, Proc};
 use crate::World;
@@ -88,14 +88,14 @@ pub fn pack(world: &World) -> &Path {
 /// Replay the journal to the current state. `save.yaml` is the last checkpoint.
 /// A torn last line is ignored, so a read during an append still sees complete
 /// records. A failed read retries.
-pub fn now_of(pack: &Path) -> Now {
+pub fn now_of(pack: &Path) -> State {
     let start = Instant::now();
     loop {
         match spookery_engine::testing::replay_journal(pack, None, None) {
             Ok(report) => {
                 let text = std::str::from_utf8(&report.now_yaml)
                     .unwrap_or_else(|err| panic!("save text: {err}"));
-                return spookery_engine::load_save(text)
+                return spookery_engine::parse_save(text)
                     .unwrap_or_else(|err| panic!("load now: {err:?}"));
             }
             Err(err) if start.elapsed() > Duration::from_secs(2) => {

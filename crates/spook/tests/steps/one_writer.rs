@@ -1,6 +1,6 @@
 use cucumber::{given, then, when};
 
-use crate::support::temp_pack;
+use crate::support::copy_docks;
 use crate::World;
 
 use super::table;
@@ -11,7 +11,7 @@ fn state_files(world: &World) -> Vec<(std::path::PathBuf, Vec<u8>)> {
 
 #[given(expr = "spook run is serving a docks table")]
 fn spook_run_is_serving_a_docks_table(world: &mut World) {
-    let pack = temp_pack("one-writer");
+    let pack = copy_docks("one-writer");
     table::listen(world, &pack);
     world.pack = Some(pack);
 }
@@ -57,7 +57,7 @@ fn a_seated_player_commits_a_move(world: &mut World) {
 
 #[when(expr = "the host runs spook {word} on a missing pack")]
 fn the_host_runs_spook_on_a_missing_pack(world: &mut World, command: String) {
-    let pack = temp_pack("missing-pack");
+    let pack = copy_docks("missing-pack");
     let missing = pack.join("no-such-pack");
     world.pack = Some(pack);
     table::run(world, &[&command, missing.to_str().unwrap()]);

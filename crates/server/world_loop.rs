@@ -2,7 +2,7 @@
 
 use std::io::Write;
 
-use spookery_engine::{GateRefusal, Heard, Presence, Reason, RecipientLine, RoundOutput, World};
+use spookery_engine::{Address, GateRefusal, Presence, Reason, RecipientLine, RoundOutput, World};
 
 use crate::protocol::Missing;
 
@@ -49,7 +49,7 @@ pub(super) fn run_world_loop(
 }
 
 fn write_host(out: &mut dyn Write, world: &World, outputs: &[RoundOutput]) {
-    let text = world.host_lines(outputs);
+    let text = world.digest(outputs);
     if !text.is_empty() {
         let _ = out.write_all(text.as_bytes());
         let _ = out.flush();
@@ -197,13 +197,13 @@ fn handle(
             reply,
         } => {
             if seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
-                let _ = reply.send(crate::protocol::code_result(Reason::NotInSpec.token()));
+                let _ = reply.send(crate::protocol::code_result(Reason::NotInSpec.as_str()));
                 return Ok(());
             }
             let presence = seats.presence();
             let mut done = super::gm_tools::call_gm_tool(world, &presence, &name, arguments);
             if let Some(code) = &done.refused {
-                let _ = writeln!(out, "refused {name} {}", code.token());
+                let _ = writeln!(out, "refused {name} {}", code.as_str());
                 let _ = out.flush();
             }
             let outputs = std::mem::take(&mut done.outputs);
@@ -311,10 +311,10 @@ fn on_hello(
     }
     if line.is_empty() {
         if seats.players.len() >= MAX_PLAYER_SEATS {
-            return HelloReply::Refused(refused_line(Reason::SessionFull));
+            return HelloReply::Refused(refused_line(Reason::TableFull));
         }
         return HelloReply::Refused(frames::player_refused(
-            Reason::ChoosePc.token(),
+            Reason::ChoosePc.as_str(),
             Some(Missing::Many(world.free_pcs(&seats.presence()))),
         ));
     }
@@ -322,13 +322,13 @@ fn on_hello(
         return HelloReply::Refused(refused_line(Reason::Schema));
     };
     if seats.players.len() >= MAX_PLAYER_SEATS {
-        return HelloReply::Refused(refused_line(Reason::SessionFull));
+        return HelloReply::Refused(refused_line(Reason::TableFull));
     }
     if seats.players.iter().any(|player| player.actor_id == id) {
         return HelloReply::Refused(refused_line(Reason::SeatTaken));
     }
     if !world
-        .now()
+        .state()
         .actors
         .get(id)
         .is_some_and(|actor| actor.is_pc())
@@ -362,7 +362,7 @@ fn on_hello(
 
 fn seat_gm(seats: &mut Seats, conn: u64, out: OutTx, cancel: CancelTx) -> Result<(), Reason> {
     if seats.gm.is_some() {
-        return Err(Reason::SessionFull);
+        return Err(Reason::TableFull);
     }
     seats.gm = Some(GmSeat { conn, out, cancel });
     Ok(())
@@ -389,7 +389,7 @@ fn player_refresh(world: &World, presence: &Presence, actor_id: &str) -> Result<
 }
 
 enum PlayerCommand<'w, 'l> {
-    Speech(Heard<'w>, &'l str),
+    Speech(Address<'w>, &'l str),
     Lines(String),
     Turn(&'l str, Option<&'l str>),
 }
@@ -409,7 +409,7 @@ fn parse_player_command<'w, 'l: 'w>(
             return Err(Reason::Schema);
         }
         let place = world
-            .now()
+            .state()
             .actors
             .get(seated)
             .filter(|actor| actor.is_pc())
@@ -417,18 +417,18 @@ fn parse_player_command<'w, 'l: 'w>(
             .place();
         let (target, text) = split_token(rest);
         let (heard, text) = if !text.is_empty() && target == "place" {
-            (Heard::Place(place), text)
-        } else if !text.is_empty() && world.now().actors.contains_key(target) {
-            (Heard::Actor(target), text)
+            (Address::Place(place), text)
+        } else if !text.is_empty() && world.state().actors.contains_key(target) {
+            (Address::Actor(target), text)
         } else {
-            (Heard::Table, rest)
+            (Address::Table, rest)
         };
         return Ok(PlayerCommand::Speech(heard, text));
     }
     if rest.is_empty() {
         return Ok(match verb {
             "help" => PlayerCommand::Lines(world.help_lines(presence, seated)),
-            "map" => PlayerCommand::Lines(world.player_lines(presence, seated)),
+            "map" => PlayerCommand::Lines(world.map_lines(presence, seated)),
             "look" => PlayerCommand::Lines(world.look_lines(presence, seated)),
             _ => PlayerCommand::Turn(verb, None),
         });
@@ -479,7 +479,7 @@ fn on_player(
     let presence = seats.presence();
     match parse_player_command(world, &presence, &actor_id, line) {
         Ok(PlayerCommand::Speech(heard, text)) => {
-            match world.speak_player(&presence, &actor_id, heard, text) {
+            match world.say_as_player(&presence, &actor_id, heard, text) {
                 Ok(stored) => {
                     let spoken = frames::Spoken::from(&stored);
                     let _ = writeln!(out, "{}", spoken.tape);
@@ -628,5 +628,5 @@ fn on_fault(
 }
 
 pub(super) fn refused_line(code: Reason) -> String {
-    frames::player_refused(code.token(), None)
+    frames::player_refused(code.as_str(), None)
 }

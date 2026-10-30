@@ -3,7 +3,7 @@ use std::fs;
 use cucumber::{given, then, when};
 use serde_json::Value;
 
-use crate::support::temp_pack;
+use crate::support::copy_docks;
 use crate::World;
 
 use super::table;
@@ -16,14 +16,14 @@ fn the_player_says(world: &mut World, text: String) {
 #[when(expr = "say to mira is submitted on an empty table saying {string}")]
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
-    let shard = spookery_engine::testing::open(pack);
+    let shard = spookery_engine::testing::resume(pack);
     world.now_bytes = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     shard
-        .speak_player(
+        .say_as_player(
             &spookery_engine::Presence::default(),
             "pc_rowan",
-            spookery_engine::Heard::Actor("mira"),
+            spookery_engine::Address::Actor("mira"),
             &text,
         )
         .unwrap_or_else(|err| panic!("speak: {err}"));
@@ -85,7 +85,7 @@ fn now_matches_the_bytes_from_before_the_line(world: &mut World) {
 
 #[given(expr = "a docks table with {string} seated")]
 fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
-    let pack = temp_pack("speech");
+    let pack = copy_docks("speech");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &actor);
     world.pack = Some(pack);
@@ -93,7 +93,7 @@ fn a_docks_table_with_one_seated(world: &mut World, actor: String) {
 
 #[given(expr = "a docks table with {string} and {string} seated")]
 fn a_docks_table_with_two_seated(world: &mut World, first: String, second: String) {
-    let pack = temp_pack("speech");
+    let pack = copy_docks("speech");
     table::listen(world, &pack);
     table::seat_actor(world, &pack, &first);
     table::seat_actor(world, &pack, &second);

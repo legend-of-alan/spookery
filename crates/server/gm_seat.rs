@@ -131,7 +131,7 @@ impl GmSeatHandler {
 }
 
 fn refusal_error(code: Reason) -> McpError {
-    McpError::internal_error(crate::protocol::refusal(code.token()), None)
+    McpError::internal_error(crate::protocol::refusal(code.as_str()), None)
 }
 
 async fn emit_event(peer: &Peer<RoleServer>, frame: &[u8]) {

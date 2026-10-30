@@ -59,13 +59,13 @@ pub fn on_scheduled_wake(
         return Ok(false);
     }
     let now = Utc::now();
-    let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
+    let elapsed = elapsed_secs(&world.state().last_round_at, now)?;
     if elapsed < world.budget().round_every_real_seconds {
         return Ok(false);
     }
-    let before = world.now().world_time;
+    let before = world.state().world_time;
     world.catch_up(&format_utc(now), elapsed / 3600)?;
-    Ok(world.now().world_time != before)
+    Ok(world.state().world_time != before)
 }
 
 #[cfg(test)]

@@ -1,4 +1,4 @@
-use spookery_engine::testing::temp_pack;
+use spookery_engine::testing::copy_docks;
 use spookery_engine::{lock_pack, Reason, World};
 use spookery_server::{Config, Error};
 use std::{fs, io::*, net::*, path::Path};
@@ -43,8 +43,8 @@ fn host(
 
 #[tokio::test(flavor = "multi_thread")]
 async fn two_worlds_serve_on_port_zero_and_stop_independently() {
-    let first_dir = temp_pack("2w-1");
-    let second_dir = temp_pack("2w-2");
+    let first_dir = copy_docks("2w-1");
+    let second_dir = copy_docks("2w-2");
     let (mut c1, stop1, first) = host(&first_dir);
     assert_eq!(lock_pack(&first_dir).err(), Some(Reason::CommitConflict));
     let (mut c2, stop2, second) = host(&second_dir);
@@ -52,12 +52,12 @@ async fn two_worlds_serve_on_port_zero_and_stop_independently() {
     step(&mut c1, "wait\n");
     step(&mut c2, "player:pc_rowan\n");
     step(&mut c2, "wait\n");
-    assert_eq!(World::peek(&first_dir).unwrap().now().round_index, 1);
-    assert_eq!(World::peek(&second_dir).unwrap().now().round_index, 1);
+    assert_eq!(World::peek(&first_dir).unwrap().state().round_index, 1);
+    assert_eq!(World::peek(&second_dir).unwrap().state().round_index, 1);
     stop1.send(()).unwrap();
     first.await.unwrap().unwrap();
     step(&mut c2, "wait\n");
-    assert_eq!(World::peek(&second_dir).unwrap().now().round_index, 2);
+    assert_eq!(World::peek(&second_dir).unwrap().state().round_index, 2);
     stop2.send(()).unwrap();
     second.await.unwrap().unwrap();
     fs::remove_dir_all(&first_dir).unwrap();

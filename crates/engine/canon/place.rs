@@ -4,11 +4,11 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Deserialize;
 
-use crate::canon::fact::{FactFile, Facts};
-use crate::canon::rule_list::{self, RuleEntry};
-use crate::canon::source::{load_headed, At, Diags, Page, Source, PLACE_SCHEMA};
-use crate::canon::{Exit, PlaceCanon};
-use crate::diagnostic::{schema as schema_error, Diagnostic};
+use crate::canon::fact::{FactYaml, Facts};
+use crate::canon::rule_list::{self, RuleYaml};
+use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, PLACE_SCHEMA};
+use crate::canon::{Exit, PlaceDef};
+use crate::diagnostic::{schema_error, Diagnostic};
 use crate::rule::{Cost, Owner, Rule};
 
 /// One place page into `places` and its facts into `facts`, and its rules. A bad fact
@@ -16,11 +16,11 @@ use crate::rule::{Cost, Owner, Rule};
 pub(super) fn add_place(
     page: Page,
     facts: &mut Facts,
-    places: &mut BTreeMap<String, PlaceCanon>,
+    places: &mut BTreeMap<String, PlaceDef>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
     let file = diags.keep(load_place(&page.file, &page.yaml, 1))?;
-    let whole = Source {
+    let whole = FileText {
         file: &page.file,
         text: &page.text,
         line_base: 0,
@@ -31,13 +31,15 @@ pub(super) fn add_place(
         .unwrap_or_default();
     let twice = ("place", "is already defined", "keep one place with this id");
     let taken = places.contains_key(&file.id);
-    if let Some(diag) = taken.then(|| whole.repeat(&file.id, "id", At::Nowhere, twice)) {
+    if let Some(diag) =
+        taken.then(|| whole.refuse_duplicate(&file.id, "id", Locator::Nowhere, twice))
+    {
         diags.push(diag);
         return None;
     }
     places.insert(
         file.id.clone(),
-        PlaceCanon {
+        PlaceDef {
             display_name: file.display_name,
             facts: ids,
             body: page.body,
@@ -52,21 +54,21 @@ pub(super) fn add_place(
 }
 
 fn load_place(file: &str, yaml: &str, line_base: u32) -> Result<PlaceFile, Vec<Diagnostic>> {
-    let parsed: PlaceFile = load_headed(file, yaml, PLACE_SCHEMA, line_base)?;
-    let source = Source {
+    let parsed: PlaceFile = load_tagged(file, yaml, PLACE_SCHEMA, line_base)?;
+    let source = FileText {
         file,
         text: yaml,
         line_base,
     };
     let mut diags = Diags::default();
     let empty = ("id is empty", "set id to a short place id");
-    diags.extend(source.required(&parsed.id, "id", At::Key("id:"), empty));
-    diags.extend(source.display_name(&parsed.display_name));
-    diags.result(parsed)
+    diags.extend(source.refuse_empty(&parsed.id, "id", Locator::Key("id:"), empty));
+    diags.extend(source.refuse_empty_display_name(&parsed.display_name));
+    diags.into_result(parsed)
 }
 
-fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
-    let source = Source::named(file);
+fn compile_exits(file: &str, exits: &[ExitYaml]) -> Result<Vec<Exit>, Vec<Diagnostic>> {
+    let source = FileText::named(file);
     let mut diags = Diags::default();
     let mut compiled = Vec::new();
     let mut names = BTreeSet::new();
@@ -74,14 +76,16 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
         if exit.name.is_empty() || exit.to.is_empty() {
             diags.push(
                 schema_error(file, "an exit needs a name and a to", "set both")
-                    .with_path(format!("exits[{index}]")),
+                    .at_path(format!("exits[{index}]")),
             );
             continue;
         }
         let path = format!("exits[{index}].name");
         let twice = ("exit", "is listed twice", "keep one exit with this name");
         let taken = !names.insert(exit.name.clone());
-        if let Some(diag) = taken.then(|| source.repeat(&exit.name, &path, At::Nowhere, twice)) {
+        if let Some(diag) =
+            taken.then(|| source.refuse_duplicate(&exit.name, &path, Locator::Nowhere, twice))
+        {
             diags.push(diag);
             continue;
         }
@@ -133,7 +137,7 @@ fn compile_exits(file: &str, exits: &[ExitFile]) -> Result<Vec<Exit>, Vec<Diagno
             index,
         });
     }
-    diags.result(compiled)
+    diags.into_result(compiled)
 }
 
 #[derive(Deserialize)]
@@ -143,16 +147,16 @@ struct PlaceFile {
     _schema: String,
     id: String,
     display_name: String,
-    facts: Vec<FactFile>,
+    facts: Vec<FactYaml>,
     #[serde(default)]
-    exits: Vec<ExitFile>,
+    exits: Vec<ExitYaml>,
     #[serde(default)]
-    rules: Vec<RuleEntry>,
+    rules: Vec<RuleYaml>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ExitFile {
+struct ExitYaml {
     to: String,
     name: String,
     cost: Option<rule_list::CostYaml>,

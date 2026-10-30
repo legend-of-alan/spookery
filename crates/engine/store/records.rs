@@ -151,13 +151,13 @@ pub struct RoundRecord<E = Effect> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(clippy::large_enum_variant)]
-pub enum JournalEntry {
+pub enum Record {
     Round(RoundRecord),
     Migrate(MigrateRecord),
     Checkpoint(CheckpointRecord),
 }
 
-impl JournalEntry {
+impl Record {
     pub fn state_rev_after(&self) -> u64 {
         match self {
             Self::Round(record) => record.state_rev_after,

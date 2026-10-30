@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use crate::error::Reason;
 
 /// Write `bytes` to a temp file, flush it, and rename it over `target`.
-pub fn atomic_publish(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
+pub fn write_atomic(target: &Path, bytes: &[u8]) -> Result<(), Reason> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|_| Reason::CommitConflict)?;
     }
@@ -31,7 +31,7 @@ pub(crate) fn tmp_path(target: &Path) -> PathBuf {
 }
 
 pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
-    if refuse_sync(path) {
+    if take_fail(path) {
         return Err(Reason::CommitConflict);
     }
     let file = OpenOptions::new()
@@ -45,12 +45,12 @@ pub(crate) fn fsync_file(path: &Path) -> Result<(), Reason> {
 }
 
 #[cfg(test)]
-fn refuse_sync(path: &Path) -> bool {
+fn take_fail(path: &Path) -> bool {
     trace::take_fail(path)
 }
 
 #[cfg(not(test))]
-fn refuse_sync(_: &Path) -> bool {
+fn take_fail(_: &Path) -> bool {
     false
 }
 
@@ -86,7 +86,7 @@ pub(crate) fn rename(from: &Path, to: &Path) -> Result<(), Reason> {
 
 #[cfg(test)]
 fn note_file(path: &Path) {
-    trace::record(Mark::File(path.to_path_buf()));
+    trace::record(Event::File(path.to_path_buf()));
 }
 
 #[cfg(not(test))]
@@ -94,7 +94,7 @@ fn note_file(_: &Path) {}
 
 #[cfg(test)]
 fn note_dir(path: &Path) {
-    trace::record(Mark::Dir(path.to_path_buf()));
+    trace::record(Event::Dir(path.to_path_buf()));
 }
 
 #[cfg(not(test))]
@@ -102,14 +102,14 @@ fn note_dir(_: &Path) {}
 
 #[cfg(test)]
 fn note_rename(path: &Path) {
-    trace::record(Mark::Rename(path.to_path_buf()));
+    trace::record(Event::Rename(path.to_path_buf()));
 }
 
 #[cfg(not(test))]
 fn note_rename(_: &Path) {}
 
 #[cfg(test)]
-pub(crate) use trace::{clear_fail, fail_next, start as start_trace, take as take_trace, Mark};
+pub(crate) use trace::{clear_fail, fail_next, start as start_trace, take as take_trace, Event};
 
 #[cfg(test)]
 mod trace {
@@ -117,14 +117,14 @@ mod trace {
     use std::path::{Path, PathBuf};
 
     #[derive(Clone, Debug, PartialEq, Eq)]
-    pub(crate) enum Mark {
+    pub(crate) enum Event {
         File(PathBuf),
         Dir(PathBuf),
         Rename(PathBuf),
     }
 
     thread_local! {
-        static LOG: RefCell<Option<Vec<Mark>>> = const { RefCell::new(None) };
+        static LOG: RefCell<Option<Vec<Event>>> = const { RefCell::new(None) };
         static FAIL: RefCell<Option<&'static str>> = const { RefCell::new(None) };
     }
 
@@ -153,7 +153,7 @@ mod trace {
         })
     }
 
-    pub(super) fn record(mark: Mark) {
+    pub(super) fn record(mark: Event) {
         LOG.with(|log| {
             if let Some(marks) = log.borrow_mut().as_mut() {
                 marks.push(mark);
@@ -166,7 +166,7 @@ mod trace {
         clear_fail();
     }
 
-    pub(crate) fn take() -> Vec<Mark> {
+    pub(crate) fn take() -> Vec<Event> {
         LOG.with(|log| log.borrow_mut().take().unwrap_or_default())
     }
 }

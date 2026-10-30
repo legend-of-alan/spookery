@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use cucumber::{given, then, when};
 use serde_json::Value;
 
-use crate::support::{self, temp_pack};
+use crate::support::{self, copy_docks};
 use crate::World;
 
 use super::{common, table};
@@ -22,7 +22,7 @@ const NOTICE_ROWS: &str = "
           who: self
           key: braced
           value: true
-    failure:
+    miss:
       - flag:
           who: self
           key: slipped
@@ -38,7 +38,7 @@ const NOTICE_ROWS: &str = "
           who: self
           key: braced
           value: true
-    failure:
+    miss:
       - flag:
           who: self
           key: slipped
@@ -58,7 +58,7 @@ const OPPOSE_ROWS: &str = "
           who: target
           key: marked
           value: true
-    failure:
+    miss:
       - flag:
           who: target
           key: missed
@@ -146,7 +146,7 @@ fn the_player_sees_a_check_result_without_faces(world: &mut World) {
 
 #[given(expr = "a docks table where Mira can notice")]
 fn a_docks_table_where_mira_can_notice(world: &mut World) {
-    let pack = temp_pack("npc-notice");
+    let pack = copy_docks("npc-notice");
     world.pack = Some(pack.clone());
     append_moves(&pack, NOTICE_ROWS);
     insert_flags(&pack, "    - braced\n    - slipped\n");
@@ -158,12 +158,14 @@ fn a_docks_table_where_mira_can_notice(world: &mut World) {
 
 #[given(expr = "a docks table where Mira can oppose a mark")]
 fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
-    let pack = temp_pack("npc-oppose");
+    let pack = copy_docks("npc-oppose");
     world.pack = Some(pack.clone());
     append_moves(&pack, OPPOSE_ROWS);
     insert_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
-    super::common::edit_save(&pack, |now| support::place_of(now, "mira", "docks_shop"));
+    super::common::edit_save(&pack, |now| {
+        support::set_actor_place(now, "mira", "docks_shop")
+    });
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
@@ -192,7 +194,7 @@ fn the_player_marks_mira(world: &mut World) {
 
 #[when(expr = "a kernel habit rolls a check for Mira")]
 fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
-    let pack = temp_pack("npc-habit");
+    let pack = copy_docks("npc-habit");
     world.pack = Some(pack.clone());
     insert_flags(&pack, "    - braced\n    - slipped\n");
     insert_brace_habit(&pack);
@@ -291,7 +293,7 @@ fn replaying_the_round_reproduces_the_save(world: &mut World) {
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     let report = spookery_engine::testing::replay_journal(played, Some(&start), None)
         .unwrap_or_else(|err| panic!("replay: {err}"));
-    let entries = spookery_engine::testing::journal::read_entries(played)
+    let entries = spookery_engine::testing::journal::read_records(played)
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let expected = entries
         .iter()
@@ -300,7 +302,7 @@ fn replaying_the_round_reproduces_the_save(world: &mut World) {
         .unwrap_or_else(|| panic!("no round was written"))
         .now_hash();
     assert_eq!(
-        spookery_engine::testing::journal::hash_now(&report.now_yaml),
+        spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
         expected
     );
     assert_eq!(
@@ -347,7 +349,7 @@ fn insert_brace_habit(pack: &Path) {
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
         "rules:\n  - id: leave_door_note\n",
-        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: grit\n      target: 14\n    success:\n      - flag:\n          who: self\n          key: braced\n          value: true\n    failure:\n      - flag:\n          who: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
+        "rules:\n  - id: brace\n    when: habit\n    roll:\n      check: grit\n      target: 14\n    success:\n      - flag:\n          who: self\n          key: braced\n          value: true\n    miss:\n      - flag:\n          who: self\n          key: slipped\n          value: true\n  - id: leave_door_note\n",
         1,
     );
     assert_ne!(next, text, "mira habit was not inserted");
@@ -485,7 +487,7 @@ const PRESS_ROW: &str = "
           who: target
           key: halfway
           value: true
-    failure:
+    miss:
       - flag:
           who: target
           key: missed
@@ -515,7 +517,7 @@ const NOTICE_PARTIAL: &str = "
           who: self
           key: halfway
           value: true
-    failure:
+    miss:
       - flag:
           who: self
           key: missed
@@ -541,7 +543,7 @@ const BAND_CHECK: &str = "
     dice:
       count: 1
       sides: 1
-    stat: grit
+    meter: grit
 ";
 
 const PRESS_FLAGS: &str =
@@ -559,7 +561,7 @@ fn a_docks_copy_where_press_grit_base_is(world: &mut World, base: usize) {
 
 #[given(expr = "a docks table where Mira opposes a three-band press")]
 fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
-    let pack = temp_pack("press-oppose");
+    let pack = copy_docks("press-oppose");
     world.pack = Some(pack.clone());
     append_moves(&pack, PRESS_ROW);
     append_moves(&pack, DEFEND_ROW);
@@ -567,14 +569,16 @@ fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     insert_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
-    super::common::edit_save(&pack, |now| support::place_of(now, "mira", "docks_shop"));
+    super::common::edit_save(&pack, |now| {
+        support::set_actor_place(now, "mira", "docks_shop")
+    });
     listen_both(world, &pack);
     world.scratch = snapshot_of(&pack).display().to_string();
 }
 
 #[given(expr = "a docks table where Mira can partly notice")]
 fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
-    let pack = temp_pack("press-notice");
+    let pack = copy_docks("press-notice");
     world.pack = Some(pack.clone());
     append_moves(&pack, NOTICE_PARTIAL);
     append_check(&pack, BAND_CHECK);
@@ -710,13 +714,15 @@ fn the_gm_sees_a_binary_opposed_press(world: &mut World) {
 }
 
 fn prepare_press(world: &mut World, base: i64, sit: bool) {
-    let pack = temp_pack("press");
+    let pack = copy_docks("press");
     world.pack = Some(pack.clone());
     append_moves(&pack, PRESS_ROW);
     append_check(&pack, BAND_CHECK);
     insert_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
-    super::common::edit_save(&pack, |now| support::place_of(now, "mira", "docks_shop"));
+    super::common::edit_save(&pack, |now| {
+        support::set_actor_place(now, "mira", "docks_shop")
+    });
     if sit {
         listen_both(world, &pack);
         world.scratch = snapshot_of(&pack).display().to_string();

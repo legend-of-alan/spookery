@@ -9,7 +9,9 @@ use spookery::host::{call_gm_tool, commit_then_fast_forward};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::{Presence, World as Shard};
 
-use crate::support::{self, now_of, open, read_round as round_value, save_now, stamp_pack_rev};
+use crate::support::{
+    self, read_round as round_value, resume, stamp_pack_rev, state_of, write_save,
+};
 use crate::World;
 
 use super::table;
@@ -33,32 +35,32 @@ fn rowan() -> Presence {
 }
 
 fn queued_line_survives_a_dropped_seat() {
-    let held = support::temp_pack("held");
-    let mut shard = open(&held);
+    let held = support::copy_docks("held");
+    let mut shard = resume(&held);
     assert!(!on_scheduled_wake(&mut shard, true, false).unwrap());
     let queued = shard.queue_wait(&rowan(), "pc_rowan").unwrap();
     assert!(!on_scheduled_wake(&mut shard, true, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
     assert_eq!(shard.queued_intents()[0].id, queued.id);
-    assert_eq!(shard.now().world_time, 1080);
+    assert_eq!(shard.state().world_time, 1080);
     assert!(list_round_keys(&held).is_empty());
     assert!(!on_scheduled_wake(&mut shard, false, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
-    assert_eq!(shard.now().round_index, 0);
+    assert_eq!(shard.state().round_index, 0);
     assert!(list_round_keys(&held).is_empty());
     let _ = fs::remove_dir_all(&held);
 }
 
 fn early_wake_does_not_play_another_round() {
-    let early = support::temp_pack("early-wake");
-    let mut shard = open(&early);
+    let early = support::copy_docks("early-wake");
+    let mut shard = resume(&early);
     shard.queue_wait(&rowan(), "pc_rowan").unwrap();
     commit_then_fast_forward(&mut shard, &rowan()).unwrap();
-    let committed = shard.now().clone();
+    let committed = shard.state().clone();
     assert_eq!(committed.world_time, 1085);
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
-    assert_eq!(shard.now().world_time, committed.world_time);
-    assert_eq!(shard.now().round_index, committed.round_index);
+    assert_eq!(shard.state().world_time, committed.world_time);
+    assert_eq!(shard.state().round_index, committed.round_index);
     assert_eq!(list_round_keys(&early), vec!["round-0001".to_string()]);
     let _ = fs::remove_dir_all(&early);
 }
@@ -78,10 +80,10 @@ fn write_idle(pack: &Path, value: &str) {
 }
 
 fn idle_off_past_due_wake_writes_nothing() {
-    let pack = support::temp_pack("idle-off-due");
+    let pack = support::copy_docks("idle-off-due");
     write_idle(&pack, "off");
     let (world_time, state_rev, round_index, stamp) = {
-        let shard = open(&pack);
+        let shard = resume(&pack);
         let every = shard.budget().round_every_real_seconds;
         assert!(
             every > 0 && every + 60 < 3600,
@@ -89,26 +91,26 @@ fn idle_off_past_due_wake_writes_nothing() {
         );
         assert!(!shard.budget().idle_rounds);
         let stamp = spookery::host::idle_clock::wall_ago(every + 60).unwrap();
-        let mut now = shard.now().clone();
+        let mut now = shard.state().clone();
         let world_time = now.world_time;
         let state_rev = now.state_rev;
         let round_index = now.round_index;
         drop(shard);
         now.last_round_at = stamp.clone();
-        save_now(&pack, &now);
+        write_save(&pack, &now);
         (world_time, state_rev, round_index, stamp)
     };
-    let mut shard = open(&pack);
+    let mut shard = resume(&pack);
     let elapsed = spookery::host::idle_clock::seconds_since(&stamp).unwrap();
     assert!(elapsed >= shard.budget().round_every_real_seconds);
     assert!(elapsed < 3600);
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
-    assert_eq!(shard.now().world_time, world_time);
-    assert_eq!(shard.now().last_round_at, stamp);
-    assert_eq!(shard.now().state_rev, state_rev);
-    assert_eq!(shard.now().round_index, round_index);
+    assert_eq!(shard.state().world_time, world_time);
+    assert_eq!(shard.state().last_round_at, stamp);
+    assert_eq!(shard.state().state_rev, state_rev);
+    assert_eq!(shard.state().round_index, round_index);
     drop(shard);
-    let saved = now_of(&pack);
+    let saved = state_of(&pack);
     assert_eq!(saved.world_time, world_time);
     assert_eq!(saved.last_round_at, stamp);
     assert_eq!(saved.state_rev, state_rev);
@@ -117,20 +119,20 @@ fn idle_off_past_due_wake_writes_nothing() {
 }
 
 fn idle_off_long_absence_writes_no_catchup() {
-    let pack = support::temp_pack("idle-off-absence");
+    let pack = support::copy_docks("idle-off-absence");
     write_idle(&pack, "off");
-    let mut shard = open(&pack);
-    let world_time = shard.now().world_time;
-    let last = shard.now().last_round_at.clone();
-    let state_rev = shard.now().state_rev;
-    let round_index = shard.now().round_index;
+    let mut shard = resume(&pack);
+    let world_time = shard.state().world_time;
+    let last = shard.state().last_round_at.clone();
+    let state_rev = shard.state().state_rev;
+    let round_index = shard.state().round_index;
     assert!(spookery::host::idle_clock::seconds_since(&last).unwrap() >= 3600);
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
-    assert_eq!(shard.now().world_time, world_time);
-    assert_eq!(shard.now().last_round_at, last);
-    assert_eq!(shard.now().round_index, round_index);
+    assert_eq!(shard.state().world_time, world_time);
+    assert_eq!(shard.state().last_round_at, last);
+    assert_eq!(shard.state().round_index, round_index);
     drop(shard);
-    let saved = now_of(&pack);
+    let saved = state_of(&pack);
     assert_eq!(saved.world_time, world_time);
     assert_eq!(saved.last_round_at, last);
     assert_eq!(saved.state_rev, state_rev);
@@ -139,23 +141,23 @@ fn idle_off_long_absence_writes_no_catchup() {
 }
 
 fn idle_off_seated_line_and_spook_round_still_advance() {
-    let pack = support::temp_pack("idle-off-play");
+    let pack = support::copy_docks("idle-off-play");
     write_idle(&pack, "off");
-    let mut shard = open(&pack);
+    let mut shard = resume(&pack);
     shard.queue_wait(&rowan(), "pc_rowan").unwrap();
     let outputs = commit_then_fast_forward(&mut shard, &rowan()).unwrap();
     assert!(!outputs.is_empty());
-    assert_eq!(shard.now().world_time, 1085);
-    assert_eq!(shard.now().round_index, 1);
+    assert_eq!(shard.state().world_time, 1085);
+    assert_eq!(shard.state().round_index, 1);
     drop(shard);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     let lock = spookery_engine::lock_pack(&pack).unwrap();
     let mut again = Shard::resume(&pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
-    let wall = again.now().last_round_at.clone();
+    let wall = again.state().last_round_at.clone();
     again
         .play(&rowan(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
-    let now = now_of(&pack);
+    let now = state_of(&pack);
     assert_eq!(now.round_index, 2);
     assert_eq!(now.world_time, 1090);
     assert_eq!(
@@ -166,11 +168,11 @@ fn idle_off_seated_line_and_spook_round_still_advance() {
 }
 
 fn idle_off_commit_round_still_commits() {
-    let pack = support::temp_pack("idle-off-commit");
+    let pack = support::copy_docks("idle-off-commit");
     write_idle(&pack, "off");
-    let mut shard = open(&pack);
+    let mut shard = resume(&pack);
     shard.queue_wait(&rowan(), "pc_rowan").unwrap();
-    assert_eq!(shard.now().world_time, 1080);
+    assert_eq!(shard.state().world_time, 1080);
     assert!(list_round_keys(&pack).is_empty());
     let done = call_gm_tool(
         &mut shard,
@@ -185,20 +187,20 @@ fn idle_off_commit_round_still_commits() {
     );
     assert!(done.value.get("code").is_none(), "{}", done.value);
     assert!(!done.outputs.is_empty());
-    assert_eq!(shard.now().world_time, 1085);
-    assert_eq!(shard.now().round_index, 1);
+    assert_eq!(shard.state().world_time, 1085);
+    assert_eq!(shard.state().round_index, 1);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     let _ = fs::remove_dir_all(&pack);
 }
 
 fn a_due_wake_applies_the_queued_wait() {
-    let due = support::temp_pack("due-wake");
-    let mut shard = open(&due);
+    let due = support::copy_docks("due-wake");
+    let mut shard = resume(&due);
     let note = shard.queue_wait(&Presence::default(), "pc_rowan").unwrap();
-    assert_eq!(shard.now().last_round_at, "2026-01-01T00:00:00Z");
+    assert_eq!(shard.state().last_round_at, "2026-01-01T00:00:00Z");
     assert!(on_scheduled_wake(&mut shard, false, false).unwrap());
-    assert_eq!(shard.now().round_index, 12);
-    assert_eq!(shard.now().world_time, 1800);
+    assert_eq!(shard.state().round_index, 12);
+    assert_eq!(shard.state().world_time, 1800);
     assert!(shard.queued_intents().is_empty());
     assert_eq!(
         player_waits(&round_value(&due, "round-0001")),
@@ -206,7 +208,7 @@ fn a_due_wake_applies_the_queued_wait() {
     );
     assert!(player_waits(&round_value(&due, "round-0002")).is_empty());
     assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
-    assert_eq!(shard.now().round_index, 12);
+    assert_eq!(shard.state().round_index, 12);
     let _ = fs::remove_dir_all(&due);
 }
 
@@ -218,7 +220,7 @@ fn a_queued_wait_meets_a_wake(_world: &mut World) {
 /// With a GM seated, Rowan queues a wait, leaves, and sits again. The wait stays queued.
 #[when(expr = "the player drops and sits again with a queued wait")]
 fn the_player_drops_and_sits_again(world: &mut World) {
-    let pack = support::temp_pack("drop-queue");
+    let pack = support::copy_docks("drop-queue");
     world.pack = Some(pack.clone());
     table::listen(world, &pack);
     table::seat_gm(world);

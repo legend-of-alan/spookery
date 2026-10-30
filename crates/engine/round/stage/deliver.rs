@@ -4,12 +4,12 @@ use std::collections::BTreeSet;
 
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
-use crate::key::ChangeRecord;
-use crate::model::{Now, Presence};
-use crate::visibility::{self, RecipientLine, Seat, ViewerChanges};
+use crate::key::Change;
+use crate::model::{Presence, State};
+use crate::visibility::{self, Recipient, RecipientLine, ViewerChanges};
 
 /// What the GM and each viewer may see and hear.
-pub(crate) struct Delivered {
+pub(crate) struct Deliveries {
     pub summary: Vec<String>,
     pub lines: Vec<RecipientLine>,
     pub seen: Vec<ViewerChanges>,
@@ -19,13 +19,13 @@ pub(crate) struct Delivered {
 /// An empty table gets only the GM summary.
 pub(crate) fn run(
     canon: &Canon,
-    now: &Now,
+    now: &State,
     presence: &Presence,
-    changes: &[ChangeRecord],
+    changes: &[Change],
     effects: &[Effect],
-) -> Delivered {
-    let gm = visibility::observe(canon, now, &Seat::Gm, changes, effects);
-    let mut delivered = Delivered {
+) -> Deliveries {
+    let gm = visibility::observe(canon, now, &Recipient::Gm, changes, effects);
+    let mut delivered = Deliveries {
         summary: gm.changes,
         lines: Vec::new(),
         seen: Vec::new(),
@@ -40,8 +40,9 @@ pub(crate) fn run(
         }
     }
     for id in viewers {
-        let delivery = visibility::observe(canon, now, &Seat::Actor(id.clone()), changes, effects);
-        for text in delivery.lines {
+        let delivery =
+            visibility::observe(canon, now, &Recipient::Actor(id.clone()), changes, effects);
+        for text in delivery.narrations {
             delivered.lines.push(RecipientLine {
                 to: id.clone(),
                 text,
