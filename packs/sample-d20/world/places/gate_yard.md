@@ -29,9 +29,7 @@ exits:
 facts:
   - id: fact_gate_open
     text: The gate stands open.
-    hidden: false
   - id: fact_cart
     text: A mill cart blocks the lane. Its wheel is still turning.
-    hidden: false
 ---
 Wagon ruts cross the mud. A stick leans by the post. Briar stands in the ruts, and a mill cart sits across the lane.

@@ -146,7 +146,6 @@ schema: cast
 id: pc_lark
 kind: pc_template
 display_name: Lark
-facts: []
 idle:
   eligible: false
 ---
@@ -240,13 +239,15 @@ fn the_present_actors_are_harbormouse_and_wren(world: &mut World) {
 #[given(expr = "a docks table where one PC knows a hidden fact")]
 fn a_docks_table_where_one_pc_knows_a_hidden_fact(world: &mut World) {
     let pack = crate::support::copy_docks("hidden-fact");
-    let path = pack.join("cast/pc-wren.md");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read cast: {err}"));
+    let path = pack.join("world/places/docks_shop.md");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read shop: {err}"));
+    let from = "    text: Oil is on the shelf.\n";
+    assert!(text.contains(from), "{text}");
     let text = text.replace(
-        "facts: []\n",
-        &format!("facts:\n  - id: {HIDDEN_FACT}\n    text: {HIDDEN_TEXT}\n    hidden: true\n"),
+        from,
+        &format!("{from}  - id: {HIDDEN_FACT}\n    text: {HIDDEN_TEXT}\n    hidden: true\n"),
     );
-    fs::write(&path, text).unwrap_or_else(|err| panic!("write cast: {err}"));
+    fs::write(&path, text).unwrap_or_else(|err| panic!("write shop: {err}"));
     crate::support::edit_save(&pack, |now| {
         now.actors
             .get_mut("pc_wren")

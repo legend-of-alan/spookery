@@ -1,4 +1,4 @@
-//! `facts:` in a place or cast file.
+//! `facts:` in a place file.
 
 use std::collections::BTreeMap;
 
@@ -8,7 +8,7 @@ use crate::canon::source::{Diags, FileText, Locator};
 use crate::canon::FactDef;
 use crate::diagnostic::Diagnostic;
 
-/// Every fact in the pack by id, from places and cast alike.
+/// Every fact in the pack by id, each owned by one place.
 #[derive(Default)]
 pub(super) struct Facts(pub(super) BTreeMap<String, FactDef>);
 
@@ -73,5 +73,6 @@ impl Facts {
 pub(super) struct FactYaml {
     pub(super) id: String,
     pub(super) text: String,
+    #[serde(default)]
     pub(super) hidden: bool,
 }

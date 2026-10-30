@@ -56,8 +56,16 @@ Feature: spook check explains a broken pack
 
     Examples:
       | fault                  | file                       | line |
-      | duplicate place fact   | world/places/docks_shop.md | 9    |
-      | duplicate cast fact    | cast/pc-rowan.md           | 10   |
+      | duplicate place fact   | world/places/docks_shop.md | 8    |
+
+  Scenario: A cast page cannot own facts
+    Given a docks table
+    When the copy is broken by "cast facts"
+    And the operator runs spook check --json
+    Then the check exits 1
+    And a JSON diagnostic has code "SCHEMA" file "cast/pc-rowan.md" path "facts" at line 6 column 1
+    And stderr is empty
+    And the pack bytes are unchanged
 
   Scenario: A clean pack prints an empty JSON array
     Given a docks table

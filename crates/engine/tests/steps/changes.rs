@@ -33,12 +33,13 @@ fn lark_has_a_hidden_meter(world: &mut World) {
 #[given(expr = "a round that changes a hidden fact")]
 fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut cast = fs::read_to_string(pack.join("cast/briar.md")).unwrap();
+    let lane = pack.join("world/places/mill_lane.md");
+    let mut place = fs::read_to_string(&lane).unwrap();
     let from = "facts: []\n";
-    assert!(cast.contains(from), "{cast}");
+    assert!(place.contains(from), "{place}");
     let fact = format!("facts:\n  - id: {SECRET_ID}\n    text: {SECRET_TEXT}\n    hidden: true\n");
-    cast = cast.replacen(from, &fact, 1);
-    fs::write(pack.join("cast/briar.md"), cast).unwrap();
+    place = place.replacen(from, &fact, 1);
+    fs::write(lane, place).unwrap();
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
     verbs.push_str(&format!(
         "  - id: spill\n    when:\n      verb: spill\n    do:\n      - reveal:\n          who: npc_briar\n          fact: {SECRET_ID}\n      - flag:\n          who: world\n          key: {SECRET_ID}\n          value: true\n      - meter:\n          who: npc_briar\n          key: hp\n          add: -1\n"

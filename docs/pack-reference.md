@@ -47,6 +47,8 @@ start:
 
 A place file is Markdown. The header between the `---` lines is the frontmatter. The prose after the closing `---` is the body a viewer can read. `display_name` is required. It is the name a player sees. The id is not turned into a title.
 
+Only places own facts. A fact has `id`, `text`, and optional `hidden`, which defaults to false. A player in the place sees every fact that is not hidden. A hidden fact is seen only by an actor whose `known_facts` lists it.
+
 An exit has `to` and `name`. It may have `cost`, `if`, `locked_text`, and `hidden` together with `revealed_by`. `to` is a place id. Two exits on one place with the same name are rejected. A hidden exit needs `revealed_by`, and that value is a fact id from this pack. A place no path reaches from the start, counting hidden and locked exits, is a warning.
 
 `cost.time` is `30s`, `10m`, `2h`, or `1d`, stored as minutes. Seconds round up to the next minute. `if` uses the same conditions as a rule. When that `if` fails, the exit is locked: the engine shows `locked_text` and changes nothing.
@@ -61,7 +63,6 @@ display_name: Yard
 facts:
   - id: fact_yard_open
     text: The yard gate stands open.
-    hidden: false
   - id: fact_hidden_stair
     text: Ivy hides a stair.
     hidden: true
@@ -108,7 +109,6 @@ display_name: Lane
 facts:
   - id: fact_lane_empty
     text: The lane is empty.
-    hidden: false
 exits:
   - to: yard
     name: yard
@@ -124,7 +124,6 @@ display_name: Loft
 facts:
   - id: fact_loft_rope
     text: The loft smells of rope.
-    hidden: false
 exits:
   - to: yard
     name: yard
@@ -140,7 +139,9 @@ display_name: Cellar
 facts:
   - id: fact_cellar_dark
     text: The cellar is dark.
-    hidden: false
+  - id: fact_ledger_short
+    text: The oil ledger is one tin short.
+    hidden: true
 exits:
   - to: yard
     name: yard
@@ -186,7 +187,7 @@ A short knife.
 
 ## Cast
 
-`kind` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `pc_ada`. `display_name` is required, and it is the name a player sees.
+`kind` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `pc_ada`. `display_name` is required, and it is the name a player sees. A cast page has no `facts`: what an actor knows is `known_facts` on the save.
 
 `flags` lists the flags an effect may set on this actor. `idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
 
@@ -196,7 +197,6 @@ schema: cast
 id: pc_ada
 kind: pc_template
 display_name: Ada
-facts: []
 flags: []
 idle:
   eligible: false
@@ -210,10 +210,6 @@ schema: cast
 id: keeper
 kind: npc
 display_name: Keeper
-facts:
-  - id: fact_ledger_short
-    text: The oil ledger is one tin short.
-    hidden: true
 flags: []
 idle:
   eligible: true

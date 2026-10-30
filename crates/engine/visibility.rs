@@ -21,21 +21,10 @@ pub(crate) fn can_see_fact(canon: &Canon, now: &State, viewer: &Viewer, fact_id:
     if fact.hidden {
         return false;
     }
-    let place = actor.place();
-    if canon
+    canon
         .places
-        .get(place)
-        .is_some_and(|place_canon| place_canon.facts.iter().any(|id| id == fact_id))
-    {
-        return true;
-    }
-    now.actors
-        .get(&fact.owner_id)
-        .is_some_and(|other| other.place() == place)
-        && canon
-            .cast
-            .get(&fact.owner_id)
-            .is_some_and(|cast| cast.facts.iter().any(|id| id == fact_id))
+        .get(actor.place())
+        .is_some_and(|place| place.facts.iter().any(|id| id == fact_id))
 }
 
 /// Who is asking.

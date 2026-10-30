@@ -3,7 +3,6 @@ schema: cast
 id: bram
 kind: npc
 display_name: Bram
-facts: []
 idle:
   eligible: true
 ---

@@ -140,8 +140,7 @@ fn strip_room_facts(pack: &Path) {
     let path = pack.join("world/places/mira_rooms.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read rooms: {err}"));
     let unix = text.replace("\r\n", "\n");
-    let from =
-        "facts:\n  - id: fact_room_lamp\n    text: A lamp burns in the room.\n    hidden: false\n";
+    let from = "facts:\n  - id: fact_room_lamp\n    text: A lamp burns in the room.\n";
     assert!(unix.contains(from), "room facts were not found\n{unix}");
     fs::write(&path, unix.replace(from, "facts: []\n"))
         .unwrap_or_else(|err| panic!("write rooms: {err}"));

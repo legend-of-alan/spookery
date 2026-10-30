@@ -4,18 +4,15 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::canon::fact::{FactYaml, Facts};
 use crate::canon::rule_list::{self, RuleYaml};
 use crate::canon::source::{load_tagged, Diags, FileText, Locator, Page, Problem, CAST_SCHEMA};
 use crate::canon::{CastDef, CastKind, IdleProfile};
 use crate::diagnostic::Diagnostic;
 use crate::rule::{Owner, Rule};
 
-/// One cast page into `cast` and its facts into `facts`, and its rules. A bad fact stops
-/// the file before its kind and rules.
+/// One cast page into `cast`, and its rules.
 pub(super) fn add_cast(
     page: Page,
-    facts: &mut Facts,
     cast: &mut BTreeMap<String, CastDef>,
     diags: &mut Diags,
 ) -> Option<Vec<Rule>> {
@@ -25,7 +22,6 @@ pub(super) fn add_cast(
         text: &page.text,
         line_base: 0,
     };
-    let ids = diags.keep(facts.add(&whole, file.facts, &file.id))?;
     // `load_cast` validates `file.kind` is `"npc"` or `"pc_template"`.
     let kind = if file.kind == "npc" {
         CastKind::Npc
@@ -47,7 +43,6 @@ pub(super) fn add_cast(
         CastDef {
             kind,
             display_name: file.display_name,
-            facts: ids,
             flags: file.flags,
             body: page.body,
             idle: file.idle,
@@ -102,7 +97,6 @@ struct CastFile {
     id: String,
     kind: String,
     display_name: String,
-    facts: Vec<FactYaml>,
     #[serde(default)]
     flags: Vec<String>,
     idle: Option<IdleProfile>,
@@ -121,7 +115,7 @@ mod tests {
             |text| load_cast("cast/mira.md", text, 0).map(|_| ()),
             "cast",
             concat!("cast/", "v0"),
-            "id: mira\nkind: npc\ndisplay_name: Mira\nfacts: []\n",
+            "id: mira\nkind: npc\ndisplay_name: Mira\n",
         );
     }
 }

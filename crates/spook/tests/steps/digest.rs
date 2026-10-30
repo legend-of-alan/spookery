@@ -213,6 +213,46 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
     );
 }
 
+#[given(expr = "the docks pack where {string} is written without hidden")]
+fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String) {
+    let pack = crate::support::copy_docks("no-hidden");
+    let shop = fs::read_to_string(pack.join("world/places/docks_shop.md")).unwrap();
+    let (_, row) = shop
+        .split_once(&format!("  - id: {fact_id}\n"))
+        .unwrap_or_else(|| panic!("the shop has no {fact_id}"));
+    let row = row.split("  - id:").next().unwrap_or(row);
+    assert!(!row.contains("hidden:"), "{fact_id} has a hidden key");
+    world.pack = Some(pack);
+}
+
+#[when(expr = "{string} looks from {string}")]
+fn looks_from(world: &mut World, actor: String, place: String) {
+    let now = table::now_of(table::pack(world));
+    assert_eq!(now.actors[&actor].place(), place);
+}
+
+#[then(expr = "the perceive view for {string} lists the fact {string}")]
+fn the_perceive_view_lists_the_fact(world: &mut World, actor: String, fact_id: String) {
+    assert!(
+        view_has_fact(world, &actor, &fact_id),
+        "view lacks {fact_id}"
+    );
+}
+
+#[then(expr = "the perceive view for {string} does not list the fact {string}")]
+fn the_perceive_view_does_not_list_the_fact(world: &mut World, actor: String, fact_id: String) {
+    assert!(
+        !view_has_fact(world, &actor, &fact_id),
+        "view listed {fact_id}"
+    );
+}
+
+fn view_has_fact(world: &World, actor: &str, fact_id: &str) -> bool {
+    let shard = spookery_engine::World::peek(table::pack(world)).unwrap();
+    let view = shard.perceive(&Presence::default(), actor).unwrap();
+    view.known_facts.iter().any(|fact| fact.id == fact_id)
+}
+
 fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
     let shard = spookery_engine::World::peek(pack).unwrap();
