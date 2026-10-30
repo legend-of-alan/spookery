@@ -36,7 +36,7 @@ The `dependency-and-feature-checks` job in `.github/workflows/ci.yml` fails the 
 
 - `protocol` (`spookery-protocol`): player and GM wire types. MIT licensed, so every dependency must be permissively licensed.
 - `engine` (`spookery-engine`): world model, rules, rounds, save and journal. Synchronous; depends only on `protocol`.
-- `server` (`spookery-server`): table loop, seats over loopback TCP, idle clock, the MCP "agent door". Must not depend on `cli`, `agent` or `reqwest`.
+- `server` (`spookery-server`): the table, seats over loopback TCP, idle timer, the MCP "agent door". Must not depend on `cli`, `agent` or `reqwest`.
 - `agent` (`spookery-agent`): the model-GM turn state machine and prompt. Pure logic: no `engine`, `server`, `cli`, `tokio`, `reqwest` or `socket2`.
 - `cli` (`spookery-cli`): `spook play` / `spook gm` terminals, the MCP GM client, and the `ai-gm` HTTP loop around `agent`. Must not depend on `engine` or `server`; it only talks to the host over the wire.
 - `spook`: the clap binary (`src/main.rs`) and library `spookery`. Feature `server` pulls in engine+server, `client` pulls in cli; both builds must work alone (`--no-default-features --features server|client`).
@@ -69,6 +69,6 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 - Follow the design principles and the issue and PR title format in `CONTRIBUTING.md`.
 - In PR bodies, use `Closes #N` only for the closing keyword; elsewhere write "issue #N" / "PR #N", never a bare `#N`.
 - Never merge a PR. Never force-push or rebase a pushed branch; merge `main` into it instead.
-- PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/lock.rs`, `engine/store/durability.rs` and `server/gm_tools.rs`.
+- PR CI runs Linux only; `main` also runs macOS and Windows, and Windows runs clippy for the `cfg(windows)` code in `engine/store/durability.rs`.
 - Do not restore `docs/legacy_architecture/` or `docs/adr/`.
 - Pack authoring workflow (edit a copy, loop on `spook check --json`, `spook migrate` after canon edits) is in `.grok/skills/author-pack/SKILL.md`.
