@@ -67,19 +67,18 @@ pub fn append_record(
     }
     line.push('\n');
     if end + line.len() as u64 > MAX_BYTES {
-        drop(file);
         let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
         let from = end.saturating_sub(MAX_BYTES / 2) as usize;
         let start = bytes[from..end as usize]
             .iter()
             .position(|byte| *byte == b'\n')
             .map_or(end as usize, |index| from + index + 1);
-        write_atomic(&path, &bytes[start..end as usize])?;
-        file = OpenOptions::new()
-            .write(true)
-            .open(&path)
-            .map_err(|_| Reason::CommitConflict)?;
-    } else if end != len {
+        let mut kept = bytes[start..end as usize].to_vec();
+        kept.extend_from_slice(line.as_bytes());
+        write_atomic(&path, &kept)?;
+        return Ok(record);
+    }
+    if end != len {
         file.set_len(end).map_err(|_| Reason::CommitConflict)?;
     }
     file.seek(SeekFrom::End(0))

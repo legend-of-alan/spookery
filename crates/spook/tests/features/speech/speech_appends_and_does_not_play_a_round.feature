@@ -59,7 +59,8 @@ Feature: Speech appends to the tape and does not play a round
     Then "pc_rowan" gets exactly those 3 lines, in order
 
   Scenario: A long chatty world still accepts speech
-    Given a docks table with a seated player
+    Given a docks table with "pc_rowan" seated
     And the tape already holds a full 1 MiB of old speech
     When the player says "still here"
-    Then the tape contains the text "still here"
+    And "pc_rowan" leaves and sits again
+    Then the newest replayed say line is "still here"
