@@ -225,8 +225,8 @@ fn the_docks_pack_where_a_fact_has_no_hidden(world: &mut World, fact_id: String)
     world.pack = Some(pack);
 }
 
-#[when(expr = "{string} looks from {string}")]
-fn looks_from(world: &mut World, actor: String, place: String) {
+#[given(expr = "{string} is in {string}")]
+fn is_in(world: &mut World, actor: String, place: String) {
     let now = table::now_of(table::pack(world));
     assert_eq!(now.actors[&actor].place(), place);
 }

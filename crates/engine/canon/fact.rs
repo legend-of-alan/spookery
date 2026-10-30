@@ -13,25 +13,19 @@ use crate::diagnostic::Diagnostic;
 pub(super) struct Facts(pub(super) BTreeMap<String, FactDef>);
 
 impl Facts {
-    /// One file's facts for `owner`, then the ids of every fact `owner` has, or the
-    /// refusals. `source` is the whole file, so a refusal's line counts from its first line.
+    /// One place file's facts, or the refusals. `source` is the whole file, so a
+    /// refusal's line counts from its first line.
     pub fn add(
         &mut self,
         source: &FileText,
         facts: Vec<FactYaml>,
-        owner: &str,
-    ) -> Result<Vec<String>, Vec<Diagnostic>> {
+        place: &str,
+    ) -> Result<(), Vec<Diagnostic>> {
         let mut diags = Diags::default();
         for (row, fact) in facts.into_iter().enumerate() {
-            diags.extend(self.insert(source, row, fact, owner));
+            diags.extend(self.insert(source, row, fact, place));
         }
-        diags.into_result(())?;
-        Ok(self
-            .0
-            .iter()
-            .filter(|(_, fact)| fact.owner_id == owner)
-            .map(|(id, _)| id.clone())
-            .collect())
+        diags.into_result(())
     }
 
     fn insert(
@@ -39,7 +33,7 @@ impl Facts {
         source: &FileText,
         row: usize,
         FactYaml { id, text, hidden }: FactYaml,
-        owner: &str,
+        place: &str,
     ) -> Option<Diagnostic> {
         let path = format!("facts[{row}].id");
         let at = Locator::Row {
@@ -54,13 +48,13 @@ impl Facts {
             .refuse_empty(&id, &path, at, empty)
             .or_else(|| taken.then(|| source.refuse_duplicate(&id, &path, at, twice)));
         if refused.is_none() {
-            let owner_id = owner.to_string();
+            let place_id = place.to_string();
             self.0.insert(
                 id,
                 FactDef {
                     text,
                     hidden,
-                    owner_id,
+                    place_id,
                 },
             );
         }

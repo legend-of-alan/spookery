@@ -76,7 +76,7 @@ pub struct ItemDef {
 pub struct FactDef {
     pub text: String,
     pub hidden: bool,
-    pub owner_id: String,
+    pub place_id: String,
 }
 
 /// One way out of a place. `cost.minutes` is the world time the walk takes.
@@ -96,7 +96,6 @@ pub struct Exit {
 #[derive(Clone, Debug)]
 pub struct PlaceDef {
     pub display_name: String,
-    pub facts: Vec<String>,
     pub body: String,
     pub exits: Vec<Exit>,
 }
@@ -171,7 +170,7 @@ impl Canon {
             return "";
         };
         self.places
-            .get(&fact.owner_id)
+            .get(&fact.place_id)
             .map_or("", |place| &place.body)
     }
 }
