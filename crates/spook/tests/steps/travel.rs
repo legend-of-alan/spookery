@@ -194,7 +194,7 @@ fn two_arrivals(world: &mut World) {
                 visited: vec!["docks_shop".to_string()],
                 act: spookery_engine::testing::Act {
                     busy_until: Some(EVENING + 5),
-                    busy_for: Some(spookery_engine::testing::PendingAction {
+                    pending: Some(spookery_engine::testing::PendingAction {
                         verb: "travel".to_string(),
                         source: spookery_engine::Source::Player,
                         kind: spookery_engine::testing::PendingKind::Arrive {
@@ -262,7 +262,7 @@ fn arrival_is_stamped(world: &mut World) {
         .as_array()
         .unwrap()
         .iter()
-        .any(|effect| effect["class"] == "location" && effect["arrived_at"] == EVENING + 2);
+        .any(|effect| effect["kind"] == "location" && effect["arrived_at"] == EVENING + 2);
     assert!(stamped, "{round}");
 }
 
@@ -282,7 +282,7 @@ fn rounds_never_shorten(_world: &mut World) {
     let seated = copy_docks("seated-length");
     let mut seated_world = spookery_engine::testing::resume(&seated);
     let one_human = spookery_engine::Presence {
-        humans: 1,
+        players: 1,
         actors_present: Vec::new(),
     };
     let wall = seated_world.state().last_round_at.clone();
@@ -364,7 +364,7 @@ fn the_habit_due_at_21_35_runs(world: &mut World) {
         .into_iter()
         .find(|name| crate::support::read_round(&pack, name)["world_time_after"] == EVENING + 5)
         .unwrap_or_else(|| panic!("no 21:35 round"));
-    let steps = crate::support::read_round(&pack, &round)["steps_run"].to_string();
+    let steps = crate::support::read_round(&pack, &round)["extra_steps"].to_string();
     assert!(steps.contains("cast:bram/toll"), "{steps}");
 }
 

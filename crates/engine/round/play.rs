@@ -145,7 +145,7 @@ fn run_stages<'p, L>(
 ) -> Result<(Draft<'p>, RoundTime, RoundLog, deliver::Deliveries), Reason> {
     let mut draft = Draft::begin(world, presence);
     let clock = advance::run(&mut draft, wall)?;
-    let mut dice = RoundDice::new(draft.state().shard_id.clone(), clock.round_index);
+    let mut dice = RoundDice::new(draft.state().world_id.clone(), clock.round_index);
     let mut log = RoundLog::default();
     let candidates = pick::run(&draft, queue)?;
     let snapshot = draft.state().clone();

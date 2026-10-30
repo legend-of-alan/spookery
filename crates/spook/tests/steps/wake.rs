@@ -27,7 +27,7 @@ fn player_wait_ids(round: &Value) -> Vec<String> {
 /// Rowan is the one seated player.
 fn rowan() -> Presence {
     Presence {
-        humans: 1,
+        players: 1,
         actors_present: vec!["pc_rowan".to_string()],
     }
 }
@@ -225,7 +225,7 @@ fn the_player_drops_and_sits_again(world: &mut World) {
     table::seat_actor(world, &pack, "pc_rowan");
     let queued = table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"queued\"");
     table::close_actor(world, "pc_rowan");
-    table::wait_humans(world, &pack, 0);
+    table::wait_players(world, &pack, 0);
     table::live_mut(world).players.clear();
     table::seat_actor(world, &pack, "pc_rowan");
     let status = table::gm_call(world, 4, "table_status", "{}");

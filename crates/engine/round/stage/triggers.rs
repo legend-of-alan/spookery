@@ -3,7 +3,7 @@
 use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::intent::{trigger_intent_id, Intent, Source, Target, Viewer};
-use crate::journal::{Rejected, Step};
+use crate::journal::{Refusal, Step};
 use crate::key::{Change, StateKey, StateValue};
 use crate::rule::{ChangeWatch, Op, Rule, WatchWho, When};
 use crate::rules::cond;
@@ -36,7 +36,7 @@ pub(crate) fn run(
             break;
         }
         if depth >= max {
-            log.steps.push(Step::TriggerDepth);
+            log.extra_steps.push(Step::TriggerDepth);
             break;
         }
         depth += 1;
@@ -129,10 +129,10 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
         Ok(expanded) => expanded,
         Err(code) => {
             draft.rollback(point);
-            log.rejected.push(Rejected {
+            log.refused.push(Refusal {
                 id: intent.id,
                 code,
-                missing: None,
+                detail: None,
             });
             return;
         }
@@ -145,7 +145,7 @@ fn fire(draft: &mut Draft, dice: &mut RoundDice, log: &mut RoundLog, rule: &Rule
     }
     log.reports.extend(expanded.resisted);
     log.effects.extend(expanded.effects);
-    log.steps.push(Step::Rule(rule.id.clone()));
+    log.extra_steps.push(Step::Rule(rule.id.clone()));
 }
 
 /// A change rule's effects, or why it is refused. Over the effect cap is `BUDGET`.
@@ -180,7 +180,7 @@ fn trigger_intent(round_index: u64, actor: Viewer, rule_id: &str) -> Intent {
         trigger_intent_id(rule_id, actor.actor_id()),
         round_index,
         actor,
-        Source::Kernel,
+        Source::Engine,
         rule_id,
         Target::Empty,
     )

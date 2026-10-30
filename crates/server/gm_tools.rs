@@ -296,7 +296,7 @@ fn intent_schema() -> Map<String, Value> {
             "id": { "type": "string" },
             "round_index": { "type": "integer", "minimum": 0 },
             "target": { "type": "string" },
-            "args": { "type": "object" },
+            "to": { "type": "array", "items": { "type": "string" } },
             "rationale_code": { "type": "string" }
         },
         "required": ["actor_id", "move"],

@@ -192,8 +192,8 @@ fn the_player_marks_mira(world: &mut World) {
     world.player_added = added;
 }
 
-#[when(expr = "a kernel habit rolls a check for Mira")]
-fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
+#[when(expr = "an engine habit rolls a check for Mira")]
+fn an_engine_habit_rolls_a_check_for_mira(world: &mut World) {
     let pack = copy_docks("npc-habit");
     world.pack = Some(pack.clone());
     insert_mira_flags(&pack, "    - braced\n    - slipped\n");
@@ -266,10 +266,10 @@ fn the_gm_sees_both_rolls(world: &mut World) {
     assert_opposed(&committed_checks(&text));
 }
 
-#[then(expr = "the round log records Mira's kernel brace")]
-fn the_round_log_records_miras_kernel_brace(world: &mut World) {
+#[then(expr = "the round log records Mira's engine brace")]
+fn the_round_log_records_miras_engine_brace(world: &mut World) {
     let round = common::read_first_round(world);
-    let ran: Vec<_> = super::record::read_steps_run(&round)
+    let ran: Vec<_> = super::record::read_extra_steps(&round)
         .into_iter()
         .filter(|step| step == "cast:mira/brace")
         .collect();
@@ -278,11 +278,11 @@ fn the_round_log_records_miras_kernel_brace(world: &mut World) {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|effect| effect["class"] == "flag" && effect["actor_id"] == "mira")
+        .filter(|effect| effect["kind"] == "flag" && effect["actor_id"] == "mira")
         .collect();
     assert_eq!(flags.len(), 1, "{round}");
     assert_eq!(flags[0]["as"], "npc:mira", "{round}");
-    assert!(round["rejected"].as_array().unwrap().is_empty(), "{round}");
+    assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
 }
 
 #[then(expr = "replaying the round reproduces the save")]
@@ -300,7 +300,7 @@ fn replaying_the_round_reproduces_the_save(world: &mut World) {
         .rev()
         .find(|entry| entry.changes_state())
         .unwrap_or_else(|| panic!("no round was written"))
-        .now_hash();
+        .state_hash();
     assert_eq!(
         spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
         expected
@@ -322,7 +322,7 @@ fn queue_mira(world: &mut World, move_name: &str) {
     let args = format!(r#"{{"actor_id":"mira","move":"{move_name}"}}"#);
     let text = table::gm_call(world, 4, "queue_intent", &args);
     assert!(text.contains("\"id\""), "{text}");
-    assert!(!text.contains("UNKNOWN_KEY"), "{text}");
+    assert!(!text.contains("UNKNOWN_ID"), "{text}");
 }
 
 fn append_verbs(pack: &Path, extra: &str) {

@@ -31,7 +31,7 @@ fn a_player_sends_a_mebibyte_line(world: &mut World) {
         .unwrap_or_else(|err| panic!("clone: {err}"));
     let join = std::thread::spawn(move || write_all_ignoring(writer, vec![b'a'; MIB]));
     world.player_added = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
-    table::wait_humans(world, &pack, 0);
+    table::wait_players(world, &pack, 0);
     join.join().unwrap_or_else(|_| panic!("writer thread"));
 }
 

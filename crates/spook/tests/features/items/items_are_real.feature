@@ -4,12 +4,20 @@ Feature: Items are real
     Given nell holds 1 tonic and has 3 of 10 hp
     When nell types "use tonic"
     Then nell has 7 hp and 0 tonic
-    And "use tonic" again is rejected with NOT_IN_SPEC by the kernel
+    And "use tonic" again is rejected with NOT_IN_SPEC by the engine
 
   Scenario: Take and drop
     Given docks_shop has 3 lamp_oil
     When rowan takes lamp_oil
     Then docks_shop has 2 and rowan has 1
+
+  Scenario: An item target and an exit target keep their own journal keys
+    Given docks_shop has 3 lamp_oil
+    When rowan takes lamp_oil
+    And rowan types "travel docks_street"
+    Then the journal targets item lamp_oil, then exit docks_street
+    When the operator runs verify
+    Then the command exits 0
 
   Scenario: Using an item with no use rule is refused, and the turn is kept
     Given lark holds 1 latch at a seated table

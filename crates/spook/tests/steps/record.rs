@@ -1,13 +1,13 @@
-//! Reading the `steps_run` field of a stored round record.
+//! Reading the `extra_steps` field of a stored round record.
 
 use serde_json::Value;
 
 pub(crate) use crate::support::read_round;
 
 /// Steps stored on `round`, or none when the field is left out. A rule step is its id.
-pub(crate) fn read_steps_run(round: &Value) -> Vec<String> {
+pub(crate) fn read_extra_steps(round: &Value) -> Vec<String> {
     round
-        .get("steps_run")
+        .get("extra_steps")
         .and_then(Value::as_array)
         .map(|items| {
             items

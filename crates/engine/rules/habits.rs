@@ -1,7 +1,7 @@
 //! Which habits an NPC may run this round.
 
 use crate::canon::Canon;
-use crate::intent::{kernel_intent_id, Intent, Source, Target, Viewer};
+use crate::intent::{engine_intent_id, Intent, Source, Target, Viewer};
 use crate::model::{Presence, State};
 use crate::rule::When;
 use crate::rules::cond;
@@ -92,7 +92,7 @@ pub(crate) fn is_eligible(canon: &Canon, now: &State, presence: &Presence, npc_i
     if counters.last_act_round == now.round_index {
         return false;
     }
-    if presence.humans == 0 {
+    if presence.players == 0 {
         u64::from(counters.idle_acts_today) < canon.budget.idle_acts_per_world_day
     } else {
         u64::from(counters.live_acts_this_hour) < canon.budget.live_acts_per_world_hour
@@ -109,10 +109,10 @@ fn is_player_at(now: &State, presence: &Presence, place: &str) -> bool {
 
 pub(crate) fn intent_for(now: &State, actor_id: &str, local_id: &str) -> Intent {
     Intent::new(
-        kernel_intent_id(&now.shard_id, now.round_index, actor_id, local_id),
+        engine_intent_id(&now.world_id, now.round_index, actor_id, local_id),
         now.round_index,
         Viewer::Npc(actor_id.to_string()),
-        Source::Kernel,
+        Source::Engine,
         local_id,
         Target::Empty,
     )

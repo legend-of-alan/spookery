@@ -1,4 +1,4 @@
-//! The kernel crate has no cucumber harness. This is the scenario:
+//! The scenario this property checks:
 //!
 //! ```gherkin
 //! Feature: Inventory never goes negative
@@ -163,7 +163,7 @@ fn npc_intent() -> Intent {
         id: "shift-item".to_string(),
         round_index: 0,
         actor: Viewer::Npc("mira".to_string()),
-        source: Source::Kernel,
+        source: Source::Engine,
         move_name: "shift_item".to_string(),
         target: Target::Empty,
         args: IntentArgs::default(),
@@ -177,7 +177,7 @@ fn item_effect(step: &ItemChange) -> Effect {
         Holder::Place(id) => (None, Some(id.clone())),
     };
     Effect {
-        class: EffectKind::Item {
+        kind: EffectKind::Item {
             actor_id,
             place,
             id: step.id.clone(),

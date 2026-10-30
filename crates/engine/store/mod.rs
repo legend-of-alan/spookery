@@ -17,7 +17,7 @@ pub use tape::{emit_tape_record, TapeRecord};
 
 /// Rules version stamped on every save and every round.
 /// A different version is refused. There is no migration.
-pub const RULES_REV: u64 = 9;
+pub const RULES_REV: u64 = 10;
 
 pub(crate) fn require_rules_rev(rev: u64) -> Result<(), Reason> {
     if rev == RULES_REV {

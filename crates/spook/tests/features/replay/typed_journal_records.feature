@@ -27,13 +27,13 @@ Feature: Journal records are typed
     Then the command exits 1
     And stderr names that unknown key
 
-  Scenario: A retired effect class is still illegal
+  Scenario: A retired effect kind is unknown
     Given a docks table
     When the operator tries a round
-    And one effect class is need
+    And one effect kind is need
     And the operator runs verify
     Then the command exits 1
-    And stderr names that record and says ILLEGAL_CLASS
+    And stderr names that record and says UNKNOWN_EFFECT
 
   Scenario: Written records round-trip
     Given a docks table
@@ -44,4 +44,4 @@ Feature: Journal records are typed
     Given a docks table
     When the operator plays 2 rounds
     Then the first round lists only effect_applied and cast:mira/leave_door_note
-    And the second round omits steps_run
+    And the second round omits extra_steps

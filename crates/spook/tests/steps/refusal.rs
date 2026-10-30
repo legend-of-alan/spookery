@@ -333,12 +333,12 @@ fn assert_one_rejection(world: &World, word: &str) {
         let line = spookery_engine::testing::journal::read_record_line(pack, key)
             .unwrap_or_else(|err| panic!("{}: {}", key, err.detail));
         let round: Value = serde_json::from_str(&line).unwrap_or_else(|err| panic!("{key}: {err}"));
-        let Some(rejected) = round["rejected"].as_array() else {
+        let Some(rejected) = round["refused"].as_array() else {
             continue;
         };
         hits += rejected
             .iter()
-            .filter(|item| item["code"] == code && item["missing"].as_str() == missing)
+            .filter(|item| item["code"] == code && item["detail"].as_str() == missing)
             .count();
     }
     assert_eq!(hits, 1, "{keys:?}");

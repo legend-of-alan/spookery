@@ -80,7 +80,7 @@ fn priority(now: &State, presence: &Presence, intent: &Intent) -> Priority {
     let shuffle = if actor == ActorRank::Player {
         [0u8; 32]
     } else {
-        shuffle_key(&now.shard_id, now.round_index, intent.actor.actor_id())
+        shuffle_key(&now.world_id, now.round_index, intent.actor.actor_id())
     };
     Priority {
         actor,
@@ -105,8 +105,8 @@ fn targets_pc_clock(now: &State, intent: &Intent) -> bool {
 fn touches_seated_player(now: &State, presence: &Presence, intent: &Intent) -> bool {
     let present = &presence.actors_present;
     let target_hit = match &intent.target {
-        Target::Actor(id) => present.iter().any(|actor| actor == id),
-        Target::Place(place) => present.iter().any(|actor| {
+        Target::Actor(id) | Target::Item(id) => present.iter().any(|actor| actor == id),
+        Target::Place(place) | Target::Exit(place) => present.iter().any(|actor| {
             now.actors
                 .get(actor)
                 .is_some_and(|actor| actor.is_pc() && actor.place() == place)

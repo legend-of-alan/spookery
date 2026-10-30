@@ -133,7 +133,7 @@ fn expand_template(
                 LocationTo::Via(via) => {
                     let name = if via == "target" {
                         match &intent.target {
-                            Target::Place(id) => id.clone(),
+                            Target::Place(id) | Target::Exit(id) => id.clone(),
                             _ => return Err(Reason::Schema),
                         }
                     } else {
@@ -143,14 +143,14 @@ fn expand_template(
                         .actors
                         .get(intent.actor.actor_id())
                         .map(|actor| actor.place())
-                        .ok_or(Reason::UnknownKey)?;
+                        .ok_or(Reason::UnknownId)?;
                     let exit =
                         crate::travel::find_exit(canon, from, &name).ok_or(Reason::NoExit)?;
                     exit.to.clone()
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),
                 LocationTo::Target if *teleport => match &intent.target {
-                    Target::Place(id) => id.clone(),
+                    Target::Place(id) | Target::Exit(id) => id.clone(),
                     _ => return Err(Reason::Schema),
                 },
                 LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),
@@ -240,8 +240,8 @@ fn expand_template(
             effects.push(Effect::new(
                 viewer,
                 &intent.id,
-                EffectKind::Message {
-                    message_id: id.clone(),
+                EffectKind::Note {
+                    note_id: id.clone(),
                     to: to.clone(),
                     place: place.clone(),
                     fact_ids: fact_ids.clone(),
@@ -365,9 +365,9 @@ fn location_effect(now: &State, intent: &Intent, to: &str) -> Result<Effect, Rea
         .actors
         .get(intent.actor.actor_id())
         .map(|actor| actor.place().to_string())
-        .ok_or(Reason::UnknownKey)?;
+        .ok_or(Reason::UnknownId)?;
     Ok(Effect {
-        class: EffectKind::Location {
+        kind: EffectKind::Location {
             actor_id: intent.actor.actor_id().to_string(),
             from,
             to: to.to_string(),
@@ -395,7 +395,7 @@ pub fn stamp_for_priority(canon: &Canon, now: &State, presence: &Presence, inten
     });
     if keeps_empty {
         for effect in &effects {
-            if let EffectKind::Message { to, .. } = &effect.class {
+            if let EffectKind::Note { to, .. } = &effect.kind {
                 intent.args.message_to = Some(to.clone());
             }
         }
@@ -433,7 +433,7 @@ impl Dice for PreviewDice {
 pub(crate) fn stamp(intent: &mut Intent, effects: &[Effect]) {
     for effect in effects {
         if intent.target == Target::Empty {
-            match &effect.class {
+            match &effect.kind {
                 EffectKind::Location { to, .. } => {
                     intent.target = Target::Place(to.clone());
                 }
@@ -443,7 +443,7 @@ pub(crate) fn stamp(intent: &mut Intent, effects: &[Effect]) {
                 _ => {}
             }
         }
-        if let EffectKind::Message { to, .. } = &effect.class {
+        if let EffectKind::Note { to, .. } = &effect.kind {
             intent.args.message_to = Some(to.clone());
         }
     }

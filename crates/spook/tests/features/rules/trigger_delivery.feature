@@ -77,9 +77,9 @@ Feature: Trigger delivery
 
   Scenario: A message is seen only by those allowed
     When a message hidden from pc_wren is written
-    Then the GM summary lists "message note_private"
-    And "pc_nell"'s summary lists "message note_private"
-    And "pc_wren"'s summary does not list "message note_private"
+    Then the GM summary lists "note note_private"
+    And "pc_nell"'s summary lists "note note_private"
+    And "pc_wren"'s summary does not list "note note_private"
 
   Scenario: An idle round does not linger for the next player
     When the empty table narrates and then Rowan narrates

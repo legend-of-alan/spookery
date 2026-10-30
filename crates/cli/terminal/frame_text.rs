@@ -1,7 +1,7 @@
 //! Readable text for one player frame.
 
 use crate::protocol::{
-    exit_phrase, named_refusal, ClockView, ExitView, MessageView, MeterView, Outcome, PlayerFrame,
+    exit_phrase, named_refusal, ClockView, ExitView, MeterView, NoteView, Outcome, PlayerFrame,
 };
 
 /// Readable text for one player frame. A new [`PlayerFrame`] variant fails here until it is rendered.
@@ -19,7 +19,7 @@ pub fn render(message: &PlayerFrame) -> String {
             Outcome::Partial => "Your roll partly succeeded.".to_string(),
             Outcome::Miss => "Your roll missed.".to_string(),
         },
-        PlayerFrame::Resume { messages, clocks } => render_resume(messages, clocks),
+        PlayerFrame::Resume { notes, clocks } => render_resume(notes, clocks),
         PlayerFrame::Lines { text } => text.clone(),
         PlayerFrame::Refused {
             code,
@@ -67,12 +67,12 @@ impl PlayerFormatter {
                 replay: true,
                 ..
             } => self.open_earlier(format!("{}: {text}", speaker(from))),
-            PlayerFrame::Resume { messages, clocks } => {
+            PlayerFrame::Resume { notes, clocks } => {
                 if self.seen_resume {
                     return String::new();
                 }
                 self.seen_resume = true;
-                self.close_earlier(render_resume(messages, clocks))
+                self.close_earlier(render_resume(notes, clocks))
             }
             _ => self.close_earlier(render(message)),
         }
@@ -96,10 +96,10 @@ impl PlayerFormatter {
     }
 }
 
-fn render_resume(messages: &[MessageView], clocks: &[ClockView]) -> String {
+fn render_resume(notes: &[NoteView], clocks: &[ClockView]) -> String {
     let mut lines = Vec::new();
-    for message in messages {
-        let text = message.text.trim();
+    for note in notes {
+        let text = note.text.trim();
         if !text.is_empty() {
             lines.push(text.to_string());
         }
@@ -121,7 +121,7 @@ fn render_view(message: &PlayerFrame) -> String {
         scene,
         visible_actors,
         known_facts,
-        notes: messages,
+        notes,
         clocks,
         items,
         meters,
@@ -176,7 +176,7 @@ fn render_view(message: &PlayerFrame) -> String {
     push_lines(
         &mut sections,
         "Notes:",
-        messages.iter().map(|message| message.text.as_str()),
+        notes.iter().map(|note| note.text.as_str()),
     );
     if !clocks.is_empty() {
         let mut lines = Vec::new();
@@ -259,7 +259,7 @@ pub(crate) fn humanize(id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{ItemStack, KnownFact, MessageView};
+    use crate::protocol::{ItemStack, KnownFact, NoteView};
 
     fn assert_readable(text: &str) {
         assert!(!text.contains('{'), "{text}");
@@ -334,8 +334,8 @@ mod tests {
         assert_readable(&miss);
     }
 
-    fn note(id: &str, text: &str) -> MessageView {
-        MessageView {
+    fn note(id: &str, text: &str) -> NoteView {
+        NoteView {
             id: id.to_string(),
             to: vec!["pc_rowan".to_string()],
             place: Some("docks_shop".to_string()),
@@ -347,14 +347,14 @@ mod tests {
     #[test]
     fn a_resume_is_an_away_block() {
         let text = render(&PlayerFrame::Resume {
-            messages: vec![note("note_shop", "the shop restocked")],
+            notes: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(text, "While you were away:\nthe shop restocked");
         assert_readable(&text);
         assert_eq!(
             render(&PlayerFrame::Resume {
-                messages: Vec::new(),
+                notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
@@ -365,19 +365,19 @@ mod tests {
     fn a_later_resume_has_no_away_heading() {
         let mut formatter = PlayerFormatter::new();
         let first = formatter.format(&PlayerFrame::Resume {
-            messages: vec![note("note_shop", "the shop restocked")],
+            notes: vec![note("note_shop", "the shop restocked")],
             clocks: Vec::new(),
         });
         assert_eq!(first, "While you were away:\nthe shop restocked");
         assert_eq!(
             formatter.format(&PlayerFrame::Resume {
-                messages: Vec::new(),
+                notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
         );
         let later = formatter.format(&PlayerFrame::Resume {
-            messages: vec![note("note_yard", "the yard stays watched")],
+            notes: vec![note("note_yard", "the yard stays watched")],
             clocks: Vec::new(),
         });
         assert_eq!(later, "");
@@ -402,7 +402,7 @@ mod tests {
         assert_eq!(second, "GM: evening");
         assert_eq!(
             formatter.format(&PlayerFrame::Resume {
-                messages: Vec::new(),
+                notes: Vec::new(),
                 clocks: Vec::new(),
             }),
             ""
@@ -416,7 +416,7 @@ mod tests {
     #[test]
     fn a_resume_turns_digest_rows_into_sentences() {
         let text = render(&PlayerFrame::Resume {
-            messages: vec![note("note_mira_door", "Back at dusk. Oil on the shelf.")],
+            notes: vec![note("note_mira_door", "Back at dusk. Oil on the shelf.")],
             clocks: vec![
                 ClockView {
                     id: "assassination_debt".to_string(),
@@ -463,7 +463,7 @@ Shop day: 1/1"
                 text: "Oil is on the shelf.".to_string(),
                 owner_body: "CANON-BODY".to_string(),
             }],
-            notes: vec![MessageView {
+            notes: vec![NoteView {
                 id: "note_door".to_string(),
                 to: vec!["pc_rowan".to_string()],
                 place: Some("docks_shop".to_string()),

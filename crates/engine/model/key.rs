@@ -19,7 +19,7 @@ pub enum StateKey {
     ActorWielded(String),
     ClockValue(String),
     ClockPaused(String),
-    Message(String),
+    Note(String),
     WorldFlag(String),
 }
 
@@ -39,7 +39,7 @@ impl fmt::Display for StateKey {
             StateKey::ActorWielded(actor) => write!(f, "actor_wielded {actor}"),
             StateKey::ClockValue(id) => write!(f, "clock_value {id}"),
             StateKey::ClockPaused(id) => write!(f, "clock_paused {id}"),
-            StateKey::Message(id) => write!(f, "message {id}"),
+            StateKey::Note(id) => write!(f, "note {id}"),
             StateKey::WorldFlag(key) => write!(f, "world_flag {key}"),
         }
     }
@@ -62,7 +62,7 @@ impl StateKey {
             StateKey::PlaceItem(_, _)
             | StateKey::ClockValue(_)
             | StateKey::ClockPaused(_)
-            | StateKey::Message(_)
+            | StateKey::Note(_)
             | StateKey::WorldFlag(_) => None,
         }
     }

@@ -19,7 +19,7 @@ Feature: A rule's effects are all or nothing
     When Mira plays spilled
     Then lamp oil stays 4, the round names OUT_OF_RANGE, and no roll is reported
 
-  Scenario: A later kernel intent sees what the earlier one already did
-    Given two kernel waits queued for Mira
+  Scenario: A later engine intent sees what the earlier one already did
+    Given a docks pack for two engine waits
     When those waits are played
     Then only the first wait lands and the second is INELIGIBLE

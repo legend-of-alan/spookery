@@ -164,14 +164,14 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
             if exits.is_empty() {
                 return None;
             }
-            Some(Target::Place(exits[token % exits.len()].name.clone()))
+            Some(Target::Exit(exits[token % exits.len()].name.clone()))
         }
         "take" | "drop" | "use" | "wield" => {
             let items = item_tokens(world, actor);
             if items.is_empty() {
                 return None;
             }
-            Some(Target::Actor(items[token % items.len()].clone()))
+            Some(Target::Item(items[token % items.len()].clone()))
         }
         _ => None,
     }
@@ -193,7 +193,7 @@ fn item_tokens(world: &World, actor: &str) -> Vec<String> {
 fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Target) -> Intent {
     let token = match &target {
         Target::Empty => "",
-        Target::Actor(id) | Target::Place(id) => id.as_str(),
+        Target::Actor(id) | Target::Item(id) | Target::Place(id) | Target::Exit(id) => id.as_str(),
         Target::Clock(_) => "",
     };
     let line = if token.is_empty() {
@@ -203,7 +203,7 @@ fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Tar
     };
     let round_index = now.round_index.saturating_add(1);
     Intent {
-        id: player_intent_id(&now.shard_id, round_index, actor, &line),
+        id: player_intent_id(&now.world_id, round_index, actor, &line),
         round_index: now.round_index,
         actor: Viewer::Player(actor.to_string()),
         source: Source::Player,
@@ -226,11 +226,11 @@ pub(crate) fn assert_replay_matches(pack: &Path) -> Result<(), TestCaseError> {
         ));
     };
     let replayed = journal::blake2s_tagged(&report.now_yaml);
-    if replayed == last.now_hash() {
+    if replayed == last.state_hash() {
         return Ok(());
     }
     Err(TestCaseError::fail(format!(
         "state hash differed: record {} replayed {replayed}",
-        last.now_hash()
+        last.state_hash()
     )))
 }

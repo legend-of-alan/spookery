@@ -25,7 +25,7 @@ pub(crate) fn save_emit_options() -> SerializerOptions {
 
 pub fn parse_save(text: &str) -> Result<State, Vec<Diagnostic>> {
     const FILE: &str = "state/save.yaml";
-    if let Some(diag) = check_tag(text, crate::diagnostic::NOW_SCHEMA, FILE, 0) {
+    if let Some(diag) = check_tag(text, crate::diagnostic::SAVE_SCHEMA, FILE, 0) {
         return Err(vec![diag]);
     }
     // Check the rules version before the full shape, so a save from older rules
@@ -51,7 +51,7 @@ pub fn parse_save(text: &str) -> Result<State, Vec<Diagnostic>> {
 
 pub fn emit_save(now: &State) -> Result<String, Reason> {
     let mut canonical = now.clone();
-    canonical.schema = crate::diagnostic::NOW_SCHEMA.to_string();
+    canonical.schema = crate::diagnostic::SAVE_SCHEMA.to_string();
     canonical.rules_rev = super::RULES_REV;
     normalize(&mut canonical);
     let text = serde_saphyr::to_string_with_options(&canonical, save_emit_options())
@@ -82,10 +82,10 @@ fn one_trailing_lf(mut text: String) -> String {
 }
 
 pub fn normalize(now: &mut State) {
-    now.messages.sort_by(|a, b| a.id.cmp(&b.id));
-    for message in &mut now.messages {
-        sort_unique(&mut message.to);
-        sort_unique(&mut message.fact_ids);
+    now.notes.sort_by(|a, b| a.id.cmp(&b.id));
+    for note in &mut now.notes {
+        sort_unique(&mut note.to);
+        sort_unique(&mut note.fact_ids);
     }
     let occupancy = rebuilt_occupancy(now);
     for (place_id, place) in &mut now.places {
@@ -159,7 +159,7 @@ fn occupancy_problems(now: &State) -> Vec<Diagnostic> {
     diags
 }
 
-/// Flat effect object. Key order is `class`, `as`, `intent_id`, then payload fields.
+/// Flat effect object. Key order is `kind`, `as`, `intent_id`, then payload fields.
 pub fn emit_effect(effect: &Effect) -> String {
     serde_json::to_string(effect).expect("effect json")
 }
@@ -190,11 +190,11 @@ mod tests {
         assert_eq!(parse_save(&emitted).unwrap(), now);
     }
 
-    fn now_text(tag: &str) -> String {
+    fn save_text(tag: &str) -> String {
         format!(
             "\
 schema: {tag}
-shard_id: ex
+world_id: ex
 pack_rev: blake2s:00
 rules_rev: {rules}
 state_rev: 0
@@ -202,7 +202,7 @@ round_index: 0
 world_time: 0
 last_round_at: \"2026-01-01T00:00:00Z\"
 pause:
-  named_plot_clocks: paused
+  presence_clocks: paused
 places:
   gate:
     items: {{}}
@@ -210,7 +210,7 @@ places:
     actors: []
 actors: {{}}
 clocks: {{}}
-messages: []
+notes: []
 ",
             rules = crate::store::RULES_REV,
         )
@@ -218,22 +218,22 @@ messages: []
 
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
-        assert!(parse_save(&now_text("now")).is_ok());
-        let old = parse_save(&now_text(concat!("now/", "v0"))).unwrap_err();
+        assert!(parse_save(&save_text("save")).is_ok());
+        let old = parse_save(&save_text(concat!("save/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(crate::diagnostic::first_reason(&old), Reason::Schema);
-        let bogus = parse_save(&now_text("bogus")).unwrap_err();
+        let bogus = parse_save(&save_text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(crate::diagnostic::first_reason(&bogus), Reason::Schema);
     }
 
     #[test]
-    fn emit_save_writes_the_now_tag() {
-        let mut now = parse_save(&now_text("now")).unwrap();
-        now.schema = concat!("now/", "v0").to_string();
+    fn emit_save_writes_the_save_tag() {
+        let mut now = parse_save(&save_text("save")).unwrap();
+        now.schema = concat!("save/", "v0").to_string();
         let emitted = emit_save(&now).unwrap();
-        assert!(emitted.starts_with("schema: now\n"), "{emitted}");
-        assert_eq!(parse_save(&emitted).unwrap().schema, "now");
+        assert!(emitted.starts_with("schema: save\n"), "{emitted}");
+        assert_eq!(parse_save(&emitted).unwrap().schema, "save");
     }
 
     use crate::effect::EffectKind;
@@ -241,9 +241,9 @@ messages: []
     use crate::intent::Viewer;
     use crate::model::MemoryLine;
 
-    fn effect(class: EffectKind, viewer: Viewer, intent_id: &str) -> super::Effect {
+    fn effect(kind: EffectKind, viewer: Viewer, intent_id: &str) -> super::Effect {
         super::Effect {
-            class,
+            kind,
             viewer,
             intent_id: intent_id.to_string(),
         }
@@ -258,7 +258,7 @@ messages: []
     }
 
     #[test]
-    fn effect_json_key_order_is_class_as_intent_then_payload_fields() {
+    fn effect_json_key_order_is_kind_as_intent_then_payload_fields() {
         let cases = [
             (
                 effect(
@@ -270,7 +270,7 @@ messages: []
                     npc("mira"),
                     "i1",
                 ),
-                r#"{"class":"clock","as":"npc:mira","intent_id":"i1","clock_id":"shop_day","delta":1}"#,
+                r#"{"kind":"clock","as":"npc:mira","intent_id":"i1","clock_id":"shop_day","delta":1}"#,
             ),
             (
                 effect(
@@ -282,7 +282,7 @@ messages: []
                     npc("mira"),
                     "i2",
                 ),
-                r#"{"class":"meter","as":"npc:mira","intent_id":"i2","actor_id":"mira","key":"rest","write":"base","delta":1}"#,
+                r#"{"kind":"meter","as":"npc:mira","intent_id":"i2","actor_id":"mira","key":"rest","write":"base","delta":1}"#,
             ),
             (
                 effect(
@@ -296,7 +296,7 @@ messages: []
                     npc("mira"),
                     "i3",
                 ),
-                r#"{"class":"item","as":"npc:mira","intent_id":"i3","place":"docks_shop","id":"lamp_oil","delta":4,"max":8}"#,
+                r#"{"kind":"item","as":"npc:mira","intent_id":"i3","place":"docks_shop","id":"lamp_oil","delta":4,"max":8}"#,
             ),
             (
                 effect(
@@ -309,7 +309,7 @@ messages: []
                     npc("bram"),
                     "i4",
                 ),
-                r#"{"class":"location","as":"npc:bram","intent_id":"i4","actor_id":"bram","from":"docks_street","to":"docks_shop"}"#,
+                r#"{"kind":"location","as":"npc:bram","intent_id":"i4","actor_id":"bram","from":"docks_street","to":"docks_shop"}"#,
             ),
             (
                 effect(
@@ -322,7 +322,7 @@ messages: []
                     npc("mira"),
                     "i7",
                 ),
-                r#"{"class":"memory","as":"npc:mira","intent_id":"i7","actor_id":"mira","fact_ids":["fact_a","fact_b"],"tags":["heard"],"text":"oil"}"#,
+                r#"{"kind":"memory","as":"npc:mira","intent_id":"i7","actor_id":"mira","fact_ids":["fact_a","fact_b"],"tags":["heard"],"text":"oil"}"#,
             ),
             (
                 effect(
@@ -335,19 +335,19 @@ messages: []
                     npc("mira"),
                     "i7b",
                 ),
-                r#"{"class":"memory","as":"npc:mira","intent_id":"i7b","actor_id":"mira","fact_ids":[],"tags":[]}"#,
+                r#"{"kind":"memory","as":"npc:mira","intent_id":"i7b","actor_id":"mira","fact_ids":[],"tags":[]}"#,
             ),
             (
                 effect(
                     EffectKind::Meter {
                         actor_id: "pc_rowan".to_string(),
                         key: "grit".to_string(),
-                        write: crate::meter::MeterWrite::Snap,
+                        write: crate::meter::MeterWrite::ClearOffset,
                     },
                     player("pc_rowan"),
                     "i9",
                 ),
-                r#"{"class":"meter","as":"player:pc_rowan","intent_id":"i9","actor_id":"pc_rowan","key":"grit","write":"snap"}"#,
+                r#"{"kind":"meter","as":"player:pc_rowan","intent_id":"i9","actor_id":"pc_rowan","key":"grit","write":"clear_offset"}"#,
             ),
             (
                 effect(
@@ -359,12 +359,12 @@ messages: []
                     npc("mira"),
                     "i10",
                 ),
-                r#"{"class":"flag","as":"npc:mira","intent_id":"i10","actor_id":"mira","key":"marked","value":true}"#,
+                r#"{"kind":"flag","as":"npc:mira","intent_id":"i10","actor_id":"mira","key":"marked","value":true}"#,
             ),
             (
                 effect(
-                    EffectKind::Message {
-                        message_id: "note_mira_door".to_string(),
+                    EffectKind::Note {
+                        note_id: "note_mira_door".to_string(),
                         to: vec!["pc_rowan".to_string()],
                         place: Some("docks_shop".to_string()),
                         fact_ids: Vec::new(),
@@ -373,12 +373,12 @@ messages: []
                     npc("mira"),
                     "i12",
                 ),
-                r#"{"class":"message","as":"npc:mira","intent_id":"i12","message_id":"note_mira_door","to":["pc_rowan"],"place":"docks_shop","fact_ids":[],"text":"say \"hi\""}"#,
+                r#"{"kind":"note","as":"npc:mira","intent_id":"i12","note_id":"note_mira_door","to":["pc_rowan"],"place":"docks_shop","fact_ids":[],"text":"say \"hi\""}"#,
             ),
             (
                 effect(
-                    EffectKind::Message {
-                        message_id: "n".to_string(),
+                    EffectKind::Note {
+                        note_id: "n".to_string(),
                         to: Vec::new(),
                         place: None,
                         fact_ids: vec!["f".to_string()],
@@ -387,7 +387,7 @@ messages: []
                     npc("mira"),
                     "i12b",
                 ),
-                r#"{"class":"message","as":"npc:mira","intent_id":"i12b","message_id":"n","to":[],"fact_ids":["f"],"text":"x"}"#,
+                r#"{"kind":"note","as":"npc:mira","intent_id":"i12b","note_id":"n","to":[],"fact_ids":["f"],"text":"x"}"#,
             ),
             (
                 effect(
@@ -398,7 +398,7 @@ messages: []
                     player("pc_nell"),
                     "i13",
                 ),
-                r#"{"class":"reveal","as":"player:pc_nell","intent_id":"i13","actor_id":"pc_nell","fact":"fact_trapdoor"}"#,
+                r#"{"kind":"reveal","as":"player:pc_nell","intent_id":"i13","actor_id":"pc_nell","fact":"fact_trapdoor"}"#,
             ),
         ];
         for (effect, expected) in cases {
@@ -409,30 +409,30 @@ messages: []
         }
         for name in ["need", "resource", "inventory"] {
             let value = serde_json::json!({
-                "class": name,
+                "kind": name,
                 "as": "npc:mira",
                 "intent_id": "i",
             });
             assert_eq!(
                 parse_effect(&value.to_string()).unwrap_err(),
-                Reason::IllegalClass
+                Reason::UnknownEffect
             );
         }
-        let snap_delta = serde_json::json!({
-            "class": "meter",
+        let clear_offset_delta = serde_json::json!({
+            "kind": "meter",
             "as": "npc:mira",
             "intent_id": "i",
             "actor_id": "mira",
             "key": "rest",
-            "write": "snap",
+            "write": "clear_offset",
             "delta": 1,
         });
         assert_eq!(
-            parse_effect(&snap_delta.to_string()).unwrap_err(),
+            parse_effect(&clear_offset_delta.to_string()).unwrap_err(),
             Reason::Schema
         );
         let missing_delta = serde_json::json!({
-            "class": "meter",
+            "kind": "meter",
             "as": "npc:mira",
             "intent_id": "i",
             "actor_id": "mira",
@@ -448,7 +448,7 @@ messages: []
     #[test]
     fn effect_payload_object_keeps_declaration_order_and_a_negative_delta() {
         let effect = parse_effect(
-            r#"{"class":"item","as":"npc:n","intent_id":"i","place":"p","id":"s","delta":-1}"#,
+            r#"{"kind":"item","as":"npc:n","intent_id":"i","place":"p","id":"s","delta":-1}"#,
         )
         .unwrap();
         assert_eq!(
@@ -459,7 +459,7 @@ messages: []
 
     #[test]
     fn nested_payload_and_external_tag_are_not_effects() {
-        let nested = r#"{"class":"clock","as":"npc:mira","intent_id":"i","payload":{"clock_id":"c","delta":1}}"#;
+        let nested = r#"{"kind":"clock","as":"npc:mira","intent_id":"i","payload":{"clock_id":"c","delta":1}}"#;
         assert!(parse_effect(nested).is_err());
         let external = r#"{"Clock":{"clock_id":"c","delta":1},"as":"npc:mira","intent_id":"i"}"#;
         assert!(parse_effect(external).is_err());
@@ -490,7 +490,7 @@ messages: []
         ));
         assert_eq!(
             migrate,
-            "{\"kind\":\"migrate\",\"pack_rev_before\":\"blake2s:aa\",\"pack_rev_after\":\"blake2s:bb\",\"state_rev_before\":0,\"state_rev_after\":1,\"now_hash\":\"blake2s:cc\"}\n"
+            "{\"kind\":\"migrate\",\"pack_rev_before\":\"blake2s:aa\",\"pack_rev_after\":\"blake2s:bb\",\"state_rev_before\":0,\"state_rev_after\":1,\"state_hash\":\"blake2s:cc\"}\n"
         );
     }
 }

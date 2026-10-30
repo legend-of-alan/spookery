@@ -61,7 +61,7 @@ pub fn rule_for<'a>(canon: &'a Canon, now: &State, intent: &Intent) -> Result<&'
         .find(|rule| rule.local_id == intent.move_name);
     let verb = verb_rule(canon, now, intent);
     match intent.source {
-        Source::Kernel => habit.or(verb).ok_or(Reason::UnknownMove),
+        Source::Engine => habit.or(verb).ok_or(Reason::UnknownMove),
         Source::Player | Source::System if matches!(intent.actor, Viewer::Npc(_)) => {
             habit.or(verb).ok_or(Reason::UnknownMove)
         }
@@ -76,7 +76,7 @@ pub fn rule_for<'a>(canon: &'a Canon, now: &State, intent: &Intent) -> Result<&'
 
 fn verb_rule<'a>(canon: &'a Canon, now: &State, intent: &Intent) -> Option<&'a Rule> {
     let hint = match &intent.target {
-        Target::Actor(token) => Some(token.as_str()),
+        Target::Actor(token) | Target::Item(token) => Some(token.as_str()),
         _ => None,
     };
     let actor = now.actors.get(intent.actor.actor_id());
@@ -153,17 +153,19 @@ pub fn admit(
     if let When::Verb { target, .. } = &rule.when {
         let shaped = match target {
             TargetKind::None => matches!(intent.target, Target::Empty),
-            TargetKind::Place | TargetKind::Exit => matches!(intent.target, Target::Place(_)),
-            TargetKind::Actor | TargetKind::Item => matches!(intent.target, Target::Actor(_)),
+            TargetKind::Place => matches!(intent.target, Target::Place(_)),
+            TargetKind::Exit => matches!(intent.target, Target::Exit(_)),
+            TargetKind::Actor => matches!(intent.target, Target::Actor(_)),
+            TargetKind::Item => matches!(intent.target, Target::Item(_)),
         };
         if !shaped {
             return Err(Reason::Schema.into());
         }
     }
-    if intent.source == Source::Kernel && matches!(intent.actor, Viewer::Player(_)) {
-        return Err(Reason::KernelOnPlayer.into());
+    if intent.source == Source::Engine && matches!(intent.actor, Viewer::Player(_)) {
+        return Err(Reason::EngineOnPlayer.into());
     }
-    if intent.source == Source::Kernel
+    if intent.source == Source::Engine
         && matches!(intent.actor, Viewer::Npc(_))
         && !is_eligible(canon, now, presence, intent.actor.actor_id())
     {
@@ -185,7 +187,11 @@ pub fn admit(
 fn can_name(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> bool {
     let id = match &intent.target {
         Target::Empty => return true,
-        Target::Actor(id) | Target::Place(id) | Target::Clock(id) => id.as_str(),
+        Target::Actor(id)
+        | Target::Item(id)
+        | Target::Place(id)
+        | Target::Exit(id)
+        | Target::Clock(id) => id.as_str(),
     };
     if now
         .actors

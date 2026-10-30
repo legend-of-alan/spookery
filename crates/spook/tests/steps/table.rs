@@ -683,9 +683,9 @@ pub fn release_probe_gm(world: &mut World) {
 
 pub fn read_presence(world: &mut World) -> (u32, Vec<String>) {
     let body = call_table_status(world);
-    let humans = body["presence"]["humans"]
+    let players = body["presence"]["players"]
         .as_u64()
-        .unwrap_or_else(|| panic!("humans\n{body}")) as u32;
+        .unwrap_or_else(|| panic!("players\n{body}")) as u32;
     let actors = body["presence"]["actors_present"]
         .as_array()
         .unwrap_or_else(|| panic!("actors\n{body}"))
@@ -696,7 +696,7 @@ pub fn read_presence(world: &mut World) -> (u32, Vec<String>) {
                 .to_string()
         })
         .collect();
-    (humans, actors)
+    (players, actors)
 }
 
 fn call_table_status(world: &mut World) -> Value {
@@ -714,9 +714,9 @@ fn call_table_status(world: &mut World) -> Value {
     value["result"]["structuredContent"].clone()
 }
 
-pub fn wait_humans(world: &mut World, _pack: &Path, expected: u32) {
-    wait_presence(world, &format!("humans {expected}"), |humans, _| {
-        humans == expected
+pub fn wait_players(world: &mut World, _pack: &Path, expected: u32) {
+    wait_presence(world, &format!("players {expected}"), |players, _| {
+        players == expected
     });
 }
 
@@ -724,12 +724,12 @@ pub fn wait_humans(world: &mut World, _pack: &Path, expected: u32) {
 pub fn wait_presence(world: &mut World, want: &str, done: impl Fn(u32, &[String]) -> bool) {
     let start = Instant::now();
     loop {
-        let (humans, actors) = read_presence(world);
-        if done(humans, &actors) {
+        let (players, actors) = read_presence(world);
+        if done(players, &actors) {
             return;
         }
         if start.elapsed() > Duration::from_secs(5) {
-            panic!("presence did not reach {want}: {humans} {actors:?}");
+            panic!("presence did not reach {want}: {players} {actors:?}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }

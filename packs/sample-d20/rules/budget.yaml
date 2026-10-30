@@ -12,4 +12,4 @@ live_minutes_per_round: 5
 idle_catchup_max_rounds: 12
 idle_max_world_hours_per_real_hour: 8
 pause:
-  named_plot_clocks: pause_when_empty
+  presence_clocks: pause_when_empty

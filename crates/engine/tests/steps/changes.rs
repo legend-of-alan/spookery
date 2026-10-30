@@ -15,7 +15,7 @@ const SECRET_TEXT: &str = "the sealed name";
 fn sample_d20_with_lark_facing_briar(world: &mut World, player: String, facing: String) {
     assert_eq!(player, "lark");
     assert_eq!(facing, "briar");
-    world.pack = Some(testing::copy_pack("sample-d20", "matters"));
+    world.pack = Some(testing::copy_pack("sample-d20", "changes"));
 }
 
 #[given(expr = "lark has a hidden meter")]
@@ -47,7 +47,7 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     stamp_pack_rev(&pack);
     let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "spill");
-    world.wait_order = output.summary.clone();
+    world.summary_lines = output.summary.clone();
     world.seen = change_line(&output);
 }
 
@@ -90,7 +90,7 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     stamp_pack_rev(&pack);
     let mut shard = resume_with_lark(&pack);
     let output = play(&mut shard, "sip");
-    world.wait_order = output.summary.clone();
+    world.summary_lines = output.summary.clone();
     world.seen = change_line(&output);
 }
 
@@ -98,11 +98,11 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
 fn the_line_skips_the_unseen_gain(world: &mut World) {
     assert!(
         world
-            .wait_order
+            .summary_lines
             .iter()
             .any(|item| item.contains("actor_item npc_oden tonic")),
         "{:?}",
-        world.wait_order
+        world.summary_lines
     );
     let line = one_line(&world.seen);
     let lower = line.to_lowercase();
@@ -197,17 +197,20 @@ fn lark_does_not_see_a_hidden_meter(world: &mut World) {
 #[then(expr = "the player's change line does not mention it")]
 fn the_change_line_hides_the_fact(world: &mut World) {
     assert!(
-        world.wait_order.iter().any(|item| item.contains(SECRET_ID)),
+        world
+            .summary_lines
+            .iter()
+            .any(|item| item.contains(SECRET_ID)),
         "{:?}",
-        world.wait_order
+        world.summary_lines
     );
     assert!(
         world
-            .wait_order
+            .summary_lines
             .iter()
             .any(|item| item.contains("actor_meter npc_briar hp")),
         "{:?}",
-        world.wait_order
+        world.summary_lines
     );
     let line = one_line(&world.seen);
     let lower = line.to_lowercase();
@@ -242,7 +245,7 @@ fn resume_with_lark(pack: &Path) -> EngineWorld {
 /// Lark is the one seated player.
 fn lark() -> Presence {
     Presence {
-        humans: 1,
+        players: 1,
         actors_present: vec!["pc_lark".to_string()],
     }
 }

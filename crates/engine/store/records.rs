@@ -30,7 +30,7 @@ pub struct MigrateRecord {
     pub pack_rev_after: String,
     pub state_rev_before: u64,
     pub state_rev_after: u64,
-    pub now_hash: String,
+    pub state_hash: String,
     /// Meters this migrate added. Omitted when it added none, so older lines stay the same.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub meters: Vec<AddedMeter>,
@@ -69,20 +69,20 @@ pub struct CheckpointRecord {
 /// One refusal stored on a round line.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Rejected {
+pub struct Refusal {
     pub id: String,
     pub code: Reason,
     /// The cost shortfall, or the sentence a locked exit shows.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub missing: Option<String>,
+    pub detail: Option<String>,
 }
 
-impl Rejected {
+impl Refusal {
     pub(crate) fn new(intent: &Intent, refusal: &GateRefusal) -> Self {
         Self {
             id: intent.id.clone(),
             code: refusal.reason(),
-            missing: refusal.missing().map(str::to_string),
+            detail: refusal.missing().map(str::to_string),
         }
     }
 }
@@ -107,11 +107,18 @@ pub struct Arrival {
     pub via: String,
 }
 
-/// One round line. `now_hash` is stamped after the save bytes exist, so a line
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RoundKind {
+    Round,
+}
+
+/// One round line. `state_hash` is stamped after the save bytes exist, so a line
 /// that has not been stamped omits it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RoundRecord<E = Effect> {
+    pub kind: RoundKind,
     pub round_index: u64,
     #[serde(default)]
     pub rules_rev: u64,
@@ -119,14 +126,14 @@ pub struct RoundRecord<E = Effect> {
     pub state_rev_after: u64,
     pub world_time_before: u64,
     pub world_time_after: u64,
-    pub presence_humans: u32,
+    pub presence_players: u32,
     /// Seated actor ids when the round ran.
     pub actors_present: Vec<String>,
     pub seed: String,
     pub last_round_at: String,
     /// The intents queued for this round, before stamping and habits, which replay plays again.
     pub intents: Vec<Intent>,
-    pub rejected: Vec<Rejected>,
+    pub refused: Vec<Refusal>,
     pub effects: Vec<E>,
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,
@@ -135,12 +142,12 @@ pub struct RoundRecord<E = Effect> {
     pub dice: Vec<String>,
     /// Steps off the standard order. Empty when the round followed it.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub steps_run: Vec<Step>,
+    pub extra_steps: Vec<Step>,
     /// Lines for this round. Empty on a record that stored none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub memories: Vec<MemoryLine>,
     #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub now_hash: String,
+    pub state_hash: String,
     /// Chain hash of the previous record. Empty on a record that has not been sealed.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub prev: String,
@@ -175,10 +182,10 @@ impl Record {
     }
 
     #[cfg(any(test, feature = "testing"))]
-    pub fn now_hash(&self) -> &str {
+    pub fn state_hash(&self) -> &str {
         match self {
-            Self::Round(record) => &record.now_hash,
-            Self::Migrate(record) => &record.now_hash,
+            Self::Round(record) => &record.state_hash,
+            Self::Migrate(record) => &record.state_hash,
             Self::Checkpoint(record) => &record.state_hash,
         }
     }

@@ -1,12 +1,12 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, EventBody, MessageView, Missing, Outcome, PackSummary, PlayerFrame, QueuedMove,
+    CommitBody, EventBody, Missing, NoteView, Outcome, PackSummary, PlayerFrame, QueuedMove,
     SayEvent, StatusPause, StatusPresence, TableStatus, ViewScene,
 };
 use serde_json::Value;
 use spookery_engine::{
-    emit_tape_record, Intent, Message, MoveReport, Presence, Roll, RoundOutput, RunState, State,
+    emit_tape_record, Intent, MoveReport, Note, Presence, Roll, RoundOutput, RunState, State,
     TapeRecord, View,
 };
 
@@ -113,14 +113,14 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
 
 pub fn player_resume_line(view: &View) -> String {
     let actor_id = view.viewer.actor_id();
-    let messages = view
-        .messages
+    let notes = view
+        .notes
         .iter()
-        .filter(|message| message.to.iter().any(|to| to == actor_id))
-        .map(message_view)
+        .filter(|note| note.to.iter().any(|to| to == actor_id))
+        .map(note_view)
         .collect();
     crate::protocol::emit_player(&PlayerFrame::Resume {
-        messages,
+        notes,
         clocks: view.clocks.clone(),
     })
 }
@@ -179,11 +179,11 @@ pub fn table_status(
 ) -> Value {
     TableStatus {
         presence: StatusPresence {
-            humans: presence.humans,
+            players: presence.players,
             actors_present: presence.actors_present.clone(),
         },
         pause: StatusPause {
-            named_plot_clocks: run_state_str(now.pause.named_plot_clocks),
+            presence_clocks: run_state_str(now.pause.presence_clocks),
         },
         world_time: now.world_time,
         round_index: now.round_index,
@@ -217,8 +217,8 @@ fn player_view(view: &View) -> PlayerFrame {
         }),
         visible_actors: view.visible_actors.clone(),
         known_facts: view.known_facts.clone(),
-        notes: view.messages.iter().map(message_view).collect(),
-        unknown_mentions: view.unknown_mentioned.clone(),
+        notes: view.notes.iter().map(note_view).collect(),
+        unknown_mentions: view.unknown_mentions.clone(),
         clocks: view.clocks.clone(),
         items: view.items.clone(),
         meters: view.meters.clone(),
@@ -227,13 +227,13 @@ fn player_view(view: &View) -> PlayerFrame {
     }
 }
 
-fn message_view(message: &Message) -> MessageView {
-    MessageView {
-        id: message.id.clone(),
-        to: message.to.clone(),
-        place: message.place.clone(),
-        fact_ids: message.fact_ids.clone(),
-        text: message.text.clone(),
+fn note_view(note: &Note) -> NoteView {
+    NoteView {
+        id: note.id.clone(),
+        to: note.to.clone(),
+        place: note.place.clone(),
+        fact_ids: note.fact_ids.clone(),
+        text: note.text.clone(),
     }
 }
 

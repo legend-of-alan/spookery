@@ -158,25 +158,26 @@ fn seal_round(
     root: &Path,
 ) -> Result<String, Reason> {
     let record = journal::RoundRecord {
+        kind: journal::RoundKind::Round,
         round_index: line.clock.round_index,
         rules_rev: crate::store::RULES_REV,
         state_rev_before,
         state_rev_after: draft.state.state_rev,
         world_time_before: line.clock.world_time_before,
         world_time_after: line.clock.world_time_after,
-        presence_humans: line.presence.humans,
+        presence_players: line.presence.players,
         actors_present: line.presence.actors_present,
         seed: line.seed,
         last_round_at: line.last_round_at,
         intents: line.intents,
-        rejected: line.log.rejected,
+        refused: line.log.refused,
         effects: line.log.effects,
         arrivals: line.log.arrivals,
         fast_forward: line.fast_forward,
         dice: line.log.dice,
-        steps_run: line.log.steps,
+        extra_steps: line.log.extra_steps,
         memories: draft.memories.clone(),
-        now_hash: blake2s_tagged(now_bytes),
+        state_hash: blake2s_tagged(now_bytes),
         prev: String::new(),
         chain: String::new(),
     };
@@ -369,7 +370,7 @@ mod tests {
     use super::commit;
 
     static NOBODY: Presence = Presence {
-        humans: 0,
+        players: 0,
         actors_present: Vec::new(),
     };
 

@@ -1,13 +1,13 @@
-schema: now
-shard_id: docks-001
-pack_rev: blake2s:770a9922b8093d1bf17f33cd33c8d68b4588ee9d3cc0ffba3c7cb2f78a4aabb5
-rules_rev: 9
+schema: save
+world_id: docks-001
+pack_rev: blake2s:f038be93795fdff14ca9e01914915b54e382481f491a247ee9a12979598bf5a1
+rules_rev: 10
 state_rev: 0
 round_index: 0
 world_time: 1080
 last_round_at: "2026-01-01T00:00:00Z"
 pause:
-  named_plot_clocks: paused
+  presence_clocks: paused
 places:
   docks_shop:
     items:
@@ -153,4 +153,4 @@ clocks:
     owners:
       - mira
     paused: false
-messages: []
+notes: []

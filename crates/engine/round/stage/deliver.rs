@@ -30,12 +30,12 @@ pub(crate) fn run(
         lines: Vec::new(),
         seen: Vec::new(),
     };
-    if presence.humans == 0 {
+    if presence.players == 0 {
         return delivered;
     }
     let mut viewers: BTreeSet<String> = now.actors.keys().cloned().collect();
     for effect in effects {
-        if let EffectKind::Narrate { to, .. } = &effect.class {
+        if let EffectKind::Narrate { to, .. } = &effect.kind {
             viewers.extend(to.iter().cloned());
         }
     }

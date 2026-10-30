@@ -11,18 +11,18 @@ use spookery_engine::{Presence, Reason};
 use super::table;
 use crate::support::{append, copy_docks, copy_pack, edit_save, run_spook, state_of};
 use crate::World;
-#[given(expr = "a save with rules_rev 8 and an engine at 9")]
-fn a_save_with_rules_rev_8_and_an_engine_at_9(world: &mut World) {
+#[given(expr = "a save with rules_rev 9 and an engine at 10")]
+fn a_save_with_rules_rev_9_and_an_engine_at_10(world: &mut World) {
     assert_eq!(
         spookery_engine::testing::RULES_REV,
-        9,
-        "the engine rules version is 9"
+        10,
+        "the engine rules version is 10"
     );
     let pack = crate::support::copy_docks("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let stamped = text.replacen("rules_rev: 9\n", "rules_rev: 8\n", 1);
-    assert_ne!(stamped, text, "save did not carry rules_rev 9\n{text}");
+    let stamped = text.replacen("rules_rev: 10\n", "rules_rev: 9\n", 1);
+    assert_ne!(stamped, text, "save did not carry rules_rev 10\n{text}");
     fs::write(&path, stamped).unwrap_or_else(|err| panic!("write save: {err}"));
     world.pack = Some(pack);
 }
@@ -34,7 +34,7 @@ fn an_old_save_from_rules_rev_6(world: &mut World) {
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
     let old = text
-        .replacen("rules_rev: 9\n", "rules_rev: 6\n", 1)
+        .replacen("rules_rev: 10\n", "rules_rev: 6\n", 1)
         .replacen(
             "pause:\n",
             "presence:\n  humans: 1\n  actors_present:\n    - pc_rowan\npause:\n",
@@ -54,7 +54,7 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     let pack = crate::support::copy_docks("rules-rev-presence-record");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    assert!(text.contains("rules_rev: 9\n"), "{text}");
+    assert!(text.contains("rules_rev: 10\n"), "{text}");
     let journal = pack.join("state/journal");
     fs::create_dir_all(&journal).unwrap_or_else(|err| panic!("mkdir journal: {err}"));
     fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
@@ -69,6 +69,28 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
     )
     .unwrap_or_else(|err| panic!("write presence: {err}"));
     world.pack = Some(pack);
+}
+
+/// A played round whose journal line is put back in the shape rules_rev 9 wrote.
+#[given(expr = "a docks round journaled in the rules_rev 9 shape")]
+fn a_docks_round_journaled_in_the_rules_rev_9_shape(world: &mut World) {
+    let pack = crate::support::copy_docks("rules-rev-9-round");
+    world.pack = Some(pack.clone());
+    table::run(world, &["round", pack.to_str().unwrap()]);
+    assert_eq!(world.code, Some(0), "{}", world.stderr);
+    super::replay::edit_round(world, |round| {
+        let round = round.as_object_mut().unwrap();
+        round.remove("kind");
+        round.insert("rules_rev".to_string(), Value::from(9));
+        for (new, old) in [
+            ("presence_players", "presence_humans"),
+            ("refused", "rejected"),
+            ("state_hash", "now_hash"),
+        ] {
+            let value = round.remove(new).unwrap_or_else(|| panic!("no {new}"));
+            round.insert(old.to_string(), value);
+        }
+    });
 }
 
 #[when(expr = "spook run or spook verify opens it")]
@@ -286,7 +308,7 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open(&pack);
     let one_human = Presence {
-        humans: 1,
+        players: 1,
         actors_present: Vec::new(),
     };
     opened
@@ -309,7 +331,7 @@ fn the_ferry_rule_runs(world: &mut World) {
     );
 }
 
-#[given(expr = "cast:briar\\/restock with hour 6..9 and humans == 0")]
+#[given(expr = "cast:briar\\/restock with hour 6..9 and players == 0")]
 fn briar_restocks_before_the_shop_opens(world: &mut World) {
     let pack = copy_docks("rules-briar");
     write(
@@ -330,7 +352,7 @@ rules:
       - hour:
           from: 6
           to: 9
-      - humans:
+      - players:
           op: \"==\"
           value: 0
     do:
@@ -445,7 +467,7 @@ fn lark_attacks(world: &mut World) {
     let loaded = state_of(&pack);
     let face = faces(
         &RollKey {
-            world_id: loaded.shard_id.clone(),
+            world_id: loaded.world_id.clone(),
             round_index: loaded.round_index + 1,
             rule_id: "verb:attack".to_string(),
             subject_id: "pc_lark".to_string(),
@@ -716,7 +738,7 @@ fn both_full_ids_are_refused(world: &mut World) {
     assert_eq!(now.world_time, 1080);
     assert_eq!(now.round_index, 0);
     assert!(
-        now.messages
+        now.notes
             .iter()
             .all(|message| message.id != "note_mira_door"),
         "the habit note was stored"
@@ -727,8 +749,8 @@ fn both_full_ids_are_refused(world: &mut World) {
     );
 }
 
-#[given(expr = "use on tonic targets an actor and the shared use takes no target")]
-fn use_on_tonic_targets_an_actor(world: &mut World) {
+#[given(expr = "use on tonic targets an item and the shared use takes no target")]
+fn use_on_tonic_targets_an_item(world: &mut World) {
     let pack = copy_docks("rules-owned");
     write(
         &pack.join("world/items/tonic.md"),
@@ -782,9 +804,9 @@ fn the_seated_pc_queues_use_tonic(world: &mut World) {
     };
 }
 
-#[then(expr = "the queued target is that actor and the save is unchanged")]
-fn the_queued_target_is_that_actor(world: &mut World) {
-    assert_eq!(world.scratch, "Actor(\"tonic\") use");
+#[then(expr = "the queued target is that item and the save is unchanged")]
+fn the_queued_target_is_that_item(world: &mut World) {
+    assert_eq!(world.scratch, "Item(\"tonic\") use");
     let now = state_of(world.pack.as_ref().unwrap());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(now.world_time, 1080);

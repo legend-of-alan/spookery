@@ -8,14 +8,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Reason {
-    IllegalClass,
+    UnknownEffect,
     IllegalKnowledge,
     OutOfRange,
     Budget,
     PausedClock,
-    UnknownKey,
+    UnknownId,
     ViewerMismatch,
-    KernelOnPlayer,
+    EngineOnPlayer,
     Ineligible,
     ActorMismatch,
     TableEmpty,
@@ -42,14 +42,14 @@ pub enum Reason {
 impl Reason {
     pub fn as_str(self) -> &'static str {
         match self {
-            Reason::IllegalClass => "ILLEGAL_CLASS",
+            Reason::UnknownEffect => "UNKNOWN_EFFECT",
             Reason::IllegalKnowledge => "ILLEGAL_KNOWLEDGE",
             Reason::OutOfRange => "OUT_OF_RANGE",
             Reason::Budget => "BUDGET",
             Reason::PausedClock => "PAUSED_CLOCK",
-            Reason::UnknownKey => "UNKNOWN_KEY",
+            Reason::UnknownId => "UNKNOWN_ID",
             Reason::ViewerMismatch => "VIEWER_MISMATCH",
-            Reason::KernelOnPlayer => "KERNEL_ON_PLAYER",
+            Reason::EngineOnPlayer => "ENGINE_ON_PLAYER",
             Reason::Ineligible => "INELIGIBLE",
             Reason::ActorMismatch => "ACTOR_MISMATCH",
             Reason::TableEmpty => "TABLE_EMPTY",
@@ -91,14 +91,14 @@ mod tests {
     use super::Reason;
 
     const ALL: [Reason; 29] = [
-        Reason::IllegalClass,
+        Reason::UnknownEffect,
         Reason::IllegalKnowledge,
         Reason::OutOfRange,
         Reason::Budget,
         Reason::PausedClock,
-        Reason::UnknownKey,
+        Reason::UnknownId,
         Reason::ViewerMismatch,
-        Reason::KernelOnPlayer,
+        Reason::EngineOnPlayer,
         Reason::Ineligible,
         Reason::ActorMismatch,
         Reason::TableEmpty,
@@ -125,14 +125,14 @@ mod tests {
     /// A new variant fails to compile here until it is added to `ALL`.
     fn is_listed(reason: Reason) -> bool {
         match reason {
-            Reason::IllegalClass
+            Reason::UnknownEffect
             | Reason::IllegalKnowledge
             | Reason::OutOfRange
             | Reason::Budget
             | Reason::PausedClock
-            | Reason::UnknownKey
+            | Reason::UnknownId
             | Reason::ViewerMismatch
-            | Reason::KernelOnPlayer
+            | Reason::EngineOnPlayer
             | Reason::Ineligible
             | Reason::ActorMismatch
             | Reason::TableEmpty

@@ -14,7 +14,7 @@ pub(crate) struct RoundTime {
 pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
     let round_index = draft.state().round_index + 1;
     let world_before = draft.state().world_time;
-    let minutes = minutes_for(draft.presence.humans, draft.budget());
+    let minutes = minutes_for(draft.presence.players, draft.budget());
     let world_after = world_before.saturating_add(minutes);
     let day_changed = world_before / 1440 != world_after / 1440;
     let hour_changed = world_before / 60 != world_after / 60;
@@ -33,8 +33,8 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<RoundTime, Reason> {
     })
 }
 
-fn minutes_for(humans: u32, budget: &Budget) -> u64 {
-    if humans > 0 {
+fn minutes_for(players: u32, budget: &Budget) -> u64 {
+    if players > 0 {
         budget.live_minutes_per_round
     } else {
         budget.idle_minutes_per_round

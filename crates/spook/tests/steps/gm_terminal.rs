@@ -244,7 +244,7 @@ fn world_time_advanced(world: &mut World) {
 #[then(expr = "the round log records Mira's restock")]
 fn the_round_log_records_the_restock(world: &mut World) {
     let round = common::read_first_round(world);
-    let ran = round["steps_run"].as_array().is_some_and(|steps| {
+    let ran = round["extra_steps"].as_array().is_some_and(|steps| {
         steps
             .iter()
             .any(|step| step["rule"] == "cast:mira/restock_lamp_oil")
@@ -252,7 +252,7 @@ fn the_round_log_records_the_restock(world: &mut World) {
     assert!(ran, "{round}");
     let stocked = round["effects"].as_array().is_some_and(|effects| {
         effects.iter().any(|effect| {
-            effect["class"] == "item" && effect["as"] == "npc:mira" && effect["id"] == "lamp_oil"
+            effect["kind"] == "item" && effect["as"] == "npc:mira" && effect["id"] == "lamp_oil"
         })
     });
     assert!(stocked, "{round}");

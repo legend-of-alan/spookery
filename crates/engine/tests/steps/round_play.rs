@@ -56,7 +56,7 @@ fn ten_rolling_intents_in_one_round(world: &mut World) {
 fn all_ten_resolve_and_none_is_refused_not_in_spec(world: &mut World) {
     assert_eq!(world.intent_id, "10");
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rejected = round["rejected"].as_array().unwrap();
+    let rejected = round["refused"].as_array().unwrap();
     assert!(
         rejected.iter().all(|item| item["code"] != "NOT_IN_SPEC"),
         "{rejected:?}"
@@ -88,7 +88,7 @@ fn spook_verify_passes_and_re_derives_every_roll(world: &mut World) {
     let round: Value = serde_json::from_str(&line).unwrap();
     assert_eq!(
         spookery_engine::testing::journal::blake2s_tagged(&report.now_yaml),
-        round["now_hash"].as_str().unwrap()
+        round["state_hash"].as_str().unwrap()
     );
 }
 
@@ -188,8 +188,8 @@ fn lamp_oil_stays_the_round_names_and_no_roll_is_reported(
     assert_eq!(world.count, 0, "a refused move reported a roll");
 }
 
-#[given(expr = "two kernel waits queued for Mira")]
-fn two_kernel_waits_queued_for_mira(world: &mut World) {
+#[given(expr = "a docks pack for two engine waits")]
+fn a_docks_pack_for_two_engine_waits(world: &mut World) {
     world.pack = Some(support::copy_pack("oneshot-docks", "second-wait"));
 }
 
@@ -198,8 +198,8 @@ fn those_waits_are_played(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
     let mut first = intent("wait-1", npc("mira"), "wait", Target::Empty);
     let mut second = intent("wait-2", npc("mira"), "wait", Target::Empty);
-    first.source = Source::Kernel;
-    second.source = Source::Kernel;
+    first.source = Source::Engine;
+    second.source = Source::Engine;
     let (now, _rolls, round) = play_queued(&pack, &[], vec![first, second]);
     world.scratch = round.to_string();
     world.oil = spookery_engine::emit_save(&now).unwrap().into_bytes();
@@ -208,7 +208,7 @@ fn those_waits_are_played(world: &mut World) {
 #[then(expr = "only the first wait lands and the second is INELIGIBLE")]
 fn only_the_first_wait_lands(world: &mut World) {
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rejected = round["rejected"].as_array().unwrap();
+    let rejected = round["refused"].as_array().unwrap();
     assert!(
         !rejected.iter().any(|item| item["id"] == "wait-1"),
         "{round}"
@@ -335,7 +335,7 @@ fn no_effect_from_that_row_applies(world: &mut World) {
     assert_eq!(String::from_utf8_lossy(&world.oil), "4");
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
     assert!(round["effects"].as_array().unwrap().is_empty(), "{round}");
-    let rejected = round["rejected"].as_array().unwrap();
+    let rejected = round["refused"].as_array().unwrap();
     assert!(
         rejected
             .iter()
@@ -372,7 +372,7 @@ fn rowan_asks_aldric_until_it_finishes(world: &mut World) {
     let lock = spookery_engine::lock_pack(&pack).unwrap();
     let mut table = spookery_engine::World::resume(&pack, lock).unwrap_or_else(|e| panic!("{e}"));
     let rowan = spookery_engine::Presence {
-        humans: 1,
+        players: 1,
         actors_present: vec!["pc_rowan".to_string()],
     };
     table
@@ -442,7 +442,7 @@ fn rowans_rest_is(world: &mut World, rest: usize) {
 #[then(expr = "the journal records {string} and not {string}")]
 fn the_journal_records_and_not(world: &mut World, ran: String, skipped: String) {
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rules: Vec<&str> = round["steps_run"]
+    let rules: Vec<&str> = round["extra_steps"]
         .as_array()
         .unwrap()
         .iter()
@@ -480,7 +480,7 @@ fn rowan_walks_to_the_street(world: &mut World) {
 fn neither_flag_is_set(world: &mut World, code: String) {
     assert_eq!(world.count, 0, "flags were set");
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
-    let rejected = round["rejected"].as_array().unwrap();
+    let rejected = round["refused"].as_array().unwrap();
     let id = "trigger:place:docks_street/greeted:pc_rowan";
     assert!(
         rejected
@@ -492,7 +492,7 @@ fn neither_flag_is_set(world: &mut World, code: String) {
 
 /// Rowan, seated, takes the street exit, then plays `then` in the same round.
 fn rowan_walks(pack: &Path, then: Vec<Intent>) -> (spookery_engine::State, Value) {
-    let walk = Target::Place("docks_street".to_string());
+    let walk = Target::Exit("docks_street".to_string());
     let mut intents = vec![intent("walk", player("pc_rowan"), "travel", walk)];
     intents.extend(then);
     let (now, _rolls, round) = play_queued(pack, &["pc_rowan"], intents);
@@ -521,7 +521,7 @@ fn assert_refusal(world: &World, oil: i64, reason: &str) {
     assert_eq!(String::from_utf8_lossy(&world.oil), oil.to_string());
     let round: Value = serde_json::from_str(&world.scratch).unwrap();
     assert!(round["effects"].as_array().unwrap().is_empty(), "{round}");
-    let rejected = round["rejected"].as_array().unwrap();
+    let rejected = round["refused"].as_array().unwrap();
     assert!(
         rejected
             .iter()
@@ -557,7 +557,7 @@ fn indexed_roll(pack: &Path, actor_id: &str, roll_index: u32) -> (String, i64) {
     let stat = (live.base + live.offset).clamp(def.min, def.max);
     let rolled = faces(
         &RollKey {
-            world_id: world.state().shard_id.clone(),
+            world_id: world.state().world_id.clone(),
             round_index: world.state().round_index,
             rule_id: "verb:strike".to_string(),
             subject_id: actor_id.to_string(),
@@ -659,7 +659,7 @@ fn play_queued(
     let mut world =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("open: {err}"));
     let presence = spookery_engine::Presence {
-        humans: u32::try_from(seated.len()).unwrap(),
+        players: u32::try_from(seated.len()).unwrap(),
         actors_present: seated.iter().map(|id| id.to_string()).collect(),
     };
     let wall = world.state().last_round_at.clone();

@@ -71,7 +71,7 @@ fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
             &record.last_round_at,
             &record.intents,
             &Presence {
-                humans: record.presence_humans,
+                players: record.presence_players,
                 actors_present: record.actors_present.clone(),
             },
         )

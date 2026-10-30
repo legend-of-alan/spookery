@@ -73,7 +73,7 @@ impl Seats {
             .collect();
         actors_present.sort();
         Presence {
-            humans: u32::try_from(actors_present.len()).unwrap_or(u32::MAX),
+            players: u32::try_from(actors_present.len()).unwrap_or(u32::MAX),
             actors_present,
         }
     }

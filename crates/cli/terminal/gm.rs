@@ -631,11 +631,11 @@ mod tests {
     fn status(present: Vec<&str>, queued: Vec<QueuedMove>) -> TableStatus {
         TableStatus {
             presence: StatusPresence {
-                humans: u32::try_from(present.len()).unwrap_or(0),
+                players: u32::try_from(present.len()).unwrap_or(0),
                 actors_present: present.into_iter().map(str::to_string).collect(),
             },
             pause: StatusPause {
-                named_plot_clocks: "running".to_string(),
+                presence_clocks: "running".to_string(),
             },
             world_time: 0,
             round_index: 0,

@@ -225,7 +225,7 @@ rules:
           - hour:
               from: 8
               to: 16
-          - humans:
+          - players:
               op: "=="
               value: 0
           - meter:
@@ -257,7 +257,7 @@ rules:
           id: shop_day
           op: "<"
           value: 3
-      - humans:
+      - players:
           op: "<="
           value: 3
       - meter:
@@ -576,7 +576,7 @@ checks:
 
 ## Budget
 
-`idle` is `on` or `off`. Omitted means `on`. `pause.named_plot_clocks` is `pause_when_empty` or `always_run`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. `pause.presence_clocks` is `pause_when_empty` or `always_run`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
 
 ```yaml file=rules/budget.yaml
 schema: budget
@@ -596,7 +596,7 @@ idle_max_world_hours_per_real_hour: 8
 max_fastforward_rounds: 12
 max_trigger_depth: 4
 pause:
-  named_plot_clocks: pause_when_empty
+  presence_clocks: pause_when_empty
 ```
 
 ## Effects
@@ -607,7 +607,7 @@ One effect under each dash. The rules in `rules/verbs.yaml` are the examples. `s
 
 `location.via` names an exit from the actor's current place. `travel` uses `via: target`. `location.to` names a place, or `target`. Playing `to` without `teleport: true` is refused. `teleport: true` in `rules/verbs.yaml` is a warning.
 
-`note` is stored on the save as `messages`. A note is shown to everyone named in `to`, wherever they are, and to anyone standing in `place`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people it names, written on the round and left out of the save. `reveal` adds its fact to that actor's known facts and writes no memory line. A flag with `who: world` is stored on the save as `flags`.
+`note` is stored on the save as `notes`. A note is shown to everyone named in `to`, wherever they are, and to anyone standing in `place`. It is hidden from a viewer when one of its `fact_ids` is one that viewer may not know. Place bodies and note text are shown as written. A hidden fact's sentence pasted into either one reaches every reader, and `spook check` does not warn. `narrate` is one-off text for the people it names, written on the round and left out of the save. `reveal` adds its fact to that actor's known facts and writes no memory line. A flag with `who: world` is stored on the save as `flags`.
 
 `wield` fills the actor's one wielded slot. `unwield` empties it. `who` on an effect is the same set as on a condition.
 

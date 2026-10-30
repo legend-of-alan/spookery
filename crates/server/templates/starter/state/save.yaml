@@ -1,13 +1,13 @@
-schema: now
-shard_id: starter
-pack_rev: blake2s:8bccf098f7a55fc4f52131ac68e9d3664cd0320016556f6046a39d9c5fbfb077
-rules_rev: 9
+schema: save
+world_id: starter
+pack_rev: blake2s:3e650c43f6218c322882e375efc40eaa5385bfb579e1dc3b9d1a35cefc27f6d6
+rules_rev: 10
 state_rev: 0
 round_index: 0
 world_time: 0
 last_round_at: "2026-01-01T00:00:00Z"
 pause:
-  named_plot_clocks: paused
+  presence_clocks: paused
 places:
   lane:
     items: {}
@@ -51,4 +51,4 @@ actors:
       idle_acts_today: 0
       live_acts_this_hour: 0
 clocks: {}
-messages: []
+notes: []

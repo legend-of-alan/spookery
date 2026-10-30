@@ -1,4 +1,4 @@
-//! Property tests for play, replay, firewall, and inventory. Compiled only for `cargo test`.
+//! Property tests for play, replay, visibility, and inventory. Compiled only for `cargo test`.
 
 mod inventory;
 mod opposed;

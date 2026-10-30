@@ -75,7 +75,7 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     let lock = crate::lock_pack(&pack.0).map_err(|err| fail("lock", err.to_string()))?;
     let mut world = World::resume(&pack.0, lock).map_err(|err| fail("resume", err.to_string()))?;
     let lark = Presence {
-        humans: 1,
+        players: 1,
         actors_present: vec!["pc_lark".to_string()],
     };
     let wall = world.state().last_round_at.clone();
@@ -108,13 +108,13 @@ fn fight(base: &Path, warmup: u32, refused: Option<Reason>) -> Result<(), String
     let Some(Record::Round(last)) = entries.iter().rev().find(|entry| entry.changes_state()) else {
         return Err(fail("journal", "no round record".to_string()));
     };
-    let ran = |rule: &str| last.steps_run.contains(&Step::Rule(rule.to_string()));
+    let ran = |rule: &str| last.extra_steps.contains(&Step::Rule(rule.to_string()));
     let as_expected = match refused {
         Some(code) => last
-            .rejected
+            .refused
             .iter()
             .any(|rejected| rejected.id == "lark-lunge" && rejected.code == code),
-        None => last.rejected.is_empty() && ran("verb:lunge") && !ran("verb:strike"),
+        None => last.refused.is_empty() && ran("verb:lunge") && !ran("verb:strike"),
     };
     assert!(
         as_expected,

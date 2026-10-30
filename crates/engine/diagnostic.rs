@@ -31,7 +31,7 @@ impl Serialize for Code {
     }
 }
 
-pub(crate) const NOW_SCHEMA: &str = "now";
+pub(crate) const SAVE_SCHEMA: &str = "save";
 
 struct FoundSchema<'a> {
     line: u32,

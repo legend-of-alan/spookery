@@ -25,7 +25,7 @@ pub struct MeterLive {
 pub enum MeterWrite {
     Base(i64),
     Offset(i64),
-    Snap,
+    ClearOffset,
 }
 
 /// `base` is inside `[min, base_cap]`, and `base + offset` fits in `i64`.
@@ -55,7 +55,7 @@ pub fn write(def: &MeterDef, live: &mut MeterLive, write: MeterWrite) -> Result<
             let next = live.offset.checked_add(delta).ok_or(Reason::OutOfRange)?;
             (live.base, next)
         }
-        MeterWrite::Snap => (live.base, 0),
+        MeterWrite::ClearOffset => (live.base, 0),
     };
     if !is_storable(def, next_base, next_offset) {
         return Err(Reason::OutOfRange);

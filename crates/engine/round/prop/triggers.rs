@@ -104,7 +104,7 @@ fn rowan_gained_oil(record: &RoundRecord) -> bool {
     let net: i64 = record
         .effects
         .iter()
-        .filter_map(|effect| match &effect.class {
+        .filter_map(|effect| match &effect.kind {
             EffectKind::Item {
                 actor_id,
                 place,
@@ -128,14 +128,14 @@ fn check_round(
     mut oil: bool,
 ) -> Result<BTreeSet<String>, TestCaseError> {
     let logged: Vec<&str> = record
-        .steps_run
+        .extra_steps
         .iter()
         .filter_map(|step| match step {
             Step::Rule(id) if id.starts_with("story:chain/") => Some(id.as_str()),
             _ => None,
         })
         .collect();
-    let hit_cap = record.steps_run.contains(&Step::TriggerDepth);
+    let hit_cap = record.extra_steps.contains(&Step::TriggerDepth);
     let mut armed = BTreeSet::new();
     let mut index = 0usize;
     let mut passes = 0u64;
@@ -168,7 +168,7 @@ fn check_round(
             if !hit_cap {
                 return Err(TestCaseError::fail(format!(
                     "round {} hit the cap after {max} trigger passes without trigger_depth: {:?}",
-                    record.round_index, record.steps_run
+                    record.round_index, record.extra_steps
                 )));
             }
             return Ok(held);

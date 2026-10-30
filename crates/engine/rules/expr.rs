@@ -9,7 +9,7 @@ use crate::rules::roll::Outcome;
 
 pub struct Ctx<'a> {
     pub intent: &'a Intent,
-    /// Who is seated, for the `humans:` condition and NPC habits.
+    /// Who is seated, for the `players:` condition and NPC habits.
     pub presence: &'a Presence,
 }
 
@@ -218,7 +218,10 @@ fn read_meter(
 pub(crate) fn resolve_item_id(intent: &Intent, id: &str) -> Result<String, Reason> {
     if id == "target" {
         return match &intent.target {
-            Target::Actor(token) | Target::Place(token) => Ok(token.clone()),
+            Target::Actor(token)
+            | Target::Item(token)
+            | Target::Place(token)
+            | Target::Exit(token) => Ok(token.clone()),
             _ => Err(Reason::Schema),
         };
     }
@@ -229,14 +232,16 @@ pub(crate) fn resolve_who_id(now: &State, ctx: &Ctx<'_>, who: &Who) -> Result<St
     match who {
         Who::Self_ => Ok(ctx.intent.actor.actor_id().to_string()),
         Who::Target => match &ctx.intent.target {
-            Target::Actor(id) | Target::Place(id) => Ok(id.clone()),
+            Target::Actor(id) | Target::Item(id) | Target::Place(id) | Target::Exit(id) => {
+                Ok(id.clone())
+            }
             _ => Err(Reason::Schema),
         },
         Who::Here => now
             .actors
             .get(ctx.intent.actor.actor_id())
             .map(|actor| actor.place().to_string())
-            .ok_or(Reason::UnknownKey),
+            .ok_or(Reason::UnknownId),
         Who::Actor(id) => Ok(id.clone()),
         Who::Place(id) => Ok(id.clone()),
         Who::World => Err(Reason::Schema),
@@ -654,7 +659,7 @@ mod tests {
     use crate::rule::Who;
 
     static EMPTY: Presence = Presence {
-        humans: 0,
+        players: 0,
         actors_present: Vec::new(),
     };
 
@@ -745,8 +750,8 @@ mod tests {
         let mut meters = BTreeMap::new();
         meters.insert("str_mod".to_string(), MeterLive { base: 3, offset: 0 });
         State {
-            schema: "now".to_string(),
-            shard_id: "t".to_string(),
+            schema: "save".to_string(),
+            world_id: "t".to_string(),
             pack_rev: String::new(),
             rules_rev: 0,
             state_rev: 0,
@@ -754,7 +759,7 @@ mod tests {
             world_time: 0,
             last_round_at: String::new(),
             pause: crate::model::Pause {
-                named_plot_clocks: crate::model::RunState::Running,
+                presence_clocks: crate::model::RunState::Running,
             },
             places: BTreeMap::new(),
             actors: BTreeMap::from([(
@@ -771,7 +776,7 @@ mod tests {
                 },
             )]),
             clocks: BTreeMap::new(),
-            messages: Vec::new(),
+            notes: Vec::new(),
             flags: Vec::new(),
         }
     }

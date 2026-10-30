@@ -55,7 +55,7 @@ const CONDITION_KEYS: &[&str] = &[
     "wielding:",
     "note_exists:",
     "hour:",
-    "humans:",
+    "players:",
     "- knows:",
     "- at:",
     "- clock:",
