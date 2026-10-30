@@ -122,7 +122,7 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     let located = spookery_engine::testing::journal::locate(&pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
-    let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read tick: {err}"));
+    let text = fs::read_to_string(&located.path).unwrap_or_else(|err| panic!("read round: {err}"));
     let line = text
         .lines()
         .find(|l| serde_json::from_str::<Value>(l).unwrap()["round_index"] == 1)
@@ -140,7 +140,7 @@ fn logged_effects_that_differ_from_the_re_run(world: &mut World) {
     let encoded = serde_json::to_string(&round).unwrap_or_else(|err| panic!("encode: {err}"));
     let rewritten = text.replacen(line, &encoded, 1);
     assert_ne!(rewritten, text);
-    fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write tick: {err}"));
+    fs::write(&located.path, rewritten).unwrap_or_else(|err| panic!("write round: {err}"));
 }
 
 #[then(expr = "spook verify names the round and the first differing effect")]

@@ -106,7 +106,7 @@ fn the_player_sees_a_check_success(world: &mut World) {
 fn the_round_log_resolves_the_check_without_faces(world: &mut World) {
     let text =
         spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
-            .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
+            .unwrap_or_else(|err| panic!("read round: {}", err.detail));
     assert!(text.contains("\"check_rolled\""), "{text}");
     assert!(!text.contains("faces"), "{text}");
 }

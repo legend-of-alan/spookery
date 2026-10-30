@@ -474,7 +474,7 @@ fn wait_play_proc(play: &mut crate::support::Proc, needle: &str) {
 fn the_round_now_hash_matches_the_save(world: &mut World) {
     let pack = table::pack(world);
     let round = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
-        .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
+        .unwrap_or_else(|err| panic!("read round: {}", err.detail));
     let value: serde_json::Value =
         serde_json::from_str(&round).unwrap_or_else(|err| panic!("{err}"));
     let expected = value["now_hash"]
