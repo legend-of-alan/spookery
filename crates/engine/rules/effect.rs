@@ -11,8 +11,8 @@ use crate::model::{self, MemoryLine, Note, PlaceLive};
 use crate::visibility::can_see_fact;
 
 /// One effect. JSON is `kind`, `as`, `intent_id`, then the fields of `kind`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(into = "EffectRecord")]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "EffectRecord", try_from = "EffectRecord")]
 pub struct Effect {
     pub kind: EffectKind,
     pub viewer: Viewer,

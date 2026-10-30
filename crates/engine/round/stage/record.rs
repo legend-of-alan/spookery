@@ -67,7 +67,6 @@ mod tests {
             intent_id: "i".to_string(),
         };
         let line = emit_record(&Record::Round(RoundRecord {
-            kind: crate::journal::RoundKind::Round,
             round_index: 1,
             rules_rev: crate::store::RULES_REV,
             state_rev_before: 0,

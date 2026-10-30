@@ -8,12 +8,6 @@ use crate::intent::Intent;
 use crate::model::MemoryLine;
 use crate::rules::GateRefusal;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum MigrateKind {
-    Migrate,
-}
-
 /// One meter a migrate added, stored at that meter's `start`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -25,7 +19,6 @@ pub struct AddedMeter {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MigrateRecord {
-    pub(crate) kind: MigrateKind,
     pub pack_rev_before: String,
     pub pack_rev_after: String,
     pub state_rev_before: u64,
@@ -46,17 +39,10 @@ pub struct MigrateRecord {
     pub chain: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum CheckpointKind {
-    Checkpoint,
-}
-
 /// Written at a checkpoint. `state_hash` is the Blake2s of `save.yaml` after that round.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CheckpointRecord {
-    pub(crate) kind: CheckpointKind,
     pub round_index: u64,
     pub state_rev: u64,
     pub state_hash: String,
@@ -107,18 +93,11 @@ pub struct Arrival {
     pub via: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum RoundKind {
-    Round,
-}
-
 /// One round line. `state_hash` is stamped after the save bytes exist, so a line
 /// that has not been stamped omits it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct RoundRecord<E = Effect> {
-    pub kind: RoundKind,
+pub struct RoundRecord {
     pub round_index: u64,
     #[serde(default)]
     pub rules_rev: u64,
@@ -134,7 +113,7 @@ pub struct RoundRecord<E = Effect> {
     /// The intents queued for this round, before stamping and habits, which replay plays again.
     pub intents: Vec<Intent>,
     pub refused: Vec<Refusal>,
-    pub effects: Vec<E>,
+    pub effects: Vec<Effect>,
     pub arrivals: Vec<Arrival>,
     pub fast_forward: bool,
     /// Dice lines from this round. Empty when the round rolled none.
@@ -156,7 +135,9 @@ pub struct RoundRecord<E = Effect> {
     pub chain: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One journal line. `kind` is its first key.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 #[allow(clippy::large_enum_variant)]
 pub enum Record {
     Round(RoundRecord),
