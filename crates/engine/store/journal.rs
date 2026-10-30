@@ -387,7 +387,7 @@ fn parse_line(name: &str, line: &str) -> Result<Record, Error> {
     parse_json(name, line).map_err(|fault| {
         let value: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
         let rules_rev = value.get("rules_rev").and_then(|rev| rev.as_u64());
-        if let Err(reason) = super::require_rules_rev(rules_rev.unwrap_or(0)) {
+        if let Some(Err(reason)) = rules_rev.map(super::require_rules_rev) {
             return fault_coded(
                 Path::new(name),
                 reason,
@@ -627,6 +627,14 @@ mod tests {
         let refused = parse_line("bundle-0000.jsonl", &unknown).unwrap_err();
         assert_eq!(refused.reason, Reason::Schema);
         assert!(refused.detail.contains("tick"), "{}", refused.detail);
+        let broken = r#"{"kind":"checkpoint","round_index":"x","state_rev":1,"state_hash":""}"#;
+        let refused = parse_line("bundle-0000.jsonl", broken).unwrap_err();
+        assert_eq!(refused.reason, Reason::Schema);
+        assert!(refused.detail.contains("round_index"), "{}", refused.detail);
+        for torn in ["garbage", r#"{"kind":"round","round_ind"#] {
+            let refused = parse_line("bundle-0000.jsonl", torn).unwrap_err();
+            assert_eq!(refused.reason, Reason::Schema, "{torn}");
+        }
         let pack = crate::testing::copy_docks("old-head");
         let head = pack.join("state").join(head_path());
         fs::create_dir_all(head.parent().unwrap()).unwrap();
