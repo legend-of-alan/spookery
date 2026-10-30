@@ -29,6 +29,22 @@ fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
         .unwrap_or_else(|err| panic!("speak: {err}"));
 }
 
+#[given(expr = "the tape already holds a full 1 MiB of old speech")]
+fn the_tape_already_holds_a_full_mib(world: &mut World) {
+    let mut lines = String::new();
+    for seq in 1.. {
+        let line = format!(
+            "{{\"seq\":{seq},\"from\":\"gm\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[\"pc_rowan\"],\"text\":\"old line {seq}\",\"round_index\":0,\"world_time\":0}}\n"
+        );
+        if lines.len() + line.len() > 1024 * 1024 {
+            break;
+        }
+        lines.push_str(&line);
+    }
+    fs::write(table::pack(world).join("state/tape.jsonl"), lines)
+        .unwrap_or_else(|err| panic!("write tape: {err}"));
+}
+
 #[then(expr = "the tape contains the text {string}")]
 fn the_tape_contains(world: &mut World, text: String) {
     let tape = tape_text(world);

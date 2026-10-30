@@ -7,9 +7,9 @@ use std::path::Path;
 use serde::{Deserialize, Serialize};
 
 use crate::error::Reason;
-use crate::store::durability::fsync_dir;
+use crate::store::durability::{fsync_dir, write_atomic};
 
-/// Hard cap for `state/tape.jsonl`.
+/// Size bound for `state/tape.jsonl`. An append that would pass it first drops the oldest half.
 pub const MAX_BYTES: u64 = 1024 * 1024;
 
 const DEFAULT_LIMIT: usize = 64;
@@ -39,6 +39,7 @@ pub fn emit_tape_record(record: &TapeRecord) -> String {
 
 /// Append one tape record. The pack lock makes the host the only writer.
 /// `body` receives the assigned `seq`. Drops a trailing partial line and does not open a `Draft`.
+/// When the line would pass `MAX_BYTES`, the oldest whole lines go first, keeping the newest half.
 pub fn append_record(
     root: &Path,
     body: impl FnOnce(u64) -> TapeRecord,
@@ -65,11 +66,20 @@ pub fn append_record(
         return Err(Reason::Schema);
     }
     line.push('\n');
-    let next_len = end + line.len() as u64;
-    if next_len > MAX_BYTES {
-        return Err(Reason::OutOfRange);
-    }
-    if end != len {
+    if end + line.len() as u64 > MAX_BYTES {
+        drop(file);
+        let bytes = fs::read(&path).map_err(|_| Reason::CommitConflict)?;
+        let from = end.saturating_sub(MAX_BYTES / 2) as usize;
+        let start = bytes[from..end as usize]
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(end as usize, |index| from + index + 1);
+        write_atomic(&path, &bytes[start..end as usize])?;
+        file = OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .map_err(|_| Reason::CommitConflict)?;
+    } else if end != len {
         file.set_len(end).map_err(|_| Reason::CommitConflict)?;
     }
     file.seek(SeekFrom::End(0))
