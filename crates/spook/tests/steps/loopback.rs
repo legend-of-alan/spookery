@@ -7,7 +7,7 @@ use crate::World;
 use super::table;
 
 #[when(expr = "the operator runs {word} bound to {string}")]
-fn command_bound_to(world: &mut World, command: String, addr: String) {
+fn the_operator_runs_a_command_bound_to(world: &mut World, command: String, addr: String) {
     let pack = table::pack(world).to_path_buf();
     table::run(world, &[&command, "--addr", &addr]);
     if world.code == Some(2) {
@@ -23,12 +23,12 @@ fn listens_on_a_free_port(world: &mut World) {
 
 #[then(expr = "a connection to the table succeeds")]
 fn a_connection_succeeds(world: &mut World) {
-    let port = table::live_mut(world).port;
+    let port = table::live_mut(world).game_port;
     TcpStream::connect(("127.0.0.1", port)).unwrap_or_else(|err| panic!("connect: {err}"));
 }
 
 #[then(expr = "the listen port is not 9737")]
 fn the_listen_port_is_not_9737(world: &mut World) {
-    let port = table::live_mut(world).port;
+    let port = table::live_mut(world).game_port;
     assert_ne!(port, 9737);
 }

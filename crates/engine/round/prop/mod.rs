@@ -1,9 +1,9 @@
 //! Property tests for play, replay, firewall, and inventory. Compiled only for `cargo test`.
 
-mod firewall;
 mod inventory;
 mod opposed;
-mod play;
 mod replay;
-mod rerun;
+mod replay_effects;
+mod support;
 mod triggers;
+mod visibility;

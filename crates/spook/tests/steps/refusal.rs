@@ -8,7 +8,7 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
 
-use super::common::{edit_save, play_line, play_stdout, wait_play, wait_play_until};
+use super::common::{capture_play_stdout, edit_save, wait_play, wait_play_until, write_play};
 use super::table;
 use crate::support::{self, text_of};
 use crate::World;
@@ -32,8 +32,8 @@ fn play_error_shows_once(world: &mut World, text: String) {
         std::thread::sleep(Duration::from_millis(20));
     }
     // The world loop answers this look after every frame it sent before, and play prints in order.
-    let mark = play_stdout(world).len();
-    play_line(world, "look");
+    let mark = capture_play_stdout(world).len();
+    write_play(world, "look");
     wait_play_until(world, |stdout| stdout[mark..].contains("Exits:"), "look");
     let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
     let stderr = text_of(&play.stderr);
@@ -46,7 +46,7 @@ fn odens_habit_takes_a_missing_tonic(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "oden-habit");
     let path = pack.join("cast/oden.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read oden: {err}"));
-    let next = replace_oden_rules(
+    let next = replace_oden_budget_and_rules(
         &text,
         "\
 idle:
@@ -87,7 +87,7 @@ fn the_player_sees_no_refused_frame(world: &mut World) {
 #[given(expr = "a sample table where push and shove each cost 1 grit")]
 fn push_and_shove_cost_grit(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "grit-gap");
-    add_grit(&pack);
+    add_grit_meter(&pack);
     crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
@@ -141,7 +141,7 @@ fn dropping_the_tonic_locks_the_loft(world: &mut World) {
 fn a_sample_table_with_the_gm_seated(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "named-gap");
     edit_save(&pack, |_| {});
-    seat_lark(world, pack);
+    seat_gm_and_lark(world, pack);
 }
 
 #[given(expr = "a sample table where one effect is over budget and the GM is seated")]
@@ -170,7 +170,7 @@ fn one_effect_is_over_budget(world: &mut World) {
 ",
     );
     edit_save(&pack, |_| {});
-    seat_lark(world, pack);
+    seat_gm_and_lark(world, pack);
 }
 
 #[when(expr = "the GM is seated and play joins")]
@@ -191,8 +191,10 @@ fn the_gm_is_seated_and_play_joins(world: &mut World) {
 
 #[when(expr = "play queues {string}")]
 fn play_queues(world: &mut World, line: String) {
-    let before = play_stdout(world).matches("Your action is queued.").count();
-    play_line(world, &line);
+    let before = capture_play_stdout(world)
+        .matches("Your action is queued.")
+        .count();
+    write_play(world, &line);
     wait_play_until(
         world,
         |stdout| stdout.matches("Your action is queued.").count() > before,
@@ -236,10 +238,10 @@ fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
 #[given(expr = "Oden can pay for a habit until Lark spends his grit")]
 fn oden_can_pay_until_lark_spends_his_grit(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "oden-grit");
-    add_grit(&pack);
+    add_grit_meter(&pack);
     let path = pack.join("cast/oden.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read oden: {err}"));
-    let next = replace_oden_rules(
+    let next = replace_oden_budget_and_rules(
         &text,
         "\
 idle:
@@ -290,14 +292,14 @@ fn the_round_rejects_that_habit_with(world: &mut World, word: String) {
     assert_one_rejection(world, &word);
 }
 
-fn seat_lark(world: &mut World, pack: std::path::PathBuf) {
+fn seat_gm_and_lark(world: &mut World, pack: std::path::PathBuf) {
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_actor(world, &pack, "pc_lark");
     world.pack = Some(pack);
 }
 
-fn replace_oden_rules(text: &str, rules: &str) -> String {
+fn replace_oden_budget_and_rules(text: &str, rules: &str) -> String {
     let start = text.find("idle:\n").expect("oden round");
     let end = text.find("\n---\n").expect("oden close");
     assert!(start < end, "oden round is outside the frontmatter");
@@ -306,7 +308,7 @@ fn replace_oden_rules(text: &str, rules: &str) -> String {
     next
 }
 
-fn add_grit(pack: &Path) {
+fn add_grit_meter(pack: &Path) {
     crate::support::append(
         &pack.join("rules/meters.yaml"),
         "\

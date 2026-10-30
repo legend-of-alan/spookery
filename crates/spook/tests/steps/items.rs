@@ -10,7 +10,7 @@ use super::table;
 use crate::support;
 use crate::World;
 
-fn quiet(now: &mut State) {
+fn keep_briar_busy(now: &mut State) {
     if let Some(briar) = now.actors.get_mut("npc_briar") {
         briar.act_mut().busy_until = Some(u64::MAX);
     }
@@ -38,12 +38,12 @@ fn wielded(pack: &Path, actor: &str) -> Option<String> {
 }
 
 /// One line at a table with no GM: queue it, then commit its round.
-fn play(
+fn handle_move(
     pack: &Path,
     actor: &str,
     line: &str,
 ) -> Result<Vec<spookery_engine::RoundOutput>, spookery_engine::GateRefusal> {
-    let mut world = super::rules::open_pack(pack);
+    let mut world = super::rules::open(pack);
     let (verb, target) = support::split_move(line);
     let nobody = spookery_engine::Presence::default();
     world.queue_player_move(&nobody, actor, verb, target)?;
@@ -52,7 +52,7 @@ fn play(
     )?)
 }
 
-fn round_text(pack: &Path) -> String {
+fn read_first_round_line(pack: &Path) -> String {
     spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail))
 }
@@ -74,7 +74,7 @@ fn write_dagger(pack: &Path, attack: &str) {
     .unwrap();
 }
 
-const SLASH: &str = "
+const DAGGER_ATTACK: &str = "
   - id: attack
     when:
       verb: attack
@@ -93,7 +93,7 @@ const SLASH: &str = "
           add: -3
 ";
 
-const BARE: &str = "
+const BARE_HANDS_ATTACK: &str = "
   - id: attack
     when:
       verb: attack
@@ -108,17 +108,17 @@ const BARE: &str = "
           add: -1
 ";
 
-fn arm(pack: &Path, attack: &str) {
+fn add_attack_rules(pack: &Path, attack: &str) {
     write_dagger(pack, attack);
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
-    verbs.push_str(BARE);
+    verbs.push_str(BARE_HANDS_ATTACK);
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
 }
 
 fn hold_dagger(now: &mut State, wield: bool) {
     support::set_actor_place(now, "pc_lark", "gate_yard");
     support::set_actor_place(now, "pc_nell", "gate_yard");
-    quiet(now);
+    keep_briar_busy(now);
     now.actors
         .get_mut("pc_lark")
         .unwrap()
@@ -139,7 +139,7 @@ fn nell_holds_a_tonic(world: &mut World) {
     fs::write(&meters, next).unwrap();
     support::edit_save(&pack, |now| {
         support::set_actor_place(now, "pc_nell", "gate_yard");
-        quiet(now);
+        keep_briar_busy(now);
         now.actors
             .get_mut("pc_nell")
             .unwrap()
@@ -159,7 +159,7 @@ fn nell_holds_a_tonic(world: &mut World) {
 #[when(expr = "nell types {string}")]
 fn nell_types(world: &mut World, line: String) {
     let pack = world.pack.clone().unwrap();
-    match play(&pack, "pc_nell", &line) {
+    match handle_move(&pack, "pc_nell", &line) {
         Ok(_) => world.scratch = "ok".to_string(),
         Err(err) => world.scratch = err.token().to_string(),
     }
@@ -175,7 +175,7 @@ fn nell_is_healed_and_empty(world: &mut World) {
 #[then(expr = "{string} again is rejected with {word} by the kernel")]
 fn again_is_refused(world: &mut World, line: String, code: String) {
     let pack = world.pack.as_ref().unwrap();
-    let err = match play(pack, "pc_nell", &line) {
+    let err = match handle_move(pack, "pc_nell", &line) {
         Err(err) => err,
         Ok(_) => panic!("the second use was accepted"),
     };
@@ -190,7 +190,7 @@ fn again_is_refused(world: &mut World, line: String, code: String) {
 }
 
 #[given(expr = "docks_shop has 3 lamp_oil")]
-fn the_shop_has_three_tins(world: &mut World) {
+fn docks_shop_has_3_lamp_oil(world: &mut World) {
     let pack = support::copy_pack("oneshot-docks", "take");
     support::edit_save(&pack, |now| {
         now.places
@@ -205,11 +205,11 @@ fn the_shop_has_three_tins(world: &mut World) {
 #[when(expr = "rowan takes lamp_oil")]
 fn rowan_takes_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    play(&pack, "pc_rowan", "take lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_rowan", "take lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
 }
 
 #[then(expr = "docks_shop has 2 and rowan has 1")]
-fn the_tin_moved(world: &mut World) {
+fn the_oil_moved(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let now = support::state_of(pack);
     assert_eq!(
@@ -230,7 +230,7 @@ fn the_tin_moved(world: &mut World) {
 #[when(expr = "rowan types {string}")]
 fn rowan_types(world: &mut World, line: String) {
     let pack = world.pack.clone().unwrap();
-    world.scratch = match play(&pack, "pc_rowan", &line) {
+    world.scratch = match handle_move(&pack, "pc_rowan", &line) {
         Ok(_) => "ok".to_string(),
         Err(err) => err.token().to_string(),
     };
@@ -240,7 +240,7 @@ fn rowan_types(world: &mut World, line: String) {
 fn lark_holds_a_latch_at_a_table(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "use-latch");
     support::edit_save(&pack, |now| {
-        quiet(now);
+        keep_briar_busy(now);
         let lark = now.actors.get_mut("pc_lark").unwrap();
         lark.inventory_mut().insert("latch".to_string(), 1);
     });
@@ -306,11 +306,11 @@ fn the_shop_has_no_oil(world: &mut World) {
 #[when(expr = "rowan drops lamp_oil")]
 fn rowan_drops_oil(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    play(&pack, "pc_rowan", "drop lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_rowan", "drop lamp_oil").unwrap_or_else(|err| panic!("{}", err.token()));
 }
 
-fn round_names_missing(pack: &Path) {
-    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+fn assert_round_rejects_missing_item(pack: &Path) {
+    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     let rejected = round["rejected"].as_array().unwrap();
     assert!(
         rejected.iter().any(|item| item["code"] == "MISSING_ITEM"),
@@ -321,7 +321,7 @@ fn round_names_missing(pack: &Path) {
 #[then(expr = "the round names MISSING_ITEM and rowan still has no lamp_oil")]
 fn the_drop_was_missing(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    round_names_missing(pack);
+    assert_round_rejects_missing_item(pack);
     let now = support::state_of(pack);
     assert_eq!(
         now.actors.get("pc_rowan").unwrap().item_count("lamp_oil"),
@@ -354,7 +354,7 @@ fn the_save_lists_an_unknown_item(world: &mut World) {
 #[then(expr = "spook check reports an unknown item diagnostic")]
 fn check_reports_an_unknown_item(world: &mut World) {
     let pack = support::pack_arg(world.pack.as_ref().unwrap());
-    let output = support::spook(&["check", &pack]);
+    let output = support::run_spook(&["check", &pack]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -369,7 +369,7 @@ fn lark_holds_a_dagger(world: &mut World) {
     write_dagger(&pack, "");
     support::edit_save(&pack, |now| {
         support::set_actor_place(now, "pc_lark", "gate_yard");
-        quiet(now);
+        keep_briar_busy(now);
         now.actors
             .get_mut("pc_lark")
             .unwrap()
@@ -384,12 +384,12 @@ fn lark_types(world: &mut World, line: String) {
     let pack = world.pack.clone().unwrap_or_else(|| {
         let pack = support::copy_pack("sample-d20", "wield-tonic");
         support::edit_save(&pack, |now| {
-            quiet(now);
+            keep_briar_busy(now);
         });
         world.pack = Some(pack.clone());
         pack
     });
-    match play(&pack, "pc_lark", &line) {
+    match handle_move(&pack, "pc_lark", &line) {
         Ok(_) => {}
         Err(err) => world.scratch = err.token().to_string(),
     }
@@ -407,7 +407,7 @@ fn lark_wields_the_dagger(world: &mut World) {
 #[then(expr = "it is rejected with NOT_A_WEAPON and the slot is unchanged")]
 fn tonic_is_not_a_weapon(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     let rejected = round["rejected"].as_array().unwrap();
     assert!(
         rejected.iter().any(|item| item["code"] == "NOT_A_WEAPON"),
@@ -419,7 +419,7 @@ fn tonic_is_not_a_weapon(world: &mut World) {
 #[given(expr = "lark wields poisoned_dagger")]
 fn lark_wields_for_attack(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "armed");
-    arm(&pack, SLASH);
+    add_attack_rules(&pack, DAGGER_ATTACK);
     support::edit_save(&pack, |now| hold_dagger(now, true));
     world.pack = Some(pack);
 }
@@ -427,7 +427,7 @@ fn lark_wields_for_attack(world: &mut World) {
 #[given(expr = "lark wields nothing")]
 fn lark_wields_nothing(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "bare");
-    arm(&pack, SLASH);
+    add_attack_rules(&pack, DAGGER_ATTACK);
     support::edit_save(&pack, |now| hold_dagger(now, false));
     world.pack = Some(pack);
 }
@@ -435,19 +435,19 @@ fn lark_wields_nothing(world: &mut World) {
 #[when(expr = "lark attacks nell and hits")]
 fn lark_attacks_and_hits(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    play(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
 }
 
 #[when(expr = "lark attacks nell")]
 fn lark_attacks(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    play(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
 }
 
 #[then(expr = "item:poisoned_dagger\\/attack ran, not verb:attack")]
 fn the_dagger_rule_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     let steps = round["steps_run"].to_string();
     assert!(steps.contains("item:poisoned_dagger/attack"), "{steps}");
     assert!(!steps.contains("verb:attack"), "{steps}");
@@ -457,7 +457,7 @@ fn the_dagger_rule_ran(world: &mut World) {
 #[then(expr = "verb:attack ran")]
 fn bare_hands_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     let steps = round["steps_run"].to_string();
     assert!(steps.contains("verb:attack"), "{steps}");
     assert!(!steps.contains("item:poisoned_dagger/attack"), "{steps}");
@@ -467,7 +467,8 @@ fn bare_hands_ran(world: &mut World) {
 #[when(expr = "lark drops poisoned_dagger")]
 fn lark_drops_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    play(&pack, "pc_lark", "drop poisoned_dagger").unwrap_or_else(|err| panic!("{}", err.token()));
+    handle_move(&pack, "pc_lark", "drop poisoned_dagger")
+        .unwrap_or_else(|err| panic!("{}", err.token()));
 }
 
 #[then(expr = "lark's wielded slot is empty in the same round")]
@@ -572,7 +573,7 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
 ",
     );
     let mut verbs = fs::read_to_string(pack.join("rules/verbs.yaml")).unwrap();
-    verbs.push_str(BARE);
+    verbs.push_str(BARE_HANDS_ATTACK);
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     support::edit_save(&pack, |now| {
         hold_dagger(now, true);
@@ -599,8 +600,8 @@ fn nell_resists_on_a_seeded_roll(world: &mut World) {
 #[when(expr = "lark hits nell with poisoned_dagger")]
 fn lark_hits_with_the_dagger(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let outputs =
-        play(&pack, "pc_lark", "attack pc_nell").unwrap_or_else(|err| panic!("{}", err.token()));
+    let outputs = handle_move(&pack, "pc_lark", "attack pc_nell")
+        .unwrap_or_else(|err| panic!("{}", err.token()));
     let output = &outputs[0];
     let nell = output.reports.iter().find_map(|report| match report {
         spookery_engine::MoveReport::Rolled { actor_id, roll } if actor_id == "pc_nell" => {
@@ -631,7 +632,7 @@ fn the_poison_fades(world: &mut World, text: String) {
         .flags()
         .iter()
         .any(|flag| flag == "poisoned"));
-    let round: Value = serde_json::from_str(round_text(pack).trim()).unwrap();
+    let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
     assert!(round["rejected"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();
     assert!(effects.contains(&text), "{effects}");

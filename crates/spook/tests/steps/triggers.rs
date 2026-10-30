@@ -9,8 +9,8 @@ use spookery_engine::{emit_save, parse_save};
 use spookery_engine::{Intent, IntentArgs, Source, Target, Viewer};
 use spookery_engine::{Presence, State};
 
-use super::common::replace_file;
-use super::steps_run::read_steps_run;
+use super::common::replace_in_file;
+use super::record::read_steps_run;
 use crate::support::{self, copy_docks};
 use crate::World;
 
@@ -26,7 +26,7 @@ fn nell_travels_via_door(world: &mut World) {
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
         world,
@@ -43,7 +43,7 @@ fn nell_travels_via_door(world: &mut World) {
 
 #[then(expr = "place:docks_shop\\/bell fires in the same round")]
 fn bell_fires_in_the_same_round(world: &mut World) {
-    let round = latest(world.pack.as_ref().unwrap());
+    let round = read_latest_round(world.pack.as_ref().unwrap());
     assert!(
         read_steps_run(&round)
             .iter()
@@ -60,7 +60,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
         &pack,
         vec![intent("wren-blink", "pc_wren", "blink", Target::Empty)],
     );
-    let round = latest(&pack);
+    let round = read_latest_round(&pack);
     assert!(
         read_steps_run(&round)
             .iter()
@@ -93,7 +93,7 @@ fn an_attack_removes_4_hp(world: &mut World) {
 #[then(expr = "briar has flag downed in the same round")]
 fn briar_has_flag_downed(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let round = latest(pack);
+    let round = read_latest_round(pack);
     assert!(
         read_steps_run(&round)
             .iter()
@@ -135,7 +135,7 @@ fn another_round_passes(world: &mut World) {
 
 #[then(expr = "the rule does not fire again")]
 fn the_rule_does_not_fire_again(world: &mut World) {
-    let round = latest(world.pack.as_ref().unwrap());
+    let round = read_latest_round(world.pack.as_ref().unwrap());
     assert!(
         read_steps_run(&round)
             .iter()
@@ -148,7 +148,7 @@ fn the_rule_does_not_fire_again(world: &mut World) {
 fn nell_arrives_with_the_key(world: &mut World) {
     let pack = copy_docks("trigger-ledger");
     add_rooms(&pack);
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/mira_rooms.md"),
         "    hidden: false\n",
         "    hidden: false\n  - id: fact_ledger\n    text: The ledger is in the desk.\n    hidden: false\n",
@@ -183,7 +183,7 @@ rules:
     .unwrap();
     write_nell(&pack, &["found_key"]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.actors
             .get_mut("pc_nell")
             .unwrap()
@@ -276,7 +276,7 @@ rules:
     )
     .unwrap();
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_shop");
     });
     world.pack = Some(pack);
 }
@@ -284,7 +284,7 @@ rules:
 #[then(expr = "spook check warns of a cycle, and a round stops at depth 4 and logs trigger_depth")]
 fn check_warns_of_a_cycle_and_the_round_stops(world: &mut World) {
     let pack = world.pack.as_ref().unwrap().clone();
-    let output = support::spook(&["check", &pack.to_string_lossy()]);
+    let output = support::run_spook(&["check", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "check failed\n{stdout}{stderr}");
@@ -300,7 +300,7 @@ fn a_round_stops_at_depth_4(world: &mut World) {
         &pack,
         vec![intent("raise-sun", "pc_nell", "raise", Target::Empty)],
     );
-    let round = latest(&pack);
+    let round = read_latest_round(&pack);
     let names = read_steps_run(&round);
     let suns = names
         .iter()
@@ -320,17 +320,17 @@ fn a_round_stops_at_depth_4(world: &mut World) {
 
 #[given(expr = "a rule on a known fact narrates to the room")]
 fn a_known_fact_narrates_to_the_room(world: &mut World) {
-    let pack = knows_narrate(world, "trigger-leak-room", "here");
+    let pack = write_secret_pack(world, "trigger-leak-room", "here");
     world.pack = Some(pack);
 }
 
 #[given(expr = "a rule on a known fact narrates to the subject")]
 fn a_known_fact_narrates_to_the_subject(world: &mut World) {
-    let pack = knows_narrate(world, "trigger-leak-self", "self");
+    let pack = write_secret_pack(world, "trigger-leak-self", "self");
     world.pack = Some(pack);
 }
 
-fn knows_narrate(world: &mut World, label: &str, to: &str) -> std::path::PathBuf {
+fn write_secret_pack(world: &mut World, label: &str, to: &str) -> std::path::PathBuf {
     let pack = copy_docks(label);
     fs::create_dir_all(pack.join("story")).unwrap();
     fs::write(
@@ -364,7 +364,7 @@ fn verify_passes_after_triggers(world: &mut World) {
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
         world,
@@ -376,7 +376,7 @@ fn verify_passes_after_triggers(world: &mut World) {
             Target::Place("door".to_string()),
         )],
     );
-    let output = support::spook(&["verify", &pack.to_string_lossy()]);
+    let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
@@ -386,7 +386,7 @@ fn verify_passes_after_triggers(world: &mut World) {
 #[when(expr = "nell enters the bog")]
 fn nell_enters_the_bog(world: &mut World) {
     let pack = copy_docks("trigger-bog");
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: bog\n    name: bog\n",
@@ -424,14 +424,14 @@ The ground gives.
 ",
     )
     .unwrap();
-    replace_file(
+    replace_in_file(
         &pack.join("rules/checks.yaml"),
         "    meter: grit\n",
         "    meter: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    meter: grit\n",
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     let (_now, rolls, round) = play(
         world,
@@ -462,7 +462,7 @@ fn the_bog_roll_reproduces(world: &mut World) {
         .get("grit")
         .unwrap();
     assert_eq!(grit.offset, -1, "the miss band did not spend grit");
-    let output = support::spook(&["verify", &pack.to_string_lossy()]);
+    let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
@@ -476,9 +476,9 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
-    let played = play_view(
+    let played = play_round(
         world,
         &pack,
         vec![intent(
@@ -488,10 +488,10 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
             Target::Place("door".to_string()),
         )],
     );
-    world.scratch = played.round.to_string();
+    world.scratch = played.record.to_string();
     world.summary = played.summary;
     world.seen = played.seen;
-    world.told = played.told;
+    world.told = played.lines;
     world.pack = Some(pack);
 }
 
@@ -541,12 +541,12 @@ fn the_viewer_is_told(world: &mut World, viewer: String, text: String) {
 #[given(expr = "the street has a hidden trapdoor")]
 fn the_street_has_a_hidden_trapdoor(world: &mut World) {
     let pack = copy_docks("trigger-reveal");
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: cellar\n    name: trapdoor\n    hidden: true\n    revealed_by: fact_trapdoor\n",
     );
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    hidden: false\n",
         "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
@@ -571,7 +571,7 @@ Under the street.
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
             spookery_engine::testing::PlaceLive {
@@ -648,7 +648,7 @@ rules:
     .unwrap();
     write_nell(&pack, &["saw_tide"]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     world.pack = Some(pack);
 }
@@ -720,15 +720,15 @@ fn a_round_runs(world: &mut World) {
     let pack = copy_docks("trigger-round-counter");
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
-    show(world, pack, Vec::new());
+    play_and_keep_summaries(world, pack, Vec::new());
 }
 
 #[then(expr = "the GM summary lists a round counter change")]
 fn the_gm_summary_lists_a_round_counter(world: &mut World) {
     assert!(
-        world.summary.iter().any(|item| is_round_counter(item)),
+        world.summary.iter().any(|item| is_act_counter(item)),
         "no round counter\n{:?}",
         world.summary
     );
@@ -738,7 +738,7 @@ fn the_gm_summary_lists_a_round_counter(world: &mut World) {
 fn the_viewer_summary_omits_round_counters(world: &mut World, viewer: String) {
     let changes = seen_of(world, &viewer);
     assert!(
-        changes.iter().all(|item| !is_round_counter(item)),
+        changes.iter().all(|item| !is_act_counter(item)),
         "{viewer} saw a round counter\n{changes:?}"
     );
 }
@@ -746,7 +746,7 @@ fn the_viewer_summary_omits_round_counters(world: &mut World, viewer: String) {
 #[when(expr = "pc_nell learns fact_trapdoor while pc_wren is in the same room")]
 fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     let pack = copy_docks("trigger-known-fact");
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    hidden: false\n",
         "    hidden: false\n  - id: fact_trapdoor\n    text: A trapdoor sits under the boards.\n    hidden: true\n",
@@ -757,10 +757,10 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         sit(seated, &["pc_nell", "pc_wren"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent("nell-learn", "pc_nell", "learn", Target::Empty)],
@@ -773,7 +773,7 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
     edit_table(world, &pack, |_, seated| {
         sit(seated, &["pc_rowan"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent(
@@ -790,10 +790,10 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
     let pack = copy_docks("trigger-actor-item");
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_shop");
         sit(seated, &["pc_rowan", "pc_nell", "pc_wren"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent(
@@ -814,7 +814,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.clocks.insert(
             "nell_tide".to_string(),
             Clock {
@@ -827,7 +827,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
         );
         sit(seated, &["pc_nell", "pc_wren"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent("nell-tide", "pc_nell", "mark_tide", Target::Empty)],
@@ -839,11 +839,11 @@ fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = copy_docks("trigger-both-rooms");
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
-        put(now, "pc_harbormouse", "mira_rooms");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        set_place(now, "pc_harbormouse", "mira_rooms");
         sit(seated, &["pc_nell"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent(
@@ -864,11 +864,11 @@ fn a_rule_sets_the_tide(world: &mut World) {
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
-        put(now, "pc_rowan", "mira_rooms");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+        set_place(now, "pc_rowan", "mira_rooms");
         sit(seated, &["pc_nell", "pc_wren", "pc_rowan"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent("nell-tide", "pc_nell", "turn_tide", Target::Empty)],
@@ -906,10 +906,10 @@ fn wrens_meter_changes_while_nell_is_elsewhere(world: &mut World) {
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_shop");
         sit(seated, &["pc_nell", "pc_wren", "pc_harbormouse"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent("wren-spend", "pc_wren", "spend", Target::Empty)],
@@ -925,10 +925,10 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
     );
     write_nell(&pack, &[]);
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        insert_actor_copy(now, seated, "pc_rowan", "pc_nell", "docks_street");
         sit(seated, &["pc_nell", "pc_wren"]);
     });
-    show(
+    play_and_keep_summaries(
         world,
         pack,
         vec![intent("nell-word", "pc_nell", "pass_word", Target::Empty)],
@@ -938,7 +938,7 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
 #[then(expr = "spook verify passes on this pack")]
 fn verify_passes_on_this_pack(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
-    let output = support::spook(&["verify", &pack.to_string_lossy()]);
+    let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(output.status.success(), "verify failed\n{stdout}{stderr}");
@@ -1014,20 +1014,20 @@ fn seen_of(world: &World, viewer: &str) -> Vec<String> {
         .collect()
 }
 
-fn is_round_counter(key: &str) -> bool {
+fn is_act_counter(key: &str) -> bool {
     key.starts_with("last_act_round ")
         || key.starts_with("idle_acts_today ")
         || key.starts_with("live_acts_this_hour ")
 }
 
-fn show(world: &mut World, pack: std::path::PathBuf, intents: Vec<Intent>) {
-    let played = play_view(world, &pack, intents);
+fn play_and_keep_summaries(world: &mut World, pack: std::path::PathBuf, intents: Vec<Intent>) {
+    let played = play_round(world, &pack, intents);
     world.summary = played.summary;
     world.seen = played.seen;
     world.pack = Some(pack);
 }
 
-fn put(now: &mut State, id: &str, place: &str) {
+fn set_place(now: &mut State, id: &str, place: &str) {
     *now.actors.get_mut(id).unwrap().place_mut() = place.to_string();
 }
 
@@ -1053,7 +1053,7 @@ fn narrates(round: &Value, text: &str, viewer: &str) -> bool {
 }
 
 fn add_bell_narrate(pack: &Path) {
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
         "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n      - narrate:\n          to: here\n          text: The bell rings.\n",
@@ -1068,7 +1068,7 @@ fn downed_pack(
     crosses: &str,
 ) -> std::path::PathBuf {
     let pack = copy_docks(label);
-    replace_file(
+    replace_in_file(
         &pack.join("rules/meters.yaml"),
         "    base: 1\n",
         "    base: 1\n  - id: hp\n    min: 0\n    base_cap: 12\n    max: 16\n    base: 8\n",
@@ -1118,7 +1118,7 @@ rules:
     )
     .unwrap();
     edit_table(world, &pack, |now, seated| {
-        seat(now, seated, "aldric", "briar", "docks_shop");
+        insert_actor_copy(now, seated, "aldric", "briar", "docks_shop");
         let briar = now.actors.get_mut("briar").unwrap();
         briar.meters_mut().insert(
             "hp".to_string(),
@@ -1137,7 +1137,7 @@ rules:
 }
 
 fn add_door(pack: &Path) {
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: docks_shop\n    name: door\n",
@@ -1145,7 +1145,7 @@ fn add_door(pack: &Path) {
 }
 
 fn add_rooms(pack: &Path) {
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_street.md"),
         "    name: docks_shop\n",
         "    name: docks_shop\n  - to: mira_rooms\n    name: rooms\n",
@@ -1153,7 +1153,7 @@ fn add_rooms(pack: &Path) {
 }
 
 fn add_bell(pack: &Path) {
-    replace_file(
+    replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "    locked_text: The stair door is locked.\n",
         "    locked_text: The stair door is locked.\nrules:\n  - id: bell\n    when:\n      change:\n        arrive: here\n        who: pc\n    do:\n      - flag:\n          who: self\n          key: heard_bell\n          value: true\n",
@@ -1172,7 +1172,7 @@ fn add_verb(pack: &Path, yaml: &str) {
 
 fn flag_pcs(pack: &Path, flag: &str) {
     for name in ["pc-rowan.md", "pc-wren.md", "pc-harbormouse.md"] {
-        replace_file(
+        replace_in_file(
             &pack.join("cast").join(name),
             "  eligible: false\n",
             &format!("  eligible: false\nflags:\n    - {flag}\n"),
@@ -1210,7 +1210,7 @@ Nell walks the docks.
     .unwrap();
 }
 
-fn seat(now: &mut State, seated: &mut Presence, from: &str, id: &str, place: &str) {
+fn insert_actor_copy(now: &mut State, seated: &mut Presence, from: &str, id: &str, place: &str) {
     let mut actor = now.actors.get(from).unwrap().clone();
     *actor.place_mut() = place.to_string();
     actor.flags_mut().clear();
@@ -1242,13 +1242,13 @@ fn remembered_presence(world: &World, pack: &Path) -> Option<Presence> {
         .map(|(_, presence)| presence.clone())
 }
 
-struct Played {
+struct PlayedRound {
     now: State,
-    rolls: Vec<spookery_engine::MoveReport>,
-    round: Value,
+    reports: Vec<spookery_engine::MoveReport>,
+    record: Value,
     summary: Vec<String>,
     seen: Vec<(String, Vec<String>)>,
-    told: Vec<(String, String)>,
+    lines: Vec<(String, String)>,
 }
 
 fn play(
@@ -1256,12 +1256,12 @@ fn play(
     pack: &Path,
     intents: Vec<Intent>,
 ) -> (State, Vec<spookery_engine::MoveReport>, Value) {
-    let played = play_view(world, pack, intents);
-    (played.now, played.rolls, played.round)
+    let played = play_round(world, pack, intents);
+    (played.now, played.reports, played.record)
 }
 
-fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played {
-    let mut round = super::rules::open_pack(pack);
+fn play_round(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> PlayedRound {
+    let mut round = super::rules::open(pack);
     let presence = remembered_presence(scenario, pack).unwrap_or_default();
     let wall = round.state().last_round_at.clone();
     for intent in intents {
@@ -1270,7 +1270,7 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
     let output = round
         .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
-    let record = latest(pack);
+    let record = read_latest_round(pack);
     let told = output
         .lines
         .into_iter()
@@ -1281,13 +1281,13 @@ fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played 
         .iter()
         .map(|item| (item.viewer.clone(), item.changes.clone()))
         .collect();
-    Played {
+    PlayedRound {
         now: round.state().clone(),
-        rolls: output.reports,
-        round: record,
+        reports: output.reports,
+        record,
         summary: output.summary,
         seen,
-        told,
+        lines: told,
     }
 }
 
@@ -1304,7 +1304,7 @@ fn intent(id: &str, actor: &str, verb: &str, target: Target) -> Intent {
     }
 }
 
-fn latest(pack: &Path) -> Value {
+fn read_latest_round(pack: &Path) -> Value {
     let names = spookery_engine::testing::journal::list_round_keys(pack);
     let name = names
         .last()

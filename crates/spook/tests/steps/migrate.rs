@@ -10,21 +10,21 @@ use crate::World;
 
 use super::table;
 
-fn state_tree(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
+fn read_state_files(pack: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     let state = pack.join("state");
     if state.is_dir() {
-        table::files(&state)
+        table::read_files(&state)
     } else {
         Vec::new()
     }
 }
 
-fn docks_rev() -> String {
+fn docks_pack_rev() -> String {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../packs/oneshot-docks");
     spookery_engine::pack_rev(&root).unwrap()
 }
 
-fn migrate_state_revs(pack: &Path) -> Vec<u64> {
+fn read_migrate_revs(pack: &Path) -> Vec<u64> {
     use spookery_engine::testing::journal::{read_records, Record};
     let entries = read_records(pack).unwrap_or_else(|err| panic!("{}", err.detail));
     let mut revs = Vec::new();
@@ -61,7 +61,7 @@ fn one_round_has_committed(world: &mut World) {
 #[when(expr = "the operator tries a round")]
 fn the_operator_tries_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    world.state_files = state_tree(&pack);
+    world.state_files = read_state_files(&pack);
     table::run(world, &["round", pack.to_str().unwrap()]);
 }
 
@@ -128,7 +128,7 @@ fn every_actor_has_meter_at(world: &mut World, id: String, base: i64) {
 fn the_save_is_replaced(world: &mut World) {
     let pack = table::pack(world);
     fs::write(pack.join("state/save.yaml"), "schema: no\n").unwrap();
-    world.before = table::files(pack);
+    world.before = table::read_files(pack);
 }
 
 #[then(expr = "stderr names {word}")]
@@ -145,7 +145,7 @@ fn the_round_writes_nothing(world: &mut World) {
     );
     assert!(!pack.join("state/.txn").exists());
     assert_eq!(
-        state_tree(pack),
+        read_state_files(pack),
         world.state_files,
         "the round wrote under state/"
     );
@@ -216,7 +216,7 @@ fn the_host_refuses_to_start(world: &mut World, code: String) {
 fn state_rev_is_2(world: &mut World) {
     let now = table::now_of(table::pack(world));
     assert_eq!(now.state_rev, 2);
-    assert_eq!(now.pack_rev, docks_rev());
+    assert_eq!(now.pack_rev, docks_pack_rev());
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "docks_shop");
     assert_eq!(
         now.places
@@ -232,14 +232,14 @@ fn state_rev_is_2(world: &mut World) {
 
 #[then(expr = "the journal has two migrate records, at state_rev 1 and 2")]
 fn the_journal_has_two_migrate_records(world: &mut World) {
-    assert_eq!(migrate_state_revs(table::pack(world)), [1, 2]);
+    assert_eq!(read_migrate_revs(table::pack(world)), [1, 2]);
 }
 
 #[then(expr = "migrate keeps the hand edit")]
 fn migrate_keeps_the_hand_edit(world: &mut World) {
     let pack = table::pack(world);
     let rev = spookery_engine::pack_rev(pack).unwrap();
-    assert_ne!(rev, docks_rev());
+    assert_ne!(rev, docks_pack_rev());
     let now = table::now_of(pack);
     assert_eq!(now.pack_rev, rev);
     assert_eq!(now.state_rev, 1);
@@ -248,7 +248,7 @@ fn migrate_keeps_the_hand_edit(world: &mut World) {
     assert_eq!(now.last_round_at, "2026-01-01T00:00:00Z");
     assert_eq!(now.actors.get("pc_rowan").unwrap().place(), "mira_rooms");
     assert!(spookery_engine::testing::journal::list_round_keys(pack).is_empty());
-    assert_eq!(migrate_state_revs(pack), [1]);
+    assert_eq!(read_migrate_revs(pack), [1]);
 }
 
 #[when(expr = "the shop's lamp oil is hand edited to {int}")]
@@ -263,7 +263,7 @@ fn the_shops_lamp_oil_is_hand_edited(world: &mut World, count: u32) {
     );
     assert_ne!(edited, text, "the shop did not hold 4 lamp oil\n{text}");
     fs::write(&path, edited).unwrap();
-    world.before = table::files(pack);
+    world.before = table::read_files(pack);
 }
 
 #[then(expr = "the shop has {int} lamp oil")]

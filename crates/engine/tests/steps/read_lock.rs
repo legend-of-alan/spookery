@@ -38,7 +38,7 @@ fn commit_round(world: &mut World) {
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
-fn peek_status(pack: &Path) -> Result<String, String> {
+fn peek_digest(pack: &Path) -> Result<String, String> {
     Shard::peek_digest(pack).map_err(|err| err.to_string())
 }
 
@@ -52,7 +52,7 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
     halfway();
     let peeked = thread::scope(|scope| {
         let status = scope.spawn(|| {
-            let peeked = peek_status(&pack);
+            let peeked = peek_digest(&pack);
             let _ = tx.send("peeked");
             peeked
         });
@@ -60,8 +60,8 @@ fn peek_during(world: &mut World, halfway: impl FnOnce(), finish: impl FnOnce())
         finish();
         drop(write);
         let peeked = status.join().expect("status panicked");
-        world.summary = vec![first.to_string()];
-        world.summary.extend(rx.try_iter().map(str::to_string));
+        world.wait_order = vec![first.to_string()];
+        world.wait_order.extend(rx.try_iter().map(str::to_string));
         peeked
     });
     world.scratch = peeked.unwrap_or_else(|err| panic!("status: {err}"));
@@ -129,7 +129,7 @@ fn status_peeks_mid_checkpoint(world: &mut World) {
 
 #[then(expr = "status waited for the write to finish")]
 fn status_waited(world: &mut World) {
-    assert_eq!(world.summary, ["waited", "peeked"]);
+    assert_eq!(world.wait_order, ["waited", "peeked"]);
 }
 
 /// With no write in progress, the tip is the writer's round and its text is the truth.
@@ -140,7 +140,7 @@ fn status_prints_the_committed_round(world: &mut World) {
     assert!(now.state_rev > 0, "the writer committed nothing");
     let tip = Shard::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
     assert_eq!(emit_save(tip.state()).unwrap(), emit_save(now).unwrap());
-    let text = peek_status(pack).unwrap_or_else(|err| panic!("status: {err}"));
+    let text = peek_digest(pack).unwrap_or_else(|err| panic!("status: {err}"));
     assert!(text.contains("clock "), "{text}");
     assert_eq!(world.scratch, text);
 }

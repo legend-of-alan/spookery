@@ -21,7 +21,7 @@ fn lark_plays(world: &mut World, line: String) {
 
 #[then(expr = "the journal commits two location effects for Lark")]
 fn two_location_effects_for_lark(world: &mut World) {
-    let moves = location_moves(world.pack(), "pc_lark");
+    let moves = location_effects(world.pack(), "pc_lark");
     assert_eq!(
         moves,
         vec![
@@ -156,7 +156,7 @@ fn place_of(pack: &Path, actor: &str) -> String {
         .to_string()
 }
 
-fn location_moves(pack: &Path, actor: &str) -> Vec<(String, String)> {
+fn location_effects(pack: &Path, actor: &str) -> Vec<(String, String)> {
     let mut moves = Vec::new();
     for key in list_round_keys(pack) {
         for effect in support::read_round(pack, &key)["effects"]

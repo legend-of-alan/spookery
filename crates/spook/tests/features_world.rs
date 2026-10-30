@@ -11,8 +11,8 @@ mod table;
 #[path = "steps/common.rs"]
 mod common;
 
-#[path = "steps/steps_run.rs"]
-mod steps_run;
+#[path = "steps/record.rs"]
+mod record;
 
 #[path = "steps/rounds.rs"]
 mod rounds;
@@ -29,14 +29,14 @@ mod items;
 #[path = "steps/checks.rs"]
 mod checks;
 
-#[path = "steps/numbers.rs"]
-mod numbers;
+#[path = "steps/expressions.rs"]
+mod expressions;
 
-#[path = "steps/check.rs"]
-mod check;
+#[path = "steps/spook_check.rs"]
+mod spook_check;
 
-#[path = "steps/rows.rs"]
-mod rows;
+#[path = "steps/missing_item.rs"]
+mod missing_item;
 
 #[path = "steps/travel.rs"]
 mod travel;
@@ -44,23 +44,23 @@ mod travel;
 #[path = "steps/triggers.rs"]
 mod triggers;
 
-#[path = "steps/commit.rs"]
-mod commit;
+#[path = "steps/migrate.rs"]
+mod migrate;
 
-#[path = "steps/proofs.rs"]
-mod proofs;
+#[path = "steps/wake.rs"]
+mod wake;
 
 #[path = "steps/sample.rs"]
 mod sample;
 
-#[path = "steps/showcase.rs"]
-mod showcase;
+#[path = "steps/sample_arc.rs"]
+mod sample_arc;
 
-#[path = "feature_paths.rs"]
-mod feature_paths;
+#[path = "feature_dirs.rs"]
+mod feature_dirs;
 
 fn feature_dirs() -> &'static [&'static str] {
-    feature_paths::WORLD
+    feature_dirs::WORLD
 }
 
 include!("feature_main.rs");

@@ -75,7 +75,7 @@ fn snapshot(root: &Path) -> Vec<(PathBuf, Vec<u8>)> {
     out
 }
 
-fn no_self_win() {
+fn the_debt_clock_does_not_run_itself() {
     let pack = support::copy_docks("self-win");
     for round in 1..=12 {
         play_pack_once(&pack).unwrap_or_else(|err| panic!("round {round}: {err}"));
@@ -208,7 +208,7 @@ fn player_in_the_shop() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn queue_gm(shard: &mut Shard, id: &str, actor: &str, move_name: &str) {
+fn queue_gm_intent(shard: &mut Shard, id: &str, actor: &str, move_name: &str) {
     shard
         .queue_gm_intent(
             IntentCall {
@@ -238,7 +238,7 @@ fn gm_restocks() {
     }
     let mut shard = resume(&pack);
     let wall = shard.state().last_round_at.clone();
-    queue_gm(&mut shard, "gm-1", "mira", "restock_lamp_oil");
+    queue_gm_intent(&mut shard, "gm-1", "mira", "restock_lamp_oil");
     shard.play(&rowan(), &wall).unwrap();
     assert_eq!(lamp_oil(shard.state()), 8);
     assert_eq!(shard.state().messages.len(), 1);
@@ -260,7 +260,7 @@ fn claimed_note_sorts_first() {
         ("gm-1", "bram", "wait"),
         ("gm-2", "mira", "leave_door_note"),
     ] {
-        queue_gm(&mut shard, id, actor, move_name);
+        queue_gm_intent(&mut shard, id, actor, move_name);
     }
     shard.play(&rowan(), &wall).unwrap();
     let log = round_value(&pack, "round-0001");
@@ -281,11 +281,11 @@ fn claimed_note_sorts_first() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn catchup_cap() {
-    catchup_for(72, 12);
+fn catch_up_to_cap() {
+    catch_up_for(72, 12);
 }
 
-fn catchup_for(hours: u64, rounds: u64) {
+fn catch_up_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let pack = support::fresh_dir("catchup");
     let _ = fs::remove_dir_all(&pack);
@@ -406,7 +406,7 @@ Rowan.
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn busy_skip() {
+fn a_busy_npc_skips() {
     let pack = support::copy_docks("busy");
     {
         let shard = resume(&pack);
@@ -500,7 +500,7 @@ fn an_incomplete_transaction_is_discarded() {
     let _ = fs::remove_dir_all(&incomplete);
 }
 
-fn the_same_revision_restores_the_previous_save() {
+fn a_leftover_transaction_keeps_the_save() {
     let same = support::copy_docks("same-rev");
     let now_path = same.join("state/save.yaml");
     let original = fs::read(&now_path).unwrap();
@@ -697,7 +697,7 @@ rules:
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn tool_scope() {
+fn a_zero_budget_strips_fact_bodies() {
     let pack = support::copy_docks("scope");
     let before = snapshot(&pack);
     let shard = Shard::open(&pack).unwrap();
@@ -737,7 +737,7 @@ fn tool_scope() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
+fn collect_markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     if !dir.exists() {
         return;
     }
@@ -749,7 +749,7 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
-            markdown_files(&path, out);
+            collect_markdown_files(&path, out);
         } else if path.extension().and_then(|ext| ext.to_str()) == Some("md") {
             out.push(path);
         }
@@ -759,8 +759,8 @@ fn markdown_files(dir: &Path, out: &mut Vec<PathBuf>) {
 fn strip_bodies() {
     let pack = support::copy_docks("strip");
     let mut files = Vec::new();
-    markdown_files(&pack.join("cast"), &mut files);
-    markdown_files(&pack.join("world"), &mut files);
+    collect_markdown_files(&pack.join("cast"), &mut files);
+    collect_markdown_files(&pack.join("world"), &mut files);
     assert!(!files.is_empty());
     for path in &files {
         let text = fs::read_to_string(path).unwrap();
@@ -791,7 +791,7 @@ fn strip_bodies() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn patch_mira_flags(pack: &Path, flags: &str) {
+fn patch_mira_flags_and_place(pack: &Path, flags: &str) {
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replacen(
@@ -826,7 +826,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    do:\n      - flag:\n          who: target\n          key: marked\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-        patch_mira_flags(&pack, "    - marked\n");
+        patch_mira_flags_and_place(&pack, "    - marked\n");
         stamp_pack_rev(&pack);
         let now = play_mark(&pack);
         assert_eq!(now.world_time, 1085);
@@ -856,7 +856,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             "\n  - id: mark\n    when:\n      verb: mark\n      target: actor\n    roll:\n      check: grit\n      target: {difficulty}\n    success:\n      - flag:\n          who: target\n          key: marked\n          value: true\n    miss:\n      - flag:\n          who: target\n          key: missed\n          value: true\n",
         ));
         fs::write(pack.join("rules/verbs.yaml"), moves).unwrap();
-        patch_mira_flags(&pack, "    - marked\n    - missed\n");
+        patch_mira_flags_and_place(&pack, "    - marked\n    - missed\n");
         stamp_pack_rev(&pack);
         let now = play_mark(&pack);
         assert_eq!(flags_of(&now, "mira"), vec![flag.to_string()], "{label}");
@@ -865,7 +865,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
     }
 }
 
-fn rolled_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::Roll {
+fn roll_with_stat(reports: &[MoveReport], stat: i64) -> spookery_engine::Roll {
     reports
         .iter()
         .find_map(|report| match report {
@@ -888,7 +888,7 @@ fn opposing_total_reused() {
         stamp_pack_rev(&pack);
         let mut shard = resume(&pack);
         if opposed {
-            queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
+            queue_gm_intent(&mut shard, "gm-1", "pc_nell", "defend");
         }
         let wall = shard.state().last_round_at.clone();
         shard
@@ -897,13 +897,13 @@ fn opposing_total_reused() {
         assert_eq!(shard.state().world_time, 1080);
         let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
         let reports = outputs.into_iter().next().unwrap().reports;
-        let rowan = rolled_stat(&reports, 1);
+        let rowan = roll_with_stat(&reports, 1);
         assert_eq!(shard.state().world_time, 1085);
         let round = spookery_engine::testing::journal::read_record_line(&pack, "round-0001")
             .unwrap_or_else(|err| panic!("{}", err.detail));
         assert!(!round.contains("faces"));
         if opposed {
-            let nell = rolled_stat(&reports, 100);
+            let nell = roll_with_stat(&reports, 100);
             assert_eq!(nell.target, 0);
             assert_eq!(nell.outcome, Outcome::Success);
             assert!(nell.total >= 102, "{nell:?}");
@@ -950,7 +950,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);
     let mut shard = resume(&held);
-    queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
+    queue_gm_intent(&mut shard, "gm-1", "pc_nell", "defend");
     let wall = shard.state().last_round_at.clone();
     shard
         .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
@@ -958,7 +958,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
     let before = shard.state().world_time;
     let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert_ne!(shard.state().world_time, before);
-    let rowan = rolled_stat(&outputs[0].reports, 1);
+    let rowan = roll_with_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);
     assert!(
         !spookery_engine::testing::journal::read_record_line(&held, "round-0001")
@@ -970,7 +970,7 @@ fn a_held_knife_still_runs_the_opposed_row() {
 
 #[when(expr = "twelve empty rounds pass")]
 fn twelve_empty_rounds_pass(_world: &mut World) {
-    no_self_win();
+    the_debt_clock_does_not_run_itself();
 }
 
 #[when(expr = "the evening round runs with Rowan away")]
@@ -1014,18 +1014,18 @@ fn the_gm_queues_the_door_note(_world: &mut World) {
 }
 
 #[when(expr = "seventy-two hours of catch-up run")]
-fn seventy_two_hours(_world: &mut World) {
-    catchup_cap();
+fn seventy_two_hours_of_catch_up_run(_world: &mut World) {
+    catch_up_to_cap();
 }
 
 #[when(expr = "one hour of catch-up runs")]
 fn one_hour_of_catch_up(_world: &mut World) {
-    catchup_for(1, 8);
+    catch_up_for(1, 8);
 }
 
 #[when(expr = "Mira is busy and a round runs")]
 fn mira_is_busy(_world: &mut World) {
-    busy_skip();
+    a_busy_npc_skips();
 }
 
 #[when(expr = "an open transaction is dropped")]
@@ -1040,7 +1040,7 @@ fn an_incomplete_transaction_is_opened(_world: &mut World) {
 
 #[when(expr = "a finished transaction repeats the current revision")]
 fn a_finished_transaction_repeats(_world: &mut World) {
-    the_same_revision_restores_the_previous_save();
+    a_leftover_transaction_keeps_the_save();
 }
 
 #[when(expr = "a finished transaction advances the revision")]
@@ -1049,13 +1049,13 @@ fn a_finished_transaction_advances(_world: &mut World) {
 }
 
 #[when(expr = "fifty NPCs share one round")]
-fn fifty_npcs(_world: &mut World) {
+fn fifty_npcs_share_one_round(_world: &mut World) {
     budget_caps();
 }
 
 #[when(expr = "an npc perceive is called with a zero budget")]
 fn an_npc_perceive_is_called(_world: &mut World) {
-    tool_scope();
+    a_zero_budget_strips_fact_bodies();
 }
 
 #[when(expr = "prose is stripped")]
@@ -1064,7 +1064,7 @@ fn prose_is_stripped(_world: &mut World) {
 }
 
 #[when(expr = "effect rows and outcome lists are played")]
-fn effect_rows_and_outcome_lists(_world: &mut World) {
+fn effect_rows_and_outcome_lists_are_played(_world: &mut World) {
     effects_run_on_both_outcomes_and_lists_run_on_one();
 }
 

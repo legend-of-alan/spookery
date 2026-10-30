@@ -44,7 +44,7 @@ impl Drop for TempPack {
     }
 }
 
-pub(crate) fn configure_runner() -> Config {
+pub(crate) fn runner_config() -> Config {
     Config {
         cases: CASES,
         failure_persistence: None,
@@ -53,7 +53,7 @@ pub(crate) fn configure_runner() -> Config {
     }
 }
 
-pub(crate) fn pick_rounds() -> impl Strategy<Value = Vec<RoundPlan>> {
+pub(crate) fn arb_rounds() -> impl Strategy<Value = Vec<RoundPlan>> {
     prop::collection::vec(
         prop::collection::vec(pick_move(), 0..=3).prop_map(|moves| RoundPlan { moves }),
         1..=5,
@@ -70,7 +70,7 @@ fn pick_move() -> impl Strategy<Value = MovePlan> {
 
 /// Queue the moves `gate` accepts, then play the round. Habits are gathered with them.
 pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), String> {
-    arm_check(pack)?;
+    add_grit_success(pack)?;
     let lock = crate::lock_pack(pack).map_err(|err| err.to_string())?;
     let mut world = World::resume(pack, lock).map_err(|err| err.to_string())?;
     let grit = VERBS.iter().position(|verb| *verb == "grit").expect("grit");
@@ -108,7 +108,7 @@ fn pc_count(world: &World) -> usize {
 
 /// A successful `grit` check adds one lamp oil. The docks list is empty, so the
 /// roll would not otherwise change the save.
-fn arm_check(pack: &Path) -> Result<(), String> {
+fn add_grit_success(pack: &Path) -> Result<(), String> {
     let path = pack.join("rules/verbs.yaml");
     let text = fs::read_to_string(&path).map_err(|err| err.to_string())?;
     let needle = "      target: 0\n    do: []\n";
@@ -215,23 +215,22 @@ fn player_intent(now: &crate::model::State, actor: &str, verb: &str, target: Tar
 }
 
 /// Replay the journal and compare it with the state hash on the last record.
-pub(crate) fn same_save(pack: &Path) -> Result<(), TestCaseError> {
-    let report = replay_journal(pack, None, None).map_err(|err| fail_msg(err.to_string()))?;
+pub(crate) fn assert_replay_matches(pack: &Path) -> Result<(), TestCaseError> {
+    let report =
+        replay_journal(pack, None, None).map_err(|err| TestCaseError::fail(err.to_string()))?;
     let entries = journal::read_records(pack)
-        .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
+        .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
     let Some(last) = entries.iter().rev().find(|entry| entry.changes_state()) else {
-        return Err(fail_msg("the rounds wrote no record".to_string()));
+        return Err(TestCaseError::fail(
+            "the rounds wrote no record".to_string(),
+        ));
     };
     let replayed = journal::blake2s_tagged(&report.now_yaml);
     if replayed == last.now_hash() {
         return Ok(());
     }
-    Err(fail_msg(format!(
+    Err(TestCaseError::fail(format!(
         "state hash differed: record {} replayed {replayed}",
         last.now_hash()
     )))
-}
-
-pub(crate) fn fail_msg(message: String) -> TestCaseError {
-    TestCaseError::fail(message)
 }

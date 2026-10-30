@@ -64,18 +64,18 @@ pub mod testing {
         world.lock.file().try_clone().unwrap()
     }
 
-    pub const HOST: &[&str] = &["tests/features/seats"];
+    pub const HOST: &[&str] = &["tests/features/changes"];
 
     pub const WORLD: &[&str] = &[
-        "tests/features/catchup",
+        "tests/features/catch_up",
         "tests/features/clocks",
         "tests/features/commit",
-        "tests/features/firewall",
+        "tests/features/habits",
+        "tests/features/outcomes",
         "tests/features/perceive",
         "tests/features/round",
-        "tests/features/rows",
         "tests/features/sample",
-        "tests/features/stock",
+        "tests/features/visibility",
     ];
 
     pub mod journal {

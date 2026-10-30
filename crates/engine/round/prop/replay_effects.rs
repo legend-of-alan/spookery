@@ -19,7 +19,7 @@ use crate::journal::{self, Record};
 use crate::world::World;
 use proptest::test_runner::{TestCaseError, TestRunner};
 
-use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, TempPack};
+use super::support::{arb_rounds, play_rounds, runner_config, TempPack};
 use crate::model::Presence;
 use crate::round::play::replay_round;
 use crate::round::replay::first_effect_diff;
@@ -27,19 +27,19 @@ use crate::testing::{copy_dir, copy_docks, fresh_dir};
 
 #[test]
 fn running_a_round_again_matches_the_logged_effects() {
-    let mut runner = TestRunner::new(configure_runner());
+    let mut runner = TestRunner::new(runner_config());
     runner
-        .run(&pick_rounds(), |rounds| {
+        .run(&arb_rounds(), |rounds| {
             let played = TempPack(copy_docks("prop-rerun"));
-            play_rounds(&played.0, &rounds).map_err(fail_msg)?;
-            rerun(&played.0)
+            play_rounds(&played.0, &rounds).map_err(TestCaseError::fail)?;
+            replay_each_round(&played.0)
         })
         .unwrap_or_else(|err| panic!("re-run property failed: {err}"));
 }
 
-fn rerun(played: &Path) -> Result<(), TestCaseError> {
+fn replay_each_round(played: &Path) -> Result<(), TestCaseError> {
     let records = journal::read_verified(played)
-        .map_err(|fault| fail_msg(format!("{}: {}", fault.file, fault.detail)))?;
+        .map_err(|fault| TestCaseError::fail(format!("{}: {}", fault.file, fault.detail)))?;
     let round_records: Vec<_> = records
         .into_iter()
         .filter_map(|entry| match entry {
@@ -48,7 +48,9 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
         })
         .collect();
     if round_records.is_empty() {
-        return Err(fail_msg("the rounds wrote no record".to_string()));
+        return Err(TestCaseError::fail(
+            "the rounds wrote no record".to_string(),
+        ));
     }
     let base = played.join("state").join(journal::base_path());
     let snapshot = if base.is_file() {
@@ -56,12 +58,13 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
     } else {
         fs::read(played.join("state/save.yaml"))
     }
-    .map_err(|err| fail_msg(err.to_string()))?;
+    .map_err(|err| TestCaseError::fail(err.to_string()))?;
     // Same rules as the played copy, including the grit success effect, at the snapshot.
     let pack = TempPack(fresh_dir("prop-rerun-again"));
     copy_dir(played, &pack.0);
-    fs::write(pack.0.join("state/save.yaml"), snapshot).map_err(|err| fail_msg(err.to_string()))?;
-    let mut world = World::open(&pack.0).map_err(|err| fail_msg(err.to_string()))?;
+    fs::write(pack.0.join("state/save.yaml"), snapshot)
+        .map_err(|err| TestCaseError::fail(err.to_string()))?;
+    let mut world = World::open(&pack.0).map_err(|err| TestCaseError::fail(err.to_string()))?;
     for record in &round_records {
         let effects = replay_round(
             &mut world,
@@ -73,9 +76,14 @@ fn rerun(played: &Path) -> Result<(), TestCaseError> {
             },
         )
         .map(|output| output.effects)
-        .map_err(|err| fail_msg(format!("round {} failed: {err}", record.round_index)))?;
+        .map_err(|err| {
+            TestCaseError::fail(format!("round {} failed: {err}", record.round_index))
+        })?;
         if let Some(diff) = first_effect_diff(&record.effects, &effects) {
-            return Err(fail_msg(format!("round {} {diff}", record.round_index)));
+            return Err(TestCaseError::fail(format!(
+                "round {} {diff}",
+                record.round_index
+            )));
         }
     }
     Ok(())

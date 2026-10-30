@@ -17,20 +17,20 @@ use super::table;
 
 #[when(expr = "a coding agent calls the GM tools over loopback HTTP")]
 fn agent_calls_over_http(world: &mut World) {
-    let (_tcp, http) = listen_http(world);
+    let (_tcp, http) = listen_door(world);
     support::block_on(exercise_http(http));
 }
 
 #[when(expr = "the operator runs with an open MCP HTTP address")]
-fn open_http_address(world: &mut World) {
+fn the_operator_runs_with_an_open_mcp_http_address(world: &mut World) {
     let pack = support::pack_arg(table::pack(world));
     table::run(world, &["run", &pack, "--door", "0.0.0.0:9"]);
 }
 
 #[when(expr = "an HTTP request arrives with a public Origin")]
-fn public_origin(world: &mut World) {
-    let (_tcp, http) = listen_http(world);
-    world.scratch = http_post(http, "127.0.0.1", Some("https://evil.example"));
+fn an_http_request_arrives_with_a_public_origin(world: &mut World) {
+    let (_tcp, http) = listen_door(world);
+    world.scratch = post_initialize(http, "127.0.0.1", Some("https://evil.example"));
 }
 
 #[then(expr = "the response is forbidden")]
@@ -53,9 +53,9 @@ fn a_gm_hello_still_sits(world: &mut World) {
 }
 
 #[when(regex = r"^an HTTP request arrives with Host (\S+)$")]
-fn request_with_host(world: &mut World, host: String) {
-    let (_tcp, http) = listen_http(world);
-    world.scratch = http_post(http, &host, None);
+fn an_http_request_arrives_with_host(world: &mut World, host: String) {
+    let (_tcp, http) = listen_door(world);
+    world.scratch = post_initialize(http, &host, None);
 }
 
 #[when(expr = "a human GM sits on the default agent door")]
@@ -65,7 +65,7 @@ fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
     world.gm = Some(support::spawn(&["gm", "--addr", &addr, "--door", &door]));
-    world.mark = usize::from(table::live_mut(world).http_port);
+    world.mark = usize::from(table::live_mut(world).door_port);
     let start = Instant::now();
     loop {
         let gm = world.gm.as_mut().unwrap_or_else(|| panic!("no gm"));
@@ -86,7 +86,7 @@ fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
 #[when(expr = "a coding agent tries to sit that door")]
 fn a_coding_agent_tries_to_sit_that_door(world: &mut World) {
     let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
-    world.scratch = http_post(http, "127.0.0.1", None);
+    world.scratch = post_initialize(http, "127.0.0.1", None);
 }
 
 #[then(expr = "the agent is told the table is full")]
@@ -118,7 +118,7 @@ fn a_coding_agent_can_sit_that_door(world: &mut World) {
     let start = Instant::now();
     let mut last = String::new();
     while start.elapsed() < Duration::from_secs(5) {
-        let raw = http_post(http, "127.0.0.1", None);
+        let raw = post_initialize(http, "127.0.0.1", None);
         if raw.contains("\"protocolVersion\"") {
             return;
         }
@@ -132,13 +132,13 @@ fn a_coding_agent_can_sit_that_door(world: &mut World) {
 fn spook_run_listens_with_no_mcp_flag(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    world.mark = usize::from(table::live_mut(world).http_port);
+    world.mark = usize::from(table::live_mut(world).door_port);
 }
 
 #[then(expr = "the reported agent door serves \\/mcp")]
 fn the_reported_agent_door_serves_mcp(world: &mut World) {
     let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no door port"));
-    let raw = http_post(http, "127.0.0.1", None);
+    let raw = post_initialize(http, "127.0.0.1", None);
     assert!(
         raw.lines().next().unwrap_or("").contains(" 200 "),
         "no /mcp on {http}\n{raw}"
@@ -147,15 +147,15 @@ fn the_reported_agent_door_serves_mcp(world: &mut World) {
 }
 
 #[when(expr = "an HTTP request arrives with an unknown MCP-Protocol-Version")]
-fn an_unknown_protocol_version(world: &mut World) {
-    let (_tcp, http) = listen_http(world);
-    world.scratch = http_post_version(http, "1999-01-01");
+fn an_http_request_arrives_with_an_unknown_version(world: &mut World) {
+    let (_tcp, http) = listen_door(world);
+    world.scratch = post_initialize_with_version(http, "1999-01-01");
 }
 
 #[when(expr = "an HTTP request arrives with the negotiated MCP-Protocol-Version")]
-fn the_negotiated_protocol_version(world: &mut World) {
-    let (_tcp, http) = listen_http(world);
-    world.scratch = http_post_version(http, ProtocolVersion::LATEST.as_str());
+fn an_http_request_arrives_with_the_negotiated_version(world: &mut World) {
+    let (_tcp, http) = listen_door(world);
+    world.scratch = post_initialize_with_version(http, ProtocolVersion::LATEST.as_str());
 }
 
 #[then(expr = "the response status is {int}")]
@@ -193,27 +193,27 @@ fn http_port(world: &World) -> u16 {
 }
 
 #[given(expr = "a docks table with a seated player and an open HTTP door")]
-fn seated_player_on_the_http_door(world: &mut World) {
+fn a_docks_table_with_a_seated_player_and_an_open_http_door(world: &mut World) {
     world.pack = Some(support::copy_docks("http-say"));
-    let (_tcp, http) = listen_http(world);
+    let (_tcp, http) = listen_door(world);
     let pack = table::pack(world).to_path_buf();
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.mark = usize::from(http);
 }
 
 #[when(expr = "a GM holds the seat over HTTP")]
 fn gm_holds_over_http(world: &mut World) {
-    let (_tcp, http) = listen_http(world);
+    let (_tcp, http) = listen_door(world);
     world.mark = usize::from(http);
     let holder = support::block_on(async move {
-        let running = connect_http(http)
+        let running = connect_door(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
         let status = call(&running, "table_status", None).await;
-        assert_sat(&status, "table_status");
+        assert_not_refused(&status, "table_status");
         running
     });
-    world.holder = Some(holder);
+    world.http_gm = Some(holder);
 }
 
 #[when(expr = "another GM tries to sit over HTTP")]
@@ -221,9 +221,9 @@ fn another_gm_tries_http(world: &mut World) {
     // rmcp's client error drops the JSON-RPC message, so read the
     // refusal from a raw initialize, then check a real client fails too.
     let http = http_port(world);
-    let raw = http_post(http, "127.0.0.1", None);
+    let raw = post_initialize(http, "127.0.0.1", None);
     let sat = support::block_on(async move {
-        match connect_http(http).await {
+        match connect_door(http).await {
             Ok(running) => {
                 let _ = running.cancel().await;
                 true
@@ -245,9 +245,9 @@ fn newcomer_is_told_full(world: &mut World) {
 }
 
 #[when(expr = "the GM over HTTP leaves")]
-fn holder_leaves(world: &mut World) {
+fn the_http_gm_leaves(world: &mut World) {
     let running = world
-        .holder
+        .http_gm
         .take()
         .unwrap_or_else(|| panic!("no GM holds the seat"));
     support::block_on(async move {
@@ -261,16 +261,16 @@ fn holder_leaves(world: &mut World) {
 #[then(expr = "a GM can sit over HTTP")]
 fn a_gm_can_sit_over_http(world: &mut World) {
     // One attempt: the DELETE reply waits for the seat release (issue #214).
-    if let Err(err) = agent_sits(http_port(world)) {
+    if let Err(err) = try_sit_gm(http_port(world)) {
         panic!("no GM could sit over HTTP: {err}");
     }
 }
 
-fn agent_sits(port: u16) -> Result<(), String> {
+fn try_sit_gm(port: u16) -> Result<(), String> {
     support::block_on(async move {
-        let running = connect_http(port).await.map_err(|err| format!("{err:?}"))?;
+        let running = connect_door(port).await.map_err(|err| format!("{err:?}"))?;
         let status = call(&running, "table_status", None).await;
-        assert_sat(&status, "table_status");
+        assert_not_refused(&status, "table_status");
         let _ = running.cancel().await;
         Ok(())
     })
@@ -285,9 +285,9 @@ fn world_time_moved_forward(world: &mut World) {
 #[when(expr = "a coding agent says good evening over HTTP")]
 fn agent_says_over_http(world: &mut World) {
     let http = http_port(world);
-    let mark = table::player_len(world);
+    let mark = table::player_mark(world);
     support::block_on(async move {
-        let running = connect_http(http)
+        let running = connect_door(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP: {err}"));
         let said = call(
@@ -296,21 +296,21 @@ fn agent_says_over_http(world: &mut World) {
             Some(json!({"address": "table", "text": "good evening"})),
         )
         .await;
-        assert_sat(&said, "say");
+        assert_not_refused(&said, "say");
         let _ = running.cancel().await;
     });
     world.player_added = table::wait_player_from(world, mark, "{\"kind\":\"say\"");
 }
 
 async fn exercise_http(port: u16) {
-    let running = connect_http(port)
+    let running = connect_door(port)
         .await
         .unwrap_or_else(|err| panic!("HTTP: {err}"));
-    exercise(&running).await;
+    call_each_gm_tool(&running).await;
     let _ = running.cancel().await;
 }
 
-async fn exercise(running: &impl ToolClient) {
+async fn call_each_gm_tool(running: &impl ToolClient) {
     for (name, arguments) in [
         ("table_status", None),
         ("perceive", Some(json!({"as": "pc_rowan"}))),
@@ -328,7 +328,7 @@ async fn exercise(running: &impl ToolClient) {
         ("commit_round", Some(json!({"include_round": true}))),
     ] {
         let result = call(running, name, arguments).await;
-        assert_sat(&result, name);
+        assert_not_refused(&result, name);
     }
 }
 
@@ -353,7 +353,9 @@ where
 
 async fn call(running: &impl ToolClient, name: &str, arguments: Option<Value>) -> CallToolResult {
     let params = match arguments {
-        Some(value) => CallToolRequestParams::new(name.to_string()).with_arguments(object(value)),
+        Some(value) => {
+            CallToolRequestParams::new(name.to_string()).with_arguments(into_object(value))
+        }
         None => CallToolRequestParams::new(name.to_string()),
     };
     running
@@ -362,14 +364,14 @@ async fn call(running: &impl ToolClient, name: &str, arguments: Option<Value>) -
         .unwrap_or_else(|err| panic!("{name}: {err}"))
 }
 
-fn object(value: Value) -> Map<String, Value> {
+fn into_object(value: Value) -> Map<String, Value> {
     value
         .as_object()
         .unwrap_or_else(|| panic!("arguments are not an object: {value}"))
         .clone()
 }
 
-fn assert_sat(result: &CallToolResult, name: &str) {
+fn assert_not_refused(result: &CallToolResult, name: &str) {
     let body = result.structured_content.clone().unwrap_or(Value::Null);
     assert!(body.get("code").is_none(), "{name} was refused: {body}");
     assert_ne!(result.is_error, Some(true), "{name}: {body}");
@@ -383,7 +385,7 @@ fn client_config() -> rmcp::model::ClientConfig {
     .with_protocol_version(ProtocolVersion::LATEST)
 }
 
-async fn connect_http(
+async fn connect_door(
     port: u16,
 ) -> Result<
     rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>,
@@ -393,9 +395,9 @@ async fn connect_http(
     client_config().serve(transport).await.map_err(Box::new)
 }
 
-fn listen_http(world: &mut World) -> (u16, u16) {
+fn listen_door(world: &mut World) -> (u16, u16) {
     let pack = table::pack(world).to_path_buf();
-    table::listen_flags(
+    table::listen_with_flags(
         world,
         &pack,
         &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
@@ -403,7 +405,7 @@ fn listen_http(world: &mut World) -> (u16, u16) {
     )
 }
 
-fn http_post_version(port: u16, version: &str) -> String {
+fn post_initialize_with_version(port: u16, version: &str) -> String {
     let body = format!(
         "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{version}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"probe\",\"version\":\"0\"}}}}}}"
     );
@@ -424,7 +426,7 @@ fn http_post_version(port: u16, version: &str) -> String {
     buf
 }
 
-pub fn http_post(port: u16, host: &str, origin: Option<&str>) -> String {
+pub fn post_initialize(port: u16, host: &str, origin: Option<&str>) -> String {
     let version = ProtocolVersion::LATEST.as_str();
     let body = format!(
         "{{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{{\"protocolVersion\":\"{version}\",\"capabilities\":{{}},\"clientInfo\":{{\"name\":\"probe\",\"version\":\"0\"}}}}}}"

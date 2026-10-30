@@ -9,7 +9,7 @@ use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
 
 use super::table;
-use crate::support::{append, copy_docks, copy_pack, edit_save, spook, state_of};
+use crate::support::{append, copy_docks, copy_pack, edit_save, run_spook, state_of};
 use crate::World;
 #[given(expr = "a save with rules_rev 8 and an engine at 9")]
 fn a_save_with_rules_rev_8_and_an_engine_at_9(world: &mut World) {
@@ -75,8 +75,8 @@ fn a_current_save_with_a_stray_presence_record(world: &mut World) {
 fn spook_run_or_spook_verify_opens_it(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
-    let run = crate::support::spook(&["run", arg, "--addr", "127.0.0.1:0"]);
-    let verify = crate::support::spook(&["verify", arg]);
+    let run = crate::support::run_spook(&["run", arg, "--addr", "127.0.0.1:0"]);
+    let verify = crate::support::run_spook(&["verify", arg]);
     let run_err = String::from_utf8_lossy(&run.stderr);
     let verify_err = String::from_utf8_lossy(&verify.stderr);
     world.code = if run.status.code() == Some(1) && verify.status.code() == Some(1) {
@@ -284,7 +284,7 @@ The ferry waits at the dock.
 #[when(expr = "a PC at ferry_dock travels")]
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let mut opened = open(&pack);
     let one_human = Presence {
         humans: 1,
         actors_present: Vec::new(),
@@ -355,7 +355,7 @@ fn an_empty_round_at_hour_7(world: &mut World) {
         now.actors.insert("briar".to_string(), briar);
         *now.actors.get_mut("briar").unwrap().place_mut() = "docks_shop".to_string();
     });
-    let mut opened = open_pack(&pack);
+    let mut opened = open(&pack);
     let wall = opened.state().last_round_at.clone();
     opened
         .play(&Presence::default(), &wall)
@@ -466,7 +466,7 @@ fn lark_attacks(world: &mut World) {
         might.base = 21 - i64::from(face);
         might.offset = 0;
     });
-    let mut opened = open_pack(&pack);
+    let mut opened = open(&pack);
     let nobody = Presence::default();
     opened
         .queue_player_move(&nobody, "pc_lark", "attack", Some("npc_briar"))
@@ -547,7 +547,7 @@ fn an_effect_key_is_bogus(world: &mut World) {
 #[then(expr = "spook check reports that key at its own line and column")]
 fn check_reports_the_key(world: &mut World) {
     let text = fs::read_to_string(world.pack.as_ref().unwrap().join("rules/verbs.yaml")).unwrap();
-    let (line, column) = key_spot(&text, "bogus:");
+    let (line, column) = locate_key(&text, "bogus:");
     let rumor = text
         .lines()
         .position(|row| row.contains("the bogus rumor"))
@@ -636,10 +636,10 @@ fn steady_costs_five_grit(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[when(expr = "the sitter plays steady")]
-fn the_sitter_plays_steady(world: &mut World) {
+#[when(expr = "the seated PC plays steady")]
+fn the_seated_pc_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let mut opened = open(&pack);
     let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "steady", None);
     world.scratch = match played {
         Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
@@ -687,7 +687,7 @@ rules:
 #[when(expr = "a PC is gated on those full ids")]
 fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let mut opened = open(&pack);
     let mut codes = Vec::new();
     for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
         match opened.queue_player_move(&Presence::default(), "pc_rowan", move_name, None) {
@@ -728,7 +728,7 @@ fn both_full_ids_are_refused(world: &mut World) {
 }
 
 #[given(expr = "use on tonic targets an actor and the shared use takes no target")]
-fn use_on_tonic_names_the_next_token(world: &mut World) {
+fn use_on_tonic_targets_an_actor(world: &mut World) {
     let pack = copy_docks("rules-owned");
     write(
         &pack.join("world/items/tonic.md"),
@@ -764,10 +764,10 @@ A small bottle.
     world.pack = Some(pack);
 }
 
-#[when(expr = "the sitter lines up use tonic")]
-fn the_sitter_lines_up_use_tonic(world: &mut World) {
+#[when(expr = "the seated PC queues use tonic")]
+fn the_seated_pc_queues_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    let mut opened = open_pack(&pack);
+    let mut opened = open(&pack);
     let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "use", Some("tonic"));
     world.scratch = match played {
         Ok(queued) => {
@@ -820,7 +820,7 @@ fn a_verb_with_time_and_resist(world: &mut World) {
 #[then(expr = "spook check is quiet about the time and the resist")]
 fn check_is_quiet_about_time_and_resist(world: &mut World) {
     let pack = world.pack.clone().unwrap();
-    open_pack(&pack);
+    open(&pack);
     run(world, &["check"]);
     assert_eq!(world.code, Some(0), "{}\n{}", world.stdout, world.stderr);
     assert!(!world.stderr.contains("cost time"), "{}", world.stderr);
@@ -904,14 +904,14 @@ fn run(world: &mut World, args: &[&str]) {
     let mut full = Vec::with_capacity(args.len() + 1);
     full.extend_from_slice(args);
     full.push(pack.as_str());
-    let output = spook(&full);
+    let output = run_spook(&full);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 }
 
 /// The world owns the pack lock, so the caller writes while holding it.
-pub(super) fn open_pack(pack: &Path) -> spookery_engine::World {
+pub(super) fn open(pack: &Path) -> spookery_engine::World {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| {
         panic!(
@@ -950,7 +950,7 @@ fn write(path: &Path, text: &str) {
     fs::write(path, text).unwrap();
 }
 
-fn key_spot(text: &str, key: &str) -> (u64, u64) {
+fn locate_key(text: &str, key: &str) -> (u64, u64) {
     for (index, line) in text.lines().enumerate() {
         if let Some(column) = line.find(key) {
             return ((index + 1) as u64, (column + 1) as u64);

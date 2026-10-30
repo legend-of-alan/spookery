@@ -19,10 +19,10 @@ use crate::support;
 
 /// A seat that never answers still has to fail the test. The line itself
 /// unblocks the wait.
-const HANG: Duration = Duration::from_secs(5);
+const READ_TIMEOUT: Duration = Duration::from_secs(5);
 
-const GAME_PORT: &str = "127.0.0.1:<game>";
-const DOOR_PORT: &str = "127.0.0.1:<door>";
+const SCRUBBED_GAME_ADDR: &str = "127.0.0.1:<game>";
+const SCRUBBED_DOOR_ADDR: &str = "127.0.0.1:<door>";
 
 enum Example {
     Json(Value),
@@ -41,7 +41,7 @@ struct Table {
     game: u16,
     door: u16,
     host_text: Arc<Mutex<String>>,
-    host_more: Receiver<()>,
+    host_grew: Receiver<()>,
 }
 
 impl Drop for Table {
@@ -95,7 +95,7 @@ fn capture() -> BTreeMap<String, Example> {
     let table = listen();
     let mut player = seat(table.game, "pc_rowan");
 
-    json(
+    insert_json(
         &mut out,
         "listening",
         serde_json::json!({
@@ -104,37 +104,45 @@ fn capture() -> BTreeMap<String, Example> {
             "door": format!("127.0.0.1:{}", table.door),
         }),
     );
-    text(&mut out, "player-hello", "player:pc_rowan");
+    insert_text(&mut out, "player-hello", "player:pc_rowan");
     let resume = next_json(&player);
     assert_eq!(resume["kind"], "resume", "{resume}");
-    json(&mut out, "player-resume", resume);
+    insert_json(&mut out, "player-resume", resume);
     let perceive = next_json(&player);
     assert_eq!(perceive["kind"], "view", "{perceive}");
-    json(&mut out, "player-perceive", perceive);
+    insert_json(&mut out, "player-perceive", perceive);
 
-    text(&mut out, "player-look", "look");
+    insert_text(&mut out, "player-look", "look");
     send(&mut player, "look");
     let lines = next_json(&player);
     assert_eq!(lines["kind"], "lines", "{lines}");
-    json(&mut out, "player-lines", lines);
+    insert_json(&mut out, "player-lines", lines);
 
-    json(
+    insert_json(
         &mut out,
         "player-seat-taken",
-        refused(table.game, "player:pc_rowan"),
+        send_refused_line(table.game, "player:pc_rowan"),
     );
-    json(
+    insert_json(
         &mut out,
         "player-unknown-pc",
-        refused(table.game, "player:no_such"),
+        send_refused_line(table.game, "player:no_such"),
     );
-    json(&mut out, "player-choose-pc", refused(table.game, ""));
-    json(
+    insert_json(
+        &mut out,
+        "player-choose-pc",
+        send_refused_line(table.game, ""),
+    );
+    insert_json(
         &mut out,
         "player-gm-on-game-port",
-        refused(table.game, "gm"),
+        send_refused_line(table.game, "gm"),
     );
-    json(&mut out, "player-line-too-long", too_long(table.game));
+    insert_json(
+        &mut out,
+        "player-line-too-long",
+        send_too_long_line(table.game),
+    );
 
     let version = ProtocolVersion::LATEST.as_str();
     let initialize = serde_json::json!({
@@ -147,9 +155,9 @@ fn capture() -> BTreeMap<String, Example> {
             "clientInfo": { "name": "seat-protocol", "version": "0" }
         }
     });
-    json(&mut out, "initialize-request", initialize.clone());
+    insert_json(&mut out, "initialize-request", initialize.clone());
     let (opened, session) = post_initialize(table.door, &initialize);
-    json(&mut out, "initialize-result", opened.clone());
+    insert_json(&mut out, "initialize-result", opened.clone());
     let negotiated = opened["result"]["protocolVersion"]
         .as_str()
         .unwrap_or_else(|| panic!("no protocol version\n{opened}"))
@@ -165,19 +173,19 @@ fn capture() -> BTreeMap<String, Example> {
     .unwrap_or_else(|err| panic!("seat GM: {err}"));
 
     let status_args = serde_json::json!({});
-    json(
+    insert_json(
         &mut out,
         "table-status-request",
         tool_call(2, "table_status", &status_args),
     );
-    json(
+    insert_json(
         &mut out,
         "table-status",
         call(&mut gm, "table_status", status_args),
     );
 
     let perceive_args = serde_json::json!({"as": "pc_rowan"});
-    json(
+    insert_json(
         &mut out,
         "perceive-request",
         tool_call(3, "perceive", &perceive_args),
@@ -189,28 +197,28 @@ fn capture() -> BTreeMap<String, Example> {
         "GM perceive diverged from the player welcome"
     );
 
-    text(&mut out, "player-say", "say evening");
+    insert_text(&mut out, "player-say", "say evening");
     send(&mut player, "say evening");
     let said = next_json(&player);
     assert_eq!(said["kind"], "say", "{said}");
-    json(&mut out, "player-say-frame", said);
-    json(&mut out, "say-event", one_event(&mut gm));
+    insert_json(&mut out, "player-say-frame", said);
+    insert_json(&mut out, "say-event", one_event(&mut gm));
 
     let say_args = serde_json::json!({"address": "table", "text": "good evening"});
-    json(&mut out, "say-request", tool_call(4, "say", &say_args));
-    json(&mut out, "say-result", call(&mut gm, "say", say_args));
+    insert_json(&mut out, "say-request", tool_call(4, "say", &say_args));
+    insert_json(&mut out, "say-result", call(&mut gm, "say", say_args));
     let heard = next_json(&player);
     assert_eq!(heard["kind"], "say", "{heard}");
-    json(&mut out, "player-hears-gm", heard);
-    json(&mut out, "gm-say-event", one_event(&mut gm));
+    insert_json(&mut out, "player-hears-gm", heard);
+    insert_json(&mut out, "gm-say-event", one_event(&mut gm));
 
     let since_args = serde_json::json!({"since": 0});
-    json(
+    insert_json(
         &mut out,
         "table-status-since-request",
         tool_call(5, "table_status", &since_args),
     );
-    json(
+    insert_json(
         &mut out,
         "table-status-since",
         call(&mut gm, "table_status", since_args),
@@ -221,51 +229,51 @@ fn capture() -> BTreeMap<String, Example> {
         "move": "wait",
         "id": "gm-wait"
     });
-    json(
+    insert_json(
         &mut out,
         "intent-request",
         tool_call(6, "queue_intent", &intent_args),
     );
-    json(
+    insert_json(
         &mut out,
         "intent-result",
         call(&mut gm, "queue_intent", intent_args),
     );
 
-    text(&mut out, "player-grit", "grit");
+    insert_text(&mut out, "player-grit", "grit");
     send(&mut player, "grit");
     let queued = next_json(&player);
     assert_eq!(queued["kind"], "queued", "{queued}");
-    json(&mut out, "player-queued", queued);
-    json(&mut out, "queued-event", one_event(&mut gm));
+    insert_json(&mut out, "player-queued", queued);
+    insert_json(&mut out, "queued-event", one_event(&mut gm));
 
     let refuse_commit = serde_json::json!({"include_round": false});
-    json(
+    insert_json(
         &mut out,
         "commit-without-round-request",
         tool_call(7, "commit_round", &refuse_commit),
     );
-    json(
+    insert_json(
         &mut out,
         "commit-without-round",
         call(&mut gm, "commit_round", refuse_commit),
     );
 
     let commit_args = serde_json::json!({"include_round": true});
-    json(
+    insert_json(
         &mut out,
         "commit-request",
         tool_call(8, "commit_round", &commit_args),
     );
-    json(
+    insert_json(
         &mut out,
         "commit-result",
         call(&mut gm, "commit_round", commit_args),
     );
-    json(&mut out, "check-event", one_event(&mut gm));
+    insert_json(&mut out, "check-event", one_event(&mut gm));
     let check = next_json(&player);
     assert_eq!(check["kind"], "check", "{check}");
-    json(&mut out, "player-check", check);
+    insert_json(&mut out, "player-check", check);
     let again = next_json(&player);
     assert_eq!(again["kind"], "resume", "{again}");
     let refreshed = next_json(&player);
@@ -287,39 +295,39 @@ fn capture() -> BTreeMap<String, Example> {
     assert_eq!(after_take["kind"], "view", "{after_take}");
     let changes = next_json(&player);
     assert_eq!(changes["kind"], "lines", "{changes}");
-    json(&mut out, "player-changes", changes);
+    insert_json(&mut out, "player-changes", changes);
 
-    text(&mut out, "player-unknown-line", "blah");
+    insert_text(&mut out, "player-unknown-line", "blah");
     send(&mut player, "blah");
-    json(&mut out, "player-not-in-spec", next_json(&player));
+    insert_json(&mut out, "player-not-in-spec", next_json(&player));
 
-    text(&mut out, "player-empty-say", "say");
+    insert_text(&mut out, "player-empty-say", "say");
     send(&mut player, "say");
-    json(&mut out, "player-schema", next_json(&player));
+    insert_json(&mut out, "player-schema", next_json(&player));
 
-    text(&mut out, "player-locked-exit", "travel stairs");
+    insert_text(&mut out, "player-locked-exit", "travel stairs");
     send(&mut player, "travel stairs");
-    json(&mut out, "player-no-exit", next_json(&player));
+    insert_json(&mut out, "player-no-exit", next_json(&player));
 
     let bad_tool = serde_json::json!({});
-    json(
+    insert_json(
         &mut out,
         "unknown-tool-request",
         tool_call(9, "not_in_spec", &bad_tool),
     );
-    json(
+    insert_json(
         &mut out,
         "unknown-tool",
         call(&mut gm, "not_in_spec", bad_tool),
     );
 
     let unscoped = serde_json::json!({});
-    json(
+    insert_json(
         &mut out,
         "unscoped-perceive-request",
         tool_call(10, "perceive", &unscoped),
     );
-    json(
+    insert_json(
         &mut out,
         "unscoped-perceive",
         call(&mut gm, "perceive", unscoped),
@@ -330,16 +338,16 @@ fn capture() -> BTreeMap<String, Example> {
     // The welcome line means that hello has the seat. The fourth hello comes after both.
     assert_eq!(next_json(&mouse)["kind"], "resume");
     assert_eq!(next_json(&wren)["kind"], "resume");
-    json(
+    insert_json(
         &mut out,
         "player-session-full",
-        refused(table.game, "player:pc_extra"),
+        send_refused_line(table.game, "player:pc_extra"),
     );
 
-    json(
+    insert_json(
         &mut out,
         "gm-session-full",
-        post_full(table.door, &initialize),
+        post_initialize_when_full(table.door, &initialize),
     );
 
     let mark = table.host_text.lock().unwrap().len();
@@ -353,15 +361,15 @@ fn capture() -> BTreeMap<String, Example> {
     let replay = next_json(&again);
     assert_eq!(replay["kind"], "say", "{replay}");
     assert_eq!(replay["replay"], true, "{replay}");
-    json(&mut out, "player-replay-say", replay);
+    insert_json(&mut out, "player-replay-say", replay);
 
     let close_args = serde_json::json!({});
-    json(
+    insert_json(
         &mut out,
         "close-request",
         tool_call(11, "close", &close_args),
     );
-    json(&mut out, "close-result", call(&mut gm, "close", close_args));
+    insert_json(&mut out, "close-result", call(&mut gm, "close", close_args));
     out
 }
 
@@ -412,7 +420,7 @@ fn listen() -> Table {
         game: game.port(),
         door: door.port(),
         host_text,
-        host_more,
+        host_grew: host_more,
     }
 }
 
@@ -424,8 +432,8 @@ fn wait_host_grew(table: &Table, mark: usize) {
         if table.host_text.lock().unwrap().len() > mark {
             return;
         }
-        let left = HANG.saturating_sub(start.elapsed());
-        if left.is_zero() || table.host_more.recv_timeout(left).is_err() {
+        let left = READ_TIMEOUT.saturating_sub(start.elapsed());
+        if left.is_zero() || table.host_grew.recv_timeout(left).is_err() {
             panic!(
                 "host did not print after the seat closed\n{}",
                 table.host_text.lock().unwrap()
@@ -507,7 +515,7 @@ fn send(seat: &mut Seat, line: &str) {
 
 fn next_line(seat: &Seat) -> String {
     seat.lines
-        .recv_timeout(HANG)
+        .recv_timeout(READ_TIMEOUT)
         .unwrap_or_else(|err| panic!("no player line: {err}"))
 }
 
@@ -525,10 +533,10 @@ fn connect(port: u16) -> TcpStream {
     stream
 }
 
-fn refused(port: u16, line: &str) -> Value {
+fn send_refused_line(port: u16, line: &str) -> Value {
     let mut stream = connect(port);
     stream
-        .set_read_timeout(Some(HANG))
+        .set_read_timeout(Some(READ_TIMEOUT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     writeln!(stream, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
     stream.flush().unwrap_or_else(|err| panic!("flush: {err}"));
@@ -536,10 +544,10 @@ fn refused(port: u16, line: &str) -> Value {
     serde_json::from_str(&text).unwrap_or_else(|err| panic!("{err} in {text}"))
 }
 
-fn too_long(port: u16) -> Value {
+fn send_too_long_line(port: u16) -> Value {
     let mut stream = connect(port);
     stream
-        .set_read_timeout(Some(HANG))
+        .set_read_timeout(Some(READ_TIMEOUT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     let mut bytes = vec![b'x'; 8 * 1024 + 1];
     bytes.push(b'\n');
@@ -597,7 +605,7 @@ fn tool_call(id: u64, name: &str, arguments: &Value) -> Value {
 }
 
 fn post_initialize(port: u16, body: &Value) -> (Value, String) {
-    let raw = http(
+    let raw = send_http(
         port,
         "POST",
         &serde_json::to_string(body).unwrap(),
@@ -609,8 +617,8 @@ fn post_initialize(port: u16, body: &Value) -> (Value, String) {
     (value, session)
 }
 
-fn post_full(port: u16, body: &Value) -> Value {
-    let raw = http(
+fn post_initialize_when_full(port: u16, body: &Value) -> Value {
+    let raw = send_http(
         port,
         "POST",
         &serde_json::to_string(body).unwrap(),
@@ -621,7 +629,7 @@ fn post_full(port: u16, body: &Value) -> Value {
 }
 
 fn delete_session(port: u16, session: &str, version: &str) {
-    let raw = http(port, "DELETE", "", Some(session), version);
+    let raw = send_http(port, "DELETE", "", Some(session), version);
     let status = raw.lines().next().unwrap_or("");
     assert!(
         status.contains(" 200 ") || status.contains(" 202 ") || status.contains(" 204 "),
@@ -629,7 +637,7 @@ fn delete_session(port: u16, session: &str, version: &str) {
     );
 }
 
-fn http(port: u16, method: &str, body: &str, session: Option<&str>, version: &str) -> String {
+fn send_http(port: u16, method: &str, body: &str, session: Option<&str>, version: &str) -> String {
     let session = session
         .map(|id| format!("mcp-session-id: {id}\r\n"))
         .unwrap_or_default();
@@ -639,7 +647,7 @@ fn http(port: u16, method: &str, body: &str, session: Option<&str>, version: &st
     );
     let mut stream = connect(port);
     stream
-        .set_read_timeout(Some(HANG))
+        .set_read_timeout(Some(READ_TIMEOUT))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
     stream
         .write_all(request.as_bytes())
@@ -647,7 +655,7 @@ fn http(port: u16, method: &str, body: &str, session: Option<&str>, version: &st
     let mut buf = Vec::new();
     let mut tmp = [0u8; 1024];
     loop {
-        if http_complete(&buf) {
+        if is_http_complete(&buf) {
             break;
         }
         match stream.read(&mut tmp) {
@@ -660,7 +668,7 @@ fn http(port: u16, method: &str, body: &str, session: Option<&str>, version: &st
     String::from_utf8_lossy(&buf).into_owned()
 }
 
-fn http_complete(buf: &[u8]) -> bool {
+fn is_http_complete(buf: &[u8]) -> bool {
     let text = String::from_utf8_lossy(buf);
     let Some(split) = text.find("\r\n\r\n") else {
         return false;
@@ -749,11 +757,11 @@ fn decode_body(head: &str, body: &str) -> String {
     out
 }
 
-fn json(out: &mut BTreeMap<String, Example>, name: &str, value: Value) {
+fn insert_json(out: &mut BTreeMap<String, Example>, name: &str, value: Value) {
     out.insert(name.to_string(), Example::Json(value));
 }
 
-fn text(out: &mut BTreeMap<String, Example>, name: &str, line: &str) {
+fn insert_text(out: &mut BTreeMap<String, Example>, name: &str, line: &str) {
     out.insert(name.to_string(), Example::Text(line.to_string()));
 }
 
@@ -797,8 +805,14 @@ fn scrub(value: &mut Value) {
     assert!(loopback_port(game).is_some(), "{game}");
     assert!(loopback_port(door).is_some(), "{door}");
     assert_ne!(game, door, "game and door ports");
-    object.insert("game".to_string(), Value::String(GAME_PORT.to_string()));
-    object.insert("door".to_string(), Value::String(DOOR_PORT.to_string()));
+    object.insert(
+        "game".to_string(),
+        Value::String(SCRUBBED_GAME_ADDR.to_string()),
+    );
+    object.insert(
+        "door".to_string(),
+        Value::String(SCRUBBED_DOOR_ADDR.to_string()),
+    );
 }
 
 fn loopback_port(text: &str) -> Option<u16> {

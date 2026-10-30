@@ -15,19 +15,19 @@
 //!
 //! Deterministic in CI: 64 cases, seed `0x0018_0018`, no failure file.
 
-use proptest::test_runner::TestRunner;
+use proptest::test_runner::{TestCaseError, TestRunner};
 
-use super::play::{configure_runner, fail_msg, pick_rounds, play_rounds, same_save, TempPack};
+use super::support::{arb_rounds, assert_replay_matches, play_rounds, runner_config, TempPack};
 use crate::testing::copy_docks;
 
 #[test]
 fn random_play_replays_to_the_same_save() {
-    let mut runner = TestRunner::new(configure_runner());
+    let mut runner = TestRunner::new(runner_config());
     runner
-        .run(&pick_rounds(), |rounds| {
+        .run(&arb_rounds(), |rounds| {
             let pack = TempPack(copy_docks("prop-replay"));
-            play_rounds(&pack.0, &rounds).map_err(fail_msg)?;
-            same_save(&pack.0)
+            play_rounds(&pack.0, &rounds).map_err(TestCaseError::fail)?;
+            assert_replay_matches(&pack.0)
         })
         .unwrap_or_else(|err| panic!("replay property failed: {err}"));
 }

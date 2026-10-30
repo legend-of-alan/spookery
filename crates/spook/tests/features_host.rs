@@ -14,11 +14,11 @@ mod common;
 #[path = "steps/ports.rs"]
 mod ports;
 
-#[path = "steps/harness.rs"]
-mod harness;
+#[path = "steps/status.rs"]
+mod status;
 
-#[path = "steps/player_speech.rs"]
-mod player_speech;
+#[path = "steps/speech.rs"]
+mod speech;
 
 #[path = "steps/seats.rs"]
 mod seats;
@@ -38,8 +38,8 @@ mod cli;
 #[path = "steps/digest.rs"]
 mod digest;
 
-#[path = "steps/host.rs"]
-mod host;
+#[path = "steps/ai_gm.rs"]
+mod ai_gm;
 
 #[path = "steps/round_output.rs"]
 mod round_output;
@@ -50,8 +50,8 @@ mod mcp;
 #[path = "steps/new.rs"]
 mod new;
 
-#[path = "steps/gm.rs"]
-mod gm;
+#[path = "steps/gm_terminal.rs"]
+mod gm_terminal;
 
 #[path = "steps/refusal.rs"]
 mod refusal;
@@ -59,11 +59,11 @@ mod refusal;
 #[path = "steps/one_writer.rs"]
 mod one_writer;
 
-#[path = "feature_paths.rs"]
-mod feature_paths;
+#[path = "feature_dirs.rs"]
+mod feature_dirs;
 
 fn feature_dirs() -> &'static [&'static str] {
-    feature_paths::HOST
+    feature_dirs::HOST
 }
 
 include!("feature_main.rs");

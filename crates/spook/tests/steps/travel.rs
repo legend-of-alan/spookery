@@ -27,7 +27,7 @@ fn docks_street_has_no_exit_to_mira_rooms(world: &mut World) {
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -38,8 +38,8 @@ fn rowan_travels_to_mira_rooms(world: &mut World) {
     world.player_added = added;
 }
 
-#[then(expr = "the intent is rejected with NO_EXIT and rowan stays put")]
-fn rejected_no_exit_and_stays(world: &mut World) {
+#[then(expr = "the intent is refused with NO_EXIT and rowan stays put")]
+fn refused_no_exit_and_stays(world: &mut World) {
     assert!(
         world.player_added.contains("NO_EXIT"),
         "{}",
@@ -58,7 +58,7 @@ fn rejected_no_exit_and_stays(world: &mut World) {
 fn stairs_need_a_key(world: &mut World) {
     let pack = copy_docks("locked");
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -98,7 +98,7 @@ fn rowan_travels_holding_the_key(world: &mut World) {
     add_trapdoor(&pack);
     edit_save(&pack, give_key);
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     let (_mark, added) = table::player_send(world, "travel stairs", "mira_rooms");
     world.player_added = added;
     world.pack = Some(pack);
@@ -137,7 +137,7 @@ fn a_place_rule_teleports(world: &mut World) {
         );
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -156,7 +156,7 @@ fn the_pc_reaches_the_cellar(world: &mut World) {
 }
 
 #[then(expr = "the world is at 21:40 and rowan is in mira_rooms")]
-fn rowan_has_arrived_by_half_past(world: &mut World) {
+fn rowan_is_in_mira_rooms_at_21_40(world: &mut World) {
     let now = table::now_of(table::pack(world));
     let rowan = now.actors.get("pc_rowan").unwrap();
     assert_eq!(now.world_time, EVENING + 10);
@@ -208,7 +208,7 @@ fn two_arrivals(world: &mut World) {
         );
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     table::seat_actor(world, &pack, "pc_nell");
     world.pack = Some(pack);
 }
@@ -236,7 +236,7 @@ fn seated_rounds_are_five_minutes(world: &mut World) {
         now.world_time = EVENING;
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -247,7 +247,7 @@ fn rowan_travels_in_the_evening_round(world: &mut World) {
 }
 
 #[then(expr = "the round still ends at 21:35")]
-fn the_round_ends_at_half(world: &mut World) {
+fn the_round_still_ends_at_21_35(world: &mut World) {
     let round = crate::support::read_round(table::pack(world), "round-0001");
     assert_eq!(round["world_time_before"], EVENING);
     assert_eq!(round["world_time_after"], EVENING + 5);
@@ -335,7 +335,7 @@ fn both_busy_without_a_gm(world: &mut World) {
         set_busy(now, "pc_nell", EVENING + 5, "docks_street", "docks_street");
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     table::seat_actor(world, &pack, "pc_nell");
     world.pack = Some(pack);
 }
@@ -358,7 +358,7 @@ fn the_shard_plays_rounds_through_both_arrivals(world: &mut World) {
 }
 
 #[then(expr = "an NPC habit due at 21:35 runs in that round")]
-fn the_habit_runs_at_half(world: &mut World) {
+fn the_habit_due_at_21_35_runs(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let round = list_round_keys(&pack)
         .into_iter()
@@ -393,7 +393,7 @@ fn a_long_journey_and_the_cap(world: &mut World) {
         set_busy(now, "pc_rowan", EVENING + 200 * 5, "mira_rooms", "stairs");
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
@@ -429,11 +429,11 @@ fn verify_passes(world: &mut World) {
         set_busy(now, "pc_rowan", EVENING + 10, "mira_rooms", "stairs");
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     let (_mark, _) = table::player_send(world, "wait", "BUSY");
     world.pack = Some(pack.clone());
     let arg = pack.to_str().unwrap();
-    let output = support::spook(&["verify", arg]);
+    let output = support::run_spook(&["verify", arg]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{stdout}\n{stderr}");

@@ -7,11 +7,11 @@ use cucumber::World as _;
 pub struct World {
     pub pack: Option<PathBuf>,
     pub scratch: String,
-    pub stdout: String,
-    pub mark: usize,
-    pub player_added: String,
-    pub now_bytes: Vec<u8>,
-    pub summary: Vec<String>,
+    pub seen: String,
+    pub count: usize,
+    pub intent_id: String,
+    pub oil: Vec<u8>,
+    pub wait_order: Vec<String>,
     pub writer: Option<Writer>,
     pub lock_clone: Option<std::fs::File>,
 }

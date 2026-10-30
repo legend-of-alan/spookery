@@ -21,10 +21,10 @@ const SAY_TEXT_BYTES: usize = 4 * 1024;
 fn a_player_sends_a_mebibyte_line(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     let text = Arc::clone(&table::live_mut(world).player_text);
     let writer = table::live_mut(world)
-        .player_write
+        .first_stream
         .as_ref()
         .unwrap_or_else(|| panic!("no player"))
         .try_clone()
@@ -44,7 +44,7 @@ fn refused_and_disconnected(world: &mut World, code: String) {
         world.player_added
     );
     assert_eq!(
-        table::live_presence(world).0,
+        table::read_presence(world).0,
         0,
         "the seat was not released"
     );
@@ -52,12 +52,12 @@ fn refused_and_disconnected(world: &mut World, code: String) {
 
 #[then(expr = "a second player can sit and wait")]
 fn a_second_player_can_sit_and_wait(world: &mut World) {
-    table::release_status_gm(world);
+    table::release_probe_gm(world);
     let pack = table::pack(world).to_path_buf();
     let before = list_round_keys(&pack).len();
     table::seat_actor(world, &pack, "pc_harbormouse");
-    table::actor_line(world, "pc_harbormouse", "wait");
-    table::expect_wait_from(&pack, "pc_harbormouse", before);
+    table::actor_write(world, "pc_harbormouse", "wait");
+    table::wait_committed_wait(&pack, "pc_harbormouse", before);
 }
 
 #[when(expr = "the GM releases the seat")]
@@ -76,7 +76,7 @@ fn the_server_confirms_the_seat_is_free(world: &mut World) {
 
 #[when(expr = "the GM releases the seat and keeps the session")]
 fn the_gm_releases_the_seat_and_keeps_the_session(world: &mut World) {
-    world.scratch = table::release_gm_session(world);
+    world.scratch = table::release_gm_keep_session(world);
 }
 
 #[when(expr = "another GM sits")]
@@ -86,7 +86,7 @@ fn another_gm_sits(world: &mut World) {
 
 #[when(expr = "the closed session calls say")]
 fn the_closed_session_calls_say(world: &mut World) {
-    world.before = table::files(table::pack(world));
+    world.before = table::read_files(table::pack(world));
     world.scratch =
         table::closed_gm_call(world, "say", r#"{"address":"table","text":"good evening"}"#);
 }
@@ -99,7 +99,7 @@ fn that_call_is_refused_and_nothing_was_written(world: &mut World) {
         world.scratch
     );
     assert_eq!(
-        table::files(table::pack(world)),
+        table::read_files(table::pack(world)),
         world.before,
         "the closed session wrote the pack"
     );
@@ -109,7 +109,7 @@ fn that_call_is_refused_and_nothing_was_written(world: &mut World) {
 fn a_socket_sends_an_oversized_hello(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    let stream = connect(table::live_mut(world).port);
+    let stream = connect(table::live_mut(world).game_port);
     let text = spawn_reader(&stream);
     let join = std::thread::spawn(move || write_all_ignoring(stream, vec![b'a'; MIB]));
     world.scratch = wait_text(&text, "\"code\":\"LINE_TOO_LONG\"", Duration::from_secs(8));
@@ -120,7 +120,7 @@ fn a_socket_sends_an_oversized_hello(world: &mut World) {
 fn an_http_body_over_a_mebibyte(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
-    let http = table::live_mut(world).http_port;
+    let http = table::live_mut(world).door_port;
     let body = vec![b'x'; MIB + 1];
     let request = format!(
         "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1:{http}\r\nContent-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
@@ -144,10 +144,10 @@ fn an_http_body_over_a_mebibyte(world: &mut World) {
 
 #[then(expr = "a new GM can sit")]
 fn a_new_gm_can_sit(world: &mut World) {
-    let port = table::live_mut(world).http_port;
+    let port = table::live_mut(world).door_port;
     let start = Instant::now();
     loop {
-        match try_gm(port) {
+        match try_sit_gm(port) {
             Ok(()) => return,
             Err(err) if start.elapsed() < Duration::from_secs(5) => {
                 let _ = err;
@@ -160,10 +160,10 @@ fn a_new_gm_can_sit(world: &mut World) {
 
 #[when(expr = "the player sends invalid UTF-8")]
 fn the_player_sends_invalid_utf8(world: &mut World) {
-    let mark = table::player_len(world);
+    let mark = table::player_mark(world);
     let live = table::live_mut(world);
     let write = live
-        .player_write
+        .first_stream
         .as_mut()
         .unwrap_or_else(|| panic!("no player"));
     write
@@ -218,14 +218,14 @@ fn the_player_can_wait(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let before = list_round_keys(&pack).len();
     table::player_write(world, "wait");
-    table::expect_wait_from(&pack, "pc_rowan", before);
+    table::wait_committed_wait(&pack, "pc_rowan", before);
 }
 
 #[when(expr = "a socket connects and sends nothing")]
 fn a_socket_connects_and_sends_nothing(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::listen_with(world, &pack, &[("SPOOK_HELLO_TIMEOUT_MS", "200")]);
-    let mut stream = connect(table::live_mut(world).port);
+    table::listen_with_env(world, &pack, &[("SPOOK_HELLO_TIMEOUT_MS", "200")]);
+    let mut stream = connect(table::live_mut(world).game_port);
     stream
         .set_read_timeout(Some(Duration::from_secs(2)))
         .unwrap_or_else(|err| panic!("timeout: {err}"));
@@ -346,12 +346,12 @@ fn one_player_stops_reading(world: &mut World) {
     table::listen(world, &pack);
     table::seat_gm(world);
     table::seat_actor(world, &pack, "pc_harbormouse");
-    let (mut quiet, recv) = connect_small_window(table::live_mut(world).port);
+    let (mut quiet, recv) = connect_small_window(table::live_mut(world).game_port);
     let send = granted_send_buffer(REQUESTED_SEND_BUFFER);
     writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
     quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     read_until(&mut quiet, "\"kind\":\"view\"", Duration::from_secs(2));
-    table::live_mut(world).players.push(table::Seated {
+    table::live_mut(world).players.push(table::Seat {
         actor_id: "pc_rowan".to_string(),
         write: quiet,
         text: Arc::new(Mutex::new(String::new())),
@@ -376,13 +376,13 @@ fn one_player_stops_reading(world: &mut World) {
     let mut sent = 0usize;
     let args = format!(r#"{{"address":"table","text":"{say}"}}"#);
     loop {
-        let (_, present) = table::live_presence(world);
+        let (_, present) = table::read_presence(world);
         if !present.iter().any(|actor| actor == "pc_rowan") {
             break;
         }
         if start.elapsed() > Duration::from_secs(60) || sent > budget {
             let stderr = table::live_mut(world)
-                .server
+                .host
                 .as_ref()
                 .map(|server| support::text_of(&server.stderr))
                 .unwrap_or_default();
@@ -412,7 +412,7 @@ fn one_player_stops_reading(world: &mut World) {
 
 #[then(expr = "that player is disconnected")]
 fn that_player_is_disconnected(world: &mut World) {
-    let (_, present) = table::live_presence(world);
+    let (_, present) = table::read_presence(world);
     assert!(
         !present.iter().any(|actor| actor == "pc_rowan"),
         "{present:?}"
@@ -421,7 +421,7 @@ fn that_player_is_disconnected(world: &mut World) {
         present.iter().any(|actor| actor == "pc_harbormouse"),
         "{present:?}"
     );
-    table::release_status_gm(world);
+    table::release_probe_gm(world);
 }
 
 #[then(expr = "the other player keeps receiving frames")]
@@ -567,7 +567,7 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
         .unwrap_or_else(|err| panic!("clear timeout: {err}"));
 }
 
-fn try_gm(port: u16) -> Result<(), String> {
+fn try_sit_gm(port: u16) -> Result<(), String> {
     let door = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     match support::block_on(spookery::gm_connection::Connection::connect_door(door)) {
         Ok(gm) => {

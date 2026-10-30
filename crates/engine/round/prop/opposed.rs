@@ -8,7 +8,7 @@ use crate::model::Presence;
 use crate::world::{IntentCall, World};
 use crate::Reason;
 
-use super::play::TempPack;
+use super::support::TempPack;
 use crate::testing::{copy_dir, copy_pack, fresh_dir};
 
 const LUNGE: &str = "

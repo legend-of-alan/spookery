@@ -36,7 +36,7 @@ Feature: The journal verifies
 
   Scenario: Startup repair verifies
     Given a docks table
-    When a seated player's server is killed and restarted
+    When a seated player's host is killed and restarted
     And the operator runs verify
     Then the command exits 0
     And stdout says the save was verified

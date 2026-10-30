@@ -21,7 +21,7 @@ fn the_operator_runs_spook_check_json_again(world: &mut World) {
 #[when(expr = "the street exit is removed")]
 fn the_street_exit_is_removed(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    super::common::replace_file(
+    super::common::replace_in_file(
         &pack.join("world/places/docks_shop.md"),
         "  - to: docks_street\n    name: docks_street\n",
         "",
@@ -31,15 +31,15 @@ fn the_street_exit_is_removed(world: &mut World) {
 #[when(expr = "travel in verbs.yaml teleports")]
 fn travel_in_verbs_yaml_teleports(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    super::common::replace_file(
+    super::common::replace_in_file(
         &pack.join("rules/verbs.yaml"),
         "          via: target\n",
         "          via: target\n          teleport: true\n",
     );
 }
 
-#[when(expr = "the save hash is restamped")]
-fn the_save_hash_is_restamped(world: &mut World) {
+#[when(expr = "the pack_rev is restamped")]
+fn the_pack_rev_is_restamped(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let path = pack.join("state/save.yaml");
     let mut now = spookery_engine::parse_save(&fs::read_to_string(&path).unwrap())
@@ -195,7 +195,7 @@ fn the_worked_example_row_is_appended(world: &mut World) {
 
 #[then(expr = "no tracked file contains a home-directory path")]
 fn no_tracked_file_contains_a_home_directory_path(world: &mut World) {
-    let hits = absolute_path_hits();
+    let hits = home_path_hits();
     world.scratch = hits.join("\n");
     assert!(world.scratch.is_empty(), "{}", world.scratch);
 }
@@ -254,7 +254,7 @@ fn worked_example_row() -> String {
 /// A drive letter and a backslash are not enough: Rust string escapes
 /// use that shape, so the Windows check requires the home directory
 /// after the drive.
-fn absolute_path_hits() -> Vec<String> {
+fn home_path_hits() -> Vec<String> {
     let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let output = Command::new("git")
         .args(["ls-files", "-z"])
@@ -289,7 +289,7 @@ fn absolute_path_hits() -> Vec<String> {
 /// The needle line in this file. It names both prefixes at once.
 fn is_scanner_needle(rel: &str, line: &str) -> bool {
     let rel = rel.replace('\\', "/");
-    rel == "crates/spook/tests/steps/check.rs"
+    rel == "crates/spook/tests/steps/spook_check.rs"
         && line.contains(concat!("/Users", "/"))
         && line.contains(concat!("/home", "/"))
 }

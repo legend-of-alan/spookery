@@ -9,14 +9,12 @@ use spookery::host::{call_gm_tool, commit_then_fast_forward};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::{Presence, World as Shard};
 
-use crate::support::{
-    self, read_round as round_value, resume, stamp_pack_rev, state_of, write_save,
-};
+use crate::support::{self, read_round, resume, stamp_pack_rev, state_of, write_save};
 use crate::World;
 
 use super::table;
 
-fn player_waits(round: &Value) -> Vec<String> {
+fn player_wait_ids(round: &Value) -> Vec<String> {
     round["intents"]
         .as_array()
         .unwrap()
@@ -203,10 +201,10 @@ fn a_due_wake_applies_the_queued_wait() {
     assert_eq!(shard.state().world_time, 1800);
     assert!(shard.queued_intents().is_empty());
     assert_eq!(
-        player_waits(&round_value(&due, "round-0001")),
+        player_wait_ids(&read_round(&due, "round-0001")),
         vec![note.id]
     );
-    assert!(player_waits(&round_value(&due, "round-0002")).is_empty());
+    assert!(player_wait_ids(&read_round(&due, "round-0002")).is_empty());
     assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
     assert_eq!(shard.state().round_index, 12);
     let _ = fs::remove_dir_all(&due);

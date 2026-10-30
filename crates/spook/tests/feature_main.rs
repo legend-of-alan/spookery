@@ -19,17 +19,17 @@ pub struct World {
     pub player_added: String,
     pub now_bytes: Vec<u8>,
     pub state_files: Vec<(PathBuf, Vec<u8>)>,
-    pub play: Option<support::Proc>,
-    pub plays: Vec<support::Proc>,
-    pub gm: Option<support::Proc>,
+    pub play: Option<support::Process>,
+    pub plays: Vec<support::Process>,
+    pub gm: Option<support::Process>,
     pub summary: Vec<String>,
     pub seen: Vec<(String, Vec<String>)>,
     pub told: Vec<(String, String)>,
-    pub live: Option<table::Live>,
+    pub live: Option<table::Host>,
     pub children: Vec<Child>,
     pub listeners: Vec<TcpListener>,
     pub seated: Vec<(PathBuf, spookery_engine::Presence)>,
-    pub holder: Option<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>,
+    pub http_gm: Option<rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientConfig>>,
 }
 
 impl std::fmt::Debug for World {
@@ -50,8 +50,8 @@ fn scenario_limit() -> usize {
         .min(8)
 }
 
-fn finish(world: &mut World) {
-    world.holder.take();
+fn tear_down(world: &mut World) {
+    world.http_gm.take();
     drop(world.live.take());
     world.listeners.clear();
     world.seated.clear();
@@ -72,7 +72,7 @@ async fn run_dir(dir: &'static str) -> bool {
         .fail_on_skipped()
         .after(|_, _, _, _, world| {
             if let Some(world) = world {
-                finish(world);
+                tear_down(world);
             }
             Box::pin(async {})
         })

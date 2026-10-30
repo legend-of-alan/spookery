@@ -61,7 +61,7 @@ fn no_hidden_fact_reaches_a_player() {
                 let mut canon = canon.clone();
                 let mut now = now.clone();
                 apply_scene(&mut canon, &mut now, &actors, &places, &facts, &scene);
-                hidden_stays_hidden(&canon, &now)
+                assert_hidden_stays_hidden(&canon, &now)
             },
         )
         .unwrap_or_else(|err| panic!("firewall property failed: {err}"));
@@ -186,7 +186,7 @@ fn move_actor(now: &mut State, actor_id: &str, place: &str) {
     }
 }
 
-fn hidden_stays_hidden(canon: &Canon, now: &State) -> Result<(), TestCaseError> {
+fn assert_hidden_stays_hidden(canon: &Canon, now: &State) -> Result<(), TestCaseError> {
     for (pc, actor) in &now.actors {
         if !actor.is_pc() {
             continue;

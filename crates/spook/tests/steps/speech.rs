@@ -77,7 +77,7 @@ fn state_rev_is_unchanged(world: &mut World) {
 }
 
 #[then(expr = "save.yaml matches the bytes from before the line")]
-fn now_matches_the_bytes_from_before_the_line(world: &mut World) {
+fn save_matches_the_bytes_from_before_the_line(world: &mut World) {
     let now = fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, world.now_bytes);

@@ -60,10 +60,10 @@ fn the_player_hits_and_the_gm_commits(world: &mut World) {
     crate::support::copy_dir(&pack, &snap);
     world.scratch = snap.display().to_string();
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     table::seat_gm(world);
     let _ = table::player_send(world, "hit", "\"kind\":\"queued\"");
-    world.mark = table::player_len(world);
+    world.mark = table::player_mark(world);
     world.stdout = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
 }
 

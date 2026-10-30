@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::World;
 
-use super::steps_run::{read_round, read_steps_run};
+use super::record::{read_round, read_steps_run};
 use super::table;
 
 #[given(expr = "an empty directory")]
@@ -68,21 +68,21 @@ fn two_players_play_a_round(world: &mut World) {
     table::wait_humans(world, &pack, 1);
     table::close_actor(world, "pc_rowan");
     table::wait_humans(world, &pack, 0);
-    table::stop_server(world);
+    table::stop_host(world);
 }
 
-#[when(expr = "a seated player's server is killed and restarted")]
-fn a_seated_player_is_killed_and_restarted(world: &mut World) {
+#[when(expr = "a seated player's host is killed and restarted")]
+fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
     table::wait_humans(world, &pack, 1);
     // A hard kill, so the restart has a crashed presence to repair.
-    table::live_mut(world).server.take();
-    table::stop_server(world);
+    table::live_mut(world).host.take();
+    table::stop_host(world);
     table::listen(world, &pack);
     table::wait_humans(world, &pack, 0);
-    table::stop_server(world);
+    table::stop_host(world);
 }
 
 #[when(expr = "a queued intent the round never had is written into its record")]
@@ -112,7 +112,7 @@ fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
 
 #[when(expr = "the pack bytes are remembered")]
 fn the_pack_bytes_are_remembered(world: &mut World) {
-    world.before = table::files(table::pack(world));
+    world.before = table::read_files(table::pack(world));
 }
 
 #[then(expr = "stdout says the save was verified")]
@@ -400,8 +400,8 @@ fn the_save_snapshot_is_removed(world: &mut World) {
     fs::remove_file(&path).unwrap();
 }
 
-#[when(expr = "the operator rebuilds the snapshot")]
-fn the_operator_rebuilds_the_snapshot(world: &mut World) {
+#[when(expr = "the operator rebuilds the save")]
+fn the_operator_rebuilds_the_save(world: &mut World) {
     resume_as_writer(table::pack(world));
 }
 

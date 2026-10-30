@@ -17,16 +17,16 @@ pub const HOST: &[&str] = &[
 #[allow(dead_code)]
 pub const WORLD: &[&str] = &[
     "tests/features/check",
-    "tests/features/checks",
     "tests/features/commit",
     "tests/features/idle",
     "tests/features/items",
-    "tests/features/map",
     "tests/features/privacy",
     "tests/features/replay",
+    "tests/features/rolls",
     "tests/features/rounds",
     "tests/features/rows",
     "tests/features/rules",
     "tests/features/sample",
+    "tests/features/travel",
     "tests/features/wake",
 ];

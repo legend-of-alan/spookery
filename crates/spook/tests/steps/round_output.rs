@@ -80,7 +80,7 @@ fn the_player_sends_a_move(world: &mut World, actor: String) {
     world.mark = rowan;
     world.host_mark = host;
     world.wren_mark = wren;
-    table::actor_line(world, &actor, "wait");
+    table::actor_write(world, &actor, "wait");
 }
 
 #[then(expr = "the commit reply lists one check for {string}")]

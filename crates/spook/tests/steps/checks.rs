@@ -148,26 +148,26 @@ fn the_player_sees_a_check_result_without_faces(world: &mut World) {
 fn a_docks_table_where_mira_can_notice(world: &mut World) {
     let pack = copy_docks("npc-notice");
     world.pack = Some(pack.clone());
-    append_moves(&pack, NOTICE_ROWS);
-    insert_flags(&pack, "    - braced\n    - slipped\n");
+    append_verbs(&pack, NOTICE_ROWS);
+    insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     support::stamp_pack_rev(&pack);
-    listen_both(world, &pack);
-    world.scratch = snapshot_of(&pack).display().to_string();
-    world.mark = table::player_len(world);
+    listen_and_seat_both(world, &pack);
+    world.scratch = snapshot_pack(&pack).display().to_string();
+    world.mark = table::player_mark(world);
 }
 
 #[given(expr = "a docks table where Mira can oppose a mark")]
 fn a_docks_table_where_mira_can_oppose_a_mark(world: &mut World) {
     let pack = copy_docks("npc-oppose");
     world.pack = Some(pack.clone());
-    append_moves(&pack, OPPOSE_ROWS);
-    insert_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
+    append_verbs(&pack, OPPOSE_ROWS);
+    insert_mira_flags(&pack, "    - marked\n    - missed\n    - guarded\n");
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
         support::set_actor_place(now, "mira", "docks_shop")
     });
-    listen_both(world, &pack);
-    world.scratch = snapshot_of(&pack).display().to_string();
+    listen_and_seat_both(world, &pack);
+    world.scratch = snapshot_pack(&pack).display().to_string();
 }
 
 #[when(expr = "the GM queues Mira's sure notice")]
@@ -196,10 +196,10 @@ fn the_player_marks_mira(world: &mut World) {
 fn a_kernel_habit_rolls_a_check_for_mira(world: &mut World) {
     let pack = copy_docks("npc-habit");
     world.pack = Some(pack.clone());
-    insert_flags(&pack, "    - braced\n    - slipped\n");
+    insert_mira_flags(&pack, "    - braced\n    - slipped\n");
     insert_brace_habit(&pack);
     support::stamp_pack_rev(&pack);
-    let before = snapshot_of(&pack);
+    let before = snapshot_pack(&pack);
     spookery_engine::play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     world.scratch = before.display().to_string();
 }
@@ -260,16 +260,16 @@ fn the_player_sees_only_their_own_check(world: &mut World) {
 #[then(expr = "the GM sees both rolls")]
 fn the_gm_sees_both_rolls(world: &mut World) {
     let text = table::wait_gm(world, "\"kind\":\"check\"");
-    let events = check_events(&text);
+    let events = parse_check_events(&text);
     assert_eq!(events.len(), 2, "{text}");
     assert_opposed(&events);
-    assert_opposed(&commit_checks(&text));
+    assert_opposed(&committed_checks(&text));
 }
 
 #[then(expr = "the round log records Mira's kernel brace")]
 fn the_round_log_records_miras_kernel_brace(world: &mut World) {
-    let round = common::round_json(world);
-    let ran: Vec<_> = super::steps_run::read_steps_run(&round)
+    let round = common::read_first_round(world);
+    let ran: Vec<_> = super::record::read_steps_run(&round)
         .into_iter()
         .filter(|step| step == "cast:mira/brace")
         .collect();
@@ -312,10 +312,10 @@ fn replaying_the_round_reproduces_the_save(world: &mut World) {
     let _ = fs::remove_dir_all(&start);
 }
 
-fn listen_both(world: &mut World, pack: &Path) {
+fn listen_and_seat_both(world: &mut World, pack: &Path) {
     table::listen(world, pack);
     table::seat_gm(world);
-    table::seat_player(world, pack);
+    table::seat_rowan(world, pack);
 }
 
 fn queue_mira(world: &mut World, move_name: &str) {
@@ -325,14 +325,14 @@ fn queue_mira(world: &mut World, move_name: &str) {
     assert!(!text.contains("UNKNOWN_KEY"), "{text}");
 }
 
-fn append_moves(pack: &Path, extra: &str) {
+fn append_verbs(pack: &Path, extra: &str) {
     let path = pack.join("rules/verbs.yaml");
     let mut moves = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read moves: {err}"));
     moves.push_str(extra);
     fs::write(&path, moves).unwrap_or_else(|err| panic!("write moves: {err}"));
 }
 
-fn insert_flags(pack: &Path, flags: &str) {
+fn insert_mira_flags(pack: &Path, flags: &str) {
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
@@ -366,7 +366,7 @@ fn set_mira_grit(pack: &Path, base: i64) {
     fs::write(&path, next).unwrap_or_else(|err| panic!("write now: {err}"));
 }
 
-fn snapshot_of(pack: &Path) -> PathBuf {
+fn snapshot_pack(pack: &Path) -> PathBuf {
     let dest = support::fresh_dir("before");
     support::copy_dir(pack, &dest);
     dest
@@ -384,10 +384,10 @@ fn flags_of(world: &World, id: &str) -> Vec<String> {
 
 fn assert_one_roll(world: &mut World, stat: i64, target: i64, outcome: &str) {
     let text = table::wait_gm(world, "\"kind\":\"check\"");
-    let events = check_events(&text);
+    let events = parse_check_events(&text);
     assert_eq!(events.len(), 1, "{text}");
     assert_roll(&events[0], stat, target, outcome);
-    let checks = commit_checks(&text);
+    let checks = committed_checks(&text);
     assert_eq!(checks.len(), 1, "{text}");
     assert_roll(&checks[0], stat, target, outcome);
 }
@@ -422,7 +422,7 @@ fn assert_roll(roll: &Value, stat: i64, target: i64, outcome: &str) {
     assert!(roll.get("success").is_none(), "{roll}");
 }
 
-fn check_events(text: &str) -> Vec<Value> {
+fn parse_check_events(text: &str) -> Vec<Value> {
     let mut events = Vec::new();
     for line in text.lines() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
@@ -438,7 +438,7 @@ fn check_events(text: &str) -> Vec<Value> {
     events
 }
 
-fn commit_checks(text: &str) -> Vec<Value> {
+fn committed_checks(text: &str) -> Vec<Value> {
     for line in text.lines() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
             continue;
@@ -494,7 +494,7 @@ const PRESS_ROW: &str = "
           value: true
 ";
 
-const NOTICE_PARTIAL: &str = "
+const NOTICE_PARTIAL_ROW: &str = "
   - id: notice_partial
     when:
       verb: notice_partial
@@ -563,31 +563,31 @@ fn a_docks_copy_where_press_grit_base_is(world: &mut World, base: usize) {
 fn a_docks_table_where_mira_opposes_a_three_band_press(world: &mut World) {
     let pack = copy_docks("press-oppose");
     world.pack = Some(pack.clone());
-    append_moves(&pack, PRESS_ROW);
-    append_moves(&pack, DEFEND_ROW);
+    append_verbs(&pack, PRESS_ROW);
+    append_verbs(&pack, DEFEND_ROW);
     append_check(&pack, BAND_CHECK);
-    insert_flags(&pack, PRESS_FLAGS);
+    insert_mira_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, 6);
     set_mira_grit(&pack, 100);
     super::common::edit_save(&pack, |now| {
         support::set_actor_place(now, "mira", "docks_shop")
     });
-    listen_both(world, &pack);
-    world.scratch = snapshot_of(&pack).display().to_string();
+    listen_and_seat_both(world, &pack);
+    world.scratch = snapshot_pack(&pack).display().to_string();
 }
 
 #[given(expr = "a docks table where Mira can partly notice")]
 fn a_docks_table_where_mira_can_partly_notice(world: &mut World) {
     let pack = copy_docks("press-notice");
     world.pack = Some(pack.clone());
-    append_moves(&pack, NOTICE_PARTIAL);
+    append_verbs(&pack, NOTICE_PARTIAL_ROW);
     append_check(&pack, BAND_CHECK);
-    insert_flags(&pack, PRESS_FLAGS);
+    insert_mira_flags(&pack, PRESS_FLAGS);
     set_mira_grit(&pack, 6);
     support::stamp_pack_rev(&pack);
-    listen_both(world, &pack);
-    world.scratch = snapshot_of(&pack).display().to_string();
-    world.mark = table::player_len(world);
+    listen_and_seat_both(world, &pack);
+    world.scratch = snapshot_pack(&pack).display().to_string();
+    world.mark = table::player_mark(world);
 }
 
 #[when(expr = "the player presses Mira")]
@@ -620,7 +620,7 @@ fn the_moves_file_gains(world: &mut World, fault: String) {
         other => panic!("unknown partial fault {other}"),
     };
     let pack = table::pack(world).to_path_buf();
-    append_moves(&pack, row);
+    append_verbs(&pack, row);
     support::stamp_pack_rev(&pack);
 }
 
@@ -686,10 +686,10 @@ fn the_player_sees_outcome_and_no_faces(world: &mut World, outcome: String) {
 #[then(expr = "the GM sees outcome {string} and the faces")]
 fn the_gm_sees_outcome_and_the_faces(world: &mut World, outcome: String) {
     let text = table::wait_gm(world, "\"kind\":\"check\"");
-    let events = check_events(&text);
+    let events = parse_check_events(&text);
     assert_eq!(events.len(), 1, "{text}");
     assert_outcome_faces(&events[0], &outcome);
-    let checks = commit_checks(&text);
+    let checks = committed_checks(&text);
     assert_eq!(checks.len(), 1, "{text}");
     assert_outcome_faces(&checks[0], &outcome);
 }
@@ -709,23 +709,23 @@ fn the_check_outcome_is_not(world: &mut World, outcome: String) {
 #[then(expr = "the GM sees a binary opposed press")]
 fn the_gm_sees_a_binary_opposed_press(world: &mut World) {
     let text = table::wait_gm(world, "\"kind\":\"check\"");
-    assert_binary_opposed(&check_events(&text));
-    assert_binary_opposed(&commit_checks(&text));
+    assert_binary_opposed(&parse_check_events(&text));
+    assert_binary_opposed(&committed_checks(&text));
 }
 
 fn prepare_press(world: &mut World, base: i64, sit: bool) {
     let pack = copy_docks("press");
     world.pack = Some(pack.clone());
-    append_moves(&pack, PRESS_ROW);
+    append_verbs(&pack, PRESS_ROW);
     append_check(&pack, BAND_CHECK);
-    insert_flags(&pack, PRESS_FLAGS);
+    insert_mira_flags(&pack, PRESS_FLAGS);
     set_rowan_grit(&pack, base);
     super::common::edit_save(&pack, |now| {
         support::set_actor_place(now, "mira", "docks_shop")
     });
     if sit {
-        listen_both(world, &pack);
-        world.scratch = snapshot_of(&pack).display().to_string();
+        listen_and_seat_both(world, &pack);
+        world.scratch = snapshot_pack(&pack).display().to_string();
     }
 }
 

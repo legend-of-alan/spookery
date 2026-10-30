@@ -21,7 +21,7 @@ use crate::model::State;
 use crate::testing::copy_docks;
 use crate::world::World;
 
-use super::play::TempPack;
+use super::support::TempPack;
 use proptest::prelude::*;
 use proptest::sample::select;
 use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
@@ -75,7 +75,7 @@ fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCase
     let intent = npc_intent();
     for step in steps {
         let before = draft.state().clone();
-        let known = holder_known(draft.state(), &step.holder);
+        let known = is_known_holder(draft.state(), &step.holder);
         let held = count_of(draft.state(), &step.holder, &step.id);
         let outcome = item_effect(step).apply(&mut draft, &intent);
         assert_no_stored_zero(draft.state())?;
@@ -140,7 +140,7 @@ fn assert_no_stored_zero(now: &State) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn holder_known(now: &State, holder: &Holder) -> bool {
+fn is_known_holder(now: &State, holder: &Holder) -> bool {
     match holder {
         Holder::Actor(id) => now.actors.contains_key(id),
         Holder::Place(id) => now.places.contains_key(id),

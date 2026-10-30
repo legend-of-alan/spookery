@@ -58,7 +58,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 
 ## Tests and docs that are wired together
 
-- BDD scenarios live in `crates/engine/tests/features/<folder>` and `crates/spook/tests/features/<folder>`, run by cucumber in two programs per crate (`features_host`, `features_world`). A new feature folder must be added to exactly one list: `crates/spook/tests/feature_paths.rs` or `testing::HOST`/`WORLD` in `crates/engine/lib.rs`. New step modules are registered with `#[path]` in `features_host.rs` / `features_world.rs`. The `feature_census` test fails on unlisted, doubly listed, or loose `.feature` files.
+- BDD scenarios live in `crates/engine/tests/features/<folder>` and `crates/spook/tests/features/<folder>`, run by cucumber in two programs per crate (`features_host`, `features_world`). A new feature folder must be added to exactly one list: `crates/spook/tests/feature_dirs.rs` or `testing::HOST`/`WORLD` in `crates/engine/lib.rs`. New step modules are registered with `#[path]` in `features_host.rs` / `features_world.rs`. The `feature_census` test fails on unlisted, doubly listed, or loose `.feature` files.
 - `docs/engine-guarantees.md` states what the engine promises; every `##` section must cite feature files that exist (`engine_guarantees` test). The feature files win if the two disagree.
 - Every YAML fence in `docs/pack-reference.md` must form a pack that `spook check` accepts (`pack_reference` test), so pack schema changes need doc updates in the same PR.
 - `packs/sample-d20` is played to its ending by tests; `packs/oneshot-docks` is the multi-PC fixture the engine and seat tests rely on, so leave it unchanged. `spook new` writes the template in `crates/server/templates/starter/`.

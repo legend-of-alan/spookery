@@ -54,11 +54,11 @@ pub(crate) fn run_check_json(world: &mut World) {
 }
 
 /// The first round record of the table's journal.
-pub(crate) fn round_json(world: &World) -> serde_json::Value {
+pub(crate) fn read_first_round(world: &World) -> serde_json::Value {
     crate::support::read_round(table::pack(world), "round-0001")
 }
 
-pub(crate) fn replace_file(path: &Path, from: &str, to: &str) {
+pub(crate) fn replace_in_file(path: &Path, from: &str, to: &str) {
     let text = fs::read_to_string(path).unwrap();
     assert!(text.contains(from), "missing {from} in {}", path.display());
     fs::write(path, text.replacen(from, to, 1)).unwrap();
@@ -66,27 +66,27 @@ pub(crate) fn replace_file(path: &Path, from: &str, to: &str) {
 
 fn break_pack(pack: &Path, fault: &str) {
     match fault {
-        "missing when" => replace_file(
+        "missing when" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "  - id: grit\n    when:\n      verb: grit\n",
             "  - id: grit\n",
         ),
-        "unknown field" => replace_file(
+        "unknown field" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "  - id: grit\n    when:\n",
             "  - id: grit\n    audiance: player\n    when:\n",
         ),
-        "unknown check" => replace_file(
+        "unknown check" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "    check: grit\n",
             "    check: courage\n",
         ),
-        "duplicate move" => replace_file(
+        "duplicate move" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "  - id: wait\n",
             "  - id: grit\n",
         ),
-        "old format tag" => replace_file(
+        "old format tag" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "schema: verbs\n",
             &format!("schema: verbs/{}\n", "v0"),
@@ -95,7 +95,7 @@ fn break_pack(pack: &Path, fault: &str) {
             fs::remove_file(pack.join("rules/meters.yaml")).unwrap();
         }
         "missing display_name" => {
-            replace_file(&pack.join("cast/pc-rowan.md"), "display_name: Rowan\n", "")
+            replace_in_file(&pack.join("cast/pc-rowan.md"), "display_name: Rowan\n", "")
         }
         "pack_rev mismatch" => {
             let path = pack.join("state/save.yaml");
@@ -105,47 +105,47 @@ fn break_pack(pack: &Path, fault: &str) {
             // inserting one 0 changes the stored hash.
             fs::write(path, text).unwrap();
         }
-        "exit to an unknown place" => replace_file(
+        "exit to an unknown place" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "  - to: docks_street\n",
             "  - to: nowhere\n",
         ),
-        "duplicate exit" => replace_file(
+        "duplicate exit" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "    name: docks_street\n",
             "    name: docks_street\n  - to: docks_street\n    name: docks_street\n",
         ),
-        "duplicate place fact" => replace_file(
+        "duplicate place fact" => replace_in_file(
             &pack.join("world/places/docks_shop.md"),
             "    text: Oil is on the shelf.\n    hidden: false\n",
             "    text: \"She said: oil.\"\n    hidden: false\n  - id: fact_oil_on_shelf\n    text: Oil again.\n    hidden: false\n",
         ),
-        "duplicate cast fact" => replace_file(
+        "duplicate cast fact" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
             "facts: []\n",
             "facts:\n  - id: fact_rowan_shop\n    text: \"He said: the shop.\"\n    hidden: false\n  - id: fact_rowan_shop\n    text: The shop again.\n    hidden: false\n",
         ),
-        "a target alias" => replace_file(
+        "a target alias" => replace_in_file(
             &pack.join("rules/verbs.yaml"),
             "      target: item\n",
             "      target: item_here\n",
         ),
-        "flags under idle" => replace_file(
+        "flags under idle" => replace_in_file(
             &pack.join("cast/pc-rowan.md"),
             "  eligible: false\n",
             "  eligible: false\n  flags: []\n",
         ),
-        "idle maybe" => replace_file(
+        "idle maybe" => replace_in_file(
             &pack.join("rules/budget.yaml"),
             "schema: budget\n",
             "schema: budget\nidle: maybe\n",
         ),
-        "zero round interval" => replace_file(
+        "zero round interval" => replace_in_file(
             &pack.join("rules/budget.yaml"),
             "round_every_real_seconds: 300\n",
             "round_every_real_seconds: 0\n",
         ),
-        "zero idle minutes" => replace_file(
+        "zero idle minutes" => replace_in_file(
             &pack.join("rules/budget.yaml"),
             "idle_minutes_per_round: 60\n",
             "idle_minutes_per_round: 0\n",
@@ -186,7 +186,7 @@ pub(crate) fn wait_play(world: &mut World, needle: &str) {
 pub(crate) fn wait_play_until(world: &mut World, ready: impl Fn(&str) -> bool, label: &str) {
     let start = Instant::now();
     loop {
-        let stdout = play_stdout(world);
+        let stdout = capture_play_stdout(world);
         if ready(&stdout) {
             return;
         }
@@ -211,7 +211,7 @@ pub(crate) fn wait_play_until(world: &mut World, ready: impl Fn(&str) -> bool, l
     }
 }
 
-pub(crate) fn play_stdout(world: &mut World) -> String {
+pub(crate) fn capture_play_stdout(world: &mut World) -> String {
     let play = world.play.as_ref().unwrap_or_else(|| panic!("no play"));
     let text = support::text_of(&play.stdout);
     world.stdout = text.clone();
@@ -238,7 +238,7 @@ pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, arrive: &str, v
 #[given(expr = "a docks table")]
 fn a_docks_table(world: &mut World) {
     let pack = crate::support::copy_docks("status");
-    world.before = table::files(&pack);
+    world.before = table::read_files(&pack);
     world.pack = Some(pack);
 }
 
@@ -249,7 +249,7 @@ fn the_pack_bytes_are_unchanged(world: &mut World) {
         .as_ref()
         .unwrap_or_else(|| panic!("no docks table"));
     assert_eq!(
-        table::files(pack),
+        table::read_files(pack),
         world.before,
         "the command wrote the pack"
     );
@@ -262,7 +262,7 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     table::listen(world, &pack);
     table::seat_gm(world);
-    table::live_mut(world).opened_now = opened;
+    table::live_mut(world).opened_save = opened;
     world.pack = Some(pack);
 }
 
@@ -270,14 +270,14 @@ fn a_docks_table_with_a_seated_gm(world: &mut World) {
 fn a_docks_table_with_a_seated_player(world: &mut World) {
     let pack = copy_docks("speech");
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 
 #[when(expr = "the operator runs spook check")]
 fn the_operator_runs_spook_check(world: &mut World) {
     let pack = table::pack(world);
-    let output = support::spook(&["check", &crate::support::pack_arg(pack)]);
+    let output = support::run_spook(&["check", &crate::support::pack_arg(pack)]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -292,7 +292,7 @@ fn the_operator_runs_spook_check_json(world: &mut World) {
 fn the_copy_is_broken_by(world: &mut World, fault: String) {
     let pack = table::pack(world).to_path_buf();
     break_pack(&pack, &fault);
-    world.before = table::files(&pack);
+    world.before = table::read_files(&pack);
 }
 
 #[then(expr = "the check exits {int}")]
@@ -336,10 +336,10 @@ fn play_joins_the_sample_table(world: &mut World) {
 
 #[when(expr = "play types {string}")]
 fn play_types(world: &mut World, line: String) {
-    play_line(world, &line);
+    write_play(world, &line);
 }
 
-pub(crate) fn play_line(world: &mut World, line: &str) {
+pub(crate) fn write_play(world: &mut World, line: &str) {
     let play = world.play.as_mut().unwrap_or_else(|| panic!("no play"));
     let stdin = play
         .stdin
@@ -356,7 +356,7 @@ fn play_shows(world: &mut World, text: String) {
 
 #[then(expr = "play shows no protocol JSON")]
 fn play_shows_no_protocol_json(world: &mut World) {
-    let stdout = play_stdout(world);
+    let stdout = capture_play_stdout(world);
     assert!(!stdout.contains('{'), "{stdout}");
     assert!(!stdout.contains("\"kind\""), "{stdout}");
 }
@@ -409,22 +409,22 @@ fn the_gm_commits_the_round(world: &mut World) {
     world.stdout = table::gm_call(world, 2, "commit_round", r#"{"include_round":true}"#);
 }
 
-#[then(expr = "a round file was written")]
-fn a_round_file_was_written(world: &mut World) {
+#[then(expr = "a round record was written")]
+fn a_round_record_was_written(world: &mut World) {
     assert_eq!(
         list_round_keys(table::pack(world)),
         vec!["round-0001".to_string()]
     );
 }
 
-#[then(expr = "no round file was written")]
-fn no_round_file(world: &mut World) {
+#[then(expr = "no round record was written")]
+fn no_round_record_was_written(world: &mut World) {
     assert!(list_round_keys(table::pack(world)).is_empty());
 }
 
 #[then(expr = "save.yaml is unchanged since the seat")]
-fn now_unchanged_since_the_seat(world: &mut World) {
-    let seated = table::live_mut(world).seated_now.clone();
+fn save_is_unchanged_since_the_seat(world: &mut World) {
+    let seated = table::live_mut(world).seated_save.clone();
     let now = fs::read(table::pack(world).join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     assert_eq!(now, seated);
@@ -455,7 +455,7 @@ fn the_trapdoor_is_hidden(world: &mut World) {
     add_trapdoor(&pack);
     edit_save(&pack, |_| {});
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
     world.player_added = table::player_text(world);
 }
@@ -485,7 +485,7 @@ fn the_stairs_cost_ten_minutes(world: &mut World) {
         now.world_time = EVENING;
     });
     table::listen(world, &pack);
-    table::seat_player(world, &pack);
+    table::seat_rowan(world, &pack);
     world.pack = Some(pack);
 }
 

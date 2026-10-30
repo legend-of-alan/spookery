@@ -13,7 +13,7 @@ Feature: A hand edit waits for migrate
     Then state_rev is 2
     And world_time is 1080
     And round index is 0
-    And no round file was written
+    And no round record was written
     And the journal has two migrate records, at state_rev 1 and 2
 
   Scenario: Migrate keeps a hand edit and rewrites pack_rev

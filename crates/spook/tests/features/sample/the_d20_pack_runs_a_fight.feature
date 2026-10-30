@@ -34,7 +34,7 @@ Feature: The d20 pack runs a fight
     When the player drinks
     Then lark is refused with NOT_IN_SPEC
     And save.yaml is unchanged since the seat
-    And no round file was written
+    And no round record was written
 
   Scenario: A short fight through play drops the raider to zero
     Given a copy of the sample-d20 pack
