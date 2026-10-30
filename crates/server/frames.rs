@@ -4,34 +4,68 @@ use crate::protocol::{
     CommitBody, EventBody, Missing, NoteView, Outcome, PackSummary, PlayerFrame, QueuedMove,
     SayEvent, StatusPause, StatusPresence, TableStatus, ViewScene,
 };
+use rmcp::ErrorData as McpError;
 use serde_json::Value;
 use spookery_engine::{
-    emit_tape_record, Intent, MoveReport, Note, Presence, Roll, RoundOutput, RunState, State,
-    TapeRecord, View,
+    GateRefusal, Intent, MoveReport, Note, Presence, Reason, Roll, RoundOutput, State, TapeRecord,
+    View,
 };
 
+/// The one place a refusal becomes bytes: a player line, a GM tool result or an MCP error.
 #[derive(Debug)]
-pub struct SayOutput {
-    pub tape_line: String,
-    pub player_line: String,
-    pub gm_event: Vec<u8>,
-    pub tool_result: Value,
-    pub recipients: Vec<String>,
+pub(crate) struct Refusal {
+    code: Reason,
+    detail: Option<Missing>,
 }
 
-impl From<&TapeRecord> for SayOutput {
-    fn from(stored: &TapeRecord) -> Self {
-        SayOutput {
-            tape_line: emit_tape_record(stored),
-            player_line: say_line(stored, false),
-            gm_event: say_event(stored),
-            tool_result: say_value(stored),
-            recipients: stored.recipients.clone(),
-        }
+impl From<Reason> for Refusal {
+    fn from(code: Reason) -> Self {
+        Self { code, detail: None }
     }
 }
 
-pub fn say_line(tape: &TapeRecord, replay: bool) -> String {
+impl From<&GateRefusal> for Refusal {
+    fn from(refusal: &GateRefusal) -> Self {
+        Self::short(refusal.reason(), refusal.missing())
+    }
+}
+
+impl Refusal {
+    /// `CHOOSE_PC` names the free PCs.
+    pub(crate) fn choose_pc(free: Vec<String>) -> Self {
+        Self {
+            code: Reason::ChoosePc,
+            detail: Some(Missing::Many(free)),
+        }
+    }
+
+    /// `missing` is the meter or item id, or the sentence a locked exit shows.
+    fn short(code: Reason, missing: Option<&str>) -> Self {
+        Self {
+            code,
+            detail: missing.map(|text| Missing::One(text.to_string())),
+        }
+    }
+
+    /// The player `refused` line. `detail` is left out when there is none.
+    pub(crate) fn line(&self) -> String {
+        crate::protocol::emit_player(&PlayerFrame::Refused {
+            code: self.code.as_str().to_string(),
+            detail: self.detail.clone(),
+        })
+    }
+
+    /// The GM tool result names the code only.
+    pub(crate) fn tool_result(&self) -> Value {
+        crate::protocol::code_result(self.code.as_str())
+    }
+
+    pub(crate) fn mcp_error(&self) -> McpError {
+        McpError::internal_error(crate::protocol::refusal(self.code.as_str()), None)
+    }
+}
+
+pub fn say(tape: &TapeRecord, replay: bool) -> String {
     crate::protocol::emit_player(&PlayerFrame::Say {
         from: tape.from.clone(),
         address: tape.address.clone(),
@@ -60,7 +94,7 @@ fn gm_say(tape: &TapeRecord) -> SayEvent {
     }
 }
 
-pub fn player_queued_line(id: &str) -> String {
+pub fn queued(id: &str) -> String {
     crate::protocol::emit_player(&PlayerFrame::Queued { id: id.to_string() })
 }
 
@@ -73,7 +107,7 @@ pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
     serde_json::to_vec(&EventBody::Queued(row)).expect("queued event")
 }
 
-pub fn player_check_line(outcome: Outcome) -> String {
+pub fn check(outcome: Outcome) -> String {
     crate::protocol::emit_player(&PlayerFrame::Check { outcome })
 }
 
@@ -81,20 +115,18 @@ pub fn check_event(out: &Roll) -> Vec<u8> {
     serde_json::to_vec(&EventBody::Check(out.clone())).expect("check event")
 }
 
-pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
+/// The `check` and `refused` lines of this actor's moves.
+pub fn reports(reports: &[MoveReport], actor_id: &str) -> String {
     let mut out = String::new();
     for report in reports {
         if report.actor_id() != actor_id {
             continue;
         }
         match report {
-            MoveReport::Rolled { roll: rolled, .. } => {
-                out.push_str(&player_check_line(rolled.outcome))
+            MoveReport::Rolled { roll: rolled, .. } => out.push_str(&check(rolled.outcome)),
+            MoveReport::Refused { code, missing, .. } => {
+                out.push_str(&Refusal::short(*code, missing.as_deref()).line())
             }
-            MoveReport::Refused { code, missing, .. } => out.push_str(&player_refused_line(
-                code.as_str(),
-                missing.as_ref().map(|text| Missing::One(text.clone())),
-            )),
         }
     }
     out
@@ -111,7 +143,7 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
     })
 }
 
-pub fn player_resume_line(view: &View) -> String {
+pub fn resume(view: &View) -> String {
     let actor_id = view.viewer.actor_id();
     let notes = view
         .notes
@@ -125,20 +157,13 @@ pub fn player_resume_line(view: &View) -> String {
     })
 }
 
-pub fn player_lines(text: &str) -> String {
+pub fn lines(text: &str) -> String {
     crate::protocol::emit_player(&PlayerFrame::Lines {
         text: text.to_string(),
     })
 }
 
-pub fn player_refused_line(code: &str, missing: Option<Missing>) -> String {
-    crate::protocol::emit_player(&PlayerFrame::Refused {
-        code: code.to_string(),
-        detail: missing,
-    })
-}
-
-pub fn player_perceive_line(view: &View) -> String {
+pub fn view(view: &View) -> String {
     crate::protocol::emit_player(&player_view(view))
 }
 
@@ -146,7 +171,7 @@ pub fn perceive_value(view: &View) -> Value {
     serde_json::to_value(player_view(view)).expect("perceive")
 }
 
-pub fn commit_reply(
+pub fn commit(
     state_rev: u64,
     changed_keys: &[String],
     journal_path: Option<&str>,
@@ -169,7 +194,7 @@ pub fn commit_reply(
     .to_value()
 }
 
-pub fn table_status(
+pub fn status(
     now: &State,
     presence: &Presence,
     queued: &[Intent],
@@ -177,14 +202,15 @@ pub fn table_status(
     events: Option<&[TapeRecord]>,
     pack: Option<PackSummary>,
 ) -> Value {
+    let Ok(Value::String(presence_clocks)) = serde_json::to_value(now.pause.presence_clocks) else {
+        unreachable!("a run state serializes as its snake_case name");
+    };
     TableStatus {
         presence: StatusPresence {
             players: presence.players,
             actors_present: presence.actors_present.clone(),
         },
-        pause: StatusPause {
-            presence_clocks: run_state_str(now.pause.presence_clocks),
-        },
+        pause: StatusPause { presence_clocks },
         world_time: now.world_time,
         round_index: now.round_index,
         state_rev: now.state_rev,
@@ -235,12 +261,4 @@ fn note_view(note: &Note) -> NoteView {
         fact_ids: note.fact_ids.clone(),
         text: note.text.clone(),
     }
-}
-
-fn run_state_str(state: RunState) -> String {
-    match state {
-        RunState::Paused => "paused",
-        RunState::Running => "running",
-    }
-    .to_string()
 }

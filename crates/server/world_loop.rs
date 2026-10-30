@@ -2,11 +2,11 @@
 
 use std::io::Write;
 
-use spookery_engine::{Address, GateRefusal, Presence, Reason, RecipientLine, RoundOutput, World};
+use spookery_engine::{
+    emit_tape_record, Address, Presence, Reason, RecipientLine, RoundOutput, TapeRecord, World,
+};
 
-use crate::protocol::Missing;
-
-use super::frames;
+use super::frames::{self, Refusal};
 use super::idle_clock::{self, wall_now};
 use super::outbound::{CancelTx, OutTx};
 
@@ -141,14 +141,14 @@ pub(super) enum Request {
         conn: u64,
         out: OutTx,
         cancel: CancelTx,
-        reply: tokio::sync::oneshot::Sender<Result<(), Reason>>,
+        reply: tokio::sync::oneshot::Sender<Result<(), Refusal>>,
     },
     Wake,
     Stop,
 }
 
 pub(super) enum HelloReply {
-    Refused(String),
+    Refused(Refusal),
     Line,
 }
 
@@ -182,7 +182,7 @@ fn handle(
                 }
             }
             Err(code) => {
-                let _ = reply.send(Err(code));
+                let _ = reply.send(Err(code.into()));
             }
         },
         Request::Seated { conn, line, reply } => {
@@ -197,7 +197,7 @@ fn handle(
             reply,
         } => {
             if seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
-                let _ = reply.send(crate::protocol::code_result(Reason::NotInSpec.as_str()));
+                let _ = reply.send(Refusal::from(Reason::NotInSpec).tool_result());
                 return Ok(());
             }
             let presence = seats.presence();
@@ -213,16 +213,10 @@ fn handle(
                 write_digest(out, world, &outputs);
                 restart_idle_timer(restart);
             }
-            if let Some(tape) = &done.tape_line {
-                let _ = writeln!(out, "{tape}");
-                let _ = out.flush();
+            if let Some(said) = &done.said {
+                deliver_say(world, seats, said, out);
             }
-            if let Some((recipients, line)) = &done.player_line {
-                send_recipients(world, seats, recipients, line.clone(), out);
-            }
-            let mut after = done.gm_events;
-            after.extend(frames::check_events(&reports));
-            for frame in after {
+            for frame in frames::check_events(&reports) {
                 send_gm(seats, frame);
             }
             // Free the seat before the client can read this result.
@@ -263,21 +257,21 @@ fn refresh_players(world: &World, seats: &mut Seats, outputs: &[RoundOutput], ou
     for player in &seats.players {
         let bytes = match refresh_lines(world, &presence, &player.actor_id) {
             Ok(text) => {
-                let mut out = frames::player_report_lines(&reports, &player.actor_id);
+                let mut out = frames::reports(&reports, &player.actor_id);
                 out.push_str(&text);
                 for output in outputs {
                     for line in narrate_lines_for(&output.lines, &player.actor_id) {
-                        out.push_str(&frames::player_lines(&line));
+                        out.push_str(&frames::lines(&line));
                     }
                     for item in &output.seen {
                         if item.viewer == player.actor_id && !item.line.is_empty() {
-                            out.push_str(&frames::player_lines(&item.line));
+                            out.push_str(&frames::lines(&item.line));
                         }
                     }
                 }
                 out.into_bytes()
             }
-            Err(code) => refused_line(code).into_bytes(),
+            Err(code) => Refusal::from(code).line().into_bytes(),
         };
         if !super::outbound::try_send_frame(&player.out, bytes) {
             failed.push(player.conn);
@@ -306,25 +300,23 @@ fn on_hello(
     out: &mut dyn Write,
 ) -> HelloReply {
     if line == "gm" {
-        return HelloReply::Refused(refused_line(Reason::NotInSpec));
+        return HelloReply::Refused(Reason::NotInSpec.into());
     }
     if line.is_empty() {
         if seats.players.len() >= MAX_PLAYER_SEATS {
-            return HelloReply::Refused(refused_line(Reason::TableFull));
+            return HelloReply::Refused(Reason::TableFull.into());
         }
-        return HelloReply::Refused(frames::player_refused_line(
-            Reason::ChoosePc.as_str(),
-            Some(Missing::Many(world.free_pcs(&seats.presence()))),
-        ));
+        let free = world.free_pcs(&seats.presence());
+        return HelloReply::Refused(Refusal::choose_pc(free));
     }
     let Some(id) = read_hello(line) else {
-        return HelloReply::Refused(refused_line(Reason::Schema));
+        return HelloReply::Refused(Reason::Schema.into());
     };
     if seats.players.len() >= MAX_PLAYER_SEATS {
-        return HelloReply::Refused(refused_line(Reason::TableFull));
+        return HelloReply::Refused(Reason::TableFull.into());
     }
     if seats.players.iter().any(|player| player.actor_id == id) {
-        return HelloReply::Refused(refused_line(Reason::SeatTaken));
+        return HelloReply::Refused(Reason::SeatTaken.into());
     }
     if !world
         .state()
@@ -332,7 +324,7 @@ fn on_hello(
         .get(id)
         .is_some_and(|actor| actor.is_pc())
     {
-        return HelloReply::Refused(refused_line(Reason::Schema));
+        return HelloReply::Refused(Reason::Schema.into());
     }
     // Seat first, so the welcome view counts this player as present.
     seats.players.push(PlayerSeat {
@@ -353,7 +345,7 @@ fn on_hello(
     });
     if let Err(code) = sent {
         drop_conn(world, seats, conn, out);
-        return HelloReply::Refused(refused_line(code));
+        return HelloReply::Refused(code.into());
     }
     write_digest(out, world, &[]);
     HelloReply::Line
@@ -374,7 +366,7 @@ fn read_hello(line: &str) -> Option<&str> {
 fn welcome(world: &World, presence: &Presence, actor_id: &str) -> Result<Vec<u8>, Reason> {
     let mut out = String::new();
     for stored in world.player_scrollback(actor_id)? {
-        out.push_str(&frames::say_line(&stored, true));
+        out.push_str(&frames::say(&stored, true));
     }
     out.push_str(&refresh_lines(world, presence, actor_id)?);
     Ok(out.into_bytes())
@@ -382,8 +374,8 @@ fn welcome(world: &World, presence: &Presence, actor_id: &str) -> Result<Vec<u8>
 
 fn refresh_lines(world: &World, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
     let view = world.perceive(presence, actor_id)?;
-    let mut out = frames::player_resume_line(&view);
-    out.push_str(&frames::player_perceive_line(&view));
+    let mut out = frames::resume(&view);
+    out.push_str(&frames::view(&view));
     Ok(out)
 }
 
@@ -479,35 +471,43 @@ fn on_player(
     match parse_player_command(world, &presence, &actor_id, line) {
         Ok(PlayerCommand::Speech(heard, text)) => {
             match world.say_as_player(&presence, &actor_id, heard, text) {
-                Ok(stored) => {
-                    let spoken = frames::SayOutput::from(&stored);
-                    let _ = writeln!(out, "{}", spoken.tape_line);
-                    let _ = out.flush();
-                    send_gm(seats, spoken.gm_event);
-                    send_recipients(
-                        world,
-                        seats,
-                        &spoken.recipients,
-                        spoken.player_line.into_bytes(),
-                        out,
-                    );
+                Ok(said) => deliver_say(world, seats, &said, out),
+                Err(code) => {
+                    let line = Refusal::from(code).line();
+                    send_player(world, seats, conn, line.into_bytes(), out);
                 }
-                Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
             }
         }
         Ok(PlayerCommand::Lines(text)) => {
-            send_player(
-                world,
-                seats,
-                conn,
-                frames::player_lines(&text).into_bytes(),
-                out,
-            );
+            send_player(world, seats, conn, frames::lines(&text).into_bytes(), out);
         }
         Ok(PlayerCommand::Move(verb, target)) => {
             on_move(world, seats, restart, conn, &actor_id, (verb, target), out);
         }
-        Err(code) => send_player(world, seats, conn, refused_line(code).into_bytes(), out),
+        Err(code) => {
+            let line = Refusal::from(code).line();
+            send_player(world, seats, conn, line.into_bytes(), out);
+        }
+    }
+}
+
+/// The one say path: the host's tape line, the GM's `say` event, and the
+/// recipients' `say` lines.
+fn deliver_say(world: &World, seats: &mut Seats, said: &TapeRecord, out: &mut dyn Write) {
+    let _ = writeln!(out, "{}", emit_tape_record(said));
+    let _ = out.flush();
+    send_gm(seats, frames::say_event(said));
+    let line = frames::say(said, false).into_bytes();
+    let mut failed = Vec::new();
+    for player in &seats.players {
+        if said.recipients.iter().any(|id| id == &player.actor_id)
+            && !super::outbound::try_send_frame(&player.out, line.clone())
+        {
+            failed.push(player.conn);
+        }
+    }
+    for conn in failed {
+        drop_conn(world, seats, conn, out);
     }
 }
 
@@ -530,26 +530,31 @@ fn on_move(
                 seats,
                 frames::queued_event(&queued.id, &queued.actor_id, &queued.move_name),
             );
-            let line = frames::player_queued_line(&queued.id).into_bytes();
+            let line = frames::queued(&queued.id).into_bytes();
             send_player(world, seats, conn, line, out);
             return;
         }
         Ok(_) => None,
         Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
         Err(refusal) => {
-            send_player(world, seats, conn, refusal_line(&refusal), out);
+            let line = Refusal::from(&refusal).line();
+            send_player(world, seats, conn, line.into_bytes(), out);
             return;
         }
     };
     let outputs = match commit_then_fast_forward(world, &presence) {
         Ok(outputs) => outputs,
         Err(code) => {
-            send_player(world, seats, conn, refused_line(code).into_bytes(), out);
+            let line = Refusal::from(code).line();
+            send_player(world, seats, conn, line.into_bytes(), out);
             return;
         }
     };
     match &busy {
-        Some(refusal) => send_player(world, seats, conn, refusal_line(refusal), out),
+        Some(refusal) => {
+            let line = Refusal::from(refusal).line();
+            send_player(world, seats, conn, line.into_bytes(), out);
+        }
         None if !outputs.is_empty() => restart_idle_timer(restart),
         None => {}
     }
@@ -557,11 +562,6 @@ fn on_move(
         write_digest(out, world, &outputs);
         refresh_players(world, seats, &outputs, out);
     }
-}
-
-fn refusal_line(refusal: &GateRefusal) -> Vec<u8> {
-    let missing = refusal.missing().map(|text| Missing::One(text.to_string()));
-    frames::player_refused_line(refusal.token(), missing).into_bytes()
 }
 
 /// A full or closed queue drops that seat. The world thread does not wait.
@@ -585,26 +585,6 @@ fn send_gm(seats: &mut Seats, frame: Vec<u8>) {
     }
 }
 
-fn send_recipients(
-    world: &World,
-    seats: &mut Seats,
-    recipients: &[String],
-    line: Vec<u8>,
-    out: &mut dyn Write,
-) {
-    let mut failed = Vec::new();
-    for player in &seats.players {
-        if recipients.iter().any(|id| id == &player.actor_id)
-            && !super::outbound::try_send_frame(&player.out, line.clone())
-        {
-            failed.push(player.conn);
-        }
-    }
-    for conn in failed {
-        drop_conn(world, seats, conn, out);
-    }
-}
-
 /// Drops a seated player and tells the host. Dropping the seat cancels its socket.
 fn drop_conn(world: &World, seats: &mut Seats, conn: u64, out: &mut dyn Write) {
     if seats.take_player(conn).is_some() {
@@ -624,8 +604,4 @@ fn on_hangup(
         seats.gm = None;
     }
     let _ = ack.send(());
-}
-
-pub(super) fn refused_line(code: Reason) -> String {
-    frames::player_refused_line(code.as_str(), None)
 }

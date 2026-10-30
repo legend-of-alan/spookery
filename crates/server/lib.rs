@@ -10,7 +10,7 @@ mod mcp_http;
 mod outbound;
 mod world_loop;
 
-pub use frames::player_resume_line;
+pub use frames::resume;
 pub use gm_tools::call_gm_tool;
 pub use limits::{OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP, REQUESTED_SEND_BUFFER};
 pub use listener::{serve, Config, Error};

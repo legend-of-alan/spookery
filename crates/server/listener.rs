@@ -10,8 +10,9 @@ use std::time::Duration;
 
 use spookery_engine::Reason;
 
+use super::frames::Refusal;
 use super::mcp_http;
-use super::world_loop::{self, refused_line, HelloReply, Request};
+use super::world_loop::{self, HelloReply, Request};
 
 #[derive(Debug)]
 pub enum Error {
@@ -170,11 +171,11 @@ async fn serve_connection(
                 return;
             }
             Ok(Err(super::limits::ReadLineError::TooLong)) => {
-                refuse(&mut stream, &refused_line(Reason::LineTooLong).into_bytes()).await;
+                refuse(&mut stream, &Refusal::from(Reason::LineTooLong)).await;
                 return;
             }
             Ok(Err(super::limits::ReadLineError::BadUtf8)) => {
-                refuse(&mut stream, &refused_line(Reason::Schema).into_bytes()).await;
+                refuse(&mut stream, &Refusal::from(Reason::Schema)).await;
                 return;
             }
         }
@@ -197,11 +198,11 @@ async fn serve_connection(
         return;
     };
     match reply {
-        HelloReply::Refused(line) => {
+        HelloReply::Refused(refusal) => {
             drop(out_tx);
             drop(out_rx);
             drop(cancel_rx);
-            refuse(&mut stream, line.as_bytes()).await;
+            refuse(&mut stream, &refusal).await;
         }
         HelloReply::Line => {
             // The queue is the bound. Ask for a small send buffer so a client
@@ -274,17 +275,15 @@ async fn serve_player(
                 break;
             }
             Err(super::limits::ReadLineError::TooLong) => {
-                super::outbound::send_last(&out_tx, refused_line(Reason::LineTooLong).into_bytes())
-                    .await;
+                let line = Refusal::from(Reason::LineTooLong).line();
+                super::outbound::send_last(&out_tx, line.into_bytes()).await;
                 report_hangup(&tx, conn).await;
                 break;
             }
             Err(super::limits::ReadLineError::BadUtf8) => {
                 let _ = bucket.try_take(std::time::Instant::now());
-                if !super::outbound::try_send_frame(
-                    &out_tx,
-                    refused_line(Reason::Schema).into_bytes(),
-                ) {
+                let line = Refusal::from(Reason::Schema).line();
+                if !super::outbound::try_send_frame(&out_tx, line.into_bytes()) {
                     report_hangup(&tx, conn).await;
                     break;
                 }
@@ -316,9 +315,9 @@ const REFUSE_DRAIN_BYTES: usize = 64 * 1024;
 /// Windows, and the client's stack then drops the refusal it already got. So
 /// the seat sends FIN after the refusal and reads until the client hangs up,
 /// for at most `REFUSE_DRAIN_TIMEOUT` and `REFUSE_DRAIN_BYTES`.
-async fn refuse(stream: &mut tokio::net::TcpStream, line: &[u8]) {
+async fn refuse(stream: &mut tokio::net::TcpStream, refusal: &Refusal) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    if stream.write_all(line).await.is_err()
+    if stream.write_all(refusal.line().as_bytes()).await.is_err()
         || stream.flush().await.is_err()
         || stream.shutdown().await.is_err()
     {

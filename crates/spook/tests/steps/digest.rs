@@ -257,9 +257,7 @@ fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
     let shard = spookery_engine::World::peek(pack).unwrap();
     let view = shard.perceive(&Presence::default(), actor).unwrap();
-    spookery::host::player_resume_line(&view)
-        .trim_end()
-        .to_string()
+    spookery::host::resume(&view).trim_end().to_string()
 }
 
 fn rewrite_mira(pack: &Path, from: &str, to: &str) {

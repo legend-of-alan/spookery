@@ -10,7 +10,6 @@ use rmcp::model::{
 };
 use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
-use spookery_engine::Reason;
 
 use super::gm_tools;
 use super::world_loop::Request;
@@ -129,13 +128,9 @@ impl Handler {
                 ));
                 Ok(())
             }
-            Err(code) => Err(refusal_error(code)),
+            Err(refusal) => Err(refusal.mcp_error()),
         }
     }
-}
-
-fn refusal_error(code: Reason) -> McpError {
-    McpError::internal_error(crate::protocol::refusal(code.as_str()), None)
 }
 
 async fn send_event(peer: &Peer<RoleServer>, frame: &[u8]) {
