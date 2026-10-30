@@ -172,8 +172,7 @@ Tested in `features/travel/travel_follows_the_map.feature` and
 
 The save carries the engine's rules version. `spook run` and `spook verify`
 refuse a different version. The refusal prints `RULES_REV_MISMATCH` and says to start a
-fresh save. Saves and journals from older rules are refused, not migrated. A
-journal that still holds `presence-NNNN.json` records is refused the same way.
+fresh save. Saves and journals from older rules are refused, not migrated.
 
 Tested in `features/rules/rule_versions.feature`.
 

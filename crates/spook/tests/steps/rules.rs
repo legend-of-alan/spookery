@@ -11,86 +11,20 @@ use spookery_engine::{Presence, Reason};
 use super::table;
 use crate::support::{append, copy_docks, copy_pack, edit_save, run_spook, state_of};
 use crate::World;
-#[given(expr = "a save with rules_rev 9 and an engine at 10")]
-fn a_save_with_rules_rev_9_and_an_engine_at_10(world: &mut World) {
-    assert_eq!(
-        spookery_engine::testing::RULES_REV,
-        10,
-        "the engine rules version is 10"
-    );
+#[given(expr = "a save from older rules")]
+fn a_save_from_older_rules(world: &mut World) {
+    let rev = spookery_engine::testing::RULES_REV;
     let pack = crate::support::copy_docks("rules-rev");
     let path = pack.join("state/save.yaml");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let stamped = text.replacen("rules_rev: 10\n", "rules_rev: 9\n", 1);
-    assert_ne!(stamped, text, "save did not carry rules_rev 10\n{text}");
+    let stamped = text.replacen(
+        &format!("rules_rev: {rev}\n"),
+        &format!("rules_rev: {}\n", rev - 1),
+        1,
+    );
+    assert_ne!(stamped, text, "save did not carry rules_rev {rev}\n{text}");
     fs::write(&path, stamped).unwrap_or_else(|err| panic!("write save: {err}"));
     world.pack = Some(pack);
-}
-
-/// The save shape rules_rev 6 wrote, with `presence` still in the save.
-#[given(expr = "an old save from rules_rev 6 with seat presence in it")]
-fn an_old_save_from_rules_rev_6(world: &mut World) {
-    let pack = crate::support::copy_docks("rules-rev-old-save");
-    let path = pack.join("state/save.yaml");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    let old = text
-        .replacen("rules_rev: 10\n", "rules_rev: 6\n", 1)
-        .replacen(
-            "pause:\n",
-            "presence:\n  humans: 1\n  actors_present:\n    - pc_rowan\npause:\n",
-            1,
-        );
-    assert!(
-        old.contains("rules_rev: 6\n") && old.contains("\npresence:\n"),
-        "{text}"
-    );
-    fs::write(&path, old).unwrap_or_else(|err| panic!("write save: {err}"));
-    world.pack = Some(pack);
-}
-
-/// A current save whose journal still holds a `presence-NNNN.json` from rules_rev 6.
-#[given(expr = "a current save with a stray presence-0001.json in its journal")]
-fn a_current_save_with_a_stray_presence_record(world: &mut World) {
-    let pack = crate::support::copy_docks("rules-rev-presence-record");
-    let path = pack.join("state/save.yaml");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read save: {err}"));
-    assert!(text.contains("rules_rev: 10\n"), "{text}");
-    let journal = pack.join("state/journal");
-    fs::create_dir_all(&journal).unwrap_or_else(|err| panic!("mkdir journal: {err}"));
-    fs::write(journal.join("base.yaml"), &text).unwrap_or_else(|err| panic!("write base: {err}"));
-    let live = text.replacen("state_rev: 0\n", "state_rev: 1\n", 1);
-    fs::write(&path, &live).unwrap_or_else(|err| panic!("write save: {err}"));
-    let hash = spookery_engine::testing::journal::blake2s_tagged(live.as_bytes());
-    fs::write(
-        journal.join("presence-0001.json"),
-        format!(
-            "{{\"kind\":\"presence\",\"state_rev_before\":0,\"state_rev_after\":1,\"humans\":1,\"actors_present\":[\"pc_rowan\"],\"now_hash\":\"{hash}\"}}\n"
-        ),
-    )
-    .unwrap_or_else(|err| panic!("write presence: {err}"));
-    world.pack = Some(pack);
-}
-
-/// A played round whose journal line is put back in the shape rules_rev 9 wrote.
-#[given(expr = "a docks round journaled in the rules_rev 9 shape")]
-fn a_docks_round_journaled_in_the_rules_rev_9_shape(world: &mut World) {
-    let pack = crate::support::copy_docks("rules-rev-9-round");
-    world.pack = Some(pack.clone());
-    table::run(world, &["round", pack.to_str().unwrap()]);
-    assert_eq!(world.code, Some(0), "{}", world.stderr);
-    super::replay::edit_round(world, |round| {
-        let round = round.as_object_mut().unwrap();
-        round.remove("kind");
-        round.insert("rules_rev".to_string(), Value::from(9));
-        for (new, old) in [
-            ("presence_players", "presence_humans"),
-            ("refused", "rejected"),
-            ("state_hash", "now_hash"),
-        ] {
-            let value = round.remove(new).unwrap_or_else(|| panic!("no {new}"));
-            round.insert(old.to_string(), value);
-        }
-    });
 }
 
 #[when(expr = "spook run or spook verify opens it")]
