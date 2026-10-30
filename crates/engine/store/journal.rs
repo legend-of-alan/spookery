@@ -109,7 +109,6 @@ pub fn read_records(pack: &Path) -> Result<Vec<Record>, Error> {
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    refuse_old_layout(&dir)?;
     let mut entries = Vec::new();
     for (name, path) in list_bundles(&dir)? {
         entries.extend(parse_complete(&name, &read_bundle(&name, &path)?)?);
@@ -204,10 +203,6 @@ pub(crate) fn read_chain_tip(pack: &Path) -> Result<String, Error> {
 
 /// Records in the plain live bundle. Closed bundles stay unread.
 pub(crate) fn read_live_records(pack: &Path) -> Result<Vec<Record>, Error> {
-    let dir = pack.join("state/journal");
-    if dir.is_dir() {
-        refuse_old_layout(&dir)?;
-    }
     let Some(path) = find_live_bundle(pack) else {
         return Ok(Vec::new());
     };
@@ -293,7 +288,6 @@ pub(crate) fn read_bundle_records(pack: &Path) -> Result<Vec<(String, Vec<Record
     if !dir.is_dir() {
         return Ok(Vec::new());
     }
-    refuse_old_layout(&dir)?;
     let mut out = Vec::new();
     for (name, path) in list_bundles(&dir)? {
         let entries = parse_complete(&name, &read_bundle(&name, &path)?)?;
@@ -414,33 +408,6 @@ fn name_the_field(name: &str, line: &str, value: &serde_json::Value) -> Option<E
         "checkpoint" => parse_json::<CheckpointRecord>(name, &body).err(),
         _ => None,
     }
-}
-
-fn refuse_old_layout(dir: &Path) -> Result<(), Error> {
-    let entries =
-        fs::read_dir(dir).map_err(|_| fault(dir, "the log directory could not be read"))?;
-    for entry in entries {
-        let entry = entry.map_err(|_| fault(dir, "the log directory could not be read"))?;
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with("presence-") && name.ends_with(".json") {
-            return Err(fault_coded(
-                &entry.path(),
-                Reason::RulesRevMismatch,
-                "RULES_REV_MISMATCH: presence records were written by older rules; start a fresh save",
-            ));
-        }
-        if (name.starts_with("tick-") && name.ends_with(".jsonl"))
-            || (name.starts_with("migrate-") && name.ends_with(".json"))
-        {
-            return Err(fault_coded(
-                &entry.path(),
-                Reason::RulesRevMismatch,
-                "RULES_REV_MISMATCH: one-file journal records were written by older rules; start a fresh save",
-            ));
-        }
-    }
-    Ok(())
 }
 
 fn list_bundles(dir: &Path) -> Result<Vec<(String, PathBuf)>, Error> {

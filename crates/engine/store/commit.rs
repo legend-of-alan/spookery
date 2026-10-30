@@ -574,7 +574,6 @@ mod tests {
             Event::Rename(_) if name == "base.yaml" && has_parent_named(path, "journal") => {
                 "rename base".to_string()
             }
-            Event::Rename(_) if name.starts_with("tick-") => "rename tick".to_string(),
             Event::Rename(_) if has_parent_named(path, "memories") => "rename memory".to_string(),
             Event::Rename(_) if name == "save.yaml" && has_parent_named(path, "state") => {
                 "rename save".to_string()
@@ -588,8 +587,6 @@ mod tests {
             "file save.tmp".to_string()
         } else if name.starts_with("base.yaml") {
             "file base.tmp".to_string()
-        } else if name.starts_with("tick-") {
-            "file tick.tmp".to_string()
         } else if has_parent_named(path, "memories") {
             "file memory.tmp".to_string()
         } else {

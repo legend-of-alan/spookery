@@ -296,19 +296,6 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
-    #[test]
-    fn an_old_one_file_record_is_refused() {
-        let root = copy_docks("old-layout");
-        let log = root.join("state/journal");
-        fs::create_dir_all(&log).unwrap();
-        fs::write(log.join("migrate-0001.json"), "{}\n").unwrap();
-        match lock_pack(&root) {
-            Ok(_) => panic!("old layout locked"),
-            Err(err) => assert_eq!(err, crate::error::Reason::RulesRevMismatch),
-        }
-        let _ = fs::remove_dir_all(&root);
-    }
-
     fn round_line() -> PlayedRound {
         PlayedRound {
             clock: RoundTime {

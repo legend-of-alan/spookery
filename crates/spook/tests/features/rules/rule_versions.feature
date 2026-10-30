@@ -1,22 +1,7 @@
 Feature: Rule versions
 
-  Scenario: Mismatched save
-    Given a save with rules_rev 9 and an engine at 10
-    When spook run or spook verify opens it
-    Then it refuses with RULES_REV_MISMATCH and says to start a fresh save
-
-  Scenario: A save from before seat presence left the save is refused
-    Given an old save from rules_rev 6 with seat presence in it
-    When spook run or spook verify opens it
-    Then it refuses with RULES_REV_MISMATCH and says to start a fresh save
-
-  Scenario: A journal presence record from older rules is refused
-    Given a current save with a stray presence-0001.json in its journal
-    When spook run or spook verify opens it
-    Then it refuses with RULES_REV_MISMATCH and says to start a fresh save
-
-  Scenario: A journal round from rules_rev 9 is refused
-    Given a docks round journaled in the rules_rev 9 shape
+  Scenario: A save from older rules is refused
+    Given a save from older rules
     When spook run or spook verify opens it
     Then it refuses with RULES_REV_MISMATCH and says to start a fresh save
 
