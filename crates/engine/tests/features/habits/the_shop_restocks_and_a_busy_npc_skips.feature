@@ -18,6 +18,11 @@ Feature: Habits keep the shop's items and leave the door note
   Scenario: A queued door note sorts ahead of an unclaimed wait
     When the GM queues the door note ahead of a wait
 
+  Scenario: An NPC walking toward a seated player moves before an NPC who waits
+    Given the docks pack with Rowan seated in the shop
+    When Bram and Aldric wait and then Mira travels through the "stairs" exit
+    Then Mira's travel is picked ahead of both waits
+
   Scenario: A busy Mira does not restock
     When Mira is busy and a round runs
 

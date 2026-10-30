@@ -133,7 +133,7 @@ fn expand_template(
                 LocationTo::Via(via) => {
                     let name = if via == "target" {
                         match &intent.target {
-                            Target::Place(id) | Target::Exit(id) => id.clone(),
+                            Target::Exit(name) => name.clone(),
                             _ => return Err(Reason::Schema),
                         }
                     } else {
@@ -150,7 +150,7 @@ fn expand_template(
                 }
                 LocationTo::Place(id) if *teleport => id.clone(),
                 LocationTo::Target if *teleport => match &intent.target {
-                    Target::Place(id) | Target::Exit(id) => id.clone(),
+                    Target::Place(id) => id.clone(),
                     _ => return Err(Reason::Schema),
                 },
                 LocationTo::Place(_) | LocationTo::Target => return Err(Reason::NotInSpec),

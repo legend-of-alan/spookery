@@ -32,7 +32,7 @@ pub(crate) fn exit_name(rule: &Rule, intent: &Intent) -> Option<String> {
         } = effect
         {
             if via == "target" {
-                if let Target::Place(name) | Target::Exit(name) = &intent.target {
+                if let Target::Exit(name) = &intent.target {
                     return Some(name.clone());
                 }
                 return None;
