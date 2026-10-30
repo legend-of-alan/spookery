@@ -99,7 +99,7 @@ pub(crate) fn is_eligible(canon: &Canon, now: &State, presence: &Presence, npc_i
     }
 }
 
-fn is_player_at(now: &State, presence: &Presence, place: &str) -> bool {
+pub(crate) fn is_player_at(now: &State, presence: &Presence, place: &str) -> bool {
     presence.actors_present.iter().any(|id| {
         now.actors
             .get(id)

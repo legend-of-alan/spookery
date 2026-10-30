@@ -562,8 +562,8 @@ fn it_is_refused_with_schema(world: &mut World) {
     );
 }
 
-#[then(expr = "spook verify passes on the docks pack")]
-fn spook_verify_passes_on_the_docks_pack(world: &mut World) {
+#[then(expr = "spook verify passes")]
+fn spook_verify_passes(world: &mut World) {
     spookery_engine::verify_pack(world.pack(), None).expect("verify");
 }
 

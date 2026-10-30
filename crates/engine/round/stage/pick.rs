@@ -7,7 +7,7 @@ use crate::draft::Draft;
 use crate::expand::stamp_for_priority;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{Presence, State};
-use crate::rules::habits::habit_intents;
+use crate::rules::habits::{habit_intents, is_player_at};
 use crate::travel::find_exit;
 use crate::Reason;
 
@@ -106,21 +106,14 @@ fn targets_pc_clock(now: &State, intent: &Intent) -> bool {
 
 fn touches_seated_player(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> bool {
     let present = &presence.actors_present;
-    let seated_at = |place: &str| {
-        present.iter().any(|actor| {
-            now.actors
-                .get(actor)
-                .is_some_and(|actor| actor.is_pc() && actor.place() == place)
-        })
-    };
     let target_hit = match &intent.target {
         Target::Actor(id) | Target::Item(id) => present.iter().any(|actor| actor == id),
-        Target::Place(place) => seated_at(place),
+        Target::Place(place) => is_player_at(now, presence, place),
         Target::Exit(name) => now
             .actors
             .get(intent.actor.actor_id())
             .and_then(|actor| find_exit(canon, actor.place(), name))
-            .is_some_and(|exit| seated_at(&exit.to)),
+            .is_some_and(|exit| is_player_at(now, presence, &exit.to)),
         _ => false,
     };
     let message_hit = intent
