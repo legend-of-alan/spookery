@@ -34,10 +34,11 @@ pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::When;
 pub use rules::{GateRefusal, MoveReport, Outcome, Roll};
+pub use spookery_protocol::{IntentCall, QueuedMove};
 pub use store::{emit_save, emit_tape_record, lock_pack, parse_save, PackGuard, TapeRecord};
 pub use travel::ExitView;
 pub use visibility::RecipientLine;
-pub use world::{check_pack, Address, IntentCall, QueuedMove, World};
+pub use world::{check_pack, Address, World};
 
 #[cfg(feature = "testing")]
 pub mod testing {

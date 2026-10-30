@@ -526,10 +526,7 @@ fn on_move(
     let presence = seats.presence();
     let busy = match world.queue_player_move(&presence, actor_id, verb, target) {
         Ok(queued) if gm_seated => {
-            send_gm(
-                seats,
-                frames::queued_event(&queued.id, &queued.actor_id, &queued.move_name),
-            );
+            send_gm(seats, frames::queued_event(&queued));
             let line = frames::queued(&queued.id).into_bytes();
             send_player(world, seats, conn, line, out);
             return;

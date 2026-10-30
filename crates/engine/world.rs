@@ -17,6 +17,7 @@ use crate::rule::{TargetKind, When};
 use crate::rules::gate::{gate, verb_for, GateRefusal};
 use crate::store::codec::{emit_save, parse_save};
 use crate::store::tape::{append_record, last_seq, read_after, read_tail, TapeRecord};
+use crate::{IntentCall, QueuedMove};
 
 use crate::draft::Draft;
 
@@ -28,23 +29,6 @@ pub enum Address<'a> {
     Table,
     Place(&'a str),
     Actor(&'a str),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct QueuedMove {
-    pub id: String,
-    pub actor_id: String,
-    pub move_name: String,
-}
-
-pub struct IntentCall {
-    pub id: Option<String>,
-    pub round_index: Option<u64>,
-    pub actor_id: Option<String>,
-    pub move_name: Option<String>,
-    pub target: Option<String>,
-    pub message_to: Option<Vec<String>>,
-    pub rationale_code: String,
 }
 
 pub struct World<L = crate::PackGuard> {

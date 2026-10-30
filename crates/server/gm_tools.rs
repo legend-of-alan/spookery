@@ -1,7 +1,7 @@
 //! The GM tools: status, perceive, intent, say, commit, and close.
 
 use serde_json::{Map, Value};
-use spookery_engine::{Address, IntentCall, Presence, Reason, RoundOutput, TapeRecord, World};
+use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
 
 use super::frames::{self, Refusal};
 use super::world_loop::commit_then_fast_forward;
@@ -348,17 +348,30 @@ fn queue_intent(
 ) -> Result<Reply, Reason> {
     let call =
         crate::protocol::parse_intent_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
-    let queued = world.queue_gm_intent(
-        IntentCall {
-            id: call.id,
-            round_index: call.round_index,
-            actor_id: call.actor_id,
-            move_name: call.move_name,
-            target: call.target,
-            message_to: call.message_to,
-            rationale_code: call.rationale_code,
-        },
-        || Ok(uuid::Uuid::new_v4().to_string()),
-    )?;
+    let queued = world.queue_gm_intent(call, || Ok(uuid::Uuid::new_v4().to_string()))?;
     Ok(Reply::new(crate::protocol::queued_result(&queued.id)))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+    use spookery_engine::{testing::copy_pack, QueuedMove, World};
+
+    #[test]
+    fn parsed_intent_reaches_the_world_with_move_and_to() {
+        let pack = copy_pack("oneshot-docks", "gm_tools_intent");
+        let mut world = World::open(&pack).unwrap();
+        let args = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
+        let call = crate::protocol::parse_intent_args(args.as_object()).unwrap();
+        let queued = world.queue_gm_intent(call, || Ok("i1".into())).unwrap();
+        let want = QueuedMove {
+            id: "i1".into(),
+            actor_id: "pc_rowan".into(),
+            move_name: "wait".into(),
+        };
+        assert_eq!(queued, want);
+        let intent = &world.queued_intents()[0];
+        assert_eq!(intent.move_name, "wait");
+        assert_eq!(intent.args.message_to, Some(vec!["pc_wren".to_string()]));
+    }
 }

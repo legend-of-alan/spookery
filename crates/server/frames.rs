@@ -98,13 +98,8 @@ pub fn queued(id: &str) -> String {
     crate::protocol::emit_player(&PlayerFrame::Queued { id: id.to_string() })
 }
 
-pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
-    let row = QueuedMove {
-        id: id.to_string(),
-        actor_id: actor_id.to_string(),
-        move_name: move_name.to_string(),
-    };
-    serde_json::to_vec(&EventBody::Queued(row)).expect("queued event")
+pub fn queued_event(queued: &QueuedMove) -> Vec<u8> {
+    serde_json::to_vec(&EventBody::Queued(queued.clone())).expect("queued event")
 }
 
 pub fn check(outcome: Outcome) -> String {

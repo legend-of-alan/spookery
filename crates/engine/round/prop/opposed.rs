@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 
 use crate::journal::{self, Record, Step};
 use crate::model::Presence;
-use crate::world::{IntentCall, World};
+use crate::world::World;
+use crate::IntentCall;
 use crate::Reason;
 
 use super::support::TempPack;
