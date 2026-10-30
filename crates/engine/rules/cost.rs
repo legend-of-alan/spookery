@@ -105,26 +105,26 @@ pub fn pay(
         if amount < 0 {
             return Err(Reason::CantAfford);
         }
-        let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownKey)?;
+        let def = *draft.canon().meters.get(key).ok_or(Reason::UnknownId)?;
         let mut live = draft
             .state()
             .actors
             .get(who)
-            .ok_or(Reason::UnknownKey)?
+            .ok_or(Reason::UnknownId)?
             .meters()
             .get(key)
             .cloned()
-            .ok_or(Reason::UnknownKey)?;
+            .ok_or(Reason::UnknownId)?;
         meter::write(&def, &mut live, MeterWrite::Offset(-amount))?;
         draft.track(StateKey::ActorMeter(who.to_string(), key.clone()))?;
         *draft
             .state_mut()
             .actors
             .get_mut(who)
-            .ok_or(Reason::UnknownKey)?
+            .ok_or(Reason::UnknownId)?
             .meters_mut()
             .get_mut(key)
-            .ok_or(Reason::UnknownKey)? = live;
+            .ok_or(Reason::UnknownId)? = live;
     }
     for (id, expr) in &cost.items {
         let count = item_count(
@@ -135,7 +135,7 @@ pub fn pay(
                 .state()
                 .actors
                 .get(who)
-                .ok_or(Reason::UnknownKey)?
+                .ok_or(Reason::UnknownId)?
                 .item_count(id),
         );
         let changed = {
@@ -143,7 +143,7 @@ pub fn pay(
                 .state_mut()
                 .actors
                 .get_mut(who)
-                .ok_or(Reason::UnknownKey)?
+                .ok_or(Reason::UnknownId)?
                 .inventory_mut();
             model::shift_count(inventory, id, -i64::from(count), None)
                 .map_err(|_| Reason::CantAfford)?
@@ -159,14 +159,14 @@ pub fn pay(
         .state()
         .actors
         .get(who)
-        .ok_or(Reason::UnknownKey)?
+        .ok_or(Reason::UnknownId)?
         .wielded()
         .map(str::to_string);
     let released = draft
         .state_mut()
         .actors
         .get_mut(who)
-        .ok_or(Reason::UnknownKey)?
+        .ok_or(Reason::UnknownId)?
         .release_wielded();
     if released {
         draft.track_before(

@@ -106,17 +106,17 @@ pub fn faces_from(key: &RollKey, start: usize, count: u32, sides: u32) -> Result
 /// The only roll. The viewer must be the actor. Each die reads this key's own seed.
 pub fn roll_check(input: RollInput<'_>, key: &RollKey) -> Result<Roll, Reason> {
     if input.viewer.actor_id() != input.actor_id {
-        return Err(Reason::UnknownKey);
+        return Err(Reason::UnknownId);
     }
     let def = input
         .meters
         .get(&input.check.stat)
-        .ok_or(Reason::UnknownKey)?;
+        .ok_or(Reason::UnknownId)?;
     let live = input
         .actor
         .meters()
         .get(&input.check.stat)
-        .ok_or(Reason::UnknownKey)?;
+        .ok_or(Reason::UnknownId)?;
     let stat = meter::current(def, live)?;
     let seed = blake2s_256(key.preimage().as_bytes());
     let mut faces = Vec::with_capacity(input.check.dice_count as usize);
@@ -281,7 +281,7 @@ mod tests {
             },
             &key(0),
         );
-        assert_eq!(refused, Err(Reason::UnknownKey));
+        assert_eq!(refused, Err(Reason::UnknownId));
     }
 
     #[test]

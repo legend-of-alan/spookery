@@ -122,7 +122,7 @@ Assassination debt: 2/6, paused
     let stdout = capture_play_stdout(world);
     assert!(!stdout.contains("note_mira_door"), "{stdout}");
     assert!(!stdout.contains("clock assassination_debt"), "{stdout}");
-    assert!(!stdout.contains("message "), "{stdout}");
+    assert!(!stdout.contains("note "), "{stdout}");
 }
 
 #[then(expr = "the round shows no away heading")]
@@ -189,9 +189,9 @@ fn play_shows_the_raw_resume_digest(world: &mut World) {
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .find(|frame| frame["kind"] == "resume")
         .unwrap_or_else(|| panic!("no resume frame\n{stdout}"));
-    assert_eq!(resume["messages"][0]["id"], "note_mira_door", "{stdout}");
+    assert_eq!(resume["notes"][0]["id"], "note_mira_door", "{stdout}");
     assert_eq!(
-        resume["messages"][0]["text"], "Back at dusk. Oil on the shelf.",
+        resume["notes"][0]["text"], "Back at dusk. Oil on the shelf.",
         "{stdout}"
     );
     assert_eq!(resume["clocks"][0]["id"], "assassination_debt", "{stdout}");

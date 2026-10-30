@@ -62,7 +62,7 @@ impl TryFrom<String> for Viewer {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Source {
-    Kernel,
+    Engine,
     Player,
     System,
 }
@@ -70,7 +70,7 @@ pub enum Source {
 impl Source {
     pub fn as_str(self) -> &'static str {
         match self {
-            Source::Kernel => "kernel",
+            Source::Engine => "engine",
             Source::Player => "player",
             Source::System => "system",
         }
@@ -83,17 +83,21 @@ pub enum Target {
     #[default]
     Empty,
     Place(String),
+    Exit(String),
     Actor(String),
+    Item(String),
     Clock(String),
 }
 
 impl Target {
-    /// Exit names ride as places. Item ids ride as actors. Both are one typed token.
     pub fn new(kind: TargetKind, token: &str) -> Self {
+        let token = token.to_string();
         match kind {
             TargetKind::None => Target::Empty,
-            TargetKind::Place | TargetKind::Exit => Target::Place(token.to_string()),
-            TargetKind::Actor | TargetKind::Item => Target::Actor(token.to_string()),
+            TargetKind::Place => Target::Place(token),
+            TargetKind::Exit => Target::Exit(token),
+            TargetKind::Actor => Target::Actor(token),
+            TargetKind::Item => Target::Item(token),
         }
     }
 
@@ -145,54 +149,54 @@ impl Intent {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct TargetWire {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     place: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    exit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     actor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    item: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     clock: Option<String>,
 }
 
 impl From<Target> for TargetWire {
     fn from(target: Target) -> Self {
+        let mut wire = Self::default();
         match target {
-            Target::Empty => Self {
-                place: None,
-                actor: None,
-                clock: None,
-            },
-            Target::Place(id) => Self {
-                place: Some(id),
-                actor: None,
-                clock: None,
-            },
-            Target::Actor(id) => Self {
-                place: None,
-                actor: Some(id),
-                clock: None,
-            },
-            Target::Clock(id) => Self {
-                place: None,
-                actor: None,
-                clock: Some(id),
-            },
+            Target::Empty => {}
+            Target::Place(id) => wire.place = Some(id),
+            Target::Exit(id) => wire.exit = Some(id),
+            Target::Actor(id) => wire.actor = Some(id),
+            Target::Item(id) => wire.item = Some(id),
+            Target::Clock(id) => wire.clock = Some(id),
         }
+        wire
     }
 }
 
 impl TryFrom<TargetWire> for Target {
     type Error = &'static str;
 
+    /// At most one key is set.
     fn try_from(wire: TargetWire) -> Result<Self, Self::Error> {
-        match (wire.place, wire.actor, wire.clock) {
-            (None, None, None) => Ok(Target::Empty),
-            (Some(id), None, None) => Ok(Target::Place(id)),
-            (None, Some(id), None) => Ok(Target::Actor(id)),
-            (None, None, Some(id)) => Ok(Target::Clock(id)),
-            _ => Err("target"),
+        let mut set = [
+            wire.place.map(Target::Place),
+            wire.exit.map(Target::Exit),
+            wire.actor.map(Target::Actor),
+            wire.item.map(Target::Item),
+            wire.clock.map(Target::Clock),
+        ]
+        .into_iter()
+        .flatten();
+        match (set.next(), set.next()) {
+            (None, _) => Ok(Target::Empty),
+            (Some(target), None) => Ok(target),
+            (Some(_), Some(_)) => Err("target"),
         }
     }
 }
@@ -239,25 +243,25 @@ pub(crate) mod args_wire {
     }
 }
 
-/// Blake2s of `shard|round|actor|row`. The P37 preimage stays.
-pub(crate) fn kernel_intent_id(
-    shard_id: &str,
+/// Blake2s of `world|round|actor|row`. The P37 preimage stays.
+pub(crate) fn engine_intent_id(
+    world_id: &str,
     round_index: u64,
     actor_id: &str,
     row: &str,
 ) -> String {
-    crate::hash::blake2s_hex(format!("{shard_id}|{round_index}|{actor_id}|{row}").as_bytes())
+    crate::hash::blake2s_hex(format!("{world_id}|{round_index}|{actor_id}|{row}").as_bytes())
 }
 
-/// Blake2s of `shard|round_index_plus_one|actor|join_move`.
+/// Blake2s of `world|round_index_plus_one|actor|join_move`.
 pub(crate) fn player_intent_id(
-    shard_id: &str,
+    world_id: &str,
     round_index_plus_one: u64,
     actor_id: &str,
     line: &str,
 ) -> String {
     crate::hash::blake2s_hex(
-        format!("{shard_id}|{round_index_plus_one}|{actor_id}|{line}").as_bytes(),
+        format!("{world_id}|{round_index_plus_one}|{actor_id}|{line}").as_bytes(),
     )
 }
 
@@ -276,9 +280,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn kernel_intent_id_matches_pin_p37() {
+    fn engine_intent_id_is_pinned() {
         assert_eq!(
-            kernel_intent_id("cap", 1, "n2", "work"),
+            engine_intent_id("cap", 1, "n2", "work"),
             "daa186f67613ae8ea1275b3fd03c38d52eea99e976235e499b5c2b0853c0d819"
         );
     }

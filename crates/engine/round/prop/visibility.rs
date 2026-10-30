@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use crate::canon::Canon;
 use crate::intent::Viewer;
-use crate::model::{sort_unique, Message, Presence, State};
+use crate::model::{sort_unique, Note, Presence, State};
 use crate::perceive::{perceive_as, View};
 use crate::world::World;
 
@@ -63,7 +63,7 @@ fn no_hidden_fact_reaches_a_player() {
                 assert_hidden_stays_hidden(&canon, &now)
             },
         )
-        .unwrap_or_else(|err| panic!("firewall property failed: {err}"));
+        .unwrap_or_else(|err| panic!("visibility property failed: {err}"));
 }
 
 fn pick_scene(
@@ -131,7 +131,7 @@ fn apply_scene(
             .collect();
         sort_unique(actor.known_facts_mut());
     }
-    now.messages.clear();
+    now.notes.clear();
     for (index, note) in scene.notes.iter().enumerate() {
         let mut fact_ids: Vec<String> = note
             .fact_ids
@@ -145,7 +145,7 @@ fn apply_scene(
             .map(|actor| actors[actor % actors.len()].clone())
             .collect();
         sort_unique(&mut to);
-        now.messages.push(Message {
+        now.notes.push(Note {
             id: format!("note-{index}"),
             to,
             place: note.place.map(|place| places[place % places.len()].clone()),
@@ -206,14 +206,14 @@ fn shown(view: &View, id: &str) -> Option<&'static str> {
         return Some("perceive");
     }
     if view
-        .unknown_mentioned
+        .unknown_mentions
         .iter()
         .any(|mentioned| mentioned == id)
     {
         return Some("perceive");
     }
-    for message in &view.messages {
-        if message.fact_ids.iter().any(|fact| fact == id) {
+    for note in &view.notes {
+        if note.fact_ids.iter().any(|fact| fact == id) {
             return Some("tape");
         }
     }

@@ -14,10 +14,10 @@ clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
 
-const DOOR_NOTE: &str = "effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
+const DOOR_NOTE: &str = "effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}";
 
 const HOST: &str = "\
-effect message 1 {\"message_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
+effect note 1 {\"note_id\":\"note_mira_door\",\"to\":[\"pc_rowan\"],\"place\":\"docks_shop\",\"fact_ids\":[],\"text\":\"Back at dusk. Oil on the shelf.\"}
 clock assassination_debt 2 6 paused
 clock shop_day 1 1 running
 ";
@@ -166,7 +166,7 @@ fn the_player_resume_lists_the_door_message(world: &mut World) {
         resume,
         serde_json::json!({
             "kind": "resume",
-            "messages": [
+            "notes": [
                 {
                     "id": "note_mira_door",
                     "to": ["pc_rowan"],
@@ -195,7 +195,7 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
     let pack = table::pack(world);
     let now = table::now_of(pack);
     assert!(
-        now.messages.iter().any(|message| message.id == note),
+        now.notes.iter().any(|message| message.id == note),
         "the save has no {note}"
     );
     let resume = read_player_resume(world, &actor);
@@ -208,7 +208,7 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
     let shard = spookery_engine::World::peek(pack).unwrap();
     let view = shard.perceive(&Presence::default(), &actor).unwrap();
     assert!(
-        view.messages.iter().all(|message| message.id != note),
+        view.notes.iter().all(|message| message.id != note),
         "view listed {note}"
     );
 }

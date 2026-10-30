@@ -172,7 +172,7 @@ fn nell_is_healed_and_empty(world: &mut World) {
     assert_eq!(count(pack, "pc_nell", "tonic"), 0);
 }
 
-#[then(expr = "{string} again is rejected with {word} by the kernel")]
+#[then(expr = "{string} again is rejected with {word} by the engine")]
 fn again_is_refused(world: &mut World, line: String, code: String) {
     let pack = world.pack.as_ref().unwrap();
     let err = match handle_move(pack, "pc_nell", &line) {
@@ -224,6 +224,28 @@ fn the_oil_moved(world: &mut World) {
     assert_eq!(
         now.actors.get("pc_rowan").unwrap().item_count("lamp_oil"),
         1
+    );
+}
+
+#[then(expr = "the journal targets item {word}, then exit {word}")]
+fn the_journal_targets_item_then_exit(world: &mut World, item: String, exit: String) {
+    let records = spookery_engine::testing::journal::read_records(world.pack.as_ref().unwrap())
+        .unwrap_or_else(|err| panic!("{}", err.detail));
+    let targets: Vec<Value> = records
+        .iter()
+        .filter_map(|record| match record {
+            spookery_engine::testing::journal::Record::Round(round) => Some(&round.intents),
+            _ => None,
+        })
+        .flatten()
+        .map(|intent| serde_json::to_value(&intent.target).unwrap())
+        .collect();
+    assert_eq!(
+        targets,
+        [
+            serde_json::json!({ "item": item }),
+            serde_json::json!({ "exit": exit })
+        ]
     );
 }
 
@@ -311,7 +333,7 @@ fn rowan_drops_oil(world: &mut World) {
 
 fn assert_round_rejects_missing_item(pack: &Path) {
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let rejected = round["rejected"].as_array().unwrap();
+    let rejected = round["refused"].as_array().unwrap();
     assert!(
         rejected.iter().any(|item| item["code"] == "MISSING_ITEM"),
         "{round}"
@@ -408,7 +430,7 @@ fn lark_wields_the_dagger(world: &mut World) {
 fn tonic_is_not_a_weapon(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let rejected = round["rejected"].as_array().unwrap();
+    let rejected = round["refused"].as_array().unwrap();
     assert!(
         rejected.iter().any(|item| item["code"] == "NOT_A_WEAPON"),
         "{round}"
@@ -448,7 +470,7 @@ fn lark_attacks(world: &mut World) {
 fn the_dagger_rule_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let steps = round["steps_run"].to_string();
+    let steps = round["extra_steps"].to_string();
     assert!(steps.contains("item:poisoned_dagger/attack"), "{steps}");
     assert!(!steps.contains("verb:attack"), "{steps}");
     assert_eq!(hp(pack, "pc_nell"), 5);
@@ -458,7 +480,7 @@ fn the_dagger_rule_ran(world: &mut World) {
 fn bare_hands_ran(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    let steps = round["steps_run"].to_string();
+    let steps = round["extra_steps"].to_string();
     assert!(steps.contains("verb:attack"), "{steps}");
     assert!(!steps.contains("item:poisoned_dagger/attack"), "{steps}");
     assert_eq!(hp(pack, "pc_nell"), 7);
@@ -633,7 +655,7 @@ fn the_poison_fades(world: &mut World, text: String) {
         .iter()
         .any(|flag| flag == "poisoned"));
     let round: Value = serde_json::from_str(read_first_round_line(pack).trim()).unwrap();
-    assert!(round["rejected"].as_array().unwrap().is_empty(), "{round}");
+    assert!(round["refused"].as_array().unwrap().is_empty(), "{round}");
     let effects = round["effects"].to_string();
     assert!(effects.contains(&text), "{effects}");
     assert!(effects.contains("pc_nell"), "{effects}");

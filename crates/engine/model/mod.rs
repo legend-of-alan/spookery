@@ -1,4 +1,4 @@
-//! The live save: places, actors, clocks, and messages.
+//! The live save: places, actors, clocks, and notes.
 
 pub(crate) mod key;
 pub(crate) mod meter;
@@ -15,7 +15,7 @@ use crate::intent::{Target, Viewer};
 #[serde(deny_unknown_fields)]
 pub struct State {
     pub schema: String,
-    pub shard_id: String,
+    pub world_id: String,
     pub pack_rev: String,
     /// Engine rules version. Missing means 0, which is not the current version.
     #[serde(default)]
@@ -28,7 +28,7 @@ pub struct State {
     pub places: BTreeMap<String, PlaceLive>,
     pub actors: BTreeMap<String, ActorLive>,
     pub clocks: BTreeMap<String, Clock>,
-    pub messages: Vec<Message>,
+    pub notes: Vec<Note>,
     /// World flags. Omitted from the save when empty.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
@@ -44,14 +44,14 @@ impl State {
         let def = canon
             .meters
             .get(key)
-            .ok_or(crate::error::Reason::UnknownKey)?;
+            .ok_or(crate::error::Reason::UnknownId)?;
         let live = self
             .actors
             .get(actor_id)
-            .ok_or(crate::error::Reason::UnknownKey)?
+            .ok_or(crate::error::Reason::UnknownId)?
             .meters()
             .get(key)
-            .ok_or(crate::error::Reason::UnknownKey)?;
+            .ok_or(crate::error::Reason::UnknownId)?;
         meter::current(def, live)
     }
 }
@@ -60,7 +60,7 @@ impl State {
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Presence {
-    pub humans: u32,
+    pub players: u32,
     pub actors_present: Vec<String>,
 }
 
@@ -75,7 +75,7 @@ pub enum RunState {
 #[serde(deny_unknown_fields)]
 // Emit order is the docks `save.yaml` pause mapping.
 pub struct Pause {
-    pub named_plot_clocks: RunState,
+    pub presence_clocks: RunState,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -307,7 +307,7 @@ pub struct Act {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub busy_until: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub busy_for: Option<PendingAction>,
+    pub pending: Option<PendingAction>,
 }
 
 /// Work that finishes when `busy_until` is reached.
@@ -345,7 +345,7 @@ pub struct Clock {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Message {
+pub struct Note {
     pub id: String,
     pub to: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

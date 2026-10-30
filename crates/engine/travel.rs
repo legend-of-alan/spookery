@@ -32,7 +32,7 @@ pub(crate) fn exit_name(rule: &Rule, intent: &Intent) -> Option<String> {
         } = effect
         {
             if via == "target" {
-                if let Target::Place(name) = &intent.target {
+                if let Target::Place(name) | Target::Exit(name) = &intent.target {
                     return Some(name.clone());
                 }
                 return None;
@@ -114,7 +114,7 @@ pub(crate) fn is_locked(
         actor.viewer(actor_id),
         Source::Player,
         "travel",
-        Target::Place(exit.name.clone()),
+        Target::Exit(exit.name.clone()),
     );
     cond::holds(
         canon,
@@ -191,7 +191,7 @@ pub fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, R
         .filter_map(|(id, actor)| {
             let act = actor.act();
             let until = act.busy_until?;
-            if act.busy_for.is_none() || until > end {
+            if act.pending.is_none() || until > end {
                 return None;
             }
             Some((until, id.clone()))
@@ -206,10 +206,10 @@ pub fn take_due_actions(draft: &mut Draft, end: u64) -> Result<Vec<DueAction>, R
                 .state_mut()
                 .actors
                 .get_mut(&actor_id)
-                .ok_or(Reason::UnknownKey)?;
+                .ok_or(Reason::UnknownId)?;
             let act = actor.act_mut();
             act.busy_until = None;
-            act.busy_for.take()
+            act.pending.take()
         };
         let Some(pending) = pending else {
             continue;
@@ -256,10 +256,10 @@ pub fn begin_action(
         .state_mut()
         .actors
         .get_mut(intent.actor.actor_id())
-        .ok_or(Reason::UnknownKey)?
+        .ok_or(Reason::UnknownId)?
         .act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(pending);
+    act.pending = Some(pending);
     Ok(())
 }
 
@@ -325,7 +325,7 @@ pub fn busy_line(now: &State, actor_id: &str) -> Option<String> {
         return None;
     }
     let until = actor.act().busy_until?;
-    let via = match actor.act().busy_for.as_ref().map(|pending| &pending.kind) {
+    let via = match actor.act().pending.as_ref().map(|pending| &pending.kind) {
         Some(PendingKind::Arrive { via, .. }) if !via.is_empty() => via,
         _ => return None,
     };

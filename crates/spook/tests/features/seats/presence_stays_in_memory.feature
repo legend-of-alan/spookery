@@ -19,10 +19,10 @@ Feature: Seat presence stays in memory
     When the host restarts
     Then nobody is present
 
-  Scenario: A round played with one human replays with the same now_hash
+  Scenario: A round played with one player replays with the same state_hash
     Given a docks table with a seated player
     When the player waits
     And the operator runs verify
     Then the command exits 0
-    And the round now_hash matches the save
+    And the round state_hash matches the save
     And stderr is empty

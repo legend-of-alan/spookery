@@ -79,7 +79,7 @@ fn assert_location(pack: &Path, name: &str) {
         .as_array()
         .unwrap()
         .iter()
-        .filter(|effect| effect["class"] == "location" && effect["actor_id"] == "pc_rowan")
+        .filter(|effect| effect["kind"] == "location" && effect["actor_id"] == "pc_rowan")
         .collect();
     assert_eq!(hits.len(), 1);
     assert_eq!(hits[0]["from"], "docks_shop");

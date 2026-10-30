@@ -1,1 +1,1 @@
-{"kind":"migrate","pack_rev_before":"blake2s:aa","pack_rev_after":"blake2s:bb","state_rev_before":1,"state_rev_after":2,"now_hash":"blake2s:cc"}
+{"kind":"migrate","pack_rev_before":"blake2s:aa","pack_rev_after":"blake2s:bb","state_rev_before":1,"state_rev_after":2,"state_hash":"blake2s:cc"}

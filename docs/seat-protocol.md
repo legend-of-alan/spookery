@@ -139,7 +139,7 @@ A legal hello sits that PC. Speech already on the tape for that player arrives f
 }
 ```
 
-`resume` carries the notes addressed to that viewer (`messages`) and their own clocks (`clocks`). `view` is what that viewer can see. `viewer` is the bare actor id, the same form `as` takes. It is not `player:<id>` or `npc:<id>`. `place_name` and `actor_names` are the pack's display names. `body` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
+`resume` carries the notes addressed to that viewer (`notes`) and their own clocks (`clocks`). `view` is what that viewer can see. `viewer` is the bare actor id, the same form `as` takes. It is not `player:<id>` or `npc:<id>`. `place_name` and `actor_names` are the pack's display names. `body` is the place body. `meters` is that viewer's own meters. A hidden meter is left out. `value` is the current number and `max` is the cap. `exits` is omitted when the place has none. `status` is omitted unless the viewer is still travelling, and then it is `on the stairs until 21:40`. Fact bodies are the place prose the viewer is allowed to read.
 
 Sitting keeps presence in memory and does not bump `state_rev`. The cap is three player seats, in the host, not in the pack.
 
@@ -455,18 +455,18 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
 ```json
 {
   "presence": {
-    "humans": 1,
+    "players": 1,
     "actors_present": [
       "pc_rowan"
     ]
   },
   "pause": {
-    "named_plot_clocks": "paused"
+    "presence_clocks": "paused"
   },
   "world_time": 1080,
   "round_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:770a9922b8093d1bf17f33cd33c8d68b4588ee9d3cc0ffba3c7cb2f78a4aabb5",
+  "pack_rev": "blake2s:f038be93795fdff14ca9e01914915b54e382481f491a247ee9a12979598bf5a1",
   "last_round_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 0,
@@ -543,7 +543,7 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
 }
 ```
 
-`humans` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `events` is absent unless `since` was sent. `pack` is the move menu, cast kinds, place prose, and cast prose, and it is absent when `since` was sent. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
+`players` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `events` is absent unless `since` was sent. `pack` is the move menu, cast kinds, place prose, and cast prose, and it is absent when `since` was sent. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
 
 After the two says above, `since` 0 returns them:
 
@@ -566,18 +566,18 @@ After the two says above, `since` 0 returns them:
 ```json
 {
   "presence": {
-    "humans": 1,
+    "players": 1,
     "actors_present": [
       "pc_rowan"
     ]
   },
   "pause": {
-    "named_plot_clocks": "paused"
+    "presence_clocks": "paused"
   },
   "world_time": 1080,
   "round_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:770a9922b8093d1bf17f33cd33c8d68b4588ee9d3cc0ffba3c7cb2f78a4aabb5",
+  "pack_rev": "blake2s:f038be93795fdff14ca9e01914915b54e382481f491a247ee9a12979598bf5a1",
   "last_round_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 2,
@@ -655,7 +655,7 @@ An empty argument object:
 
 #### queue_intent
 
-`actor_id` and `move` are required. `actor_id` is a bare actor id. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is a string. `args` may carry `to`, a list of actor ids. `round_index` and `rationale_code` may be sent.
+`actor_id` and `move` are required. `actor_id` is a bare actor id. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is a string. `to`, when sent, is a list of actor ids. `round_index` and `rationale_code` may be sent.
 
 The call queues the move. It does not emit `spook/event` and it does not write a player line. The result is the queue id.
 
@@ -776,7 +776,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
     "clock_paused assassination_debt",
     "last_act_round mira",
     "live_acts_this_hour mira",
-    "message note_mira_door"
+    "note note_mira_door"
   ],
   "journal_path": "state/journal/bundle-0000.jsonl",
   "rolls": [
@@ -950,15 +950,15 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `NOT_A_WEAPON` | That item is not a weapon. The move was not queued. |
 | `BUSY` | The character is busy. The move was not queued. Send it again when they are free. |
 | `UNKNOWN_MOVE` | That actor has no such move. |
-| `UNKNOWN_KEY` | That id is not in the world. |
+| `UNKNOWN_ID` | That id is not in the world. |
 | `OUT_OF_RANGE` | A number fell outside its range. The record was left as it was. |
 | `PAUSED_CLOCK` | That clock is paused. The change was not kept. |
 | `BUDGET` | The change does not fit the round. It was not kept. |
 | `INELIGIBLE` | That actor cannot take the action right now. |
-| `ILLEGAL_CLASS` | The effect is not one the engine runs. |
+| `UNKNOWN_EFFECT` | The effect is not one the engine runs. |
 | `ILLEGAL_KNOWLEDGE` | That actor cannot know that. |
 | `VIEWER_MISMATCH` | The effect is not for this viewer. |
-| `KERNEL_ON_PLAYER` | The table does not take that action for a player. |
+| `ENGINE_ON_PLAYER` | The table does not take that action for a player. |
 | `ACTOR_MISMATCH` | The action is not this actor's. |
 | `TABLE_EMPTY` | Nobody is seated. |
 | `COMMIT_CONFLICT` | The table was already writing. Send `commit_round` again. |

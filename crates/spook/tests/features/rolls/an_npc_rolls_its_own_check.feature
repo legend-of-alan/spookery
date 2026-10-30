@@ -20,10 +20,10 @@ Feature: An NPC rolls its own check
     And the round log resolves the check without faces
     And replaying the round reproduces the save
 
-  Scenario: A kernel habit rolls its NPC's check
-    When a kernel habit rolls a check for Mira
+  Scenario: An engine habit rolls its NPC's check
+    When an engine habit rolls a check for Mira
     Then Mira slipped
-    And the round log records Mira's kernel brace
+    And the round log records Mira's engine brace
     And the round log resolves the check without faces
     And replaying the round reproduces the save
 

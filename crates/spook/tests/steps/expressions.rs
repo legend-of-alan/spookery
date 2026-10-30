@@ -172,7 +172,7 @@ fn the_report_names_the_expression_line(world: &mut World) {
 #[then(expr = "the journal rejects the hit as OUT_OF_RANGE")]
 fn the_journal_rejects_the_hit_as_out_of_range(world: &mut World) {
     let round = latest_round(world);
-    let rejected = round["rejected"]
+    let rejected = round["refused"]
         .as_array()
         .unwrap_or_else(|| panic!("rejected\n{round}"));
     assert!(

@@ -85,13 +85,13 @@ fn holds_one(canon: &Canon, now: &State, ctx: &Ctx<'_>, cond: &Cond) -> Result<b
                 .is_some_and(|actor| actor.known_facts().iter().any(|id| id == fact)))
         }
         Cond::Clock { id, op, value } => {
-            let clock = now.clocks.get(id).ok_or(Reason::UnknownKey)?;
+            let clock = now.clocks.get(id).ok_or(Reason::UnknownId)?;
             let right = expr::eval(canon, now, ctx, value)?;
             Ok(!clock.paused && op.holds(clock.value, right))
         }
         Cond::Hour { from, to } => Ok(is_hour_in(*from, *to, world_hour(now.world_time))),
-        Cond::Humans { op, value } => Ok(op.holds(i64::from(ctx.presence.humans), *value)),
-        Cond::NoteExists(id) => Ok(now.messages.iter().any(|message| &message.id == id)),
+        Cond::Players { op, value } => Ok(op.holds(i64::from(ctx.presence.players), *value)),
+        Cond::NoteExists(id) => Ok(now.notes.iter().any(|note| &note.id == id)),
         Cond::All(inner) => {
             for cond in inner {
                 if !holds_one(canon, now, ctx, cond)? {

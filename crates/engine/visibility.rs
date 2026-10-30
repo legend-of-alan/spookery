@@ -238,7 +238,7 @@ fn item_name(canon: &Canon, id: &str) -> String {
 fn narrations(canon: &Canon, now: &State, effects: &[Effect], viewer: Option<&str>) -> Vec<String> {
     let mut lines = Vec::new();
     for effect in effects {
-        let EffectKind::Narrate { to, fact_ids, text } = &effect.class else {
+        let EffectKind::Narrate { to, fact_ids, text } = &effect.kind else {
             continue;
         };
         let Some(id) = viewer else {
@@ -272,7 +272,7 @@ fn can_see(canon: &Canon, now: &State, viewer: &str, change: &Change) -> bool {
         }
         StateKey::ActorKnownFact(actor) => actor == viewer,
         StateKey::PlaceItem(place, _) => place_of(now, viewer) == Some(place.as_str()),
-        StateKey::Message(id) => can_see_message(canon, now, viewer, id),
+        StateKey::Note(id) => can_see_note(canon, now, viewer, id),
         StateKey::ClockValue(id) | StateKey::ClockPaused(id) => is_clock_owner(now, viewer, id),
         StateKey::ActorPlace(actor) => {
             actor == viewer
@@ -312,20 +312,19 @@ fn is_clock_owner(now: &State, viewer: &str, id: &str) -> bool {
         .is_some_and(|clock| clock.owners.iter().any(|owner| owner == viewer))
 }
 
-fn can_see_message(canon: &Canon, now: &State, viewer: &str, id: &str) -> bool {
-    let Some(message) = now.messages.iter().find(|message| message.id == id) else {
+fn can_see_note(canon: &Canon, now: &State, viewer: &str, id: &str) -> bool {
+    let Some(note) = now.notes.iter().find(|note| note.id == id) else {
         return false;
     };
-    let in_room = message.place.as_deref() == place_of(now, viewer);
-    let addressed = message.to.iter().any(|name| name == viewer);
+    let in_room = note.place.as_deref() == place_of(now, viewer);
+    let addressed = note.to.iter().any(|name| name == viewer);
     if !in_room && !addressed {
         return false;
     }
     let Some(seat) = now.actors.get(viewer).map(|actor| actor.viewer(viewer)) else {
         return false;
     };
-    message
-        .fact_ids
+    note.fact_ids
         .iter()
         .all(|fact| can_see_fact(canon, now, &seat, fact))
 }

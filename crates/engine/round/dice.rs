@@ -66,9 +66,9 @@ impl RoundDice {
         target: i64,
         partial_at: Option<i64>,
     ) -> Result<Roll, Reason> {
-        let actor = now.actors.get(&key.subject_id).ok_or(Reason::UnknownKey)?;
+        let actor = now.actors.get(&key.subject_id).ok_or(Reason::UnknownId)?;
         let viewer = actor.viewer(&key.subject_id);
-        let check = canon.checks.get(check_id).ok_or(Reason::UnknownKey)?;
+        let check = canon.checks.get(check_id).ok_or(Reason::UnknownId)?;
         roll_check(
             RollInput {
                 check,

@@ -254,16 +254,17 @@ impl<L> World<L> {
         };
         match (kind, token) {
             (TargetKind::None, None) => Ok(Target::Empty),
-            (TargetKind::Actor | TargetKind::Item, Some(id)) => Ok(Target::Actor(id.to_string())),
-            (TargetKind::Place | TargetKind::Exit, Some(id)) => Ok(Target::Place(id.to_string())),
-            _ => Err(Reason::Schema),
+            (TargetKind::None, Some(_)) | (_, None) => Err(Reason::Schema),
+            (kind, Some(id)) => Ok(Target::new(*kind, id)),
         }
     }
 
     fn player_intent(&self, actor_id: &str, verb: &str, target: Target) -> Result<Intent, Reason> {
         let token = match &target {
             Target::Empty => "",
-            Target::Actor(id) | Target::Place(id) => id.as_str(),
+            Target::Actor(id) | Target::Item(id) | Target::Place(id) | Target::Exit(id) => {
+                id.as_str()
+            }
             Target::Clock(_) => return Err(Reason::Schema),
         };
         let round_index = self
@@ -272,7 +273,7 @@ impl<L> World<L> {
             .checked_add(1)
             .ok_or(Reason::Schema)?;
         let id = player_intent_id(
-            &self.state.shard_id,
+            &self.state.world_id,
             round_index,
             actor_id,
             &join_move(verb, token),
@@ -303,7 +304,7 @@ impl<L> World<L> {
             .move_name
             .filter(|m| !m.is_empty())
             .ok_or(Reason::Schema)?;
-        let actor = self.state.actors.get(&actor_id).ok_or(Reason::UnknownKey)?;
+        let actor = self.state.actors.get(&actor_id).ok_or(Reason::UnknownId)?;
         let viewer = actor.viewer(&actor_id);
         let token = spec.target.as_deref().filter(|t| !t.is_empty());
         let is_npc = matches!(viewer, Viewer::Npc(_));
@@ -403,9 +404,9 @@ impl<L> World<L> {
         &self,
         presence: &Presence,
         as_arg: &str,
-        budget_tokens: usize,
+        max_body_chars: usize,
     ) -> Result<crate::perceive::View, Reason> {
-        crate::perceive::perceive_budget(self, presence, as_arg, budget_tokens)
+        crate::perceive::perceive_budget(self, presence, as_arg, max_body_chars)
     }
 
     pub fn help_lines(&self, presence: &Presence, actor_id: &str) -> String {
@@ -452,7 +453,7 @@ impl<L> World<L> {
         for (round_index, effect) in effects {
             rows.push(format!(
                 "effect {} {round_index} {}",
-                effect.class_name(),
+                effect.kind_name(),
                 payload_json(effect)
             ));
         }
@@ -771,7 +772,7 @@ fn save_problems(now: &State, bytes: &[u8]) -> Vec<Diagnostic> {
             );
             diag = match line {
                 Some(line) => diag.at_line(line, None),
-                None => diag.at_path("now"),
+                None => diag.at_path("save"),
             };
             diags.push(diag);
         }
@@ -781,9 +782,9 @@ fn save_problems(now: &State, bytes: &[u8]) -> Vec<Diagnostic> {
                 "state/save.yaml",
                 Reason::Schema,
                 "the save could not be written back as YAML",
-                "fix the values so they match the now format",
+                "fix the values so they match the save format",
             )
-            .at_path("now"),
+            .at_path("save"),
         ),
     }
     diags

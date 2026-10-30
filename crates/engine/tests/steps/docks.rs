@@ -9,7 +9,7 @@ use spookery_engine::testing::{
     stamp_pack_rev, state_of, write_save, Act, ActorLive, Pause, PlaceLive,
 };
 use spookery_engine::{
-    emit_save, play_pack_once, IntentCall, Message, MeterLive, MoveReport, Outcome, Presence,
+    emit_save, play_pack_once, IntentCall, MeterLive, MoveReport, Note, Outcome, Presence,
     RunState, State, World as Shard,
 };
 
@@ -94,8 +94,8 @@ fn the_debt_clock_does_not_run_itself() {
     let _ = fs::remove_dir_all(&pack);
 }
 
-fn door_message() -> Message {
-    Message {
+fn door_note() -> Note {
+    Note {
         id: "note_mira_door".to_string(),
         to: vec!["pc_rowan".to_string()],
         place: Some("docks_shop".to_string()),
@@ -107,7 +107,7 @@ fn door_message() -> Message {
 /// Rowan is the one seated player.
 fn rowan() -> Presence {
     Presence {
-        humans: 1,
+        players: 1,
         actors_present: vec!["pc_rowan".to_string()],
     }
 }
@@ -118,9 +118,9 @@ fn evening_note() {
     let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
-    assert_eq!(now.messages.len(), 1);
-    assert_eq!(now.messages[0].id, "note_mira_door");
-    assert_eq!(now.messages[0].place.as_deref(), Some("docks_shop"));
+    assert_eq!(now.notes.len(), 1);
+    assert_eq!(now.notes[0].id, "note_mira_door");
+    assert_eq!(now.notes[0].place.as_deref(), Some("docks_shop"));
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -131,7 +131,7 @@ fn morning_restock() {
         let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
-        now.messages.push(door_message());
+        now.notes.push(door_note());
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         write_save(&pack, &now);
     }
@@ -143,7 +143,7 @@ fn morning_restock() {
     let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 8);
     assert_eq!(now.actors.get("mira").unwrap().place(), "mira_rooms");
-    assert_eq!(now.messages.len(), 1);
+    assert_eq!(now.notes.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -154,7 +154,7 @@ fn capped_restock() -> u32 {
         let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
-        now.messages.push(door_message());
+        now.notes.push(door_note());
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         now.places
             .get_mut("docks_shop")
@@ -175,13 +175,13 @@ fn off_hours_hold() {
         let shard = resume(&pack);
         let mut now = shard.state().clone();
         drop(shard);
-        now.messages.push(door_message());
+        now.notes.push(door_note());
         write_save(&pack, &now);
     }
     play_pack_once(&pack).unwrap_or_else(|err| panic!("round: {err}"));
     let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(now.messages.len(), 1);
+    assert_eq!(now.notes.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -192,7 +192,7 @@ fn player_in_the_shop() {
         let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
-        now.messages.push(door_message());
+        now.notes.push(door_note());
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         write_save(&pack, &now);
     }
@@ -203,7 +203,7 @@ fn player_in_the_shop() {
         .unwrap_or_else(|err| panic!("round: {err}"));
     let now = state_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
-    assert_eq!(now.messages.len(), 1);
+    assert_eq!(now.notes.len(), 1);
     assert_eq!(now.actors.get("mira").unwrap().act().last_act_round, 0);
     let _ = fs::remove_dir_all(&pack);
 }
@@ -232,7 +232,7 @@ fn gm_restocks() {
         let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
-        now.messages.push(door_message());
+        now.notes.push(door_note());
         *now.actors.get_mut("mira").unwrap().place_mut() = "docks_shop".to_string();
         write_save(&pack, &now);
     }
@@ -241,7 +241,7 @@ fn gm_restocks() {
     queue_gm_intent(&mut shard, "gm-1", "mira", "restock_lamp_oil");
     shard.play(&rowan(), &wall).unwrap();
     assert_eq!(lamp_oil(shard.state()), 8);
-    assert_eq!(shard.state().messages.len(), 1);
+    assert_eq!(shard.state().notes.len(), 1);
     let _ = fs::remove_dir_all(&pack);
 }
 
@@ -264,7 +264,7 @@ fn claimed_note_sorts_first() {
     }
     shard.play(&rowan(), &wall).unwrap();
     let log = round_value(&pack, "round-0001");
-    let rules: Vec<&str> = log["steps_run"]
+    let rules: Vec<&str> = log["extra_steps"]
         .as_array()
         .unwrap()
         .iter()
@@ -275,7 +275,7 @@ fn claimed_note_sorts_first() {
         .as_array()
         .unwrap()
         .iter()
-        .find(|effect| effect["class"] == "message")
+        .find(|effect| effect["kind"] == "note")
         .unwrap_or_else(|| panic!("no door note: {log}"));
     assert_eq!(note["to"], serde_json::json!(["pc_rowan"]));
     let _ = fs::remove_dir_all(&pack);
@@ -287,7 +287,7 @@ fn catch_up_to_cap() {
 
 fn catch_up_for(hours: u64, rounds: u64) {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let pack = support::fresh_dir("catchup");
+    let pack = support::fresh_dir("catch_up");
     let _ = fs::remove_dir_all(&pack);
     let rules = manifest.join("../../packs/oneshot-docks/rules");
     write_text(
@@ -363,8 +363,8 @@ Rowan.
         },
     );
     let now = State {
-        schema: "now".to_string(),
-        shard_id: "ex".to_string(),
+        schema: "save".to_string(),
+        world_id: "ex".to_string(),
         pack_rev: rev,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
@@ -372,12 +372,12 @@ Rowan.
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
         pause: Pause {
-            named_plot_clocks: RunState::Paused,
+            presence_clocks: RunState::Paused,
         },
         places,
         actors,
         clocks: BTreeMap::new(),
-        messages: Vec::new(),
+        notes: Vec::new(),
         flags: Vec::new(),
     };
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
@@ -413,7 +413,7 @@ fn a_busy_npc_skips() {
         let mut now = shard.state().clone();
         drop(shard);
         now.world_time = 600;
-        now.messages.push(door_message());
+        now.notes.push(door_note());
         now.actors.get_mut("mira").unwrap().act_mut().busy_until = Some(u64::MAX);
         *now.actors.get_mut("pc_rowan").unwrap().place_mut() = "docks_street".to_string();
         write_save(&pack, &now);
@@ -427,25 +427,26 @@ fn a_busy_npc_skips() {
 }
 
 fn sealed_round(pack: &Path, state_rev: u64) -> String {
-    use spookery_engine::testing::journal::{genesis_hash, seal, Record, RoundRecord};
+    use spookery_engine::testing::journal::{genesis_hash, seal, Record, RoundKind, RoundRecord};
     let entry = Record::Round(RoundRecord {
+        kind: RoundKind::Round,
         round_index: 1,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev_before: state_rev.saturating_sub(1),
         state_rev_after: state_rev,
         world_time_before: 0,
         world_time_after: 0,
-        presence_humans: 0,
+        presence_players: 0,
         actors_present: Vec::new(),
         seed: String::new(),
         last_round_at: String::new(),
         intents: Vec::new(),
-        rejected: Vec::new(),
+        refused: Vec::new(),
         effects: Vec::new(),
         arrivals: Vec::new(),
         fast_forward: false,
         dice: Vec::new(),
-        steps_run: Vec::new(),
+        extra_steps: Vec::new(),
         memories: vec![spookery_engine::testing::MemoryLine {
             round_index: 1,
             actor_id: "mira".to_string(),
@@ -454,7 +455,7 @@ fn sealed_round(pack: &Path, state_rev: u64) -> String {
             tags: Vec::new(),
             text: Some("kept-line".to_string()),
         }],
-        now_hash: String::new(),
+        state_hash: String::new(),
         prev: String::new(),
         chain: String::new(),
     });
@@ -656,8 +657,8 @@ rules:
         },
     );
     let now = State {
-        schema: "now".to_string(),
-        shard_id: "crowd".to_string(),
+        schema: "save".to_string(),
+        world_id: "crowd".to_string(),
         pack_rev: rev,
         rules_rev: spookery_engine::testing::RULES_REV,
         state_rev: 0,
@@ -665,12 +666,12 @@ rules:
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
         pause: Pause {
-            named_plot_clocks: RunState::Paused,
+            presence_clocks: RunState::Paused,
         },
         places,
         actors,
         clocks: BTreeMap::new(),
-        messages: Vec::new(),
+        notes: Vec::new(),
         flags: Vec::new(),
     };
     write_text(&pack.join("state/save.yaml"), &emit_save(&now).unwrap());
@@ -686,7 +687,7 @@ rules:
         .values()
         .filter(|actor| actor.act().last_act_round == 1)
         .count();
-    let applied = round_value(&pack, "round-0001")["steps_run"]
+    let applied = round_value(&pack, "round-0001")["extra_steps"]
         .as_array()
         .unwrap()
         .iter()
@@ -723,11 +724,11 @@ fn a_zero_budget_strips_fact_bodies() {
         .unwrap();
     assert_eq!(ledger.text, LEDGER);
     assert!(!capped
-        .unknown_mentioned
+        .unknown_mentions
         .iter()
         .any(|id| id == "fact_ledger_short"));
     assert!(capped
-        .unknown_mentioned
+        .unknown_mentions
         .iter()
         .any(|id| id == "fact_room_lamp"));
     let unscoped = spookery_engine::Reason::UnscopedPerceive;
@@ -836,7 +837,7 @@ fn effects_run_on_both_outcomes_and_lists_run_on_one() {
             "{label} success {success}"
         );
         let round = round_value(&pack, "round-0001");
-        assert!(round["steps_run"]
+        assert!(round["extra_steps"]
             .as_array()
             .unwrap()
             .iter()

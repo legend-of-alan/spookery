@@ -443,8 +443,8 @@ fn check_base_migrate(entry: &Record, base_bytes: &[u8]) -> Result<(), Error> {
         )
         .replayed(base_bytes.to_vec())
     };
-    if record.now_hash != blake2s_tagged(base_bytes) {
-        return Err(migrate_diverged("now_hash differed").into());
+    if record.state_hash != blake2s_tagged(base_bytes) {
+        return Err(migrate_diverged("state_hash differed").into());
     }
     let base_now = load_save_bytes(base_bytes)?;
     if record.pack_rev_after != base_now.pack_rev {
@@ -478,7 +478,7 @@ fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(
     if world.state().round_index + 1 != record.round_index {
         return Err(round_diverged(record, "round_index differed").into());
     }
-    let seed = round_seed(&world.state().shard_id, record.round_index);
+    let seed = round_seed(&world.state().world_id, record.round_index);
     if record.seed != seed {
         return Err(round_diverged(record, "seed differed").into());
     }
@@ -487,7 +487,7 @@ fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(
         &record.last_round_at,
         &record.intents,
         &Presence {
-            humans: record.presence_humans,
+            players: record.presence_players,
             actors_present: record.actors_present.clone(),
         },
     )
@@ -505,8 +505,8 @@ fn apply_recorded_round(world: &mut World<()>, record: &RoundRecord) -> Result<(
         .into());
     }
     let written = emit_save_bytes(world)?;
-    if blake2s_tagged(&written) != record.now_hash {
-        let detail = effect_diff.unwrap_or_else(|| "now_hash differed".to_string());
+    if blake2s_tagged(&written) != record.state_hash {
+        let detail = effect_diff.unwrap_or_else(|| "state_hash differed".to_string());
         return Err(round_diverged(record, detail).replayed(written).into());
     }
     if let Some(detail) = effect_diff {
@@ -555,8 +555,8 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
         // A migrate of a hand edit restarts from the checkpoint written with it.
         let path = journal::checkpoint_path(world.root(), record.state_rev_after);
         let bytes = fs::read(path).map_err(|_| diverged("missing snapshot"))?;
-        if blake2s_tagged(&bytes) != record.now_hash {
-            return Err(diverged("now_hash differed").replayed(bytes).into());
+        if blake2s_tagged(&bytes) != record.state_hash {
+            return Err(diverged("state_hash differed").replayed(bytes).into());
         }
         world.set_state(load_save_bytes(&bytes)?);
         return Ok(());
@@ -568,8 +568,8 @@ fn apply_migrate(world: &mut World<()>, record: &MigrateRecord) -> Result<(), Er
         &record.meters,
     );
     let bytes = emit_save(&next).map_err(Error::Reason)?.into_bytes();
-    if blake2s_tagged(&bytes) != record.now_hash {
-        return Err(diverged("now_hash differed").replayed(bytes).into());
+    if blake2s_tagged(&bytes) != record.state_hash {
+        return Err(diverged("state_hash differed").replayed(bytes).into());
     }
     world.set_state(next);
     Ok(())

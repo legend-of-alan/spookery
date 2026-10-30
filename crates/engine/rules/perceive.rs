@@ -6,7 +6,7 @@ use crate::canon::Canon;
 use crate::error::Reason;
 use crate::intent::Viewer;
 use crate::meter;
-use crate::model::{Message, Presence, State};
+use crate::model::{Note, Presence, State};
 use crate::rules::habits::habits_that_hold;
 use crate::travel::ExitView;
 use crate::visibility::can_see_fact;
@@ -24,8 +24,8 @@ pub struct View {
     pub visible_actors: Vec<String>,
     pub actor_names: Vec<String>,
     pub known_facts: Vec<KnownFact>,
-    pub messages: Vec<Message>,
-    pub unknown_mentioned: Vec<String>,
+    pub notes: Vec<Note>,
+    pub unknown_mentions: Vec<String>,
     pub clocks: Vec<ClockView>,
     pub items: Vec<ItemStack>,
     /// The viewer's own meters. A hidden meter is not here.
@@ -43,7 +43,7 @@ pub fn perceive_budget<L>(
     world: &World<L>,
     presence: &Presence,
     as_arg: &str,
-    budget_tokens: usize,
+    max_body_chars: usize,
 ) -> Result<View, Reason> {
     if as_arg.is_empty()
         || as_arg == "gm"
@@ -53,8 +53,8 @@ pub fn perceive_budget<L>(
         return Err(Reason::UnscopedPerceive);
     }
     let (canon, now) = (world.canon(), world.state());
-    let actor = now.actors.get(as_arg).ok_or(Reason::UnknownKey)?;
-    perceive_viewer_budget(canon, now, presence, &actor.viewer(as_arg), budget_tokens)
+    let actor = now.actors.get(as_arg).ok_or(Reason::UnknownId)?;
+    perceive_viewer_budget(canon, now, presence, &actor.viewer(as_arg), max_body_chars)
 }
 
 pub(crate) fn perceive_as(
@@ -71,12 +71,9 @@ fn perceive_viewer_budget(
     now: &State,
     presence: &Presence,
     viewer: &Viewer,
-    budget_tokens: usize,
+    max_body_chars: usize,
 ) -> Result<View, Reason> {
-    let actor = now
-        .actors
-        .get(viewer.actor_id())
-        .ok_or(Reason::UnknownKey)?;
+    let actor = now.actors.get(viewer.actor_id()).ok_or(Reason::UnknownId)?;
     let place = actor.place().to_string();
     let mut visible_actors: Vec<String> = now
         .actors
@@ -114,35 +111,35 @@ fn perceive_viewer_budget(
         public_flags.push(public);
     }
 
-    let mut unknown_mentioned = Vec::new();
+    let mut unknown_mentions = Vec::new();
     cap_bodies(
         &mut known_facts,
         &public_flags,
-        &mut unknown_mentioned,
-        budget_tokens,
+        &mut unknown_mentions,
+        max_body_chars,
     );
-    unknown_mentioned.sort();
+    unknown_mentions.sort();
 
-    let mut messages = Vec::new();
-    for message in &now.messages {
-        let here = message.place.as_deref() == Some(place.as_str());
-        let addressed = message.to.iter().any(|id| id == viewer.actor_id());
+    let mut notes = Vec::new();
+    for note in &now.notes {
+        let here = note.place.as_deref() == Some(place.as_str());
+        let addressed = note.to.iter().any(|id| id == viewer.actor_id());
         if !here && !addressed {
             continue;
         }
-        if message
+        if note
             .fact_ids
             .iter()
             .any(|fact| !can_see_fact(canon, now, viewer, fact))
         {
             continue;
         }
-        let mut copy = message.clone();
+        let mut copy = note.clone();
         copy.to.sort();
         copy.fact_ids.sort();
-        messages.push(copy);
+        notes.push(copy);
     }
-    messages.sort_by(|a, b| a.id.cmp(&b.id));
+    notes.sort_by(|a, b| a.id.cmp(&b.id));
 
     let mut clocks: Vec<ClockView> = now
         .clocks
@@ -207,8 +204,8 @@ fn perceive_viewer_budget(
         visible_actors,
         actor_names,
         known_facts,
-        messages,
-        unknown_mentioned,
+        notes,
+        unknown_mentions,
         clocks,
         items,
         meters,
@@ -222,19 +219,19 @@ fn cap_bodies(
     facts: &mut [KnownFact],
     public_flags: &[bool],
     unknown: &mut Vec<String>,
-    budget_tokens: usize,
+    max_body_chars: usize,
 ) {
     let mut sum = facts
         .iter()
         .map(|fact| fact.owner_body.chars().count())
         .sum::<usize>();
-    if sum <= budget_tokens {
+    if sum <= max_body_chars {
         return;
     }
     let mut order: Vec<usize> = (0..facts.len()).collect();
     order.sort_by(|&left, &right| facts[right].id.cmp(&facts[left].id));
     for index in order {
-        if sum <= budget_tokens {
+        if sum <= max_body_chars {
             break;
         }
         let len = facts[index].owner_body.chars().count();
@@ -242,10 +239,10 @@ fn cap_bodies(
             continue;
         }
         let rest = sum - len;
-        if len > budget_tokens && rest <= budget_tokens {
-            let keep = budget_tokens - rest;
+        if len > max_body_chars && rest <= max_body_chars {
+            let keep = max_body_chars - rest;
             facts[index].owner_body = facts[index].owner_body.chars().take(keep).collect();
-            sum = budget_tokens;
+            sum = max_body_chars;
         } else {
             facts[index].owner_body.clear();
             sum = rest;

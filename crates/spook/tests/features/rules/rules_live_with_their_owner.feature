@@ -10,7 +10,7 @@ Feature: Rules live with their owner
     Then place:ferry_dock/travel runs and verb:travel does not
 
   Scenario: Habit is a cast rule
-    Given cast:briar/restock with hour 6..9 and humans == 0
+    Given cast:briar/restock with hour 6..9 and players == 0
     When an empty round lands at hour 7 with briar in the shop
     Then docks_shop lamp_oil increases by 4
 
@@ -43,9 +43,9 @@ Feature: Rules live with their owner
     Then both are refused with NOT_IN_SPEC and the save is unchanged
 
   Scenario: An owned rule names how the next token is read
-    Given use on tonic targets an actor and the shared use takes no target
+    Given use on tonic targets an item and the shared use takes no target
     When the seated PC queues use tonic
-    Then the queued target is that actor and the save is unchanged
+    Then the queued target is that item and the save is unchanged
 
   Scenario: A time cost is quiet at check
     Given a verb with a time cost and a resist roll

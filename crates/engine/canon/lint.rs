@@ -534,11 +534,11 @@ fn trigger_cycles(canon: &Canon) -> Vec<Diagnostic> {
         .iter()
         .filter(|rule| matches!(rule.when, When::Change(_)))
         .collect();
-    let written: Vec<Vec<Change>> = rules
+    let written: Vec<Vec<Write>> = rules
         .iter()
         .map(|rule| {
             let mut marks = Vec::new();
-            rule.visit_templates(|effect| push_changes(effect, &mut marks));
+            rule.visit_templates(|effect| push_writes(effect, &mut marks));
             marks
         })
         .collect();
@@ -607,7 +607,7 @@ fn trigger_leaks(canon: &Canon, now: Option<&crate::model::State>) -> Vec<Diagno
 }
 
 #[derive(Clone)]
-enum Change {
+enum Write {
     Flag { key: String, value: bool },
     Meter(String),
     Item { id: String, gained: bool },
@@ -630,67 +630,67 @@ enum Sight {
     Everyone,
 }
 
-fn push_changes(effect: &EffectTemplate, out: &mut Vec<Change>) {
+fn push_writes(effect: &EffectTemplate, out: &mut Vec<Write>) {
     match effect {
         EffectTemplate::Flag { key, value, .. } => {
-            out.push(Change::Flag {
+            out.push(Write::Flag {
                 key: key.clone(),
                 value: *value,
             });
         }
-        EffectTemplate::Meter { key, .. } => out.push(Change::Meter(key.clone())),
+        EffectTemplate::Meter { key, .. } => out.push(Write::Meter(key.clone())),
         EffectTemplate::Item { id, add, .. } => {
             if *add > 0 {
-                out.push(Change::Item {
+                out.push(Write::Item {
                     id: id.clone(),
                     gained: true,
                 });
             } else if *add < 0 {
-                out.push(Change::Item {
+                out.push(Write::Item {
                     id: id.clone(),
                     gained: false,
                 });
             }
         }
         EffectTemplate::Clock { id, add, .. } if add.is_some() => {
-            out.push(Change::Clock(id.clone()));
+            out.push(Write::Clock(id.clone()));
         }
         EffectTemplate::Location {
             to: LocationTo::Place(id),
             ..
-        } => out.push(Change::Arrive(id.clone())),
-        EffectTemplate::Reveal { fact, .. } => out.push(Change::Knows(fact.clone())),
+        } => out.push(Write::Arrive(id.clone())),
+        EffectTemplate::Reveal { fact, .. } => out.push(Write::Knows(fact.clone())),
         EffectTemplate::Memory { fact_ids, .. } => {
             for fact in fact_ids {
-                out.push(Change::Knows(fact.clone()));
+                out.push(Write::Knows(fact.clone()));
             }
         }
         _ => {}
     }
 }
 
-fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Change) -> bool {
+fn sets_watch(watch: &ChangeWatch, rule: &Rule, mark: &Write) -> bool {
     match (watch, mark) {
         (
             ChangeWatch::Flag { key, becomes },
-            Change::Flag {
+            Write::Flag {
                 key: written,
                 value,
             },
         ) => key == written && becomes == value,
-        (ChangeWatch::Meter { key, .. }, Change::Meter(written)) => key == written,
+        (ChangeWatch::Meter { key, .. }, Write::Meter(written)) => key == written,
         (
             ChangeWatch::Item { id, gained },
-            Change::Item {
+            Write::Item {
                 id: written,
                 gained: up,
             },
         ) => id == written && gained == up,
-        (ChangeWatch::Clock { id }, Change::Clock(written)) => id == written,
-        (ChangeWatch::Arrive { place, .. }, Change::Arrive(dest)) => {
+        (ChangeWatch::Clock { id }, Write::Clock(written)) => id == written,
+        (ChangeWatch::Arrive { place, .. }, Write::Arrive(dest)) => {
             rule.watched_place(place) == dest
         }
-        (ChangeWatch::Knows { fact }, Change::Knows(written)) => fact == written,
+        (ChangeWatch::Knows { fact }, Write::Knows(written)) => fact == written,
         _ => false,
     }
 }

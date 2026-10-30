@@ -249,14 +249,18 @@ mod tests {
         play_pack_once(&pack).unwrap();
         let path = pack.join("state/journal/bundle-0000.jsonl");
         let text = fs::read_to_string(&path).unwrap();
-        let swapped = text.replacen("\"now_hash\":\"blake2s:", "\"now_hash\":\"blake2s:00", 1);
+        let swapped = text.replacen(
+            "\"state_hash\":\"blake2s:",
+            "\"state_hash\":\"blake2s:00",
+            1,
+        );
         assert_ne!(swapped, text);
         fs::write(&path, swapped).unwrap();
         let err = verify_pack(&pack, None).unwrap_err();
         let message = err.to_string();
         assert!(message.contains("state_rev 1"), "{message}");
         assert!(message.contains("round 1"), "{message}");
-        assert!(message.contains("now_hash differed"), "{message}");
+        assert!(message.contains("state_hash differed"), "{message}");
         let _ = fs::remove_dir_all(&pack);
     }
 

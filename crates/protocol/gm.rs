@@ -127,23 +127,10 @@ pub struct IntentCall {
     pub move_name: Option<String>,
     #[serde(default)]
     pub target: Option<String>,
-    #[serde(rename = "args", default, deserialize_with = "deserialize_message_to")]
+    #[serde(rename = "to", default)]
     pub message_to: Option<Vec<String>>,
     #[serde(default)]
     pub rationale_code: String,
-}
-
-fn deserialize_message_to<'de, D>(deserializer: D) -> Result<Option<Vec<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    #[derive(Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct WireArgs {
-        #[serde(default)]
-        to: Option<Vec<String>>,
-    }
-    Ok(WireArgs::deserialize(deserializer)?.to)
 }
 
 pub fn parse_intent_args(arguments: Option<&Map<String, Value>>) -> Result<IntentCall, Error> {
@@ -179,13 +166,13 @@ pub struct TableStatus {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusPresence {
-    pub humans: u32,
+    pub players: u32,
     pub actors_present: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StatusPause {
-    pub named_plot_clocks: String,
+    pub presence_clocks: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -329,7 +316,7 @@ mod tests {
             assert_eq!(back, v);
         }
         assert_reencodes::<TableStatus>(
-            r#"{"presence":{"humans":1,"actors_present":["pc_rowan"],"x":1},"pause":{"named_plot_clocks":"running","x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
+            r#"{"presence":{"players":1,"actors_present":["pc_rowan"],"x":1},"pause":{"presence_clocks":"running","x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
         assert_reencodes::<CommitBody>(
             r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,
@@ -341,11 +328,16 @@ mod tests {
         ] {
             assert_reencodes::<EventBody>(raw);
         }
-        let m = serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t"}"#).unwrap();
+        let m =
+            serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t","to":["b"]}"#).unwrap();
         let c = parse_intent_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_name.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
+        assert_eq!(c.message_to, Some(vec!["b".to_string()]));
+        let nested =
+            serde_json::from_str(r#"{"actor_id":"a","move":"m","args":{"to":["b"]}}"#).unwrap();
+        assert!(parse_intent_args(Some(&nested)).is_err());
     }
 
     #[test]

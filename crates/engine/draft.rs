@@ -71,7 +71,7 @@ impl<'p> Draft<'p> {
     }
 
     pub(crate) fn apply_pause_policy(&mut self) -> Result<(), Reason> {
-        let humans = self.presence.humans;
+        let players = self.presence.players;
         let policies = self.budget.pause;
         let clock_ids: Vec<String> = self.state.clocks.keys().cloned().collect();
         for clock_id in clock_ids {
@@ -81,15 +81,15 @@ impl<'p> Draft<'p> {
             if !clock.requires_presence {
                 continue;
             }
-            let paused = humans == 0 && policies.named_plot_clocks == PausePolicy::WhenEmpty;
-            if humans > 0 {
+            let paused = players == 0 && policies.presence_clocks == PausePolicy::WhenEmpty;
+            if players > 0 {
                 self.set_clock_paused(&clock_id, false)?;
             } else if paused {
                 self.set_clock_paused(&clock_id, true)?;
             }
         }
-        self.state.pause.named_plot_clocks = match policies.named_plot_clocks {
-            PausePolicy::WhenEmpty if humans == 0 => RunState::Paused,
+        self.state.pause.presence_clocks = match policies.presence_clocks {
+            PausePolicy::WhenEmpty if players == 0 => RunState::Paused,
             PausePolicy::WhenEmpty | PausePolicy::AlwaysRun => RunState::Running,
         };
         Ok(())
@@ -144,14 +144,14 @@ impl<'p> Draft<'p> {
         Ok(())
     }
 
-    pub(crate) fn count_npc_act(&mut self, actor_id: &str, humans: u32) -> Result<(), Reason> {
+    pub(crate) fn count_npc_act(&mut self, actor_id: &str, players: u32) -> Result<(), Reason> {
         let round_index = self.state.round_index;
         let (current_idle, current_live, current_last) = {
             let counters = self
                 .state
                 .actors
                 .get(actor_id)
-                .ok_or(Reason::UnknownKey)?
+                .ok_or(Reason::UnknownId)?
                 .act();
             (
                 counters.idle_acts_today,
@@ -165,10 +165,10 @@ impl<'p> Draft<'p> {
         if round_index != current_last {
             keys.push(StateKey::LastActRound(actor_id.to_string()));
         }
-        if humans == 0 && new_idle != current_idle {
+        if players == 0 && new_idle != current_idle {
             keys.push(StateKey::IdleActsToday(actor_id.to_string()));
         }
-        if humans > 0 && new_live != current_live {
+        if players > 0 && new_live != current_live {
             keys.push(StateKey::LiveActsThisHour(actor_id.to_string()));
         }
         self.track_many(&keys)?;
@@ -176,10 +176,10 @@ impl<'p> Draft<'p> {
             .state
             .actors
             .get_mut(actor_id)
-            .ok_or(Reason::UnknownKey)?
+            .ok_or(Reason::UnknownId)?
             .act_mut();
         counters.last_act_round = round_index;
-        if humans == 0 {
+        if players == 0 {
             counters.idle_acts_today = new_idle;
         } else {
             counters.live_acts_this_hour = new_live;
@@ -337,8 +337,8 @@ impl<'p> Draft<'p> {
                 .get(id)
                 .map(|clock| StateValue::Bool(clock.paused))
                 .unwrap_or(StateValue::Empty),
-            StateKey::Message(id) => {
-                if self.state.messages.iter().any(|message| &message.id == id) {
+            StateKey::Note(id) => {
+                if self.state.notes.iter().any(|note| &note.id == id) {
                     StateValue::Bool(true)
                 } else {
                     StateValue::Empty
@@ -437,10 +437,10 @@ mod tests {
             target: Target::Empty,
             args: Default::default(),
             rationale_code: "habit".to_string(),
-            source: Source::Kernel,
+            source: Source::Engine,
         };
         Effect {
-            class: EffectKind::Clock {
+            kind: EffectKind::Clock {
                 clock_id: "shop_day".to_string(),
                 delta: -1,
                 start: false,

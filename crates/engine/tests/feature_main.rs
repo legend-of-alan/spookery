@@ -12,6 +12,7 @@ pub struct World {
     pub intent_id: String,
     pub oil: Vec<u8>,
     pub wait_order: Vec<String>,
+    pub summary_lines: Vec<String>,
     pub writer: Option<Writer>,
     pub lock_clone: Option<std::fs::File>,
 }

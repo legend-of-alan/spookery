@@ -36,7 +36,7 @@ pub enum PlayerFrame {
     },
     Resume {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
-        messages: Vec<MessageView>,
+        notes: Vec<NoteView>,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         clocks: Vec<ClockView>,
     },
@@ -56,7 +56,7 @@ pub enum PlayerFrame {
         scene: Box<ViewScene>,
         visible_actors: Vec<String>,
         known_facts: Vec<KnownFact>,
-        notes: Vec<MessageView>,
+        notes: Vec<NoteView>,
         unknown_mentions: Vec<String>,
         clocks: Vec<ClockView>,
         items: Vec<ItemStack>,
@@ -101,7 +101,7 @@ pub struct KnownFact {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MessageView {
+pub struct NoteView {
     pub id: String,
     pub to: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

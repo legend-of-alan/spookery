@@ -187,7 +187,7 @@ pub enum Cond {
         from: i64,
         to: i64,
     },
-    Humans {
+    Players {
         op: Op,
         value: i64,
     },

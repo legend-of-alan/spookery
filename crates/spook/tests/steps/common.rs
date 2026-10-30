@@ -225,7 +225,7 @@ pub(crate) fn set_busy(now: &mut State, actor: &str, until: u64, arrive: &str, v
         .unwrap_or_else(|| panic!("no {actor}"))
         .act_mut();
     act.busy_until = Some(until);
-    act.busy_for = Some(spookery_engine::testing::PendingAction {
+    act.pending = Some(spookery_engine::testing::PendingAction {
         verb: "travel".to_string(),
         source: spookery_engine::Source::Player,
         kind: spookery_engine::testing::PendingKind::Arrive {

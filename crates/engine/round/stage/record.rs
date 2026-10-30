@@ -36,7 +36,7 @@ pub(crate) fn run(
     let mut output = take_output(&mut log, delivered);
     let line = PlayedRound {
         presence: draft.presence.clone(),
-        seed: round_seed(&draft.state().shard_id, clock.round_index),
+        seed: round_seed(&draft.state().world_id, clock.round_index),
         clock,
         last_round_at: wall.to_string(),
         fast_forward,
@@ -56,7 +56,7 @@ mod tests {
     #[test]
     fn round_record_embeds_the_flat_effect() {
         let effect = Effect {
-            class: EffectKind::Item {
+            kind: EffectKind::Item {
                 actor_id: None,
                 place: Some("docks_shop".to_string()),
                 id: "lamp_oil".to_string(),
@@ -67,25 +67,26 @@ mod tests {
             intent_id: "i".to_string(),
         };
         let line = emit_record(&Record::Round(RoundRecord {
+            kind: crate::journal::RoundKind::Round,
             round_index: 1,
             rules_rev: crate::store::RULES_REV,
             state_rev_before: 0,
             state_rev_after: 1,
             world_time_before: 0,
             world_time_after: 60,
-            presence_humans: 0,
+            presence_players: 0,
             actors_present: Vec::new(),
             seed: "seed".to_string(),
             last_round_at: "2026-01-01T00:00:00Z".to_string(),
             intents: Vec::new(),
-            rejected: Vec::new(),
+            refused: Vec::new(),
             effects: vec![effect.clone()],
             arrivals: Vec::new(),
             fast_forward: false,
             dice: Vec::new(),
-            steps_run: Vec::new(),
+            extra_steps: Vec::new(),
             memories: Vec::new(),
-            now_hash: String::new(),
+            state_hash: String::new(),
             prev: String::new(),
             chain: String::new(),
         }));

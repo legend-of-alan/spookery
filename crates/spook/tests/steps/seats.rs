@@ -69,8 +69,8 @@ fn save_unchanged_since_open(world: &mut World) {
     assert_eq!(now, opened);
 }
 
-#[then(expr = "humans is {int}")]
-fn humans_is(world: &mut World, count: u32) {
+#[then(expr = "players is {int}")]
+fn players_is(world: &mut World, count: u32) {
     assert_eq!(table::read_presence(world).0, count);
 }
 
@@ -108,7 +108,7 @@ fn a_player_sits(world: &mut World) {
 fn the_player_leaves(world: &mut World) {
     table::close_actor(world, "pc_rowan");
     let pack = table::pack(world).to_path_buf();
-    table::wait_humans(world, &pack, 0);
+    table::wait_players(world, &pack, 0);
 }
 
 #[when(expr = "the host restarts")]
@@ -120,8 +120,8 @@ fn the_host_restarts(world: &mut World) {
 
 #[then(expr = "nobody is present")]
 fn nobody_is_present(world: &mut World) {
-    let (humans, actors) = table::read_presence(world);
-    assert_eq!(humans, 0);
+    let (players, actors) = table::read_presence(world);
+    assert_eq!(players, 0);
     assert!(actors.is_empty(), "{actors:?}");
 }
 
@@ -226,7 +226,7 @@ fn a_docks_table_with_three_seated_players(world: &mut World) {
 fn the_first_player_drops(world: &mut World) {
     table::close_actor(world, "pc_rowan");
     let pack = table::pack(world).to_path_buf();
-    table::wait_humans(world, &pack, 2);
+    table::wait_players(world, &pack, 2);
 }
 
 #[then(expr = "the present actors are pc_harbormouse and pc_wren")]
@@ -470,16 +470,16 @@ fn wait_play_proc(play: &mut crate::support::Process, needle: &str) {
     }
 }
 
-#[then(expr = "the round now_hash matches the save")]
-fn the_round_now_hash_matches_the_save(world: &mut World) {
+#[then(expr = "the round state_hash matches the save")]
+fn the_round_state_hash_matches_the_save(world: &mut World) {
     let pack = table::pack(world);
     let round = spookery_engine::testing::journal::read_record_line(pack, "round-0001")
         .unwrap_or_else(|err| panic!("read round: {}", err.detail));
     let value: serde_json::Value =
         serde_json::from_str(&round).unwrap_or_else(|err| panic!("{err}"));
-    let expected = value["now_hash"]
+    let expected = value["state_hash"]
         .as_str()
-        .unwrap_or_else(|| panic!("now_hash\n{round}"));
+        .unwrap_or_else(|| panic!("state_hash\n{round}"));
     let report = spookery_engine::testing::replay_journal(pack, None, None)
         .unwrap_or_else(|err| panic!("{err}"));
     assert_eq!(
@@ -490,9 +490,9 @@ fn the_round_now_hash_matches_the_save(world: &mut World) {
 
 const HUMMED_OIL: &str = "lamp_oil";
 
-#[given(expr = "a pack with a habit rule that requires humans == 0")]
-fn a_pack_with_a_humans_habit(world: &mut World) {
-    let pack = crate::support::copy_docks("humans-habit");
+#[given(expr = "a pack with a habit rule that requires players == 0")]
+fn a_pack_with_a_players_habit(world: &mut World) {
+    let pack = crate::support::copy_docks("players-habit");
     let path = pack.join("cast/bram.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read bram: {err}"));
     let habit = "\
@@ -500,7 +500,7 @@ rules:
   - id: stock_the_street
     when: habit
     if:
-      - humans:
+      - players:
           op: \"==\"
           value: 0
     do:
@@ -631,21 +631,21 @@ fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
     assert!(!text.contains(TABLE_LINE), "{free} heard the line\n{text}");
 }
 
-#[then(expr = "table_status shows humans {int} and actors_present {string}")]
-fn table_status_shows(world: &mut World, humans: u32, actor: String) {
-    assert_eq!(table::read_presence(world), (humans, vec![actor]));
+#[then(expr = "table_status shows players {int} and actors_present {string}")]
+fn table_status_shows(world: &mut World, players: u32, actor: String) {
+    assert_eq!(table::read_presence(world), (players, vec![actor]));
 }
 
-#[then(expr = "the round's presence_humans is {int} and actors_present is {string}")]
-fn the_rounds_presence_is(world: &mut World, humans: u64, actor: String) {
+#[then(expr = "the round's presence_players is {int} and actors_present is {string}")]
+fn the_rounds_presence_is(world: &mut World, players: u64, actor: String) {
     let pack = table::pack(world);
     let last = list_round_keys(pack)
         .pop()
         .unwrap_or_else(|| panic!("no round was written"));
     let round = crate::support::read_round(pack, &last);
     assert_eq!(
-        round["presence_humans"],
-        serde_json::json!(humans),
+        round["presence_players"],
+        serde_json::json!(players),
         "{round}"
     );
     assert_eq!(

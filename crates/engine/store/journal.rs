@@ -20,10 +20,10 @@ use crate::error::Reason;
 use crate::hash::blake2s_hex;
 
 pub(crate) use super::records::{
-    AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Rejected, Step,
+    AddedMeter, Arrival, CheckpointRecord, MigrateRecord, Refusal, Step,
 };
 use super::records::{CheckpointKind, MigrateKind};
-pub use super::records::{Record, RoundRecord};
+pub use super::records::{Record, RoundKind, RoundRecord};
 
 pub fn blake2s_tagged(bytes: &[u8]) -> String {
     format!("blake2s:{}", blake2s_hex(bytes))
@@ -80,7 +80,7 @@ pub(crate) fn migrate_record(
     pack_rev_after: &str,
     state_rev_before: u64,
     state_rev_after: u64,
-    now_hash: &str,
+    state_hash: &str,
     meters: &[AddedMeter],
     edited: bool,
 ) -> Record {
@@ -90,7 +90,7 @@ pub(crate) fn migrate_record(
         pack_rev_after: pack_rev_after.to_string(),
         state_rev_before,
         state_rev_after,
-        now_hash: now_hash.to_string(),
+        state_hash: state_hash.to_string(),
         meters: meters.to_vec(),
         edited,
         prev: String::new(),
@@ -552,25 +552,26 @@ pub(crate) fn parse_round(name: &str, text: &str) -> Result<RoundRecord, Error> 
         .collect::<Result<Vec<_>, _>>()
         .map_err(|reason| fault_coded(Path::new(name), reason, reason.as_str()))?;
     Ok(RoundRecord {
+        kind: raw.kind,
         round_index: raw.round_index,
         rules_rev: raw.rules_rev,
         state_rev_before: raw.state_rev_before,
         state_rev_after: raw.state_rev_after,
         world_time_before: raw.world_time_before,
         world_time_after: raw.world_time_after,
-        presence_humans: raw.presence_humans,
+        presence_players: raw.presence_players,
         actors_present: raw.actors_present,
         seed: raw.seed,
         last_round_at: raw.last_round_at,
         intents: raw.intents,
-        rejected: raw.rejected,
+        refused: raw.refused,
         effects,
         arrivals: raw.arrivals,
         fast_forward: raw.fast_forward,
         dice: raw.dice,
-        steps_run: raw.steps_run,
+        extra_steps: raw.extra_steps,
         memories: raw.memories,
-        now_hash: raw.now_hash,
+        state_hash: raw.state_hash,
         prev: raw.prev,
         chain: raw.chain,
     })
@@ -620,7 +621,7 @@ mod tests {
         assert_eq!(parsed.pack_rev_after, "blake2s:bb");
         assert_eq!(parsed.state_rev_before, 1);
         assert_eq!(parsed.state_rev_after, 2);
-        assert_eq!(parsed.now_hash, "blake2s:cc");
+        assert_eq!(parsed.state_hash, "blake2s:cc");
         assert_eq!(emit_record(&Record::Migrate(parsed)), migrate);
     }
 
@@ -671,7 +672,7 @@ mod tests {
         assert_eq!(parsed.arrivals[0].arrived_at, 1082);
         assert!(parsed.effects.iter().any(|effect| {
             matches!(
-                effect.class,
+                effect.kind,
                 crate::effect::EffectKind::Location {
                     arrived_at: Some(1082),
                     ..

@@ -345,8 +345,8 @@ fn player_lines(status: &TableStatus, high: u64) -> Vec<HandledSay> {
 mod tests {
     use super::*;
 
-    const QUEUED_STATUS: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
-    const EMPTY_STATUS: &str = r#"{"presence":{"humans":1,"actors_present":["pc"]},"pause":{"named_plot_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
+    const QUEUED_STATUS: &str = r#"{"presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[{"id":"q1","actor_id":"pc","move":"wait"}],"last_seq":1}"#;
+    const EMPTY_STATUS: &str = r#"{"presence":{"players":1,"actors_present":["pc"]},"pause":{"presence_clocks":"running"},"world_time":0,"round_index":0,"state_rev":1,"pack_rev":"p","last_round_at":"","queued":[],"last_seq":1}"#;
     const VIEW: &str = r#"{"viewer":"pc","place":"docks","visible_actors":["pc"]}"#;
     const COMMIT: &str = r#"{"state_rev":2,"changed_keys":[],"journal_path":null,"rolls":[{"faces":[6,6],"stat":1,"total":13,"target":10,"outcome":"success"}]}"#;
     const SAY: &str = r#"{"kind":"say","seq":2,"from":"player:pc","address":"table","place":null,"actor":null,"recipients":[],"text":"ok"}"#;

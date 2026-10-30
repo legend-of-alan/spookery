@@ -5,7 +5,7 @@ use serde_json::Value;
 
 use crate::World;
 
-use super::record::{read_round, read_steps_run};
+use super::record::{read_extra_steps, read_round};
 use super::table;
 
 #[given(expr = "an empty directory")]
@@ -65,9 +65,9 @@ fn two_players_play_a_round(world: &mut World) {
     let _ = table::actor_send(world, "pc_rowan", "wait", "\"kind\":");
     let _ = table::gm_call(world, 7, "commit_round", r#"{"include_round":true}"#);
     table::close_actor(world, "pc_harbormouse");
-    table::wait_humans(world, &pack, 1);
+    table::wait_players(world, &pack, 1);
     table::close_actor(world, "pc_rowan");
-    table::wait_humans(world, &pack, 0);
+    table::wait_players(world, &pack, 0);
     table::stop_host(world);
 }
 
@@ -76,12 +76,12 @@ fn a_seated_players_host_is_killed_and_restarted(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     table::listen(world, &pack);
     table::seat_actor(world, &pack, "pc_rowan");
-    table::wait_humans(world, &pack, 1);
+    table::wait_players(world, &pack, 1);
     // A hard kill, so the restart has a crashed presence to repair.
     table::live_mut(world).host.take();
     table::stop_host(world);
     table::listen(world, &pack);
-    table::wait_humans(world, &pack, 0);
+    table::wait_players(world, &pack, 0);
     table::stop_host(world);
 }
 
@@ -99,7 +99,7 @@ fn a_queued_intent_is_written_into_a_round_record(world: &mut World) {
             "actor": "player:pc_rowan",
             "source": "player",
             "move": "take",
-            "target": { "actor": "lamp_oil" },
+            "target": { "item": "lamp_oil" },
             "args": {},
             "rationale_code": "",
         }));
@@ -160,8 +160,8 @@ fn the_round_record_gains_an_unknown_key(world: &mut World) {
     world.scratch = "surplus".to_string();
 }
 
-#[when(expr = "one effect class is need")]
-fn one_effect_class_is_need(world: &mut World) {
+#[when(expr = "one effect kind is need")]
+fn one_effect_kind_is_need(world: &mut World) {
     let mut scratch = String::new();
     edit_round(world, |round| {
         let effects = round["effects"]
@@ -169,12 +169,12 @@ fn one_effect_class_is_need(world: &mut World) {
             .unwrap_or_else(|| panic!("no effects"));
         if effects.is_empty() {
             effects.push(serde_json::json!({
-                "class": "need",
+                "kind": "need",
                 "as": "npc:mira",
                 "intent_id": "i",
             }));
         } else {
-            effects[0]["class"] = Value::String("need".to_string());
+            effects[0]["kind"] = Value::String("need".to_string());
         }
         let rev = round["state_rev_after"].as_u64().unwrap();
         let index = round["round_index"].as_u64().unwrap();
@@ -207,9 +207,9 @@ fn stderr_names_that_unknown_key(world: &mut World) {
     assert!(world.stderr.contains("bundle-"), "{}", world.stderr);
 }
 
-#[then(expr = "stderr names that record and says ILLEGAL_CLASS")]
-fn stderr_names_the_record_and_illegal_class(world: &mut World) {
-    assert!(world.stderr.contains("ILLEGAL_CLASS"), "{}", world.stderr);
+#[then(expr = "stderr names that record and says UNKNOWN_EFFECT")]
+fn stderr_names_the_record_and_unknown_effect(world: &mut World) {
+    assert!(world.stderr.contains("UNKNOWN_EFFECT"), "{}", world.stderr);
     assert!(
         world.stderr.contains("bundle-") || world.stderr.contains(world.scratch.trim()),
         "{}",
@@ -241,7 +241,7 @@ fn each_journal_record_parses_back(world: &mut World) {
     }
 }
 
-fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
+pub(super) fn edit_round(world: &mut World, edit: impl FnOnce(&mut Value)) {
     let path = spookery_engine::testing::journal::locate(table::pack(world), "round-0001")
         .unwrap_or_else(|err| panic!("{}", err.detail));
     let text = fs::read_to_string(&path).unwrap();
@@ -281,7 +281,7 @@ fn the_live_bundle_gains_a_torn_tail(world: &mut World) {
         .find(|entry| entry.changes_state())
         .unwrap_or_else(|| panic!("no round"));
     world.mark = last.state_rev_after() as usize;
-    world.scratch = last.now_hash().to_string();
+    world.scratch = last.state_hash().to_string();
     let mut bytes = fs::read(&path).unwrap();
     bytes.extend(br#"{"torn":"#);
     fs::write(&path, bytes).unwrap();
@@ -423,15 +423,15 @@ fn the_save_hash_matches_the_latest_checkpoint(world: &mut World) {
 fn the_first_round_keeps_only_the_extra_steps(world: &mut World) {
     let round = read_round(table::pack(world), "round-0001");
     assert_eq!(
-        read_steps_run(&round),
+        read_extra_steps(&round),
         ["effect_applied", "cast:mira/leave_door_note"]
     );
 }
 
-#[then(expr = "the second round omits steps_run")]
-fn the_second_round_omits_steps_run(world: &mut World) {
+#[then(expr = "the second round omits extra_steps")]
+fn the_second_round_omits_extra_steps(world: &mut World) {
     let round = read_round(table::pack(world), "round-0002");
-    assert!(round.get("steps_run").is_none(), "{round}");
+    assert!(round.get("extra_steps").is_none(), "{round}");
 }
 
 #[when(expr = "the operator plays a round")]

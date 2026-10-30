@@ -29,7 +29,7 @@ pub struct Budget {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PausePolicies {
-    pub named_plot_clocks: PausePolicy,
+    pub presence_clocks: PausePolicy,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -59,7 +59,7 @@ impl Default for Budget {
             max_fastforward_rounds: 12,
             max_trigger_depth: 4,
             pause: PausePolicies {
-                named_plot_clocks: PausePolicy::WhenEmpty,
+                presence_clocks: PausePolicy::WhenEmpty,
             },
         }
     }
@@ -99,7 +99,7 @@ pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnosti
         max_fastforward_rounds >= 0,
         max_trigger_depth >= 0,
     );
-    budget.pause.named_plot_clocks = file.pause.named_plot_clocks;
+    budget.pause.presence_clocks = file.pause.presence_clocks;
     if !diags.is_empty() {
         return Err(diags);
     }
@@ -188,7 +188,7 @@ struct BudgetFile {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PauseYaml {
-    named_plot_clocks: PausePolicy,
+    presence_clocks: PausePolicy,
 }
 
 fn read_idle_word<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
@@ -210,7 +210,7 @@ mod tests {
     }
 
     fn text(tag: &str) -> String {
-        format!("schema: {tag}\npause:\n  named_plot_clocks: pause_when_empty\n")
+        format!("schema: {tag}\npause:\n  presence_clocks: pause_when_empty\n")
     }
 
     #[test]
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn a_negative_budget_names_the_field() {
-        let text = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_rounds: -3\n";
+        let text = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_rounds: -3\n";
         let err = load_budget(text).unwrap_err();
         assert!(err
             .iter()
@@ -281,7 +281,7 @@ mod tests {
         assert!(err[0].message.contains("maybe"), "{err:?}");
         assert!(err[0].message.contains("on or off"), "{err:?}");
 
-        let zero = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nround_every_real_seconds: 0\n";
+        let zero = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nround_every_real_seconds: 0\n";
         let err = load_budget(zero).unwrap_err();
         assert_eq!(err[0].code, crate::diagnostic::Code::Error(Reason::Schema));
         assert!(err[0].line.is_some(), "{err:?}");
@@ -291,13 +291,13 @@ mod tests {
         );
         assert!(err[0].message.contains('0'), "{err:?}");
 
-        let minutes = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nidle_minutes_per_round: 0\n";
+        let minutes = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nidle_minutes_per_round: 0\n";
         let err = load_budget(minutes).unwrap_err();
         assert_eq!(err[0].code, crate::diagnostic::Code::Error(Reason::Schema));
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(err[0].message.contains("idle_minutes_per_round"), "{err:?}");
 
-        let empty = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nidle:\n";
+        let empty = "schema: budget\npause:\n  presence_clocks: pause_when_empty\nidle:\n";
         let err = load_budget(empty).unwrap_err();
         assert_eq!(first_reason(&err), Reason::Schema);
     }

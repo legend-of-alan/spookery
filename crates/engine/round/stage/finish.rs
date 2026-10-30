@@ -47,7 +47,7 @@ fn due_intent(
         .state()
         .actors
         .get(actor_id)
-        .ok_or(Reason::UnknownKey)?;
+        .ok_or(Reason::UnknownId)?;
     Ok(Intent::new(
         due_intent_id(actor_id),
         draft.state().round_index,
@@ -71,10 +71,10 @@ fn arrive(
         .state()
         .actors
         .get(actor_id)
-        .ok_or(Reason::UnknownKey)?;
+        .ok_or(Reason::UnknownId)?;
     let from = actor.place().to_string();
     let effect = Effect {
-        class: EffectKind::Location {
+        kind: EffectKind::Location {
             actor_id: actor_id.to_string(),
             from,
             to: to.clone(),
@@ -119,7 +119,7 @@ fn finish_timed_action(
     }));
     log.reports.extend(resisted);
     for effect in effects {
-        if matches!(effect.class, EffectKind::Location { .. }) {
+        if matches!(effect.kind, EffectKind::Location { .. }) {
             continue;
         }
         effect.clone().apply(draft, intent)?;

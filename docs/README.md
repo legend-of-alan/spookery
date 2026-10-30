@@ -149,7 +149,7 @@ Each call is one chat-completions POST. The body has the model name, `"stream": 
 
 That message is a bounded JSON prompt. It holds the last 16 says this process has handled, the new player lines, the move menu, the queued intents and trimmed player and NPC views. After a roll, a follow-up call adds the dice faces.
 
-The views are trimmed on purpose. A player view that's only a room census drops known facts, messages and unknown mentions. An NPC view keeps each fact's id and text. Fact bodies are always dropped.
+The views are trimmed on purpose. A player view that's only a room census drops known facts, notes and unknown mentions. An NPC view keeps each fact's id and text. Fact bodies are always dropped.
 
 The prompt does include the Markdown body of the current place and of each cast member in those views. Each body is cut at 800 characters.
 

@@ -2,7 +2,7 @@
 
 use crate::draft::Draft;
 use crate::intent::{Intent, Viewer};
-use crate::journal::{Rejected, Step};
+use crate::journal::{Refusal, Step};
 use crate::model::State;
 use crate::rule::Rule;
 use crate::rules::cost;
@@ -48,7 +48,7 @@ pub(crate) fn run(
             }
             Resolution::CannotRoll(code) => {
                 let refusal = GateRefusal::from(code);
-                log.rejected.push(Rejected::new(&intent, &refusal));
+                log.refused.push(Refusal::new(&intent, &refusal));
                 log.reports.push(refused_report(&intent, &refusal));
                 continue;
             }
@@ -119,7 +119,7 @@ fn start_timed_action(
         reject(log, intent, code);
         return false;
     }
-    log.steps.push(Step::Rule(rule.id.clone()));
+    log.extra_steps.push(Step::Rule(rule.id.clone()));
     true
 }
 
@@ -144,11 +144,11 @@ fn apply_instant_intent(
     }
     let staged = expansion.effects.iter().try_for_each(|effect| {
         effect.clone().apply(draft, intent)?;
-        log.steps.push(Step::EffectApplied);
+        log.extra_steps.push(Step::EffectApplied);
         Ok(())
     });
     let staged = staged.and_then(|()| match &intent.actor {
-        Viewer::Npc(id) => draft.count_npc_act(id, draft.presence.humans),
+        Viewer::Npc(id) => draft.count_npc_act(id, draft.presence.players),
         Viewer::Player(_) => Ok(()),
     });
     if let Err(code) = staged {
@@ -163,14 +163,14 @@ fn apply_instant_intent(
     log.effects.extend_from_slice(&expansion.effects);
     report_roll(log, &expansion.rolled, intent.actor.actor_id());
     log.reports.extend_from_slice(&expansion.resisted);
-    log.steps.push(Step::Rule(rule.id.clone()));
+    log.extra_steps.push(Step::Rule(rule.id.clone()));
     Landing::Applied
 }
 
 /// Journal the refusal and tell a player its code and what was missing.
 fn reject(log: &mut RoundLog, intent: &Intent, refusal: impl Into<GateRefusal>) {
     let refusal = refusal.into();
-    log.rejected.push(Rejected::new(intent, &refusal));
+    log.refused.push(Refusal::new(intent, &refusal));
     if matches!(intent.actor, Viewer::Player(_)) {
         log.reports.push(refused_report(intent, &refusal));
     }

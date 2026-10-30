@@ -79,7 +79,7 @@ fn gate_and_roll(rolls: &mut Resolver<'_>, intent: &Intent) -> Result<Resolution
     };
     match &rule.roll {
         Some(roll) if crate::travel::span(canon, snapshot, intent, rule) == 0 => {
-            rolls.log.steps.push(Step::CheckRolled);
+            rolls.log.extra_steps.push(Step::CheckRolled);
             roll_intent_check(rolls, intent, rule, roll)
         }
         _ => Ok(Resolution::Ready {

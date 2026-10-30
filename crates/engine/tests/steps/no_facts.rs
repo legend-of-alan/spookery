@@ -57,7 +57,7 @@ fn the_wait_commits_with_nothing_rejected(world: &mut World) {
             continue;
         }
         found = true;
-        let rejected = round["rejected"].as_array().unwrap();
+        let rejected = round["refused"].as_array().unwrap();
         assert!(rejected.is_empty(), "{key}: {rejected:?}");
     }
     assert!(found, "Nell's wait was not committed");
@@ -99,7 +99,7 @@ fn a_docks_round_plays(world: &mut World) {
 fn miras_habit_fires(world: &mut World) {
     let pack = world.pack();
     let fired = list_round_keys(pack).iter().any(|key| {
-        support::read_round(pack, key)["steps_run"]
+        support::read_round(pack, key)["extra_steps"]
             .as_array()
             .is_some_and(|steps| {
                 steps
@@ -110,7 +110,7 @@ fn miras_habit_fires(world: &mut World) {
     assert!(fired, "leave_door_note did not run");
     let now = support::state_of(pack);
     assert!(
-        now.messages
+        now.notes
             .iter()
             .any(|message| message.id == "note_mira_door"),
         "the door note was not stored"
@@ -123,7 +123,7 @@ fn play(world: &mut World, actor: &str, line: &str) {
     let mut opened =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     let seated = Presence {
-        humans: 1,
+        players: 1,
         actors_present: vec![actor.to_string()],
     };
     let (verb, target) = support::split_move(line);
@@ -163,7 +163,7 @@ fn location_effects(pack: &Path, actor: &str) -> Vec<(String, String)> {
             .as_array()
             .unwrap()
         {
-            if effect["class"] == "location" && effect["actor_id"] == actor {
+            if effect["kind"] == "location" && effect["actor_id"] == actor {
                 moves.push((
                     effect["from"].as_str().unwrap().to_string(),
                     effect["to"].as_str().unwrap().to_string(),

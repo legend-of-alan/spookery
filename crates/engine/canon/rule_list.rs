@@ -142,7 +142,7 @@ pub struct CondYaml {
     pub knows: Option<KnowsYaml>,
     pub clock: Option<ClockCondYaml>,
     pub hour: Option<HourYaml>,
-    pub humans: Option<HumansYaml>,
+    pub players: Option<PlayersYaml>,
     pub note_exists: Option<String>,
     pub wielding: Option<WieldingYaml>,
     pub all: Option<Vec<CondYaml>>,
@@ -219,7 +219,7 @@ pub struct HourYaml {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct HumansYaml {
+pub struct PlayersYaml {
     pub op: String,
     pub value: i64,
 }
@@ -730,11 +730,11 @@ pub(super) fn cond_of(yaml: &CondYaml) -> Result<Cond, Fault> {
             to: hour.to,
         });
     }
-    if let Some(humans) = &yaml.humans {
+    if let Some(players) = &yaml.players {
         found += 1;
-        cond = Some(Cond::Humans {
-            op: op_of(&humans.op)?,
-            value: humans.value,
+        cond = Some(Cond::Players {
+            op: op_of(&players.op)?,
+            value: players.value,
         });
     }
     if let Some(id) = &yaml.note_exists {

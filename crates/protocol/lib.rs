@@ -32,7 +32,7 @@ pub use gm::{
 };
 pub use player::{
     emit_player, emit_player_hello, exit_phrase, parse_player, parse_player_hello, ClockView,
-    ExitView, ItemStack, KnownFact, MessageView, MeterView, Missing, PlayerFrame, ViewScene,
+    ExitView, ItemStack, KnownFact, MeterView, Missing, NoteView, PlayerFrame, ViewScene,
 };
 
 /// The agent door for a fixed game port: the next port, on the same address.
@@ -50,14 +50,14 @@ pub fn named_refusal(code: &str, missing: Option<&Missing>) -> String {
         .and_then(Missing::as_str)
         .filter(|text| !text.is_empty());
     let sentence = match code {
-        "ILLEGAL_CLASS" => "That action is not allowed.",
+        "UNKNOWN_EFFECT" => "That action is not allowed.",
         "ILLEGAL_KNOWLEDGE" => "You cannot know that.",
         "OUT_OF_RANGE" => "That is out of range.",
         "BUDGET" => "That does not fit.",
         "PAUSED_CLOCK" => "That clock is paused.",
-        "UNKNOWN_KEY" => "That is not in the world.",
+        "UNKNOWN_ID" => "That is not in the world.",
         "VIEWER_MISMATCH" => "That is not your view.",
-        "KERNEL_ON_PLAYER" => "The table cannot do that for you.",
+        "ENGINE_ON_PLAYER" => "The table cannot do that for you.",
         "INELIGIBLE" => "You cannot do that right now.",
         "ACTOR_MISMATCH" => "That action is not yours.",
         "TABLE_EMPTY" => "Nobody is seated.",

@@ -10,7 +10,7 @@ use spookery_engine::{Intent, IntentArgs, Source, Target, Viewer};
 use spookery_engine::{Presence, State};
 
 use super::common::replace_in_file;
-use super::record::read_steps_run;
+use super::record::read_extra_steps;
 use crate::support::{self, copy_docks};
 use crate::World;
 
@@ -35,7 +35,7 @@ fn nell_travels_via_door(world: &mut World) {
             "nell-door",
             "pc_nell",
             "travel",
-            Target::Place("door".to_string()),
+            Target::Exit("door".to_string()),
         )],
     );
     world.pack = Some(pack);
@@ -45,7 +45,7 @@ fn nell_travels_via_door(world: &mut World) {
 fn bell_fires_in_the_same_round(world: &mut World) {
     let round = read_latest_round(world.pack.as_ref().unwrap());
     assert!(
-        read_steps_run(&round)
+        read_extra_steps(&round)
             .iter()
             .any(|name| name == "place:docks_shop/bell"),
         "bell did not fire\n{round}"
@@ -62,7 +62,7 @@ fn teleport_also_fires_the_bell(world: &mut World) {
     );
     let round = read_latest_round(&pack);
     assert!(
-        read_steps_run(&round)
+        read_extra_steps(&round)
             .iter()
             .any(|name| name == "place:docks_shop/bell"),
         "a teleport did not fire the bell\n{round}"
@@ -95,7 +95,7 @@ fn briar_has_flag_downed(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let round = read_latest_round(pack);
     assert!(
-        read_steps_run(&round)
+        read_extra_steps(&round)
             .iter()
             .any(|name| name == "story:injury/downed"),
         "the downed rule did not fire\n{round}"
@@ -137,7 +137,7 @@ fn another_round_passes(world: &mut World) {
 fn the_rule_does_not_fire_again(world: &mut World) {
     let round = read_latest_round(world.pack.as_ref().unwrap());
     assert!(
-        read_steps_run(&round)
+        read_extra_steps(&round)
             .iter()
             .all(|name| name != "story:injury/downed"),
         "the downed rule fired again\n{round}"
@@ -207,7 +207,7 @@ rules:
             "nell-rooms",
             "pc_nell",
             "travel",
-            Target::Place("rooms".to_string()),
+            Target::Exit("rooms".to_string()),
         )],
     );
     world.pack = Some(pack);
@@ -301,7 +301,7 @@ fn a_round_stops_at_depth_4(world: &mut World) {
         vec![intent("raise-sun", "pc_nell", "raise", Target::Empty)],
     );
     let round = read_latest_round(&pack);
-    let names = read_steps_run(&round);
+    let names = read_extra_steps(&round);
     let suns = names
         .iter()
         .filter(|name| name.as_str() == "story:loop/sun_to_moon")
@@ -373,7 +373,7 @@ fn verify_passes_after_triggers(world: &mut World) {
             "nell-door",
             "pc_nell",
             "travel",
-            Target::Place("door".to_string()),
+            Target::Exit("door".to_string()),
         )],
     );
     let output = support::run_spook(&["verify", &pack.to_string_lossy()]);
@@ -440,7 +440,7 @@ The ground gives.
             "nell-bog",
             "pc_nell",
             "travel",
-            Target::Place("bog".to_string()),
+            Target::Exit("bog".to_string()),
         )],
     );
     let faces = rolls.iter().any(|roll| roll.actor_id() == "pc_nell");
@@ -485,7 +485,7 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
             "nell-door",
             "pc_nell",
             "travel",
-            Target::Place("door".to_string()),
+            Target::Exit("door".to_string()),
         )],
     );
     world.scratch = played.record.to_string();
@@ -780,7 +780,7 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
             "rowan-take",
             "pc_rowan",
             "take",
-            Target::Actor("lamp_oil".to_string()),
+            Target::Item("lamp_oil".to_string()),
         )],
     );
 }
@@ -800,7 +800,7 @@ fn rowan_takes_an_item_beside_nell(world: &mut World) {
             "rowan-take",
             "pc_rowan",
             "take",
-            Target::Actor("lamp_oil".to_string()),
+            Target::Item("lamp_oil".to_string()),
         )],
     );
 }
@@ -850,7 +850,7 @@ fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
             "nell-shop",
             "pc_nell",
             "travel",
-            Target::Place("docks_shop".to_string()),
+            Target::Exit("docks_shop".to_string()),
         )],
     );
 }
@@ -961,7 +961,7 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
             panic!("quiet: {err}");
         });
     let rowan = Presence {
-        humans: 1,
+        players: 1,
         actors_present: vec!["pc_rowan".to_string()],
     };
     kernel.queue_intent(intent("back", "pc_rowan", "back", Target::Empty));
@@ -1033,7 +1033,7 @@ fn set_place(now: &mut State, id: &str, place: &str) {
 
 /// Seat these PCs, sorted the way the host's seats are.
 fn sit(seated: &mut Presence, ids: &[&str]) {
-    seated.humans = u32::try_from(ids.len()).unwrap();
+    seated.players = u32::try_from(ids.len()).unwrap();
     seated.actors_present = ids.iter().map(|id| (*id).to_string()).collect();
     seated.actors_present.sort();
 }
@@ -1044,7 +1044,7 @@ fn narrates(round: &Value, text: &str, viewer: &str) -> bool {
         .into_iter()
         .flatten()
         .any(|effect| {
-            effect["class"] == "narrate"
+            effect["kind"] == "narrate"
                 && effect["text"] == text
                 && effect["to"]
                     .as_array()
