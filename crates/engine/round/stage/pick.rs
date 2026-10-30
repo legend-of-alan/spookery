@@ -2,11 +2,13 @@
 
 use std::collections::BTreeSet;
 
+use crate::canon::Canon;
 use crate::draft::Draft;
 use crate::expand::stamp_for_priority;
 use crate::intent::{Intent, Target, Viewer};
 use crate::model::{Presence, State};
 use crate::rules::habits::habit_intents;
+use crate::travel::find_exit;
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
@@ -18,8 +20,8 @@ pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason
         stamp_for_priority(draft.canon(), draft.state(), draft.presence, intent);
     }
     candidates.extend(habit_intents(draft.canon(), draft.state(), draft.presence));
-    let (now, presence) = (draft.state(), draft.presence);
-    candidates.sort_by_cached_key(|intent| priority(now, presence, intent));
+    let (canon, now, presence) = (draft.canon(), draft.state(), draft.presence);
+    candidates.sort_by_cached_key(|intent| priority(canon, now, presence, intent));
     candidates.truncate(draft.budget().max_intents_applied as usize);
     check_unique_ids(candidates)
 }
@@ -61,7 +63,7 @@ enum SeatedRank {
     Unclaimed,
 }
 
-fn priority(now: &State, presence: &Presence, intent: &Intent) -> Priority {
+fn priority(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> Priority {
     let actor = match intent.actor {
         Viewer::Player(_) => ActorRank::Player,
         Viewer::Npc(_) => ActorRank::Npc,
@@ -71,7 +73,7 @@ fn priority(now: &State, presence: &Presence, intent: &Intent) -> Priority {
     } else {
         ClockRank::Other
     };
-    let claim = if touches_seated_player(now, presence, intent) {
+    let claim = if touches_seated_player(canon, now, presence, intent) {
         SeatedRank::Claimed
     } else {
         SeatedRank::Unclaimed
@@ -102,15 +104,23 @@ fn targets_pc_clock(now: &State, intent: &Intent) -> bool {
     })
 }
 
-fn touches_seated_player(now: &State, presence: &Presence, intent: &Intent) -> bool {
+fn touches_seated_player(canon: &Canon, now: &State, presence: &Presence, intent: &Intent) -> bool {
     let present = &presence.actors_present;
-    let target_hit = match &intent.target {
-        Target::Actor(id) | Target::Item(id) => present.iter().any(|actor| actor == id),
-        Target::Place(place) | Target::Exit(place) => present.iter().any(|actor| {
+    let seated_at = |place: &str| {
+        present.iter().any(|actor| {
             now.actors
                 .get(actor)
                 .is_some_and(|actor| actor.is_pc() && actor.place() == place)
-        }),
+        })
+    };
+    let target_hit = match &intent.target {
+        Target::Actor(id) | Target::Item(id) => present.iter().any(|actor| actor == id),
+        Target::Place(place) => seated_at(place),
+        Target::Exit(name) => now
+            .actors
+            .get(intent.actor.actor_id())
+            .and_then(|actor| find_exit(canon, actor.place(), name))
+            .is_some_and(|exit| seated_at(&exit.to)),
         _ => false,
     };
     let message_hit = intent

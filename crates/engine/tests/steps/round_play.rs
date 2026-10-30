@@ -490,6 +490,83 @@ fn neither_flag_is_set(world: &mut World, code: String) {
     );
 }
 
+#[given(expr = "the docks pack with Rowan seated in the shop")]
+fn the_docks_pack_with_rowan_seated(world: &mut World) {
+    world.pack = Some(support::copy_pack("oneshot-docks", "exit-touch"));
+}
+
+#[when(expr = "Bram and Aldric wait and then Mira travels through the {string} exit")]
+fn two_wait_and_mira_travels(world: &mut World, exit: String) {
+    let intents = vec![
+        intent("wait-bram", npc("bram"), "wait", Target::Empty),
+        intent("wait-aldric", npc("aldric"), "wait", Target::Empty),
+        intent("walk-mira", npc("mira"), "travel", Target::Exit(exit)),
+    ];
+    let (_now, _rolls, round) = play_queued(world.pack(), &["pc_rowan"], intents);
+    world.scratch = round.to_string();
+}
+
+#[then(expr = "Mira's travel is picked ahead of both waits")]
+fn miras_travel_is_picked_first(world: &mut World) {
+    let round: Value = serde_json::from_str(&world.scratch).unwrap();
+    let rules: Vec<&str> = round["extra_steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|step| step["rule"].as_str())
+        .filter(|rule| ["verb:travel", "verb:wait"].contains(rule))
+        .collect();
+    assert_eq!(
+        rules,
+        vec!["verb:travel", "verb:wait", "verb:wait"],
+        "{round}"
+    );
+}
+
+#[given(expr = "a shop rule that teleports to its exit target")]
+fn a_shop_rule_that_teleports(world: &mut World) {
+    let pack = support::copy_pack("oneshot-docks", "exit-teleport");
+    let rule = "  - id: blink
+    when: { verb: blink, target: exit }
+    do:
+      - location: { to: target, teleport: true }";
+    add_place_rules(&pack, "docks_shop", rule);
+    support::stamp_pack_rev(&pack);
+    world.pack = Some(pack);
+}
+
+#[when(expr = "Rowan aims it at the {string} exit")]
+fn rowan_aims_it_at_the_exit(world: &mut World, exit: String) {
+    let intents = vec![intent(
+        "blink",
+        player("pc_rowan"),
+        "blink",
+        Target::Exit(exit),
+    )];
+    let (now, _rolls, round) = play_queued(world.pack(), &["pc_rowan"], intents);
+    world.intent_id = "blink".to_string();
+    world.scratch = now.actors["pc_rowan"].place().to_string();
+    world.oil = round.to_string().into_bytes();
+}
+
+#[then(expr = "it is refused with SCHEMA and Rowan stays in the shop")]
+fn it_is_refused_with_schema(world: &mut World) {
+    assert_eq!(world.scratch, "docks_shop");
+    let round: Value = serde_json::from_slice(&world.oil).unwrap();
+    let rejected = round["refused"].as_array().unwrap();
+    assert!(
+        rejected
+            .iter()
+            .any(|item| item["id"] == world.intent_id && item["code"] == "SCHEMA"),
+        "{round}"
+    );
+}
+
+#[then(expr = "spook verify passes on the docks pack")]
+fn spook_verify_passes_on_the_docks_pack(world: &mut World) {
+    spookery_engine::verify_pack(world.pack(), None).expect("verify");
+}
+
 /// Rowan, seated, takes the street exit, then plays `then` in the same round.
 fn rowan_walks(pack: &Path, then: Vec<Intent>) -> (spookery_engine::State, Value) {
     let walk = Target::Exit("docks_street".to_string());
