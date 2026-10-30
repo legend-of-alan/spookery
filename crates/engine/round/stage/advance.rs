@@ -35,8 +35,8 @@ pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<Clock, Reason> {
 
 fn minutes_for(humans: u32, budget: &Budget) -> u64 {
     if humans > 0 {
-        budget.live_minutes_per_tick
+        budget.live_minutes_per_round
     } else {
-        budget.idle_minutes_per_tick
+        budget.idle_minutes_per_round
     }
 }

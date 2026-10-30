@@ -57,8 +57,8 @@ pub(crate) fn play_catch_up(world: &mut World, wall: &str, hours: u64) -> Result
 
 /// How many rounds `hours` of empty-table absence earn, within the budget's caps.
 fn planned_rounds(budget: &Budget, hours: u64) -> Result<u64, Reason> {
-    let every = budget.tick_every_real_seconds;
-    let idle_minutes = budget.idle_minutes_per_tick;
+    let every = budget.round_every_real_seconds;
+    let idle_minutes = budget.idle_minutes_per_round;
     if every == 0 || idle_minutes == 0 {
         return Err(Reason::Schema);
     }
@@ -70,7 +70,7 @@ fn planned_rounds(budget: &Budget, hours: u64) -> Result<u64, Reason> {
         .checked_mul(absence_minutes)
         .ok_or(Reason::OutOfRange)?;
     let by_minutes = minute_cap / idle_minutes;
-    Ok(printed.min(budget.idle_catchup_max_ticks).min(by_minutes))
+    Ok(printed.min(budget.idle_catchup_max_rounds).min(by_minutes))
 }
 
 fn ceil_div(numerator: u64, denominator: u64) -> u64 {
@@ -87,14 +87,14 @@ fn ceil_div(numerator: u64, denominator: u64) -> u64 {
 
 /// Keep playing while a seated PC is still busy. The burst starts only when every
 /// seated PC is busy. `already` counts a round this call did not play, and the burst
-/// stops at `max_fastforward_ticks` including that round.
+/// stops at `max_fastforward_rounds` including that round.
 pub(crate) fn play_while_busy(
     world: &mut World,
     presence: &Presence,
     wall: &str,
     already: u32,
 ) -> Result<Vec<RoundOutput>, Reason> {
-    let cap = world.budget().max_fastforward_ticks;
+    let cap = world.budget().max_fastforward_rounds;
     let busy = seated_busy(world, presence);
     if busy.is_empty() || busy.contains(&false) {
         return Ok(Vec::new());

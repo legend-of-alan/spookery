@@ -52,7 +52,7 @@ Feature: Travel follows the map
     Then nothing advances until the GM commits
 
   Scenario: Fast-forward is capped
-    Given busy_until is 200 rounds away and max_fastforward_ticks is 12
+    Given busy_until is 200 rounds away and max_fastforward_rounds is 12
     Then 12 rounds run and the rest continues on the next action
 
   Scenario: Replay

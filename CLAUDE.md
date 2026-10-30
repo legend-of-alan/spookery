@@ -28,7 +28,7 @@ cargo test -p spook --test features_world -- --name "Locked exit"      # BDD sce
 
 The live model round (`crates/spook/tests/integration/live_round.rs`) is `#[ignore]`d; run it with `-- --ignored` and `SPOOK_GM_KEY`, `SPOOK_GM_URL`, `SPOOK_GM_MODEL` set (Ollama works: key `ollama`, URL `http://127.0.0.1:11434/v1`).
 
-Pack tooling (after `cargo build`): `spook check --json <pack>` (stdout is `[]` when clean), `spook status`, `spook tick`, `spook migrate`, `spook verify`. `spook run <pack>` writes `state/` into the pack it is given, so always run it on a copy, never on `packs/*` in the repo.
+Pack tooling (after `cargo build`): `spook check --json <pack>` (stdout is `[]` when clean), `spook status`, `spook round`, `spook migrate`, `spook verify`. `spook run <pack>` writes `state/` into the pack it is given, so always run it on a copy, never on `packs/*` in the repo.
 
 ## Crate layering (enforced by CI)
 

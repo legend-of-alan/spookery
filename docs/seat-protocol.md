@@ -464,10 +464,10 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
     "named_plot_clocks": "paused"
   },
   "world_time": 1080,
-  "tick_index": 0,
+  "round_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:1958ea45e07e207e4dd3aec586573b5edf8f8543e3cf72cf8992cbb84fdbce09",
-  "last_tick_at": "2026-01-01T00:00:00Z",
+  "pack_rev": "blake2s:5599af7634e836f6a07ff4cbb20fc46ba29f3a74967b9a7c6f6e0fead076ebac",
+  "last_round_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 0,
   "pack": {
@@ -552,7 +552,7 @@ No key is required. `since` is the only other accepted key. It is a tape sequenc
 }
 ```
 
-`humans` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_tick_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `events` is absent unless `since` was sent. `pack` is the move menu, cast kinds, place prose, and cast prose, and it is absent when `since` was sent. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
+`humans` is how many player seats are held. `actors_present` is those PCs. `world_time` is the game clock in minutes. `pack_rev` is the canon hash. A client that opened the pack on disk should compare it and leave on a mismatch. `last_round_at` is the save's stamp. `queued` is waiting moves, each `id`, `actor_id`, and `move`. `last_seq` is the last tape sequence. `events` is absent unless `since` was sent. `pack` is the move menu, cast kinds, place prose, and cast prose, and it is absent when `since` was sent. A server built before `pack` moved here leaves it out, and `spook ai-gm` stops with `this spook run is older than spook ai-gm, rebuild both`.
 
 After the two says above, `since` 0 returns them:
 
@@ -584,10 +584,10 @@ After the two says above, `since` 0 returns them:
     "named_plot_clocks": "paused"
   },
   "world_time": 1080,
-  "tick_index": 0,
+  "round_index": 0,
   "state_rev": 0,
-  "pack_rev": "blake2s:1958ea45e07e207e4dd3aec586573b5edf8f8543e3cf72cf8992cbb84fdbce09",
-  "last_tick_at": "2026-01-01T00:00:00Z",
+  "pack_rev": "blake2s:5599af7634e836f6a07ff4cbb20fc46ba29f3a74967b9a7c6f6e0fead076ebac",
+  "last_round_at": "2026-01-01T00:00:00Z",
   "queued": [],
   "last_seq": 2,
   "events": [
@@ -664,7 +664,7 @@ An empty argument object:
 
 #### intent
 
-`actor_id` and `move` are required. `actor_id` is a bare actor id. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is a string. `args` may carry `to`, a list of actor ids. `tick_index` and `rationale_code` may be sent.
+`actor_id` and `move` are required. `actor_id` is a bare actor id. `id`, when sent, becomes the queue id. Omit it and the seat mints one. `target` is a string. `args` may carry `to`, a list of actor ids. `round_index` and `rationale_code` may be sent.
 
 The call queues the move. It does not emit `spook/event` and it does not write a player line. The result is the queue id.
 
@@ -734,11 +734,11 @@ The result is the tape object. The same object follows as a `spook/event`, and e
 
 #### commit_round
 
-`include_tick` is required. `session_id` may be sent; the round does not branch on it.
+`include_round` is required. `session_id` may be sent; the round does not branch on it.
 
-`include_tick: false` while the queue is non-empty is `NOT_IN_SPEC`. The queue stays.
+`include_round: false` while the queue is non-empty is `NOT_IN_SPEC`. The queue stays.
 
-<!-- example: commit-without-tick-request -->
+<!-- example: commit-without-round-request -->
 ```json
 {
   "jsonrpc": "2.0",
@@ -747,20 +747,20 @@ The result is the tape object. The same object follows as a `spook/event`, and e
   "params": {
     "name": "commit_round",
     "arguments": {
-      "include_tick": false
+      "include_round": false
     }
   }
 }
 ```
 
-<!-- example: commit-without-tick -->
+<!-- example: commit-without-round -->
 ```json
 {
   "code": "NOT_IN_SPEC"
 }
 ```
 
-`include_tick: true` commits the queue in queue order, one round. An empty queue writes no round file, unless every seated PC is busy, in which case the table fast-forwards.
+`include_round: true` commits the queue in queue order, one round. An empty queue writes no round file, unless every seated PC is busy, in which case the table fast-forwards.
 
 <!-- example: commit-request -->
 ```json
@@ -771,7 +771,7 @@ The result is the tape object. The same object follows as a `spook/event`, and e
   "params": {
     "name": "commit_round",
     "arguments": {
-      "include_tick": true
+      "include_round": true
     }
   }
 }
@@ -950,7 +950,7 @@ Each player socket, and the HTTP GM session, has an outbound queue of at most 25
 | `SEAT_TAKEN` | That PC is held. Connect again as a different live PC. |
 | `CHOOSE_PC` | The hello was empty. Pick one id from the JSON list in `missing` and connect again as `player:<id>`. An empty list means no PC is free. |
 | `SCHEMA` | The line or the arguments are the wrong shape. `player:` with an empty id is `SCHEMA`. On a seated player, send a corrected line. On hello, connect again with `player:<id>` of a live PC. |
-| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, `commit_round` set `include_tick` false while a move is queued, or the call is on a session that already closed. Nothing was written for that call. The queue is still there after the false commit. |
+| `NOT_IN_SPEC` | The word is not a player command, the tool is not in the menu, `commit_round` set `include_round` false while a move is queued, or the call is on a session that already closed. Nothing was written for that call. The queue is still there after the false commit. |
 | `LINE_TOO_LONG` | The line is over 8 KiB, not counting the newline. The socket is closed. Connect again with a shorter line. |
 | `UNSCOPED_PERCEIVE` | Call `perceive` again with `as` set to a bare actor id. |
 | `NO_EXIT` | The move was not queued. On the player line, `missing` is the locked text when the pack set one. |

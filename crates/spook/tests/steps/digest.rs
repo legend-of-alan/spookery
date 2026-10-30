@@ -27,7 +27,7 @@ fn thirteen_rounds_pass(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     let arg = pack.to_str().unwrap();
     for round in 1..=13 {
-        let output = spook(&["tick", arg]);
+        let output = spook(&["round", arg]);
         assert!(
             output.status.success(),
             "round {round}\nstdout:\n{}\nstderr:\n{}",

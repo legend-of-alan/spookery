@@ -659,7 +659,7 @@ mod tests {
 
     #[test]
     fn a_record_and_head_from_older_rules_are_rules_rev() {
-        let old = r#"{"tick_index":1,"rules_rev":7,"state_rev_before":0}"#;
+        let old = r#"{"round_index":1,"rules_rev":7,"state_rev_before":0}"#;
         assert_eq!(
             parse_line("bundle-0000.jsonl", old).unwrap_err().reason,
             Reason::RulesRev
@@ -669,7 +669,7 @@ mod tests {
         fs::create_dir_all(head.parent().unwrap()).unwrap();
         fs::write(
             &head,
-            r#"{"state_rev":1,"tick_index":1,"state_hash":"","chain":""}"#,
+            r#"{"state_rev":1,"round_index":1,"state_hash":"","chain":""}"#,
         )
         .unwrap();
         assert_eq!(read_head(&pack).unwrap_err().reason, Reason::RulesRev);

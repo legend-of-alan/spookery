@@ -62,8 +62,8 @@ pub async fn serve(
     let door = http_listener.local_addr().map_err(Error::Io)?;
     report_bound(&mut *config.out, game, door)?;
     // Keepalive stays the pack interval. The idle switch does not change it.
-    let keepalive_secs = world.budget().tick_every_real_seconds;
-    let arm_idle_timer = world.budget().idle_ticking;
+    let keepalive_secs = world.budget().round_every_real_seconds;
+    let arm_idle_timer = world.budget().idle_rounds;
     let hello_timeout = config.hello_timeout;
     let (tx, rx) = std::sync::mpsc::channel();
     let mut tasks = tokio::task::JoinSet::new();

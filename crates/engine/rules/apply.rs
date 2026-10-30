@@ -394,7 +394,7 @@ fn apply_flag(draft: &mut Draft, actor_id: &str, key: &str, value: bool) -> Resu
     }
     let listed = draft
         .canon()
-        .profile(actor_id)
+        .idle_profile(actor_id)
         .is_some_and(|profile| profile.flags.iter().any(|flag| flag == key));
     if !listed {
         return Err(Reason::UnknownKey);

@@ -179,7 +179,7 @@ fn two_arrivals(world: &mut World) {
     let pack = temp_pack("two-arrivals");
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {
@@ -319,7 +319,7 @@ fn both_busy_without_a_gm(world: &mut World) {
     });
     fs::write(
         pack.join("cast/pc-nell.md"),
-        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\ntick:\n  eligible: false\n---\nNell.\n",
+        "---\nschema: cast\nid: pc_nell\nkind: pc_template\ndisplay_name: Nell\nfacts: []\nidle:\n  eligible: false\n---\nNell.\n",
     )
     .unwrap();
     edit_save(&pack, |now| {
@@ -386,11 +386,11 @@ fn nothing_advances_until_commit(world: &mut World) {
     let (_mark, added) = table::player_send(world, "wait", "BUSY");
     assert!(added.contains("BUSY"), "{added}");
     assert_eq!(table::now_of(&pack).world_time, before);
-    let _ = table::gm_call(world, 9, "commit_round", r#"{"include_tick":true}"#);
+    let _ = table::gm_call(world, 9, "commit_round", r#"{"include_round":true}"#);
     assert!(table::now_of(&pack).world_time > before);
 }
 
-#[given(expr = "busy_until is 200 rounds away and max_fastforward_ticks is 12")]
+#[given(expr = "busy_until is 200 rounds away and max_fastforward_rounds is 12")]
 fn a_long_journey_and_the_cap(world: &mut World) {
     let pack = temp_pack("cap");
     edit_save(&pack, |now| {

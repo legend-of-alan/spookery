@@ -14,7 +14,7 @@ The first key in each file is `schema`, with no version suffix. In a Markdown fi
 | `rules/verbs.yaml` | Shared verb rules. Tag `verbs`. |
 | `rules/meters.yaml` | Meter definitions. Tag `meters`. |
 | `rules/checks.yaml` | Check definitions. Tag `checks`. |
-| `rules/tick.yaml` | Round budgets and the idle policy. Tag `tick`. |
+| `rules/budget.yaml` | Round budgets and the idle policy. Tag `budget`. |
 | `world/places/<id>.md` | One place: facts, exits, and that place's rules. |
 | `world/items/<id>.md` | One item: name, tags, prose, and that item's rules. |
 | `cast/<name>.md` | One NPC or PC template, and that cast member's rules. |
@@ -188,7 +188,7 @@ A short knife.
 
 `kind` is `npc` or `pc_template`. A template does not sit a player. The save does. The file name is not the id: `cast/pc-ada.md` has id `pc_ada`. `display_name` is required, and it is the name a player sees.
 
-`tick.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
+`idle.eligible` says whether the idle runner may pick this NPC. `when: habit` is a habit of that NPC. The runner takes the first habit whose `if` holds and whose `do` list expands.
 
 ```yaml file=cast/pc-ada.md
 ---
@@ -197,7 +197,7 @@ id: pc_ada
 kind: pc_template
 display_name: Ada
 facts: []
-tick:
+idle:
   eligible: false
   flags: []
 ---
@@ -214,7 +214,7 @@ facts:
   - id: fact_ledger_short
     text: The oil ledger is one tin short.
     hidden: true
-tick:
+idle:
   eligible: true
   flags: []
 rules:
@@ -329,7 +329,7 @@ A change rule fires when its watch becomes true. It does not fire again while th
 
 A change rule has no `cost`. Check rejects one. It may have `if`, `roll`, and the outcome lists. `if` is read after the change.
 
-Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. `max_trigger_depth` in `rules/tick.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
+Matching change rules run in owner order (shared verbs, then place, item, cast, story), then by file path, then by position in the file. They run again on the changes they just wrote, until a pass matches nothing. In one pass a rule runs at most once for each subject. `max_trigger_depth` in `rules/budget.yaml` caps the passes. Omitted, it is 4. The next pass is recorded and does not run. Check warns when change rules set each other's watched values. A `narrate` or `note` on a change rule that can reach a viewer who cannot see that change is `TRIGGER_LEAK`.
 
 `if` is a list. Each dash is one condition. `all` is and, `any` is or, and `not` negates one condition. Two conditions under one dash are rejected. `who` is `self`, `target`, `here`, `world`, `place:<id>`, or an actor id. On `has_item`, `wielding`, and an item effect, `id: target` is the intent's target. The habit on `cast/keeper.md` uses each condition. `op` is `<`, `<=`, `==`, `>=`, or `>`. `hour.from` and `hour.to` are integers in `0..24` and they differ.
 
@@ -574,12 +574,12 @@ checks:
     stat: nerve
 ```
 
-## Tick
+## Budget
 
-`idle` is `on` or `off`. Omitted means `on`. `pause.named_plot_clocks` is `pause_when_empty` or `always_run`. Omitted counters use the engine defaults. `tick_every_real_seconds` is real seconds between wakes, `idle_minutes_per_tick` and `live_minutes_per_tick` are world minutes one tick writes, `idle_catchup_max_ticks` is the most ticks one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
+`idle` is `on` or `off`. Omitted means `on`. `pause.named_plot_clocks` is `pause_when_empty` or `always_run`. Omitted counters use the engine defaults. `round_every_real_seconds` is real seconds between wakes, `idle_minutes_per_round` and `live_minutes_per_round` are world minutes one round writes, `idle_catchup_max_rounds` is the most rounds one catch-up runs, and `idle_max_world_hours_per_real_hour` is the world hours one real hour of absence may write. The file below sets them.
 
-```yaml file=rules/tick.yaml
-schema: tick
+```yaml file=rules/budget.yaml
+schema: budget
 idle: on
 max_intents_applied: 12
 max_npcs_acting: 8
@@ -588,12 +588,12 @@ max_state_keys_mutated: 24
 max_memory_writes: 8
 idle_acts_per_world_day: 3
 live_acts_per_world_hour: 6
-tick_every_real_seconds: 300
-idle_minutes_per_tick: 60
-live_minutes_per_tick: 5
-idle_catchup_max_ticks: 12
+round_every_real_seconds: 300
+idle_minutes_per_round: 60
+live_minutes_per_round: 5
+idle_catchup_max_rounds: 12
 idle_max_world_hours_per_real_hour: 8
-max_fastforward_ticks: 12
+max_fastforward_rounds: 12
 max_trigger_depth: 4
 pause:
   named_plot_clocks: pause_when_empty

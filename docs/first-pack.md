@@ -42,7 +42,7 @@ checks:
 
 `rules/verbs.yaml` has `wait`, `travel`, and `steady`. `wait` is a yield: `do: []` and no success, partial, or failure list. `travel` follows an exit of the current place: `travel lane` uses the exit named `lane`. `steady` names the `nerve` check. `tend_the_yard` is a habit rule on `cast/keeper.md`, with `when: habit`.
 
-`rules/tick.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
+`rules/budget.yaml` uses the same counters as the docks pack and sets `idle: on`, so an empty table still wakes.
 
 `state/save.yaml` is the save. `state_rev` starts at 0. `pack_rev` is the hash of `world/`, `cast/`, and `rules/` only. `spook new` computes it. Leave that line for `spook migrate` when the canon changes.
 

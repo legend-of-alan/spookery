@@ -18,7 +18,7 @@ Feature: The CLI prints usage
       | play    |
       | gm      |
       | ai-gm   |
-      | tick    |
+      | round   |
       | status  |
       | migrate |
       | check   |

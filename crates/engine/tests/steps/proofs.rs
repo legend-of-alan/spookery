@@ -331,7 +331,7 @@ facts: []
 Rowan.
 ",
     );
-    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
+    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
         fs::copy(rules.join(name), {
             let dest = pack.join("rules").join(name);
             fs::create_dir_all(dest.parent().unwrap()).unwrap();
@@ -617,7 +617,7 @@ id: {id}
 kind: npc
 display_name: {id}
 facts: []
-tick:
+idle:
   eligible: true
 rules:
   - id: hold
@@ -641,7 +641,7 @@ rules:
             },
         );
     }
-    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "tick.yaml"] {
+    for name in ["verbs.yaml", "checks.yaml", "meters.yaml", "budget.yaml"] {
         let dest = pack.join("rules").join(name);
         fs::create_dir_all(dest.parent().unwrap()).unwrap();
         fs::copy(rules.join(name), &dest).unwrap();
@@ -790,8 +790,8 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap();
     let next = text.replacen(
-        "tick:\n  eligible: true\n",
-        &format!("tick:\n  eligible: true\n  flags:\n{flags}"),
+        "idle:\n  eligible: true\n",
+        &format!("idle:\n  eligible: true\n  flags:\n{flags}"),
         1,
     );
     assert_ne!(next, text, "mira round block was not patched");

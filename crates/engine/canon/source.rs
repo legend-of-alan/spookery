@@ -19,7 +19,7 @@ pub(super) const VERBS_SCHEMA: &str = "verbs";
 pub(super) const ITEM_SCHEMA: &str = "item";
 pub(super) const STORY_SCHEMA: &str = "story";
 pub(super) const CHECKS_SCHEMA: &str = "checks";
-pub(super) const TICK_SCHEMA: &str = "tick";
+pub(super) const BUDGET_SCHEMA: &str = "budget";
 
 /// One pack file as the loader sees it: its pack-relative name, its YAML text,
 /// and the file line the YAML starts on (1 for Markdown frontmatter, 0 for YAML).

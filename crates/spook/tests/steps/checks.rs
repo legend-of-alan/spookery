@@ -106,7 +106,7 @@ fn the_player_sees_a_check_success(world: &mut World) {
 fn the_round_log_resolves_the_check_without_faces(world: &mut World) {
     let text =
         spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
-            .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
+            .unwrap_or_else(|err| panic!("read round: {}", err.detail));
     assert!(text.contains("\"check_rolled\""), "{text}");
     assert!(!text.contains("faces"), "{text}");
 }
@@ -334,8 +334,8 @@ fn insert_flags(pack: &Path, flags: &str) {
     let path = pack.join("cast/mira.md");
     let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read mira: {err}"));
     let next = text.replacen(
-        "tick:\n  eligible: true\n",
-        &format!("tick:\n  eligible: true\n  flags:\n{flags}"),
+        "idle:\n  eligible: true\n",
+        &format!("idle:\n  eligible: true\n  flags:\n{flags}"),
         1,
     );
     assert_ne!(next, text, "mira flags were not inserted");

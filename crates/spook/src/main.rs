@@ -57,9 +57,9 @@ enum Command {
         #[arg(long = "mcp-http", value_name = "127.0.0.1:<port>")]
         mcp_http: Option<String>,
     },
-    /// Advance the pack one tick.
+    /// Play one round on the pack.
     #[cfg(feature = "server")]
-    Tick {
+    Round {
         /// Pack directory.
         pack: PathBuf,
     },
@@ -171,7 +171,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             Ok(())
         }
         #[cfg(feature = "server")]
-        Command::Tick { pack } => {
+        Command::Round { pack } => {
             if let Some(warning) =
                 spookery_engine::play_pack_once(&pack).map_err(|e| e.to_string())?
             {
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn the_default_address_is_loopback_9737() {
-        let cli = Cli::try_parse_from(["spook", "tick", "pack"]).unwrap();
+        let cli = Cli::try_parse_from(["spook", "round", "pack"]).unwrap();
         assert_eq!(cli.addr, "127.0.0.1:9737");
         assert_eq!(
             parse_loopback("127.0.0.1").unwrap(),
@@ -318,7 +318,7 @@ mod tests {
     #[tokio::test]
     async fn every_command_refuses_an_open_address_before_the_pack_opens() {
         for command in [
-            "run", "play", "gm", "ai-gm", "tick", "status", "migrate", "check", "verify", "new",
+            "run", "play", "gm", "ai-gm", "round", "status", "migrate", "check", "verify", "new",
         ] {
             for addr in ["0.0.0.0", "10.0.0.1:9737"] {
                 let cli = Cli::try_parse_from(["spook", command, "--addr", addr])

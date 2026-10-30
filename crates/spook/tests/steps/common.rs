@@ -121,19 +121,19 @@ fn break_pack(pack: &Path, fault: &str) {
             "facts:\n  - id: fact_rowan_shop\n    text: \"He said: the shop.\"\n    hidden: false\n  - id: fact_rowan_shop\n    text: The shop again.\n    hidden: false\n",
         ),
         "idle maybe" => replace_file(
-            &pack.join("rules/tick.yaml"),
-            "schema: tick\n",
-            "schema: tick\nidle: maybe\n",
+            &pack.join("rules/budget.yaml"),
+            "schema: budget\n",
+            "schema: budget\nidle: maybe\n",
         ),
         "zero round interval" => replace_file(
-            &pack.join("rules/tick.yaml"),
-            "tick_every_real_seconds: 300\n",
-            "tick_every_real_seconds: 0\n",
+            &pack.join("rules/budget.yaml"),
+            "round_every_real_seconds: 300\n",
+            "round_every_real_seconds: 0\n",
         ),
         "zero idle minutes" => replace_file(
-            &pack.join("rules/tick.yaml"),
-            "idle_minutes_per_tick: 60\n",
-            "idle_minutes_per_tick: 0\n",
+            &pack.join("rules/budget.yaml"),
+            "idle_minutes_per_round: 60\n",
+            "idle_minutes_per_round: 0\n",
         ),
         other => panic!("unknown fault {other}"),
     }
@@ -391,7 +391,7 @@ fn the_player_waits(world: &mut World) {
 
 #[when(expr = "the GM commits the round")]
 fn the_gm_commits_the_round(world: &mut World) {
-    world.stdout = table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
+    world.stdout = table::gm_call(world, 2, "commit_round", r#"{"include_round":true}"#);
 }
 
 #[then(expr = "a round file was written")]

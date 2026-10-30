@@ -13,6 +13,7 @@ use crate::meter::MeterDef;
 use crate::rule::{Cond, Cost, Owner, RuleTable, TargetKind, When};
 pub use spookery_protocol::{CastKind, MenuRow, PackSummary};
 
+mod budget;
 mod cast;
 mod checks;
 mod fact;
@@ -25,8 +26,9 @@ mod rule_list;
 mod save;
 mod source;
 mod story;
-mod tick;
 
+use budget::load_budget;
+pub(crate) use budget::{Budget, PausePolicy};
 use cast::add_cast;
 use checks::load_checks;
 use fact::Facts;
@@ -43,8 +45,6 @@ use rule_list::load_verbs;
 pub(crate) use save::{check_save, migrate_save, pending_meters};
 use source::{collect_files, markdown_files, read_text, At, Diags, Source};
 use story::load_stories;
-use tick::load_tick;
-pub(crate) use tick::{Budget, PausePolicy};
 
 #[derive(Clone, Debug)]
 pub struct Canon {
@@ -61,7 +61,7 @@ pub struct Canon {
     pub meters: BTreeMap<String, MeterDef>,
     pub items: BTreeMap<String, ItemCanon>,
     pub budget: Budget,
-    /// Ticks between journal checkpoints. `save.yaml` is rewritten then.
+    /// Rounds between journal checkpoints. `save.yaml` is rewritten then.
     pub checkpoint_every: u64,
 }
 
@@ -107,12 +107,12 @@ pub struct CastCanon {
     pub display_name: String,
     pub facts: Vec<String>,
     pub body: String,
-    pub tick: Option<TickProfile>,
+    pub idle: Option<IdleProfile>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct TickProfile {
+pub struct IdleProfile {
     pub eligible: bool,
     #[serde(default)]
     pub flags: Vec<String>,
@@ -157,8 +157,8 @@ impl Canon {
         }
     }
 
-    pub fn profile(&self, actor_id: &str) -> Option<&TickProfile> {
-        self.cast.get(actor_id).and_then(|cast| cast.tick.as_ref())
+    pub fn idle_profile(&self, actor_id: &str) -> Option<&IdleProfile> {
+        self.cast.get(actor_id).and_then(|cast| cast.idle.as_ref())
     }
 
     pub fn display_name(&self, id: &str) -> String {
@@ -234,11 +234,11 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.push(rule_list::replaced_moves_file());
     }
     // 5. The four rule files are read in this order; a missing one is reported here.
-    let [verbs, checks, meters, tick] = [
+    let [verbs, checks, meters, budget] = [
         "rules/verbs.yaml",
         "rules/checks.yaml",
         "rules/meters.yaml",
-        "rules/tick.yaml",
+        "rules/budget.yaml",
     ]
     .map(|rel| diags.keep(read_text(root, rel)).map(|text| (rel, text)));
     // 6. Verbs.
@@ -256,10 +256,10 @@ pub fn load_canon(root: &Path) -> Result<Canon, Vec<Diagnostic>> {
         diags.extend(taken.then(|| source.repeat(&rule.id, "", At::Nowhere, twice)));
     }
     let rules = RuleTable::new(loaded);
-    // 9. Checks. 10. Meters. 11. Tick.
+    // 9. Checks. 10. Meters. 11. Budget.
     let checks = checks.and_then(|(rel, text)| diags.keep(load_checks(rel, &text)));
     let meters = meters.and_then(|(rel, text)| diags.keep(load_meters(rel, &text)));
-    let budget = tick.and_then(|(rel, text)| diags.keep(load_tick(rel, &text)));
+    let budget = budget.and_then(|(rel, text)| diags.keep(load_budget(rel, &text)));
     // 12. Lints across files.
     if let Some(checks) = &checks {
         diags.extend(unknown_checks(&rules, checks));

@@ -6,8 +6,8 @@ Feature: A pack can turn idle ticking off
   Scenario: A long absence writes no catch-up while idle is off
     When idle is off and a long absence wakes
 
-  Scenario: A seated line and spook tick still advance while idle is off
-    When idle is off and a player waits and spook tick runs
+  Scenario: A seated line and spook round still advance while idle is off
+    When idle is off and a player waits and spook round runs
 
   Scenario: The GM commit still advances while idle is off
     When idle is off and the GM commits a queued wait
@@ -17,10 +17,10 @@ Feature: A pack can turn idle ticking off
     When the copy is broken by "idle maybe"
     And the operator runs spook check
     Then the check exits 1
-    And the report names "rules/tick.yaml"
+    And the report names "rules/budget.yaml"
     And the report names "SCHEMA"
     And the report says "not on or off"
-    And the report has a location for "rules/tick.yaml"
+    And the report has a location for "rules/budget.yaml"
     And stdout is empty
     And the pack bytes are unchanged
 
@@ -29,10 +29,10 @@ Feature: A pack can turn idle ticking off
     When the copy is broken by "zero round interval"
     And the operator runs spook check
     Then the check exits 1
-    And the report names "rules/tick.yaml"
+    And the report names "rules/budget.yaml"
     And the report names "SCHEMA"
-    And the report says "tick_every_real_seconds"
-    And the report has a location for "rules/tick.yaml"
+    And the report says "round_every_real_seconds"
+    And the report has a location for "rules/budget.yaml"
     And stdout is empty
     And the pack bytes are unchanged
 
@@ -41,9 +41,9 @@ Feature: A pack can turn idle ticking off
     When the copy is broken by "zero idle minutes"
     And the operator runs spook check
     Then the check exits 1
-    And the report names "rules/tick.yaml"
+    And the report names "rules/budget.yaml"
     And the report names "SCHEMA"
-    And the report says "idle_minutes_per_tick"
-    And the report has a location for "rules/tick.yaml"
+    And the report says "idle_minutes_per_round"
+    And the report has a location for "rules/budget.yaml"
     And stdout is empty
     And the pack bytes are unchanged

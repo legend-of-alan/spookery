@@ -7,7 +7,7 @@ facts:
   - id: fact_ledger_short
     text: The lamp-oil ledger is short.
     hidden: true
-tick:
+idle:
   eligible: true
 rules:
   - id: leave_door_note

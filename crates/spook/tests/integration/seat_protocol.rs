@@ -239,19 +239,19 @@ fn capture() -> BTreeMap<String, Example> {
     json(&mut out, "player-queued", queued);
     json(&mut out, "queued-event", one_event(&mut gm));
 
-    let refuse_commit = serde_json::json!({"include_tick": false});
+    let refuse_commit = serde_json::json!({"include_round": false});
     json(
         &mut out,
-        "commit-without-tick-request",
+        "commit-without-round-request",
         tool_call(7, "commit_round", &refuse_commit),
     );
     json(
         &mut out,
-        "commit-without-tick",
+        "commit-without-round",
         call(&mut gm, "commit_round", refuse_commit),
     );
 
-    let commit_args = serde_json::json!({"include_tick": true});
+    let commit_args = serde_json::json!({"include_round": true});
     json(
         &mut out,
         "commit-request",
@@ -279,7 +279,7 @@ fn capture() -> BTreeMap<String, Example> {
     call(
         &mut gm,
         "commit_round",
-        serde_json::json!({"include_tick": true}),
+        serde_json::json!({"include_round": true}),
     );
     let taken = next_json(&player);
     assert_eq!(taken["kind"], "resume", "{taken}");

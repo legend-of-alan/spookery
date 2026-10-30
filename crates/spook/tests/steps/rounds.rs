@@ -1,4 +1,4 @@
-use cucumber::{given, then};
+use cucumber::{given, then, when};
 use serde_json::Value;
 
 use crate::support::temp_pack;
@@ -13,6 +13,12 @@ fn a_docks_table_with_a_gm_and_a_seated_player(world: &mut World) {
     table::seat_gm(world);
     table::seat_player(world, &pack);
     world.pack = Some(pack);
+}
+
+#[when(expr = "the operator runs spook round")]
+fn the_operator_runs_spook_round(world: &mut World) {
+    let pack = table::pack(world).to_path_buf();
+    table::run(world, &["round", pack.to_str().unwrap()]);
 }
 
 #[then(expr = "round index is {int}")]
@@ -39,7 +45,7 @@ fn the_player_line_is_queued(world: &mut World) {
 fn the_round_log_records_the_player_wait(world: &mut World) {
     let text =
         spookery_engine::testing::journal::read_record_line(table::pack(world), "round-0001")
-            .unwrap_or_else(|err| panic!("read tick: {}", err.detail));
+            .unwrap_or_else(|err| panic!("read round: {}", err.detail));
     let round: Value = serde_json::from_str(text.trim_end()).unwrap_or_else(|err| panic!("{err}"));
     let waits = round["intents"]
         .as_array()

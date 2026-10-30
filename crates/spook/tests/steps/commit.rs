@@ -50,7 +50,7 @@ fn a_canon_file_gains_a_byte(world: &mut World) {
 #[given(expr = "one round has committed")]
 fn one_round_has_committed(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
-    table::run(world, &["tick", pack.to_str().unwrap()]);
+    table::run(world, &["round", pack.to_str().unwrap()]);
     assert_eq!(world.code, Some(0), "{}", world.stderr);
     assert!(
         !spookery_engine::testing::journal::list_round_keys(&pack).is_empty(),
@@ -62,7 +62,7 @@ fn one_round_has_committed(world: &mut World) {
 fn the_operator_tries_a_round(world: &mut World) {
     let pack = table::pack(world).to_path_buf();
     world.state_files = state_tree(&pack);
-    table::run(world, &["tick", pack.to_str().unwrap()]);
+    table::run(world, &["round", pack.to_str().unwrap()]);
 }
 
 #[when(expr = "the operator runs migrate")]

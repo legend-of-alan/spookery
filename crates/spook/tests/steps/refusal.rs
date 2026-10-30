@@ -49,7 +49,7 @@ fn odens_habit_takes_a_missing_tonic(world: &mut World) {
     let next = replace_oden_rules(
         &text,
         "\
-tick:
+idle:
   eligible: true
 rules:
   - id: grab
@@ -147,15 +147,15 @@ fn a_sample_table_with_the_gm_seated(world: &mut World) {
 #[given(expr = "a sample table where one effect is over budget and the GM is seated")]
 fn one_effect_is_over_budget(world: &mut World) {
     let pack = support::copy_pack("sample-d20", "over-budget");
-    let path = pack.join("rules/tick.yaml");
-    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read tick: {err}"));
+    let path = pack.join("rules/budget.yaml");
+    let text = fs::read_to_string(&path).unwrap_or_else(|err| panic!("read budget: {err}"));
     let next = text.replacen(
         "max_effects_per_intent: 4\n",
         "max_effects_per_intent: 0\n",
         1,
     );
     assert_ne!(text, next, "the effect budget was not lowered");
-    fs::write(&path, next).unwrap_or_else(|err| panic!("write tick: {err}"));
+    fs::write(&path, next).unwrap_or_else(|err| panic!("write budget: {err}"));
     crate::support::append(
         &pack.join("rules/verbs.yaml"),
         "\
@@ -242,7 +242,7 @@ fn oden_can_pay_until_lark_spends_his_grit(world: &mut World) {
     let next = replace_oden_rules(
         &text,
         "\
-tick:
+idle:
   eligible: true
 rules:
   - id: heave
@@ -298,7 +298,7 @@ fn seat_lark(world: &mut World, pack: std::path::PathBuf) {
 }
 
 fn replace_oden_rules(text: &str, rules: &str) -> String {
-    let start = text.find("tick:\n").expect("oden round");
+    let start = text.find("idle:\n").expect("oden round");
     let end = text.find("\n---\n").expect("oden close");
     assert!(start < end, "oden round is outside the frontmatter");
     let next = format!("{}{}{}", &text[..start], rules, &text[end + 1..]);

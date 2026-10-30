@@ -73,10 +73,10 @@ These are the host options and the commands that touch a save.
 | `--mcp-http 127.0.0.1:<port>` | Sets the agent door. By default it's the game port plus one, so `127.0.0.1:9738`. |
 | `--as <id>` | Picks your character in `spook play`. `pc_rowan` and `player:pc_rowan` mean the same seat. |
 | `spook status <pack>` | Prints the host digest. It doesn't write the pack. |
-| `spook tick <pack>` | Advances the world one tick and writes `state/`. |
+| `spook round <pack>` | Plays one round and writes `state/`. |
 | `spook migrate <pack>` | Stores the current canon hash in the save. |
 
-While `spook run` serves a pack, `tick` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
+While `spook run` serves a pack, `round` and `migrate` on that pack exit 1 with `COMMIT_CONFLICT` and write nothing. Stop `spook run` to use them.
 
 If you join as a character who's already seated, `spook play` exits 1 with `That character is already taken. [SEAT_TAKEN]`. A fourth player gets `The table is full. [SESSION_FULL]`.
 

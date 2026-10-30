@@ -1,8 +1,8 @@
-//! Round budgets and pause policy from `rules/tick.yaml`.
+//! Round budgets and pause policy from `rules/budget.yaml`.
 
 use serde::Deserialize;
 
-use crate::canon::source::{load_headed, At, Problem, Source, TICK_SCHEMA};
+use crate::canon::source::{load_headed, At, Problem, Source, BUDGET_SCHEMA};
 use crate::diagnostic::Diagnostic;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -14,14 +14,14 @@ pub struct Budget {
     pub max_memory_writes: u64,
     pub idle_acts_per_world_day: u64,
     pub live_acts_per_world_hour: u64,
-    pub tick_every_real_seconds: u64,
+    pub round_every_real_seconds: u64,
     /// Empty-table wakes. `false` leaves an empty table still.
-    pub idle_ticking: bool,
-    pub idle_minutes_per_tick: u64,
-    pub live_minutes_per_tick: u64,
-    pub idle_catchup_max_ticks: u64,
+    pub idle_rounds: bool,
+    pub idle_minutes_per_round: u64,
+    pub live_minutes_per_round: u64,
+    pub idle_catchup_max_rounds: u64,
     pub idle_max_world_hours_per_real_hour: u64,
-    pub max_fastforward_ticks: u64,
+    pub max_fastforward_rounds: u64,
     /// Trigger rounds in one tick. The next round logs `trigger_depth` and does not run.
     pub max_trigger_depth: u64,
     pub pause: PausePolicies,
@@ -50,13 +50,13 @@ impl Budget {
             max_memory_writes: 8,
             idle_acts_per_world_day: 3,
             live_acts_per_world_hour: 6,
-            tick_every_real_seconds: 300,
-            idle_ticking: true,
-            idle_minutes_per_tick: 60,
-            live_minutes_per_tick: 5,
-            idle_catchup_max_ticks: 12,
+            round_every_real_seconds: 300,
+            idle_rounds: true,
+            idle_minutes_per_round: 60,
+            live_minutes_per_round: 5,
+            idle_catchup_max_rounds: 12,
             idle_max_world_hours_per_real_hour: 8,
-            max_fastforward_ticks: 12,
+            max_fastforward_rounds: 12,
             max_trigger_depth: 4,
             pause: PausePolicies {
                 named_plot_clocks: PausePolicy::PauseWhenEmpty,
@@ -65,8 +65,8 @@ impl Budget {
     }
 }
 
-pub(crate) fn load_tick(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
-    let file: TickFile = load_headed(rel, text, TICK_SCHEMA, 0)?;
+pub(crate) fn load_budget(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>> {
+    let file: BudgetFile = load_headed(rel, text, BUDGET_SCHEMA, 0)?;
     let source = Source {
         file: rel,
         text,
@@ -88,15 +88,15 @@ pub(crate) fn load_tick(rel: &str, text: &str) -> Result<Budget, Vec<Diagnostic>
         max_memory_writes >= 0,
         idle_acts_per_world_day >= 0,
         live_acts_per_world_hour >= 0,
-        tick_every_real_seconds >= 1,
+        round_every_real_seconds >= 1,
     );
-    budget.idle_ticking = take_idle(&source, file.idle, &mut diags);
+    budget.idle_rounds = take_idle(&source, file.idle, &mut diags);
     counters!(
-        idle_minutes_per_tick >= 1,
-        live_minutes_per_tick >= 0,
-        idle_catchup_max_ticks >= 0,
+        idle_minutes_per_round >= 1,
+        live_minutes_per_round >= 0,
+        idle_catchup_max_rounds >= 0,
         idle_max_world_hours_per_real_hour >= 0,
-        max_fastforward_ticks >= 0,
+        max_fastforward_rounds >= 0,
         max_trigger_depth >= 0,
     );
     budget.pause.named_plot_clocks = file.pause.named_plot_clocks;
@@ -163,7 +163,7 @@ fn take_idle(source: &Source, value: Option<String>, diags: &mut Vec<Diagnostic>
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct TickFile {
+struct BudgetFile {
     #[serde(rename = "schema")]
     _schema: String,
     max_intents_applied: Option<i64>,
@@ -173,14 +173,14 @@ struct TickFile {
     max_memory_writes: Option<i64>,
     idle_acts_per_world_day: Option<i64>,
     live_acts_per_world_hour: Option<i64>,
-    tick_every_real_seconds: Option<i64>,
+    round_every_real_seconds: Option<i64>,
     #[serde(default, deserialize_with = "read_idle_word")]
     idle: Option<String>,
-    idle_minutes_per_tick: Option<i64>,
-    live_minutes_per_tick: Option<i64>,
-    idle_catchup_max_ticks: Option<i64>,
+    idle_minutes_per_round: Option<i64>,
+    live_minutes_per_round: Option<i64>,
+    idle_catchup_max_rounds: Option<i64>,
     idle_max_world_hours_per_real_hour: Option<i64>,
-    max_fastforward_ticks: Option<i64>,
+    max_fastforward_rounds: Option<i64>,
     max_trigger_depth: Option<i64>,
     pause: PauseFile,
 }
@@ -205,8 +205,8 @@ mod tests {
     use crate::diagnostic::Diagnostic;
     use crate::error::Reason;
 
-    fn load_tick(text: &str) -> Result<Budget, Vec<Diagnostic>> {
-        super::load_tick("rules/tick.yaml", text)
+    fn load_budget(text: &str) -> Result<Budget, Vec<Diagnostic>> {
+        super::load_budget("rules/budget.yaml", text)
     }
 
     fn text(tag: &str) -> String {
@@ -216,95 +216,95 @@ mod tests {
     #[test]
     fn an_unknown_tag_and_the_old_versioned_tag_are_schema() {
         use crate::diagnostic::reason_of;
-        assert!(load_tick(&text("tick")).is_ok());
-        let old = load_tick(&text(concat!("tick/", "v0"))).unwrap_err();
+        assert!(load_budget(&text("budget")).is_ok());
+        let old = load_budget(&text(concat!("budget/", "v0"))).unwrap_err();
         assert!(old[0].message.contains("no version"), "{old:?}");
         assert_eq!(reason_of(old), Reason::Schema);
-        let bogus = load_tick(&text("bogus")).unwrap_err();
+        let bogus = load_budget(&text("bogus")).unwrap_err();
         assert!(bogus[0].message.contains("does not use"), "{bogus:?}");
         assert_eq!(reason_of(bogus), Reason::Schema);
     }
 
     #[test]
     fn a_negative_budget_names_the_field() {
-        let text = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_ticks: -3\n";
-        let err = load_tick(text).unwrap_err();
+        let text = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nmax_npcs_acting: -1\nidle_catchup_max_rounds: -3\n";
+        let err = load_budget(text).unwrap_err();
         assert!(err
             .iter()
             .any(|diag| diag.message.contains("max_npcs_acting") && diag.line.is_some()));
         assert!(err
             .iter()
-            .any(|diag| diag.message.contains("idle_catchup_max_ticks")));
+            .any(|diag| diag.message.contains("idle_catchup_max_rounds")));
     }
 
     #[test]
     fn the_removed_live_tick_key_is_refused() {
         use crate::diagnostic::reason_of;
-        let mut stale = text("tick");
+        let mut stale = text("budget");
         stale.push_str("live_tick_every_real_seconds: 60\n");
-        let err = load_tick(&stale).unwrap_err();
+        let err = load_budget(&stale).unwrap_err();
         assert_eq!(reason_of(err), Reason::Schema);
     }
 
     #[test]
     fn idle_defaults_to_on_and_off_is_loaded() {
-        let on = load_tick(&text("tick")).unwrap();
-        assert!(on.idle_ticking);
-        let mut explicit = text("tick");
+        let on = load_budget(&text("budget")).unwrap();
+        assert!(on.idle_rounds);
+        let mut explicit = text("budget");
         explicit.push_str("idle: on\n");
-        assert!(load_tick(&explicit).unwrap().idle_ticking);
-        let mut off = text("tick");
+        assert!(load_budget(&explicit).unwrap().idle_rounds);
+        let mut off = text("budget");
         off.push_str("idle: off\n");
-        assert!(!load_tick(&off).unwrap().idle_ticking);
+        assert!(!load_budget(&off).unwrap().idle_rounds);
     }
 
     #[test]
-    fn docks_tick_rules_leave_idle_on() {
+    fn docks_budget_leaves_idle_on() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../packs/oneshot-docks/rules/tick.yaml");
+            .join("../../packs/oneshot-docks/rules/budget.yaml");
         let text = std::fs::read_to_string(path).unwrap();
-        let budget = load_tick(&text).unwrap();
-        assert!(budget.idle_ticking);
-        assert_eq!(budget.tick_every_real_seconds, 300);
-        assert_eq!(budget.idle_minutes_per_tick, 60);
+        let budget = load_budget(&text).unwrap();
+        assert!(budget.idle_rounds);
+        assert_eq!(budget.round_every_real_seconds, 300);
+        assert_eq!(budget.idle_minutes_per_round, 60);
     }
 
     #[test]
     fn a_bad_idle_word_and_a_zero_interval_are_schema() {
         use crate::diagnostic::reason_of;
-        let mut maybe = text("tick");
+        let mut maybe = text("budget");
         maybe.push_str("idle: maybe\n");
-        let err = load_tick(&maybe).unwrap_err();
+        let err = load_budget(&maybe).unwrap_err();
         assert_eq!(reason_of(err.clone()), Reason::Schema);
-        assert_eq!(err[0].file, "rules/tick.yaml");
+        assert_eq!(err[0].file, "rules/budget.yaml");
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(err[0].message.contains("maybe"), "{err:?}");
         assert!(err[0].message.contains("on or off"), "{err:?}");
 
-        let zero = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\ntick_every_real_seconds: 0\n";
-        let err = load_tick(zero).unwrap_err();
+        let zero = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nround_every_real_seconds: 0\n";
+        let err = load_budget(zero).unwrap_err();
         assert_eq!(
             err[0].code,
             crate::diagnostic::Severity::Error(Reason::Schema)
         );
         assert!(err[0].line.is_some(), "{err:?}");
         assert!(
-            err[0].message.contains("tick_every_real_seconds"),
+            err[0].message.contains("round_every_real_seconds"),
             "{err:?}"
         );
         assert!(err[0].message.contains('0'), "{err:?}");
 
-        let minutes = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle_minutes_per_tick: 0\n";
-        let err = load_tick(minutes).unwrap_err();
+        let minutes = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nidle_minutes_per_round: 0\n";
+        let err = load_budget(minutes).unwrap_err();
         assert_eq!(
             err[0].code,
             crate::diagnostic::Severity::Error(Reason::Schema)
         );
         assert!(err[0].line.is_some(), "{err:?}");
-        assert!(err[0].message.contains("idle_minutes_per_tick"), "{err:?}");
+        assert!(err[0].message.contains("idle_minutes_per_round"), "{err:?}");
 
-        let empty = "schema: tick\npause:\n  named_plot_clocks: pause_when_empty\nidle:\n";
-        let err = load_tick(empty).unwrap_err();
+        let empty = "schema: budget\npause:\n  named_plot_clocks: pause_when_empty\nidle:\n";
+        let err = load_budget(empty).unwrap_err();
         assert_eq!(reason_of(err), Reason::Schema);
     }
 }

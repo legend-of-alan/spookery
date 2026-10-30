@@ -1,4 +1,4 @@
-//! Decide when an idle table ticks, and stamp the wall time.
+//! Decide when an idle table plays a round, and stamp the wall time.
 
 use chrono::{DateTime, NaiveDateTime, TimeDelta, Utc};
 
@@ -55,12 +55,12 @@ pub fn on_scheduled_wake(
     if player_held || gm_held {
         return Ok(false);
     }
-    if !world.budget().idle_ticking {
+    if !world.budget().idle_rounds {
         return Ok(false);
     }
     let now = Utc::now();
     let elapsed = elapsed_secs(&world.now().last_round_at, now)?;
-    if elapsed < world.budget().tick_every_real_seconds {
+    if elapsed < world.budget().round_every_real_seconds {
         return Ok(false);
     }
     let before = world.now().world_time;

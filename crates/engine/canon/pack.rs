@@ -13,14 +13,14 @@ pub(super) fn load_pack(text: &str) -> Result<PackFile, Vec<Diagnostic>> {
 }
 
 impl PackFile {
-    /// Ticks between checkpoints: 100 when unset, refused when 0.
+    /// Rounds between checkpoints: 100 when unset, refused when 0.
     pub(super) fn checkpoint_every(&self) -> Result<u64, Vec<Diagnostic>> {
         match self.checkpoint_every {
             None => Ok(100),
             Some(0) => Err(vec![schema_error(
                 "pack.yaml",
                 "checkpoint_every is 0",
-                "set checkpoint_every to a positive number of ticks, or omit it",
+                "set checkpoint_every to a positive number of rounds, or omit it",
             )
             .with_path("checkpoint_every")]),
             Some(every) => Ok(every),

@@ -197,7 +197,7 @@ fn commit_line(world: &mut World, line: &str) {
     let mark = table::player_write(world, line);
     table::wait_player_from(world, mark, "\"kind\":\"queued\"");
     let before = list_round_keys(table::pack(world)).len();
-    table::gm_call(world, 2, "commit_round", r#"{"include_tick":true}"#);
+    table::gm_call(world, 2, "commit_round", r#"{"include_round":true}"#);
     table::wait_round_count(table::pack(world), before + 1);
 }
 
