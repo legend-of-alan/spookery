@@ -92,17 +92,6 @@ impl OutTx {
     }
 }
 
-impl OutRx {
-    pub(super) async fn recv(&mut self) -> Option<Outbound> {
-        self.rx.recv().await
-    }
-
-    /// Releases a frame's bytes once the writer has sent it.
-    pub(super) fn release_written(&self, frame: &[u8]) {
-        release(&self.queued, frame.len());
-    }
-}
-
 fn outbound_len(item: &Outbound) -> usize {
     match item {
         Outbound::Frame(bytes) | Outbound::Last(bytes, _) => bytes.len(),
@@ -393,62 +382,47 @@ pub(super) async fn wait_turn(
     }
 }
 
-pub(super) async fn write_frames<W>(
-    mut write: W,
+/// Sends each queued frame to `sink` until the queue closes, the seat is
+/// cancelled, or `sink` fails. A frame's bytes are released once it is sent.
+pub(super) async fn write_frames(
+    mut sink: impl AsyncFnMut(&[u8]) -> bool,
     mut frames: OutRx,
     mut cancel: tokio::sync::watch::Receiver<bool>,
-) where
-    W: AsyncWrite + Unpin,
-{
-    use tokio::io::AsyncWriteExt;
+) {
     loop {
         let frame = tokio::select! {
             biased;
-            frame = frames.recv() => frame,
-            changed = cancel.changed() => {
-                if changed.is_err() || *cancel.borrow() {
-                    break;
-                }
-                continue;
-            }
+            frame = frames.rx.recv() => frame,
+            _ = cancel.changed() => break,
         };
         let Some(frame) = frame else {
             break;
         };
         match frame {
             Outbound::Frame(bytes) => {
-                let pending = write_all_flush(&mut write, &bytes);
-                tokio::pin!(pending);
                 tokio::select! {
                     biased;
-                    result = &mut pending => {
-                        if result.is_err() {
+                    sent = sink(&bytes) => {
+                        if !sent {
                             break;
                         }
-                        frames.release_written(&bytes);
+                        release(&frames.queued, bytes.len());
                     }
-                    changed = cancel.changed() => {
-                        if changed.is_err() || *cancel.borrow() {
-                            break;
-                        }
-                    }
+                    _ = cancel.changed() => break,
                 }
             }
             Outbound::Last(bytes, ack) => {
-                let _ = write_all_flush(&mut write, &bytes).await;
+                let _ = sink(&bytes).await;
                 let _ = ack.send(());
                 break;
             }
         }
     }
-    let _ = write.shutdown().await;
 }
 
-async fn write_all_flush(write: &mut (impl AsyncWrite + Unpin), frame: &[u8]) -> io::Result<()> {
+pub(super) async fn write_all_flush(write: &mut (impl AsyncWrite + Unpin), frame: &[u8]) -> bool {
     use tokio::io::AsyncWriteExt;
-    write.write_all(frame).await?;
-    write.flush().await?;
-    Ok(())
+    write.write_all(frame).await.is_ok() && write.flush().await.is_ok()
 }
 
 #[cfg(test)]
@@ -533,9 +507,13 @@ mod tests {
     #[tokio::test]
     async fn the_last_frame_is_flushed_before_its_ack() {
         use tokio::io::AsyncReadExt;
-        let (mut client, server) = tokio::io::duplex(256);
+        let (mut client, mut server) = tokio::io::duplex(256);
         let (tx, rx, _cancel_tx, cancel_rx) = outbound();
-        let writer = tokio::spawn(write_frames(server, rx, cancel_rx));
+        let writer = tokio::spawn(write_frames(
+            async move |frame: &[u8]| write_all_flush(&mut server, frame).await,
+            rx,
+            cancel_rx,
+        ));
         assert!(try_frame(&tx, b"one\n".to_vec()));
         let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
         assert!(tx.enqueue(Outbound::Last(b"bye\n".to_vec(), ack_tx)));
@@ -614,7 +592,7 @@ mod tests {
             !try_frame(&tx, b"n".to_vec()),
             "a second frame was queued past the byte cap"
         );
-        let taken = rx.recv().await.expect("frame");
+        let taken = rx.rx.recv().await.expect("frame");
         let Outbound::Frame(bytes) = taken else {
             panic!("expected a frame");
         };
@@ -623,7 +601,7 @@ mod tests {
             !try_frame(&tx, b"n".to_vec()),
             "a taken frame was released before it was written"
         );
-        rx.release_written(&bytes);
+        release(&rx.queued, bytes.len());
         assert!(try_frame(&tx, b"n".to_vec()));
     }
 }

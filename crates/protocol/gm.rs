@@ -7,7 +7,7 @@ use crate::{Error, Outcome};
 
 /// The structured body of a tool-result line.
 pub fn read_tool_result(line: &str) -> Result<Value, Error> {
-    let value: Value = serde_json::from_str(trim_line(line)).map_err(|_| Error)?;
+    let value: Value = serde_json::from_str(line).map_err(|_| Error)?;
     let result = value.get("result").ok_or(Error)?;
     Ok(result
         .get("structuredContent")
@@ -314,24 +314,6 @@ where
         .map(Some)
 }
 
-pub fn write_say_event(say: &GmSay) -> Vec<u8> {
-    event_line(say.to_value())
-}
-
-pub fn write_queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
-    let body = EventBody::Queued(QueueRow {
-        id: id.to_string(),
-        actor_id: actor_id.to_string(),
-        move_name: move_name.to_string(),
-    });
-    event_line(serde_json::to_value(body).expect("queued event"))
-}
-
-pub fn write_check_event(roll: &Roll) -> Vec<u8> {
-    let body = EventBody::Check(roll.clone());
-    event_line(serde_json::to_value(body).expect("check event"))
-}
-
 pub fn queued_ack(id: &str) -> Value {
     serde_json::json!({ "queued": id })
 }
@@ -345,46 +327,9 @@ pub fn released_result() -> Value {
     serde_json::json!({ "released": true })
 }
 
-fn event_line(params: Value) -> Vec<u8> {
-    let line = serde_json::json!({
-        "jsonrpc": "2.0",
-        "method": "spook/event",
-        "params": params,
-    });
-    ended(&line).into_bytes()
-}
-
-fn ended(value: &Value) -> String {
-    let mut line = serde_json::to_string(value).expect("gm line");
-    line.push('\n');
-    line
-}
-
-fn trim_line(line: &str) -> &str {
-    line.trim_end_matches(['\n', '\r'])
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn a_say_event_keeps_null_place_and_actor() {
-        let say = GmSay {
-            seq: 3,
-            from: "gm".to_string(),
-            address: "table".to_string(),
-            place: None,
-            actor: None,
-            recipients: Vec::new(),
-            text: "evening".to_string(),
-        };
-        let line = String::from_utf8(write_say_event(&say)).unwrap();
-        assert_eq!(
-            line,
-            "{\"jsonrpc\":\"2.0\",\"method\":\"spook/event\",\"params\":{\"kind\":\"say\",\"seq\":3,\"from\":\"gm\",\"address\":\"table\",\"place\":null,\"actor\":null,\"recipients\":[],\"text\":\"evening\"}}\n"
-        );
-    }
 
     #[test]
     fn gm_frames_ignore_unknown_fields_and_round_trip() {

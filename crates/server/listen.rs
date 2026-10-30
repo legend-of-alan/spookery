@@ -225,11 +225,12 @@ async fn player_session(
     out_rx: super::limits::OutRx,
     mut cancel_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    let (read_half, write_half) = stream.into_split();
+    let (read_half, mut write_half) = stream.into_split();
     let mut reader =
         tokio::io::BufReader::with_capacity(super::limits::PLAYER_LINE_CAP + 1, read_half);
+    // The sink owns the write half, so it shuts down when `write_frames` returns.
     let writer = tokio::spawn(super::limits::write_frames(
-        write_half,
+        async move |frame: &[u8]| super::limits::write_all_flush(&mut write_half, frame).await,
         out_rx,
         cancel_rx.clone(),
     ));

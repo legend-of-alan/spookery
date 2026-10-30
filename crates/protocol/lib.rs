@@ -26,10 +26,9 @@ impl Outcome {
 
 pub use gm::{
     code_result, queued_ack, read_commit_args, read_intent_args, read_perceive_args, read_say_args,
-    read_status_args, read_tool_result, released_result, write_check_event, write_queued_event,
-    write_say_event, CastKind, CommitArgs, CommitBody, EventBody, GmSay, IntentCall, MenuRow,
-    OutgoingSay, PackSummary, PerceiveArgs, QueueRow, Roll, SessionStatus, StatusArgs, StatusPause,
-    StatusPresence,
+    read_status_args, read_tool_result, released_result, CastKind, CommitArgs, CommitBody,
+    EventBody, GmSay, IntentCall, MenuRow, OutgoingSay, PackSummary, PerceiveArgs, QueueRow, Roll,
+    SessionStatus, StatusArgs, StatusPause, StatusPresence,
 };
 pub use player::{
     exit_phrase, read_player, read_player_hello, write_player, write_player_hello, ClockView,

@@ -247,16 +247,14 @@ fn handle(
             }
             let outputs = std::mem::take(&mut done.outputs);
             let reports: Vec<_> = outputs.iter().flat_map(|o| o.reports.clone()).collect();
-            if done.played_round {
+            if !outputs.is_empty() {
                 refresh_players(world, seats, &outputs, out)?;
                 write_host(out, world, &outputs);
+                bump_sleep(restart);
             }
             if let Some(tape) = &done.tape {
                 let _ = writeln!(out, "{tape}");
                 let _ = out.flush();
-            }
-            if let Some(frame) = done.gm_event {
-                send_gm(seats, frame);
             }
             if let Some((recipients, line)) = &done.player_line {
                 send_recipients(world, seats, recipients, line.clone(), out)?;
@@ -265,9 +263,6 @@ fn handle(
             after.extend(frames::gm_check_frames(&reports));
             for frame in after {
                 send_gm(seats, frame);
-            }
-            if done.advanced {
-                bump_sleep(restart);
             }
             // Free the seat before the client can read this result.
             if done.release_seat {
@@ -333,18 +328,14 @@ fn refresh_players(
         }
     }
     for conn in failed {
-        if drop_conn(world, seats, conn)? {
-            write_host(out, world, &[]);
-        }
+        drop_conn(world, seats, conn, out)?;
     }
     Ok(())
 }
 
 fn shutdown(world: &mut World, seats: &mut Seats, out: &mut dyn Write) -> Result<(), Reason> {
     for conn in seats.players.conns() {
-        if drop_conn(world, seats, conn)? {
-            write_host(out, world, &[]);
-        }
+        drop_conn(world, seats, conn, out)?;
     }
     seats.gm = None;
     Ok(())
@@ -415,7 +406,7 @@ fn player_hello(line: &str) -> Option<&str> {
 fn welcome(world: &World, actor_id: &str) -> Result<Vec<u8>, Reason> {
     let mut out = String::new();
     for stored in world.player_scrollback(actor_id)? {
-        out.push_str(&frames::player_replay_line(&stored));
+        out.push_str(&frames::say_line(&stored, true));
     }
     out.push_str(&player_refresh(world, actor_id)?);
     Ok(out.into_bytes())
@@ -509,9 +500,7 @@ fn on_player(
     out: &mut dyn Write,
 ) -> Result<PlayerReply, Reason> {
     if split_token(line) == ("close", "") {
-        if drop_conn(world, seats, conn)? {
-            write_host(out, world, &[]);
-        }
+        drop_conn(world, seats, conn, out)?;
         return Ok(PlayerReply::Hangup);
     }
     let Some(actor_id) = seats
@@ -582,8 +571,8 @@ fn on_mechanical(
                 out,
             )?;
         }
-        Ok(MoveOutcome::Committed { advanced, outputs }) => {
-            if advanced {
+        Ok(MoveOutcome::Committed { outputs }) => {
+            if !outputs.is_empty() {
                 bump_sleep(restart);
             }
             write_host(out, world, &outputs);
@@ -633,8 +622,8 @@ fn send_player(
         Some(player) => !super::limits::try_frame(&player.out, bytes),
         None => false,
     };
-    if failed && drop_conn(world, seats, conn)? {
-        write_host(out, world, &[]);
+    if failed {
+        drop_conn(world, seats, conn, out)?;
     }
     Ok(())
 }
@@ -665,18 +654,25 @@ fn send_recipients(
         }
     }
     for conn in failed {
-        if drop_conn(world, seats, conn)? {
-            write_host(out, world, &[]);
-        }
+        drop_conn(world, seats, conn, out)?;
     }
     Ok(())
 }
 
-fn drop_conn(world: &mut World, seats: &mut Seats, conn: u64) -> Result<bool, Reason> {
+/// Drops a seated player and tells the host when presence changed.
+fn drop_conn(
+    world: &mut World,
+    seats: &mut Seats,
+    conn: u64,
+    out: &mut dyn Write,
+) -> Result<(), Reason> {
     let Some(player) = seats.players.take_conn(conn) else {
-        return Ok(false);
+        return Ok(());
     };
-    world.release_player_seat(&player.session_id, &player.actor_id)
+    if world.release_player_seat(&player.session_id, &player.actor_id)? {
+        write_host(out, world, &[]);
+    }
+    Ok(())
 }
 
 fn on_fault(
@@ -686,14 +682,12 @@ fn on_fault(
     ack: tokio::sync::oneshot::Sender<()>,
     out: &mut dyn Write,
 ) -> Result<(), Reason> {
-    let res = drop_conn(world, seats, conn);
-    if matches!(res, Ok(true)) {
-        write_host(out, world, &[]);
-    } else if seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
+    let res = drop_conn(world, seats, conn, out);
+    if seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
         seats.gm = None;
     }
     let _ = ack.send(());
-    res.map(|_| ())
+    res
 }
 
 fn refused_line(code: Reason) -> String {

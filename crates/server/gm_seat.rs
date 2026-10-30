@@ -98,7 +98,7 @@ impl ServerHandler for GmSeatHandler {
 
 impl GmSeatHandler {
     async fn claim(&self, conn: u64, context: &RequestContext<RoleServer>) -> Result<(), McpError> {
-        let (out_tx, mut out_rx, cancel_tx, mut cancel_rx) = super::limits::outbound();
+        let (out_tx, out_rx, cancel_tx, cancel_rx) = super::limits::outbound();
         let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
         self.tx
             .send(WorldMsg::Claim {
@@ -114,45 +114,15 @@ impl GmSeatHandler {
         match reply {
             Ok(()) => {
                 let peer = context.peer.clone();
-                // One forwarder writes this queue, so two tool calls cannot pass each other.
-                tokio::spawn(async move {
-                    loop {
-                        let item = tokio::select! {
-                            biased;
-                            item = out_rx.recv() => item,
-                            changed = cancel_rx.changed() => {
-                                if changed.is_err() || *cancel_rx.borrow() {
-                                    break;
-                                }
-                                continue;
-                            }
-                        };
-                        let Some(item) = item else {
-                            break;
-                        };
-                        let (frame, ack) = match item {
-                            super::limits::Outbound::Frame(frame) => (frame, None),
-                            super::limits::Outbound::Last(frame, ack) => (frame, Some(ack)),
-                        };
-                        let send = emit_event(&peer, &frame);
-                        tokio::pin!(send);
-                        let stop = tokio::select! {
-                            _ = &mut send => {
-                                out_rx.release_written(&frame);
-                                false
-                            }
-                            changed = cancel_rx.changed() => {
-                                changed.is_err() || *cancel_rx.borrow()
-                            }
-                        };
-                        if let Some(ack) = ack {
-                            let _ = ack.send(());
-                        }
-                        if stop {
-                            break;
-                        }
-                    }
-                });
+                // One writer drains this queue, so two tool calls cannot pass each other.
+                tokio::spawn(super::limits::write_frames(
+                    async move |frame: &[u8]| {
+                        emit_event(&peer, frame).await;
+                        true
+                    },
+                    out_rx,
+                    cancel_rx,
+                ));
                 Ok(())
             }
             Err(code) => Err(refusal_error(code)),
@@ -165,16 +135,11 @@ fn refusal_error(code: Reason) -> McpError {
 }
 
 async fn emit_event(peer: &Peer<RoleServer>, frame: &[u8]) {
-    let Ok(text) = std::str::from_utf8(frame) else {
+    let Ok(body) = serde_json::from_slice(frame) else {
         return;
     };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(text.trim()) else {
-        return;
-    };
-    let Some(method) = value.get("method").and_then(serde_json::Value::as_str) else {
-        return;
-    };
-    let params = value.get("params").cloned();
-    let note = ServerNotification::CustomNotification(CustomNotification::new(method, params));
-    let _ = peer.send_notification(note).await;
+    let note = CustomNotification::new("spook/event", Some(body));
+    let _ = peer
+        .send_notification(ServerNotification::CustomNotification(note))
+        .await;
 }
