@@ -249,7 +249,7 @@ pub(crate) fn kernel_intent_id(
     crate::hash::blake2s_hex(format!("{shard_id}|{round_index}|{actor_id}|{row}").as_bytes())
 }
 
-/// Blake2s of `shard|round_index_plus_one|actor|canonical_line`.
+/// Blake2s of `shard|round_index_plus_one|actor|join_move`.
 pub(crate) fn player_intent_id(
     shard_id: &str,
     round_index_plus_one: u64,

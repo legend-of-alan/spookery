@@ -21,13 +21,10 @@ use crate::model::State;
 use crate::testing::copy_docks;
 use crate::world::World;
 
-use super::support::TempPack;
+use super::support::{runner_config, TempPack};
 use proptest::prelude::*;
 use proptest::sample::select;
-use proptest::test_runner::{Config, RngSeed, TestCaseError, TestRunner};
-
-const CASES: u32 = 64;
-const SEED: u64 = 0x0018_0018;
+use proptest::test_runner::{TestCaseError, TestRunner};
 
 #[derive(Clone, Debug)]
 enum Holder {
@@ -53,20 +50,11 @@ fn random_item_changes_never_leave_a_negative_count() {
         actors.len() >= 2 && !places.is_empty(),
         "the pack needs actors and places to shift"
     );
-    let mut runner = TestRunner::new(configure_runner());
+    let mut runner = TestRunner::new(runner_config());
     let strategy = pick_changes(&actors, &places);
     runner
         .run(&strategy, |steps| apply_changes(&world, &steps))
         .unwrap_or_else(|err| panic!("inventory property failed: {err}"));
-}
-
-fn configure_runner() -> Config {
-    Config {
-        cases: CASES,
-        failure_persistence: None,
-        rng_seed: RngSeed::Fixed(SEED),
-        ..Config::default()
-    }
 }
 
 fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCaseError> {

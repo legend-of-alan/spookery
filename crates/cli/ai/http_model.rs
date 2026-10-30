@@ -182,7 +182,7 @@ impl<C: Timer> HttpModel<C> {
 
     async fn attempt(&self, request: &CompletionRequest) -> Attempt {
         // The block owns the request. Leaving it drops the socket before
-        // `abandon`, so a test clock can see the close before this returns.
+        // `on_abandon`, so a test clock can see the close before this returns.
         {
             let attempt = self.post_completion(request);
             tokio::pin!(attempt);

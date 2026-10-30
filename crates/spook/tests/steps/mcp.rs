@@ -85,7 +85,7 @@ fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
 
 #[when(expr = "a coding agent tries to sit that door")]
 fn a_coding_agent_tries_to_sit_that_door(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no agent door port"));
     world.scratch = post_initialize(http, "127.0.0.1", None);
 }
 
@@ -114,7 +114,7 @@ fn the_human_gm_leaves(world: &mut World) {
 
 #[then(expr = "a coding agent can sit that door")]
 fn a_coding_agent_can_sit_that_door(world: &mut World) {
-    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"));
+    let http = u16::try_from(world.mark).unwrap_or_else(|_| panic!("no agent door port"));
     let start = Instant::now();
     let mut last = String::new();
     while start.elapsed() < Duration::from_secs(5) {
@@ -188,8 +188,8 @@ fn the_response_is_accepted(world: &mut World) {
     );
 }
 
-fn http_port(world: &World) -> u16 {
-    u16::try_from(world.mark).unwrap_or_else(|_| panic!("no HTTP port"))
+fn door_port(world: &World) -> u16 {
+    u16::try_from(world.mark).unwrap_or_else(|_| panic!("no agent door port"))
 }
 
 #[given(expr = "a docks table with a seated player and an open HTTP door")]
@@ -220,7 +220,7 @@ fn gm_holds_over_http(world: &mut World) {
 fn another_gm_tries_http(world: &mut World) {
     // rmcp's client error drops the JSON-RPC message, so read the
     // refusal from a raw initialize, then check a real client fails too.
-    let http = http_port(world);
+    let http = door_port(world);
     let raw = post_initialize(http, "127.0.0.1", None);
     let sat = support::block_on(async move {
         match connect_door(http).await {
@@ -261,7 +261,7 @@ fn the_http_gm_leaves(world: &mut World) {
 #[then(expr = "a GM can sit over HTTP")]
 fn a_gm_can_sit_over_http(world: &mut World) {
     // One attempt: the DELETE reply waits for the seat release (issue #214).
-    if let Err(err) = try_sit_gm(http_port(world)) {
+    if let Err(err) = try_sit_gm(door_port(world)) {
         panic!("no GM could sit over HTTP: {err}");
     }
 }
@@ -284,7 +284,7 @@ fn world_time_moved_forward(world: &mut World) {
 
 #[when(expr = "a coding agent says good evening over HTTP")]
 fn agent_says_over_http(world: &mut World) {
-    let http = http_port(world);
+    let http = door_port(world);
     let mark = table::player_mark(world);
     support::block_on(async move {
         let running = connect_door(http)

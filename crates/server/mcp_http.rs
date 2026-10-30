@@ -29,8 +29,8 @@ pub(super) async fn serve(
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
 ) {
-    let (hung_up, mut hang_ups) = unbounded_channel();
-    let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hung_up));
+    let (hangup_tx, mut hang_ups) = unbounded_channel();
+    let sessions = Arc::new(SeatSessions::new(tx.clone(), next_conn, hangup_tx));
     let closer = Arc::clone(&sessions);
     tokio::spawn(async move {
         while let Some(id) = hang_ups.recv().await {
@@ -92,7 +92,7 @@ impl SeatSessions {
 struct EventStream<S> {
     inner: S,
     id: SessionId,
-    hung_up: UnboundedSender<SessionId>,
+    hangup_tx: UnboundedSender<SessionId>,
 }
 
 impl<S: Stream + Unpin> Stream for EventStream<S> {
@@ -105,7 +105,7 @@ impl<S: Stream + Unpin> Stream for EventStream<S> {
 
 impl<S> Drop for EventStream<S> {
     fn drop(&mut self) {
-        let _ = self.hung_up.send(self.id.clone());
+        let _ = self.hangup_tx.send(self.id.clone());
     }
 }
 
@@ -178,7 +178,7 @@ impl SessionManager for SeatSessions {
         Ok(EventStream {
             inner,
             id: id.clone(),
-            hung_up: self.hangup_tx.clone(),
+            hangup_tx: self.hangup_tx.clone(),
         })
     }
 
