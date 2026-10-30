@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
+use spookery::protocol::{emit_player, NoteView, PlayerFrame};
 use spookery_engine::{ItemStack, Presence};
 
 use crate::support::run_spook;
@@ -257,7 +258,23 @@ fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
     let shard = spookery_engine::World::peek(pack).unwrap();
     let view = shard.perceive(&Presence::default(), actor).unwrap();
-    spookery::host::resume(&view).trim_end().to_string()
+    // The resume a seat gets: the view's notes to this actor, and its clocks.
+    let notes = view
+        .notes
+        .iter()
+        .filter(|note| note.to.iter().any(|to| to == actor))
+        .map(|note| NoteView {
+            id: note.id.clone(),
+            to: note.to.clone(),
+            place: note.place.clone(),
+            fact_ids: note.fact_ids.clone(),
+            text: note.text.clone(),
+        })
+        .collect();
+    let clocks = view.clocks.clone();
+    emit_player(&PlayerFrame::Resume { notes, clocks })
+        .trim_end()
+        .to_string()
 }
 
 fn rewrite_mira(pack: &Path, from: &str, to: &str) {

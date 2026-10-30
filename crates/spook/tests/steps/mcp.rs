@@ -401,7 +401,6 @@ fn listen_door(world: &mut World) -> (u16, u16) {
         world,
         &pack,
         &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
-        &[],
     )
 }
 

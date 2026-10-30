@@ -133,11 +133,11 @@ pub fn door_addr(game: SocketAddr, mcp_addr: Option<SocketAddr>) -> Result<Socke
 }
 
 fn report_bound(out: &mut dyn Write, game: SocketAddr, door: SocketAddr) -> Result<(), Error> {
-    let line = serde_json::json!({
-        "kind": "listening",
-        "game": game.to_string(),
-        "door": door.to_string(),
-    });
+    let line = serde_json::to_string(&crate::protocol::Listening {
+        game: game.to_string(),
+        door: door.to_string(),
+    })
+    .map_err(|err| Error::Io(err.into()))?;
     writeln!(out, "{line}")
         .and_then(|()| out.flush())
         .map_err(Error::Io)
@@ -253,7 +253,7 @@ async fn serve_player(
         };
         match line {
             Ok(Some(line)) => {
-                let _ = bucket.try_take(std::time::Instant::now());
+                let _ = bucket.try_take(tokio::time::Instant::now());
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 if tx
                     .send(Request::Line {
@@ -281,7 +281,7 @@ async fn serve_player(
                 break;
             }
             Err(super::limits::ReadLineError::BadUtf8) => {
-                let _ = bucket.try_take(std::time::Instant::now());
+                let _ = bucket.try_take(tokio::time::Instant::now());
                 let line = Refusal::from(Reason::Schema).line();
                 if !super::outbound::try_send_frame(&out_tx, line.into_bytes()) {
                     report_hangup(&tx, conn).await;

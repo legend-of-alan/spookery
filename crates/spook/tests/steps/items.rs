@@ -47,9 +47,8 @@ fn handle_move(
     let (verb, target) = support::split_move(line);
     let nobody = spookery_engine::Presence::default();
     world.queue_player_move(&nobody, actor, verb, target)?;
-    Ok(spookery::host::commit_then_fast_forward(
-        &mut world, &nobody,
-    )?)
+    let stamp = world.state().last_round_at.clone();
+    Ok(world.commit_then_fast_forward(&nobody, &stamp)?)
 }
 
 fn read_first_round_line(pack: &Path) -> String {

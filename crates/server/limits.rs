@@ -6,9 +6,10 @@
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
+use tokio::time::Instant;
 
 /// Hello and player lines, not counting the newline.
 pub(super) const PLAYER_LINE_CAP: usize = 8 * 1024;
@@ -23,15 +24,15 @@ pub(super) const RATE_PER_SEC: u64 = 5;
 pub(super) const BURST: u64 = 10;
 
 /// Frames queued toward one socket before that socket is dropped.
-pub const OUTBOUND_FRAME_CAP: usize = 256;
+pub(super) const OUTBOUND_FRAME_CAP: usize = 256;
 
 /// Bytes queued toward one socket before that socket is dropped.
 /// A 256-frame queue of large says fills the tape before a large TCP
 /// window fills, so the byte cap is what drops a stopped reader there.
-pub const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
+pub(super) const OUTBOUND_BYTE_CAP: usize = 64 * 1024;
 
 /// Send buffer the player socket asks for. The OS may grant more.
-pub const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
+pub(super) const REQUESTED_SEND_BUFFER: usize = 8 * 1024;
 
 pub const HELLO_TIMEOUT: Duration = Duration::from_secs(10);
 

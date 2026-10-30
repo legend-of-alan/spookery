@@ -22,7 +22,7 @@ const MAX_PLAYER_SEATS: usize = 3;
 
 /// Commit a queued round, then fast-forward while every seated PC is busy.
 /// An empty queue only fast-forwards.
-pub fn commit_then_fast_forward(
+pub(crate) fn commit_then_fast_forward(
     world: &mut World,
     presence: &Presence,
 ) -> Result<Vec<RoundOutput>, Reason> {

@@ -14,6 +14,7 @@ use std::time::Duration;
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
 use spookery::gm_connection::{Connection, Incoming};
+use spookery::protocol::Listening;
 
 use crate::support;
 
@@ -40,6 +41,8 @@ struct Table {
     pack: PathBuf,
     game: u16,
     door: u16,
+    /// The `listening` line `spook run` printed.
+    listening: String,
     host_text: Arc<Mutex<String>>,
     host_grew: Receiver<()>,
 }
@@ -95,15 +98,9 @@ fn capture() -> BTreeMap<String, Example> {
     let table = listen();
     let mut player = seat(table.game, "pc_rowan");
 
-    insert_json(
-        &mut out,
-        "listening",
-        serde_json::json!({
-            "kind": "listening",
-            "game": format!("127.0.0.1:{}", table.game),
-            "door": format!("127.0.0.1:{}", table.door),
-        }),
-    );
+    let listening = serde_json::from_str(&table.listening)
+        .unwrap_or_else(|err| panic!("listening: {err}\n{}", table.listening));
+    insert_json(&mut out, "listening", listening);
     insert_text(&mut out, "player-hello", "player:pc_rowan");
     let resume = next_json(&player);
     assert_eq!(resume["kind"], "resume", "{resume}");
@@ -394,7 +391,7 @@ fn listen() -> Table {
         let mut buf = [0u8; 256];
         while stderr.read(&mut buf).unwrap_or(0) > 0 {}
     });
-    let (game, door) = read_listening(&mut stdout);
+    let (game, door, listening) = read_listening(&mut stdout);
     let host_text = Arc::new(Mutex::new(String::new()));
     let (host_tx, host_more) = mpsc::channel();
     let slot = Arc::clone(&host_text);
@@ -417,8 +414,9 @@ fn listen() -> Table {
         child,
         _stdin: stdin,
         pack,
-        game: game.port(),
-        door: door.port(),
+        game,
+        door,
+        listening,
         host_text,
         host_grew: host_more,
     }
@@ -442,7 +440,8 @@ fn wait_host_grew(table: &Table, mark: usize) {
     }
 }
 
-fn read_listening(stdout: &mut impl Read) -> (std::net::SocketAddr, std::net::SocketAddr) {
+/// The first stdout line, which is the `listening` line: its two ports and the line.
+fn read_listening(stdout: &mut impl Read) -> (u16, u16, String) {
     let mut got = Vec::new();
     let mut buf = [0u8; 256];
     loop {
@@ -451,22 +450,15 @@ fn read_listening(stdout: &mut impl Read) -> (std::net::SocketAddr, std::net::So
             Ok(n) => {
                 got.extend_from_slice(&buf[..n]);
                 if let Some(end) = got.iter().position(|byte| *byte == b'\n') {
-                    let line =
-                        std::str::from_utf8(&got[..=end]).unwrap_or_else(|err| panic!("{err}"));
-                    let value: Value = serde_json::from_str(line.trim())
+                    let line = std::str::from_utf8(&got[..end])
+                        .unwrap_or_else(|err| panic!("{err}"))
+                        .trim_end_matches('\r');
+                    let listening: Listening = serde_json::from_str(line)
                         .unwrap_or_else(|err| panic!("listening: {err}\n{line}"));
-                    assert_eq!(value["kind"], "listening", "{value}");
-                    let game = value["game"]
-                        .as_str()
-                        .unwrap_or_else(|| panic!("{value}"))
-                        .parse()
-                        .unwrap_or_else(|err| panic!("{err}"));
-                    let door = value["door"]
-                        .as_str()
-                        .unwrap_or_else(|| panic!("{value}"))
-                        .parse()
-                        .unwrap_or_else(|err| panic!("{err}"));
-                    return (game, door);
+                    let port = |addr: &str| {
+                        loopback_port(addr).unwrap_or_else(|| panic!("not loopback\n{line}"))
+                    };
+                    return (port(&listening.game), port(&listening.door), line.into());
                 }
             }
             Err(err) => panic!("stdout: {err}"),
@@ -794,17 +786,15 @@ fn differ(name: &str, live: &Example, documented: &Example) -> Option<String> {
 }
 
 fn scrub(value: &mut Value) {
+    let Ok(Listening { game, door }) = serde_json::from_value(value.clone()) else {
+        return;
+    };
+    assert!(loopback_port(&game).is_some(), "{game}");
+    assert!(loopback_port(&door).is_some(), "{door}");
+    assert_ne!(game, door, "game and door ports");
     let Some(object) = value.as_object_mut() else {
         return;
     };
-    if object.get("kind").and_then(Value::as_str) != Some("listening") {
-        return;
-    }
-    let game = object.get("game").and_then(Value::as_str).unwrap_or("");
-    let door = object.get("door").and_then(Value::as_str).unwrap_or("");
-    assert!(loopback_port(game).is_some(), "{game}");
-    assert!(loopback_port(door).is_some(), "{door}");
-    assert_ne!(game, door, "game and door ports");
     object.insert(
         "game".to_string(),
         Value::String(SCRUBBED_GAME_ADDR.to_string()),

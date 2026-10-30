@@ -132,13 +132,6 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             let world = spookery_engine::World::resume(&pack, lock).map_err(|e| e.to_string())?;
             let mut config = spookery_server::Config::new(addr);
             config.door = door;
-            if let Some(ms) = std::env::var("SPOOK_HELLO_TIMEOUT_MS")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .filter(|&ms| ms > 0)
-            {
-                config.hello_timeout = std::time::Duration::from_millis(ms);
-            }
             config.out = Box::new(std::io::stdout());
             config.err = Box::new(std::io::stderr());
             // Ctrl+C stops the host. Listen before serving so an early one is caught.

@@ -138,7 +138,7 @@ fn rolls<'a>(reports: impl IntoIterator<Item = &'a MoveReport>) -> impl Iterator
     })
 }
 
-pub fn resume(view: &View) -> String {
+pub(crate) fn resume(view: &View) -> String {
     let actor_id = view.viewer.actor_id();
     let notes = view
         .notes

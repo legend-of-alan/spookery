@@ -91,7 +91,7 @@ pub(super) const TOOLS: &[Tool] = &[
 ];
 
 /// Run one GM tool. `presence` is who the host's seats hold.
-pub fn call_gm_tool(
+pub(super) fn call_gm_tool(
     world: &mut World,
     presence: &Presence,
     name: &str,

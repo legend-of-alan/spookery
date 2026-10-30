@@ -3,7 +3,6 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery::host::idle_clock::wall_now;
 use spookery_engine::testing::{faces, PlaceLive, RollKey};
 use spookery_engine::MoveReport;
 use spookery_engine::{Presence, Reason};
@@ -247,8 +246,9 @@ fn a_pc_at_ferry_dock_travels(world: &mut World) {
     opened
         .queue_player_move(&one_human, "pc_rowan", "travel", Some("ferry_dock"))
         .unwrap_or_else(|err| panic!("travel {}", err.token()));
+    let wall = opened.state().last_round_at.clone();
     opened
-        .commit_then_fast_forward(&one_human, &wall_now())
+        .commit_then_fast_forward(&one_human, &wall)
         .unwrap_or_else(|err| panic!("travel {err}"));
 }
 
@@ -425,8 +425,9 @@ fn lark_attacks(world: &mut World) {
     opened
         .queue_player_move(&nobody, "pc_lark", "attack", Some("npc_briar"))
         .unwrap_or_else(|err| panic!("attack {}", err.token()));
+    let wall = opened.state().last_round_at.clone();
     let outputs = opened
-        .commit_then_fast_forward(&nobody, &wall_now())
+        .commit_then_fast_forward(&nobody, &wall)
         .unwrap_or_else(|err| panic!("attack {err}"));
     let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {

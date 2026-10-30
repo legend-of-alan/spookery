@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 use spookery::gm_connection::{Connection, Incoming};
+use spookery::protocol;
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::State;
 
@@ -37,6 +38,104 @@ pub struct Host {
     pub seated_save: Vec<u8>,
     pub seated_rev: u64,
     pub host: Option<Process>,
+    /// A host `serve` runs in this process. Dropped last, so seats close first.
+    pub in_process: Option<InProcess>,
+}
+
+type Advance = (Duration, tokio::sync::oneshot::Sender<()>);
+
+/// `serve` on its own thread, on a current-thread runtime whose clock starts
+/// paused. The table's blocking task keeps tokio from auto-advancing, so
+/// paused time moves only on `advance`.
+pub struct InProcess {
+    pub stdout: Arc<Mutex<String>>,
+    pub stderr: Arc<Mutex<String>>,
+    advance: tokio::sync::mpsc::UnboundedSender<Advance>,
+    stop: Option<tokio::sync::oneshot::Sender<()>>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Drop for InProcess {
+    /// Resolve the shutdown future and wait, so the pack lock is free after.
+    fn drop(&mut self) {
+        if let Some(stop) = self.stop.take() {
+            let _ = stop.send(());
+        }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
+/// Opens the pack the way `spook run` does and serves it in this process.
+pub fn listen_in_process(world: &mut World, pack: &Path) {
+    drop(world.live.take());
+    // `lock_pack` then `World::resume`, as `spook run` opens it.
+    let shard = support::resume(pack);
+    let (mut out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
+    let (err, err_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
+    let stderr = Arc::new(Mutex::new(String::new()));
+    drop(drain(err, Arc::clone(&stderr)));
+    let loopback: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let mut config = spookery_server::Config::new(loopback);
+    config.door = Some(loopback);
+    config.out = Box::new(out_pipe);
+    config.err = Box::new(err_pipe);
+    let (advance, mut advances) = tokio::sync::mpsc::unbounded_channel::<Advance>();
+    let (stop, stopped) = tokio::sync::oneshot::channel::<()>();
+    let failed = Arc::clone(&stderr);
+    let thread = std::thread::spawn(move || {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .start_paused(true)
+            .build()
+            .unwrap_or_else(|err| panic!("runtime: {err}"));
+        runtime.block_on(async move {
+            tokio::spawn(async move {
+                while let Some((by, ack)) = advances.recv().await {
+                    tokio::time::advance(by).await;
+                    let _ = ack.send(());
+                }
+            });
+            let shutdown = async {
+                let _ = stopped.await;
+            };
+            if let Err(err) = spookery_server::serve(shard, config, shutdown).await {
+                failed.lock().unwrap().push_str(&format!("serve: {err}\n"));
+            }
+        });
+    });
+    let (game, door, seen) = match read_listening(&mut out) {
+        Ok(report) => report,
+        Err(got) => {
+            let _ = thread.join();
+            let stderr = support::text_of(&stderr);
+            panic!("serve ended before it reported its ports\nstdout:\n{got}\nstderr:\n{stderr}");
+        }
+    };
+    let stdout = Arc::new(Mutex::new(seen));
+    drop(drain(out, Arc::clone(&stdout)));
+    install(world, pack, game, door).in_process = Some(InProcess {
+        stdout,
+        stderr,
+        advance,
+        stop: Some(stop),
+        thread: Some(thread),
+    });
+}
+
+/// Moves the in-process host's paused clock forward. Timers due by then have
+/// fired when this returns; what they sent the table is queued, so the next
+/// `read_presence` is the barrier before reading the save or journal.
+pub fn advance(world: &World, by: Duration) {
+    let host = live(world)
+        .in_process
+        .as_ref()
+        .unwrap_or_else(|| panic!("the table is not in this process"));
+    let ended = || panic!("the host ended\n{}", support::text_of(&host.stderr));
+    let (ack, acked) = tokio::sync::oneshot::channel();
+    host.advance.send((by, ack)).unwrap_or_else(|_| ended());
+    support::block_on(acked).unwrap_or_else(|_| ended());
 }
 
 pub fn live_mut(world: &mut World) -> &mut Host {
@@ -181,7 +280,7 @@ pub struct Listening {
 }
 
 pub fn listen(world: &mut World, pack: &Path) {
-    let _ = listen_with_flags(world, pack, &["--addr", "127.0.0.1:0"], &[]);
+    let _ = listen_with_flags(world, pack, &["--addr", "127.0.0.1:0"]);
 }
 
 /// `spook run` with an agent door the operating system chooses on its own.
@@ -190,25 +289,15 @@ pub fn listen_door(world: &mut World, pack: &Path) -> u16 {
         world,
         pack,
         &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
-        &[],
     )
     .1
 }
 
-pub fn listen_with_env(world: &mut World, pack: &Path, env: &[(&str, &str)]) {
-    let _ = listen_with_flags(world, pack, &["--addr", "127.0.0.1:0"], env);
-}
-
-pub fn listen_with_flags(
-    world: &mut World,
-    pack: &Path,
-    flags: &[&str],
-    env: &[(&str, &str)],
-) -> (u16, u16) {
+pub fn listen_with_flags(world: &mut World, pack: &Path, flags: &[&str]) -> (u16, u16) {
     drop(world.live.take());
-    let listening = wait_listening(spawn_table(pack, flags, env));
+    let listening = wait_listening(spawn_table(pack, flags));
     let ports = (listening.game.port(), listening.door.port());
-    install(world, pack, listening);
+    install(world, pack, listening.game, listening.door).host = Some(listening.host);
     ports
 }
 
@@ -228,12 +317,9 @@ pub fn parse_listening(stdout: &str) -> (SocketAddr, SocketAddr) {
         .unwrap_or_else(|| panic!("no listening line\n{stdout}"))
 }
 
-pub fn spawn_table(pack: &Path, flags: &[&str], env: &[(&str, &str)]) -> Pending {
+pub fn spawn_table(pack: &Path, flags: &[&str]) -> Pending {
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command.arg("run").arg(support::pack_arg(pack)).args(flags);
-    for (key, value) in env {
-        command.env(key, value);
-    }
     command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -277,51 +363,61 @@ pub fn wait_listening(mut pending: Pending) -> Listening {
     }
 }
 
-fn install(world: &mut World, pack: &Path, listening: Listening) {
+fn install<'w>(
+    world: &'w mut World,
+    pack: &Path,
+    game: SocketAddr,
+    door: SocketAddr,
+) -> &'w mut Host {
     let opened_now = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     drop(world.live.take());
-    world.live = Some(Host {
-        game_port: listening.game.port(),
+    world.live.insert(Host {
+        game_port: game.port(),
         first_stream: None,
         player_text: Arc::new(Mutex::new(String::new())),
         players: Vec::new(),
         gm: None,
         closed_gm: None,
         gm_probe: false,
-        door_port: listening.door.port(),
+        door_port: door.port(),
         gm_text: Arc::new(Mutex::new(String::new())),
         opened_save: opened_now.clone(),
         seated_save: opened_now,
         seated_rev: 0,
-        host: Some(listening.host),
-    });
+        host: None,
+        in_process: None,
+    })
 }
 
 fn read_report(pending: &mut Pending) -> (SocketAddr, SocketAddr, String) {
+    read_listening(&mut pending.stdout).unwrap_or_else(|got| {
+        let status = pending
+            .child
+            .wait()
+            .unwrap_or_else(|err| panic!("wait: {err}"));
+        if let Some(drain) = pending.stderr_drain.take() {
+            let _ = drain.join();
+        }
+        panic!(
+            "spook run exited {status} before it reported its ports\nstdout:\n{got}\nstderr:\n{}",
+            support::text_of(&pending.stderr)
+        );
+    })
+}
+
+/// Reads the host's stdout up to its listening line: the two addresses and
+/// the text so far. `Err` is the text before stdout closed without one.
+fn read_listening(stdout: &mut impl Read) -> Result<(SocketAddr, SocketAddr, String), String> {
     let mut got = Vec::new();
     let mut buf = [0u8; 256];
     loop {
-        match pending.stdout.read(&mut buf) {
-            Ok(0) => {
-                let status = pending
-                    .child
-                    .wait()
-                    .unwrap_or_else(|err| panic!("wait: {err}"));
-                if let Some(drain) = pending.stderr_drain.take() {
-                    let _ = drain.join();
-                }
-                panic!(
-                    "spook run exited {status} before it reported its ports\nstdout:\n{}\nstderr:\n{}",
-                    String::from_utf8_lossy(&got),
-                    support::text_of(&pending.stderr)
-                );
-            }
+        match stdout.read(&mut buf) {
+            Ok(0) => return Err(String::from_utf8_lossy(&got).into_owned()),
             Ok(n) => {
                 got.extend_from_slice(&buf[..n]);
                 if let Some((game, door)) = find_listening(&got) {
-                    let seen = String::from_utf8_lossy(&got).into_owned();
-                    return (game, door, seen);
+                    return Ok((game, door, String::from_utf8_lossy(&got).into_owned()));
                 }
             }
             Err(err) => panic!("read stdout: {err}"),
@@ -336,13 +432,8 @@ fn find_listening(buf: &[u8]) -> Option<(SocketAddr, SocketAddr)> {
 }
 
 fn parse_listening_line(line: &str) -> Option<(SocketAddr, SocketAddr)> {
-    let value: serde_json::Value = serde_json::from_str(line.trim()).ok()?;
-    if value.get("kind")?.as_str() != Some("listening") {
-        return None;
-    }
-    let game = value.get("game")?.as_str()?.parse().ok()?;
-    let door = value.get("door")?.as_str()?.parse().ok()?;
-    Some((game, door))
+    let listening: protocol::Listening = serde_json::from_str(line.trim()).ok()?;
+    Some((listening.game.parse().ok()?, listening.door.parse().ok()?))
 }
 
 fn drain(reader: impl Read + Send + 'static, slot: Arc<Mutex<String>>) -> JoinHandle<()> {
@@ -498,10 +589,12 @@ pub fn wait_world_time(pack: &Path, expected: u64) {
 }
 
 pub fn host_stdout(world: &World) -> String {
-    live(world)
-        .host
-        .as_ref()
-        .map(|server| support::text_of(&server.stdout))
+    let live = live(world);
+    let process = live.host.as_ref().map(|server| &server.stdout);
+    let in_process = live.in_process.as_ref().map(|server| &server.stdout);
+    process
+        .or(in_process)
+        .map(support::text_of)
         .unwrap_or_default()
 }
 
@@ -597,6 +690,8 @@ pub fn stop_host(world: &mut World) {
     live.first_stream.take();
     live.gm.take();
     live.closed_gm.take();
+    // An in-process host stops when its shutdown future resolves.
+    live.in_process.take();
     // Stop the host the way a person does, with Ctrl+C. Windows just drops it, which kills.
     if let Some(mut server) = live.host.take() {
         if cfg!(unix) {

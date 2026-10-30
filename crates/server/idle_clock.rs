@@ -1,30 +1,13 @@
 //! Decide when an idle table plays a round, and stamp the wall time.
 
-use chrono::{DateTime, NaiveDateTime, TimeDelta, Utc};
+use chrono::{DateTime, NaiveDateTime, Utc};
 
 use spookery_engine::{Reason, World};
 
 const STAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
-/// Test support: seconds since a UTC stamp. Not part of the API.
-#[doc(hidden)]
-pub fn secs_since(last_round_at: &str) -> Result<u64, Reason> {
-    elapsed_secs(last_round_at, Utc::now())
-}
-
-pub fn wall_now() -> String {
+pub(super) fn wall_now() -> String {
     format_utc(Utc::now())
-}
-
-/// Test support: a UTC stamp `seconds` in the past. Not part of the API.
-#[doc(hidden)]
-pub fn wall_ago(seconds: u64) -> Result<String, Reason> {
-    let ago = i64::try_from(seconds)
-        .ok()
-        .and_then(TimeDelta::try_seconds)
-        .and_then(|ago| Utc::now().checked_sub_signed(ago))
-        .ok_or(Reason::Schema)?;
-    Ok(format_utc(ago))
 }
 
 fn elapsed_secs(last_round_at: &str, now: DateTime<Utc>) -> Result<u64, Reason> {
@@ -47,15 +30,12 @@ fn format_utc(now: DateTime<Utc>) -> String {
 
 /// Seat check and interval check. A round that runs borrows this `World`.
 /// Returns whether `world_time` advanced.
-pub fn catch_up_if_due(
+pub(super) fn catch_up_if_due(
     world: &mut World,
     player_held: bool,
     gm_held: bool,
 ) -> Result<bool, Reason> {
     if player_held || gm_held {
-        return Ok(false);
-    }
-    if !world.budget().idle_rounds {
         return Ok(false);
     }
     let now = Utc::now();

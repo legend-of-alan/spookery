@@ -60,8 +60,8 @@ fn two_tables_listen_on_port_0_at_the_same_time(world: &mut World) {
     let first = table::pack(world).to_path_buf();
     let second = copy_docks("ports-other");
     world.scratch = second.to_string_lossy().into_owned();
-    let started_first = table::spawn_table(&first, &["--addr", "127.0.0.1:0"], &[]);
-    let started_second = table::spawn_table(&second, &["--addr", "127.0.0.1:0"], &[]);
+    let started_first = table::spawn_table(&first, &["--addr", "127.0.0.1:0"]);
+    let started_second = table::spawn_table(&second, &["--addr", "127.0.0.1:0"]);
     let first = table::wait_listening(started_first);
     let second = table::wait_listening(started_second);
     world.stdout = format!(

@@ -35,6 +35,14 @@ pub use player::{
     ExitView, ItemStack, KnownFact, MeterView, Missing, NoteView, PlayerFrame, ViewScene,
 };
 
+/// The line `spook run` prints on stdout once both ports are bound.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename = "listening")]
+pub struct Listening {
+    pub game: String,
+    pub door: String,
+}
+
 /// The agent door for a fixed game port: the next port, on the same address.
 pub fn default_door(game: std::net::SocketAddr) -> Option<std::net::SocketAddr> {
     let port = game.port().checked_add(1)?;
