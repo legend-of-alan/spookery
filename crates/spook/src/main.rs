@@ -240,7 +240,7 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
                 println!("no problems");
             } else {
                 for item in &found {
-                    eprintln!("{}", item);
+                    eprintln!("{item}");
                 }
             }
             if found.iter().any(spookery_engine::Diagnostic::is_error) {
