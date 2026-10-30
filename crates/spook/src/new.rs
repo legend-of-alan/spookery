@@ -4,45 +4,44 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-/// Files of the starter pack, in write order. `pack_rev` is filled in after
-/// these bytes are on disk. The hash is not stored in this source.
+/// Files of the starter pack, in write order.
 const FILES: &[(&str, &str)] = &[
-    ("pack.yaml", include_str!("templates/starter/pack.yaml")),
+    ("pack.yaml", include_str!("../templates/starter/pack.yaml")),
     (
         "world/places/yard.md",
-        include_str!("templates/starter/world/places/yard.md"),
+        include_str!("../templates/starter/world/places/yard.md"),
     ),
     (
         "world/places/lane.md",
-        include_str!("templates/starter/world/places/lane.md"),
+        include_str!("../templates/starter/world/places/lane.md"),
     ),
     (
         "cast/keeper.md",
-        include_str!("templates/starter/cast/keeper.md"),
+        include_str!("../templates/starter/cast/keeper.md"),
     ),
     (
         "cast/pc-ada.md",
-        include_str!("templates/starter/cast/pc-ada.md"),
+        include_str!("../templates/starter/cast/pc-ada.md"),
     ),
     (
         "rules/verbs.yaml",
-        include_str!("templates/starter/rules/verbs.yaml"),
+        include_str!("../templates/starter/rules/verbs.yaml"),
     ),
     (
         "rules/checks.yaml",
-        include_str!("templates/starter/rules/checks.yaml"),
+        include_str!("../templates/starter/rules/checks.yaml"),
     ),
     (
         "rules/meters.yaml",
-        include_str!("templates/starter/rules/meters.yaml"),
+        include_str!("../templates/starter/rules/meters.yaml"),
     ),
     (
         "rules/budget.yaml",
-        include_str!("templates/starter/rules/budget.yaml"),
+        include_str!("../templates/starter/rules/budget.yaml"),
     ),
     (
         "state/save.yaml",
-        include_str!("templates/starter/state/save.yaml"),
+        include_str!("../templates/starter/state/save.yaml"),
     ),
 ];
 
@@ -125,7 +124,7 @@ fn write_files(dir: &Path) -> Result<(), Error> {
         }
         fs::write(&path, text.as_bytes()).map_err(Error::Io)?;
     }
-    write_pack_rev(dir)
+    Ok(())
 }
 
 fn undo_write(dir: &Path, created: bool) {
@@ -161,20 +160,6 @@ fn parent_dirs() -> Vec<std::path::PathBuf> {
     dirs
 }
 
-fn write_pack_rev(dir: &Path) -> Result<(), Error> {
-    let rev = spookery_engine::pack_rev(dir)
-        .map_err(|_| Error::Message("the starter canon could not be hashed".to_string()))?;
-    let path = dir.join("state/save.yaml");
-    let text = fs::read_to_string(&path).map_err(Error::Io)?;
-    let mut now = spookery_engine::parse_save(&text)
-        .map_err(|_| Error::Message("the starter save could not be read".to_string()))?;
-    now.pack_rev = rev;
-    let emitted = spookery_engine::emit_save(&now)
-        .map_err(|_| Error::Message("the starter save could not be written".to_string()))?;
-    fs::write(path, emitted).map_err(Error::Io)?;
-    Ok(())
-}
-
 fn next_steps(dir: &Path) -> String {
     let path = dir.display();
     format!("Wrote {path}\nspook check {path}\nspook run {path}\nspook play\n")
@@ -198,16 +183,6 @@ mod tests {
         fn drop(&mut self) {
             STOP_BEFORE.with(|cell| cell.set(None));
         }
-    }
-
-    #[test]
-    fn the_starter_does_not_store_a_hash() {
-        let src = include_str!("starter.rs");
-        let needle = ["blake2s", ":"].concat();
-        assert!(
-            !src.contains(&needle),
-            "pack_rev is computed when the pack is written"
-        );
     }
 
     fn must_fail(dir: &Path) -> String {

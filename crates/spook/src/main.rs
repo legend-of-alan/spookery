@@ -1,7 +1,8 @@
 //! The `spook` command for one loopback table.
 
+mod new;
+
 use std::net::SocketAddr;
-#[cfg(feature = "server")]
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -100,7 +101,6 @@ enum Command {
         pack: PathBuf,
     },
     /// Write a minimal pack and print the next commands.
-    #[cfg(feature = "server")]
     New {
         /// Directory to create. An existing non-empty directory is refused.
         #[arg(value_name = "DIR")]
@@ -252,9 +252,8 @@ async fn dispatch(cli: Cli) -> Result<(), String> {
             }
             Ok(())
         }
-        #[cfg(feature = "server")]
         Command::New { dir } => {
-            let next = spookery::host::starter::write(&dir).map_err(|e| e.to_string())?;
+            let next = new::write(&dir).map_err(|e| e.to_string())?;
             print!("{next}");
             Ok(())
         }

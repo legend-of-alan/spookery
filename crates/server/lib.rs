@@ -8,7 +8,6 @@ mod limits;
 mod listener;
 mod mcp_http;
 mod outbound;
-pub mod starter;
 mod world_loop;
 
 pub use frames::player_resume_line;
