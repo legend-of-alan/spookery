@@ -1,4 +1,4 @@
-//! The GM tools: status, perceive, intent, say, commit, and close.
+//! The GM tool table: each tool's name, description, schema and run.
 
 use serde_json::{Map, Value};
 use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn parsed_intent_reaches_the_world_with_move_and_to() {
-        let pack = copy_pack("oneshot-docks", "gm_tools_intent");
+        let pack = copy_pack("oneshot-docks", "tools_intent");
         let mut world = World::open(&pack).unwrap();
         let args = json!({"actor_id": "pc_rowan", "move": "wait", "to": ["pc_wren"]});
         let call = crate::protocol::parse_intent_args(args.as_object()).unwrap();

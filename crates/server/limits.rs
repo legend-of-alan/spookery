@@ -1,4 +1,4 @@
-//! Caps, the hello deadline, and the per-player token bucket.
+//! Caps, the capped line and byte readers, and the per-player token bucket.
 //!
 //! A hello is read one byte at a time so a following line stays on the socket
 //! for the player reader. Player lines after the hello use a `BufReader`.
@@ -8,7 +8,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Duration;
 
-use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite, ReadBuf};
+use tokio::io::{AsyncBufRead, AsyncRead, ReadBuf};
 use tokio::time::Instant;
 
 /// Hello and player lines, not counting the newline.
@@ -288,11 +288,6 @@ pub(super) async fn wait_for_token(
             _ = tokio::time::sleep(delay) => {}
         }
     }
-}
-
-pub(super) async fn write_all_flush(write: &mut (impl AsyncWrite + Unpin), frame: &[u8]) -> bool {
-    use tokio::io::AsyncWriteExt;
-    write.write_all(frame).await.is_ok() && write.flush().await.is_ok()
 }
 
 #[cfg(test)]

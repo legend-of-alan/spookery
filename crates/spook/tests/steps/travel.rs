@@ -340,8 +340,8 @@ fn both_busy_without_a_gm(world: &mut World) {
     world.pack = Some(pack);
 }
 
-#[then(expr = "the shard plays rounds to 21:35 then 21:40 without waiting on the wall clock")]
-fn the_shard_plays_rounds_through_both_arrivals(world: &mut World) {
+#[then(expr = "the table plays rounds to 21:35 then 21:40 without waiting on the wall clock")]
+fn the_table_plays_rounds_through_both_arrivals(world: &mut World) {
     let (_mark, _added) = table::player_send(world, "wait", "BUSY");
     let pack = table::pack(world).to_path_buf();
     let names = list_round_keys(&pack);

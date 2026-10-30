@@ -71,7 +71,7 @@ impl Drop for InProcess {
 pub fn listen_in_process(world: &mut World, pack: &Path) {
     drop(world.live.take());
     // `lock_pack` then `World::resume`, as `spook run` opens it.
-    let shard = support::resume(pack);
+    let opened = support::resume(pack);
     let (mut out, out_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let (err, err_pipe) = std::io::pipe().unwrap_or_else(|err| panic!("pipe: {err}"));
     let stderr = Arc::new(Mutex::new(String::new()));
@@ -100,7 +100,7 @@ pub fn listen_in_process(world: &mut World, pack: &Path) {
             let shutdown = async {
                 let _ = stopped.await;
             };
-            if let Err(err) = spookery_server::serve(shard, config, shutdown).await {
+            if let Err(err) = spookery_server::serve(opened, config, shutdown).await {
                 failed.lock().unwrap().push_str(&format!("serve: {err}\n"));
             }
         });

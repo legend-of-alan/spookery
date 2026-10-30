@@ -46,8 +46,8 @@ fn a_round_that_changes_a_hidden_fact(world: &mut World) {
     ));
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
-    let mut shard = resume_with_lark(&pack);
-    let output = play(&mut shard, "spill");
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "spill");
     world.summary_lines = output.summary.clone();
     world.seen = change_line(&output);
 }
@@ -66,16 +66,16 @@ fn larks_might_is_raised(world: &mut World) {
         might.base = 40;
         might.offset = 0;
     });
-    let mut shard = resume_with_lark(&pack);
-    let output = play(&mut shard, "strike npc_briar");
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "strike npc_briar");
     world.seen = change_line(&output);
 }
 
 #[when(expr = "lark uses a tonic")]
 fn lark_uses_a_tonic(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut shard = resume_with_lark(&pack);
-    let output = play(&mut shard, "use tonic");
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "use tonic");
     world.seen = change_line(&output);
 }
 
@@ -89,8 +89,8 @@ fn lark_uses_her_tonic_while_oden_gains_one(world: &mut World) {
     );
     fs::write(pack.join("rules/verbs.yaml"), verbs).unwrap();
     stamp_pack_rev(&pack);
-    let mut shard = resume_with_lark(&pack);
-    let output = play(&mut shard, "sip");
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "sip");
     world.summary_lines = output.summary.clone();
     world.seen = change_line(&output);
 }
@@ -116,8 +116,8 @@ fn the_line_skips_the_unseen_gain(world: &mut World) {
 #[when(expr = "lark drops the tonic")]
 fn lark_drops_the_tonic(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut shard = resume_with_lark(&pack);
-    let output = play(&mut shard, "drop tonic");
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "drop tonic");
     world.seen = change_line(&output);
 }
 
@@ -136,16 +136,16 @@ fn a_tonic_is_on_the_ground(world: &mut World) {
 #[when(expr = "lark takes the tonic")]
 fn lark_takes_the_tonic(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let mut shard = resume_with_lark(&pack);
-    let output = play(&mut shard, "take tonic");
+    let mut opened = resume_with_lark(&pack);
+    let output = play(&mut opened, "take tonic");
     world.seen = change_line(&output);
 }
 
 #[when(expr = "lark looks at their view")]
 fn lark_looks_at_their_view(world: &mut World) {
     let pack = world.pack().to_path_buf();
-    let shard = resume_with_lark(&pack);
-    world.seen = meter_lines(&shard);
+    let opened = resume_with_lark(&pack);
+    world.seen = meter_lines(&opened);
 }
 
 #[then(expr = "lark sees one line naming the change to briar's hp")]

@@ -44,7 +44,7 @@ Feature: Travel follows the map
 
   Scenario: Fast-forward when all seated PCs are busy
     Given rowan and nell are seated and both busy, with no GM
-    Then the shard plays rounds to 21:35 then 21:40 without waiting on the wall clock
+    Then the table plays rounds to 21:35 then 21:40 without waiting on the wall clock
     And an NPC habit due at 21:35 runs in that round
 
   Scenario: GM mode waits for commit

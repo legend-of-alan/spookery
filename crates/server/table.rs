@@ -1,9 +1,7 @@
-//! The table: the one owner of the world and its seats. It seats players,
-//! answers their lines and the GM's tools, and delivers every round.
+//! The table, the one owner of the world and its seats: hellos, lines, tools, say and rounds.
 
 use std::io::Write;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::Receiver;
+use std::sync::mpsc::{Receiver, Sender};
 
 use serde_json::{Map, Value};
 use spookery_engine::{
@@ -12,10 +10,10 @@ use spookery_engine::{
 use tokio::sync::{oneshot, watch};
 
 use super::frames::{self, Refusal};
-use super::gm_tools::call_gm_tool;
-use super::idle_clock::{self, wall_now};
-use super::listener::Error;
-use super::outbound::{try_send_frame, CancelTx, OutTx};
+use super::idle::{self, wall_now};
+use super::seat::{Conn, GmSeat, Outbound, PlayerSeat, Seats};
+use super::tools::call_gm_tool;
+use super::Error;
 
 /// The host's cap. A pack may define more PCs than this.
 const MAX_PLAYER_SEATS: usize = 3;
@@ -30,85 +28,11 @@ pub(crate) fn commit_then_fast_forward(
     world.commit_then_fast_forward(presence, &wall)
 }
 
-/// One connection's id, on the game port or the agent door.
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) struct Conn(u64);
-
-impl Conn {
-    /// The next id from the one counter both ports share.
-    pub(crate) fn mint(next: &AtomicU64) -> Self {
-        Self(next.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-/// The one owner of who is seated. Rounds and readers take `presence()`.
-#[derive(Default)]
-struct Seats {
-    players: Vec<PlayerSeat>,
-    gm: Option<GmSeat>,
-}
-
-impl Seats {
-    /// The seated PCs, sorted, so a round records the same `actors_present` bytes.
-    fn presence(&self) -> Presence {
-        let mut actors_present: Vec<String> = self
-            .players
-            .iter()
-            .map(|player| player.actor_id.clone())
-            .collect();
-        actors_present.sort();
-        Presence {
-            players: u32::try_from(actors_present.len()).unwrap_or(u32::MAX),
-            actors_present,
-        }
-    }
-
-    fn player(&self, conn: Conn) -> Option<&PlayerSeat> {
-        self.players.iter().find(|player| player.conn == conn)
-    }
-
-    fn take_player(&mut self, conn: Conn) -> Option<PlayerSeat> {
-        let index = self.players.iter().position(|player| player.conn == conn)?;
-        Some(self.players.remove(index))
-    }
-
-    /// Dropping the seat cancels its event writer.
-    fn release_gm(&mut self) {
-        self.gm = None;
-    }
-}
-
-struct PlayerSeat {
-    conn: Conn,
-    actor_id: String,
-    out: OutTx,
-    cancel: CancelTx,
-}
-
-impl Drop for PlayerSeat {
-    fn drop(&mut self) {
-        let _ = self.cancel.send(true);
-    }
-}
-
-struct GmSeat {
-    conn: Conn,
-    out: OutTx,
-    cancel: CancelTx,
-}
-
-impl Drop for GmSeat {
-    fn drop(&mut self) {
-        let _ = self.cancel.send(true);
-    }
-}
-
 pub(super) enum Request {
     Hello {
         conn: Conn,
         line: String,
-        out: OutTx,
-        cancel: CancelTx,
+        seat: Outbound,
         reply: oneshot::Sender<HelloReply>,
     },
     Line {
@@ -129,12 +53,20 @@ pub(super) enum Request {
     /// The HTTP session takes the one GM seat. The game port does not.
     SeatGm {
         conn: Conn,
-        out: OutTx,
-        cancel: CancelTx,
+        seat: Outbound,
         reply: oneshot::Sender<Result<(), Refusal>>,
     },
     Wake,
     Stop,
+}
+
+/// Tells the table a connection hung up, and waits until the table has let go of its seat.
+pub(super) async fn report_hangup(tx: &Sender<Request>, conn: Conn) {
+    let (ack_tx, ack_rx) = oneshot::channel();
+    if tx.send(Request::Hangup { conn, ack: ack_tx }).is_err() {
+        return;
+    }
+    let _ = ack_rx.await;
 }
 
 pub(super) enum HelloReply {
@@ -176,19 +108,13 @@ impl Table {
                 Request::Hello {
                     conn,
                     line,
-                    out,
-                    cancel,
+                    seat,
                     reply,
                 } => {
-                    let _ = reply.send(self.hello(conn, &line, out, cancel));
+                    let _ = reply.send(self.hello(conn, &line, seat));
                 }
-                Request::SeatGm {
-                    conn,
-                    out,
-                    cancel,
-                    reply,
-                } => {
-                    let seated = self.seat_gm(conn, out, cancel);
+                Request::SeatGm { conn, seat, reply } => {
+                    let seated = self.seat_gm(conn, seat);
                     let took = seated.is_ok();
                     if reply.send(seated).is_err() && took {
                         self.seats.release_gm();
@@ -224,7 +150,7 @@ impl Table {
         }
     }
 
-    fn hello(&mut self, conn: Conn, line: &str, out: OutTx, cancel: CancelTx) -> HelloReply {
+    fn hello(&mut self, conn: Conn, line: &str, seat: Outbound) -> HelloReply {
         let named = match line {
             "gm" => return HelloReply::Refused(Reason::NotInSpec.into()),
             "" => None,
@@ -261,14 +187,13 @@ impl Table {
         self.seats.players.push(PlayerSeat {
             conn,
             actor_id: id.to_string(),
-            out,
-            cancel,
+            out: seat,
         });
         let sent = welcome(&self.world, &self.seats.presence(), id).and_then(|bytes| {
             let seated = self
                 .seats
                 .player(conn)
-                .is_some_and(|player| try_send_frame(&player.out, bytes));
+                .is_some_and(|player| player.out.send(bytes));
             if seated {
                 Ok(())
             } else {
@@ -283,11 +208,11 @@ impl Table {
         HelloReply::Seated
     }
 
-    fn seat_gm(&mut self, conn: Conn, out: OutTx, cancel: CancelTx) -> Result<(), Refusal> {
+    fn seat_gm(&mut self, conn: Conn, seat: Outbound) -> Result<(), Refusal> {
         if self.seats.gm.is_some() {
             return Err(Reason::TableFull.into());
         }
-        self.seats.gm = Some(GmSeat { conn, out, cancel });
+        self.seats.gm = Some(GmSeat { conn, out: seat });
         Ok(())
     }
 
@@ -383,7 +308,7 @@ impl Table {
 
     fn wake(&mut self) -> Result<(), Reason> {
         let players = !self.seats.players.is_empty();
-        if idle_clock::catch_up_if_due(&mut self.world, players, self.seats.gm.is_some())? {
+        if idle::catch_up_if_due(&mut self.world, players, self.seats.gm.is_some())? {
             self.restart_idle_timer();
         }
         Ok(())
@@ -432,7 +357,7 @@ impl Table {
                 }
                 Err(code) => Refusal::from(code).line().into_bytes(),
             };
-            if !try_send_frame(&player.out, bytes) {
+            if !player.out.send(bytes) {
                 failed.push(player.conn);
             }
         }
@@ -458,7 +383,7 @@ impl Table {
         let mut failed = Vec::new();
         for player in &self.seats.players {
             if said.recipients.iter().any(|id| id == &player.actor_id)
-                && !try_send_frame(&player.out, line.clone())
+                && !player.out.send(line.clone())
             {
                 failed.push(player.conn);
             }
@@ -473,19 +398,14 @@ impl Table {
         if self
             .seats
             .player(conn)
-            .is_some_and(|player| !try_send_frame(&player.out, bytes))
+            .is_some_and(|player| !player.out.send(bytes))
         {
             self.drop_player(conn);
         }
     }
 
     fn send_gm(&mut self, frame: Vec<u8>) {
-        if self
-            .seats
-            .gm
-            .as_ref()
-            .is_some_and(|gm| !try_send_frame(&gm.out, frame))
-        {
+        if self.seats.gm.as_ref().is_some_and(|gm| !gm.out.send(frame)) {
             self.seats.release_gm();
         }
     }

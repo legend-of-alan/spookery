@@ -1,10 +1,39 @@
-//! Decide when an idle table plays a round, and stamp the wall time.
+//! The idle timer, when an idle table plays a round, and the wall time stamp.
+
+use std::sync::mpsc::Sender;
+use std::time::Duration;
 
 use chrono::{DateTime, NaiveDateTime, Utc};
+use tokio::sync::watch;
 
 use spookery_engine::{Reason, World};
 
+use super::table::Request;
+
 const STAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
+
+/// Wakes the table every `keepalive_secs`. Each restart from the table starts
+/// the wait again.
+pub(super) async fn run(
+    tx: Sender<Request>,
+    mut restart: watch::Receiver<u64>,
+    keepalive_secs: u64,
+) {
+    loop {
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(keepalive_secs)) => {
+                if tx.send(Request::Wake).is_err() {
+                    break;
+                }
+            }
+            changed = restart.changed() => {
+                if changed.is_err() {
+                    break;
+                }
+            }
+        }
+    }
+}
 
 pub(super) fn wall_now() -> String {
     format_utc(Utc::now())

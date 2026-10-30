@@ -6,19 +6,19 @@ use std::thread;
 use cucumber::{given, then, when};
 
 use spookery_engine::testing::{copy_docks, journal, lock_write, watch_reader_wait};
-use spookery_engine::{emit_save, lock_pack, World as Shard};
+use spookery_engine::{emit_save, lock_pack};
 
 use crate::{World, Writer};
 
 fn hold(world: &mut World, pack: PathBuf) {
     let lock = lock_pack(&pack).unwrap_or_else(|err| panic!("lock {}: {err}", pack.display()));
-    let shard =
-        Shard::resume(&pack, lock).unwrap_or_else(|err| panic!("resume {}: {err}", pack.display()));
-    world.writer = Some(Writer { world: shard });
+    let opened = spookery_engine::World::resume(&pack, lock)
+        .unwrap_or_else(|err| panic!("resume {}: {err}", pack.display()));
+    world.writer = Some(Writer { world: opened });
     world.pack = Some(pack);
 }
 
-fn writer(world: &World) -> &Shard {
+fn writer(world: &World) -> &spookery_engine::World {
     &world
         .writer
         .as_ref()
@@ -27,19 +27,19 @@ fn writer(world: &World) -> &Shard {
 }
 
 fn commit_round(world: &mut World) {
-    let shard = &mut world
+    let opened = &mut world
         .writer
         .as_mut()
         .expect("no writer holds the pack")
         .world;
-    let wall = shard.state().last_round_at.clone();
-    shard
+    let wall = opened.state().last_round_at.clone();
+    opened
         .play(&spookery_engine::Presence::default(), &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 
 fn peek_digest(pack: &Path) -> Result<String, String> {
-    Shard::peek_digest(pack).map_err(|err| err.to_string())
+    spookery_engine::World::peek_digest(pack).map_err(|err| err.to_string())
 }
 
 /// Hold the write guard while the disk is `halfway`, start status, then `finish` and drop it.
@@ -138,7 +138,7 @@ fn status_prints_the_committed_round(world: &mut World) {
     let pack = world.pack();
     let now = writer(world).state();
     assert!(now.state_rev > 0, "the writer committed nothing");
-    let tip = Shard::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
+    let tip = spookery_engine::World::peek(pack).unwrap_or_else(|err| panic!("peek: {err}"));
     assert_eq!(emit_save(tip.state()).unwrap(), emit_save(now).unwrap());
     let text = peek_digest(pack).unwrap_or_else(|err| panic!("status: {err}"));
     assert!(text.contains("clock "), "{text}");

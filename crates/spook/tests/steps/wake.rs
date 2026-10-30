@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 use spookery_engine::testing::journal::list_round_keys;
-use spookery_engine::{Presence, World as Shard};
+use spookery_engine::Presence;
 
 use crate::support::{self, read_round, stamp_pack_rev, state_of};
 use crate::World;
@@ -143,7 +143,8 @@ fn idle_off_seated_line_and_spook_round_still_advance(world: &mut World) {
     assert_eq!(now.round_index, 1);
     assert_eq!(list_round_keys(&pack), vec!["round-0001".to_string()]);
     let lock = spookery_engine::lock_pack(&pack).unwrap();
-    let mut again = Shard::resume(&pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
+    let mut again =
+        spookery_engine::World::resume(&pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
     let wall = again.state().last_round_at.clone();
     again
         .play(&rowan(), &wall)
