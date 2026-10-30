@@ -2,7 +2,6 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery::protocol::{emit_player, NoteView, PlayerFrame};
 use spookery_engine::{ItemStack, Presence};
 
 use crate::support::run_spook;
@@ -254,26 +253,16 @@ fn view_has_fact(world: &World, actor: &str, fact_id: &str) -> bool {
     view.known_facts.iter().any(|fact| fact.id == fact_id)
 }
 
-fn read_player_resume(world: &World, actor: &str) -> String {
-    let pack = table::pack(world);
-    let opened = spookery_engine::World::peek(pack).unwrap();
-    let view = opened.perceive(&Presence::default(), actor).unwrap();
-    // The resume a seat gets: the view's notes to this actor, and its clocks.
-    let notes = view
-        .notes
-        .iter()
-        .filter(|note| note.to.iter().any(|to| to == actor))
-        .map(|note| NoteView {
-            id: note.id.clone(),
-            to: note.to.clone(),
-            place: note.place.clone(),
-            fact_ids: note.fact_ids.clone(),
-            text: note.text.clone(),
-        })
-        .collect();
-    let clocks = view.clocks.clone();
-    emit_player(&PlayerFrame::Resume { notes, clocks })
-        .trim_end()
+/// The resume frame the host sends when `actor` sits at a table on this pack.
+fn read_player_resume(world: &mut World, actor: &str) -> String {
+    let pack = table::pack(world).to_path_buf();
+    table::listen(world, &pack);
+    table::seat_actor(world, &pack, actor);
+    let text = table::actor_text(world, actor);
+    table::stop_host(world);
+    text.lines()
+        .find(|line| line.contains("\"kind\":\"resume\""))
+        .unwrap_or_else(|| panic!("no resume frame\n{text}"))
         .to_string()
 }
 

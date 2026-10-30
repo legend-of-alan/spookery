@@ -525,26 +525,48 @@ pub fn wait_player_from(world: &World, mark: usize, needle: &str) -> String {
 }
 
 pub fn wait_actor_from(world: &World, actor_id: &str, mark: usize, needle: &str) -> String {
-    let slot = Arc::clone(
-        &live(world)
-            .players
-            .iter()
-            .find(|player| player.actor_id == actor_id)
-            .unwrap_or_else(|| panic!("no seat for {actor_id}"))
-            .text,
-    );
+    let slot = Arc::clone(&seat(world, actor_id).text);
     wait_suffix(&slot, mark, needle)
+}
+/// The seated player for `actor_id`.
+fn seat<'w>(world: &'w World, actor_id: &str) -> &'w Seat {
+    live(world)
+        .players
+        .iter()
+        .find(|player| player.actor_id == actor_id)
+        .unwrap_or_else(|| panic!("no seat for {actor_id}"))
 }
 
 pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> String {
-    let value: Value =
-        serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
     let live = live_mut(world);
     let gm = live.gm.as_mut().unwrap_or_else(|| panic!("no seated GM"));
+    call(gm, &live.gm_text, id, name, arguments)
+}
+
+/// A call from the GM that called `close` and kept its session.
+pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String {
+    let live = live_mut(world);
+    let gm = live
+        .closed_gm
+        .as_mut()
+        .unwrap_or_else(|| panic!("no closed GM"));
+    call(gm, &live.gm_text, 92, name, arguments)
+}
+
+/// One tool call. Its events and its result land in the GM text.
+fn call(
+    gm: &mut Connection,
+    gm_text: &Arc<Mutex<String>>,
+    id: u64,
+    name: &str,
+    arguments: &str,
+) -> String {
+    let value: Value =
+        serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
     let outcome =
         support::block_on(gm.call(name, value)).unwrap_or_else(|err| panic!("gm call: {err}"));
     for event in gm.take_events() {
-        push_line(&live.gm_text, &event.raw);
+        push_line(gm_text, &event.raw);
     }
     let raw = serde_json::json!({
         "jsonrpc": "2.0",
@@ -552,7 +574,7 @@ pub fn gm_call(world: &mut World, id: u64, name: &str, arguments: &str) -> Strin
         "result": { "structuredContent": outcome.body }
     })
     .to_string();
-    push_line(&live.gm_text, &raw);
+    push_line(gm_text, &raw);
     raw
 }
 
@@ -562,29 +584,43 @@ pub fn wait_gm(world: &mut World, needle: &str) -> String {
 
 /// Waits until `done` holds for the GM text; `want` names the condition in the panic.
 pub fn wait_gm_until(world: &mut World, want: &str, done: impl Fn(&str) -> bool) -> String {
-    let start = Instant::now();
-    loop {
+    poll_until(want, || {
         let text = drain_gm_text(world);
         if done(&text) {
-            return text;
+            Ok(text)
+        } else {
+            Err(text)
         }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("missing {want}\n{text}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    })
 }
 
 pub fn wait_world_time(pack: &Path, expected: u64) {
+    poll_until(&format!("world_time {expected}"), || {
+        let now = now_of(pack).world_time;
+        if now == expected {
+            Ok(())
+        } else {
+            Err(now)
+        }
+    });
+}
+
+/// How long a wait gives the host to do what a step asked.
+const WAIT: Duration = Duration::from_secs(5);
+
+/// Calls `check` until it returns `Ok`. After `WAIT` it panics with `want` and
+/// the last `Err`, which says what was seen instead.
+fn poll_until<T, Seen: std::fmt::Debug>(
+    want: &str,
+    mut check: impl FnMut() -> Result<T, Seen>,
+) -> T {
     let start = Instant::now();
     loop {
-        if now_of(pack).world_time == expected {
-            return;
+        match check() {
+            Ok(done) => return done,
+            Err(seen) if start.elapsed() > WAIT => panic!("missing {want}\n{seen:?}"),
+            Err(_) => std::thread::sleep(Duration::from_millis(20)),
         }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("world_time did not become {expected}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
     }
 }
 
@@ -599,17 +635,14 @@ pub fn host_stdout(world: &World) -> String {
 }
 
 pub fn wait_host_until(world: &World, want: &str, done: impl Fn(&str) -> bool) -> String {
-    let start = Instant::now();
-    loop {
+    poll_until(want, || {
         let text = host_stdout(world);
         if done(&text) {
-            return text;
+            Ok(text)
+        } else {
+            Err(text)
         }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("missing {want}\n{text}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    })
 }
 
 pub fn drain_gm_text(world: &mut World) -> String {
@@ -644,43 +677,21 @@ fn incoming_line(incoming: Incoming) -> Option<String> {
 }
 
 pub fn actor_text(world: &World, actor_id: &str) -> String {
-    let slot = Arc::clone(
-        &live(world)
-            .players
-            .iter()
-            .find(|player| player.actor_id == actor_id)
-            .unwrap_or_else(|| panic!("no seat for {actor_id}"))
-            .text,
-    );
-    support::text_of(&slot)
+    support::text_of(&seat(world, actor_id).text)
 }
 
 pub fn actor_send(world: &mut World, actor_id: &str, line: &str, needle: &str) -> String {
     let mark = actor_write(world, actor_id, line);
-    let slot = Arc::clone(
-        &live(world)
-            .players
-            .iter()
-            .find(|player| player.actor_id == actor_id)
-            .unwrap_or_else(|| panic!("no seat for {actor_id}"))
-            .text,
-    );
-    wait_suffix(&slot, mark, needle)
+    wait_actor_from(world, actor_id, mark, needle)
 }
 
 pub fn actor_write(world: &mut World, actor_id: &str, line: &str) -> usize {
-    let live = live_mut(world);
-    let player = live
-        .players
-        .iter_mut()
-        .find(|player| player.actor_id == actor_id)
-        .unwrap_or_else(|| panic!("no seat for {actor_id}"));
+    let player = seat(world, actor_id);
     let mark = support::text_of(&player.text).len();
-    writeln!(player.write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
-    player
-        .write
-        .flush()
-        .unwrap_or_else(|err| panic!("flush: {err}"));
+    // `&TcpStream` writes too, so a shared seat is enough.
+    let mut write = &player.write;
+    writeln!(write, "{line}").unwrap_or_else(|err| panic!("write: {err}"));
+    write.flush().unwrap_or_else(|err| panic!("flush: {err}"));
     mark
 }
 
@@ -711,61 +722,30 @@ pub fn stop_host(world: &mut World) {
 }
 
 pub fn close_actor(world: &mut World, actor_id: &str) {
-    let live = live_mut(world);
-    let player = live
-        .players
-        .iter_mut()
-        .find(|player| player.actor_id == actor_id)
-        .unwrap_or_else(|| panic!("no seat for {actor_id}"));
-    writeln!(player.write, "close").unwrap_or_else(|err| panic!("close: {err}"));
-    player
-        .write
-        .flush()
-        .unwrap_or_else(|err| panic!("flush: {err}"));
-}
-
-/// `close` answers after the seat is free. The session stays up so a later call can be refused.
-pub fn release_gm_keep_session(world: &mut World) -> String {
-    let text = gm_call(world, 91, "close", "{}");
-    assert!(
-        text.contains("\"released\":true"),
-        "the server did not confirm the seat was free\n{text}"
-    );
-    let live = live_mut(world);
-    live.closed_gm = live.gm.take();
-    live.gm_probe = false;
-    text
-}
-
-pub fn closed_gm_call(world: &mut World, name: &str, arguments: &str) -> String {
-    let value: Value =
-        serde_json::from_str(arguments).unwrap_or_else(|err| panic!("arguments: {err}"));
-    let live = live_mut(world);
-    let gm = live
-        .closed_gm
-        .as_mut()
-        .unwrap_or_else(|| panic!("no closed GM"));
-    let outcome =
-        support::block_on(gm.call(name, value)).unwrap_or_else(|err| panic!("gm call: {err}"));
-    let raw = serde_json::json!({
-        "jsonrpc": "2.0",
-        "id": 92,
-        "result": { "structuredContent": outcome.body }
-    })
-    .to_string();
-    push_line(&live.gm_text, &raw);
-    raw
+    let _ = actor_write(world, actor_id, "close");
 }
 
 /// `close` answers after the seat is free. Dropping the socket does not.
 pub fn release_gm(world: &mut World) -> String {
+    release(world, false)
+}
+
+/// `close`, keeping the session so a later call can be refused.
+pub fn release_gm_keep_session(world: &mut World) -> String {
+    release(world, true)
+}
+
+fn release(world: &mut World, keep_session: bool) -> String {
     let text = gm_call(world, 91, "close", "{}");
     assert!(
         text.contains("\"released\":true"),
         "the server did not confirm the seat was free\n{text}"
     );
     let live = live_mut(world);
-    live.gm = None;
+    let gm = live.gm.take();
+    if keep_session {
+        live.closed_gm = gm;
+    }
     live.gm_probe = false;
     text
 }
@@ -817,17 +797,14 @@ pub fn wait_players(world: &mut World, _pack: &Path, expected: u32) {
 
 /// Waits until the GM status presence passes `done`; `want` names it in the panic.
 pub fn wait_presence(world: &mut World, want: &str, done: impl Fn(u32, &[String]) -> bool) {
-    let start = Instant::now();
-    loop {
+    poll_until(want, || {
         let (players, actors) = read_presence(world);
         if done(players, &actors) {
-            return;
+            Ok(())
+        } else {
+            Err((players, actors))
         }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("presence did not reach {want}: {players} {actors:?}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    });
 }
 
 pub fn send_hello(world: &World, line: &str) -> String {
@@ -883,18 +860,15 @@ fn wait_text(slot: &Arc<Mutex<String>>, needle: &str) {
 }
 
 pub fn wait_suffix(slot: &Arc<Mutex<String>>, mark: usize, needle: &str) -> String {
-    let start = Instant::now();
-    loop {
+    poll_until(needle, || {
         let text = support::text_of(slot);
-        let added = text.get(mark..).unwrap_or("");
+        let added = text.get(mark..).unwrap_or("").to_string();
         if added.contains(needle) {
-            return added.to_string();
+            Ok(added)
+        } else {
+            Err(added)
         }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("missing {needle}\n{added}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    })
 }
 
 pub fn read_line(stream: &mut TcpStream) -> String {
