@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use crate::canon::Canon;
 use crate::effect::{Effect, EffectKind};
 use crate::key::ChangeRecord;
-use crate::model::Now;
+use crate::model::{Now, Presence};
 use crate::visibility::{self, RecipientLine, Seat, ViewerChanges};
 
 /// What the GM and each viewer may see and hear.
@@ -20,6 +20,7 @@ pub(crate) struct Delivered {
 pub(crate) fn run(
     canon: &Canon,
     now: &Now,
+    presence: &Presence,
     changes: &[ChangeRecord],
     effects: &[Effect],
 ) -> Delivered {
@@ -29,7 +30,7 @@ pub(crate) fn run(
         lines: Vec::new(),
         seen: Vec::new(),
     };
-    if now.presence.humans == 0 {
+    if presence.humans == 0 {
         return delivered;
     }
     let mut viewers: BTreeSet<String> = now.actors.keys().cloned().collect();

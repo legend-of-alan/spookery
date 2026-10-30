@@ -14,7 +14,7 @@ pub(crate) struct Clock {
 pub(crate) fn run(draft: &mut Draft, wall: &str) -> Result<Clock, Reason> {
     let round_index = draft.now().round_index + 1;
     let world_before = draft.now().world_time;
-    let minutes = minutes_for(draft.now().presence.humans, draft.budget());
+    let minutes = minutes_for(draft.presence.humans, draft.budget());
     let world_after = world_before.saturating_add(minutes);
     let day_changed = world_before / 1440 != world_after / 1440;
     let hour_changed = world_before / 60 != world_after / 60;

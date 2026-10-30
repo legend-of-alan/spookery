@@ -3,11 +3,10 @@ use std::path::Path;
 
 use cucumber::{given, then, when};
 use serde_json::Value;
-use spookery::host::{idle_clock::wall_now, MoveOutcome};
-use spookery_engine::handle_player_move;
+use spookery::host::idle_clock::wall_now;
 use spookery_engine::testing::{faces, PlaceLive, RollKey};
 use spookery_engine::MoveReport;
-use spookery_engine::Reason;
+use spookery_engine::{Presence, Reason};
 
 use super::table;
 use crate::support::{append, copy_pack, edit_save, now_of, spook, temp_pack};
@@ -286,20 +285,16 @@ The ferry waits at the dock.
 fn a_pc_at_ferry_dock_travels(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    opened.set_presence(spookery_engine::testing::Presence {
+    let one_human = Presence {
         humans: 1,
         actors_present: Vec::new(),
-    });
-    let wall = wall_now();
-    let played = handle_player_move(
-        &mut opened,
-        "pc_rowan",
-        "travel",
-        Some("ferry_dock"),
-        false,
-        &wall,
-    );
-    played.unwrap_or_else(|err| panic!("travel {}", err.token()));
+    };
+    opened
+        .queue_player_move(&one_human, "pc_rowan", "travel", Some("ferry_dock"))
+        .unwrap_or_else(|err| panic!("travel {}", err.token()));
+    opened
+        .commit_then_fast_forward(&one_human, &wall_now())
+        .unwrap_or_else(|err| panic!("travel {err}"));
 }
 
 #[then(expr = "place:ferry_dock\\/travel runs and verb:travel does not")]
@@ -362,17 +357,19 @@ fn an_empty_round_at_hour_7(world: &mut World) {
     });
     let mut opened = open_pack(&pack);
     let wall = opened.now().last_round_at.clone();
-    opened.play(&wall).unwrap_or_else(|err| {
-        panic!(
-            "empty round {}: {}",
-            err.token(),
-            spookery_engine::check_pack(&pack)
-                .iter()
-                .map(|diag| diag.report_line())
-                .collect::<Vec<_>>()
-                .join("\n")
-        )
-    });
+    opened
+        .play(&Presence::default(), &wall)
+        .unwrap_or_else(|err| {
+            panic!(
+                "empty round {}: {}",
+                err.token(),
+                spookery_engine::check_pack(&pack)
+                    .iter()
+                    .map(|diag| diag.report_line())
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            )
+        });
 }
 
 #[then(expr = "docks_shop lamp_oil increases by 4")]
@@ -470,20 +467,14 @@ fn lark_attacks(world: &mut World) {
         might.offset = 0;
     });
     let mut opened = open_pack(&pack);
-    let wall = wall_now();
-    let reports = match handle_player_move(
-        &mut opened,
-        "pc_lark",
-        "attack",
-        Some("npc_briar"),
-        false,
-        &wall,
-    ) {
-        Ok(MoveOutcome::Committed { outputs, .. }) => outputs.into_iter().next().unwrap().reports,
-        Ok(MoveOutcome::Queued(_)) => panic!("attack queued"),
-        Ok(MoveOutcome::Busy { .. }) => panic!("attack was busy"),
-        Err(err) => panic!("attack {}", err.token()),
-    };
+    let nobody = Presence::default();
+    opened
+        .queue_player_move(&nobody, "pc_lark", "attack", Some("npc_briar"))
+        .unwrap_or_else(|err| panic!("attack {}", err.token()));
+    let outputs = opened
+        .commit_then_fast_forward(&nobody, &wall_now())
+        .unwrap_or_else(|err| panic!("attack {err}"));
+    let reports = outputs.into_iter().next().unwrap().reports;
     let rolled = reports.into_iter().find_map(|report| match report {
         MoveReport::Rolled { actor_id, out } if actor_id == "pc_lark" => Some(out),
         _ => None,
@@ -649,8 +640,7 @@ fn steady_costs_five_grit(world: &mut World) {
 fn the_sitter_plays_steady(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    let wall = wall_now();
-    let played = handle_player_move(&mut opened, "pc_rowan", "steady", None, false, &wall);
+    let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "steady", None);
     world.scratch = match played {
         Err(err) => format!("{} {}", err.token(), err.missing().unwrap_or("")),
         Ok(_) => "queued".to_string(),
@@ -700,7 +690,7 @@ fn a_pc_is_gated_on_those_full_ids(world: &mut World) {
     let mut opened = open_pack(&pack);
     let mut codes = Vec::new();
     for move_name in ["cast:mira/leave_door_note", "place:docks_street/travel"] {
-        match opened.queue_player_move("pc_rowan", move_name, None) {
+        match opened.queue_player_move(&Presence::default(), "pc_rowan", move_name, None) {
             Err(miss) if miss.reason() == Reason::NotInSpec => {
                 codes.push(miss.token());
             }
@@ -778,11 +768,9 @@ A small bottle.
 fn the_sitter_lines_up_use_tonic(world: &mut World) {
     let pack = world.pack.clone().unwrap();
     let mut opened = open_pack(&pack);
-    let wall = wall_now();
-    let played = handle_player_move(&mut opened, "pc_rowan", "use", Some("tonic"), true, &wall);
+    let played = opened.queue_player_move(&Presence::default(), "pc_rowan", "use", Some("tonic"));
     world.scratch = match played {
-        Ok(MoveOutcome::Busy { .. }) => panic!("use tonic was busy"),
-        Ok(MoveOutcome::Queued(queued)) => {
+        Ok(queued) => {
             let intent = opened
                 .queued_intents()
                 .iter()
@@ -790,7 +778,6 @@ fn the_sitter_lines_up_use_tonic(world: &mut World) {
                 .unwrap();
             format!("{:?} {}", intent.target, intent.move_name)
         }
-        Ok(MoveOutcome::Committed { .. }) => "committed".to_string(),
         Err(err) => err.token().to_string(),
     };
 }

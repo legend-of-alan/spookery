@@ -4,7 +4,8 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::testing::{self as support, journal::list_round_keys, Presence};
+use spookery_engine::testing::{self as support, journal::list_round_keys};
+use spookery_engine::Presence;
 
 use crate::World;
 
@@ -75,7 +76,7 @@ fn mira_stands_in_a_place_with_no_facts(world: &mut World) {
     });
     let opened = spookery_engine::World::open(&pack).unwrap_or_else(|err| panic!("open: {err}"));
     let view = opened
-        .perceive("mira")
+        .perceive(&Presence::default(), "mira")
         .unwrap_or_else(|err| panic!("perceive: {err}"));
     assert!(
         view.known_facts.is_empty(),
@@ -121,14 +122,18 @@ fn play(world: &mut World, actor: &str, line: &str) {
     let lock = spookery_engine::lock_pack(pack).unwrap();
     let mut opened =
         spookery_engine::World::resume(pack, lock).unwrap_or_else(|err| panic!("resume: {err}"));
-    opened.set_presence(Presence {
+    let seated = Presence {
         humans: 1,
         actors_present: vec![actor.to_string()],
-    });
+    };
     let (verb, target) = support::split_move(line);
     let wall = opened.now().last_round_at.clone();
-    spookery_engine::handle_player_move(&mut opened, actor, verb, target, false, &wall)
+    opened
+        .queue_player_move(&seated, actor, verb, target)
         .unwrap_or_else(|err| panic!("{line}: {}", err.token()));
+    opened
+        .commit_then_fast_forward(&seated, &wall)
+        .unwrap_or_else(|err| panic!("{line}: {err}"));
 }
 
 fn strip_room_facts(pack: &Path) {

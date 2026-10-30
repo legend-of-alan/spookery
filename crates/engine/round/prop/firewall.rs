@@ -17,7 +17,7 @@ use std::path::PathBuf;
 
 use crate::canon::Canon;
 use crate::intent::ViewerId;
-use crate::model::{sort_unique, Message, Now};
+use crate::model::{sort_unique, Message, Now, Presence};
 use crate::perceive::{perceive_viewer, View};
 use crate::world::World;
 use proptest::prelude::*;
@@ -191,8 +191,13 @@ fn hidden_stays_hidden(canon: &Canon, now: &Now) -> Result<(), TestCaseError> {
         if !actor.is_pc() {
             continue;
         }
-        let view = perceive_viewer(canon, now, &ViewerId::Player(pc.clone()))
-            .map_err(|err| fail(err.to_string()))?;
+        let view = perceive_viewer(
+            canon,
+            now,
+            &Presence::default(),
+            &ViewerId::Player(pc.clone()),
+        )
+        .map_err(|err| fail(err.to_string()))?;
         for (id, fact) in &canon.facts {
             if !fact.hidden || actor.known_facts().iter().any(|known| known == id) {
                 continue;

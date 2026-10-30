@@ -90,7 +90,7 @@ fn one(canon: &Canon, now: &Now, ctx: &Ctx<'_>, cond: &Cond) -> Result<bool, Rea
             Ok(!clock.paused && op.holds(clock.value, right))
         }
         Cond::Hour { from, to } => Ok(hour_in(*from, *to, world_hour(now.world_time))),
-        Cond::Humans { op, value } => Ok(op.holds(i64::from(now.presence.humans), *value)),
+        Cond::Humans { op, value } => Ok(op.holds(i64::from(ctx.presence.humans), *value)),
         Cond::NoteExists(id) => Ok(now.messages.iter().any(|message| &message.id == id)),
         Cond::All(inner) => {
             for cond in inner {

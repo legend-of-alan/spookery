@@ -7,11 +7,11 @@ use std::path::{Path, PathBuf};
 use spookery_engine::testing::{
     self as support, insert_nell, journal::list_round_keys, now_of, open,
     read_round as round_value, save_now, stamp_pack_rev, ActCounters, ActorLive, PauseView,
-    PlaceLive, Presence,
+    PlaceLive,
 };
 use spookery_engine::{
-    emit_save, handle_player_move, play_pack_once, GmIntentSpec, Message, MeterLive, MoveOutcome,
-    MoveReport, Now, Outcome, RunState, World as Shard,
+    emit_save, play_pack_once, GmIntentSpec, Message, MeterLive, MoveReport, Now, Outcome,
+    Presence, RunState, World as Shard,
 };
 
 use crate::World;
@@ -105,11 +105,12 @@ fn door_message() -> Message {
     }
 }
 
-fn seat_rowan(world: &mut Shard) {
-    world.set_presence(spookery_engine::testing::Presence {
+/// Rowan is the one seated player.
+fn rowan() -> Presence {
+    Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
-    });
+    }
 }
 
 fn evening_note() {
@@ -197,10 +198,9 @@ fn player_in_the_shop() {
         save_now(&pack, &now);
     }
     let mut shard = open(&pack);
-    seat_rowan(&mut shard);
     let wall = shard.now().last_round_at.clone();
     shard
-        .play(&wall)
+        .play(&rowan(), &wall)
         .unwrap_or_else(|err| panic!("round: {err}"));
     let now = now_of(&pack);
     assert_eq!(lamp_oil(&now), 4);
@@ -238,10 +238,9 @@ fn gm_restocks() {
         save_now(&pack, &now);
     }
     let mut shard = open(&pack);
-    seat_rowan(&mut shard);
     let wall = shard.now().last_round_at.clone();
     queue_gm(&mut shard, "gm-1", "mira", "restock_lamp_oil");
-    shard.play(&wall).unwrap();
+    shard.play(&rowan(), &wall).unwrap();
     assert_eq!(lamp_oil(shard.now()), 8);
     assert_eq!(shard.now().messages.len(), 1);
     let _ = fs::remove_dir_all(&pack);
@@ -257,7 +256,6 @@ fn claimed_note_sorts_first() {
         save_now(&pack, &now);
     }
     let mut shard = open(&pack);
-    seat_rowan(&mut shard);
     let wall = shard.now().last_round_at.clone();
     for (id, actor, move_name) in [
         ("gm-1", "bram", "wait"),
@@ -265,7 +263,7 @@ fn claimed_note_sorts_first() {
     ] {
         queue_gm(&mut shard, id, actor, move_name);
     }
-    shard.play(&wall).unwrap();
+    shard.play(&rowan(), &wall).unwrap();
     let log = round_value(&pack, "round-0001");
     let rules: Vec<&str> = log["steps_run"]
         .as_array()
@@ -374,10 +372,6 @@ Rowan.
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        presence: Presence {
-            humans: 0,
-            actors_present: Vec::new(),
-        },
         pause: PauseView {
             named_plot_clocks: RunState::Paused,
         },
@@ -476,9 +470,8 @@ fn an_open_transaction_writes_nothing() {
     let mut shard = open(&dropped);
     let state_rev = shard.now().state_rev;
     let oil = lamp_oil(shard.now());
-    shard.seat_player("pc_rowan").unwrap();
     shard
-        .queue_player_move("pc_rowan", "take", Some("lamp_oil"))
+        .queue_player_move(&rowan(), "pc_rowan", "take", Some("lamp_oil"))
         .unwrap();
     assert_eq!(shard.queued_intents().len(), 1);
     drop(shard);
@@ -672,10 +665,6 @@ rules:
         round_index: 0,
         world_time: 0,
         last_round_at: "2026-01-01T00:00:00Z".to_string(),
-        presence: Presence {
-            humans: 0,
-            actors_present: Vec::new(),
-        },
         pause: PauseView {
             named_plot_clocks: RunState::Paused,
         },
@@ -713,8 +702,10 @@ fn tool_scope() {
     let pack = support::temp_pack("scope");
     let before = snapshot(&pack);
     let shard = Shard::open(&pack).unwrap();
-    let call = |as_viewer: &str, budget: usize| shard.perceive_budget(as_viewer, budget);
-    let kernel = shard.perceive("mira").unwrap();
+    let call = |as_viewer: &str, budget: usize| {
+        shard.perceive_budget(&Presence::default(), as_viewer, budget)
+    };
+    let kernel = shard.perceive(&Presence::default(), "mira").unwrap();
     assert_eq!(call("mira", 800).unwrap(), kernel);
     let capped = call("mira", 0).unwrap();
     assert!(kernel.known_facts.iter().any(|fact| !fact.body.is_empty()));
@@ -785,7 +776,12 @@ fn strip_bodies() {
     stamp_pack_rev(&pack);
     open(&pack);
     play_pack_once(&pack).unwrap_or_else(|err| panic!("stripped pack did not tick: {err}"));
-    let perceive = format!("{:?}", open(&pack).perceive("aldric").unwrap());
+    let perceive = format!(
+        "{:?}",
+        open(&pack)
+            .perceive(&Presence::default(), "aldric")
+            .unwrap()
+    );
     assert!(!perceive.contains(LEDGER));
     let _ = fs::remove_dir_all(&pack);
 }
@@ -808,13 +804,12 @@ fn patch_mira_flags(pack: &Path, flags: &str) {
 
 fn play_mark(pack: &Path) -> Now {
     let mut shard = open(pack);
-    shard.seat_player("pc_rowan").unwrap();
     let wall = shard.now().last_round_at.clone();
-    let played =
-        handle_player_move(&mut shard, "pc_rowan", "mark", Some("mira"), false, &wall).unwrap();
-    let MoveOutcome::Committed { .. } = played else {
-        panic!("mark mira stayed queued");
-    };
+    shard
+        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("mira"))
+        .unwrap();
+    let played = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
+    assert!(!played.is_empty(), "mark mira did not commit");
     shard.now().clone()
 }
 
@@ -887,18 +882,15 @@ fn opposing_total_reused() {
         insert_nell(&pack);
         stamp_pack_rev(&pack);
         let mut shard = open(&pack);
-        shard.seat_player("pc_rowan").unwrap();
         if opposed {
             queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
         }
         let wall = shard.now().last_round_at.clone();
-        let mark = handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall)
+        shard
+            .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
             .unwrap();
-        let MoveOutcome::Queued(_) = mark else {
-            panic!("mark committed while a gm seat was requested");
-        };
         assert_eq!(shard.now().world_time, 1080);
-        let outputs = shard.commit_then_fast_forward(&wall).unwrap();
+        let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
         let reports = outputs.into_iter().next().unwrap().reports;
         let rowan = rolled_stat(&reports, 1);
         assert_eq!(shard.now().world_time, 1085);
@@ -950,16 +942,13 @@ fn a_held_knife_still_runs_the_opposed_row() {
     fs::write(&now_path, next).unwrap();
     stamp_pack_rev(&held);
     let mut shard = open(&held);
-    shard.seat_player("pc_rowan").unwrap();
     queue_gm(&mut shard, "gm-1", "pc_nell", "defend");
     let wall = shard.now().last_round_at.clone();
-    let queued =
-        handle_player_move(&mut shard, "pc_rowan", "mark", Some("pc_nell"), true, &wall).unwrap();
-    let MoveOutcome::Queued(_) = queued else {
-        panic!("held mark committed before the round");
-    };
+    shard
+        .queue_player_move(&rowan(), "pc_rowan", "mark", Some("pc_nell"))
+        .unwrap();
     let before = shard.now().world_time;
-    let outputs = shard.commit_then_fast_forward(&wall).unwrap();
+    let outputs = shard.commit_then_fast_forward(&rowan(), &wall).unwrap();
     assert_ne!(shard.now().world_time, before);
     let rowan = rolled_stat(&outputs[0].reports, 1);
     assert_eq!(rowan.outcome, Outcome::Miss);

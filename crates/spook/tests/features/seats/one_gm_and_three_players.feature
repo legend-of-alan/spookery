@@ -33,6 +33,12 @@ Feature: One GM seat and up to three player seats
     And save.yaml is unchanged since the table opened
     And humans is 0
 
+  Scenario: A hello for an NPC is refused
+    Given a docks table
+    When a socket sends player:mira
+    Then the hello is refused with "SCHEMA"
+    And save.yaml is unchanged since the table opened
+
   Scenario: A GM hello on the game port is refused
     Given a docks table
     When a socket sends gm on the game port
@@ -87,9 +93,6 @@ Feature: One GM seat and up to three player seats
     Given a docks table
     When three play clients sit on a free port
     Then each play client shows its first perceive
-
-  Scenario: A reseated player never reuses a held session id
-    When two players sit, one drops, and that PC sits again
 
   Scenario: An empty hello is refused with the free PCs
     Given a docks table

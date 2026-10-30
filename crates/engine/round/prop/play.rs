@@ -7,6 +7,7 @@ use crate::canon::pack_rev;
 use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::journal;
 use crate::map::visible;
+use crate::model::Presence;
 use crate::rules::gate::gate;
 use crate::store::codec::{emit_save, load_save};
 use crate::world::World;
@@ -90,7 +91,7 @@ pub(crate) fn play_rounds(pack: &Path, rounds: &[RoundPlan]) -> Result<(), Strin
             );
         }
         let wall = world.now().last_round_at.clone();
-        play_round(&mut world, &wall, false)
+        play_round(&mut world, &Presence::default(), &wall, false)
             .map_err(|err| format!("round {} refused to play: {err}", index + 1))?;
     }
     Ok(())
@@ -149,7 +150,7 @@ fn queue_move(world: &mut World, plan: &MovePlan) {
     {
         return;
     }
-    if gate(world.canon(), world.now(), &intent).is_err() {
+    if gate(world.canon(), world.now(), &Presence::default(), &intent).is_err() {
         return;
     }
     world.queue(intent);
@@ -159,7 +160,7 @@ fn target_for(world: &World, actor: &str, verb: &str, token: usize) -> Option<Ta
     match verb {
         "wait" | "grit" | "unwield" => Some(Target::Empty),
         "travel" => {
-            let exits = visible(world.canon(), world.now(), actor);
+            let exits = visible(world.canon(), world.now(), &Presence::default(), actor);
             if exits.is_empty() {
                 return None;
             }

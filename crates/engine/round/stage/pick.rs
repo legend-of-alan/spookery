@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 use crate::draft::Draft;
 use crate::expand::{habit_intents, stamp_for_priority};
 use crate::intent::{Intent, Target, ViewerId};
-use crate::model::Now;
+use crate::model::{Now, Presence};
 use crate::Reason;
 
 use crate::round::dice::shuffle_key;
@@ -14,11 +14,11 @@ use crate::round::dice::shuffle_key;
 pub(crate) fn run(draft: &Draft, queue: &[Intent]) -> Result<Vec<Intent>, Reason> {
     let mut candidates = queue.to_vec();
     for intent in &mut candidates {
-        stamp_for_priority(draft.canon(), draft.now(), intent);
+        stamp_for_priority(draft.canon(), draft.now(), draft.presence, intent);
     }
-    candidates.extend(habit_intents(draft.canon(), draft.now()));
-    let now = draft.now();
-    candidates.sort_by_cached_key(|intent| priority(now, intent));
+    candidates.extend(habit_intents(draft.canon(), draft.now(), draft.presence));
+    let (now, presence) = (draft.now(), draft.presence);
+    candidates.sort_by_cached_key(|intent| priority(now, presence, intent));
     candidates.truncate(draft.budget().max_intents_applied as usize);
     unique(candidates)
 }
@@ -60,7 +60,7 @@ enum ClaimRank {
     Unclaimed,
 }
 
-fn priority(now: &Now, intent: &Intent) -> Priority {
+fn priority(now: &Now, presence: &Presence, intent: &Intent) -> Priority {
     let actor = match intent.actor {
         ViewerId::Player(_) => ActorRank::Player,
         ViewerId::Npc(_) => ActorRank::Npc,
@@ -70,7 +70,7 @@ fn priority(now: &Now, intent: &Intent) -> Priority {
     } else {
         ClockRank::Other
     };
-    let claim = if touches_seated_player(now, intent) {
+    let claim = if touches_seated_player(now, presence, intent) {
         ClaimRank::Claimed
     } else {
         ClaimRank::Unclaimed
@@ -101,8 +101,8 @@ fn targets_pc_clock(now: &Now, intent: &Intent) -> bool {
     })
 }
 
-fn touches_seated_player(now: &Now, intent: &Intent) -> bool {
-    let present = &now.presence.actors_present;
+fn touches_seated_player(now: &Now, presence: &Presence, intent: &Intent) -> bool {
+    let present = &presence.actors_present;
     let target_hit = match &intent.target {
         Target::Actor(id) => present.iter().any(|actor| actor == id),
         Target::Place(place) => present.iter().any(|actor| {

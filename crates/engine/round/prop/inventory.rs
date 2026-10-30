@@ -71,7 +71,8 @@ fn configure_runner() -> Config {
 }
 
 fn apply_changes(world: &World<()>, steps: &[ItemChange]) -> Result<(), TestCaseError> {
-    let mut draft = Draft::begin(world);
+    let nobody = crate::model::Presence::default();
+    let mut draft = Draft::begin(world, &nobody);
     let intent = npc_intent();
     for step in steps {
         let before = draft.now().clone();

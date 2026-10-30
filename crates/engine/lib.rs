@@ -33,17 +33,14 @@ pub use error::Reason;
 pub use intent::{Intent, IntentArgs, Source, Target, ViewerId};
 pub use map::ExitView;
 pub use meter::MeterLive;
-pub use model::{Message, Now, RunState};
+pub use model::{Message, Now, Presence, RunState};
 pub use perceive::{ClockView, ItemStack, KnownFact, MeterView, View};
 pub use round::{migrate_pack, play_pack_once, verify_pack, verify_quick, RoundOutput};
 pub use rule::When;
 pub use rules::{GateRefusal, MoveReport, Roll};
 pub use store::{emit_save, load_save, lock_pack, record_line, LockGuard, TapeRecord};
 pub use visibility::RecipientLine;
-pub use world::{
-    check_pack, handle_player_move, GmIntentSpec, Heard, MoveOutcome, QueuedMove, World,
-    MAX_PLAYER_SEATS,
-};
+pub use world::{check_pack, GmIntentSpec, Heard, QueuedMove, World};
 
 #[cfg(feature = "testing")]
 pub mod testing {
@@ -52,8 +49,7 @@ pub mod testing {
 
     pub use crate::canon::strip_body;
     pub use crate::model::{
-        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PendingKind,
-        PlaceLive, Presence,
+        ActCounters, ActorLive, Clock, MemoryLine, PauseView, PendingAction, PendingKind, PlaceLive,
     };
     pub use crate::round::replay::replay_journal;
     pub use crate::rules::roll::{faces, RollKey};
@@ -94,15 +90,12 @@ pub mod testing {
     }
 
     impl<L> crate::World<L> {
-        pub fn set_presence(&mut self, presence: crate::model::Presence) -> bool {
-            self.set_presence_inner(presence)
-        }
-
         pub fn queue_wait(
             &mut self,
+            presence: &crate::Presence,
             actor_id: &str,
         ) -> Result<crate::QueuedMove, crate::GateRefusal> {
-            self.queue_player_move(actor_id, "wait", None)
+            self.queue_player_move(presence, actor_id, "wait", None)
         }
     }
 

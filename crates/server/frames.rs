@@ -6,8 +6,8 @@ use crate::protocol::{
 };
 use serde_json::{Map, Value};
 use spookery_engine::{
-    record_line, Heard, Intent, Message, MoveReport, Now, Reason, Roll, RoundOutput, RunState,
-    TapeRecord, View, World,
+    record_line, Heard, Intent, Message, MoveReport, Now, Presence, Reason, Roll, RoundOutput,
+    RunState, TapeRecord, View, World,
 };
 
 #[derive(Debug)]
@@ -20,14 +20,18 @@ pub struct Spoken {
 }
 
 /// GM `say`. `from` is the seat. A supplied `from` appends nothing.
-pub fn speak_tool(world: &World, arguments: Option<Map<String, Value>>) -> Result<Spoken, Reason> {
+pub fn speak_tool(
+    world: &World,
+    presence: &Presence,
+    arguments: Option<Map<String, Value>>,
+) -> Result<Spoken, Reason> {
     let say = crate::protocol::read_say_args(arguments.as_ref()).map_err(|_| Reason::Schema)?;
     let heard = match &say {
         OutgoingSay::Table { .. } => Heard::Table,
         OutgoingSay::Place { place, .. } => Heard::Place(place),
         OutgoingSay::Actor { actor, .. } => Heard::Actor(actor),
     };
-    let stored = world.speak_gm(heard, say.text())?;
+    let stored = world.speak_gm(presence, heard, say.text())?;
     Ok(spoken_from(&stored))
 }
 
@@ -181,6 +185,7 @@ pub fn commit_reply(
 
 pub fn session_status(
     now: &Now,
+    presence: &Presence,
     queued: &[Intent],
     last_seq: u64,
     events: Option<&[TapeRecord]>,
@@ -188,8 +193,8 @@ pub fn session_status(
 ) -> Value {
     SessionStatus {
         presence: StatusPresence {
-            humans: now.presence.humans,
-            actors_present: now.presence.actors_present.clone(),
+            humans: presence.humans,
+            actors_present: presence.actors_present.clone(),
         },
         pause: StatusPause {
             named_plot_clocks: run_state(now.pause.named_plot_clocks),

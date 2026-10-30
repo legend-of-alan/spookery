@@ -1,5 +1,4 @@
 use std::fs;
-use std::time::{Duration, Instant};
 
 use cucumber::{given, then, when};
 use serde_json::Value;
@@ -18,11 +17,15 @@ fn the_player_says(world: &mut World, text: String) {
 fn say_to_mira_on_an_empty_table(world: &mut World, text: String) {
     let pack = table::pack(world);
     let shard = spookery_engine::testing::open(pack);
-    assert_eq!(shard.now().presence.humans, 0);
     world.now_bytes = fs::read(pack.join("state/save.yaml"))
         .unwrap_or_else(|err| panic!("read save.yaml: {err}"));
     shard
-        .speak_player("pc_rowan", spookery_engine::Heard::Actor("mira"), &text)
+        .speak_player(
+            &spookery_engine::Presence::default(),
+            "pc_rowan",
+            spookery_engine::Heard::Actor("mira"),
+            &text,
+        )
         .unwrap_or_else(|err| panic!("speak: {err}"));
 }
 
@@ -118,17 +121,9 @@ fn the_gm_has_said_lines_then_more(
 #[when(expr = "{string} leaves and sits again")]
 fn leaves_and_sits_again(world: &mut World, actor: String) {
     table::close_actor(world, &actor);
-    let start = Instant::now();
-    loop {
-        let (_, present) = table::live_presence(world);
-        if !present.iter().any(|id| id == &actor) {
-            break;
-        }
-        if start.elapsed() > Duration::from_secs(5) {
-            panic!("{actor} stayed seated: {present:?}");
-        }
-        std::thread::sleep(Duration::from_millis(20));
-    }
+    table::wait_presence(world, &format!("{actor} gone"), |_, actors| {
+        !actors.contains(&actor)
+    });
     table::live_mut(world)
         .players
         .retain(|player| player.actor_id != actor);

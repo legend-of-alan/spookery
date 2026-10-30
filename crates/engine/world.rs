@@ -12,16 +12,13 @@ use crate::effect::{payload_json, Effect};
 use crate::error::Reason;
 use crate::intent::{player_intent_id, Intent, IntentArgs, Source, Target, ViewerId};
 use crate::journal::{self, JournalEntry};
-use crate::model::{sort_unique, ActorLive, Now, Presence};
+use crate::model::{ActorLive, Now, Presence};
 use crate::rule::{TargetKind, When};
 use crate::rules::gate::{gate, verb_for, GateRefusal};
 use crate::store::codec::{emit_save, load_save};
 use crate::store::tape::{append_record, read_session, read_tail, session_end_seq, TapeRecord};
 
 use crate::draft::Draft;
-
-/// Engine cap. A pack may define more PCs than this.
-pub const MAX_PLAYER_SEATS: usize = 3;
 
 /// One say, in characters. Four kibibytes still fits in an 8 KiB player line.
 const SAY_TEXT_CAP: usize = 4 * 1024;
@@ -40,47 +37,6 @@ pub struct QueuedMove {
     pub move_name: String,
 }
 
-pub enum MoveOutcome {
-    Queued(QueuedMove),
-    Committed {
-        outputs: Vec<crate::RoundOutput>,
-    },
-    Busy {
-        code: Reason,
-        missing: Option<String>,
-        outputs: Vec<crate::RoundOutput>,
-    },
-}
-
-pub fn handle_player_move(
-    world: &mut World,
-    actor_id: &str,
-    verb: &str,
-    target: Option<&str>,
-    gm_seated: bool,
-    wall: &str,
-) -> Result<MoveOutcome, GateRefusal> {
-    let queued = match world.queue_player_move(actor_id, verb, target) {
-        Ok(queued) => queued,
-        Err(refusal) => {
-            if !gm_seated && refusal.reason() == Reason::Busy {
-                let outputs = world.commit_then_fast_forward(wall)?;
-                return Ok(MoveOutcome::Busy {
-                    code: refusal.reason(),
-                    missing: refusal.missing().map(str::to_string),
-                    outputs,
-                });
-            }
-            return Err(refusal);
-        }
-    };
-    if gm_seated {
-        return Ok(MoveOutcome::Queued(queued));
-    }
-    let outputs = world.commit_then_fast_forward(wall)?;
-    Ok(MoveOutcome::Committed { outputs })
-}
-
 pub struct GmIntentSpec {
     pub id: Option<String>,
     pub round_index: Option<u64>,
@@ -96,7 +52,6 @@ pub struct World<L = crate::LockGuard> {
     canon: Arc<Canon>,
     pub(crate) now: Now,
     pub(crate) queue: Vec<Intent>,
-    next_session: u64,
     warning: Option<&'static str>,
     pub(crate) lock: L,
 }
@@ -110,7 +65,6 @@ impl World {
             canon,
             now,
             queue,
-            next_session,
             warning,
             lock: (),
         } = crate::round::replay::open_at_tip(root, &lock)?;
@@ -119,38 +73,48 @@ impl World {
             canon,
             now,
             queue,
-            next_session,
             warning,
             lock,
         })
     }
 
-    pub fn play(&mut self, now_wall: &str) -> Result<crate::RoundOutput, Reason> {
-        crate::round::play_round(self, now_wall, false)
+    /// Play the queue with `presence` seated.
+    pub fn play(
+        &mut self,
+        presence: &Presence,
+        now_wall: &str,
+    ) -> Result<crate::RoundOutput, Reason> {
+        crate::round::play_round(self, presence, now_wall, false)
     }
 
     /// Commit a queued round, then fast-forward while every seated PC is busy.
     /// An empty queue only fast-forwards.
     pub fn commit_then_fast_forward(
         &mut self,
+        presence: &Presence,
         wall: &str,
     ) -> Result<Vec<crate::RoundOutput>, Reason> {
         let mut outputs = Vec::new();
         let committed = !self.queue.is_empty();
         if committed {
-            outputs.push(self.play(wall)?);
+            outputs.push(self.play(presence, wall)?);
         }
         let already = u32::from(committed);
-        outputs.extend(crate::round::play_while_busy(self, wall, already)?);
+        outputs.extend(crate::round::play_while_busy(
+            self, presence, wall, already,
+        )?);
         Ok(outputs)
     }
 
+    /// Play the rounds an absence earns. Only an empty table catches up.
     pub fn catch_up(&mut self, now_wall: &str, downtime_hours: u64) -> Result<(), Reason> {
         crate::round::play_catch_up(self, now_wall, downtime_hours)
     }
 
+    /// Append a player's say. `presence` is who can hear it.
     pub fn speak_player(
         &self,
+        presence: &Presence,
         actor_id: &str,
         heard: Heard<'_>,
         text: &str,
@@ -158,15 +122,22 @@ impl World {
         if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
             return Err(Reason::Schema);
         }
-        self.append_speech(&format!("player:{actor_id}"), Some(actor_id), heard, text)
+        let from = format!("player:{actor_id}");
+        self.append_speech(presence, &from, Some(actor_id), heard, text)
     }
 
-    pub fn speak_gm(&self, heard: Heard<'_>, text: &str) -> Result<TapeRecord, Reason> {
-        self.append_speech("gm", None, heard, text)
+    pub fn speak_gm(
+        &self,
+        presence: &Presence,
+        heard: Heard<'_>,
+        text: &str,
+    ) -> Result<TapeRecord, Reason> {
+        self.append_speech(presence, "gm", None, heard, text)
     }
 
     fn append_speech(
         &self,
+        presence: &Presence,
         from: &str,
         speaker: Option<&str>,
         heard: Heard<'_>,
@@ -183,7 +154,7 @@ impl World {
             Heard::Place(place) => ("place", Some(place.to_string()), None),
             Heard::Actor(actor) => ("actor", None, Some(actor.to_string())),
         };
-        let recipients = speech_recipients(&self.now, speaker, heard);
+        let recipients = speech_recipients(&self.now, presence, speaker, heard);
         let round_index = self.now.round_index;
         let world_time = self.now.world_time;
         append_record(&self.root, |seq| TapeRecord {
@@ -213,8 +184,9 @@ impl<L> World<L> {
         self.canon.pack_summary()
     }
 
-    pub fn free_pcs(&self) -> Vec<String> {
-        let present = &self.now.presence.actors_present;
+    /// PCs that nobody in `presence` holds.
+    pub fn free_pcs(&self, presence: &Presence) -> Vec<String> {
+        let present = &presence.actors_present;
         self.now
             .actors
             .iter()
@@ -232,75 +204,10 @@ impl<L> World<L> {
         self.now = now;
     }
 
-    pub fn presence(&self) -> &Presence {
-        &self.now.presence
-    }
-
-    /// Remember who is seated. This does not write the save.
-    pub(crate) fn set_presence_inner(&mut self, mut presence: Presence) -> bool {
-        sort_unique(&mut presence.actors_present);
-        if presence == self.now.presence {
-            return false;
-        }
-        self.now.presence = presence;
-        true
-    }
-
-    /// The next seat id. Ids start at 1 and are not reused in this process.
-    fn mint_session(&mut self) -> Result<String, Reason> {
-        let id = format!("s{}", self.next_session);
-        self.next_session = self.next_session.checked_add(1).ok_or(Reason::Schema)?;
-        Ok(id)
-    }
-
-    pub fn seat_player(&mut self, actor_id: &str) -> Result<String, Reason> {
-        let mut ids = self.now.presence.actors_present.clone();
-        if ids.len() >= MAX_PLAYER_SEATS {
-            return Err(Reason::SessionFull);
-        }
-        if ids.iter().any(|id| id == actor_id) {
-            return Err(Reason::SeatTaken);
-        }
-        if !self.now.actors.get(actor_id).is_some_and(ActorLive::is_pc) {
-            return Err(Reason::Schema);
-        }
-        ids.push(actor_id.to_string());
-        self.commit_held(&ids)?;
-        self.mint_session()
-    }
-
-    pub fn release_player_seat(
-        &mut self,
-        session_id: &str,
-        actor_id: &str,
-    ) -> Result<bool, Reason> {
-        if session_id.is_empty() {
-            return Err(Reason::Schema);
-        }
-        let mut ids = self.now.presence.actors_present.clone();
-        ids.retain(|id| id != actor_id);
-        self.commit_held(&ids)
-    }
-
-    pub fn clear_crashed(&mut self) -> Result<bool, Reason> {
-        if self.now.presence.humans == 0 && self.now.presence.actors_present.is_empty() {
-            return Ok(false);
-        }
-        Ok(self.set_presence_inner(Presence {
-            humans: 0,
-            actors_present: Vec::new(),
-        }))
-    }
-
-    fn commit_held(&mut self, ids: &[String]) -> Result<bool, Reason> {
-        Ok(self.set_presence_inner(Presence {
-            humans: u32::try_from(ids.len()).map_err(|_| Reason::Schema)?,
-            actors_present: ids.to_vec(),
-        }))
-    }
-
+    /// Gate a player's move with `presence` seated, then queue it.
     pub fn queue_player_move(
         &mut self,
+        presence: &Presence,
         actor_id: &str,
         verb: &str,
         target: Option<&str>,
@@ -313,7 +220,7 @@ impl<L> World<L> {
             .ok_or(Reason::Schema)?;
         let target = self.verb_target(actor, verb, target, Reason::NotInSpec)?;
         let intent = self.player_intent(actor_id, verb, target)?;
-        gate(&self.canon, &self.now, &intent)?;
+        gate(&self.canon, &self.now, presence, &intent)?;
         let queued = QueuedMove {
             id: intent.id.clone(),
             actor_id: actor_id.to_string(),
@@ -473,28 +380,33 @@ impl<L> World<L> {
         self.warning = Some(text);
     }
 
-    pub fn perceive(&self, as_arg: &str) -> Result<crate::perceive::View, Reason> {
-        crate::perceive::perceive(self, as_arg)
+    pub fn perceive(
+        &self,
+        presence: &Presence,
+        as_arg: &str,
+    ) -> Result<crate::perceive::View, Reason> {
+        crate::perceive::perceive(self, presence, as_arg)
     }
 
     pub fn perceive_budget(
         &self,
+        presence: &Presence,
         as_arg: &str,
         budget_tokens: usize,
     ) -> Result<crate::perceive::View, Reason> {
-        crate::perceive::perceive_budget(self, as_arg, budget_tokens)
+        crate::perceive::perceive_budget(self, presence, as_arg, budget_tokens)
     }
 
-    pub fn help_lines(&self, actor_id: &str) -> String {
-        crate::map::help_lines(&self.canon, &self.now, actor_id)
+    pub fn help_lines(&self, presence: &Presence, actor_id: &str) -> String {
+        crate::map::help_lines(&self.canon, &self.now, presence, actor_id)
     }
 
-    pub fn look_lines(&self, actor_id: &str) -> String {
-        crate::map::look_lines(&self.canon, &self.now, actor_id)
+    pub fn look_lines(&self, presence: &Presence, actor_id: &str) -> String {
+        crate::map::look_lines(&self.canon, &self.now, presence, actor_id)
     }
 
-    pub fn player_lines(&self, actor_id: &str) -> String {
-        crate::map::player_lines(&self.canon, &self.now, actor_id)
+    pub fn player_lines(&self, presence: &Presence, actor_id: &str) -> String {
+        crate::map::player_lines(&self.canon, &self.now, presence, actor_id)
     }
 
     fn host_summary(&self) -> Result<String, Reason> {
@@ -554,7 +466,8 @@ impl World<()> {
     ///
     /// ```compile_fail
     /// # let root = std::path::Path::new("pack");
-    /// spookery_engine::World::peek(root).unwrap().play("");
+    /// let presence = spookery_engine::Presence::default();
+    /// spookery_engine::World::peek(root).unwrap().play(&presence, "");
     /// ```
     pub fn peek(root: &Path) -> Result<World<()>, Reason> {
         let _read = crate::store::lock::lock_read(root)?;
@@ -597,7 +510,6 @@ impl World<()> {
             canon,
             now,
             queue: Vec::new(),
-            next_session: 1,
             warning: None,
             lock: (),
         })
@@ -611,39 +523,44 @@ impl World<()> {
             canon,
             now,
             queue: Vec::new(),
-            next_session: 1,
             warning: None,
             lock: (),
         }
     }
 }
 
-impl Draft {
-    pub(crate) fn begin<L>(world: &World<L>) -> Self {
+impl<'p> Draft<'p> {
+    pub(crate) fn begin<L>(world: &World<L>, presence: &'p Presence) -> Self {
         Self::from_parts(
             Arc::clone(&world.canon),
             world.canon.budget,
             world.now.clone(),
+            presence,
         )
     }
 }
 
 /// Seated players who hear this say. The speaker is included.
-fn speech_recipients(now: &Now, speaker: Option<&str>, heard: Heard<'_>) -> Vec<String> {
+fn speech_recipients(
+    now: &Now,
+    presence: &Presence,
+    speaker: Option<&str>,
+    heard: Heard<'_>,
+) -> Vec<String> {
     let mut ids = BTreeSet::new();
-    let seated = now.seated_pcs();
+    let seated = &presence.actors_present;
     match heard {
         Heard::Table => {
-            ids.extend(seated);
+            ids.extend(seated.iter().cloned());
         }
         Heard::Place(place) => {
             for id in seated {
                 if now
                     .actors
-                    .get(&id)
+                    .get(id)
                     .is_some_and(|actor| actor.place() == place)
                 {
-                    ids.insert(id);
+                    ids.insert(id.clone());
                 }
             }
         }

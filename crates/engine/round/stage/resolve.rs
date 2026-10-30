@@ -8,7 +8,7 @@ use crate::rules::gate::{gate, GateRefusal};
 use crate::canon::Canon;
 use crate::intent::{Intent, Source, Target};
 use crate::journal::Step;
-use crate::model::Now;
+use crate::model::{Now, Presence};
 use crate::rules::Roll;
 use crate::Reason;
 
@@ -38,6 +38,7 @@ pub(crate) enum Resolution {
 struct Rolls<'a> {
     canon: &'a Canon,
     snapshot: &'a Now,
+    presence: &'a Presence,
     queue: &'a [Intent],
     opposed: BTreeMap<String, Roll>,
     dice: &'a mut RoundDice,
@@ -47,6 +48,7 @@ struct Rolls<'a> {
 pub(crate) fn run(
     canon: &Canon,
     snapshot: &Now,
+    presence: &Presence,
     candidates: Vec<Intent>,
     queue: &[Intent],
     dice: &mut RoundDice,
@@ -55,6 +57,7 @@ pub(crate) fn run(
     let mut rolls = Rolls {
         canon,
         snapshot,
+        presence,
         queue,
         opposed: BTreeMap::new(),
         dice,
@@ -70,7 +73,7 @@ pub(crate) fn run(
 
 fn gate_and_roll(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Resolution, Reason> {
     let (canon, snapshot) = (rolls.canon, rolls.snapshot);
-    let rule = match gate(canon, snapshot, intent) {
+    let rule = match gate(canon, snapshot, rolls.presence, intent) {
         Ok(rule) => rule,
         Err(refusal) => return Ok(Resolution::Refused(refusal)),
     };
@@ -97,13 +100,13 @@ fn roll_intent_check(
         Ok(total) => total,
         Err(code) => return Ok(Resolution::CannotRoll(code)),
     };
-    let (canon, snapshot) = (rolls.canon, rolls.snapshot);
+    let (canon, snapshot, presence) = (rolls.canon, rolls.snapshot, rolls.presence);
     let (target, partial_at) = match opposed {
         Some(total) => (total, None),
         None => rolls
             .dice
             .roller(rolls.log, &rule.id, actor_id)
-            .thresholds(canon, snapshot, intent, roll)?,
+            .thresholds(canon, snapshot, presence, intent, roll)?,
     };
     let rule_id = rule.id.clone();
     if let Some(out) = rolls.opposed.get(&intent.id) {
@@ -132,7 +135,8 @@ fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>,
     let Target::Actor(named) = &intent.target else {
         return Ok(None);
     };
-    let (canon, snapshot, queue) = (rolls.canon, rolls.snapshot, rolls.queue);
+    let (canon, snapshot, presence, queue) =
+        (rolls.canon, rolls.snapshot, rolls.presence, rolls.queue);
     let Some((opposing, rule_id, check_id)) = queue.iter().find_map(|other| {
         if other.id == intent.id
             || other.actor.actor_id() != named
@@ -140,7 +144,7 @@ fn opposing_total(rolls: &mut Rolls<'_>, intent: &Intent) -> Result<Option<i64>,
         {
             return None;
         }
-        let rule = gate(canon, snapshot, other).ok()?;
+        let rule = gate(canon, snapshot, presence, other).ok()?;
         Some((other, &rule.id, &rule.roll.as_ref()?.check))
     }) else {
         return Ok(None);

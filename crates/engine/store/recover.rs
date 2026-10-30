@@ -275,7 +275,8 @@ mod tests {
         let root = temp_pack("torn-tail");
         let mut world = crate::testing::open(&root);
         let pre = fs::read(root.join("state/save.yaml")).unwrap();
-        let draft = Draft::begin(&world);
+        let nobody = crate::model::Presence::default();
+        let draft = Draft::begin(&world, &nobody);
         commit(&mut world, draft, journal_line()).unwrap();
         drop(world);
         let bundle = root.join("state/journal/bundle-0000.jsonl");

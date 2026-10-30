@@ -34,7 +34,7 @@ fn commit_round(world: &mut World) {
         .world;
     let wall = shard.now().last_round_at.clone();
     shard
-        .play(&wall)
+        .play(&spookery_engine::Presence::default(), &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
 }
 

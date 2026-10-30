@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use cucumber::{given, then, when};
-use spookery_engine::ItemStack;
+use spookery_engine::{ItemStack, Presence};
 
 use crate::support::spook;
 use crate::World;
@@ -206,7 +206,7 @@ fn the_player_resume_for_does_not_list(world: &mut World, actor: String, note: S
 fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: String) {
     let pack = table::pack(world);
     let shard = spookery_engine::World::peek(pack).unwrap();
-    let view = shard.perceive(&actor).unwrap();
+    let view = shard.perceive(&Presence::default(), &actor).unwrap();
     assert!(
         view.messages.iter().all(|message| message.id != note),
         "view listed {note}"
@@ -216,7 +216,7 @@ fn the_perceive_view_for_does_not_list(world: &mut World, actor: String, note: S
 fn read_player_resume(world: &World, actor: &str) -> String {
     let pack = table::pack(world);
     let shard = spookery_engine::World::peek(pack).unwrap();
-    let view = shard.perceive(actor).unwrap();
+    let view = shard.perceive(&Presence::default(), actor).unwrap();
     spookery::host::player_resume_line(&view)
         .trim_end()
         .to_string()
@@ -235,7 +235,7 @@ fn rewrite_mira(pack: &Path, from: &str, to: &str) {
 fn the_shop_lists_the_oil(world: &mut World) {
     let pack = table::pack(world);
     let shard = spookery_engine::World::peek(pack).unwrap();
-    let shop = shard.perceive("pc_rowan").unwrap();
+    let shop = shard.perceive(&Presence::default(), "pc_rowan").unwrap();
     assert_eq!(shop.place, "docks_shop");
     assert_eq!(
         shop.items,
@@ -244,7 +244,7 @@ fn the_shop_lists_the_oil(world: &mut World) {
             count: 4,
         }]
     );
-    let rooms = shard.perceive("mira").unwrap();
+    let rooms = shard.perceive(&Presence::default(), "mira").unwrap();
     assert_eq!(rooms.place, "mira_rooms");
     assert!(rooms.items.iter().all(|item| item.id != "lamp_oil"));
 }

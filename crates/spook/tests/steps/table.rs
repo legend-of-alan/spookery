@@ -715,14 +715,21 @@ fn status_body(world: &mut World) -> Value {
 }
 
 pub fn wait_humans(world: &mut World, _pack: &Path, expected: u32) {
+    wait_presence(world, &format!("humans {expected}"), |humans, _| {
+        humans == expected
+    });
+}
+
+/// Waits until the GM status presence passes `done`; `want` names it in the panic.
+pub fn wait_presence(world: &mut World, want: &str, done: impl Fn(u32, &[String]) -> bool) {
     let start = Instant::now();
     loop {
-        let (humans, _) = live_presence(world);
-        if humans == expected {
+        let (humans, actors) = live_presence(world);
+        if done(humans, &actors) {
             return;
         }
         if start.elapsed() > Duration::from_secs(5) {
-            panic!("humans did not become {expected}");
+            panic!("presence did not reach {want}: {humans} {actors:?}");
         }
         std::thread::sleep(Duration::from_millis(20));
     }

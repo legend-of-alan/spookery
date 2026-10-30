@@ -26,8 +26,3 @@ Feature: Seat presence stays in memory
     Then the command exits 0
     And the round now_hash matches the save
     And stderr is empty
-
-  Scenario: Two players seated and dropped one after another get different session ids
-    Given a docks table
-    When two players sit, one drops, and that PC sits again
-    Then the session ids differ

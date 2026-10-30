@@ -286,12 +286,12 @@ fn the_next_round_accepts_a_move(world: &mut World) {
 fn rounds_never_shorten(_world: &mut World) {
     let seated = temp_pack("seated-length");
     let mut seated_world = spookery_engine::testing::open(&seated);
-    seated_world.set_presence(spookery_engine::testing::Presence {
+    let one_human = spookery_engine::Presence {
         humans: 1,
         actors_present: Vec::new(),
-    });
+    };
     let wall = seated_world.now().last_round_at.clone();
-    seated_world.play(&wall).unwrap();
+    seated_world.play(&one_human, &wall).unwrap();
     drop(seated_world);
     let idle = temp_pack("idle-length");
     spookery_engine::play_pack_once(&idle).unwrap();

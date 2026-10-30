@@ -96,16 +96,23 @@ fn perform(
     rule_id: &str,
 ) -> Result<(), Reason> {
     let actor_id = intent.actor.actor_id();
-    let canon = draft.canon();
-    let snapshot = draft.now();
+    let (canon, snapshot, presence) = (draft.canon(), draft.now(), draft.presence);
     let rule = canon.rules.get(rule_id).ok_or(Reason::UnknownMove)?;
     let mut roller = dice.roller(log, &rule.id, actor_id);
     let rolled = match &rule.roll {
-        Some(spec) => Some(roller.roll_spec(canon, snapshot, intent, spec)?),
+        Some(spec) => Some(roller.roll_spec(canon, snapshot, presence, intent, spec)?),
         None => None,
     };
     let outcome = rolled.as_ref().map(|out| out.outcome);
-    let effects = expand_rule(canon, snapshot, rule, intent, outcome, &mut roller)?;
+    let effects = expand_rule(
+        canon,
+        snapshot,
+        presence,
+        rule,
+        intent,
+        outcome,
+        &mut roller,
+    )?;
     let resisted = roller.finish();
     let actor_id = actor_id.to_string();
     log.reports

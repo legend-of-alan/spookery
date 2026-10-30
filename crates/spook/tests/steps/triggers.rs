@@ -5,9 +5,9 @@ use cucumber::{given, then, when};
 use serde_json::Value;
 use spookery_engine::testing::Clock;
 use spookery_engine::MeterLive;
-use spookery_engine::Now;
 use spookery_engine::{emit_save, load_save};
 use spookery_engine::{Intent, IntentArgs, Source, Target, ViewerId};
+use spookery_engine::{Now, Presence};
 
 use super::steps_run::read_steps_run;
 use crate::support::{self, temp_pack};
@@ -24,8 +24,8 @@ fn nell_travels_via_door(world: &mut World) {
     );
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
         world,
@@ -181,8 +181,8 @@ rules:
     )
     .unwrap();
     write_nell(&pack, &["found_key"]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.actors
             .get_mut("pc_nell")
             .unwrap()
@@ -274,8 +274,8 @@ rules:
 ",
     )
     .unwrap();
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_shop");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
     });
     world.pack = Some(pack);
 }
@@ -351,7 +351,7 @@ rules:
         ),
     )
     .unwrap();
-    edit_save(world, &pack, |_| {});
+    edit_table(world, &pack, |_, _| {});
     pack
 }
 
@@ -362,8 +362,8 @@ fn verify_passes_after_triggers(world: &mut World) {
     add_bell(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     play(
         world,
@@ -429,8 +429,8 @@ The ground gives.
         "    stat: grit\n  - id: stamina\n    dice:\n      count: 1\n      sides: 6\n    stat: grit\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     let (_now, rolls, round) = play(
         world,
@@ -474,8 +474,8 @@ fn nell_travels_and_the_bell_narrates(world: &mut World) {
     add_bell_narrate(&pack);
     flag_pcs(&pack, "heard_bell");
     write_nell(&pack, &["heard_bell"]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     let played = play_view(
         world,
@@ -569,8 +569,8 @@ Under the street.
         "\n  - id: uncover\n    when:\n      verb: uncover\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.places.insert(
             "cellar".to_string(),
             spookery_engine::testing::PlaceLive {
@@ -608,7 +608,10 @@ fn nell_knows_the_trapdoor(world: &mut World) {
 fn nell_can_see_the_trapdoor(world: &mut World) {
     let pack = world.pack.as_ref().unwrap();
     let world_now = spookery_engine::World::peek(pack).unwrap();
-    let exits = world_now.perceive("pc_nell").unwrap().exits;
+    let exits = world_now
+        .perceive(&Presence::default(), "pc_nell")
+        .unwrap()
+        .exits;
     assert!(
         exits.iter().any(|exit| exit.name == "trapdoor"),
         "trapdoor stayed hidden: {exits:?}"
@@ -643,8 +646,8 @@ rules:
     )
     .unwrap();
     write_nell(&pack, &["saw_tide"]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     world.pack = Some(pack);
 }
@@ -715,8 +718,8 @@ fn the_viewer_summary_omits(world: &mut World, viewer: String, key: String) {
 fn a_round_runs(world: &mut World) {
     let pack = temp_pack("trigger-round-counter");
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
     });
     show(world, pack, Vec::new());
 }
@@ -752,9 +755,9 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
         "\n  - id: learn\n    when:\n      verb: learn\n    do:\n      - reveal:\n          who: self\n          fact: fact_trapdoor\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
-        sit(now, &["pc_nell", "pc_wren"]);
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        sit(seated, &["pc_nell", "pc_wren"]);
     });
     show(
         world,
@@ -766,8 +769,8 @@ fn nell_learns_the_trapdoor_beside_wren(world: &mut World) {
 #[when(expr = "an item is taken from docks_shop")]
 fn an_item_is_taken_from_the_shop(world: &mut World) {
     let pack = temp_pack("trigger-place-item");
-    edit_save(world, &pack, |now| {
-        sit(now, &["pc_rowan"]);
+    edit_table(world, &pack, |_, seated| {
+        sit(seated, &["pc_rowan"]);
     });
     show(
         world,
@@ -785,9 +788,9 @@ fn an_item_is_taken_from_the_shop(world: &mut World) {
 fn rowan_takes_an_item_beside_nell(world: &mut World) {
     let pack = temp_pack("trigger-actor-item");
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_shop");
-        sit(now, &["pc_rowan", "pc_nell", "pc_wren"]);
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+        sit(seated, &["pc_rowan", "pc_nell", "pc_wren"]);
     });
     show(
         world,
@@ -809,8 +812,8 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
         "\n  - id: mark_tide\n    when:\n      verb: mark_tide\n    do:\n      - clock:\n          id: nell_tide\n          add: 1\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         now.clocks.insert(
             "nell_tide".to_string(),
             Clock {
@@ -821,7 +824,7 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
                 paused: false,
             },
         );
-        sit(now, &["pc_nell", "pc_wren"]);
+        sit(seated, &["pc_nell", "pc_wren"]);
     });
     show(
         world,
@@ -834,10 +837,10 @@ fn a_clock_owned_by_nell_ticks(world: &mut World) {
 fn nell_travels_from_the_street_into_the_shop(world: &mut World) {
     let pack = temp_pack("trigger-both-rooms");
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
         put(now, "pc_harbormouse", "mira_rooms");
-        sit(now, &["pc_nell"]);
+        sit(seated, &["pc_nell"]);
     });
     show(
         world,
@@ -859,10 +862,10 @@ fn a_rule_sets_the_tide(world: &mut World) {
         "\n  - id: turn_tide\n    when:\n      verb: turn_tide\n    do:\n      - flag:\n          who: world\n          key: tide_turned\n          value: true\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_shop");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
         put(now, "pc_rowan", "mira_rooms");
-        sit(now, &["pc_nell", "pc_wren", "pc_rowan"]);
+        sit(seated, &["pc_nell", "pc_wren", "pc_rowan"]);
     });
     show(
         world,
@@ -875,7 +878,7 @@ fn a_rule_sets_the_tide(world: &mut World) {
 fn every_seated_summary_lists(world: &mut World, key: String) {
     let pack = world.pack.as_ref().unwrap();
     let now = load(pack);
-    // Seats live in memory, not in the save, so read the ones `edit_save` remembered.
+    // Seats live in memory, not in the save, so read the ones `edit_table` remembered.
     let presence = remembered_presence(world, pack).unwrap_or_default();
     let seated: Vec<String> = presence
         .actors_present
@@ -901,9 +904,9 @@ fn wrens_meter_changes_while_nell_is_elsewhere(world: &mut World) {
         "\n  - id: spend\n    when:\n      verb: spend\n    do:\n      - meter:\n          who: self\n          key: grit\n          add: -1\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_shop");
-        sit(now, &["pc_nell", "pc_wren", "pc_harbormouse"]);
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_shop");
+        sit(seated, &["pc_nell", "pc_wren", "pc_harbormouse"]);
     });
     show(
         world,
@@ -920,9 +923,9 @@ fn a_message_hidden_from_wren_is_written(world: &mut World) {
         "\n  - id: pass_word\n    when:\n      verb: pass_word\n    do:\n      - note:\n          id: note_private\n          to:\n            - pc_nell\n          text: The tide turns at dusk.\n",
     );
     write_nell(&pack, &[]);
-    edit_save(world, &pack, |now| {
-        seat(now, "pc_rowan", "pc_nell", "docks_street");
-        sit(now, &["pc_nell", "pc_wren"]);
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "pc_rowan", "pc_nell", "docks_street");
+        sit(seated, &["pc_nell", "pc_wren"]);
     });
     show(
         world,
@@ -947,24 +950,23 @@ fn the_empty_table_narrates_and_then_rowan_narrates(world: &mut World) {
         &pack,
         "\n  - id: quiet\n    when:\n      verb: quiet\n    do:\n      - narrate:\n          to: pc_rowan\n          text: The shop is quiet.\n  - id: back\n    when:\n      verb: back\n    do:\n      - narrate:\n          to: self\n          text: You are back.\n",
     );
-    edit_save(world, &pack, |now| {
-        now.presence.humans = 0;
-        now.presence.actors_present.clear();
-    });
+    edit_table(world, &pack, |_, _| {});
     let mut kernel = spookery_engine::testing::open(&pack);
     kernel.queue(intent("quiet", "pc_rowan", "quiet", Target::Empty));
     let wall = kernel.now().last_round_at.clone();
-    let quiet = kernel.play(&wall).unwrap_or_else(|err| {
-        panic!("quiet: {err}");
-    });
-    kernel.set_presence(spookery_engine::testing::Presence {
+    let quiet = kernel
+        .play(&Presence::default(), &wall)
+        .unwrap_or_else(|err| {
+            panic!("quiet: {err}");
+        });
+    let rowan = Presence {
         humans: 1,
         actors_present: vec!["pc_rowan".to_string()],
-    });
+    };
     kernel.queue(intent("back", "pc_rowan", "back", Target::Empty));
     let wall = kernel.now().last_round_at.clone();
     let back = kernel
-        .play(&wall)
+        .play(&rowan, &wall)
         .unwrap_or_else(|err| panic!("back: {err}"));
     world.told = quiet
         .lines
@@ -998,7 +1000,7 @@ Reserved.
         &pack,
         "\n  - id: bad\n    when:\n      verb: bad\n    do:\n      - reveal:\n          who: world\n          fact: missing_fact\n      - reveal:\n          who: self\n          fact: missing_fact\n",
     );
-    edit_save(world, &pack, |_| {});
+    edit_table(world, &pack, |_, _| {});
     world.pack = Some(pack);
 }
 
@@ -1028,9 +1030,11 @@ fn put(now: &mut Now, id: &str, place: &str) {
     *now.actors.get_mut(id).unwrap().place_mut() = place.to_string();
 }
 
-fn sit(now: &mut Now, ids: &[&str]) {
-    now.presence.humans = u32::try_from(ids.len()).unwrap();
-    now.presence.actors_present = ids.iter().map(|id| (*id).to_string()).collect();
+/// Seat these PCs, sorted the way the host's seats are.
+fn sit(seated: &mut Presence, ids: &[&str]) {
+    seated.humans = u32::try_from(ids.len()).unwrap();
+    seated.actors_present = ids.iter().map(|id| (*id).to_string()).collect();
+    seated.actors_present.sort();
 }
 
 fn narrates(round: &Value, text: &str, viewer: &str) -> bool {
@@ -1112,8 +1116,8 @@ rules:
         ),
     )
     .unwrap();
-    edit_save(world, &pack, |now| {
-        seat(now, "aldric", "briar", "docks_shop");
+    edit_table(world, &pack, |now, seated| {
+        seat(now, seated, "aldric", "briar", "docks_shop");
         let briar = now.actors.get_mut("briar").unwrap();
         briar.meters_mut().insert(
             "hp".to_string(),
@@ -1125,8 +1129,7 @@ rules:
         if downed {
             briar.flags_mut().push("downed".to_string());
         }
-        now.presence.humans = 1;
-        now.presence.actors_present = vec!["pc_rowan".to_string()];
+        sit(seated, &["pc_rowan"]);
     });
     spookery_engine::migrate_pack(&pack).unwrap_or_else(|err| panic!("migrate: {err}"));
     pack
@@ -1206,30 +1209,31 @@ Nell walks the docks.
     .unwrap();
 }
 
-fn seat(now: &mut Now, from: &str, id: &str, place: &str) {
+fn seat(now: &mut Now, seated: &mut Presence, from: &str, id: &str, place: &str) {
     let mut actor = now.actors.get(from).unwrap().clone();
     *actor.place_mut() = place.to_string();
     actor.flags_mut().clear();
     now.actors.insert(id.to_string(), actor);
-    now.presence.humans = 1;
-    now.presence.actors_present = vec![id.to_string()];
+    sit(seated, &[id]);
 }
 
-fn edit_save(world: &mut World, pack: &Path, edit: impl FnOnce(&mut Now)) {
+/// Edit the save, and remember who the edit seats for the rounds this pack plays.
+fn edit_table(world: &mut World, pack: &Path, edit: impl FnOnce(&mut Now, &mut Presence)) {
     let path = pack.join("state/save.yaml");
     let mut now = load_save(&fs::read_to_string(&path).unwrap()).unwrap();
-    edit(&mut now);
-    remember_presence(world, pack, now.presence.clone());
+    let mut seated = Presence::default();
+    edit(&mut now, &mut seated);
+    remember_presence(world, pack, seated);
     now.pack_rev = spookery_engine::pack_rev(pack).unwrap();
     fs::write(path, emit_save(&now).unwrap()).unwrap();
 }
 
-fn remember_presence(world: &mut World, pack: &Path, presence: spookery_engine::testing::Presence) {
+fn remember_presence(world: &mut World, pack: &Path, presence: Presence) {
     world.seated.retain(|(path, _)| path != pack);
     world.seated.push((pack.to_path_buf(), presence));
 }
 
-fn remembered_presence(world: &World, pack: &Path) -> Option<spookery_engine::testing::Presence> {
+fn remembered_presence(world: &World, pack: &Path) -> Option<Presence> {
     world
         .seated
         .iter()
@@ -1257,15 +1261,13 @@ fn play(
 
 fn play_view(scenario: &mut World, pack: &Path, intents: Vec<Intent>) -> Played {
     let mut round = super::rules::open_pack(pack);
-    if let Some(presence) = remembered_presence(scenario, pack) {
-        round.set_presence(presence);
-    }
+    let presence = remembered_presence(scenario, pack).unwrap_or_default();
     let wall = round.now().last_round_at.clone();
     for intent in intents {
         round.queue(intent);
     }
     let output = round
-        .play(&wall)
+        .play(&presence, &wall)
         .unwrap_or_else(|err| panic!("play: {err}"));
     let record = latest(pack);
     let told = output

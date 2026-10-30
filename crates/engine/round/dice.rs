@@ -7,7 +7,7 @@ use crate::check::Outcome;
 use crate::effect::Effect;
 use crate::hash::blake2s_256;
 use crate::intent::Intent;
-use crate::model::Now;
+use crate::model::{Now, Presence};
 use crate::round::log::RoundLog;
 use crate::rule::RollSpec;
 use crate::rules::expr::{eval_with_dice, Ctx, Dice};
@@ -126,10 +126,11 @@ impl Roller<'_> {
         &mut self,
         canon: &Canon,
         now: &Now,
+        presence: &Presence,
         intent: &Intent,
         spec: &RollSpec,
     ) -> Result<Roll, Reason> {
-        let (target, partial_at) = self.thresholds(canon, now, intent, spec)?;
+        let (target, partial_at) = self.thresholds(canon, now, presence, intent, spec)?;
         let key = self.dice.key(self.rule, intent.actor.actor_id());
         self.dice
             .check(canon, now, key, &spec.check, target, partial_at)
@@ -140,10 +141,11 @@ impl Roller<'_> {
         &mut self,
         canon: &Canon,
         now: &Now,
+        presence: &Presence,
         intent: &Intent,
         spec: &RollSpec,
     ) -> Result<(i64, Option<i64>), Reason> {
-        let ctx = Ctx { intent };
+        let ctx = Ctx { intent, presence };
         let target = eval_with_dice(canon, now, &ctx, &spec.target, self)?.value;
         let partial_at = match &spec.partial_at {
             Some(expr) => Some(eval_with_dice(canon, now, &ctx, expr, self)?.value),
