@@ -1,4 +1,4 @@
-//! The kernel crate has no cucumber harness. This is the scenario:
+//! The scenario this property checks:
 //!
 //! ```gherkin
 //! Feature: A hidden fact stays off a player's tape
