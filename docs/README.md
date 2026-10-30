@@ -70,7 +70,7 @@ These are the host options and the commands that touch a save.
 | Option or command | What it does |
 | --- | --- |
 | `--addr <addr>` | Sets the game address. The default is `127.0.0.1:9737`, and plain `127.0.0.1` means that same port. Only loopback is allowed. Anything else is refused before the pack opens. |
-| `--mcp-http 127.0.0.1:<port>` | Sets the agent door. By default it's the game port plus one, so `127.0.0.1:9738`. |
+| `--door 127.0.0.1:<port>` | Sets the agent door. By default it's the game port plus one, so `127.0.0.1:9738`. |
 | `--as <id>` | Picks your character in `spook play`. `pc_rowan` and `player:pc_rowan` mean the same seat. |
 | `spook status <pack>` | Prints the host digest. It doesn't write the pack. |
 | `spook round <pack>` | Plays one round and writes `state/`. |
@@ -139,7 +139,7 @@ spook gm
 
 Type `help` to see the GM commands. `spook gm --raw` prints each protocol frame as one JSON line instead.
 
-Both `spook gm` and `spook ai-gm` connect to the agent door. Use `--mcp-http 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you the door. Pass that to `--mcp-http`.
+Both `spook gm` and `spook ai-gm` connect to the agent door. Use `--door 127.0.0.1:<port>` to point them somewhere else. If you started the host with `--addr 127.0.0.1:0`, the OS picks the ports and the listening line tells you the door. Pass that to `--door`.
 
 ## Privacy
 

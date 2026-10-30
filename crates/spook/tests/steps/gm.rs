@@ -71,13 +71,7 @@ fn a_docks_table_with_a_gm_terminal(world: &mut World, actor: String) {
     table::seat_actor(world, &pack, &actor);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &addr,
-        "--mcp-http",
-        &door,
-    ]));
+    world.gm = Some(support::spawn(&["gm", "--addr", &addr, "--door", &door]));
     wait_gm(world, "Commands:");
 }
 
@@ -138,7 +132,7 @@ fn the_gm_commits(world: &mut World) {
 fn another_gm_joins(world: &mut World) {
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    let output = support::spook(&["gm", "--addr", &addr, "--mcp-http", &door]);
+    let output = support::spook(&["gm", "--addr", &addr, "--door", &door]);
     world.code = output.status.code();
     world.stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     world.stderr = String::from_utf8_lossy(&output.stderr).into_owned();
@@ -154,13 +148,7 @@ fn the_gm_is_killed(world: &mut World) {
 fn another_gm_sits(world: &mut World) {
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &addr,
-        "--mcp-http",
-        &door,
-    ]));
+    world.gm = Some(support::spawn(&["gm", "--addr", &addr, "--door", &door]));
 }
 
 #[when(expr = "the GM queues an unknown move")]
@@ -201,13 +189,7 @@ fn a_human_gm_dials_that_door(world: &mut World) {
     let (game, http) = (live.port, live.http_port);
     let game = format!("127.0.0.1:{game}");
     let http = format!("127.0.0.1:{http}");
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &game,
-        "--mcp-http",
-        &http,
-    ]));
+    world.gm = Some(support::spawn(&["gm", "--addr", &game, "--door", &http]));
     wait_gm(world, "Commands:");
 }
 
@@ -336,7 +318,7 @@ fn sit_gm(world: &mut World, raw: bool) -> String {
         "gm".to_string(),
         "--addr".to_string(),
         addr.clone(),
-        "--mcp-http".to_string(),
+        "--door".to_string(),
         door,
     ];
     if raw {

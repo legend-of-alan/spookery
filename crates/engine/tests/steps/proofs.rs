@@ -707,9 +707,15 @@ fn tool_scope() {
     let kernel = shard.perceive(&Presence::default(), "mira").unwrap();
     assert_eq!(call("mira", 800).unwrap(), kernel);
     let capped = call("mira", 0).unwrap();
-    assert!(kernel.known_facts.iter().any(|fact| !fact.body.is_empty()));
+    assert!(kernel
+        .known_facts
+        .iter()
+        .any(|fact| !fact.owner_body.is_empty()));
     assert_eq!(capped.known_facts.len(), kernel.known_facts.len());
-    assert!(capped.known_facts.iter().all(|fact| fact.body.is_empty()));
+    assert!(capped
+        .known_facts
+        .iter()
+        .all(|fact| fact.owner_body.is_empty()));
     let ledger = capped
         .known_facts
         .iter()

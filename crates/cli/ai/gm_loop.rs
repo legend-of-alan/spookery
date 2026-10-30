@@ -3,10 +3,10 @@
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use spookery_agent::{Agent, AgentInput, AgentStep, Model};
+use spookery_agent::{Agent, Input, Model, Step};
 
-use crate::ai::{fail, Error};
-use crate::gm_connection::{self, GmConnection, Incoming};
+use crate::ai::{report_error, Error};
+use crate::gm_connection::{self, Connection, Incoming};
 
 #[derive(Default)]
 pub struct TurnWatch {
@@ -23,12 +23,12 @@ pub async fn run_gm<M: Model>(
     watch: &TurnWatch,
 ) -> Result<(), Error> {
     let mut client = match door {
-        Some(door) => GmConnection::connect_door(door).await,
-        None => GmConnection::connect(addr).await,
+        Some(door) => Connection::connect_door(door).await,
+        None => Connection::connect_default_door(addr).await,
     }
-    .map_err(from_connection_err)?;
+    .map_err(report_connection_error)?;
     let result = async {
-        let mut agent = Agent::new_gm();
+        let mut agent = Agent::new();
         let mut step = agent.start();
         loop {
             if let Some(warning) = agent.warning.take() {
@@ -40,52 +40,56 @@ pub async fn run_gm<M: Model>(
                     report("listening");
                     watch.sit_seq.store(sit, Ordering::Release);
                     watch.high_water.store(sit, Ordering::Release);
-                    watch.busy.store(step != AgentStep::Idle, Ordering::Release);
+                    watch.busy.store(step != Step::Idle, Ordering::Release);
                     watch.listening.store(true, Ordering::Release);
                 }
             }
             match step {
-                AgentStep::CallTool { name, arguments } => {
+                Step::CallTool { name, arguments } => {
                     if watch.listening.load(Ordering::Acquire) {
                         watch.busy.store(true, Ordering::Release);
                     }
                     let outcome = client
                         .call(name, arguments)
                         .await
-                        .map_err(from_connection_err)?;
+                        .map_err(report_connection_error)?;
                     for event in client.take_events() {
-                        agent.feed(AgentInput::GmEvent(event.body)).map_err(fail)?;
+                        agent
+                            .feed(Input::GmEvent(event.body))
+                            .map_err(report_error)?;
                     }
                     step = agent
-                        .feed(AgentInput::ToolResult {
+                        .feed(Input::ToolResult {
                             body: outcome.body,
                             refused: outcome.refused,
                             raw: outcome.raw,
                         })
-                        .map_err(fail)?;
+                        .map_err(report_error)?;
                 }
-                AgentStep::CallModel { request, warning } => {
+                Step::CallModel { request, warning } => {
                     if let Some(warning) = warning {
                         report(&warning);
                     }
                     let reply = model.complete(&request).await;
-                    step = agent.feed(AgentInput::ModelReply(reply)).map_err(fail)?;
+                    step = agent.feed(Input::ModelReply(reply)).map_err(report_error)?;
                 }
-                AgentStep::SendPlayerLine(_) => return Err(fail("unexpected player line")),
-                AgentStep::Idle => {
+                Step::SendPlayerLine(_) => return Err(report_error("unexpected player line")),
+                Step::Idle => {
                     watch.busy.store(false, Ordering::Release);
                     match client.next_incoming().await {
                         Incoming::Event(event) => {
-                            step = agent.feed(AgentInput::GmEvent(event.body)).map_err(fail)?;
-                            if step != AgentStep::Idle && watch.listening.load(Ordering::Acquire) {
+                            step = agent
+                                .feed(Input::GmEvent(event.body))
+                                .map_err(report_error)?;
+                            if step != Step::Idle && watch.listening.load(Ordering::Acquire) {
                                 watch.busy.store(true, Ordering::Release);
                             }
                         }
                         Incoming::Result { raw, .. }
-                        | Incoming::Bad(raw)
-                        | Incoming::Refused { raw, .. } => return Err(fail(raw)),
+                        | Incoming::Invalid(raw)
+                        | Incoming::Refused { raw, .. } => return Err(report_error(raw)),
                         Incoming::Eof if agent.sit_seq.is_some() => return Ok(()),
-                        Incoming::Eof => return Err(fail("seat closed")),
+                        Incoming::Eof => return Err(report_error("seat closed")),
                     }
                 }
             }
@@ -101,10 +105,10 @@ fn report(line: &str) {
     let _ = std::io::Write::flush(&mut std::io::stderr());
 }
 
-fn from_connection_err(err: gm_connection::Error) -> Error {
+fn report_connection_error(err: gm_connection::Error) -> Error {
     match err {
-        gm_connection::Error::Io(err) => fail(err.to_string()),
-        gm_connection::Error::Bad(line) => fail(line),
-        gm_connection::Error::Refused { raw, .. } => fail(raw),
+        gm_connection::Error::Io(err) => report_error(err.to_string()),
+        gm_connection::Error::Invalid(line) => report_error(line),
+        gm_connection::Error::Refused { raw, .. } => report_error(raw),
     }
 }

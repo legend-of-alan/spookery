@@ -75,7 +75,7 @@ Feature: One GM seat and up to three player seats
     Given a docks table with a GM and two seated players
     When both players wait
     Then both lines are queued for the GM
-    And session status lists both queued lines
+    And table status lists both queued lines
     When the GM commits the round
     Then the round log records both waits
 

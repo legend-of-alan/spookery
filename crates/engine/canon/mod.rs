@@ -132,8 +132,8 @@ impl Canon {
             })
             .map(|(name, audience, token)| MenuRow {
                 name,
-                audience: audience.to_string(),
-                token: token.to_string(),
+                kind: audience.to_string(),
+                target: token.to_string(),
             })
             .collect();
         let kinds = self.cast.iter().map(|(k, m)| (k.clone(), m.kind)).collect();
@@ -356,15 +356,15 @@ mod tests {
         let mut canon = load_canon(&root).expect("docks canon");
         canon.cast.get_mut("mira").unwrap().body = "CAST-BODY-SENTINEL".to_string();
         let summary = canon.to_pack_summary();
-        assert!(summary.menu.iter().all(|row| row.audience != "system"));
+        assert!(summary.menu.iter().all(|row| row.kind != "system"));
         assert!(summary
             .menu
             .iter()
-            .any(|row| row.name == "travel" && row.audience == "verb" && row.token == "exit"));
+            .any(|row| row.name == "travel" && row.kind == "verb" && row.target == "exit"));
         assert!(summary
             .menu
             .iter()
-            .any(|row| row.name == "restock_lamp_oil" && row.audience == "habit"));
+            .any(|row| row.name == "restock_lamp_oil" && row.kind == "habit"));
         assert_eq!(summary.kinds.get("mira"), Some(&CastKind::Npc));
         assert_eq!(summary.kinds.get("pc_rowan"), Some(&CastKind::PcTemplate));
         let rendered = format!("{:?}{:?}", summary.menu, summary.kinds);

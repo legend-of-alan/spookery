@@ -22,7 +22,7 @@ Feature: The host's seats say who is present
   Scenario: The GM status reply lists who is seated
     Given a docks table with "pc_rowan" and "pc_wren" seated
     When "pc_wren" leaves
-    Then session_status shows humans 1 and actors_present "pc_rowan"
+    Then table_status shows humans 1 and actors_present "pc_rowan"
 
   Scenario: The journal records who was seated when the round ran
     Given a docks table with "pc_rowan" and "pc_wren" seated

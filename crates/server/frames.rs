@@ -1,8 +1,8 @@
 //! Player lines, `spook/event` frames, and tool results.
 
 use crate::protocol::{
-    CommitBody, EventBody, GmSay, MessageView, Missing, Outcome, PackSummary, PlayerMessage,
-    QueueRow, SessionStatus, StatusPause, StatusPresence, ViewScene,
+    CommitBody, EventBody, MessageView, Missing, Outcome, PackSummary, PlayerFrame, QueuedMove,
+    SayEvent, StatusPause, StatusPresence, TableStatus, ViewScene,
 };
 use serde_json::Value;
 use spookery_engine::{
@@ -11,28 +11,28 @@ use spookery_engine::{
 };
 
 #[derive(Debug)]
-pub struct Spoken {
-    pub tape: String,
-    pub player_event: String,
+pub struct SayOutput {
+    pub tape_line: String,
+    pub player_line: String,
     pub gm_event: Vec<u8>,
-    pub tool: Value,
+    pub tool_result: Value,
     pub recipients: Vec<String>,
 }
 
-impl From<&TapeRecord> for Spoken {
+impl From<&TapeRecord> for SayOutput {
     fn from(stored: &TapeRecord) -> Self {
-        Spoken {
-            tape: emit_tape_record(stored),
-            player_event: say_line(stored, false),
+        SayOutput {
+            tape_line: emit_tape_record(stored),
+            player_line: say_line(stored, false),
             gm_event: say_event(stored),
-            tool: say_value(stored),
+            tool_result: say_value(stored),
             recipients: stored.recipients.clone(),
         }
     }
 }
 
 pub fn say_line(tape: &TapeRecord, replay: bool) -> String {
-    crate::protocol::write_player(&PlayerMessage::Say {
+    crate::protocol::emit_player(&PlayerFrame::Say {
         from: tape.from.clone(),
         address: tape.address.clone(),
         text: tape.text.clone(),
@@ -48,8 +48,8 @@ pub fn say_event(tape: &TapeRecord) -> Vec<u8> {
     serde_json::to_vec(&EventBody::Say(gm_say(tape))).expect("say event")
 }
 
-fn gm_say(tape: &TapeRecord) -> GmSay {
-    GmSay {
+fn gm_say(tape: &TapeRecord) -> SayEvent {
+    SayEvent {
         seq: tape.seq,
         from: tape.from.clone(),
         address: tape.address.clone(),
@@ -61,11 +61,11 @@ fn gm_say(tape: &TapeRecord) -> GmSay {
 }
 
 pub fn player_queued_line(id: &str) -> String {
-    crate::protocol::write_player(&PlayerMessage::Queued { id: id.to_string() })
+    crate::protocol::emit_player(&PlayerFrame::Queued { id: id.to_string() })
 }
 
 pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
-    let row = QueueRow {
+    let row = QueuedMove {
         id: id.to_string(),
         actor_id: actor_id.to_string(),
         move_name: move_name.to_string(),
@@ -74,7 +74,7 @@ pub fn queued_event(id: &str, actor_id: &str, move_name: &str) -> Vec<u8> {
 }
 
 pub fn player_check_line(outcome: Outcome) -> String {
-    crate::protocol::write_player(&PlayerMessage::Check { outcome })
+    crate::protocol::emit_player(&PlayerFrame::Check { outcome })
 }
 
 pub fn check_event(out: &Roll) -> Vec<u8> {
@@ -91,7 +91,7 @@ pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
             MoveReport::Rolled { roll: rolled, .. } => {
                 out.push_str(&player_check_line(rolled.outcome))
             }
-            MoveReport::Refused { code, missing, .. } => out.push_str(&player_refused(
+            MoveReport::Refused { code, missing, .. } => out.push_str(&player_refused_line(
                 code.as_str(),
                 missing.as_ref().map(|text| Missing::One(text.clone())),
             )),
@@ -100,7 +100,7 @@ pub fn player_report_lines(reports: &[MoveReport], actor_id: &str) -> String {
     out
 }
 
-pub fn gm_check_frames(reports: &[MoveReport]) -> Vec<Vec<u8>> {
+pub fn check_events(reports: &[MoveReport]) -> Vec<Vec<u8>> {
     rolls(reports).map(check_event).collect()
 }
 
@@ -119,27 +119,27 @@ pub fn player_resume_line(view: &View) -> String {
         .filter(|message| message.to.iter().any(|to| to == actor_id))
         .map(message_view)
         .collect();
-    crate::protocol::write_player(&PlayerMessage::Resume {
+    crate::protocol::emit_player(&PlayerFrame::Resume {
         messages,
         clocks: view.clocks.clone(),
     })
 }
 
 pub fn player_lines(text: &str) -> String {
-    crate::protocol::write_player(&PlayerMessage::Lines {
+    crate::protocol::emit_player(&PlayerFrame::Lines {
         text: text.to_string(),
     })
 }
 
-pub fn player_refused(code: &str, missing: Option<Missing>) -> String {
-    crate::protocol::write_player(&PlayerMessage::Refused {
+pub fn player_refused_line(code: &str, missing: Option<Missing>) -> String {
+    crate::protocol::emit_player(&PlayerFrame::Refused {
         code: code.to_string(),
-        missing,
+        detail: missing,
     })
 }
 
 pub fn player_perceive_line(view: &View) -> String {
-    crate::protocol::write_player(&player_view(view))
+    crate::protocol::emit_player(&player_view(view))
 }
 
 pub fn perceive_value(view: &View) -> Value {
@@ -148,8 +148,8 @@ pub fn perceive_value(view: &View) -> Value {
 
 pub fn commit_reply(
     state_rev: u64,
-    diff_summary: &[String],
-    log_path: Option<&str>,
+    changed_keys: &[String],
+    journal_path: Option<&str>,
     outputs: &[RoundOutput],
 ) -> Value {
     let checks = rolls(outputs.iter().flat_map(|output| &output.reports))
@@ -161,15 +161,15 @@ pub fn commit_reply(
         .collect();
     CommitBody {
         state_rev,
-        diff_summary: diff_summary.to_vec(),
-        log_path: log_path.map(str::to_string),
-        checks,
+        changed_keys: changed_keys.to_vec(),
+        journal_path: journal_path.map(str::to_string),
+        rolls: checks,
         dice,
     }
     .to_value()
 }
 
-pub fn session_status(
+pub fn table_status(
     now: &State,
     presence: &Presence,
     queued: &[Intent],
@@ -177,13 +177,13 @@ pub fn session_status(
     events: Option<&[TapeRecord]>,
     pack: Option<PackSummary>,
 ) -> Value {
-    SessionStatus {
+    TableStatus {
         presence: StatusPresence {
             humans: presence.humans,
             actors_present: presence.actors_present.clone(),
         },
         pause: StatusPause {
-            named_plot_clocks: run_state(now.pause.named_plot_clocks),
+            named_plot_clocks: run_state_str(now.pause.named_plot_clocks),
         },
         world_time: now.world_time,
         round_index: now.round_index,
@@ -192,7 +192,7 @@ pub fn session_status(
         last_round_at: now.last_round_at.clone(),
         queued: queued
             .iter()
-            .map(|intent| QueueRow {
+            .map(|intent| QueuedMove {
                 id: intent.id.clone(),
                 actor_id: intent.actor.actor_id().to_string(),
                 move_name: intent.move_name.clone(),
@@ -205,20 +205,20 @@ pub fn session_status(
     .to_value()
 }
 
-fn player_view(view: &View) -> PlayerMessage {
-    PlayerMessage::View {
+fn player_view(view: &View) -> PlayerFrame {
+    PlayerFrame::View {
         viewer: view.viewer.actor_id().to_string(),
         place: view.place.clone(),
         scene: Box::new(ViewScene {
             place_name: view.place_name.clone(),
-            prose: view.prose.clone(),
+            body: view.prose.clone(),
             actor_names: view.actor_names.clone(),
             status: view.status.clone(),
         }),
         visible_actors: view.visible_actors.clone(),
         known_facts: view.known_facts.clone(),
-        messages: view.messages.iter().map(message_view).collect(),
-        unknown_mentioned: view.unknown_mentioned.clone(),
+        notes: view.messages.iter().map(message_view).collect(),
+        unknown_mentions: view.unknown_mentioned.clone(),
         clocks: view.clocks.clone(),
         items: view.items.clone(),
         meters: view.meters.clone(),
@@ -237,7 +237,7 @@ fn message_view(message: &Message) -> MessageView {
     }
 }
 
-fn run_state(state: RunState) -> String {
+fn run_state_str(state: RunState) -> String {
     match state {
         RunState::Paused => "paused",
         RunState::Running => "running",

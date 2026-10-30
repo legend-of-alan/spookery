@@ -3,23 +3,23 @@
 use std::fmt;
 use std::io;
 
-mod gm_view;
-mod player_view;
-mod render;
+mod frame_text;
+mod gm;
+mod player;
 
 pub(crate) use crate::protocol::refusal;
-pub use gm_view::{actor_name, run_gm};
-pub use player_view::run_player;
+pub use gm::{actor_name, run_gm};
+pub use player::run_player;
 
 pub enum Error {
-    Reason(String),
+    Message(String),
     Io(io::Error),
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::Reason(reason) => f.write_str(reason),
+            Error::Message(reason) => f.write_str(reason),
             Error::Io(err) => err.fmt(f),
         }
     }

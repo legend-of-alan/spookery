@@ -25,14 +25,14 @@ impl Outcome {
 }
 
 pub use gm::{
-    code_result, queued_ack, read_commit_args, read_intent_args, read_perceive_args, read_say_args,
-    read_status_args, read_tool_result, released_result, CastKind, CommitArgs, CommitBody,
-    EventBody, GmSay, IntentCall, MenuRow, OutgoingSay, PackSummary, PerceiveArgs, QueueRow, Roll,
-    SessionStatus, StatusArgs, StatusPause, StatusPresence,
+    code_result, parse_commit_args, parse_intent_args, parse_perceive_args, parse_say_args,
+    parse_status_args, parse_tool_result, queued_result, released_result, CastKind, CommitArgs,
+    CommitBody, EventBody, IntentCall, MenuRow, PackSummary, PerceiveArgs, QueuedMove, Roll,
+    SayArgs, SayEvent, StatusArgs, StatusPause, StatusPresence, TableStatus,
 };
 pub use player::{
-    exit_phrase, read_player, read_player_hello, write_player, write_player_hello, ClockView,
-    ExitView, ItemStack, KnownFact, MessageView, MeterView, Missing, PlayerMessage, ViewScene,
+    emit_player, emit_player_hello, exit_phrase, parse_player, parse_player_hello, ClockView,
+    ExitView, ItemStack, KnownFact, MessageView, MeterView, Missing, PlayerFrame, ViewScene,
 };
 
 /// The agent door for a fixed game port: the next port, on the same address.
@@ -125,12 +125,12 @@ mod tests {
             "You cannot afford g. [CANT_AFFORD]"
         );
         for raw in [
-            r#"{"kind":"refused","code":"CANT_AFFORD","missing":"grit"}"#,
-            r#"{"kind":"refused","code":"CHOOSE_PC","missing":["pc_rowan"]}"#,
+            r#"{"kind":"refused","code":"CANT_AFFORD","detail":"grit"}"#,
+            r#"{"kind":"refused","code":"CHOOSE_PC","detail":["pc_rowan"]}"#,
             r#"{"kind":"refused","code":"SCHEMA"}"#,
         ] {
-            let msg = read_player(raw).unwrap();
-            assert!(matches!(msg, PlayerMessage::Refused { .. }));
+            let msg = parse_player(raw).unwrap();
+            assert!(matches!(msg, PlayerFrame::Refused { .. }));
             assert_eq!(serde_json::to_string(&msg).unwrap(), raw);
         }
     }

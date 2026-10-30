@@ -123,7 +123,7 @@ fn the_gm_sees_the_grit_faces(world: &mut World) {
     assert!(event.contains("\"target\":0"), "{event}");
     let result = text
         .lines()
-        .find(|line| line.contains("\"checks\"") && line.contains("\"faces\""))
+        .find(|line| line.contains("\"rolls\"") && line.contains("\"faces\""))
         .unwrap_or_else(|| panic!("tool result has no checks\n{text}"));
     assert!(result.contains("\"faces\":["), "{result}");
     assert!(result.contains("\"stat\":"), "{result}");
@@ -241,7 +241,7 @@ fn the_gm_sees_miras_failed_notice(world: &mut World) {
 
 #[then(expr = "the player sees no check frame")]
 fn the_player_sees_no_check_frame(world: &mut World) {
-    let added = table::wait_player_from(world, world.mark, "\"kind\":\"perceive\"");
+    let added = table::wait_player_from(world, world.mark, "\"kind\":\"view\"");
     assert!(!added.contains("\"kind\":\"check\""), "{added}");
 }
 
@@ -320,8 +320,8 @@ fn listen_both(world: &mut World, pack: &Path) {
 
 fn queue_mira(world: &mut World, move_name: &str) {
     let args = format!(r#"{{"actor_id":"mira","move":"{move_name}"}}"#);
-    let text = table::gm_call(world, 4, "intent", &args);
-    assert!(text.contains("\"queued\""), "{text}");
+    let text = table::gm_call(world, 4, "queue_intent", &args);
+    assert!(text.contains("\"id\""), "{text}");
     assert!(!text.contains("UNKNOWN_KEY"), "{text}");
 }
 
@@ -451,7 +451,7 @@ fn commit_checks(text: &str) -> Vec<Value> {
 }
 
 fn find_checks(value: &Value) -> Option<Vec<Value>> {
-    if let Some(checks) = value.get("checks").and_then(Value::as_array) {
+    if let Some(checks) = value.get("rolls").and_then(Value::as_array) {
         if checks.iter().any(|roll| roll.get("faces").is_some()) {
             return Some(checks.clone());
         }

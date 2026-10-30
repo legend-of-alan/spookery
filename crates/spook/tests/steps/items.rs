@@ -266,7 +266,7 @@ fn lark_is_refused(world: &mut World, code: String) {
         .unwrap_or_else(|| panic!("no refused frame\n{}", world.player_added));
     let frame: Value = serde_json::from_str(row).unwrap();
     assert_eq!(frame["code"], code.as_str(), "{frame}");
-    assert!(frame.get("missing").is_none(), "{frame}");
+    assert!(frame.get("detail").is_none(), "{frame}");
 }
 
 #[then(expr = "no round was spent and lark still holds 1 latch")]

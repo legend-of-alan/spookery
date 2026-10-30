@@ -70,7 +70,7 @@ fn another_play_joins_that_table(world: &mut World) {
 fn play_received_the_first_perceive(world: &mut World) {
     let stdout = play_stdout(world);
     assert!(stdout.contains("Docks Shop"), "{stdout}");
-    assert!(!stdout.contains("\"kind\":\"perceive\""), "{stdout}");
+    assert!(!stdout.contains("\"kind\":\"view\""), "{stdout}");
 }
 
 #[then(expr = "play does not show {string}")]
@@ -105,7 +105,7 @@ fn play_error_shows(world: &mut World, text: String) {
 
 #[then(expr = "play shows protocol frames")]
 fn play_shows_protocol_frames(world: &mut World) {
-    wait_play(world, "\"kind\":\"perceive\"");
+    wait_play(world, "\"kind\":\"view\"");
     let stdout = play_stdout(world);
     assert!(stdout.contains("\"kind\":\"resume\""), "{stdout}");
     assert!(stdout.contains('{'), "{stdout}");
@@ -182,7 +182,7 @@ You: hello Briar
 
 #[then(expr = "play shows the raw resume digest")]
 fn play_shows_the_raw_resume_digest(world: &mut World) {
-    wait_play(world, "\"kind\":\"perceive\"");
+    wait_play(world, "\"kind\":\"view\"");
     let stdout = play_stdout(world);
     let resume = stdout
         .lines()

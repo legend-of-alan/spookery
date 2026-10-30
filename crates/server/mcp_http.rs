@@ -19,14 +19,14 @@ use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, Stream
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
 use tokio::sync::oneshot;
 
-use super::gm_seat::GmSeatHandler;
+use super::gm_seat::Handler;
 use super::limits::GM_BODY_CAP;
-use super::world_loop::WorldMsg;
+use super::world_loop::Request;
 
 // HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
     listener: tokio::net::TcpListener,
-    tx: Sender<WorldMsg>,
+    tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
 ) {
     let (hung_up, mut hang_ups) = unbounded_channel();
@@ -38,7 +38,7 @@ pub(super) async fn serve(
         }
     });
     let service = StreamableHttpService::new(
-        move || Ok(GmSeatHandler::new(tx.clone())),
+        move || Ok(Handler::new(tx.clone())),
         sessions,
         http_config(),
     );
@@ -54,7 +54,7 @@ fn http_config() -> StreamableHttpServerConfig {
     config
 }
 
-/// The shard connection id for this HTTP session. `GmSeatHandler` reads it during initialize.
+/// The shard connection id for this HTTP session. `Handler` reads it during initialize.
 #[derive(Clone, Copy)]
 pub(super) struct SeatConn(pub(super) u64);
 
@@ -63,17 +63,17 @@ pub(super) struct SeatConn(pub(super) u64);
 /// event stream hangs up, never on an idle timer.
 struct SeatSessions {
     inner: LocalSessionManager,
-    tx: Sender<WorldMsg>,
+    tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
     conns: Mutex<HashMap<SessionId, u64>>,
-    hung_up: UnboundedSender<SessionId>,
+    hangup_tx: UnboundedSender<SessionId>,
 }
 
 impl SeatSessions {
     fn new(
-        tx: Sender<WorldMsg>,
+        tx: Sender<Request>,
         next_conn: Arc<AtomicU64>,
-        hung_up: UnboundedSender<SessionId>,
+        hangup_tx: UnboundedSender<SessionId>,
     ) -> Self {
         let mut inner = LocalSessionManager::default();
         inner.session_config.keep_alive = None;
@@ -82,7 +82,7 @@ impl SeatSessions {
             tx,
             next_conn,
             conns: Mutex::new(HashMap::new()),
-            hung_up,
+            hangup_tx,
         }
     }
 }
@@ -147,7 +147,7 @@ impl SessionManager for SeatSessions {
         let closed = self.inner.close_session(id).await;
         if let Some(conn) = conn {
             let (ack_tx, ack_rx) = oneshot::channel();
-            if self.tx.send(WorldMsg::Fault { conn, ack: ack_tx }).is_ok() {
+            if self.tx.send(Request::Hangup { conn, ack: ack_tx }).is_ok() {
                 let _ = ack_rx.await;
             }
         }
@@ -178,7 +178,7 @@ impl SessionManager for SeatSessions {
         Ok(EventStream {
             inner,
             id: id.clone(),
-            hung_up: self.hung_up.clone(),
+            hung_up: self.hangup_tx.clone(),
         })
     }
 
@@ -199,14 +199,14 @@ mod tests {
     use rmcp::model::ProtocolVersion;
     use serde_json::Value;
 
-    use super::super::world_loop::WorldMsg;
+    use super::super::world_loop::Request;
     use super::serve;
 
     /// A stand-in for the shard thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real table. On a fault it tells
     /// the test, then holds the seat until the test lets the release through.
     fn spawn_fake_world_loop(
-        rx: mpsc::Receiver<WorldMsg>,
+        rx: mpsc::Receiver<Request>,
         fault_seen: tokio::sync::mpsc::UnboundedSender<()>,
         let_go: mpsc::Receiver<()>,
     ) {
@@ -215,7 +215,7 @@ mod tests {
             let mut kept = Vec::new();
             for msg in rx {
                 match msg {
-                    WorldMsg::Claim {
+                    Request::SeatGm {
                         conn,
                         out,
                         cancel,
@@ -229,7 +229,7 @@ mod tests {
                             let _ = reply.send(Ok(()));
                         }
                     }
-                    WorldMsg::Fault { conn, ack, .. } => {
+                    Request::Hangup { conn, ack, .. } => {
                         let _ = fault_seen.send(());
                         if let_go.recv().is_err() {
                             return;
@@ -245,7 +245,7 @@ mod tests {
         });
     }
 
-    fn initialize() -> Value {
+    fn initialize_request() -> Value {
         serde_json::json!({
             "jsonrpc": "2.0",
             "id": 1,
@@ -297,7 +297,7 @@ mod tests {
             "POST",
             None,
             ProtocolVersion::LATEST.as_str(),
-            &initialize().to_string(),
+            &initialize_request().to_string(),
         )
         .await;
         let session = raw

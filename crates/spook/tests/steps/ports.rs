@@ -52,7 +52,7 @@ fn a_player_connects_to_the_reported_game_port(world: &mut World) {
 #[then(expr = "the player receives a perceive line")]
 fn the_player_receives_a_perceive_line(world: &mut World) {
     let text = support::text_of(&table::live_mut(world).player_text);
-    assert!(text.contains("\"kind\":\"perceive\""), "{text}");
+    assert!(text.contains("\"kind\":\"view\""), "{text}");
 }
 
 #[when(expr = "two tables listen on port 0 at the same time")]

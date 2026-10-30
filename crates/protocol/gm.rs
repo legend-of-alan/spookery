@@ -6,7 +6,7 @@ use serde_json::{Map, Value};
 use crate::{Error, Outcome};
 
 /// The structured body of a tool-result line.
-pub fn read_tool_result(line: &str) -> Result<Value, Error> {
+pub fn parse_tool_result(line: &str) -> Result<Value, Error> {
     let value: Value = serde_json::from_str(line).map_err(|_| Error)?;
     let result = value.get("result").ok_or(Error)?;
     Ok(result
@@ -23,7 +23,7 @@ pub struct StatusArgs {
     pub since: Option<u64>,
 }
 
-pub fn read_status_args(arguments: Option<&Map<String, Value>>) -> Result<StatusArgs, Error> {
+pub fn parse_status_args(arguments: Option<&Map<String, Value>>) -> Result<StatusArgs, Error> {
     match arguments {
         None => Ok(StatusArgs::default()),
         Some(arguments) => parse_args(arguments),
@@ -36,10 +36,10 @@ pub struct PerceiveArgs {
     #[serde(rename = "as", default)]
     pub as_viewer: Option<String>,
     #[serde(default)]
-    pub budget_tokens: Option<u64>,
+    pub max_body_chars: Option<u64>,
 }
 
-pub fn read_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<PerceiveArgs, Error> {
+pub fn parse_perceive_args(arguments: Option<&Map<String, Value>>) -> Result<PerceiveArgs, Error> {
     match arguments {
         None => Ok(PerceiveArgs::default()),
         Some(arguments) => parse_args(arguments),
@@ -54,13 +54,13 @@ pub struct CommitArgs {
     pub session_id: Option<String>,
 }
 
-pub fn read_commit_args(arguments: Option<&Map<String, Value>>) -> Result<CommitArgs, Error> {
+pub fn parse_commit_args(arguments: Option<&Map<String, Value>>) -> Result<CommitArgs, Error> {
     parse_args(arguments.ok_or(Error)?)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct SayArgs {
+struct SayWire {
     address: String,
     text: String,
     #[serde(default)]
@@ -70,38 +70,38 @@ struct SayArgs {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "address", rename_all = "lowercase", try_from = "SayArgs")]
-pub enum OutgoingSay {
+#[serde(tag = "address", rename_all = "lowercase", try_from = "SayWire")]
+pub enum SayArgs {
     Table { text: String },
     Place { place: String, text: String },
     Actor { actor: String, text: String },
 }
 
-impl OutgoingSay {
+impl SayArgs {
     pub fn text(&self) -> &str {
         match self {
-            OutgoingSay::Table { text }
-            | OutgoingSay::Place { text, .. }
-            | OutgoingSay::Actor { text, .. } => text,
+            SayArgs::Table { text } | SayArgs::Place { text, .. } | SayArgs::Actor { text, .. } => {
+                text
+            }
         }
     }
 
-    pub fn arguments(&self) -> Value {
+    pub fn to_value(&self) -> Value {
         serde_json::to_value(self).expect("say arguments")
     }
 }
 
-impl TryFrom<SayArgs> for OutgoingSay {
+impl TryFrom<SayWire> for SayArgs {
     type Error = &'static str;
 
-    fn try_from(args: SayArgs) -> Result<Self, Self::Error> {
+    fn try_from(args: SayWire) -> Result<Self, Self::Error> {
         match (args.address.as_str(), args.place, args.actor) {
-            ("table", None, None) => Ok(OutgoingSay::Table { text: args.text }),
-            ("place", Some(place), None) if !place.is_empty() => Ok(OutgoingSay::Place {
+            ("table", None, None) => Ok(SayArgs::Table { text: args.text }),
+            ("place", Some(place), None) if !place.is_empty() => Ok(SayArgs::Place {
                 place,
                 text: args.text,
             }),
-            ("actor", None, Some(actor)) if !actor.is_empty() => Ok(OutgoingSay::Actor {
+            ("actor", None, Some(actor)) if !actor.is_empty() => Ok(SayArgs::Actor {
                 actor,
                 text: args.text,
             }),
@@ -110,7 +110,7 @@ impl TryFrom<SayArgs> for OutgoingSay {
     }
 }
 
-pub fn read_say_args(arguments: Option<&Map<String, Value>>) -> Result<OutgoingSay, Error> {
+pub fn parse_say_args(arguments: Option<&Map<String, Value>>) -> Result<SayArgs, Error> {
     parse_args(arguments.ok_or(Error)?)
 }
 
@@ -146,7 +146,7 @@ where
     Ok(WireArgs::deserialize(deserializer)?.to)
 }
 
-pub fn read_intent_args(arguments: Option<&Map<String, Value>>) -> Result<IntentCall, Error> {
+pub fn parse_intent_args(arguments: Option<&Map<String, Value>>) -> Result<IntentCall, Error> {
     parse_args(arguments.ok_or(Error)?)
 }
 
@@ -155,7 +155,7 @@ fn parse_args<T: serde::de::DeserializeOwned>(arguments: &Map<String, Value>) ->
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct SessionStatus {
+pub struct TableStatus {
     pub presence: StatusPresence,
     pub pause: StatusPause,
     pub world_time: u64,
@@ -163,7 +163,7 @@ pub struct SessionStatus {
     pub state_rev: u64,
     pub pack_rev: String,
     pub last_round_at: String,
-    pub queued: Vec<QueueRow>,
+    pub queued: Vec<QueuedMove>,
     pub last_seq: u64,
     #[serde(
         default,
@@ -171,7 +171,7 @@ pub struct SessionStatus {
         serialize_with = "serialize_says",
         deserialize_with = "deserialize_says"
     )]
-    pub events: Option<Vec<GmSay>>,
+    pub events: Option<Vec<SayEvent>>,
     /// Sent when the call has no `since`. An older server never sends it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pack: Option<PackSummary>,
@@ -189,25 +189,25 @@ pub struct StatusPause {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QueueRow {
+pub struct QueuedMove {
     pub id: String,
     pub actor_id: String,
     #[serde(rename = "move")]
     pub move_name: String,
 }
 
-impl SessionStatus {
+impl TableStatus {
     pub fn to_value(&self) -> Value {
-        serde_json::to_value(self).expect("session status")
+        serde_json::to_value(self).expect("table status")
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitBody {
     pub state_rev: u64,
-    pub diff_summary: Vec<String>,
-    pub log_path: Option<String>,
-    pub checks: Vec<Roll>,
+    pub changed_keys: Vec<String>,
+    pub journal_path: Option<String>,
+    pub rolls: Vec<Roll>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub dice: Vec<String>,
 }
@@ -228,7 +228,7 @@ pub struct Roll {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GmSay {
+pub struct SayEvent {
     pub seq: u64,
     pub from: String,
     pub address: String,
@@ -248,8 +248,8 @@ pub enum CastKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MenuRow {
     pub name: String,
-    pub audience: String,
-    pub token: String,
+    pub kind: String,
+    pub target: String,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -264,18 +264,18 @@ pub struct PackSummary {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum EventBody {
-    Say(GmSay),
-    Queued(QueueRow),
+    Say(SayEvent),
+    Queued(QueuedMove),
     Check(Roll),
 }
 
-impl GmSay {
+impl SayEvent {
     pub fn to_value(&self) -> Value {
         serde_json::to_value(EventBody::Say(self.clone())).expect("say")
     }
 }
 
-fn serialize_says<S>(events: &Option<Vec<GmSay>>, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_says<S>(events: &Option<Vec<SayEvent>>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
@@ -285,7 +285,7 @@ where
         .serialize(serializer)
 }
 
-fn deserialize_says<'de, D>(deserializer: D) -> Result<Option<Vec<GmSay>>, D::Error>
+fn deserialize_says<'de, D>(deserializer: D) -> Result<Option<Vec<SayEvent>>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
@@ -300,8 +300,8 @@ where
         .map(Some)
 }
 
-pub fn queued_ack(id: &str) -> Value {
-    serde_json::json!({ "queued": id })
+pub fn queued_result(id: &str) -> Value {
+    serde_json::json!({ "id": id })
 }
 
 pub fn code_result(code: &str) -> Value {
@@ -319,36 +319,40 @@ mod tests {
 
     #[test]
     fn gm_frames_ignore_unknown_fields_and_round_trip() {
-        fn rt<T: Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug>(s: &str) {
+        fn assert_reencodes<
+            T: Serialize + serde::de::DeserializeOwned + PartialEq + std::fmt::Debug,
+        >(
+            s: &str,
+        ) {
             let v: T = serde_json::from_str(s).unwrap();
             let back: T = serde_json::from_value(serde_json::to_value(&v).unwrap()).unwrap();
             assert_eq!(back, v);
         }
-        rt::<SessionStatus>(
+        assert_reencodes::<TableStatus>(
             r#"{"presence":{"humans":1,"actors_present":["pc_rowan"],"x":1},"pause":{"named_plot_clocks":"running","x":1},"world_time":10,"round_index":1,"state_rev":2,"pack_rev":"p","last_round_at":"t","queued":[{"id":"q1","actor_id":"pc_rowan","move":"wait","x":1}],"last_seq":3,"pack":{"menu":[],"kinds":{},"places":{},"cast":{},"x":1},"x":1}"#,
         );
-        rt::<CommitBody>(
-            r#"{"state_rev":3,"diff_summary":["d"],"log_path":null,"checks":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,
+        assert_reencodes::<CommitBody>(
+            r#"{"state_rev":3,"changed_keys":["d"],"journal_path":null,"rolls":[{"faces":[3,4],"stat":1,"total":8,"target":7,"outcome":"partial","x":1}],"x":1}"#,
         );
         for raw in [
             r#"{"kind":"say","seq":1,"from":"gm","address":"table","place":null,"actor":null,"recipients":[],"text":"hi","x":1}"#,
             r#"{"kind":"queued","id":"q1","actor_id":"pc_rowan","move":"wait","x":1}"#,
             r#"{"kind":"check","faces":[6,6],"stat":0,"total":12,"target":10,"outcome":"success","x":1}"#,
         ] {
-            rt::<EventBody>(raw);
+            assert_reencodes::<EventBody>(raw);
         }
         let m = serde_json::from_str(r#"{"actor_id":"a","move":"m","target":"t"}"#).unwrap();
-        let c = read_intent_args(Some(&m)).unwrap();
+        let c = parse_intent_args(Some(&m)).unwrap();
         assert_eq!(c.actor_id.as_deref(), Some("a"));
         assert_eq!(c.move_name.as_deref(), Some("m"));
         assert_eq!(c.target.as_deref(), Some("t"));
     }
 
     #[test]
-    fn perceive_takes_as_and_budget_tokens_only() {
+    fn perceive_takes_as_and_max_body_chars_only() {
         let args = |raw: &str| serde_json::from_str::<Map<String, Value>>(raw).unwrap();
-        let read = read_perceive_args(Some(&args(r#"{"as":"pc_rowan","budget_tokens":200}"#)));
-        assert_eq!(read.unwrap().budget_tokens, Some(200));
-        assert!(read_perceive_args(Some(&args(r#"{"as":"pc_rowan","focus":"place"}"#))).is_err());
+        let read = parse_perceive_args(Some(&args(r#"{"as":"pc_rowan","max_body_chars":200}"#)));
+        assert_eq!(read.unwrap().max_body_chars, Some(200));
+        assert!(parse_perceive_args(Some(&args(r#"{"as":"pc_rowan","focus":"place"}"#))).is_err());
     }
 }

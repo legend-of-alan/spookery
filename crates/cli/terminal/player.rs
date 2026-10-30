@@ -6,16 +6,16 @@ use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 
-use crate::protocol::{Missing, PlayerMessage};
+use crate::protocol::{Missing, PlayerFrame};
 
-use super::render;
+use super::frame_text;
 use super::Error;
 
 pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) -> Result<(), Error> {
-    let mut formatter = render::PlayerFormatter::new();
+    let mut formatter = frame_text::PlayerFormatter::new();
     let mut input = super::stdin_lines();
     let actor = match as_player {
-        Some(token) => player_id(token)?,
+        Some(token) => parse_player_id(token)?,
         None => {
             let probe = dial(addr, b"\n").await?;
             let Some(line) = BufReader::new(probe)
@@ -24,16 +24,19 @@ pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) ->
                 .await
                 .map_err(Error::Io)?
             else {
-                return Err(Error::Reason("NOT_IN_SPEC".into()));
+                return Err(Error::Message("NOT_IN_SPEC".into()));
             };
-            match crate::protocol::read_player(&line) {
-                Ok(PlayerMessage::Refused { code, missing }) if code == "CHOOSE_PC" => {
+            match crate::protocol::parse_player(&line) {
+                Ok(PlayerFrame::Refused {
+                    code,
+                    detail: missing,
+                }) if code == "CHOOSE_PC" => {
                     let pcs = match missing {
                         Some(Missing::Many(pcs)) => pcs,
                         _ => Vec::new(),
                     };
                     match pcs.as_slice() {
-                        [] => return Err(Error::Reason("No free characters".into())),
+                        [] => return Err(Error::Message("No free characters".into())),
                         [only] => only.clone(),
                         many => {
                             println!("Choose a character:\n{}", many.join("\n"));
@@ -41,31 +44,31 @@ pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) ->
                             let Some(chosen) = input.recv().await else {
                                 return Ok(());
                             };
-                            player_id(&chosen)?
+                            parse_player_id(&chosen)?
                         }
                     }
                 }
                 _ => {
-                    let reason = match write_frame(&mut formatter, &line, raw) {
-                        FrameEffect::Refuse(shown) => shown,
-                        FrameEffect::Continue | FrameEffect::View => "NOT_IN_SPEC".into(),
+                    let reason = match show_frame(&mut formatter, &line, raw) {
+                        FrameFlow::Refused(shown) => shown,
+                        FrameFlow::Continue | FrameFlow::View => "NOT_IN_SPEC".into(),
                     };
-                    return Err(Error::Reason(reason));
+                    return Err(Error::Message(reason));
                 }
             }
         }
     };
-    let hello = crate::protocol::write_player_hello(&actor);
+    let hello = crate::protocol::emit_player_hello(&actor);
     let (reader, mut writer) = dial(addr, hello.as_bytes()).await?.into_split();
     let mut frames = BufReader::new(reader).lines();
     loop {
         let Some(line) = frames.next_line().await.map_err(Error::Io)? else {
-            return Err(Error::Reason("NOT_IN_SPEC".into()));
+            return Err(Error::Message("NOT_IN_SPEC".into()));
         };
-        match write_frame(&mut formatter, &line, raw) {
-            FrameEffect::Refuse(shown) => return Err(Error::Reason(shown)),
-            FrameEffect::View => break,
-            FrameEffect::Continue => {}
+        match show_frame(&mut formatter, &line, raw) {
+            FrameFlow::Refused(shown) => return Err(Error::Message(shown)),
+            FrameFlow::View => break,
+            FrameFlow::Continue => {}
         }
     }
     loop {
@@ -76,7 +79,7 @@ pub async fn run_player(as_player: Option<&str>, addr: SocketAddr, raw: bool) ->
                     eprintln!("host closed");
                     return Ok(());
                 };
-                if let FrameEffect::Refuse(shown) = write_frame(&mut formatter, &line, raw) {
+                if let FrameFlow::Refused(shown) = show_frame(&mut formatter, &line, raw) {
                     eprintln!("{shown}");
                     let _ = io::stderr().flush();
                 }
@@ -102,56 +105,56 @@ async fn dial(addr: SocketAddr, hello: &[u8]) -> Result<TcpStream, Error> {
     Ok(stream)
 }
 
-fn player_id(token: &str) -> Result<String, Error> {
+fn parse_player_id(token: &str) -> Result<String, Error> {
     let token = token.trim();
     let id = token.strip_prefix("player:").unwrap_or(token);
-    crate::protocol::read_player_hello(&format!("player:{id}"))
+    crate::protocol::parse_player_hello(&format!("player:{id}"))
         .map(str::to_string)
-        .ok_or(Error::Reason("SCHEMA".into()))
+        .ok_or(Error::Message("SCHEMA".into()))
 }
 
-enum FrameEffect {
+enum FrameFlow {
     Continue,
     View,
     /// The host refused. Carries the line to show on stderr.
-    Refuse(String),
+    Refused(String),
 }
 
-fn write_frame(formatter: &mut render::PlayerFormatter, line: &str, raw: bool) -> FrameEffect {
+fn show_frame(formatter: &mut frame_text::PlayerFormatter, line: &str, raw: bool) -> FrameFlow {
     if raw {
-        return write_raw(line);
+        return show_raw(line);
     }
-    write_readable(formatter, line)
+    show_readable(formatter, line)
 }
 
-fn write_raw(line: &str) -> FrameEffect {
+fn show_raw(line: &str) -> FrameFlow {
     if let Some(code) = refused_code(line) {
-        return FrameEffect::Refuse(code);
+        return FrameFlow::Refused(code);
     }
     println!("{line}");
     let _ = io::stdout().flush();
-    if is_perceive(line) {
-        FrameEffect::View
+    if is_view(line) {
+        FrameFlow::View
     } else {
-        FrameEffect::Continue
+        FrameFlow::Continue
     }
 }
 
-fn write_readable(formatter: &mut render::PlayerFormatter, line: &str) -> FrameEffect {
-    let Ok(message) = crate::protocol::read_player(line) else {
+fn show_readable(formatter: &mut frame_text::PlayerFormatter, line: &str) -> FrameFlow {
+    let Ok(message) = crate::protocol::parse_player(line) else {
         eprintln!("{line}");
         let _ = io::stderr().flush();
-        return FrameEffect::Continue;
+        return FrameFlow::Continue;
     };
-    let shown = formatter.show(&message);
+    let shown = formatter.format(&message);
     let effect = match message {
-        PlayerMessage::Refused { .. } => return FrameEffect::Refuse(shown),
-        PlayerMessage::View { .. } => FrameEffect::View,
-        PlayerMessage::Say { .. }
-        | PlayerMessage::Queued { .. }
-        | PlayerMessage::Check { .. }
-        | PlayerMessage::Resume { .. }
-        | PlayerMessage::Lines { .. } => FrameEffect::Continue,
+        PlayerFrame::Refused { .. } => return FrameFlow::Refused(shown),
+        PlayerFrame::View { .. } => FrameFlow::View,
+        PlayerFrame::Say { .. }
+        | PlayerFrame::Queued { .. }
+        | PlayerFrame::Check { .. }
+        | PlayerFrame::Resume { .. }
+        | PlayerFrame::Lines { .. } => FrameFlow::Continue,
     };
     if !shown.is_empty() {
         println!("{shown}");
@@ -161,30 +164,30 @@ fn write_readable(formatter: &mut render::PlayerFormatter, line: &str) -> FrameE
 }
 
 fn refused_code(line: &str) -> Option<String> {
-    match crate::protocol::read_player(line) {
-        Ok(PlayerMessage::Refused { code, .. }) => Some(code),
+    match crate::protocol::parse_player(line) {
+        Ok(PlayerFrame::Refused { code, .. }) => Some(code),
         _ => None,
     }
 }
 
-fn is_perceive(line: &str) -> bool {
+fn is_view(line: &str) -> bool {
     matches!(
-        crate::protocol::read_player(line),
-        Ok(PlayerMessage::View { .. })
+        crate::protocol::parse_player(line),
+        Ok(PlayerFrame::View { .. })
     )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::player_id;
+    use super::parse_player_id;
 
     #[test]
     fn a_bare_id_and_a_player_prefix_are_one_id() {
-        let bare = player_id("pc_rowan").ok();
+        let bare = parse_player_id("pc_rowan").ok();
         assert_eq!(bare.as_deref(), Some("pc_rowan"));
-        assert_eq!(player_id("player:pc_rowan").ok(), bare);
-        assert_eq!(player_id("  player:pc_rowan").ok(), bare);
-        assert!(player_id("player:").is_err());
-        assert!(player_id("").is_err());
+        assert_eq!(parse_player_id("player:pc_rowan").ok(), bare);
+        assert_eq!(parse_player_id("  player:pc_rowan").ok(), bare);
+        assert!(parse_player_id("player:").is_err());
+        assert!(parse_player_id("").is_err());
     }
 }

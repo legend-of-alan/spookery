@@ -4,7 +4,7 @@ use std::fs;
 use std::path::Path;
 
 use serde_json::{json, Value};
-use spookery::host::idle_clock::on_scheduled_wake;
+use spookery::host::idle_clock::catch_up_if_due;
 use spookery::host::{call_gm_tool, commit_then_fast_forward};
 use spookery_engine::testing::journal::list_round_keys;
 use spookery_engine::{Presence, World as Shard};
@@ -37,14 +37,14 @@ fn rowan() -> Presence {
 fn queued_line_survives_a_dropped_seat() {
     let held = support::copy_docks("held");
     let mut shard = resume(&held);
-    assert!(!on_scheduled_wake(&mut shard, true, false).unwrap());
+    assert!(!catch_up_if_due(&mut shard, true, false).unwrap());
     let queued = shard.queue_wait(&rowan(), "pc_rowan").unwrap();
-    assert!(!on_scheduled_wake(&mut shard, true, true).unwrap());
+    assert!(!catch_up_if_due(&mut shard, true, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
     assert_eq!(shard.queued_intents()[0].id, queued.id);
     assert_eq!(shard.state().world_time, 1080);
     assert!(list_round_keys(&held).is_empty());
-    assert!(!on_scheduled_wake(&mut shard, false, true).unwrap());
+    assert!(!catch_up_if_due(&mut shard, false, true).unwrap());
     assert_eq!(shard.queued_intents().len(), 1);
     assert_eq!(shard.state().round_index, 0);
     assert!(list_round_keys(&held).is_empty());
@@ -58,7 +58,7 @@ fn early_wake_does_not_play_another_round() {
     commit_then_fast_forward(&mut shard, &rowan()).unwrap();
     let committed = shard.state().clone();
     assert_eq!(committed.world_time, 1085);
-    assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
     assert_eq!(shard.state().world_time, committed.world_time);
     assert_eq!(shard.state().round_index, committed.round_index);
     assert_eq!(list_round_keys(&early), vec!["round-0001".to_string()]);
@@ -101,10 +101,10 @@ fn idle_off_past_due_wake_writes_nothing() {
         (world_time, state_rev, round_index, stamp)
     };
     let mut shard = resume(&pack);
-    let elapsed = spookery::host::idle_clock::seconds_since(&stamp).unwrap();
+    let elapsed = spookery::host::idle_clock::secs_since(&stamp).unwrap();
     assert!(elapsed >= shard.budget().round_every_real_seconds);
     assert!(elapsed < 3600);
-    assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
     assert_eq!(shard.state().world_time, world_time);
     assert_eq!(shard.state().last_round_at, stamp);
     assert_eq!(shard.state().state_rev, state_rev);
@@ -126,8 +126,8 @@ fn idle_off_long_absence_writes_no_catchup() {
     let last = shard.state().last_round_at.clone();
     let state_rev = shard.state().state_rev;
     let round_index = shard.state().round_index;
-    assert!(spookery::host::idle_clock::seconds_since(&last).unwrap() >= 3600);
-    assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert!(spookery::host::idle_clock::secs_since(&last).unwrap() >= 3600);
+    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
     assert_eq!(shard.state().world_time, world_time);
     assert_eq!(shard.state().last_round_at, last);
     assert_eq!(shard.state().round_index, round_index);
@@ -198,7 +198,7 @@ fn a_due_wake_applies_the_queued_wait() {
     let mut shard = resume(&due);
     let note = shard.queue_wait(&Presence::default(), "pc_rowan").unwrap();
     assert_eq!(shard.state().last_round_at, "2026-01-01T00:00:00Z");
-    assert!(on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert!(catch_up_if_due(&mut shard, false, false).unwrap());
     assert_eq!(shard.state().round_index, 12);
     assert_eq!(shard.state().world_time, 1800);
     assert!(shard.queued_intents().is_empty());
@@ -207,7 +207,7 @@ fn a_due_wake_applies_the_queued_wait() {
         vec![note.id]
     );
     assert!(player_waits(&round_value(&due, "round-0002")).is_empty());
-    assert!(!on_scheduled_wake(&mut shard, false, false).unwrap());
+    assert!(!catch_up_if_due(&mut shard, false, false).unwrap());
     assert_eq!(shard.state().round_index, 12);
     let _ = fs::remove_dir_all(&due);
 }
@@ -230,7 +230,7 @@ fn the_player_drops_and_sits_again(world: &mut World) {
     table::wait_humans(world, &pack, 0);
     table::live_mut(world).players.clear();
     table::seat_actor(world, &pack, "pc_rowan");
-    let status = table::gm_call(world, 4, "session_status", "{}");
+    let status = table::gm_call(world, 4, "table_status", "{}");
     let value: Value = serde_json::from_str(&status).unwrap();
     let rows = value["result"]["structuredContent"]["queued"]
         .as_array()

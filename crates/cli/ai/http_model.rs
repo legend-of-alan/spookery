@@ -3,14 +3,14 @@
 use std::future::Future;
 use std::time::Duration;
 
-use spookery_agent::llm::{
-    chat_body, failure_message, interpret_completion, provider_detail, should_retry, CompleteError,
-    CompletionRequest, Model, RetryClass,
+use spookery_agent::model::{
+    chat_body, is_retryable, parse_completion, provider_detail, transport_error, CompletionError,
+    CompletionRequest, FailureKind, Model,
 };
 
-use crate::ai::{fail, Error};
+use crate::ai::{report_error, Error};
 
-pub struct Env {
+pub struct Settings {
     key: String,
     model: String,
     url: String,
@@ -29,14 +29,14 @@ pub struct Limits {
 ///
 /// [`WallClock`] sleeps. A test clock's `wait` finishes when the test says the
 /// time has passed, so a hung call can time out without a real delay.
-pub trait Clock: Send + Sync {
+pub trait Timer: Send + Sync {
     fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send;
 
     /// The attempt's socket has been dropped.
     ///
     /// The wall clock returns at once. A test clock can wait until its stub
     /// has observed the close, which keeps a later commit after that close.
-    fn abandon(&self) -> impl Future<Output = ()> + Send {
+    fn on_abandon(&self) -> impl Future<Output = ()> + Send {
         std::future::ready(())
     }
 }
@@ -45,7 +45,7 @@ pub trait Clock: Send + Sync {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct WallClock;
 
-impl Clock for WallClock {
+impl Timer for WallClock {
     fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send {
         tokio::time::sleep(duration)
     }
@@ -62,7 +62,7 @@ impl Default for Limits {
 }
 
 pub struct HttpModel<C> {
-    env: Env,
+    env: Settings,
     client: reqwest::Client,
     limits: Limits,
     clock: C,
@@ -71,16 +71,16 @@ pub struct HttpModel<C> {
 fn env_var(name: &str) -> Result<String, Error> {
     match std::env::var(name) {
         Ok(value) => Ok(value),
-        Err(_) => Err(fail(format!("{name} is unset"))),
+        Err(_) => Err(report_error(format!("{name} is unset"))),
     }
 }
 
-impl Env {
+impl Settings {
     pub fn from_env() -> Result<Self, Error> {
         let key = env_var("SPOOK_GM_KEY")?;
         let url = env_var("SPOOK_GM_URL")?;
         let model = env_var("SPOOK_GM_MODEL")?;
-        Ok(Env::new(key, url, model))
+        Ok(Settings::new(key, url, model))
     }
 
     pub fn new(key: impl Into<String>, url: impl Into<String>, model: impl Into<String>) -> Self {
@@ -93,19 +93,19 @@ impl Env {
 }
 
 impl HttpModel<WallClock> {
-    pub fn new(env: Env) -> Result<Self, Error> {
+    pub fn new(env: Settings) -> Result<Self, Error> {
         Self::with_limits(env, Limits::default(), WallClock)
     }
 }
 
-impl<C: Clock> HttpModel<C> {
-    pub fn with_limits(env: Env, limits: Limits, clock: C) -> Result<Self, Error> {
+impl<C: Timer> HttpModel<C> {
+    pub fn with_limits(env: Settings, limits: Limits, clock: C) -> Result<Self, Error> {
         // No reqwest total timeout. That timer is the wall clock. `clock.wait`
         // is the limit, and dropping the request closes the socket.
         let client = reqwest::Client::builder()
             .connect_timeout(limits.connect)
             .build()
-            .map_err(|err| fail(err.to_string()))?;
+            .map_err(|err| report_error(err.to_string()))?;
         Ok(Self {
             env,
             client,
@@ -115,38 +115,38 @@ impl<C: Clock> HttpModel<C> {
     }
 }
 
-fn class_of(err: &reqwest::Error) -> RetryClass {
+fn class_of(err: &reqwest::Error) -> FailureKind {
     if err.is_timeout() {
-        RetryClass::Timeout
+        FailureKind::Timeout
     } else if err.is_connect() {
-        RetryClass::Connect
+        FailureKind::Connect
     } else {
-        RetryClass::Other
+        FailureKind::Other
     }
 }
 
-struct AttemptOutcome {
+struct Attempt {
     retry: bool,
-    result: Result<Option<String>, CompleteError>,
+    result: Result<Option<String>, CompletionError>,
 }
 
-impl<C: Clock> HttpModel<C> {
-    fn fail_transport(&self, err: &reqwest::Error) -> AttemptOutcome {
+impl<C: Timer> HttpModel<C> {
+    fn fail_transport(&self, err: &reqwest::Error) -> Attempt {
         let class = class_of(err);
-        AttemptOutcome {
-            retry: should_retry(class),
-            result: Err(failure_message(class, self.limits.total, &err.to_string())),
+        Attempt {
+            retry: is_retryable(class),
+            result: Err(transport_error(class, self.limits.total, &err.to_string())),
         }
     }
 
-    fn miss_deadline(&self) -> AttemptOutcome {
-        AttemptOutcome {
+    fn time_out(&self) -> Attempt {
+        Attempt {
             retry: true,
-            result: Err(failure_message(RetryClass::Timeout, self.limits.total, "")),
+            result: Err(transport_error(FailureKind::Timeout, self.limits.total, "")),
         }
     }
 
-    async fn read_attempt(&self, request: &CompletionRequest) -> AttemptOutcome {
+    async fn post_completion(&self, request: &CompletionRequest) -> Attempt {
         let body = chat_body(&self.env.model, &request.prompt, request.says_only);
         let url = format!("{}/chat/completions", self.env.url);
         let response = match self
@@ -162,29 +162,29 @@ impl<C: Clock> HttpModel<C> {
         };
         let status = response.status();
         if !status.is_success() {
-            let class = RetryClass::Status(status.as_u16());
+            let class = FailureKind::Status(status.as_u16());
             let body = response.text().await.unwrap_or_default();
             let detail = provider_detail(&body, &self.env.key);
-            return AttemptOutcome {
-                retry: should_retry(class),
-                result: Err(failure_message(class, self.limits.total, &detail)),
+            return Attempt {
+                retry: is_retryable(class),
+                result: Err(transport_error(class, self.limits.total, &detail)),
             };
         }
         let text = match response.text().await {
             Ok(text) => text,
             Err(err) => return self.fail_transport(&err),
         };
-        AttemptOutcome {
+        Attempt {
             retry: false,
-            result: interpret_completion(&text),
+            result: parse_completion(&text),
         }
     }
 
-    async fn attempt(&self, request: &CompletionRequest) -> AttemptOutcome {
+    async fn attempt(&self, request: &CompletionRequest) -> Attempt {
         // The block owns the request. Leaving it drops the socket before
         // `abandon`, so a test clock can see the close before this returns.
         {
-            let attempt = self.read_attempt(request);
+            let attempt = self.post_completion(request);
             tokio::pin!(attempt);
             let limit = self.clock.wait(self.limits.total);
             tokio::pin!(limit);
@@ -194,16 +194,16 @@ impl<C: Clock> HttpModel<C> {
                 _ = &mut limit => {}
             }
         }
-        self.clock.abandon().await;
-        self.miss_deadline()
+        self.clock.on_abandon().await;
+        self.time_out()
     }
 }
 
-impl<C: Clock> Model for HttpModel<C> {
+impl<C: Timer> Model for HttpModel<C> {
     async fn complete(
         &mut self,
         request: &CompletionRequest,
-    ) -> Result<Option<String>, CompleteError> {
+    ) -> Result<Option<String>, CompletionError> {
         let first = self.attempt(request).await;
         if !first.retry {
             return first.result;
@@ -219,7 +219,7 @@ mod tests {
 
     #[tokio::test]
     async fn each_missing_setting_is_named_and_does_not_dial() {
-        let _guard = ENV.lock().await;
+        let _guard = ENV_LOCK.lock().await;
         let saved = save_settings();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         listener.set_nonblocking(true).unwrap();
@@ -248,7 +248,7 @@ mod tests {
             }
         }
         clear_settings();
-        let err = Env::from_env().err().expect("all missing should fail");
+        let err = Settings::from_env().err().expect("all missing should fail");
         assert!(
             err.message.contains("SPOOK_GM_KEY is unset"),
             "{}",
@@ -259,13 +259,13 @@ mod tests {
 
     #[tokio::test]
     async fn a_trailing_slash_is_trimmed() {
-        let _guard = ENV.lock().await;
+        let _guard = ENV_LOCK.lock().await;
         let saved = save_settings();
         clear_settings();
         std::env::set_var("SPOOK_GM_KEY", "test-key");
         std::env::set_var("SPOOK_GM_URL", "http://127.0.0.1:9/");
         std::env::set_var("SPOOK_GM_MODEL", "test-model");
-        let env = Env::from_env().expect("settings present");
+        let env = Settings::from_env().expect("settings present");
         assert_eq!(env.key, "test-key");
         assert_eq!(env.url, "http://127.0.0.1:9");
         assert_eq!(env.model, "test-model");
@@ -294,5 +294,5 @@ mod tests {
         }
     }
 
-    static ENV: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 }

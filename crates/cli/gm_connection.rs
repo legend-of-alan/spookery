@@ -19,7 +19,7 @@ use tokio::sync::mpsc;
 #[derive(Debug)]
 pub enum Error {
     Io(std::io::Error),
-    Bad(String),
+    Invalid(String),
     Refused { code: String, raw: String },
 }
 
@@ -27,7 +27,7 @@ impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Error::Io(err) => write!(f, "{err}"),
-            Error::Bad(line) => f.write_str(line),
+            Error::Invalid(line) => f.write_str(line),
             Error::Refused { raw, .. } => f.write_str(raw),
         }
     }
@@ -49,21 +49,21 @@ pub struct Event {
 pub enum Incoming {
     Result { id: u64, raw: String },
     Event(Event),
-    Bad(String),
+    Invalid(String),
     Refused { code: String, raw: String },
     Eof,
 }
 
 /// The structured body of one tool result.
 #[derive(Clone, Debug, PartialEq)]
-pub struct ToolCallResult {
+pub struct ToolResult {
     pub raw: String,
     pub body: Value,
     pub refused: bool,
 }
 
 struct Inbox {
-    events: mpsc::UnboundedSender<Incoming>,
+    incoming: mpsc::UnboundedSender<Incoming>,
 }
 
 impl ClientHandler for Inbox {
@@ -73,7 +73,7 @@ impl ClientHandler for Inbox {
         _context: NotificationContext<RoleClient>,
     ) -> impl std::future::Future<Output = ()> + Send + '_ {
         if notification.method == "spook/event" {
-            let _ = self.events.send(read_event(notification.params.as_ref()));
+            let _ = self.incoming.send(read_event(notification.params.as_ref()));
         }
         std::future::ready(())
     }
@@ -81,27 +81,27 @@ impl ClientHandler for Inbox {
     fn get_info(&self) -> ClientConfig {
         ClientConfig::new(
             ClientCapabilities::default(),
-            Implementation::new("spook-host", "0"),
+            Implementation::new("spook-gm", "0"),
         )
         .with_protocol_version(ProtocolVersion::LATEST)
     }
 }
 
 /// The loopback GM seat over streamable HTTP.
-pub struct GmConnection {
-    running: RunningService<RoleClient, Inbox>,
+pub struct Connection {
+    service: RunningService<RoleClient, Inbox>,
     /// Finishes when the host closes the agent door.
     watch: tokio::task::JoinHandle<()>,
     incoming: mpsc::UnboundedReceiver<Incoming>,
     buffered: VecDeque<Incoming>,
     next_id: u64,
-    opened: String,
+    initialize_line: String,
 }
 
-impl GmConnection {
+impl Connection {
     /// Dial `http://127.0.0.1:<port + 1>/mcp` and finish the handshake.
-    pub async fn connect(addr: std::net::SocketAddr) -> Result<Self, Error> {
-        dial(door_for(addr)?).await
+    pub async fn connect_default_door(addr: std::net::SocketAddr) -> Result<Self, Error> {
+        dial(default_door(addr)?).await
     }
 
     /// Dial `http://127.0.0.1:<port>/mcp`. `door` is the agent door, not the game port.
@@ -110,11 +110,11 @@ impl GmConnection {
     }
 }
 
-fn door_for(addr: std::net::SocketAddr) -> Result<std::net::SocketAddr, Error> {
-    crate::protocol::default_door(addr).ok_or_else(|| Error::Bad(addr.to_string()))
+fn default_door(addr: std::net::SocketAddr) -> Result<std::net::SocketAddr, Error> {
+    crate::protocol::default_door(addr).ok_or_else(|| Error::Invalid(addr.to_string()))
 }
 
-async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
+async fn dial(door: std::net::SocketAddr) -> Result<Connection, Error> {
     let url = format!("http://{door}/mcp");
     let (events, incoming) = mpsc::unbounded_channel();
     // A closed loopback seat ends the stream. The default client retries
@@ -124,11 +124,11 @@ async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
     config.reinit_on_expired_session = false;
     let transport = SeatTransport {
         inner: StreamableHttpClientTransport::from_config(config),
-        events: events.clone(),
+        incoming: events.clone(),
         closed: false,
     };
     let running = match (Inbox {
-        events: events.clone(),
+        incoming: events.clone(),
     })
     .serve(transport)
     .await
@@ -138,7 +138,7 @@ async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
         // event stream and reports the stream as closed. Read that refusal
         // from a fresh response body.
         Err(err @ ClientInitializeError::ConnectionClosed(_)) => {
-            return Err(read_seat_refusal(&url).await.unwrap_or_else(|| err.into()));
+            return Err(probe_seat_refusal(&url).await.unwrap_or_else(|| err.into()));
         }
         Err(err) => return Err(err.into()),
     };
@@ -155,9 +155,9 @@ async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
         }
         let _ = events.send(Incoming::Eof);
     });
-    Ok(GmConnection {
-        opened: opened_of(&running),
-        running,
+    Ok(Connection {
+        initialize_line: initialize_line_of(&running),
+        service: running,
         watch,
         incoming,
         buffered: VecDeque::new(),
@@ -165,16 +165,16 @@ async fn dial(door: std::net::SocketAddr) -> Result<GmConnection, Error> {
     })
 }
 
-impl GmConnection {
+impl Connection {
     /// The initialize result line, without a trailing newline.
-    pub fn opened_line(&self) -> &str {
-        &self.opened
+    pub fn initialize_line(&self) -> &str {
+        &self.initialize_line
     }
 
-    pub async fn call(&mut self, name: &str, arguments: Value) -> Result<ToolCallResult, Error> {
+    pub async fn call(&mut self, name: &str, arguments: Value) -> Result<ToolResult, Error> {
         let id = self.next_id;
         self.next_id = self.next_id.saturating_add(1);
-        let mut outcome = call_tool(&self.running, name, arguments).await?;
+        let mut outcome = call_tool(&self.service, name, arguments).await?;
         while let Ok(item) = self.incoming.try_recv() {
             self.buffered.push_back(item);
         }
@@ -214,7 +214,7 @@ impl GmConnection {
         // A closed seat has nothing to end. Cancel would send the session
         // DELETE to the dead port, and Windows takes about 2s to refuse it.
         if !self.watch.is_finished() {
-            let _ = self.running.cancel().await;
+            let _ = self.service.cancel().await;
         }
     }
 }
@@ -226,7 +226,7 @@ impl GmConnection {
 /// signal to leave.
 struct SeatTransport<T> {
     inner: T,
-    events: mpsc::UnboundedSender<Incoming>,
+    incoming: mpsc::UnboundedSender<Incoming>,
     closed: bool,
 }
 
@@ -247,7 +247,7 @@ where
         let message = self.inner.receive().await;
         if message.is_none() && !self.closed {
             self.closed = true;
-            let _ = self.events.send(Incoming::Eof);
+            let _ = self.incoming.send(Incoming::Eof);
         }
         message
     }
@@ -257,7 +257,7 @@ where
     }
 }
 
-fn opened_of(running: &RunningService<RoleClient, Inbox>) -> String {
+fn initialize_line_of(running: &RunningService<RoleClient, Inbox>) -> String {
     let version = running
         .peer_info()
         .map(|info| info.protocol_version.as_str().to_string())
@@ -274,22 +274,22 @@ async fn call_tool(
     running: &RunningService<RoleClient, Inbox>,
     name: &str,
     arguments: Value,
-) -> Result<ToolCallResult, Error> {
+) -> Result<ToolResult, Error> {
     let params = match arguments {
         Value::Object(map) => CallToolRequestParams::new(name.to_string()).with_arguments(map),
         Value::Null => CallToolRequestParams::new(name.to_string()),
-        other => return Err(Error::Bad(other.to_string())),
+        other => return Err(Error::Invalid(other.to_string())),
     };
     match running.call_tool(params).await {
         Ok(result) => Ok(tool_result(result)),
-        Err(err) => Err(Error::Bad(err.to_string())),
+        Err(err) => Err(Error::Invalid(err.to_string())),
     }
 }
 
-fn tool_result(result: CallToolResult) -> ToolCallResult {
+fn tool_result(result: CallToolResult) -> ToolResult {
     let body = result.structured_content.clone().unwrap_or(Value::Null);
     let refused = body.get("code").is_some();
-    ToolCallResult {
+    ToolResult {
         raw: String::new(),
         body,
         refused,
@@ -305,7 +305,7 @@ fn result_line(id: u64, body: &Value) -> String {
     .to_string()
 }
 
-async fn read_seat_refusal(url: &str) -> Option<Error> {
+async fn probe_seat_refusal(url: &str) -> Option<Error> {
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
         .build()
@@ -315,7 +315,7 @@ async fn read_seat_refusal(url: &str) -> Option<Error> {
     // The DELETE below gives that seat back.
     let version = ProtocolVersion::LATEST.as_str();
     let body = format!(
-        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"{version}","capabilities":{{}},"clientInfo":{{"name":"spook-host","version":"0"}}}}}}"#
+        r#"{{"jsonrpc":"2.0","id":1,"method":"initialize","params":{{"protocolVersion":"{version}","capabilities":{{}},"clientInfo":{{"name":"spook-gm","version":"0"}}}}}}"#
     );
     let response = client
         .post(url)
@@ -354,7 +354,7 @@ impl From<ClientInitializeError> for Error {
 
 fn refusal_of(err: &ClientInitializeError) -> Option<Error> {
     match err {
-        ClientInitializeError::JsonRpcError(data) => Some(refused_message(data.message.as_ref())),
+        ClientInitializeError::JsonRpcError(data) => Some(parse_refused(data.message.as_ref())),
         ClientInitializeError::LegacyFallbackFailed { discover, fallback } => {
             refusal_of(discover).or_else(|| refusal_of(fallback))
         }
@@ -365,7 +365,7 @@ fn refusal_of(err: &ClientInitializeError) -> Option<Error> {
     }
 }
 
-fn refused_message(raw: &str) -> Error {
+fn parse_refused(raw: &str) -> Error {
     let code = bracket_code(raw).unwrap_or_else(|| "TABLE_FULL".to_string());
     Error::Refused {
         code,
@@ -398,7 +398,7 @@ pub fn read_event(params: Option<&Value>) -> Incoming {
     .unwrap_or_else(|_| params.to_string());
     match serde_json::from_value(params) {
         Ok(body) => Incoming::Event(Event { raw, body }),
-        Err(_) => Incoming::Bad(raw),
+        Err(_) => Incoming::Invalid(raw),
     }
 }
 
@@ -410,12 +410,12 @@ mod tests {
     fn a_fixed_game_port_dials_the_next_port() {
         let game = std::net::SocketAddr::from(([127, 0, 0, 1], 9737));
         let door = std::net::SocketAddr::from(([127, 0, 0, 1], 9738));
-        assert_eq!(door_for(game).ok(), Some(door));
+        assert_eq!(default_door(game).ok(), Some(door));
     }
 
     #[test]
     fn a_body_that_matches_no_known_type_is_bad() {
-        let Incoming::Bad(line) = read_event(Some(&serde_json::json!({"kind": "nope"}))) else {
+        let Incoming::Invalid(line) = read_event(Some(&serde_json::json!({"kind": "nope"}))) else {
             panic!("malformed event was dropped");
         };
         assert!(line.contains("\"kind\":\"nope\""), "{line}");

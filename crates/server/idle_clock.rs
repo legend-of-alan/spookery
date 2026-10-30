@@ -4,11 +4,11 @@ use chrono::{DateTime, NaiveDateTime, TimeDelta, Utc};
 
 use spookery_engine::{Reason, World};
 
-const STAMP: &str = "%Y-%m-%dT%H:%M:%SZ";
+const STAMP_FORMAT: &str = "%Y-%m-%dT%H:%M:%SZ";
 
 /// Test support: seconds since a UTC stamp. Not part of the API.
 #[doc(hidden)]
-pub fn seconds_since(last_round_at: &str) -> Result<u64, Reason> {
+pub fn secs_since(last_round_at: &str) -> Result<u64, Reason> {
     elapsed_secs(last_round_at, Utc::now())
 }
 
@@ -36,18 +36,18 @@ fn parse_utc(text: &str) -> Result<DateTime<Utc>, Reason> {
     if text.len() != 20 {
         return Err(Reason::Schema);
     }
-    NaiveDateTime::parse_from_str(text, STAMP)
+    NaiveDateTime::parse_from_str(text, STAMP_FORMAT)
         .map(|stamp| stamp.and_utc())
         .map_err(|_| Reason::Schema)
 }
 
 fn format_utc(now: DateTime<Utc>) -> String {
-    now.format(STAMP).to_string()
+    now.format(STAMP_FORMAT).to_string()
 }
 
 /// Seat check and interval check. A round that runs borrows this `World`.
 /// Returns whether `world_time` advanced.
-pub fn on_scheduled_wake(
+pub fn catch_up_if_due(
     world: &mut World,
     player_held: bool,
     gm_held: bool,

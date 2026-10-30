@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use spookery_engine::testing::journal::list_round_keys;
 
-use spookery::host::{OUTBOUND_BYTES, OUTBOUND_FRAMES, REQUESTED_SEND_BUFFER};
-use spookery::protocol::{write_player, PlayerMessage};
+use spookery::host::{OUTBOUND_BYTE_CAP, OUTBOUND_FRAME_CAP, REQUESTED_SEND_BUFFER};
+use spookery::protocol::{emit_player, PlayerFrame};
 
 use crate::support;
 use crate::World;
@@ -350,14 +350,14 @@ fn one_player_stops_reading(world: &mut World) {
     let send = granted_send_buffer(REQUESTED_SEND_BUFFER);
     writeln!(quiet, "player:pc_rowan").unwrap_or_else(|err| panic!("hello: {err}"));
     quiet.flush().unwrap_or_else(|err| panic!("flush: {err}"));
-    read_until(&mut quiet, "\"kind\":\"perceive\"", Duration::from_secs(2));
+    read_until(&mut quiet, "\"kind\":\"view\"", Duration::from_secs(2));
     table::live_mut(world).players.push(table::Seated {
         actor_id: "pc_rowan".to_string(),
         write: quiet,
         text: Arc::new(Mutex::new(String::new())),
     });
     let say = "n".repeat(SAY_TEXT_BYTES);
-    let frame = write_player(&PlayerMessage::Say {
+    let frame = emit_player(&PlayerFrame::Say {
         from: "gm".to_string(),
         address: "table".to_string(),
         text: say.clone(),
@@ -366,7 +366,7 @@ fn one_player_stops_reading(world: &mut World) {
     .len();
     // Granted kernel windows, then the userspace queue, then one extra
     // buffer so a getsockopt that under-reports still reaches the drop.
-    let queue = OUTBOUND_BYTES.min(OUTBOUND_FRAMES.saturating_mul(frame));
+    let queue = OUTBOUND_BYTE_CAP.min(OUTBOUND_FRAME_CAP.saturating_mul(frame));
     let margin = recv.max(send).max(frame);
     let budget = recv
         .saturating_add(send)
@@ -569,7 +569,7 @@ fn read_until(stream: &mut TcpStream, needle: &str, limit: Duration) {
 
 fn try_gm(port: u16) -> Result<(), String> {
     let door = std::net::SocketAddr::from(([127, 0, 0, 1], port));
-    match support::block_on(spookery::gm_connection::GmConnection::connect_door(door)) {
+    match support::block_on(spookery::gm_connection::Connection::connect_door(door)) {
         Ok(gm) => {
             support::block_on(gm.close());
             Ok(())

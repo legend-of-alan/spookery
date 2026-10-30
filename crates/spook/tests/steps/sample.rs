@@ -35,7 +35,7 @@ fn the_player_strikes_the_raider(world: &mut World) {
 #[when(expr = "the player waits {int} and strikes the raider")]
 fn the_player_waits_and_strikes(world: &mut World, times: usize) {
     for _ in 0..times {
-        table::player_send(world, "wait", "\"kind\":\"perceive\"");
+        table::player_send(world, "wait", "\"kind\":\"view\"");
     }
     let (mark, added) = table::player_send(world, "strike npc_briar", "\"kind\":\"check\"");
     world.mark = mark;

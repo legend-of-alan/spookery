@@ -13,10 +13,10 @@ use std::time::{Duration, Instant};
 use cucumber::{then, when};
 use serde_json::json;
 use spookery::ai::{
-    parse_tool_line, run_gm, Clock, CompleteError, CompletionRequest, Env, HttpModel, Limits,
-    Model, ScriptedModel, TurnWatch, WallClock,
+    parse_tool_result, run_gm, CompletionError, CompletionRequest, HttpModel, Limits, Model,
+    ScriptedModel, Settings, Timer, TurnWatch, WallClock,
 };
-use spookery::gm_connection::GmConnection;
+use spookery::gm_connection::Connection;
 
 use crate::support::{self, copy_docks};
 use crate::World;
@@ -27,10 +27,7 @@ use super::table;
 fn the_operator_runs_host_with_an_extra_argument(world: &mut World) {
     let ([addr, door], listeners) = bind_game_and_agent();
     world.listeners = listeners;
-    table::run(
-        world,
-        &["ai-gm", "extra", "--addr", &addr, "--mcp-http", &door],
-    );
+    table::run(world, &["ai-gm", "extra", "--addr", &addr, "--door", &door]);
 }
 
 #[when(expr = "the operator runs ai-gm with nothing listening")]
@@ -50,7 +47,7 @@ fn the_operator_runs_host_with_nothing_listening(world: &mut World) {
 fn the_operator_runs_host_without(world: &mut World, name: String) {
     let ([addr, door], listeners) = bind_game_and_agent();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
-    command.args(["ai-gm", "--addr", &addr, "--mcp-http", &door]);
+    command.args(["ai-gm", "--addr", &addr, "--door", &door]);
     apply_model_env(&mut command, Some(&name));
     let output = command
         .output()
@@ -90,11 +87,11 @@ fn nothing_was_dialed(world: &mut World) {
 fn the_host_is_pointed_at_an_overridden_agent_door(world: &mut World) {
     let (listener, http) = free_listener();
     // Port 1's next port is 2, which an ephemeral door is not, so ignoring
-    // `--mcp-http` and dialing the next port misses this listener.
+    // `--door` and dialing the next port misses this listener.
     let addr = "127.0.0.1:1".to_string();
     let mut command = Command::new(env!("CARGO_BIN_EXE_spook"));
     command
-        .args(["ai-gm", "--addr", &addr, "--mcp-http", &http])
+        .args(["ai-gm", "--addr", &addr, "--door", &http])
         .stdin(Stdio::null());
     apply_model_env(&mut command, None);
     let child = command
@@ -131,11 +128,11 @@ fn the_host_seat_says(world: &mut World) {
     let mark = table::player_len(world);
     let door = table::door_addr(world).parse().unwrap();
     let mut seat =
-        support::block_on(GmConnection::connect_door(door)).unwrap_or_else(|err| panic!("{err}"));
+        support::block_on(Connection::connect_door(door)).unwrap_or_else(|err| panic!("{err}"));
     let say =
         support::block_on(seat.call("say", json!({"address": "table", "text": "good evening"})))
             .unwrap_or_else(|err| panic!("{err}"));
-    let again = parse_tool_line(&say.raw).unwrap_or_else(|err| panic!("{err}"));
+    let again = parse_tool_result(&say.raw).unwrap_or_else(|err| panic!("{err}"));
     assert!(!say.refused, "{}", say.raw);
     assert!(!again.refused, "{}", again.raw);
     assert_eq!(again.body, say.body);
@@ -195,7 +192,7 @@ fn play_and_host_and_a_stub(world: &mut World) {
     let door = table::door_addr(world);
     let mut host_cmd = Command::new(env!("CARGO_BIN_EXE_spook"));
     host_cmd
-        .args(["ai-gm", "--addr", &addr, "--mcp-http", &door])
+        .args(["ai-gm", "--addr", &addr, "--door", &door])
         .stdin(Stdio::null());
     apply_model_env(&mut host_cmd, None);
     let mut host = host_cmd
@@ -284,7 +281,7 @@ fn travel_rounds_once(world: &mut World, transport_error: bool) {
     };
     with_host(world, label, |world, pack, _port, model, watch| {
         if transport_error {
-            model.push(Err(CompleteError::Transport(
+            model.push(Err(CompletionError::Transport(
                 "model transport error".to_string(),
             )));
         } else {
@@ -454,7 +451,7 @@ fn tape_text(pack: &Path) -> String {
 }
 
 /// The game port and the agent door, each a free port of its own. Callers
-/// pass the door with `--mcp-http`, so no step needs two adjacent ports.
+/// pass the door with `--door`, so no step needs two adjacent ports.
 fn bind_game_and_agent() -> ([String; 2], Vec<TcpListener>) {
     let (game, game_addr) = free_listener();
     let (door, door_addr) = free_listener();
@@ -663,7 +660,7 @@ fn drive_when_free<C>(
     Arc<TurnWatch>,
 )
 where
-    C: Clock + Clone + 'static,
+    C: Timer + Clone + 'static,
 {
     let mut last = String::new();
     for _ in 0..40 {
@@ -706,9 +703,9 @@ where
     panic!("host did not listen: {last}");
 }
 
-fn http_model<C: Clock>(port: u16, total: Duration, backoff: Duration, clock: C) -> HttpModel<C> {
+fn http_model<C: Timer>(port: u16, total: Duration, backoff: Duration, clock: C) -> HttpModel<C> {
     HttpModel::with_limits(
-        Env::new("test-key", format!("http://127.0.0.1:{port}"), "grok-test"),
+        Settings::new("test-key", format!("http://127.0.0.1:{port}"), "grok-test"),
         Limits {
             total,
             connect: Duration::from_secs(1),
@@ -730,7 +727,7 @@ fn spawn_model<C>(
     Arc<TurnWatch>,
 )
 where
-    C: Clock + 'static,
+    C: Timer + 'static,
 {
     let watch = Arc::new(TurnWatch::default());
     let watch_bg = Arc::clone(&watch);
@@ -855,7 +852,7 @@ impl TestClock {
     }
 }
 
-impl Clock for TestClock {
+impl Timer for TestClock {
     fn wait(&self, duration: Duration) -> impl Future<Output = ()> + Send {
         let clock = self.clone();
         let mut done = false;
@@ -877,7 +874,7 @@ impl Clock for TestClock {
         })
     }
 
-    fn abandon(&self) -> impl Future<Output = ()> + Send {
+    fn on_abandon(&self) -> impl Future<Output = ()> + Send {
         let clock = self.clone();
         let mut done = false;
         std::future::poll_fn(move |cx| {

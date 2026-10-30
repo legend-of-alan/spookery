@@ -210,8 +210,8 @@ fn lark_queues(world: &mut World, line: String) {
 #[when(expr = "the GM sends Lark's strike on {word}")]
 fn the_gm_sends_larks_strike(world: &mut World, target: String) {
     let args = format!(r#"{{"actor_id":"pc_lark","move":"strike","target":"{target}"}}"#);
-    let text = table::gm_call(world, 4, "intent", &args);
-    assert!(text.contains("\"queued\""), "{text}");
+    let text = table::gm_call(world, 4, "queue_intent", &args);
+    assert!(text.contains("\"id\""), "{text}");
 }
 
 #[then(expr = "Lark's refused frame for {string} has no missing field")]
@@ -228,7 +228,7 @@ fn larks_refused_frame_has_no_missing_field(world: &mut World, code: String) {
         "{added}"
     );
     assert!(
-        frames.iter().all(|row| !row.contains("\"missing\"")),
+        frames.iter().all(|row| !row.contains("\"detail\"")),
         "{added}"
     );
 }

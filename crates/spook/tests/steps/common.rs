@@ -171,7 +171,7 @@ pub(crate) fn join_play(world: &mut World, raw: bool) {
     let refs: Vec<&str> = args.iter().map(String::as_str).collect();
     world.play = Some(support::spawn(&refs));
     let needle = if raw {
-        "\"kind\":\"perceive\""
+        "\"kind\":\"view\""
     } else {
         "You are in"
     };

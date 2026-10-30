@@ -6,11 +6,11 @@ use std::net::SocketAddr;
 
 use serde_json::{json, Value};
 
-use crate::gm_connection::{self, Event, EventBody, GmConnection, Incoming, ToolCallResult};
-use crate::protocol::{CommitBody, OutgoingSay, PlayerMessage, SessionStatus};
+use crate::gm_connection::{self, Connection, Event, EventBody, Incoming, ToolResult};
+use crate::protocol::{CommitBody, PlayerFrame, SayArgs, TableStatus};
 
+use super::frame_text::{self, humanize};
 use super::refusal;
-use super::render::{self, humanize};
 
 const HELP: &str = "\
 Commands:
@@ -40,32 +40,32 @@ pub async fn run_gm(
     raw: bool,
 ) -> Result<(), super::Error> {
     let connected = match door {
-        Some(door) => GmConnection::connect_door(door).await,
-        None => GmConnection::connect(addr).await,
+        Some(door) => Connection::connect_door(door).await,
+        None => Connection::connect_default_door(addr).await,
     };
     let client = match connected {
         Ok(client) => client,
         Err(gm_connection::Error::Io(err)) => return Err(super::Error::Io(err)),
         Err(gm_connection::Error::Refused { code, raw: line }) => {
-            return Err(super::Error::Reason(refusal_line(&code, &line, raw)));
+            return Err(super::Error::Message(echo_refusal(&code, &line, raw)));
         }
-        Err(gm_connection::Error::Bad(line)) => return Err(super::Error::Reason(line)),
+        Err(gm_connection::Error::Invalid(line)) => return Err(super::Error::Message(line)),
     };
-    let mut session = GmSession {
-        client,
-        raw,
+    let mut session = Session {
+        connection: client,
+        is_raw: raw,
         printed_checks: PrintedChecks::default(),
     };
-    if raw && !session.client.opened_line().is_empty() {
-        emit(session.client.opened_line());
+    if raw && !session.connection.initialize_line().is_empty() {
+        emit(session.connection.initialize_line());
     }
     emit(HELP);
     let mut input = super::stdin_lines();
     let result = async {
         loop {
             tokio::select! {
-                incoming = session.client.next_incoming() => {
-                    if !session.show_idle(incoming) {
+                incoming = session.connection.next_incoming() => {
+                    if !session.show_incoming(incoming) {
                         return Ok(());
                     }
                 }
@@ -77,13 +77,13 @@ pub async fn run_gm(
         }
     }
     .await;
-    session.client.close().await;
+    session.connection.close().await;
     result
 }
 
-struct GmSession {
-    client: GmConnection,
-    raw: bool,
+struct Session {
+    connection: Connection,
+    is_raw: bool,
     printed_checks: PrintedChecks,
 }
 
@@ -95,7 +95,7 @@ struct PrintedChecks(VecDeque<String>);
 
 impl PrintedChecks {
     /// The check lines one commit result printed. Replaces any older lines.
-    fn printed(&mut self, lines: Vec<String>) {
+    fn replace(&mut self, lines: Vec<String>) {
         self.0 = lines.into();
     }
 
@@ -115,7 +115,7 @@ impl PrintedChecks {
     }
 }
 
-impl GmSession {
+impl Session {
     async fn on_line(&mut self, line: &str) -> Result<bool, super::Error> {
         match parse_command(line) {
             Parsed::Empty => Ok(true),
@@ -145,13 +145,13 @@ impl GmSession {
     }
 
     async fn on_status(&mut self) -> Result<(), super::Error> {
-        let Some(outcome) = self.call_tool("session_status", json!({})).await? else {
+        let Some(outcome) = self.call_tool("table_status", json!({})).await? else {
             return Ok(());
         };
-        self.after_result(&outcome, |_session, outcome| {
+        self.show_result(&outcome, |_session, outcome| {
             match read_status(&outcome.body) {
                 Some(status) => emit(&render_status(&status)),
-                None => unread(),
+                None => report_unreadable(),
             }
         });
         Ok(())
@@ -161,9 +161,9 @@ impl GmSession {
         let Some(outcome) = self.call_tool("perceive", json!({ "as": actor })).await? else {
             return Ok(());
         };
-        self.after_result(&outcome, |_session, outcome| {
-            match serde_json::from_value::<PlayerMessage>(outcome.body.clone()) {
-                Ok(message) => emit(&render::render(&message)),
+        self.show_result(&outcome, |_session, outcome| {
+            match serde_json::from_value::<PlayerFrame>(outcome.body.clone()) {
+                Ok(message) => emit(&frame_text::render(&message)),
                 Err(_) => {
                     eprintln!("The reply could not be read.");
                     let _ = io::stderr().flush();
@@ -173,12 +173,12 @@ impl GmSession {
         Ok(())
     }
 
-    async fn on_say(&mut self, address: OutgoingSay) -> Result<(), super::Error> {
-        let arguments = address.arguments();
+    async fn on_say(&mut self, address: SayArgs) -> Result<(), super::Error> {
+        let arguments = address.to_value();
         let Some(outcome) = self.call_tool("say", arguments).await? else {
             return Ok(());
         };
-        self.after_result(&outcome, |_session, _outcome| {});
+        self.show_result(&outcome, |_session, _outcome| {});
         Ok(())
     }
 
@@ -196,10 +196,10 @@ impl GmSession {
         if let Some(t) = target {
             arguments["target"] = json!(t);
         }
-        let Some(outcome) = self.call_tool("intent", arguments).await? else {
+        let Some(outcome) = self.call_tool("queue_intent", arguments).await? else {
             return Ok(());
         };
-        self.after_result(&outcome, move |_session, _outcome| {
+        self.show_result(&outcome, move |_session, _outcome| {
             emit(&shown);
         });
         Ok(())
@@ -220,12 +220,12 @@ impl GmSession {
         // This commit's check events can arrive before or after the tool
         // result. The result text prints each roll. A matching event on
         // either side is shown once. Raw mode and a failed read show none.
-        let checks = reply.as_ref().filter(|_| !self.raw).map(render_checks);
+        let checks = reply.as_ref().filter(|_| !self.is_raw).map(render_checks);
         self.show_arrived(checks.as_deref().unwrap_or(&[]));
         if outcome.refused {
             self.show_tool_refusal(&outcome);
         } else if let Some(reply) = reply {
-            if self.raw {
+            if self.is_raw {
                 emit(&outcome.raw);
             } else if let Some(checks) = checks {
                 emit(&render_diff(&reply));
@@ -235,10 +235,10 @@ impl GmSession {
                 for line in &render_dice(&reply) {
                     emit(line);
                 }
-                self.printed_checks.printed(checks);
+                self.printed_checks.replace(checks);
             }
         } else {
-            unread();
+            report_unreadable();
         }
         self.show_ready();
         Ok(())
@@ -248,16 +248,16 @@ impl GmSession {
         &mut self,
         name: &str,
         arguments: Value,
-    ) -> Result<Option<ToolCallResult>, super::Error> {
-        match self.client.call(name, arguments).await {
+    ) -> Result<Option<ToolResult>, super::Error> {
+        match self.connection.call(name, arguments).await {
             Ok(outcome) => Ok(Some(outcome)),
             Err(gm_connection::Error::Io(err)) => Err(super::Error::Io(err)),
             Err(gm_connection::Error::Refused { code, raw }) => {
                 self.show_refusal(&code, &raw);
                 Ok(None)
             }
-            Err(gm_connection::Error::Bad(line)) => {
-                if self.raw {
+            Err(gm_connection::Error::Invalid(line)) => {
+                if self.is_raw {
                     emit(&line);
                 } else {
                     eprintln!("{line}");
@@ -268,19 +268,15 @@ impl GmSession {
         }
     }
 
-    /// Text mode prints `render`. Raw mode already printed the result line.
-    fn after_result(
-        &mut self,
-        outcome: &ToolCallResult,
-        render: impl FnOnce(&mut Self, &ToolCallResult),
-    ) {
+    /// Text mode prints `frame_text`. Raw mode already printed the result line.
+    fn show_result(&mut self, outcome: &ToolResult, render: impl FnOnce(&mut Self, &ToolResult)) {
         self.show_early();
         if outcome.refused {
             self.show_tool_refusal(outcome);
             self.show_ready();
             return;
         }
-        if self.raw {
+        if self.is_raw {
             emit(&outcome.raw);
         } else {
             render(self, outcome);
@@ -296,7 +292,7 @@ impl GmSession {
     /// will print; a matching check event is not printed again.
     fn show_arrived(&mut self, checks: &[String]) {
         let mut pending: VecDeque<&str> = checks.iter().map(String::as_str).collect();
-        let events = self.client.take_events();
+        let events = self.connection.take_events();
         for event in &events {
             if let EventBody::Check(_) = event.body {
                 let line = render_event(&event.body);
@@ -312,21 +308,21 @@ impl GmSession {
     }
 
     fn show_ready(&mut self) {
-        let ready = self.client.drain_ready();
+        let ready = self.connection.drain_ready();
         for incoming in ready {
-            let _ = self.show_idle(incoming);
+            let _ = self.show_incoming(incoming);
         }
     }
 
-    fn show_idle(&mut self, incoming: Incoming) -> bool {
+    fn show_incoming(&mut self, incoming: Incoming) -> bool {
         match incoming {
             Incoming::Event(event) => self.show_event(&event),
             Incoming::Result { raw, .. } => {
-                if self.raw {
+                if self.is_raw {
                     emit(&raw);
                 }
             }
-            Incoming::Bad(line) => {
+            Incoming::Invalid(line) => {
                 eprintln!("{line}");
                 let _ = io::stderr().flush();
             }
@@ -337,7 +333,7 @@ impl GmSession {
     }
 
     fn show_event(&mut self, event: &Event) {
-        if self.raw {
+        if self.is_raw {
             emit(&event.raw);
             return;
         }
@@ -348,7 +344,7 @@ impl GmSession {
         emit(&line);
     }
 
-    fn show_tool_refusal(&self, outcome: &ToolCallResult) {
+    fn show_tool_refusal(&self, outcome: &ToolResult) {
         let code = outcome
             .body
             .get("code")
@@ -358,13 +354,13 @@ impl GmSession {
     }
 
     fn show_refusal(&self, code: &str, raw: &str) {
-        eprintln!("{}", refusal_line(code, raw, self.raw));
+        eprintln!("{}", echo_refusal(code, raw, self.is_raw));
         let _ = io::stderr().flush();
     }
 }
 
 /// Raw mode echoes the frame and names the code. Text mode names the refusal.
-fn refusal_line(code: &str, raw: &str, raw_mode: bool) -> String {
+fn echo_refusal(code: &str, raw: &str, raw_mode: bool) -> String {
     if raw_mode {
         emit(raw);
         code.to_string()
@@ -378,7 +374,7 @@ fn emit(line: &str) {
     let _ = io::stdout().flush();
 }
 
-fn read_status(body: &Value) -> Option<SessionStatus> {
+fn read_status(body: &Value) -> Option<TableStatus> {
     serde_json::from_value(body.clone()).ok()
 }
 
@@ -386,23 +382,23 @@ fn read_commit(body: &Value) -> Option<CommitBody> {
     serde_json::from_value(body.clone()).ok()
 }
 
-fn unread() {
+fn report_unreadable() {
     eprintln!("The reply could not be read.");
     let _ = io::stderr().flush();
 }
 
-fn seated_ids(body: &SessionStatus) -> Vec<String> {
+fn seated_ids(body: &TableStatus) -> Vec<String> {
     body.presence.actors_present.clone()
 }
 
-fn queue_rows(body: &SessionStatus) -> Vec<(String, String)> {
+fn queue_rows(body: &TableStatus) -> Vec<(String, String)> {
     body.queued
         .iter()
         .map(|row| (row.actor_id.clone(), row.move_name.clone()))
         .collect()
 }
 
-fn render_status(body: &SessionStatus) -> String {
+fn render_status(body: &TableStatus) -> String {
     let names = seated_ids(body);
     let seated = if names.is_empty() {
         "Seated: nobody".to_string()
@@ -429,10 +425,10 @@ fn render_status(body: &SessionStatus) -> String {
 }
 
 fn render_diff(body: &CommitBody) -> String {
-    if body.diff_summary.is_empty() {
+    if body.changed_keys.is_empty() {
         "Nothing changed.".to_string()
     } else {
-        format!("Changed:\n{}", body.diff_summary.join("\n"))
+        format!("Changed:\n{}", body.changed_keys.join("\n"))
     }
 }
 
@@ -444,7 +440,7 @@ fn render_dice(body: &CommitBody) -> Vec<String> {
 }
 
 fn render_checks(body: &CommitBody) -> Vec<String> {
-    body.checks
+    body.rolls
         .iter()
         .map(|roll| {
             render_check(
@@ -506,7 +502,7 @@ pub enum Command {
     Look {
         actor: String,
     },
-    Say(OutgoingSay),
+    Say(SayArgs),
     Queue {
         actor: String,
         move_name: String,
@@ -558,7 +554,7 @@ fn parse_say(rest: &str) -> Parsed {
         if place.is_empty() || text.is_empty() {
             return Parsed::Unknown;
         }
-        return Parsed::Command(Command::Say(OutgoingSay::Place {
+        return Parsed::Command(Command::Say(SayArgs::Place {
             place: place.to_string(),
             text: text.to_string(),
         }));
@@ -568,12 +564,12 @@ fn parse_say(rest: &str) -> Parsed {
         if actor.is_empty() || text.is_empty() {
             return Parsed::Unknown;
         }
-        return Parsed::Command(Command::Say(OutgoingSay::Actor {
+        return Parsed::Command(Command::Say(SayArgs::Actor {
             actor: actor.to_string(),
             text: text.to_string(),
         }));
     }
-    Parsed::Command(Command::Say(OutgoingSay::Table {
+    Parsed::Command(Command::Say(SayArgs::Table {
         text: rest.to_string(),
     }))
 }
@@ -608,10 +604,10 @@ fn split_word(text: &str) -> (&str, &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::protocol::{GmSay, Outcome, QueueRow, Roll, StatusPause, StatusPresence};
+    use crate::protocol::{Outcome, QueuedMove, Roll, SayEvent, StatusPause, StatusPresence};
 
     fn say(from: &str, seq: u64, text: &str) -> EventBody {
-        EventBody::Say(GmSay {
+        EventBody::Say(SayEvent {
             seq,
             from: from.to_string(),
             address: "table".to_string(),
@@ -632,8 +628,8 @@ mod tests {
         })
     }
 
-    fn status(present: Vec<&str>, queued: Vec<QueueRow>) -> SessionStatus {
-        SessionStatus {
+    fn status(present: Vec<&str>, queued: Vec<QueuedMove>) -> TableStatus {
+        TableStatus {
             presence: StatusPresence {
                 humans: u32::try_from(present.len()).unwrap_or(0),
                 actors_present: present.into_iter().map(str::to_string).collect(),
@@ -657,7 +653,7 @@ mod tests {
     fn a_commit_skips_its_own_check_events_once() {
         let roll = render_check(&[4, 2], 1, 7, 0, "success");
         let mut printed = PrintedChecks::default();
-        printed.printed(vec![roll.clone()]);
+        printed.replace(vec![roll.clone()]);
         assert!(printed.skip(&roll));
         // A later check with the same faces is a new roll and still prints.
         assert!(!printed.skip(&roll));
@@ -668,7 +664,7 @@ mod tests {
     fn checks_after_a_new_result_are_not_skipped() {
         let roll = render_check(&[3, 3], 0, 6, 0, "success");
         let mut printed = PrintedChecks::default();
-        printed.printed(vec![roll.clone()]);
+        printed.replace(vec![roll.clone()]);
         printed.clear();
         assert!(!printed.skip(&roll));
     }
@@ -678,7 +674,7 @@ mod tests {
         let first = render_check(&[1, 1], 0, 2, 7, "miss");
         let second = render_check(&[6, 6], 0, 12, 7, "success");
         let mut printed = PrintedChecks::default();
-        printed.printed(vec![first.clone(), second.clone()]);
+        printed.replace(vec![first.clone(), second.clone()]);
         assert!(!printed.skip(&second));
         assert!(!printed.skip(&first));
     }
@@ -688,7 +684,7 @@ mod tests {
         let first = render_check(&[1, 2], 0, 3, 7, "miss");
         let second = render_check(&[5, 6], 0, 11, 7, "success");
         let mut printed = PrintedChecks::default();
-        printed.printed(vec![first.clone(), second.clone()]);
+        printed.replace(vec![first.clone(), second.clone()]);
         assert!(printed.skip(&first));
         assert!(printed.skip(&second));
         assert!(!printed.skip(&first));
@@ -713,18 +709,18 @@ mod tests {
             other => panic!("{other:?}"),
         }
         match command("say good evening") {
-            Command::Say(OutgoingSay::Table { text }) => assert_eq!(text, "good evening"),
+            Command::Say(SayArgs::Table { text }) => assert_eq!(text, "good evening"),
             other => panic!("{other:?}"),
         }
         match command("say @docks_shop the lamp is lit") {
-            Command::Say(OutgoingSay::Place { place, text }) => {
+            Command::Say(SayArgs::Place { place, text }) => {
                 assert_eq!(place, "docks_shop");
                 assert_eq!(text, "the lamp is lit");
             }
             other => panic!("{other:?}"),
         }
         match command("say #mira come in") {
-            Command::Say(OutgoingSay::Actor { actor, text }) => {
+            Command::Say(SayArgs::Actor { actor, text }) => {
                 assert_eq!(actor, "mira");
                 assert_eq!(text, "come in");
             }
@@ -786,7 +782,7 @@ mod tests {
         let npc = render_event(&say("npc:mira", 3, "oil"));
         assert_eq!(npc, "Mira: oil");
 
-        let queued = render_event(&EventBody::Queued(QueueRow {
+        let queued = render_event(&EventBody::Queued(QueuedMove {
             id: "id-1".to_string(),
             actor_id: "pc_wren".to_string(),
             move_name: "wait".to_string(),
@@ -808,7 +804,7 @@ mod tests {
     fn a_status_names_the_seated_players_and_the_queue() {
         let body = status(
             vec!["pc_rowan"],
-            vec![QueueRow {
+            vec![QueuedMove {
                 id: "q".to_string(),
                 actor_id: "pc_rowan".to_string(),
                 move_name: "wait".to_string(),

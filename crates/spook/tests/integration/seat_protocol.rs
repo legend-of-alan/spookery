@@ -13,7 +13,7 @@ use std::time::Duration;
 
 use rmcp::model::ProtocolVersion;
 use serde_json::Value;
-use spookery::gm_connection::{GmConnection, Incoming};
+use spookery::gm_connection::{Connection, Incoming};
 
 use crate::support;
 
@@ -109,7 +109,7 @@ fn capture() -> BTreeMap<String, Example> {
     assert_eq!(resume["kind"], "resume", "{resume}");
     json(&mut out, "player-resume", resume);
     let perceive = next_json(&player);
-    assert_eq!(perceive["kind"], "perceive", "{perceive}");
+    assert_eq!(perceive["kind"], "view", "{perceive}");
     json(&mut out, "player-perceive", perceive);
 
     text(&mut out, "player-look", "look");
@@ -158,7 +158,7 @@ fn capture() -> BTreeMap<String, Example> {
     // with 405, so the header is the version the handshake returned.
     delete_session(table.door, &session, &negotiated);
 
-    let mut gm = support::block_on(GmConnection::connect_door(std::net::SocketAddr::from((
+    let mut gm = support::block_on(Connection::connect_door(std::net::SocketAddr::from((
         [127, 0, 0, 1],
         table.door,
     ))))
@@ -167,13 +167,13 @@ fn capture() -> BTreeMap<String, Example> {
     let status_args = serde_json::json!({});
     json(
         &mut out,
-        "session-status-request",
-        tool_call(2, "session_status", &status_args),
+        "table-status-request",
+        tool_call(2, "table_status", &status_args),
     );
     json(
         &mut out,
-        "session-status",
-        call(&mut gm, "session_status", status_args),
+        "table-status",
+        call(&mut gm, "table_status", status_args),
     );
 
     let perceive_args = serde_json::json!({"as": "pc_rowan"});
@@ -207,13 +207,13 @@ fn capture() -> BTreeMap<String, Example> {
     let since_args = serde_json::json!({"since": 0});
     json(
         &mut out,
-        "session-status-since-request",
-        tool_call(5, "session_status", &since_args),
+        "table-status-since-request",
+        tool_call(5, "table_status", &since_args),
     );
     json(
         &mut out,
-        "session-status-since",
-        call(&mut gm, "session_status", since_args),
+        "table-status-since",
+        call(&mut gm, "table_status", since_args),
     );
 
     let intent_args = serde_json::json!({
@@ -224,12 +224,12 @@ fn capture() -> BTreeMap<String, Example> {
     json(
         &mut out,
         "intent-request",
-        tool_call(6, "intent", &intent_args),
+        tool_call(6, "queue_intent", &intent_args),
     );
     json(
         &mut out,
         "intent-result",
-        call(&mut gm, "intent", intent_args),
+        call(&mut gm, "queue_intent", intent_args),
     );
 
     text(&mut out, "player-grit", "grit");
@@ -269,7 +269,7 @@ fn capture() -> BTreeMap<String, Example> {
     let again = next_json(&player);
     assert_eq!(again["kind"], "resume", "{again}");
     let refreshed = next_json(&player);
-    assert_eq!(refreshed["kind"], "perceive", "{refreshed}");
+    assert_eq!(refreshed["kind"], "view", "{refreshed}");
 
     // A second round moves an item the player can see, so the change line is not empty.
     send(&mut player, "take lamp_oil");
@@ -284,7 +284,7 @@ fn capture() -> BTreeMap<String, Example> {
     let taken = next_json(&player);
     assert_eq!(taken["kind"], "resume", "{taken}");
     let after_take = next_json(&player);
-    assert_eq!(after_take["kind"], "perceive", "{after_take}");
+    assert_eq!(after_take["kind"], "view", "{after_take}");
     let changes = next_json(&player);
     assert_eq!(changes["kind"], "lines", "{changes}");
     json(&mut out, "player-changes", changes);
@@ -569,13 +569,13 @@ fn read_line(stream: &mut TcpStream) -> String {
     String::from_utf8(buf).unwrap_or_else(|err| panic!("utf-8: {err}"))
 }
 
-fn call(gm: &mut GmConnection, name: &str, arguments: Value) -> Value {
+fn call(gm: &mut Connection, name: &str, arguments: Value) -> Value {
     support::block_on(gm.call(name, arguments))
         .unwrap_or_else(|err| panic!("{name}: {err}"))
         .body
 }
 
-fn one_event(gm: &mut GmConnection) -> Value {
+fn one_event(gm: &mut Connection) -> Value {
     let mut ready = gm.take_events();
     if ready.is_empty() {
         match support::block_on(gm.next_incoming()) {

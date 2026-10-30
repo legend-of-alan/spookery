@@ -54,7 +54,7 @@ Crates other than `spook` keep sources at the crate root (`lib.rs`, not `src/lib
 
 ## Host and seats
 
-`spook run` binds only loopback: the game port (default `127.0.0.1:9737`) and the MCP agent door on the next port (`/mcp`, streamable HTTP via `rmcp`). The door checks the `Host` header, so clients must use `127.0.0.1`, not `localhost`. GM tools are `session_status`, `perceive`, `intent`, `say`, `commit_round`, `close`. With the GM seat empty, each player line commits its own round. `spook gm` and `spook ai-gm` are both clients of the agent door. The wire format is specified in `docs/seat-protocol.md`.
+`spook run` binds only loopback: the game port (default `127.0.0.1:9737`) and the MCP agent door on the next port (`/mcp`, streamable HTTP via `rmcp`). The door checks the `Host` header, so clients must use `127.0.0.1`, not `localhost`. GM tools are `table_status`, `perceive`, `queue_intent`, `say`, `commit_round`, `close`. With the GM seat empty, each player line commits its own round. `spook gm` and `spook ai-gm` are both clients of the agent door. The wire format is specified in `docs/seat-protocol.md`.
 
 ## Tests and docs that are wired together
 

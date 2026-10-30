@@ -46,16 +46,16 @@ const FILES: &[(&str, &str)] = &[
     ),
 ];
 
-pub enum StarterError {
+pub enum Error {
     Message(String),
     Io(io::Error),
 }
 
-impl std::fmt::Display for StarterError {
+impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            StarterError::Message(text) => f.write_str(text),
-            StarterError::Io(err) => write!(f, "{err}"),
+            Error::Message(text) => f.write_str(text),
+            Error::Io(err) => write!(f, "{err}"),
         }
     }
 }
@@ -64,31 +64,28 @@ impl std::fmt::Display for StarterError {
 /// An existing non-empty directory is refused and left untouched.
 /// A missing parent is refused and left uncreated.
 /// A failed write removes whatever this call created.
-pub fn write_starter(dir: &Path) -> Result<String, StarterError> {
+pub fn write(dir: &Path) -> Result<String, Error> {
     let created = if dir.exists() {
         if !dir.is_dir() {
-            return Err(StarterError::Message(format!(
+            return Err(Error::Message(format!(
                 "{} is not a directory",
                 dir.display()
             )));
         }
         if !is_empty(dir)? {
-            return Err(StarterError::Message(format!(
-                "{} is not empty",
-                dir.display()
-            )));
+            return Err(Error::Message(format!("{} is not empty", dir.display())));
         }
         false
     } else {
         if let Some(parent) = dir.parent() {
             if !parent.as_os_str().is_empty() && !parent.exists() {
-                return Err(StarterError::Message(format!(
+                return Err(Error::Message(format!(
                     "{} does not exist",
                     parent.display()
                 )));
             }
         }
-        fs::create_dir(dir).map_err(StarterError::Io)?;
+        fs::create_dir(dir).map_err(Error::Io)?;
         true
     };
 
@@ -99,8 +96,8 @@ pub fn write_starter(dir: &Path) -> Result<String, StarterError> {
     Ok(next_steps(dir))
 }
 
-fn is_empty(dir: &Path) -> Result<bool, StarterError> {
-    let mut entries = fs::read_dir(dir).map_err(StarterError::Io)?;
+fn is_empty(dir: &Path) -> Result<bool, Error> {
+    let mut entries = fs::read_dir(dir).map_err(Error::Io)?;
     Ok(entries.next().is_none())
 }
 
@@ -109,28 +106,26 @@ thread_local! {
     static STOP_BEFORE: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
 }
 
-fn stop_for_test(index: usize) -> Result<(), StarterError> {
+fn stop_for_test(index: usize) -> Result<(), Error> {
     #[cfg(test)]
     if STOP_BEFORE.with(|cell| cell.get() == Some(index)) {
-        return Err(StarterError::Message(
-            "the starter write stopped".to_string(),
-        ));
+        return Err(Error::Message("the starter write stopped".to_string()));
     }
     #[cfg(not(test))]
     let _ = index;
     Ok(())
 }
 
-fn write_files(dir: &Path) -> Result<(), StarterError> {
+fn write_files(dir: &Path) -> Result<(), Error> {
     for (index, (rel, text)) in FILES.iter().enumerate() {
         stop_for_test(index)?;
         let path = dir.join(rel);
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent).map_err(StarterError::Io)?;
+            fs::create_dir_all(parent).map_err(Error::Io)?;
         }
-        fs::write(&path, text.as_bytes()).map_err(StarterError::Io)?;
+        fs::write(&path, text.as_bytes()).map_err(Error::Io)?;
     }
-    restamp(dir)
+    write_pack_rev(dir)
 }
 
 fn undo_write(dir: &Path, created: bool) {
@@ -141,7 +136,7 @@ fn undo_write(dir: &Path, created: bool) {
     for (rel, _) in FILES.iter().rev() {
         let _ = fs::remove_file(dir.join(rel));
     }
-    let mut dirs = starter_dirs();
+    let mut dirs = parent_dirs();
     // Deepest first, so an empty child goes before its parent.
     dirs.sort_by_key(|path| std::cmp::Reverse(path.components().count()));
     for rel in dirs {
@@ -149,7 +144,7 @@ fn undo_write(dir: &Path, created: bool) {
     }
 }
 
-fn starter_dirs() -> Vec<std::path::PathBuf> {
+fn parent_dirs() -> Vec<std::path::PathBuf> {
     let mut dirs = Vec::new();
     for (rel, _) in FILES {
         let mut path = Path::new(rel);
@@ -166,17 +161,17 @@ fn starter_dirs() -> Vec<std::path::PathBuf> {
     dirs
 }
 
-fn restamp(dir: &Path) -> Result<(), StarterError> {
+fn write_pack_rev(dir: &Path) -> Result<(), Error> {
     let rev = spookery_engine::pack_rev(dir)
-        .map_err(|_| StarterError::Message("the starter canon could not be hashed".to_string()))?;
+        .map_err(|_| Error::Message("the starter canon could not be hashed".to_string()))?;
     let path = dir.join("state/save.yaml");
-    let text = fs::read_to_string(&path).map_err(StarterError::Io)?;
+    let text = fs::read_to_string(&path).map_err(Error::Io)?;
     let mut now = spookery_engine::parse_save(&text)
-        .map_err(|_| StarterError::Message("the starter save could not be read".to_string()))?;
+        .map_err(|_| Error::Message("the starter save could not be read".to_string()))?;
     now.pack_rev = rev;
     let emitted = spookery_engine::emit_save(&now)
-        .map_err(|_| StarterError::Message("the starter save could not be written".to_string()))?;
-    fs::write(path, emitted).map_err(StarterError::Io)?;
+        .map_err(|_| Error::Message("the starter save could not be written".to_string()))?;
+    fs::write(path, emitted).map_err(Error::Io)?;
     Ok(())
 }
 
@@ -206,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn the_generator_does_not_store_a_hash() {
+    fn the_starter_does_not_store_a_hash() {
         let src = include_str!("starter.rs");
         let needle = ["blake2s", ":"].concat();
         assert!(
@@ -216,7 +211,7 @@ mod tests {
     }
 
     fn must_fail(dir: &Path) -> String {
-        match write_starter(dir) {
+        match write(dir) {
             Ok(next) => panic!("write succeeded: {next}"),
             Err(err) => err.to_string(),
         }
@@ -233,7 +228,7 @@ mod tests {
             fs::read_dir(&dir).unwrap().next().is_none(),
             "directory was not emptied"
         );
-        let next = match write_starter(&dir) {
+        let next = match write(&dir) {
             Ok(next) => next,
             Err(err) => panic!("{err}"),
         };

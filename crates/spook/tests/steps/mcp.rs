@@ -24,7 +24,7 @@ fn agent_calls_over_http(world: &mut World) {
 #[when(expr = "the operator runs with an open MCP HTTP address")]
 fn open_http_address(world: &mut World) {
     let pack = support::pack_arg(table::pack(world));
-    table::run(world, &["run", &pack, "--mcp-http", "0.0.0.0:9"]);
+    table::run(world, &["run", &pack, "--door", "0.0.0.0:9"]);
 }
 
 #[when(expr = "an HTTP request arrives with a public Origin")]
@@ -64,13 +64,7 @@ fn a_human_gm_sits_on_the_default_agent_door(world: &mut World) {
     table::listen(world, &pack);
     let addr = table::game_addr(world);
     let door = table::door_addr(world);
-    world.gm = Some(support::spawn(&[
-        "gm",
-        "--addr",
-        &addr,
-        "--mcp-http",
-        &door,
-    ]));
+    world.gm = Some(support::spawn(&["gm", "--addr", &addr, "--door", &door]));
     world.mark = usize::from(table::live_mut(world).http_port);
     let start = Instant::now();
     loop {
@@ -215,8 +209,8 @@ fn gm_holds_over_http(world: &mut World) {
         let running = connect_http(http)
             .await
             .unwrap_or_else(|err| panic!("HTTP GM: {err}"));
-        let status = call(&running, "session_status", None).await;
-        assert_sat(&status, "session_status");
+        let status = call(&running, "table_status", None).await;
+        assert_sat(&status, "table_status");
         running
     });
     world.holder = Some(holder);
@@ -275,8 +269,8 @@ fn a_gm_can_sit_over_http(world: &mut World) {
 fn agent_sits(port: u16) -> Result<(), String> {
     support::block_on(async move {
         let running = connect_http(port).await.map_err(|err| format!("{err:?}"))?;
-        let status = call(&running, "session_status", None).await;
-        assert_sat(&status, "session_status");
+        let status = call(&running, "table_status", None).await;
+        assert_sat(&status, "table_status");
         let _ = running.cancel().await;
         Ok(())
     })
@@ -318,10 +312,10 @@ async fn exercise_http(port: u16) {
 
 async fn exercise(running: &impl ToolClient) {
     for (name, arguments) in [
-        ("session_status", None),
+        ("table_status", None),
         ("perceive", Some(json!({"as": "pc_rowan"}))),
         (
-            "intent",
+            "queue_intent",
             Some(json!({
                 "actor_id": "pc_rowan",
                 "move": "wait"
@@ -404,7 +398,7 @@ fn listen_http(world: &mut World) -> (u16, u16) {
     table::listen_flags(
         world,
         &pack,
-        &["--addr", "127.0.0.1:0", "--mcp-http", "127.0.0.1:0"],
+        &["--addr", "127.0.0.1:0", "--door", "127.0.0.1:0"],
         &[],
     )
 }

@@ -44,7 +44,7 @@ fn the_hello_is_refused_with_missing(world: &mut World, code: String, missing: S
     the_hello_is_refused_with(world, code);
     let frame: serde_json::Value = serde_json::from_str(world.scratch.trim()).unwrap();
     let expected: Vec<String> = serde_json::from_str(&missing).unwrap();
-    let got: Vec<String> = serde_json::from_value(frame["missing"].clone()).unwrap();
+    let got: Vec<String> = serde_json::from_value(frame["detail"].clone()).unwrap();
     assert_eq!(got, expected);
 }
 
@@ -273,9 +273,9 @@ fn that_pc_says_the_hidden_fact(world: &mut World) {
     let marks = ["pc_rowan", "pc_harbormouse"].map(|id| (id, table::actor_text(world, id).len()));
     let say = format!("say {HIDDEN_TEXT}");
     table::actor_send(world, "pc_wren", &say, "\"kind\":\"say\"");
-    table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"perceive\"");
+    table::actor_send(world, "pc_rowan", "wait", "\"kind\":\"view\"");
     for (id, mark) in marks {
-        let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"perceive\"");
+        let heard = table::wait_actor_from(world, id, mark, "\"kind\":\"view\"");
         assert!(heard.contains(HIDDEN_TEXT), "{id} did not hear it\n{heard}");
     }
 }
@@ -328,9 +328,9 @@ fn both_lines_are_queued_for_the_gm(world: &mut World) {
     );
 }
 
-#[then(expr = "session status lists both queued lines")]
-fn session_status_lists_both_queued_lines(world: &mut World) {
-    let text = table::gm_call(world, 4, "session_status", "{}");
+#[then(expr = "table status lists both queued lines")]
+fn table_status_lists_both_queued_lines(world: &mut World) {
+    let text = table::gm_call(world, 4, "table_status", "{}");
     for id in ["pc_rowan", "pc_harbormouse"] {
         assert!(text.contains(id), "{text}");
     }
@@ -554,8 +554,13 @@ fn a_round_commits(world: &mut World) {
     }
     let pack = table::pack(world).to_path_buf();
     let before = list_round_keys(&pack).len();
-    let queued = table::gm_call(world, 5, "intent", r#"{"actor_id":"aldric","move":"wait"}"#);
-    assert!(queued.contains("\"queued\""), "{queued}");
+    let queued = table::gm_call(
+        world,
+        5,
+        "queue_intent",
+        r#"{"actor_id":"aldric","move":"wait"}"#,
+    );
+    assert!(queued.contains("\"id\""), "{queued}");
     let committed = table::gm_call(world, 6, "commit_round", r#"{"include_round":true}"#);
     assert_eq!(list_round_keys(&pack).len(), before + 1, "{committed}");
 }
@@ -626,8 +631,8 @@ fn hears_it_and_does_not(world: &mut World, seated: String, free: String) {
     assert!(!text.contains(TABLE_LINE), "{free} heard the line\n{text}");
 }
 
-#[then(expr = "session_status shows humans {int} and actors_present {string}")]
-fn session_status_shows(world: &mut World, humans: u32, actor: String) {
+#[then(expr = "table_status shows humans {int} and actors_present {string}")]
+fn table_status_shows(world: &mut World, humans: u32, actor: String) {
     assert_eq!(table::live_presence(world), (humans, vec![actor]));
 }
 

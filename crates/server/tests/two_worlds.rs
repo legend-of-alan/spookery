@@ -7,7 +7,7 @@ use tokio::sync::oneshot;
 fn step(c: &mut BufReader<TcpStream>, cmd: &str) {
     c.get_mut().write_all(cmd.as_bytes()).unwrap();
     let mut line = String::new();
-    while !line.contains("\"perceive\"") {
+    while !line.contains("\"view\"") {
         line.clear();
         assert!(c.read_line(&mut line).unwrap() > 0);
     }

@@ -106,7 +106,11 @@ fn perceive_viewer_budget(
             .unwrap_or_default();
         let body = canon.body_of_fact(&id).to_string();
         let public = canon.facts.get(&id).is_some_and(|fact| !fact.hidden);
-        known_facts.push(KnownFact { id, text, body });
+        known_facts.push(KnownFact {
+            id,
+            text,
+            owner_body: body,
+        });
         public_flags.push(public);
     }
 
@@ -222,7 +226,7 @@ fn cap_bodies(
 ) {
     let mut sum = facts
         .iter()
-        .map(|fact| fact.body.chars().count())
+        .map(|fact| fact.owner_body.chars().count())
         .sum::<usize>();
     if sum <= budget_tokens {
         return;
@@ -233,17 +237,17 @@ fn cap_bodies(
         if sum <= budget_tokens {
             break;
         }
-        let len = facts[index].body.chars().count();
+        let len = facts[index].owner_body.chars().count();
         if len == 0 {
             continue;
         }
         let rest = sum - len;
         if len > budget_tokens && rest <= budget_tokens {
             let keep = budget_tokens - rest;
-            facts[index].body = facts[index].body.chars().take(keep).collect();
+            facts[index].owner_body = facts[index].owner_body.chars().take(keep).collect();
             sum = budget_tokens;
         } else {
-            facts[index].body.clear();
+            facts[index].owner_body.clear();
             sum = rest;
         }
         if public_flags.get(index).copied().unwrap_or(false) {
