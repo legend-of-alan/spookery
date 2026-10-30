@@ -3,7 +3,7 @@
 use std::future::Future;
 use std::io::{self, Write};
 use std::net::SocketAddr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::time::Duration;
@@ -12,7 +12,7 @@ use spookery_engine::Reason;
 
 use super::frames::Refusal;
 use super::mcp_http;
-use super::world_loop::{self, HelloReply, Request};
+use super::table::{Conn, HelloReply, Request, Table};
 
 #[derive(Debug)]
 pub enum Error {
@@ -50,7 +50,7 @@ impl Config {
 }
 
 /// Bind both ports, report them and serve on the caller's runtime until
-/// `shutdown` resolves. `world` owns the pack lock until the world loop ends.
+/// `shutdown` resolves. `world` owns the pack lock until the table ends.
 /// Returns the world's result.
 pub async fn serve(
     world: spookery_engine::World,
@@ -76,9 +76,9 @@ pub async fn serve(
             if tune(&stream, keepalive_secs).is_err() {
                 continue;
             }
-            let id = ids.fetch_add(1, Ordering::Relaxed);
+            let conn = Conn::mint(&ids);
             let tx_conn = tx_accept.clone();
-            tokio::spawn(serve_connection(stream, tx_conn, id, hello_timeout));
+            tokio::spawn(serve_connection(stream, tx_conn, conn, hello_timeout));
         }
     });
     tasks.spawn(mcp_http::serve(http_listener, tx.clone(), next_conn));
@@ -102,15 +102,15 @@ pub async fn serve(
             }
         });
     }
-    let mut world_loop = tokio::task::spawn_blocking(move || {
-        world_loop::run(world, rx, &restart_tx, &mut *config.out, &mut *config.err)
+    let mut table = tokio::task::spawn_blocking(move || {
+        Table::new(world, restart_tx, config.out, config.err).run(rx)
     });
-    // A world loop that ends on its own (a store fault) ends `serve` too.
+    // A table that ends on its own (a store fault) ends `serve` too.
     let done = tokio::select! {
-        done = &mut world_loop => done,
+        done = &mut table => done,
         () = shutdown => {
             let _ = tx.send(Request::Stop);
-            world_loop.await
+            table.await
         }
     };
     done.unwrap_or(Err(Error::Reason(Reason::NotInSpec)))
@@ -155,7 +155,7 @@ fn tune(stream: &tokio::net::TcpStream, keepalive_secs: u64) -> io::Result<()> {
 async fn serve_connection(
     mut stream: tokio::net::TcpStream,
     tx: Sender<Request>,
-    conn: u64,
+    conn: Conn,
     hello_timeout: Duration,
 ) {
     let line = {
@@ -186,7 +186,7 @@ async fn serve_connection(
         .send(Request::Hello {
             conn,
             line,
-            outbound: out_tx.clone(),
+            out: out_tx.clone(),
             cancel: cancel_tx,
             reply: reply_tx,
         })
@@ -204,7 +204,7 @@ async fn serve_connection(
             drop(cancel_rx);
             refuse(&mut stream, &refusal).await;
         }
-        HelloReply::Line => {
+        HelloReply::Seated => {
             // The queue is the bound. Ask for a small send buffer so a client
             // that stops reading fills the queue. The OS may grant more, and
             // the queue's byte cap still drops that seat.
@@ -218,7 +218,7 @@ async fn serve_connection(
 async fn serve_player(
     stream: tokio::net::TcpStream,
     tx: Sender<Request>,
-    conn: u64,
+    conn: Conn,
     out_tx: super::outbound::OutTx,
     out_rx: super::outbound::OutRx,
     mut cancel_rx: tokio::sync::watch::Receiver<bool>,
@@ -256,7 +256,7 @@ async fn serve_player(
                 let _ = bucket.try_take(std::time::Instant::now());
                 let (reply_tx, reply_rx) = tokio::sync::oneshot::channel();
                 if tx
-                    .send(Request::Seated {
+                    .send(Request::Line {
                         conn,
                         line,
                         reply: reply_tx,
@@ -265,7 +265,7 @@ async fn serve_player(
                 {
                     break;
                 }
-                // A seat the world loop dropped is cancelled, so the next wait ends the loop.
+                // A seat the table dropped is cancelled, so the next wait ends the loop.
                 if reply_rx.await.is_err() {
                     break;
                 }
@@ -294,7 +294,7 @@ async fn serve_player(
     let _ = writer.await;
 }
 
-pub(super) async fn report_hangup(tx: &Sender<Request>, conn: u64) {
+pub(super) async fn report_hangup(tx: &Sender<Request>, conn: Conn) {
     let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
     if tx.send(Request::Hangup { conn, ack: ack_tx }).is_err() {
         return;

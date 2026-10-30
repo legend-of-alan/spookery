@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
@@ -17,11 +17,11 @@ use rmcp::transport::streamable_http_server::session::{
 };
 use rmcp::transport::streamable_http_server::{StreamableHttpServerConfig, StreamableHttpService};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedSender};
-use tokio::sync::oneshot;
 
 use super::gm_seat::Handler;
 use super::limits::GM_BODY_CAP;
-use super::world_loop::Request;
+use super::listener::report_hangup;
+use super::table::{Conn, Request};
 
 // HTTP POST bodies on the agent door stop at this cap.
 pub(super) async fn serve(
@@ -54,10 +54,6 @@ fn http_config() -> StreamableHttpServerConfig {
     config
 }
 
-/// The shard connection id for this HTTP session. `Handler` reads it during initialize.
-#[derive(Clone, Copy)]
-pub(super) struct SeatConn(pub(super) u64);
-
 /// rmcp's local sessions. Closing one answers only after the shard thread has
 /// freed that session's GM seat. A session ends on DELETE or when the GM's
 /// event stream hangs up, never on an idle timer.
@@ -65,7 +61,7 @@ struct SeatSessions {
     inner: LocalSessionManager,
     tx: Sender<Request>,
     next_conn: Arc<AtomicU64>,
-    conns: Mutex<HashMap<SessionId, u64>>,
+    conns: Mutex<HashMap<SessionId, Conn>>,
     hangup_tx: UnboundedSender<SessionId>,
 }
 
@@ -123,12 +119,13 @@ impl SessionManager for SeatSessions {
         mut message: ClientJsonRpcMessage,
     ) -> Result<ServerJsonRpcMessage, Self::Error> {
         if let ClientJsonRpcMessage::Request(request) = &mut message {
-            let conn = self.next_conn.fetch_add(1, Ordering::Relaxed);
+            let conn = Conn::mint(&self.next_conn);
             self.conns
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
                 .insert(id.clone(), conn);
-            request.request.extensions_mut().insert(SeatConn(conn));
+            // `Handler` reads the id back during initialize.
+            request.request.extensions_mut().insert(conn);
         }
         self.inner.initialize_session(id, message).await
     }
@@ -146,10 +143,7 @@ impl SessionManager for SeatSessions {
             .remove(id);
         let closed = self.inner.close_session(id).await;
         if let Some(conn) = conn {
-            let (ack_tx, ack_rx) = oneshot::channel();
-            if self.tx.send(Request::Hangup { conn, ack: ack_tx }).is_ok() {
-                let _ = ack_rx.await;
-            }
+            report_hangup(&self.tx, conn).await;
         }
         closed
     }
@@ -199,19 +193,19 @@ mod tests {
     use rmcp::model::ProtocolVersion;
     use serde_json::Value;
 
-    use super::super::world_loop::Request;
+    use super::super::table::{Conn, Request};
     use super::serve;
 
     /// A stand-in for the shard thread with one GM seat. It refuses a second
     /// claim while the seat is held, like the real table. On a fault it tells
     /// the test, then holds the seat until the test lets the release through.
-    fn spawn_fake_world_loop(
+    fn spawn_fake_table(
         rx: mpsc::Receiver<Request>,
         fault_seen: tokio::sync::mpsc::UnboundedSender<()>,
         let_go: mpsc::Receiver<()>,
     ) {
         std::thread::spawn(move || {
-            let mut seat: Option<u64> = None;
+            let mut seat: Option<Conn> = None;
             let mut kept = Vec::new();
             for msg in rx {
                 match msg {
@@ -367,7 +361,7 @@ mod tests {
         let (tx, rx) = mpsc::channel();
         let (fault_tx, fault_seen) = tokio::sync::mpsc::unbounded_channel();
         let (let_go, held) = mpsc::channel();
-        spawn_fake_world_loop(rx, fault_tx, held);
+        spawn_fake_table(rx, fault_tx, held);
         tokio::spawn(serve(listener, tx, Arc::new(AtomicU64::new(1))));
         (port, fault_seen, let_go)
     }

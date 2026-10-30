@@ -1,0 +1,612 @@
+//! The table: the one owner of the world and its seats. It seats players,
+//! answers their lines and the GM's tools, and delivers every round.
+
+use std::io::Write;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::Receiver;
+
+use serde_json::{Map, Value};
+use spookery_engine::{
+    emit_tape_record, Address, Presence, Reason, RecipientLine, RoundOutput, TapeRecord, World,
+};
+use tokio::sync::{oneshot, watch};
+
+use super::frames::{self, Refusal};
+use super::gm_tools::call_gm_tool;
+use super::idle_clock::{self, wall_now};
+use super::listener::Error;
+use super::outbound::{try_send_frame, CancelTx, OutTx};
+
+/// The host's cap. A pack may define more PCs than this.
+const MAX_PLAYER_SEATS: usize = 3;
+
+/// Commit a queued round, then fast-forward while every seated PC is busy.
+/// An empty queue only fast-forwards.
+pub fn commit_then_fast_forward(
+    world: &mut World,
+    presence: &Presence,
+) -> Result<Vec<RoundOutput>, Reason> {
+    let wall = wall_now();
+    world.commit_then_fast_forward(presence, &wall)
+}
+
+/// One connection's id, on the game port or the agent door.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) struct Conn(u64);
+
+impl Conn {
+    /// The next id from the one counter both ports share.
+    pub(crate) fn mint(next: &AtomicU64) -> Self {
+        Self(next.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+/// The one owner of who is seated. Rounds and readers take `presence()`.
+#[derive(Default)]
+struct Seats {
+    players: Vec<PlayerSeat>,
+    gm: Option<GmSeat>,
+}
+
+impl Seats {
+    /// The seated PCs, sorted, so a round records the same `actors_present` bytes.
+    fn presence(&self) -> Presence {
+        let mut actors_present: Vec<String> = self
+            .players
+            .iter()
+            .map(|player| player.actor_id.clone())
+            .collect();
+        actors_present.sort();
+        Presence {
+            players: u32::try_from(actors_present.len()).unwrap_or(u32::MAX),
+            actors_present,
+        }
+    }
+
+    fn player(&self, conn: Conn) -> Option<&PlayerSeat> {
+        self.players.iter().find(|player| player.conn == conn)
+    }
+
+    fn take_player(&mut self, conn: Conn) -> Option<PlayerSeat> {
+        let index = self.players.iter().position(|player| player.conn == conn)?;
+        Some(self.players.remove(index))
+    }
+
+    /// Dropping the seat cancels its event writer.
+    fn release_gm(&mut self) {
+        self.gm = None;
+    }
+}
+
+struct PlayerSeat {
+    conn: Conn,
+    actor_id: String,
+    out: OutTx,
+    cancel: CancelTx,
+}
+
+impl Drop for PlayerSeat {
+    fn drop(&mut self) {
+        let _ = self.cancel.send(true);
+    }
+}
+
+struct GmSeat {
+    conn: Conn,
+    out: OutTx,
+    cancel: CancelTx,
+}
+
+impl Drop for GmSeat {
+    fn drop(&mut self) {
+        let _ = self.cancel.send(true);
+    }
+}
+
+pub(super) enum Request {
+    Hello {
+        conn: Conn,
+        line: String,
+        out: OutTx,
+        cancel: CancelTx,
+        reply: oneshot::Sender<HelloReply>,
+    },
+    Line {
+        conn: Conn,
+        line: String,
+        reply: oneshot::Sender<()>,
+    },
+    Hangup {
+        conn: Conn,
+        ack: oneshot::Sender<()>,
+    },
+    Tool {
+        conn: Conn,
+        name: String,
+        arguments: Option<Map<String, Value>>,
+        reply: oneshot::Sender<Value>,
+    },
+    /// The HTTP session takes the one GM seat. The game port does not.
+    SeatGm {
+        conn: Conn,
+        out: OutTx,
+        cancel: CancelTx,
+        reply: oneshot::Sender<Result<(), Refusal>>,
+    },
+    Wake,
+    Stop,
+}
+
+pub(super) enum HelloReply {
+    Refused(Refusal),
+    Seated,
+}
+
+pub(crate) struct Table {
+    world: World,
+    seats: Seats,
+    /// Each send restarts the idle timer.
+    idle: watch::Sender<u64>,
+    out: Box<dyn Write>,
+    err: Box<dyn Write>,
+}
+
+impl Table {
+    pub(crate) fn new(
+        world: World,
+        idle: watch::Sender<u64>,
+        out: Box<dyn Write>,
+        err: Box<dyn Write>,
+    ) -> Self {
+        Self {
+            world,
+            seats: Seats::default(),
+            idle,
+            out,
+            err,
+        }
+    }
+
+    /// Answer requests until `Stop`. A store fault ends the table.
+    pub(crate) fn run(mut self, rx: Receiver<Request>) -> Result<(), Error> {
+        loop {
+            let request = rx.recv().map_err(|_| Error::Reason(Reason::NotInSpec))?;
+            let mut handled = Ok(());
+            match request {
+                Request::Hello {
+                    conn,
+                    line,
+                    out,
+                    cancel,
+                    reply,
+                } => {
+                    let _ = reply.send(self.hello(conn, &line, out, cancel));
+                }
+                Request::SeatGm {
+                    conn,
+                    out,
+                    cancel,
+                    reply,
+                } => {
+                    let seated = self.seat_gm(conn, out, cancel);
+                    let took = seated.is_ok();
+                    if reply.send(seated).is_err() && took {
+                        self.seats.release_gm();
+                    }
+                }
+                Request::Line { conn, line, reply } => {
+                    self.line(conn, &line);
+                    let _ = reply.send(());
+                }
+                Request::Hangup { conn, ack } => {
+                    self.hangup(conn);
+                    let _ = ack.send(());
+                }
+                Request::Tool {
+                    conn,
+                    name,
+                    arguments,
+                    reply,
+                } => {
+                    let _ = reply.send(self.tool(conn, &name, arguments));
+                }
+                Request::Wake => handled = self.wake(),
+                Request::Stop => {
+                    self.stop();
+                    return Ok(());
+                }
+            }
+            if let Some(warning) = self.world.take_warning() {
+                let _ = writeln!(self.err, "{warning}");
+                let _ = self.err.flush();
+            }
+            handled.map_err(Error::Reason)?;
+        }
+    }
+
+    fn hello(&mut self, conn: Conn, line: &str, out: OutTx, cancel: CancelTx) -> HelloReply {
+        let named = match line {
+            "gm" => return HelloReply::Refused(Reason::NotInSpec.into()),
+            "" => None,
+            _ => match crate::protocol::parse_player_hello(line) {
+                None => return HelloReply::Refused(Reason::Schema.into()),
+                named => named,
+            },
+        };
+        if self.seats.players.len() >= MAX_PLAYER_SEATS {
+            return HelloReply::Refused(Reason::TableFull.into());
+        }
+        let Some(id) = named else {
+            let free = self.world.free_pcs(&self.seats.presence());
+            return HelloReply::Refused(Refusal::choose_pc(free));
+        };
+        if self
+            .seats
+            .players
+            .iter()
+            .any(|player| player.actor_id == id)
+        {
+            return HelloReply::Refused(Reason::SeatTaken.into());
+        }
+        if !self
+            .world
+            .state()
+            .actors
+            .get(id)
+            .is_some_and(|actor| actor.is_pc())
+        {
+            return HelloReply::Refused(Reason::Schema.into());
+        }
+        // Seat first, so the welcome view counts this player as present.
+        self.seats.players.push(PlayerSeat {
+            conn,
+            actor_id: id.to_string(),
+            out,
+            cancel,
+        });
+        let sent = welcome(&self.world, &self.seats.presence(), id).and_then(|bytes| {
+            let seated = self
+                .seats
+                .player(conn)
+                .is_some_and(|player| try_send_frame(&player.out, bytes));
+            if seated {
+                Ok(())
+            } else {
+                Err(Reason::Schema)
+            }
+        });
+        if let Err(code) = sent {
+            self.drop_player(conn);
+            return HelloReply::Refused(code.into());
+        }
+        self.write_digest(&[]);
+        HelloReply::Seated
+    }
+
+    fn seat_gm(&mut self, conn: Conn, out: OutTx, cancel: CancelTx) -> Result<(), Refusal> {
+        if self.seats.gm.is_some() {
+            return Err(Reason::TableFull.into());
+        }
+        self.seats.gm = Some(GmSeat { conn, out, cancel });
+        Ok(())
+    }
+
+    fn line(&mut self, conn: Conn, line: &str) {
+        let Some(actor_id) = self
+            .seats
+            .player(conn)
+            .map(|player| player.actor_id.clone())
+        else {
+            return;
+        };
+        let presence = self.seats.presence();
+        let reply = match parse_command(&self.world, &actor_id, line) {
+            Ok(PlayerCommand::Close) => return self.drop_player(conn),
+            Ok(PlayerCommand::Help) => frames::lines(&self.world.help_lines(&presence, &actor_id)),
+            Ok(PlayerCommand::Look) => frames::lines(&self.world.look_lines(&presence, &actor_id)),
+            Ok(PlayerCommand::Map) => frames::lines(&self.world.map_lines(&presence, &actor_id)),
+            Ok(PlayerCommand::Say(heard, text)) => {
+                match self.world.say_as_player(&presence, &actor_id, heard, text) {
+                    Ok(said) => return self.deliver_say(&said),
+                    Err(code) => Refusal::from(code).line(),
+                }
+            }
+            Ok(PlayerCommand::Move(verb, target)) => {
+                return self.play_move(conn, &actor_id, verb, target);
+            }
+            Err(refusal) => refusal.line(),
+        };
+        self.send_player(conn, reply.into_bytes());
+    }
+
+    /// With a GM seated, a line waits for `commit_round`. Without one it commits its
+    /// own round, and a busy PC's line plays the rounds its action still needs.
+    fn play_move(&mut self, conn: Conn, actor_id: &str, verb: &str, target: Option<&str>) {
+        let gm_seated = self.seats.gm.is_some();
+        let presence = self.seats.presence();
+        let busy = match self
+            .world
+            .queue_player_move(&presence, actor_id, verb, target)
+        {
+            Ok(queued) if gm_seated => {
+                self.send_gm(frames::queued_event(&queued));
+                return self.send_player(conn, frames::queued(&queued.id).into_bytes());
+            }
+            Ok(_) => None,
+            Err(refusal) if !gm_seated && refusal.reason() == Reason::Busy => Some(refusal),
+            Err(refusal) => {
+                return self.send_player(conn, Refusal::from(&refusal).line().into_bytes());
+            }
+        };
+        let outputs = match commit_then_fast_forward(&mut self.world, &presence) {
+            Ok(outputs) => outputs,
+            Err(code) => return self.send_player(conn, Refusal::from(code).line().into_bytes()),
+        };
+        if let Some(refusal) = &busy {
+            self.send_player(conn, Refusal::from(refusal).line().into_bytes());
+        }
+        self.after_rounds(&outputs);
+    }
+
+    fn tool(&mut self, conn: Conn, name: &str, arguments: Option<Map<String, Value>>) -> Value {
+        if self.seats.gm.as_ref().is_none_or(|gm| gm.conn != conn) {
+            return Refusal::from(Reason::NotInSpec).tool_result();
+        }
+        let presence = self.seats.presence();
+        let done = call_gm_tool(&mut self.world, &presence, name, arguments);
+        if let Some(code) = &done.refused {
+            let _ = writeln!(self.out, "refused {name} {}", code.as_str());
+            let _ = self.out.flush();
+        }
+        self.after_rounds(&done.outputs);
+        if let Some(said) = &done.said {
+            self.deliver_say(said);
+        }
+        for output in &done.outputs {
+            for frame in frames::check_events(&output.reports) {
+                self.send_gm(frame);
+            }
+        }
+        // Free the seat before the client can read this result.
+        if done.release_seat {
+            self.seats.release_gm();
+        }
+        done.value
+    }
+
+    fn hangup(&mut self, conn: Conn) {
+        self.drop_player(conn);
+        if self.seats.gm.as_ref().is_some_and(|gm| gm.conn == conn) {
+            self.seats.release_gm();
+        }
+    }
+
+    fn wake(&mut self) -> Result<(), Reason> {
+        let players = !self.seats.players.is_empty();
+        if idle_clock::catch_up_if_due(&mut self.world, players, self.seats.gm.is_some())? {
+            self.restart_idle_timer();
+        }
+        Ok(())
+    }
+
+    fn stop(&mut self) {
+        let conns: Vec<Conn> = self
+            .seats
+            .players
+            .iter()
+            .map(|player| player.conn)
+            .collect();
+        for conn in conns {
+            self.drop_player(conn);
+        }
+        self.seats.release_gm();
+    }
+
+    /// The one order after rounds: refresh every player, print the digest, then
+    /// restart the idle timer.
+    fn after_rounds(&mut self, outputs: &[RoundOutput]) {
+        if outputs.is_empty() {
+            return;
+        }
+        let presence = self.seats.presence();
+        let mut failed = Vec::new();
+        for player in &self.seats.players {
+            let bytes = match refresh_lines(&self.world, &presence, &player.actor_id) {
+                Ok(text) => {
+                    let mut out: String = outputs
+                        .iter()
+                        .map(|output| frames::reports(&output.reports, &player.actor_id))
+                        .collect();
+                    out.push_str(&text);
+                    for output in outputs {
+                        for line in narrate_lines_for(&output.lines, &player.actor_id) {
+                            out.push_str(&frames::lines(&line));
+                        }
+                        for item in &output.seen {
+                            if item.viewer == player.actor_id && !item.line.is_empty() {
+                                out.push_str(&frames::lines(&item.line));
+                            }
+                        }
+                    }
+                    out.into_bytes()
+                }
+                Err(code) => Refusal::from(code).line().into_bytes(),
+            };
+            if !try_send_frame(&player.out, bytes) {
+                failed.push(player.conn);
+            }
+        }
+        for conn in failed {
+            self.drop_player(conn);
+        }
+        self.write_digest(outputs);
+        self.restart_idle_timer();
+    }
+
+    fn restart_idle_timer(&self) {
+        self.idle
+            .send_modify(|count| *count = count.wrapping_add(1));
+    }
+
+    /// The one say path: the host's tape line, the GM's `say` event, and the
+    /// recipients' `say` lines.
+    fn deliver_say(&mut self, said: &TapeRecord) {
+        let _ = writeln!(self.out, "{}", emit_tape_record(said));
+        let _ = self.out.flush();
+        self.send_gm(frames::say_event(said));
+        let line = frames::say(said, false).into_bytes();
+        let mut failed = Vec::new();
+        for player in &self.seats.players {
+            if said.recipients.iter().any(|id| id == &player.actor_id)
+                && !try_send_frame(&player.out, line.clone())
+            {
+                failed.push(player.conn);
+            }
+        }
+        for conn in failed {
+            self.drop_player(conn);
+        }
+    }
+
+    /// A full or closed queue drops that seat. The table does not wait.
+    fn send_player(&mut self, conn: Conn, bytes: Vec<u8>) {
+        if self
+            .seats
+            .player(conn)
+            .is_some_and(|player| !try_send_frame(&player.out, bytes))
+        {
+            self.drop_player(conn);
+        }
+    }
+
+    fn send_gm(&mut self, frame: Vec<u8>) {
+        if self
+            .seats
+            .gm
+            .as_ref()
+            .is_some_and(|gm| !try_send_frame(&gm.out, frame))
+        {
+            self.seats.release_gm();
+        }
+    }
+
+    /// Drops a seated player and tells the host. Dropping the seat cancels its socket.
+    fn drop_player(&mut self, conn: Conn) {
+        if self.seats.take_player(conn).is_some() {
+            self.write_digest(&[]);
+        }
+    }
+
+    fn write_digest(&mut self, outputs: &[RoundOutput]) {
+        let text = self.world.digest(outputs);
+        if !text.is_empty() {
+            let _ = self.out.write_all(text.as_bytes());
+            let _ = self.out.flush();
+        }
+    }
+}
+
+fn narrate_lines_for(lines: &[RecipientLine], viewer: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in lines {
+        if line.to == viewer && !out.contains(&line.text) {
+            out.push(line.text.clone());
+        }
+    }
+    out
+}
+
+fn welcome(world: &World, presence: &Presence, actor_id: &str) -> Result<Vec<u8>, Reason> {
+    let mut out = String::new();
+    for stored in world.player_scrollback(actor_id)? {
+        out.push_str(&frames::say(&stored, true));
+    }
+    out.push_str(&refresh_lines(world, presence, actor_id)?);
+    Ok(out.into_bytes())
+}
+
+fn refresh_lines(world: &World, presence: &Presence, actor_id: &str) -> Result<String, Reason> {
+    let view = world.perceive(presence, actor_id)?;
+    let mut out = frames::resume(&view);
+    out.push_str(&frames::view(&view));
+    Ok(out)
+}
+
+enum PlayerCommand<'w, 'l> {
+    Close,
+    Help,
+    Look,
+    Map,
+    Say(Address<'w>, &'l str),
+    Move(&'l str, Option<&'l str>),
+}
+
+/// `close` is matched on the raw line, so `player:<id> close` is a move.
+fn parse_command<'w, 'l: 'w>(
+    world: &'w World,
+    seated: &str,
+    line: &'l str,
+) -> Result<PlayerCommand<'w, 'l>, Refusal> {
+    if split_token(line) == ("close", "") {
+        return Ok(PlayerCommand::Close);
+    }
+    let (verb, rest) = split_verb(line, seated)?;
+    if verb.is_empty() {
+        return Err(Reason::Schema.into());
+    }
+    if verb == "say" {
+        if rest.is_empty() {
+            return Err(Reason::Schema.into());
+        }
+        let place = world
+            .state()
+            .actors
+            .get(seated)
+            .filter(|actor| actor.is_pc())
+            .ok_or(Reason::Schema)?
+            .place();
+        let (target, text) = split_token(rest);
+        let (heard, text) = if !text.is_empty() && target == "place" {
+            (Address::Place(place), text)
+        } else if !text.is_empty() && world.state().actors.contains_key(target) {
+            (Address::Actor(target), text)
+        } else {
+            (Address::Table, rest)
+        };
+        return Ok(PlayerCommand::Say(heard, text));
+    }
+    if rest.is_empty() {
+        return Ok(match verb {
+            "help" => PlayerCommand::Help,
+            "map" => PlayerCommand::Map,
+            "look" => PlayerCommand::Look,
+            _ => PlayerCommand::Move(verb, None),
+        });
+    }
+    let (target, extra) = split_token(rest);
+    if target.is_empty() || !extra.is_empty() {
+        return Err(Reason::Schema.into());
+    }
+    Ok(PlayerCommand::Move(verb, Some(target)))
+}
+
+fn split_verb<'a>(line: &'a str, seated: &str) -> Result<(&'a str, &'a str), Reason> {
+    if line.is_empty() {
+        return Err(Reason::Schema);
+    }
+    let (first, rest) = split_token(line);
+    if let Some(id) = first.strip_prefix("player:") {
+        if id.is_empty() || id != seated || rest.is_empty() {
+            return Err(Reason::Schema);
+        }
+        return Ok(split_token(rest));
+    }
+    Ok((first, rest))
+}
+
+fn split_token(line: &str) -> (&str, &str) {
+    match line.split_once(' ') {
+        Some((token, rest)) => (token, rest),
+        None => (line, ""),
+    }
+}

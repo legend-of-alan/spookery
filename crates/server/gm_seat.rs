@@ -12,11 +12,11 @@ use rmcp::service::{Peer, RequestContext, RoleServer};
 use rmcp::{ErrorData as McpError, ServerHandler};
 
 use super::gm_tools;
-use super::world_loop::Request;
+use super::table::{Conn, Request};
 
 pub(super) struct Handler {
     tx: Sender<Request>,
-    conn: OnceLock<u64>,
+    conn: OnceLock<Conn>,
 }
 
 impl Handler {
@@ -60,8 +60,8 @@ impl ServerHandler for Handler {
     ) -> Result<InitializeResult, McpError> {
         let conn = context
             .extensions
-            .get::<super::mcp_http::SeatConn>()
-            .map(|seat| seat.0)
+            .get::<Conn>()
+            .copied()
             .ok_or_else(|| McpError::internal_error("no seat", None))?;
         let _ = self.conn.set(conn);
         self.seat_gm(conn, &context).await?;
@@ -98,7 +98,7 @@ impl ServerHandler for Handler {
 impl Handler {
     async fn seat_gm(
         &self,
-        conn: u64,
+        conn: Conn,
         context: &RequestContext<RoleServer>,
     ) -> Result<(), McpError> {
         let (out_tx, out_rx, cancel_tx, cancel_rx) = super::outbound::channel();

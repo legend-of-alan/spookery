@@ -4,7 +4,7 @@ use serde_json::{Map, Value};
 use spookery_engine::{Address, Presence, Reason, RoundOutput, TapeRecord, World};
 
 use super::frames::{self, Refusal};
-use super::world_loop::commit_then_fast_forward;
+use super::table::commit_then_fast_forward;
 use crate::protocol::SayArgs;
 
 pub struct Reply {
